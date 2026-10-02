@@ -31,6 +31,7 @@ import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/event_card/event_image_provider.dart';
 import 'package:chessever2/widgets/event_card/event_next_round_provider.dart';
+import 'package:chessever2/widgets/hub_tile.dart';
 import 'package:chessever2/widgets/federation_flag.dart';
 import 'package:chessever2/widgets/player_initials_avatar.dart';
 import 'package:chessever2/widgets/space_shortcut_drafts.dart';
@@ -1493,20 +1494,33 @@ class _GlyphTile extends StatelessWidget {
             children: [
               Expanded(
                 child: LayoutBuilder(
-                  builder: (context, box) => Align(
-                    alignment: Alignment.topCenter,
-                    child: SizedBox(
-                      height: math.min(112.w, box.maxHeight),
-                      child: Center(
-                        child: SpaceGlyph(
-                          glyph,
-                          size: 48.w,
-                          ink: context.colors.iconPrimary,
-                          background: context.colors.surface,
+                  builder: (context, box) {
+                    final band = math.min(112.w, box.maxHeight);
+                    return Align(
+                      alignment: Alignment.topCenter,
+                      child: SizedBox(
+                        height: band,
+                        child: Center(
+                          // My Likes carries the app's own heart, the one its
+                          // hub and the Library card draw, instead of the
+                          // small outline glyph.
+                          child: shortcut.kind == SpaceShortcutKind.likes
+                              ? LikesHeartMark(
+                                  size: math.min(
+                                    72.w,
+                                    math.min(band, box.maxWidth),
+                                  ),
+                                )
+                              : SpaceGlyph(
+                                  glyph,
+                                  size: 48.w,
+                                  ink: context.colors.iconPrimary,
+                                  background: context.colors.surface,
+                                ),
                         ),
                       ),
-                    ),
-                  ),
+                    );
+                  },
                 ),
               ),
               Text(

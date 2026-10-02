@@ -29,6 +29,10 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 /// and do not navigate until the user is subscribed. A confirmed purchase or
 /// restore resumes straight into the game that was tapped. [returnTo] names
 /// the surface that resumes, for the paywall analytics (a fixed identifier).
+///
+/// [games] is the whole list on screen, every day of it. A free account's
+/// board is handed Today's games only, so swiping there never walks past the
+/// guard into an earlier day.
 Future<void> openMiniatureGame({
   required BuildContext context,
   required WidgetRef ref,
@@ -45,6 +49,23 @@ Future<void> openMiniatureGame({
     subscriptionLoading: subscription.isLoading,
   );
   if (!locked) {
+    final archiveLocked = isMiniaturesArchiveLocked(
+      isSubscribed: subscription.isSubscribed,
+      subscriptionLoading: subscription.isLoading,
+    );
+    if (archiveLocked) {
+      final today = splitMiniaturesAtToday(
+        games,
+        (game) => game.lastMoveTime,
+      ).today;
+      final tapped = games[index].gameId;
+      return _launchMiniatureGame(
+        context: context,
+        ref: ref,
+        games: today,
+        index: today.indexWhere((game) => game.gameId == tapped),
+      );
+    }
     return _launchMiniatureGame(
       context: context,
       ref: ref,
@@ -57,13 +78,12 @@ Future<void> openMiniatureGame({
     ref,
     featureId: kMiniaturesArchiveFeatureId,
     returnTo: returnTo,
-    onEntitled:
-        () => _launchMiniatureGame(
-          context: context,
-          ref: ref,
-          games: games,
-          index: index,
-        ),
+    onEntitled: () => _launchMiniatureGame(
+      context: context,
+      ref: ref,
+      games: games,
+      index: index,
+    ),
   );
 }
 
@@ -118,26 +138,24 @@ Future<void> _launchMiniatureGame({
     if (!context.mounted) return;
     navigator.pop(); // loading
 
-    final boardGames =
-        pgn == null
-            ? games
-            : [
-              for (var i = 0; i < games.length; i++)
-                i == index ? games[i].copyWith(pgn: pgn) : games[i],
-            ];
+    final boardGames = pgn == null
+        ? games
+        : [
+            for (var i = 0; i < games.length; i++)
+              i == index ? games[i].copyWith(pgn: pgn) : games[i],
+          ];
 
     navigator.push(
       MaterialPageRoute(
-        builder:
-            (_) => ChessBoardScreenNew(
-              games: boardGames,
-              currentIndex: index,
-              viewSource: ChessboardView.tour,
-              playerProfileDataSource: PlayerProfileDataSource.twic,
-              showGamebaseButton: false,
-              disableGamebaseOverlayByDefault: true,
-              showClock: false,
-            ),
+        builder: (_) => ChessBoardScreenNew(
+          games: boardGames,
+          currentIndex: index,
+          viewSource: ChessboardView.tour,
+          playerProfileDataSource: PlayerProfileDataSource.twic,
+          showGamebaseButton: false,
+          disableGamebaseOverlayByDefault: true,
+          showClock: false,
+        ),
       ),
     );
   } catch (e, st) {

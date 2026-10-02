@@ -10,7 +10,6 @@ import 'package:chessever2/screens/chessboard/analysis/chess_game.dart';
 import 'package:chessever2/screens/library/utils/load_saved_analysis.dart';
 import 'package:chessever2/screens/for_you/discovery/widgets/discovery_common.dart';
 import 'package:chessever2/screens/my_likes/provider/my_likes_provider.dart';
-import 'package:chessever2/screens/my_likes/widgets/my_likes_archive_boundary.dart';
 import 'package:chessever2/screens/my_likes/widgets/my_likes_game_card.dart';
 import 'package:chessever2/screens/my_space/models/space_shortcut.dart';
 import 'package:chessever2/screens/my_space/providers/space_shortcuts_provider.dart';
@@ -111,7 +110,11 @@ void main() {
   });
 
   group('buildMyLikesData', () {
-    test('free: 20 openable, the rest archived with a locked preview', () {
+    List<MyLikesEntry> listed(MyLikesData data) => [
+      for (final s in data.sections) ...s.value,
+    ];
+
+    test('free: every like listed, the latest 20 open, the rest locked', () {
       final likes = _likes(25);
       final data = buildMyLikesData(
         matches: likes,
@@ -119,44 +122,19 @@ void main() {
         window: freeVisibleLikeIds(likes),
       );
 
-      expect(data.visibleCount, 20);
+      // The same list a Premium account sees.
+      expect(data.visibleCount, 25);
+      expect(_ids(listed(data).map((e) => e.analysis)), _ids(likes));
+      // Only the lock differs, and the board swipes the open ones.
       expect(_ids(data.openableAnalyses), _ids(likes.take(20)));
-      final sectionIds = [
-        for (final s in data.sections)
-          for (final e in s.value) e.analysis.id,
-      ];
-      expect(sectionIds, _ids(likes.take(20)));
       expect(
-        data.sections.expand((s) => s.value).any((e) => e.isLocked),
-        isFalse,
+        _ids(listed(data).where((e) => e.isLocked).map((e) => e.analysis)),
+        _ids(likes.skip(20)),
       );
-
-      expect(data.showsArchiveBoundary, isTrue);
-      expect(data.archivedCount, 5);
-      expect(data.archivedMatchCount, 5);
-      expect(data.archivedMatchCountIsExact, isTrue);
-      // The next two likes after the window, newest first, locked.
-      expect(_ids(data.lockedPreview.map((e) => e.analysis)), [
-        _like(5).id,
-        _like(4).id,
-      ]);
-      expect(data.lockedPreview.every((e) => e.isLocked), isTrue);
       expect(data.hasNoMatches, isFalse);
     });
 
-    test('the archive count comes from the folder count, not the rows', () {
-      // Rows capped at 30 while the folder holds 1,240 likes.
-      final likes = _likes(30);
-      final data = buildMyLikesData(
-        matches: likes,
-        totalLiked: 1240,
-        window: freeVisibleLikeIds(likes),
-      );
-      expect(data.archivedCount, 1220);
-      expect(data.archivedMatchCount, 1220);
-    });
-
-    test('premium sees everything, no boundary', () {
+    test('premium sees everything, nothing locked', () {
       final likes = _likes(25);
       final data = buildMyLikesData(
         matches: likes,
@@ -165,11 +143,10 @@ void main() {
       );
       expect(data.visibleCount, 25);
       expect(data.openableAnalyses, hasLength(25));
-      expect(data.showsArchiveBoundary, isFalse);
-      expect(data.lockedPreview, isEmpty);
+      expect(listed(data).any((e) => e.isLocked), isFalse);
     });
 
-    test('free with 20 or fewer likes shows no boundary', () {
+    test('free with 20 or fewer likes has nothing locked', () {
       final likes = _likes(20);
       final data = buildMyLikesData(
         matches: likes,
@@ -177,13 +154,13 @@ void main() {
         window: freeVisibleLikeIds(likes),
       );
       expect(data.visibleCount, 20);
-      expect(data.showsArchiveBoundary, isFalse);
+      expect(listed(data).any((e) => e.isLocked), isFalse);
     });
 
-    test('a search counts its matches inside and past the window', () {
+    test('a search lists its matches inside and past the window', () {
       final all = _likes(25);
       final window = freeVisibleLikeIds(all);
-      // Two recent matches, three archived ones.
+      // Two recent matches, three older ones.
       final matches = [_like(24), _like(22), _like(5), _like(3), _like(1)];
       final data = buildMyLikesData(
         matches: matches,
@@ -191,18 +168,13 @@ void main() {
         window: window,
         isNarrowed: true,
       );
-      expect(data.visibleCount, 2);
-      expect(data.archivedCount, 5);
-      expect(data.archivedMatchCount, 3);
-      expect(data.archivedMatchCountIsExact, isTrue);
+      expect(data.visibleCount, 5);
+      expect(_ids(listed(data).map((e) => e.analysis)), _ids(matches));
+      expect(_ids(data.openableAnalyses), [_like(24).id, _like(22).id]);
       expect(data.hasNoMatches, isFalse);
-      expect(_ids(data.lockedPreview.map((e) => e.analysis)), [
-        _like(5).id,
-        _like(3).id,
-      ]);
     });
 
-    test('a search that only hits the archive is not "no matches"', () {
+    test('a search that only hits older likes still lists them', () {
       final window = freeVisibleLikeIds(_likes(25));
       final data = buildMyLikesData(
         matches: [_like(4), _like(2)],
@@ -210,10 +182,10 @@ void main() {
         window: window,
         isNarrowed: true,
       );
-      expect(data.visibleCount, 0);
-      expect(data.sections, isEmpty);
+      expect(data.visibleCount, 2);
+      expect(listed(data).every((e) => e.isLocked), isTrue);
+      expect(data.openableAnalyses, isEmpty);
       expect(data.hasNoMatches, isFalse);
-      expect(data.showsArchiveBoundary, isTrue);
     });
 
     test('a search with no hits anywhere is "no matches"', () {
@@ -226,7 +198,7 @@ void main() {
       expect(data.hasNoMatches, isTrue);
     });
 
-    test('a sorted list keeps one bucket of openable likes only', () {
+    test('a sorted list keeps one bucket in the server order', () {
       final all = _likes(22);
       final window = freeVisibleLikeIds(all);
       // Server sort order, unrelated to like time.
@@ -238,153 +210,12 @@ void main() {
         isSorted: true,
       );
       expect(data.sections.single.key, '__sorted__');
-      expect(_ids(data.sections.single.value.map((e) => e.analysis)), [
-        _like(12).id,
-        _like(20).id,
-      ]);
-      expect(_ids(data.lockedPreview.map((e) => e.analysis)), [
-        _like(1).id,
-        _like(2).id,
-      ]);
-    });
-  });
-
-  group('archive boundary copy', () {
-    MyLikesData data({
-      int visible = 20,
-      int archived = 14,
-      int? archivedMatches,
-      bool exact = true,
-      bool narrowed = false,
-    }) => MyLikesData(
-      sections: const [],
-      openableAnalyses: const [],
-      totalLiked: visible + archived,
-      visibleCount: visible,
-      archivedCount: archived,
-      archivedMatchCount: archivedMatches ?? archived,
-      archivedMatchCountIsExact: exact,
-      isNarrowed: narrowed,
-    );
-
-    test('states the latest 20 and the retained count', () {
-      final copy = myLikesArchiveCopy(data());
-      expect(copy.title, "You're seeing your latest 20 likes");
       expect(
-        copy.body,
-        'Your 14 older likes are kept safe and come back with Premium.',
+        _ids(data.sections.single.value.map((e) => e.analysis)),
+        _ids(sorted),
       );
-      expect(
-        myLikesArchiveCopy(data(archived: 1)).body,
-        'Your 1 older like is kept safe and comes back with Premium.',
-      );
+      expect(_ids(data.openableAnalyses), [_like(12).id, _like(20).id]);
     });
-
-    test('a search reports archived matches, and hides an unreliable count', () {
-      expect(
-        myLikesArchiveCopy(
-          data(visible: 3, archivedMatches: 4, narrowed: true),
-        ).body,
-        "4 older likes match too. They're kept safe and come back with Premium.",
-      );
-      final onlyArchive = myLikesArchiveCopy(
-        data(visible: 0, archivedMatches: 1, narrowed: true),
-      );
-      expect(onlyArchive.title, 'No matches in your latest 20 likes');
-      expect(
-        onlyArchive.body,
-        "1 older like matches. It's kept safe and comes back with Premium.",
-      );
-      final inexact = myLikesArchiveCopy(
-        data(visible: 2, archivedMatches: 980, exact: false, narrowed: true),
-      );
-      expect(inexact.body, isNot(contains('980')));
-      expect(inexact.body, startsWith('More of your older likes match too.'));
-    });
-
-    test('a search with no archived hits falls back to the retained count', () {
-      expect(
-        myLikesArchiveCopy(
-          data(visible: 3, archivedMatches: 0, narrowed: true),
-        ).body,
-        'Your 14 older likes are kept safe and come back with Premium.',
-      );
-    });
-
-    test('never sells unlimited likes; the CTA names the history', () {
-      expect(kMyLikesHistoryCta, 'View full My Likes history');
-      for (final d in [
-        data(),
-        data(archived: 1),
-        data(visible: 0, archivedMatches: 2, narrowed: true),
-      ]) {
-        final copy = myLikesArchiveCopy(d);
-        expect(
-          '${copy.title} ${copy.body}'.toLowerCase(),
-          isNot(contains('unlimited')),
-        );
-      }
-    });
-  });
-
-  group('archive boundary widget', () {
-    for (final width in [320.0, 390.0]) {
-      testWidgets('renders whole at ${width.toInt()}pt and opens the history', (
-        tester,
-      ) async {
-        tester.view.physicalSize = Size(width, 800);
-        tester.view.devicePixelRatio = 1;
-        addTearDown(tester.view.resetPhysicalSize);
-        addTearDown(tester.view.resetDevicePixelRatio);
-
-        var taps = 0;
-        const data = MyLikesData(
-          sections: [],
-          openableAnalyses: [],
-          totalLiked: 34,
-          visibleCount: 20,
-          archivedCount: 14,
-          archivedMatchCount: 14,
-        );
-        await tester.pumpWidget(
-          MaterialApp(
-            theme: AppTheme.darkTheme,
-            home: Builder(
-              builder: (context) {
-                ResponsiveHelper.init(context);
-                return Scaffold(
-                  backgroundColor: context.colors.background,
-                  body: Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: MyLikesArchiveBoundary(
-                      data: data,
-                      onViewHistory: () => taps++,
-                    ),
-                  ),
-                );
-              },
-            ),
-          ),
-        );
-
-        final title = find.text("You're seeing your latest 20 likes");
-        expect(title, findsOneWidget);
-        expect(
-          find.text(
-            'Your 14 older likes are kept safe and come back with Premium.',
-          ),
-          findsOneWidget,
-        );
-        // The title clears the lock notch in the top-right corner.
-        final lock = tester.getRect(find.byType(DiscoveryLockNotch));
-        expect(tester.getRect(title).right, lessThan(lock.left));
-        expect(tester.takeException(), isNull);
-
-        await tester.tap(find.text(kMyLikesHistoryCta));
-        await tester.pump(const Duration(milliseconds: 400));
-        expect(taps, 1);
-      });
-    }
   });
 
   group('locked like card', () {
@@ -439,44 +270,41 @@ void main() {
     }
 
     for (final width in [320.0, 390.0]) {
-      testWidgets(
-        'cuts the shared padlock notch clear of every line at '
-        '${width.toInt()}pt',
-        (tester) async {
-          await pumpCard(tester, locked: true, width: width);
+      testWidgets('cuts the shared padlock notch clear of every line at '
+          '${width.toInt()}pt', (tester) async {
+        await pumpCard(tester, locked: true, width: width);
 
-          expect(find.text('PREMIUM'), findsNothing);
-          // Tags stay behind the paywall; their slot holds the notch.
-          expect(find.text('Trap'), findsNothing);
+        expect(find.text('PREMIUM'), findsNothing);
+        // Tags stay behind the paywall; their slot holds the notch.
+        expect(find.text('Trap'), findsNothing);
 
-          final card = tester.getRect(find.byType(MyLikesGameCard));
-          final size = math.min(22.w, 22.h);
-          final notch = Rect.fromLTRB(
-            card.right - size,
-            card.bottom - size,
-            card.right,
-            card.bottom,
+        final card = tester.getRect(find.byType(MyLikesGameCard));
+        final size = math.min(22.w, 22.h);
+        final notch = Rect.fromLTRB(
+          card.right - size,
+          card.bottom - size,
+          card.right,
+          card.bottom,
+        );
+        final lock = tester.getRect(find.byType(DiscoveryPadlock));
+        expect(lock.center.dx, moreOrLessEquals(notch.center.dx));
+        expect(lock.center.dy, moreOrLessEquals(notch.center.dy));
+
+        final lines = find.descendant(
+          of: find.byType(MyLikesGameCard),
+          matching: find.byType(Text),
+        );
+        expect(lines, findsWidgets);
+        for (final line in tester.widgetList(lines)) {
+          final rect = tester.getRect(find.byWidget(line));
+          expect(
+            rect.overlaps(notch),
+            isFalse,
+            reason: '"${(line as Text).data}" runs into the notch',
           );
-          final lock = tester.getRect(find.byType(DiscoveryPadlock));
-          expect(lock.center.dx, moreOrLessEquals(notch.center.dx));
-          expect(lock.center.dy, moreOrLessEquals(notch.center.dy));
-
-          final lines = find.descendant(
-            of: find.byType(MyLikesGameCard),
-            matching: find.byType(Text),
-          );
-          expect(lines, findsWidgets);
-          for (final line in tester.widgetList(lines)) {
-            final rect = tester.getRect(find.byWidget(line));
-            expect(
-              rect.overlaps(notch),
-              isFalse,
-              reason: '"${(line as Text).data}" runs into the notch',
-            );
-          }
-          expect(tester.takeException(), isNull);
-        },
-      );
+        }
+        expect(tester.takeException(), isNull);
+      });
     }
 
     testWidgets('an unlocked like keeps its tags and has no lock', (
@@ -546,7 +374,9 @@ void main() {
       expect(unlimited.read(), isFalse);
 
       // App resume refresh: the free list must not swell to full and back.
-      subscription.push(SubscriptionState(isSubscribed: false, isLoading: true));
+      subscription.push(
+        SubscriptionState(isSubscribed: false, isLoading: true),
+      );
       expect(unlimited.read(), isFalse);
 
       // Purchase: full history immediately.
@@ -579,8 +409,8 @@ void main() {
 
       final plain = await container.read(myLikesViewProvider.future);
       expect(repository.windowCalls, 0, reason: 'plain list is its own window');
-      expect(plain.visibleCount, 20);
-      expect(plain.archivedCount, 5);
+      expect(plain.visibleCount, 25);
+      expect(plain.openableAnalyses, hasLength(20));
 
       container.read(myLikesFilterProvider.notifier).toggleTag('Trap');
       final narrowed = await container.read(myLikesViewProvider.future);
@@ -588,8 +418,7 @@ void main() {
       expect(repository.lastWindowLimit, kFreeMyLikesVisibleLimit);
       // Trap is on likes 24 (recent) and 2 (archived).
       expect(_ids(narrowed.openableAnalyses), [_like(24).id]);
-      expect(narrowed.archivedMatchCount, 1);
-      expect(narrowed.showsArchiveBoundary, isTrue);
+      expect(narrowed.visibleCount, 2);
 
       await Future<void>.delayed(const Duration(milliseconds: 50));
     });

@@ -62,8 +62,8 @@ import 'package:chessever2/screens/chessboard/widgets/rest_aware_opacity.dart';
 // DISABLED: Move annotation overlay (requires move impact analysis)
 // import 'package:chessever2/screens/chessboard/widgets/move_annotation_overlay.dart';
 import 'package:chessever2/screens/chessboard/widgets/share_game_screen.dart';
-import 'package:chessever2/screens/chessboard/widgets/switch_views_tutorial_overlay.dart';
-import 'package:chessever2/screens/chessboard/widgets/like_tutorial_overlay.dart';
+import 'package:chessever2/screens/chessboard/widgets/switch_views_tutorial_overlay.dart'
+    show TutorialStepIndicator;
 import 'package:chessever2/screens/settings/settings_page.dart';
 import 'package:chessever2/screens/chessboard/widgets/smooth_sheet_config.dart';
 import 'package:chessever2/screens/chessboard/widgets/save_analysis_sheet.dart';
@@ -169,18 +169,11 @@ const boardGameDropdownContentTestKey = ValueKey<String>(
 Key boardGameDropdownCardTestKey(String gameId) =>
     ValueKey<String>('board-game-dropdown-card-$gameId');
 
-/// Counter bumped by [_ChessBoardScreenNewState] once the outer "Swipe to
-/// Browse" walkthrough (step 1/2) is dismissed. The visible analysis panel
-/// (`_AnalysisSwipePanels`) listens to this and runs the chained
-/// notation↔explorer "Switch Views" tutorial (step 2/2) so the two
-/// teachings feel like a single orchestrated flow.
-final analysisSwitchViewsTutorialRequestProvider = StateProvider<int>((_) => 0);
-
-/// Counter bumped once the "Switch Views" walkthrough (step 2/3) is dismissed
-/// — or skipped — so the outer [_ChessBoardScreenNewState] runs the chained
-/// "Double-Tap to Like" teaching (step 3/3) right after, in order and without
-/// overlapping the previous card.
-final likeTutorialRequestProvider = StateProvider<int>((_) => 0);
+/// Counter bumped by [_ChessBoardScreenNewState] once the "Swipe to Browse"
+/// walkthrough (step 1/2) is dismissed, so the chained "Pinch to Resize"
+/// teaching (step 2/2) runs right after — in order and without overlapping
+/// the previous card.
+final boardPinchTutorialRequestProvider = StateProvider<int>((_) => 0);
 
 final boardSelectionClearRequestProvider = StateProvider.family<int, String>(
   (_, _) => 0,
@@ -1402,12 +1395,13 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
   final GlobalKey<_SwipeTutorialOverlayState> _tutorialOverlayKey = GlobalKey();
   late final LikeFlightAnchor _likeFlightAnchor;
 
-  // Step 3/3 ("Double-Tap to Like") — chained after the Switch Views step via
-  // [likeTutorialRequestProvider]. Hosted here (not in a nested panel) so the
-  // whole teaching flow is orchestrated from one place and shown back-to-back.
-  OverlayEntry? _likeTutorialEntry;
-  int _lastLikeTutorialRequest = 0;
-  bool _showLikeTutorial = false;
+  // Step 2/2 ("Pinch to Resize") — chained after the Swipe step via
+  // [boardPinchTutorialRequestProvider]. Hosted here (not in the board
+  // subtree) so the whole teaching flow is orchestrated from one place and
+  // shown back-to-back as centered dialog cards.
+  OverlayEntry? _pinchTutorialEntry;
+  int _lastPinchTutorialRequest = 0;
+  bool _showPinchTutorial = false;
 
   static const String _kWalkthroughShownDateKey =
       'swipable_walkthrough_shown_date';
@@ -1429,7 +1423,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
     WidgetsBinding.instance.addObserver(this);
     PipService.instance.addListener(_handlePipModeChanged);
     _setupSwipeAnimation();
-    _lastLikeTutorialRequest = ref.read(likeTutorialRequestProvider);
+    _lastPinchTutorialRequest = ref.read(boardPinchTutorialRequestProvider);
 
     // Store all games for score card context (used by player name tap → score card)
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -1517,7 +1511,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
     // and isn't opted out. Otherwise hand off to step 2 so any later unseen
     // steps still appear — in order, one at a time (each self-gates on its key).
     if (dontShow || lastShownMs != null) {
-      _requestSwitchViewsTutorial();
+      _requestPinchTutorial();
       return;
     }
 
@@ -1614,86 +1608,76 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
     }
   }
 
-  /// Signals the visible `_AnalysisSwipePanels` to run its notation↔explorer
-  /// "Switch Views" walkthrough as step 2/2. Bumping the counter triggers
-  /// the listener in the nested state; the panel re-checks its own prefs
-  /// guard before showing, so this is safe to call unconditionally after
-  /// step 1 dismisses.
-  void _requestSwitchViewsTutorial() {
+  /// Signals the chained "Pinch to Resize" walkthrough (step 2/2) to run.
+  /// Bumping the counter triggers the listener in [build]; the handler
+  /// re-checks its own prefs guard before showing, so this is safe to call
+  /// unconditionally after step 1 dismisses.
+  void _requestPinchTutorial() {
     if (!mounted || !_canShowTeachingsForCurrentGame()) return;
-    ref
-        .read(analysisSwitchViewsTutorialRequestProvider.notifier)
-        .update((v) => v + 1);
+    ref.read(boardPinchTutorialRequestProvider.notifier).update((v) => v + 1);
   }
 
   Future<void> _suppressWalkthrough() async {
     final prefs = ref.read(sharedPreferencesRepository);
-    // "Don't show again" on step 1 must also suppress steps 2 and 3 so the
-    // user isn't immediately shown more tutorials they just opted out of.
+    // "Don't show again" on step 1 must also suppress step 2 so the user
+    // isn't immediately shown another tutorial they just opted out of.
     await Future.wait([
       prefs.setBool(_kWalkthroughDontShowKey, true),
-      prefs.setBool(kSwitchViewsWalkthroughDontShowKey, true),
-      prefs.setBool(kLikeWalkthroughDontShowKey, true),
+      prefs.setBool(kPinchWalkthroughDontShowKey, true),
     ]);
   }
 
-  /// Step 3/3: shows the "Double-Tap to Like" teaching once the chained
-  /// request fires (after Switch Views dismisses or is skipped). Self-gates on
-  /// its own prefs so it isn't shown more than once per 7 days.
-  Future<void> _maybeStartLikeTutorial() async {
+  /// Step 2/2: shows the "Pinch to Resize" teaching once the chained request
+  /// fires (after Swipe dismisses or is skipped). Self-gates on its own prefs
+  /// so it is shown only once.
+  Future<void> _maybeStartPinchTutorial() async {
     if (!mounted ||
-        _showLikeTutorial ||
+        _showPinchTutorial ||
         _showTutorialOverlay ||
         !_canShowTeachingsForCurrentGame()) {
       return;
     }
 
     final prefs = ref.read(sharedPreferencesRepository);
-    final dontShow = await prefs.getBool(kLikeWalkthroughDontShowKey) ?? false;
+    final dontShow =
+        await prefs.getBool(kPinchWalkthroughDontShowKey) ?? false;
     if (dontShow || !mounted) return;
 
     // Show once: if it's ever been seen, don't show it again.
-    final lastShownMs = await prefs.getInt(kLikeWalkthroughShownDateKey);
-    if (lastShownMs != null) return;
+    final seen = await prefs.getBool(kPinchWalkthroughShownKey) ?? false;
+    if (seen) return;
     if (!mounted) return;
 
-    _showLikeTutorial = true;
-    _insertLikeTutorialOverlay();
+    _showPinchTutorial = true;
+    _insertPinchTutorialOverlay();
 
-    await prefs.setInt(
-      kLikeWalkthroughShownDateKey,
-      DateTime.now().millisecondsSinceEpoch,
-    );
+    await prefs.setBool(kPinchWalkthroughShownKey, true);
   }
 
-  void _insertLikeTutorialOverlay() {
-    _likeTutorialEntry = OverlayEntry(
-      builder: (_) => LikeTutorialOverlay(
-        currentStep: 3,
-        totalSteps: 3,
-        onDismiss: _onLikeTutorialFinished,
+  void _insertPinchTutorialOverlay() {
+    _pinchTutorialEntry = OverlayEntry(
+      builder: (_) => BoardPinchCoachmark(
+        currentStep: 2,
+        totalSteps: 2,
+        onDismiss: _onPinchTutorialFinished,
         onDontShowAgain: () async {
           final prefs = ref.read(sharedPreferencesRepository);
-          await prefs.setBool(kLikeWalkthroughDontShowKey, true);
-          _onLikeTutorialFinished();
+          await prefs.setBool(kPinchWalkthroughDontShowKey, true);
+          _onPinchTutorialFinished();
         },
       ),
     );
-    Overlay.of(context, rootOverlay: true).insert(_likeTutorialEntry!);
+    Overlay.of(context, rootOverlay: true).insert(_pinchTutorialEntry!);
   }
 
-  void _removeLikeTutorialOverlay() {
-    _likeTutorialEntry?.remove();
-    _likeTutorialEntry = null;
+  void _removePinchTutorialOverlay() {
+    _pinchTutorialEntry?.remove();
+    _pinchTutorialEntry = null;
   }
 
-  void _onLikeTutorialFinished() {
-    _removeLikeTutorialOverlay();
-    _showLikeTutorial = false;
-    // REMOVED (Trello nl3WwXwQ): PiP/Live Activity teaching dialog discontinued.
-    // WidgetsBinding.instance.addPostFrameCallback((_) {
-    //   if (mounted) unawaited(_maybeShowLiveWidgetsIntro(context));
-    // });
+  void _onPinchTutorialFinished() {
+    _removePinchTutorialOverlay();
+    _showPinchTutorial = false;
   }
 
   bool _canShowTeachingsForCurrentGame() {
@@ -3040,7 +3024,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
     _pipSub?.close();
     unawaited(PipService.instance.clearActiveGame());
     _pageSettleTimer?.cancel();
-    _removeLikeTutorialOverlay();
+    _removePinchTutorialOverlay();
     _swipeController.dispose();
     _pageController.dispose();
     _gameSwitcher.dispose();
@@ -3168,15 +3152,15 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
       );
     }
 
-    // Step 3/3 of the new-user teaching chain: when Switch Views (step 2)
-    // finishes or is skipped it bumps this counter; show the like teaching on
-    // the next frame so it appears right after the previous card, never atop
-    // it. The monotonic counter re-arms cleanly on a fresh screen open.
-    ref.listen<int>(likeTutorialRequestProvider, (_, next) {
-      if (next <= _lastLikeTutorialRequest) return;
-      _lastLikeTutorialRequest = next;
+    // Step 2/2 of the new-user teaching chain: when Swipe (step 1) finishes or
+    // is skipped it bumps this counter; show the pinch teaching on the next
+    // frame so it appears right after the previous card, never atop it. The
+    // monotonic counter re-arms cleanly on a fresh screen open.
+    ref.listen<int>(boardPinchTutorialRequestProvider, (_, next) {
+      if (next <= _lastPinchTutorialRequest) return;
+      _lastPinchTutorialRequest = next;
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        _maybeStartLikeTutorial();
+        _maybeStartPinchTutorial();
       });
     });
 
@@ -3643,10 +3627,10 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
                                     currentPageIndex: _currentPageIndex,
                                     totalItems: syncedGames.length,
                                     currentStep: 1,
-                                    totalSteps: 3,
+                                    totalSteps: 2,
                                     onDismiss: () {
                                       _onWalkthroughFinished();
-                                      _requestSwitchViewsTutorial();
+                                      _requestPinchTutorial();
                                     },
                                     onDontShowAgain: () async {
                                       await _suppressWalkthrough();
@@ -4223,80 +4207,14 @@ class _GamePage extends ConsumerWidget {
         showClock: showClock,
       ),
     );
-    return _ArrowKeyStepper(
-      game: game,
-      index: currentGameIndex,
-      isActivePage: currentGameIndex == currentPageIndex,
-      child: _BoardShareBoundaryScope(
-        child: MediaQuery.removeViewInsets(
-          context: context,
-          removeBottom: true,
-          child: scaffold,
-        ),
+    return _BoardShareBoundaryScope(
+      child: MediaQuery.removeViewInsets(
+        context: context,
+        removeBottom: true,
+        child: scaffold,
       ),
     );
   }
-}
-
-/// Steps the visible game with a hardware keyboard's ←/→ arrows (an iPad
-/// with a keyboard, or desktop). Only the foreground page of the top route
-/// answers, and never while a text field holds focus.
-class _ArrowKeyStepper extends ConsumerStatefulWidget {
-  const _ArrowKeyStepper({
-    required this.game,
-    required this.index,
-    required this.isActivePage,
-    required this.child,
-  });
-
-  final GamesTourModel game;
-  final int index;
-  final bool isActivePage;
-  final Widget child;
-
-  @override
-  ConsumerState<_ArrowKeyStepper> createState() => _ArrowKeyStepperState();
-}
-
-class _ArrowKeyStepperState extends ConsumerState<_ArrowKeyStepper> {
-  @override
-  void initState() {
-    super.initState();
-    HardwareKeyboard.instance.addHandler(_handleKey);
-  }
-
-  @override
-  void dispose() {
-    HardwareKeyboard.instance.removeHandler(_handleKey);
-    super.dispose();
-  }
-
-  bool _handleKey(KeyEvent event) {
-    if (!widget.isActivePage || event is! KeyDownEvent) return false;
-    final route = ModalRoute.of(context);
-    if (route != null && !route.isCurrent) return false;
-    // Caret movement inside a text field is the field's own business.
-    if (FocusManager.instance.primaryFocus?.context?.widget is EditableText) {
-      return false;
-    }
-    final notifier = ref.read(
-      chessBoardScreenProviderNew(
-        ChessBoardProviderParams(game: widget.game, index: widget.index),
-      ).notifier,
-    );
-    if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
-      unawaited(notifier.moveForward());
-      return true;
-    }
-    if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
-      unawaited(notifier.moveBackward());
-      return true;
-    }
-    return false;
-  }
-
-  @override
-  Widget build(BuildContext context) => widget.child;
 }
 
 class _LoadingScreen extends StatelessWidget {
@@ -7696,14 +7614,18 @@ class _BottomNavBar extends ConsumerWidget {
         clearBoardSelection();
         notifier.moveBackward();
       },
+      // Holding an arrow jumps straight to the first / last position instead
+      // of pacing through the moves one by one.
       onBoardLongPressBackwardStart: () {
         clearBoardSelection();
-        notifier.startLongPressBackward();
+        HapticFeedback.mediumImpact();
+        notifier.jumpToStart();
       },
       onBoardLongPressBackwardEnd: () => notifier.stopLongPress(),
       onBoardLongPressForwardStart: () {
         clearBoardSelection();
-        notifier.startLongPressForward();
+        HapticFeedback.mediumImpact();
+        notifier.jumpToEnd();
       },
       onBoardLongPressForwardEnd: () => notifier.stopLongPress(),
     );
@@ -8205,9 +8127,6 @@ class _AnalysisGameBody extends ConsumerWidget {
               movesDisplay: movesDisplay,
               gamebaseDisplay: gamebaseDisplay,
               syncWithGamebaseToggle: showGamebaseButton,
-              teachingsEnabled: shouldShowChessBoardTeachingsForGame(
-                state.game,
-              ),
             ),
           );
         }
@@ -8759,9 +8678,7 @@ class _BoardWithSidebar extends ConsumerStatefulWidget {
 }
 
 class _BoardWithSidebarState extends ConsumerState<_BoardWithSidebar> {
-  static const _pinchCoachmarkSeenKey = 'board_pinch_coachmark_seen';
   static const _boardWidthKey = 'board_pinch_width';
-  static bool _dismissedThisSession = false;
 
   /// Pinch width shared by every game page in this session, so swiping to
   /// another game keeps the board size without waiting on disk. Disk is the
@@ -8772,7 +8689,6 @@ class _BoardWithSidebarState extends ConsumerState<_BoardWithSidebar> {
   double? _boardWidth;
   double? _pinchDistance;
   double? _pinchBoardWidth;
-  bool _showPinchCoachmark = false;
 
   @override
   void initState() {
@@ -8780,7 +8696,6 @@ class _BoardWithSidebarState extends ConsumerState<_BoardWithSidebar> {
     _boardWidth = _sessionBoardWidth;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      unawaited(_loadPinchCoachmark());
       if (_boardWidth == null) unawaited(_loadBoardWidth());
     });
   }
@@ -8804,32 +8719,8 @@ class _BoardWithSidebarState extends ConsumerState<_BoardWithSidebar> {
     );
   }
 
-  Future<void> _loadPinchCoachmark() async {
-    if (_dismissedThisSession) return;
-    final seen =
-        await ref
-            .read(sharedPreferencesRepository)
-            .getBool(_pinchCoachmarkSeenKey) ??
-        false;
-    if (mounted && !seen && !_dismissedThisSession) {
-      setState(() => _showPinchCoachmark = true);
-    }
-  }
-
-  void _dismissPinchCoachmark() {
-    if (!_showPinchCoachmark) return;
-    _dismissedThisSession = true;
-    setState(() => _showPinchCoachmark = false);
-    unawaited(
-      ref
-          .read(sharedPreferencesRepository)
-          .setBool(_pinchCoachmarkSeenKey, true),
-    );
-  }
-
   void _startPinch(double boardWidth) {
     if (_touches.length != 2) return;
-    _dismissPinchCoachmark();
     final points = _touches.values.toList();
     _pinchDistance = (points[0] - points[1]).distance;
     _pinchBoardWidth = boardWidth;
@@ -9001,14 +8892,6 @@ class _BoardWithSidebarState extends ConsumerState<_BoardWithSidebar> {
                       index: widget.index,
                       game: widget.state.game,
                     ),
-                    if (_showPinchCoachmark &&
-                        !_dismissedThisSession &&
-                        widget.index == widget.currentPageIndex)
-                      Positioned.fill(
-                        child: BoardPinchCoachmark(
-                          onDismiss: _dismissPinchCoachmark,
-                        ),
-                      ),
                     // DISABLED: Move annotation overlay (requires move impact analysis)
                     // // Add move annotation overlay - only show if impact is not normal and not exploring a variant
                     // if (currentMoveImpact != null &&
@@ -11091,33 +10974,20 @@ class _AnalysisSwipePanels extends ConsumerStatefulWidget {
     required this.movesDisplay,
     required this.gamebaseDisplay,
     required this.syncWithGamebaseToggle,
-    required this.teachingsEnabled,
   });
 
   final Widget movesDisplay;
   final Widget gamebaseDisplay;
   final bool syncWithGamebaseToggle;
-  final bool teachingsEnabled;
 
   @override
   ConsumerState<_AnalysisSwipePanels> createState() =>
       _AnalysisSwipePanelsState();
 }
 
-class _AnalysisSwipePanelsState extends ConsumerState<_AnalysisSwipePanels>
-    with SingleTickerProviderStateMixin {
-  static const int _totalPages = 2;
-
+class _AnalysisSwipePanelsState extends ConsumerState<_AnalysisSwipePanels> {
   late final PageController _pageController;
   int _currentPage = 0;
-
-  late AnimationController _swipeController;
-  late Animation<double> _swipeFadeAnimation;
-  late Animation<double> _swipeScaleAnimation;
-  late Animation<double> _swipeMoveAnimation;
-  bool _showTutorialOverlay = false;
-  OverlayEntry? _tutorialEntry;
-  int _lastTutorialRequest = 0;
 
   @override
   void initState() {
@@ -11128,8 +10998,6 @@ class _AnalysisSwipePanelsState extends ConsumerState<_AnalysisSwipePanels>
       _currentPage = enabled ? 1 : 0;
     }
     _pageController = PageController(initialPage: _currentPage);
-    _lastTutorialRequest = ref.read(analysisSwitchViewsTutorialRequestProvider);
-    _setupSwipeAnimation();
     // Seed visibility for bottom-nav translucency (post-frame: ref write safe).
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
@@ -11140,209 +11008,17 @@ class _AnalysisSwipePanelsState extends ConsumerState<_AnalysisSwipePanels>
 
   @override
   void dispose() {
-    _removeTutorialOverlay();
-    _swipeController.dispose();
     _pageController.dispose();
     super.dispose();
   }
 
   @override
-  void didUpdateWidget(covariant _AnalysisSwipePanels oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (!widget.teachingsEnabled && _showTutorialOverlay) {
-      _onWalkthroughFinished();
-    }
-  }
-
-  void _setupSwipeAnimation() {
-    _swipeController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 2500),
-    );
-
-    _swipeFadeAnimation = TweenSequence<double>([
-      TweenSequenceItem(tween: Tween(begin: 0.0, end: 1.0), weight: 10),
-      TweenSequenceItem(tween: ConstantTween(1.0), weight: 80),
-      TweenSequenceItem(tween: Tween(begin: 1.0, end: 0.0), weight: 10),
-    ]).animate(_swipeController);
-
-    _swipeScaleAnimation = TweenSequence<double>([
-      TweenSequenceItem(tween: ConstantTween(1.0), weight: 10),
-      TweenSequenceItem(tween: Tween(begin: 1.0, end: 0.8), weight: 10),
-      TweenSequenceItem(tween: ConstantTween(0.8), weight: 60),
-      TweenSequenceItem(tween: Tween(begin: 0.8, end: 1.0), weight: 10),
-      TweenSequenceItem(tween: ConstantTween(1.0), weight: 10),
-    ]).animate(_swipeController);
-
-    _swipeMoveAnimation = TweenSequence<double>([
-      TweenSequenceItem(tween: ConstantTween(0.0), weight: 15),
-      TweenSequenceItem(
-        tween: Tween(
-          begin: 0.0,
-          end: 1.0,
-        ).chain(CurveTween(curve: Curves.easeInOutCubic)),
-        weight: 35,
-      ),
-      TweenSequenceItem(tween: ConstantTween(1.0), weight: 10),
-      TweenSequenceItem(
-        tween: Tween(
-          begin: 1.0,
-          end: 0.0,
-        ).chain(CurveTween(curve: Curves.easeInOutCubic)),
-        weight: 35,
-      ),
-      TweenSequenceItem(tween: ConstantTween(0.0), weight: 5),
-    ]).animate(_swipeController);
-
-    // Slide the notation panel underneath the finger hint so the user sees
-    // the view they'll land on as the hand sweeps.
-    _swipeController.addListener(() {
-      if (!_pageController.hasClients) return;
-      final width = _pageController.position.viewportDimension;
-      final canGoNext = _currentPage < _totalPages - 1;
-      final direction = canGoNext ? 1.0 : -1.0;
-      final maxDrag = width * 0.5;
-      final moveValue = _swipeMoveAnimation.value;
-      final handTranslation = -1 * moveValue * maxDrag * direction;
-      final baseOffset = _currentPage * width;
-      _pageController.position.jumpTo(baseOffset - handTranslation);
-    });
-  }
-
-  Future<void> _maybeStartSwitchViewsTutorial() async {
-    if (!mounted || _showTutorialOverlay || !widget.teachingsEnabled) return;
-
-    final prefs = ref.read(sharedPreferencesRepository);
-    final dontShow =
-        await prefs.getBool(kSwitchViewsWalkthroughDontShowKey) ?? false;
-    if (!mounted) return;
-    // Skipping this step must still hand off to step 3 so the like teaching
-    // isn't lost for users who already dismissed/saw Switch Views.
-    if (dontShow) {
-      _requestLikeTutorial();
-      return;
-    }
-
-    // Show once: if this teaching has ever been seen (here or in the standalone
-    // gamebase explorer), skip it but still hand off to step 3.
-    final lastShownMs = await prefs.getInt(kSwitchViewsWalkthroughShownDateKey);
-    if (lastShownMs != null) {
-      _requestLikeTutorial();
-      return;
-    }
-    if (!mounted) return;
-
-    _showTutorialOverlay = true;
-    _insertTutorialOverlay();
-
-    int count = 0;
-    void statusListener(AnimationStatus status) {
-      if (status != AnimationStatus.completed) return;
-      count++;
-      if (count < 1) {
-        _swipeController.forward(from: 0.0);
-      } else {
-        _swipeController.removeStatusListener(statusListener);
-        if (_pageController.hasClients) {
-          _pageController.jumpToPage(_currentPage);
-        }
-      }
-    }
-
-    _swipeController.addStatusListener(statusListener);
-    _swipeController.forward();
-
-    await prefs.setInt(
-      kSwitchViewsWalkthroughShownDateKey,
-      DateTime.now().millisecondsSinceEpoch,
-    );
-  }
-
-  void _insertTutorialOverlay() {
-    _tutorialEntry = OverlayEntry(
-      builder: (_) => SwitchViewsTutorialOverlay(
-        animationController: _swipeController,
-        moveAnimation: _swipeMoveAnimation,
-        fadeAnimation: _swipeFadeAnimation,
-        scaleAnimation: _swipeScaleAnimation,
-        currentPageIndex: _currentPage,
-        totalItems: _totalPages,
-        currentStep: 2,
-        totalSteps: 3,
-        // Normal dismiss → chain step 3 (Double-Tap to Like).
-        onDismiss: () {
-          _onWalkthroughFinished();
-          _requestLikeTutorial();
-        },
-        // "Don't show again" suppresses step 3 too (handled in
-        // _suppressWalkthrough), so do NOT chain it here.
-        onDontShowAgain: () async {
-          await _suppressWalkthrough();
-          _onWalkthroughFinished();
-        },
-      ),
-    );
-    Overlay.of(context, rootOverlay: true).insert(_tutorialEntry!);
-  }
-
-  /// Bumps the shared counter so the outer screen runs the step 3/3 like
-  /// teaching right after this one — back-to-back, never overlapping.
-  void _requestLikeTutorial() {
-    if (!mounted) return;
-    ref.read(likeTutorialRequestProvider.notifier).update((v) => v + 1);
-  }
-
-  void _removeTutorialOverlay() {
-    _tutorialEntry?.remove();
-    _tutorialEntry = null;
-  }
-
-  void _onWalkthroughFinished() {
-    _removeTutorialOverlay();
-    _swipeController.stop();
-    _swipeController.reset();
-    if (_pageController.hasClients) {
-      _pageController.jumpToPage(_currentPage);
-    }
-    if (mounted) {
-      setState(() {
-        _showTutorialOverlay = false;
-      });
-    } else {
-      _showTutorialOverlay = false;
-    }
-  }
-
-  Future<void> _suppressWalkthrough() async {
-    final prefs = ref.read(sharedPreferencesRepository);
-    // Opting out here also suppresses the chained step 3 like teaching.
-    await Future.wait([
-      prefs.setBool(kSwitchViewsWalkthroughDontShowKey, true),
-      prefs.setBool(kLikeWalkthroughDontShowKey, true),
-    ]);
-  }
-
-  @override
   Widget build(BuildContext context) {
-    // React to the parent's request to chain step 2 after step 1 dismisses.
-    // Using a monotonically increasing counter means the signal re-fires
-    // cleanly if the user reopens the chess board and the outer walkthrough
-    // runs again.
-    ref.listen<int>(analysisSwitchViewsTutorialRequestProvider, (_, next) {
-      if (next <= _lastTutorialRequest) return;
-      _lastTutorialRequest = next;
-      if (!widget.teachingsEnabled) return;
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        _maybeStartSwitchViewsTutorial();
-      });
-    });
-
     if (widget.syncWithGamebaseToggle) {
       ref.listen<AsyncValue<bool>>(gamebaseOverlayEnabledProvider, (
         previous,
         next,
       ) {
-        if (_showTutorialOverlay) return;
         final enabled = next.valueOrNull ?? false;
         final targetPage = enabled ? 1 : 0;
         if (targetPage == _currentPage || !_pageController.hasClients) return;
@@ -11359,7 +11035,6 @@ class _AnalysisSwipePanelsState extends ConsumerState<_AnalysisSwipePanels>
       dragStartBehavior: DragStartBehavior.down,
       physics: const ClampingScrollPhysics(),
       onPageChanged: (page) {
-        if (_showTutorialOverlay) return;
         _currentPage = page;
         // Light translucent bottom nav while explorer is showing so games
         // under the bar stay faintly visible.

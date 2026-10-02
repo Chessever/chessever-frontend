@@ -98,7 +98,7 @@ class GameAnalysisReport {
   final String fingerprint;
   final List<GameReportPosition> positions;
   final List<GameReportMove> moves;
-  // Absent when a report is restored from a PGN, which does not save them.
+  // Absent only when a restored report is missing a score to derive them from.
   final double? whiteAccuracy;
   final double? blackAccuracy;
   final int? whiteEstimatedRating;
@@ -464,16 +464,28 @@ class GameAnalysisReportController extends ChangeNotifier {
   /// Captures [_generation] before the async disk read so a stale load for
   /// fingerprint A cannot clobber state after [invalidate] / a newer adopt for
   /// fingerprint B (game switch mid-flight).
-  Future<bool> loadPersistedReport(String fingerprint) async {
+  ///
+  /// Reports restored from a PGN by an older build were saved without accuracy
+  /// or estimated ratings; those are derived here and saved back, once.
+  Future<bool> loadPersistedReport(
+    String fingerprint, {
+    int? whiteRating,
+    int? blackRating,
+  }) async {
     if (_disposed) return false;
     if (loadCachedReport(fingerprint)) return true;
     // Controllers with an injected evaluator are unit-test harnesses that
     // should not pull shared disk unless an explicit store was injected.
     if (_evaluator != null && _store == null) return false;
     final generation = _generation;
-    final cached = await _effectiveStore.load(fingerprint);
+    final stored = await _effectiveStore.load(fingerprint);
     if (_disposed || generation != _generation) return false;
-    if (cached == null || cached.fingerprint != fingerprint) return false;
+    if (stored == null || stored.fingerprint != fingerprint) return false;
+    final cached = recoverGameReportSummary(
+      stored,
+      whiteRating: whiteRating,
+      blackRating: blackRating,
+    );
     // Do not clobber an analysis that already started.
     if (_state.isRunning) return false;
     // Do not replace a completed report for a different game.
@@ -484,13 +496,18 @@ class GameAnalysisReportController extends ChangeNotifier {
       return false;
     }
     _cacheReport(fingerprint, cached);
+    if (!identical(cached, stored)) _persistReport(cached);
     _adoptCompletedReport(cached);
     return true;
   }
 
   /// Memory and disk preserve the full report. A saved PGN is the fallback
   /// when this device has never generated it or the local cache was evicted.
-  Future<bool> loadExistingReport(ChessGame game) async {
+  Future<bool> loadExistingReport(
+    ChessGame game, {
+    int? whiteRating,
+    int? blackRating,
+  }) async {
     if (_disposed) return false;
     final fingerprint = gameReportFingerprint(game);
     bool hasCompletedReport() =>
@@ -498,11 +515,21 @@ class GameAnalysisReportController extends ChangeNotifier {
         _state.report?.fingerprint == fingerprint;
     if (hasCompletedReport()) return true;
     final generation = _generation;
-    if (await loadPersistedReport(fingerprint)) return true;
+    if (await loadPersistedReport(
+      fingerprint,
+      whiteRating: whiteRating,
+      blackRating: blackRating,
+    )) {
+      return true;
+    }
     // Another load may have adopted this same report while disk was awaited.
     if (_disposed || generation != _generation) return hasCompletedReport();
     if (_state.isRunning) return false;
-    final report = gameAnalysisReportFromPgn(game);
+    final report = gameAnalysisReportFromPgn(
+      game,
+      whiteRating: whiteRating,
+      blackRating: blackRating,
+    );
     if (report == null) return false;
     _cacheReport(fingerprint, report);
     _persistReport(report);
@@ -568,7 +595,11 @@ class GameAnalysisReportController extends ChangeNotifier {
     final fingerprint = gameReportFingerprint(game);
     // Reports may already exist on this device or in the game's saved PGN.
     final beforeLoad = _generation;
-    if (await loadExistingReport(game)) {
+    if (await loadExistingReport(
+      game,
+      whiteRating: whiteRating,
+      blackRating: blackRating,
+    )) {
       _clearPending(fingerprint);
       return;
     }

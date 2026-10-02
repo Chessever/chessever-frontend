@@ -2,7 +2,7 @@ import 'dart:async';
 
 import 'package:chessever2/screens/for_you/discovery/widgets/discovery_common.dart';
 import 'package:chessever2/screens/library/miniatures/miniatures_access.dart';
-import 'package:chessever2/screens/my_likes/widgets/my_likes_archive_boundary.dart';
+import 'package:chessever2/screens/my_likes/provider/my_likes_provider.dart';
 import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';

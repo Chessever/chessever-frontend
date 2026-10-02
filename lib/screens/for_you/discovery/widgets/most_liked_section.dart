@@ -18,7 +18,6 @@ import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
 import 'package:chessever2/widgets/time_control_glyph.dart';
 import 'package:chessever2/screens/my_space/models/space_shortcut.dart';
 import 'package:chessever2/screens/for_you/discovery/widgets/discovery_event_card.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -28,27 +27,14 @@ const String kMostLikedUpgradeCta = 'View weekly, monthly, and yearly rankings';
 /// The honest line while the ranking function is not deployed.
 const String kMostLikedNotLive = 'Most Liked starts once ranking is live';
 
-/// Whether the viewer may walk earlier dates and use the Players view.
-/// Debug builds keep the existing premium-guard bypass for those actions.
-bool _canSeePremiumPeriods(bool subscribed) => subscribed || kDebugMode;
-
 /// The ranking the Most liked page is on: the picked period holding the
-/// walked-to day, with earlier days folded back to the
-/// current period for an account without Premium. All period tabs can be
-/// browsed freely; opening non-Today games is gated. Watches what it reads, so a
-/// page and its tabs call it from build and always agree.
+/// walked-to day. Every period, every date and both views are browsed the
+/// same by everyone; only opening a non-Today game is gated. Watches what it
+/// reads, so a page and its tabs call it from build and always agree.
 MostLikedQuery mostLikedActiveQuery(WidgetRef ref, {DateTime? now}) {
-  final subscribed = ref.watch(
-    featureAccessStateProvider.select((s) => s.isSubscribed),
-  );
-  final premium = _canSeePremiumPeriods(subscribed);
-  final picked = ref.watch(mostLikedPeriodProvider);
-  final period = picked;
+  final period = ref.watch(mostLikedPeriodProvider);
   final day = ref.watch(mostLikedDayProvider);
-  return MostLikedQuery(
-    period,
-    (premium ? day : null) ?? now ?? DateTime.now(),
-  );
+  return MostLikedQuery(period, day ?? now ?? DateTime.now());
 }
 
 /// "[glyph] ♥ 1.1K · Sinquefield Cup" over a list row: a row has no board
@@ -73,7 +59,7 @@ Widget _heart(MostLikedEntry entry, double boardSize) =>
     LikeCountHeart(likes: entry.likes, size: likeHeartSizeFor(boardSize));
 
 /// Discovery's compact event-style door into today's ranking. The full
-/// ranking keeps its existing periods, dates, player tabs and Premium gates.
+/// ranking keeps its existing periods, dates and player tabs.
 class MostLikedPreview extends ConsumerWidget {
   const MostLikedPreview({super.key, this.now});
 
@@ -120,31 +106,11 @@ Future<void> _selectPeriod(
   ref.read(mostLikedPeriodProvider.notifier).state = period;
 }
 
-/// Moves the ranking to [target]. Walking back is Premium ([locked] sends
-/// it through the paywall first); arriving on the current period clears
-/// the pick, so the ranking follows the clock again.
-Future<void> _walkTo(
-  BuildContext context,
-  WidgetRef ref,
-  MostLikedQuery target,
-  bool locked,
-) async {
-  void apply() {
-    ref.read(mostLikedDayProvider.notifier).state =
-        target.isCurrent(DateTime.now()) ? null : target.start;
-  }
-
-  if (!locked) {
-    apply();
-    return;
-  }
-  await unlockThen(
-    context,
-    ref,
-    apply,
-    featureId: 'most_liked_archive',
-    returnTo: discoveryReturnTo('most_liked'),
-  );
+/// Moves the ranking to [target]. Arriving on the current period clears the
+/// pick, so the ranking follows the clock again.
+void _walkTo(WidgetRef ref, MostLikedQuery target) {
+  ref.read(mostLikedDayProvider.notifier).state =
+      target.isCurrent(DateTime.now()) ? null : target.start;
 }
 
 /// The Most liked page's period controls: the calendar pattern of a
@@ -154,8 +120,7 @@ Future<void> _walkTo(
 /// The page pins it above its scrolling list, so Games and Players carry the
 /// same controls in the same place however far either list is scrolled.
 /// Both read [mostLikedActiveQuery], so they always rank the same period.
-/// Nothing while ranking is not live: no periods, no date to walk, no
-/// paywall.
+/// Nothing while ranking is not live: no periods, no date to walk.
 class MostLikedPeriodBar extends ConsumerWidget {
   const MostLikedPeriodBar({super.key, this.now});
 
@@ -164,10 +129,6 @@ class MostLikedPeriodBar extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final subscribed = ref.watch(
-      featureAccessStateProvider.select((s) => s.isSubscribed),
-    );
-    final locked = !subscribed;
     final now = this.now ?? DateTime.now();
     final query = mostLikedActiveQuery(ref, now: now);
     final notLive = ref.watch(
@@ -206,13 +167,8 @@ class MostLikedPeriodBar extends ConsumerWidget {
           child: MostLikedDateControl(
             query: query,
             now: now,
-            locked: locked,
-            onPrevious: previous == null
-                ? null
-                : () => _walkTo(context, ref, previous, locked),
-            onNext: next == null
-                ? null
-                : () => _walkTo(context, ref, next, false),
+            onPrevious: previous == null ? null : () => _walkTo(ref, previous),
+            onNext: next == null ? null : () => _walkTo(ref, next),
           ),
         ),
         SizedBox(height: 8.w),
@@ -222,11 +178,11 @@ class MostLikedPeriodBar extends ConsumerWidget {
 }
 
 /// The Most liked page's ranking: the community ranking of games by how many
-/// people liked them. Every period can be browsed; opening games beyond Today
-/// requires Premium access, as do the date control's earlier periods and the
-/// Players view (everyone with a game in the ranking). Every period is a
-/// calendar one the date control walks: a day, a Monday-to-Sunday week, a
-/// month, a year.
+/// people liked them. Every period, every earlier date and the Players view
+/// (everyone with a game in the ranking) are browsed the same by everyone;
+/// only opening a game beyond Today goes through the Premium guard. Every
+/// period is a calendar one the date control walks: a day, a
+/// Monday-to-Sunday week, a month, a year.
 ///
 /// [MostLikedPeriodBar] picks the period and walks it, pinned above this
 /// list by the page. Under it, [view] decides what is listed: the games, in
@@ -264,74 +220,48 @@ class MostLikedSection extends ConsumerWidget {
     final subscribed = ref.watch(
       featureAccessStateProvider.select((s) => s.isSubscribed),
     );
-    final premium = _canSeePremiumPeriods(subscribed);
     final locked = !subscribed;
     final now = this.now ?? DateTime.now();
     final query = mostLikedActiveQuery(ref, now: now);
     final result = ref.watch(mostLikedProvider(query));
-    // The Players list is Premium. It opens for a subscriber, and (in debug
-    // builds, where the guard lets everyone through) once the guard passed.
-    final playersOpen =
-        subscribed ||
-        (premium && ref.watch(mostLikedViewProvider) == MostLikedView.players);
-
-    // With the ranking function missing there is nothing to rank in any
-    // period, so nothing is sold (the period bar is hidden too).
-    final notLive = result.valueOrNull?.status == MostLikedStatus.notLive;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       mainAxisSize: MainAxisSize.min,
       children: [
-        if (view == MostLikedView.players && !playersOpen && !notLive)
-          DiscoveryNotice(
-            text: 'See everyone in this ranking',
-            actionLabel: 'Unlock',
-            onAction: () => unlockThen(
+        result.when(
+          data: (value) => _PageBody(
+            result: value,
+            query: query,
+            view: view,
+            isCurrent: query.isCurrent(now),
+            isToday: query.isFree(now),
+            locked: locked,
+            onUpgrade: () => unlockThen(
               context,
               ref,
-              () {
-                ref.read(mostLikedViewProvider.notifier).state =
-                    MostLikedView.players;
-              },
-              featureId: 'most_liked_players',
+              () => ref.invalidate(mostLikedProvider(query)),
+              featureId: 'most_liked_rankings',
               returnTo: discoveryReturnTo('most_liked'),
             ),
-          )
-        else
-          result.when(
-            data: (value) => _PageBody(
-              result: value,
-              query: query,
-              view: view,
-              isCurrent: query.isCurrent(now),
-              isToday: query.isFree(now),
-              locked: locked,
-              onUpgrade: () => unlockThen(
-                context,
-                ref,
-                () => ref.invalidate(mostLikedProvider(query)),
-                featureId: 'most_liked_rankings',
-                returnTo: discoveryReturnTo('most_liked'),
-              ),
-              onRetry: () => ref.invalidate(mostLikedProvider(query)),
-              playerFilter: playerFilter,
-              onPickPlayer: onPickPlayer,
-              onClearPlayerFilter: onClearPlayerFilter,
-            ),
-            loading: () => view == MostLikedView.players
-                ? const _PlayersSkeleton()
-                : const DiscoveryGameListSkeleton(
-                    count: 8,
-                    boardCount: kDiscoveryPreviewBoards,
-                    rowLabels: true,
-                  ),
-            error: (_, __) => DiscoveryNotice(
-              text: "Couldn't load Most liked",
-              actionLabel: 'Retry',
-              onAction: () => ref.invalidate(mostLikedProvider(query)),
-            ),
+            onRetry: () => ref.invalidate(mostLikedProvider(query)),
+            playerFilter: playerFilter,
+            onPickPlayer: onPickPlayer,
+            onClearPlayerFilter: onClearPlayerFilter,
           ),
+          loading: () => view == MostLikedView.players
+              ? const _PlayersSkeleton()
+              : const DiscoveryGameListSkeleton(
+                  count: 8,
+                  boardCount: kDiscoveryPreviewBoards,
+                  rowLabels: true,
+                ),
+          error: (_, __) => DiscoveryNotice(
+            text: "Couldn't load Most liked",
+            actionLabel: 'Retry',
+            onAction: () => ref.invalidate(mostLikedProvider(query)),
+          ),
+        ),
       ],
     );
   }
@@ -365,7 +295,7 @@ class _PageBody extends ConsumerWidget {
   /// The ranking is the current day's (not an earlier day's).
   final bool isToday;
 
-  /// Opening games beyond Today and the players list require Premium access.
+  /// Opening games beyond Today requires Premium access.
   final bool locked;
   final VoidCallback onUpgrade;
   final VoidCallback onRetry;

@@ -24,7 +24,7 @@ void main() {
           as Map<String, dynamic>;
 
   test(
-    'restores saved verdicts and scores without fabricating missing data',
+    'restores saved verdicts and scores without fabricating search lines',
     () {
       final payload = savedPayload();
       final game = ChessGame.fromPgn('saved', payload['pgn'] as String);
@@ -47,9 +47,6 @@ void main() {
         restored.positions.map((position) => position.fen),
         expected.positions.map((position) => position.fen),
       );
-      expect(restored.whiteAccuracy, isNull);
-      expect(restored.blackAccuracy, isNull);
-      expect(restored.whiteEstimatedRating, isNull);
       expect(restored.positions.first.bestLine.centipawns, isNull);
       expect(
         restored.moves.every((move) => move.bestAlternative == null),
@@ -136,7 +133,11 @@ void main() {
       final cold = GameAnalysisReportController(store: store);
       addTearDown(cold.dispose);
       expect(await cold.loadExistingReport(game.withoutAnalysis()), isTrue);
-      expect(cold.state.report!.whiteAccuracy, isNull);
+      expect(
+        cold.state.report!.whiteAccuracy,
+        reports.state.report!.whiteAccuracy,
+      );
+      expect(cold.state.report!.whiteAccuracy, isNotNull);
       expect(
         cold.state.report!.moves[5].classification,
         GameMoveClassification.blunder,
@@ -144,6 +145,106 @@ void main() {
       await store.flush();
     },
   );
+
+  test(
+    'a report restored from a PGN shows the accuracy and game rating again',
+    () {
+      final payload = savedPayload();
+      final game = ChessGame.fromPgn('saved', payload['pgn'] as String);
+      final expected = gameAnalysisReportFromServerJson(payload, game: game);
+      final restored = gameAnalysisReportFromPgn(game)!;
+      // Only the starting position's score is missing from a PGN, so the
+      // derived numbers sit within rounding of the engine report's own.
+      expect(restored.whiteAccuracy, closeTo(expected.whiteAccuracy!, 0.5));
+      expect(restored.blackAccuracy, closeTo(expected.blackAccuracy!, 0.5));
+      // The game rating is anchored to the players' known ratings, so it is
+      // compared against the engine report's positions under the same anchor.
+      for (final known in const [null, 2700]) {
+        final fromEngine =
+            computeGameReportEstimatedRatings(
+              expected.positions,
+              whiteRating: known,
+              blackRating: known,
+            )!;
+        final fromPgn =
+            gameAnalysisReportFromPgn(
+              game,
+              whiteRating: known,
+              blackRating: known,
+            )!;
+        expect(fromPgn.whiteEstimatedRating, fromEngine.white);
+        expect(fromPgn.blackEstimatedRating, fromEngine.black);
+      }
+    },
+  );
+
+  test(
+    'a report an older build saved without accuracy gains it on the next load',
+    () async {
+      final payload = savedPayload();
+      final game = ChessGame.fromPgn('saved', payload['pgn'] as String);
+      final current = gameAnalysisReportFromPgn(game)!;
+      final store = GameAnalysisReportStore.memory();
+      await store.save(
+        GameAnalysisReport(
+          fingerprint: current.fingerprint,
+          positions: current.positions,
+          moves: current.moves,
+          whiteAccuracy: null,
+          blackAccuracy: null,
+          generatedAt: current.generatedAt,
+        ),
+      );
+      final reports = GameAnalysisReportController(store: store);
+      addTearDown(reports.dispose);
+      // The clean copy carries no report of its own: disk is the only source.
+      expect(await reports.loadExistingReport(game.withoutAnalysis()), isTrue);
+      expect(reports.state.report!.whiteAccuracy, current.whiteAccuracy);
+      expect(reports.state.report!.blackAccuracy, current.blackAccuracy);
+      expect(
+        reports.state.report!.whiteEstimatedRating,
+        current.whiteEstimatedRating,
+      );
+      await store.flush();
+      final saved = await store.load(current.fingerprint);
+      expect(saved!.whiteAccuracy, current.whiteAccuracy);
+    },
+  );
+
+  test('a report missing a score keeps its accuracy blank, not invented', () {
+    const unscored = GameReportLine(moves: [], depth: 0);
+    const scored = GameReportLine(moves: [], depth: 0, centipawns: 20);
+    final report = GameAnalysisReport(
+      fingerprint: 'partial',
+      positions: const [
+        GameReportPosition(fen: 'start', lines: [unscored]),
+        GameReportPosition(fen: 'one', lines: [scored]),
+        GameReportPosition(fen: 'two', lines: [unscored]),
+      ],
+      moves: const [
+        GameReportMove(
+          ply: 1,
+          san: 'e4',
+          uci: 'e2e4',
+          isWhite: true,
+          classification: null,
+          evaluation: scored,
+        ),
+        GameReportMove(
+          ply: 2,
+          san: 'e5',
+          uci: 'e7e5',
+          isWhite: false,
+          classification: null,
+          evaluation: unscored,
+        ),
+      ],
+      whiteAccuracy: null,
+      blackAccuracy: null,
+      generatedAt: DateTime.utc(2026),
+    );
+    expect(identical(recoverGameReportSummary(report), report), isTrue);
+  });
 
   test('explicitly requesting a cleared report can reuse its saved backup', () {
     final payload = savedPayload();

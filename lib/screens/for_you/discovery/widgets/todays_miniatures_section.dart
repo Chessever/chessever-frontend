@@ -1,7 +1,6 @@
 import 'package:chessever2/screens/for_you/discovery/models/discovery_models.dart';
 import 'package:chessever2/screens/for_you/discovery/providers/discovery_providers.dart';
 import 'package:chessever2/screens/for_you/discovery/widgets/discovery_game_cards.dart';
-import 'package:chessever2/screens/library/miniatures/miniatures_access.dart';
 import 'package:chessever2/screens/library/miniatures_screen.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/widgets/time_control_glyph.dart';
@@ -10,17 +9,11 @@ import 'package:chessever2/screens/for_you/discovery/widgets/discovery_event_car
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
-/// The Premium outcome the Miniatures boundary sells, from the spec: the
-/// same line the Miniatures screen ends its free list on.
-const String kMiniaturesUpgradeCta = kMiniaturesArchiveCta;
-
-/// The event-style card for today's decisive games ending by move 25. The
-/// destination keeps today's free games and the Premium archive unchanged.
+/// The event-style card for today's decisive games ending by move 25.
 class TodaysMiniaturesSection extends ConsumerWidget {
   const TodaysMiniaturesSection({super.key});
 
-  /// The Miniatures screen. Today is free there and it locks its own
-  /// archive, so reaching it needs no paywall.
+  /// The Miniatures screen, browsed the same by everyone.
   static Future<void> open(BuildContext context) {
     HapticFeedbackService.cardTap();
     return Navigator.of(

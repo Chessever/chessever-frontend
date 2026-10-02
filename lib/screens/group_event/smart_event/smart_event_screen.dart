@@ -627,26 +627,13 @@ class _AppBar extends ConsumerWidget {
   final bool isDirty;
   final Future<void> Function() onApplyChanges;
 
-  Future<bool> _confirmFavoriteChange(
-    BuildContext context, {
-    required bool isSaved,
-  }) async {
+  Future<bool> _confirmRemoveFavorite(BuildContext context) async {
     final confirmed = await showSmoothConfirmDialog(
       context: context,
-      title:
-          isSaved
-              ? 'Remove ${request.displayName}?'
-              : 'Save ${request.displayName}?',
-      message:
-          isSaved
-              ? 'This will remove ${request.displayName} from your For You.'
-              : isDirty
-              ? 'Your changed filter configuration will be applied and '
-                  'saved — this adds ${request.displayName} to your '
-                  'For You tab.'
-              : 'This will add ${request.displayName} to your For You tab.',
-      confirmText: isSaved ? 'Remove' : 'Save',
-      isDangerous: isSaved,
+      title: 'Remove ${request.displayName}?',
+      message: 'This will remove ${request.displayName} from your For You.',
+      confirmText: 'Remove',
+      isDangerous: true,
     );
     return confirmed == true;
   }
@@ -670,7 +657,6 @@ class _AppBar extends ConsumerWidget {
     final savedFavorite =
         ref.watch(smartEventSavedFavoriteProvider(savedRequest.criteriaKey)) ??
         ref.watch(smartEventSavedFavoriteProvider(request.criteriaKey));
-    final isSaved = savedFavorite != null;
     // Pins what is on screen: the request with any tier / filter overrides.
     final spaceDraft = smartEventSpaceDraft(request);
     final inSpace = ref.watch(spaceShortcutExistsProvider(spaceDraft.key));
@@ -726,24 +712,23 @@ class _AppBar extends ConsumerWidget {
                           draft: spaceDraft,
                         ),
                       ),
-                      LibraryMenuAction(
-                        icon: isSaved
-                            ? (isDirty
-                                ? Icons.check_circle_outline_rounded
-                                : Icons.remove_circle_outline_rounded)
-                            : Icons.bookmark_border_rounded,
-                        label: isSaved
-                            ? (isDirty
-                                ? 'Apply changes to ${request.displayName}'
-                                : 'Remove ${request.displayName}')
-                            : 'Save ${request.displayName}',
-                        onSelected: () => _toggleFavorite(
-                          context,
-                          ref,
-                          isSaved: isSaved,
-                          savedFavorite: savedFavorite,
+                      // A smart event is kept through My Space above; the
+                      // menu offers no separate save. One saved earlier
+                      // still manages itself here.
+                      if (savedFavorite != null)
+                        LibraryMenuAction(
+                          icon: isDirty
+                              ? Icons.check_circle_outline_rounded
+                              : Icons.remove_circle_outline_rounded,
+                          label: isDirty
+                              ? 'Apply changes to ${request.displayName}'
+                              : 'Remove ${request.displayName}',
+                          onSelected: () => _manageSavedFavorite(
+                            context,
+                            ref,
+                            savedFavorite,
+                          ),
                         ),
-                      ),
                     ],
                   ),
                 );
@@ -755,55 +740,39 @@ class _AppBar extends ConsumerWidget {
     );
   }
 
-  Future<void> _toggleFavorite(
+  /// Applies the edited filters to the saved smart event, or removes it.
+  Future<void> _manageSavedFavorite(
     BuildContext context,
-    WidgetRef ref, {
-    required bool isSaved,
-    required FavoriteEvent? savedFavorite,
-  }) async {
+    WidgetRef ref,
+    FavoriteEvent savedFavorite,
+  ) async {
     final allowed = await requireFullAuthGuard(context);
     if (!allowed || !context.mounted) return;
 
     // Saved + overridden: the action applies + saves the new
     // config onto the saved smart event (after confirmation).
-    if (isSaved && isDirty) {
+    if (isDirty) {
       final confirmed = await _confirmApplyChanges(context);
       if (!confirmed || !context.mounted) return;
       await onApplyChanges();
       return;
     }
 
-    final confirmed = await _confirmFavoriteChange(
-      context,
-      isSaved: isSaved,
-    );
+    final confirmed = await _confirmRemoveFavorite(context);
     if (!confirmed || !context.mounted) return;
 
-    final notifier = ref.read(favoriteEventsProvider.notifier);
-    if (isSaved) {
-      // Remove by the matched row's actual id — a legacy v1 row's
-      // id differs from the criteria-keyed id we'd compute today.
-      await notifier.removeFavorite(savedFavorite!.eventId);
-      // Removing the saved smart event must also wipe the applied
-      // filter that generates its card on home — otherwise the
-      // generated card lingers even though the favorite is gone.
-      ref.read(eventAppliedFilterProvider.notifier).state =
-          defaultFilterPopupState;
-      ref.read(filterPopupProvider.notifier).setState(defaultFilterPopupState);
-      if (context.mounted) Navigator.of(context).pop();
-      return;
-    }
-
-    // Unsaved + overridden: persist the new config first (filter
-    // popup write-back) so the saved card and the generated cards
-    // reflect the same criteria.
-    if (isDirty) await onApplyChanges();
-    await notifier.addFavorite(
-      eventId: request.favoriteEventId,
-      eventName: request.displayName,
-      maxAvgElo: request.minElo > 0 ? request.minElo : null,
-      extraMetadata: request.toFavoriteMetadata(),
-    );
+    // Remove by the matched row's actual id — a legacy v1 row's
+    // id differs from the criteria-keyed id we'd compute today.
+    await ref
+        .read(favoriteEventsProvider.notifier)
+        .removeFavorite(savedFavorite.eventId);
+    // Removing the saved smart event must also wipe the applied
+    // filter that generates its card on home — otherwise the
+    // generated card lingers even though the favorite is gone.
+    ref.read(eventAppliedFilterProvider.notifier).state =
+        defaultFilterPopupState;
+    ref.read(filterPopupProvider.notifier).setState(defaultFilterPopupState);
+    if (context.mounted) Navigator.of(context).pop();
   }
 }
 

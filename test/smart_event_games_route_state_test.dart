@@ -60,7 +60,7 @@ SmartEventRequest _request() {
 }
 
 void main() {
-  testWidgets('Smart Event menu contains saving and layout cycles as usual', (
+  testWidgets('Smart Event menu offers My Space without a bookmark save; layout cycles as usual', (
     tester,
   ) async {
     final request = _request();
@@ -125,7 +125,9 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(seconds: 1));
     expect(find.text('Add to My Space'), findsOneWidget);
-    expect(find.text('Save ${request.displayName}'), findsOneWidget);
+    // My Space is the one way to keep a smart event: no bookmark save.
+    expect(find.text('Save ${request.displayName}'), findsNothing);
+    expect(find.byIcon(Icons.bookmark_border_rounded), findsNothing);
     expect(tester.takeException(), isNull);
 
     // Dismissing the menu leaves the header free of standalone save actions.

@@ -5,7 +5,14 @@ import 'package:chessever2/screens/chessboard/utils/game_share_utils.dart'
 
 /// Restores the report already saved with a game, without running an engine.
 /// Ordinary PGN glyphs and partial evaluations are not a completed report.
-GameAnalysisReport? gameAnalysisReportFromPgn(ChessGame game) {
+///
+/// [whiteRating] and [blackRating] are the players' known ratings, which the
+/// estimated game rating is anchored to exactly as a fresh analysis does.
+GameAnalysisReport? gameAnalysisReportFromPgn(
+  ChessGame game, {
+  int? whiteRating,
+  int? blackRating,
+}) {
   final source = game.analysisCleared ? game.analysisBackup?.game : game;
   if (source == null || source.mainline.isEmpty) return null;
   final fingerprint = gameReportFingerprint(game);
@@ -14,7 +21,8 @@ GameAnalysisReport? gameAnalysisReportFromPgn(ChessGame game) {
   if (classifications.isEmpty) return null;
 
   // PGN reports carry each played position's score, but not the initial
-  // position's score, search lines, accuracy or estimated player ratings.
+  // position's score or any search lines. Accuracy and the estimated ratings
+  // are not written either; [recoverGameReportSummary] derives them again.
   final positions = <GameReportPosition>[
     GameReportPosition(
       fen: source.startingFen,
@@ -38,15 +46,73 @@ GameAnalysisReport? gameAnalysisReportFromPgn(ChessGame game) {
       ),
     );
   }
-  return GameAnalysisReport(
-    fingerprint: fingerprint,
-    positions: List.unmodifiable(positions),
-    moves: List.unmodifiable(moves),
-    whiteAccuracy: null,
-    blackAccuracy: null,
-    generatedAt: DateTime.fromMillisecondsSinceEpoch(0, isUtc: true),
+  return recoverGameReportSummary(
+    GameAnalysisReport(
+      fingerprint: fingerprint,
+      positions: List.unmodifiable(positions),
+      moves: List.unmodifiable(moves),
+      whiteAccuracy: null,
+      blackAccuracy: null,
+      generatedAt: DateTime.fromMillisecondsSinceEpoch(0, isUtc: true),
+    ),
+    whiteRating: whiteRating,
+    blackRating: blackRating,
   );
 }
+
+/// Fills in the accuracy and estimated ratings of a report that lacks them.
+///
+/// Both are functions of the per-position scores alone, and a saved PGN keeps
+/// every played position's score to the centipawn, so they are recomputed with
+/// the same formulas a fresh analysis uses rather than left blank. A report
+/// that already has them, or is missing a score, is returned untouched.
+GameAnalysisReport recoverGameReportSummary(
+  GameAnalysisReport report, {
+  int? whiteRating,
+  int? blackRating,
+}) {
+  if (report.whiteAccuracy != null && report.blackAccuracy != null) {
+    return report;
+  }
+  final saved = report.positions;
+  if (report.moves.isEmpty || saved.length != report.moves.length + 1) {
+    return report;
+  }
+  if (saved.skip(1).any((position) => !_hasScore(position))) return report;
+
+  // The one score a PGN never carries is the starting position's. Reading it
+  // as 0.00 would charge the first move for the whole opening edge, so it
+  // takes the first played position's score: the first move loses nothing.
+  final start = saved.first;
+  final positions = <GameReportPosition>[
+    _hasScore(start)
+        ? start
+        : GameReportPosition(fen: start.fen, lines: [saved[1].bestLine]),
+    ...saved.skip(1),
+  ];
+  final accuracy = computeGameReportAccuracy([
+    for (final position in positions)
+      gameReportWinPercentage(position.bestLine),
+  ]);
+  final ratings = computeGameReportEstimatedRatings(
+    positions,
+    whiteRating: whiteRating,
+    blackRating: blackRating,
+  );
+  return GameAnalysisReport(
+    fingerprint: report.fingerprint,
+    positions: report.positions,
+    moves: report.moves,
+    whiteAccuracy: accuracy.white,
+    blackAccuracy: accuracy.black,
+    whiteEstimatedRating: ratings?.white ?? report.whiteEstimatedRating,
+    blackEstimatedRating: ratings?.black ?? report.blackEstimatedRating,
+    generatedAt: report.generatedAt,
+  );
+}
+
+bool _hasScore(GameReportPosition position) =>
+    position.bestLine.centipawns != null || position.bestLine.mate != null;
 
 GameReportLine? _savedEvaluation(String? raw) {
   if (raw == null) return null;

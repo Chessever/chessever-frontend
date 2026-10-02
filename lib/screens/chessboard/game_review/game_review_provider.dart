@@ -201,7 +201,7 @@ class MobileGameReviewController extends StateNotifier<MobileGameReviewState> {
       // Cached reports do not consume the free daily quota.
       if (state.isEligible && _canAccess()) {
         if (!_reportController.loadCachedReport(fingerprint)) {
-          unawaited(_reportController.loadExistingReport(game));
+          unawaited(_loadExistingReport(game));
         }
       }
     } else {
@@ -267,6 +267,15 @@ class MobileGameReviewController extends StateNotifier<MobileGameReviewState> {
     await _maybeResumeInterruptedRun();
   }
 
+  /// A report this device or the game's saved PGN already holds. The known
+  /// ratings travel with it so a PGN-restored report can anchor its game rating.
+  Future<bool> _loadExistingReport(ChessGame game) =>
+      _reportController.loadExistingReport(
+        game,
+        whiteRating: _whiteRating,
+        blackRating: _blackRating,
+      );
+
   /// Restarts a report that was interrupted (process death / dispose) for the
   /// configured game, without spending another free-tier claim.
   Future<void> _maybeResumeInterruptedRun() async {
@@ -277,7 +286,7 @@ class MobileGameReviewController extends StateNotifier<MobileGameReviewState> {
     final game = _game;
     final fingerprint = state.fingerprint;
     if (game == null || fingerprint == null) return;
-    if (await _reportController.loadExistingReport(game)) return;
+    if (await _loadExistingReport(game)) return;
     if (!mounted || !_active || state.fingerprint != fingerprint) return;
     final interrupted = await _reportController.hasInterruptedRun(fingerprint);
     if (!interrupted ||
@@ -347,7 +356,7 @@ class MobileGameReviewController extends StateNotifier<MobileGameReviewState> {
     final hostContext = context;
 
     // Cached / already-completed reports never spend a free slot.
-    if (await _reportController.loadExistingReport(game)) return;
+    if (await _loadExistingReport(game)) return;
     if (!mounted || !hostContext.mounted || state.fingerprint != fingerprint) {
       return;
     }
@@ -378,7 +387,7 @@ class MobileGameReviewController extends StateNotifier<MobileGameReviewState> {
     final game = _game;
     if (game == null) return;
     final fingerprint = gameReportFingerprint(game);
-    if (await _reportController.loadExistingReport(game)) return;
+    if (await _loadExistingReport(game)) return;
     if (!mounted || state.fingerprint != fingerprint) return;
     final claim = await _claimQuota(fingerprint);
     if (!claim.allowed || !mounted || state.fingerprint != fingerprint) return;

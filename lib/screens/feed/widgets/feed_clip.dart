@@ -52,6 +52,7 @@ import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/png_asset.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/utils/time_control_bonus.dart';
 import 'package:chessever2/utils/user_error_message.dart';
 import 'package:chessever2/widgets/app_snack.dart';
 import 'package:chessever2/widgets/time_control_glyph.dart';
@@ -457,7 +458,10 @@ class _FeedClipState extends ConsumerState<FeedClip>
   @override
   void didUpdateWidget(covariant FeedClip oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (!identical(oldWidget.item.plies, widget.item.plies)) _tokens = null;
+    if (!identical(oldWidget.item.plies, widget.item.plies)) {
+      _tokens = null;
+      _moveClocks = null;
+    }
     if (!identical(oldWidget.item, widget.item)) _openingFenResolved = false;
     _syncing = true;
     // Back on Feed (from the board, say): what was saved meanwhile shows.
@@ -1900,6 +1904,15 @@ class _FeedClipState extends ConsumerState<FeedClip>
 
   // ------------------------------------------------------------------ rows
 
+  /// The game's per-move clocks as the board screen builds them: the PGN's
+  /// own, with the move-40 block of time the relay has not credited yet.
+  List<String>? _moveClocks;
+
+  List<String> get _clocks => _moveClocks ??= applySecondaryBonusToMoveClocks(
+    _item.moveClocks,
+    _game.secondaryTimePeriod,
+  );
+
   /// A player row, the game cards' own: the same widget, the same model,
   /// so titles, ratings, flags, clocks and the result match a card exactly.
   /// The result waits for [revealResult] (the replay's last move, on the
@@ -1911,6 +1924,19 @@ class _FeedClipState extends ConsumerState<FeedClip>
   }) {
     final game = _game;
     final side = white ? Side.white : Side.black;
+    // The clocks and the side to move belong to the position on the board,
+    // as on the board screen. In the viewer's own line the clocks stay where
+    // the game was left; the turn follows the line.
+    final line = _line;
+    final shown = (line?.forkPly ?? _playback.shownPly).clamp(
+      0,
+      _item.plies.length - 1,
+    );
+    final turn =
+        line?.position.turn ??
+        (_item.plies[shown].fen.split(' ').elementAtOrNull(1) == 'b'
+            ? Side.black
+            : Side.white);
     return SizedBox(
       height: l.rowHeight,
       child: Align(
@@ -1919,9 +1945,11 @@ class _FeedClipState extends ConsumerState<FeedClip>
           key: ValueKey(white ? 'feed_row_white' : 'feed_row_black'),
           gamesTourModel: game,
           isWhitePlayer: white,
-          isCurrentPlayer: game.activePlayer == side,
+          isCurrentPlayer: turn == side,
           playerView: PlayerView.listView,
           showClock: game.hasStarted,
+          replayMoveTimes: _clocks,
+          replayMoveIndex: shown - 1,
           scoreCardViewSource: ChessboardView.forYou,
           scoreCardGamesContext: [game],
           playerProfileDataSource: game.source == GameSource.supabase

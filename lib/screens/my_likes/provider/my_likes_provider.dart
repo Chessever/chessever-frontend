@@ -1,5 +1,4 @@
 import 'package:chessever2/services/rewarded_premium/rewarded_access_provider.dart';
-import 'dart:math' as math;
 
 import 'package:chessever2/repository/liked_games/liked_games_provider.dart';
 import 'package:chessever2/repository/library/library_repository.dart';
@@ -11,20 +10,23 @@ import 'package:chessever2/widgets/game_filter/game_filter.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:intl/intl.dart';
 
-/// Free users see this many of their most recent likes in My Likes.
+/// Free users open this many of their most recent likes straight from My
+/// Likes.
 ///
-/// Liking itself is free and unlimited. Everything older than this window
-/// stays stored (never deleted, not on overflow and not on downgrade) and is
-/// back in full the moment Premium is active.
+/// Liking itself is free and unlimited, and every like is listed for
+/// everyone. A like older than this window stays in the list, opens through
+/// the Premium guard, and opens freely the moment Premium is active.
 const int kFreeMyLikesVisibleLimit = 20;
 
-/// Archived likes previewed, locked, under the archive boundary.
-const int kMyLikesLockedPreviewCount = 2;
+/// The upgrade hand-off's feature id for an older like opened from a locked
+/// card. A fixed identifier for the paywall analytics, never user data.
+const String kMyLikesHistoryFeatureId = 'my_likes_history';
 
-/// Rows PostgREST returns at most for one un-ranged select (the Supabase
-/// `max_rows` default). A result this long may be truncated, so a count taken
-/// from it is only a lower bound.
-const int _kPostgrestMaxRows = 1000;
+/// The upgrade hand-off's feature id for exporting every like as PGN.
+const String kMyLikesExportFeatureId = 'my_likes_export';
+
+/// The surface My Likes gates resume on once the viewer is entitled.
+const String kMyLikesReturnTo = 'my_likes';
 
 /// One liked game prepared for the My Likes list: the source [analysis], a
 /// lightweight card model, when it was liked, and whether it is premium-locked.
@@ -44,28 +46,24 @@ class MyLikesEntry {
   final DateTime likedAt;
 
   /// True when a free user may not open this game: it sits past their latest
-  /// [kFreeMyLikesVisibleLimit] likes. Such entries only appear as the locked
-  /// preview under the archive boundary.
+  /// [kFreeMyLikesVisibleLimit] likes. It is listed where it belongs, and
+  /// opens through the Premium guard.
   final bool isLocked;
 }
 
 /// The fully-derived My Likes view: liked-at date sections (newest first), the
-/// openable nav list, and counts for the empty/no-match/archive states.
+/// openable nav list, and counts for the empty/no-match states.
 class MyLikesData {
   const MyLikesData({
     required this.sections,
     required this.openableAnalyses,
     required this.totalLiked,
     required this.visibleCount,
-    this.archivedCount = 0,
-    this.archivedMatchCount = 0,
-    this.archivedMatchCountIsExact = true,
     this.isNarrowed = false,
-    this.lockedPreview = const <MyLikesEntry>[],
   });
 
-  /// `yyyy-MM-dd` (liked-at) → entries, sorted by day descending. Only the
-  /// likes the user may open; archived likes never enter a section.
+  /// `yyyy-MM-dd` (liked-at) → entries, sorted by day descending. Every like
+  /// matching the search and filters, the same list for everyone.
   final List<MapEntry<String, List<MyLikesEntry>>> sections;
 
   /// Visible order, locked entries excluded: the list handed to the board for
@@ -75,36 +73,16 @@ class MyLikesData {
   /// Total likes before search/filter (drives the empty state).
   final int totalLiked;
 
-  /// Openable entries surviving search + filter (drives the no-match state).
+  /// Entries surviving search + filter (drives the no-match state).
   final int visibleCount;
-
-  /// Likes kept past a free user's window (always exact, from the folder
-  /// count). Zero for Premium, and while the subscription is resolving.
-  final int archivedCount;
-
-  /// Of [archivedCount], how many match the active search/filter/tags. Equal
-  /// to [archivedCount] when nothing narrows the list.
-  final int archivedMatchCount;
-
-  /// False when [archivedMatchCount] may be truncated and is only a lower
-  /// bound, in which case the UI must not print it.
-  final bool archivedMatchCountIsExact;
 
   /// True while a search, filter or tag narrows the list.
   final bool isNarrowed;
 
-  /// The first archived matches in display order, locked, previewed under the
-  /// archive boundary.
-  final List<MyLikesEntry> lockedPreview;
-
   bool get isEmpty => totalLiked == 0;
 
-  /// A free user has likes past their window: show the archive boundary.
-  bool get showsArchiveBoundary => archivedCount > 0;
-
-  /// Nothing matches anywhere, not even in the archive.
-  bool get hasNoMatches =>
-      totalLiked > 0 && visibleCount == 0 && archivedMatchCount == 0;
+  /// Nothing matches the search and filters.
+  bool get hasNoMatches => totalLiked > 0 && visibleCount == 0;
 }
 
 /// Filter + search state for the My Likes screen. Mirrors the surface the
@@ -166,10 +144,11 @@ class MyLikesFilterNotifier extends StateNotifier<MyLikesFilterState> {
   void clearTags() => state = state.withSelectedTags(const <String>{});
 }
 
-final myLikesFilterProvider = StateNotifierProvider.autoDispose<
-  MyLikesFilterNotifier,
-  MyLikesFilterState
->((ref) => MyLikesFilterNotifier());
+final myLikesFilterProvider =
+    StateNotifierProvider.autoDispose<
+      MyLikesFilterNotifier,
+      MyLikesFilterState
+    >((ref) => MyLikesFilterNotifier());
 
 final myLikesTagCountsProvider = FutureProvider.autoDispose<Map<String, int>>((
   ref,
@@ -201,12 +180,12 @@ Set<String> freeVisibleLikeIds(
   return {for (final like in newestFirst.take(limit)) like.id};
 }
 
-/// Whether My Likes shows every like: Premium, or the entitlement is not
-/// known yet (a cold start never flashes a shortened list at a premium user).
+/// Whether every like opens freely: Premium, or the entitlement is not
+/// known yet (a cold start never flashes locks at a premium user).
 ///
-/// A refresh in flight keeps the last settled answer, so a free user's list
-/// does not swell to the full history and back on every app resume. Full
-/// visibility returns the moment the entitlement does.
+/// A refresh in flight keeps the last settled answer, so a free user's locks
+/// do not lift and return on every app resume. They lift for good the moment
+/// the entitlement does.
 final myLikesUnlimitedProvider =
     NotifierProvider<MyLikesUnlimitedNotifier, bool>(
       MyLikesUnlimitedNotifier.new,
@@ -278,7 +257,8 @@ List<MapEntry<String, List<MyLikesEntry>>> groupEntriesByLikedAt(
 
 /// Derives the My Likes view from the rows matching the active
 /// search/filter/tags ([matches], in display order) and the free [window]
-/// (null = unlimited). Pure, so the free-tier rule is testable without a
+/// (null = unlimited): the same list for everyone, with the likes past the
+/// window marked locked. Pure, so the free-tier rule is testable without a
 /// repository or a subscription.
 MyLikesData buildMyLikesData({
   required List<SavedAnalysis> matches,
@@ -287,66 +267,43 @@ MyLikesData buildMyLikesData({
   bool isNarrowed = false,
   bool isSorted = false,
 }) {
-  final visible = <MyLikesEntry>[];
-  final lockedPreview = <MyLikesEntry>[];
-  var archivedMatches = 0;
-
-  MyLikesEntry entryFor(SavedAnalysis analysis, {required bool locked}) {
-    return MyLikesEntry(
-      analysis: analysis,
-      game: savedAnalysisToCardGame(analysis),
-      // Local time so "Today" matches the user's day, not UTC (created_at
-      // parses as UTC from Supabase).
-      likedAt: analysis.createdAt.toLocal(),
-      isLocked: locked,
-    );
-  }
-
-  for (final analysis in matches) {
-    if (isLikedGameLocked(analysis.id, window: window)) {
-      archivedMatches++;
-      // Only the previewed few pay for a card model.
-      if (lockedPreview.length < kMyLikesLockedPreviewCount) {
-        lockedPreview.add(entryFor(analysis, locked: true));
-      }
-    } else {
-      visible.add(entryFor(analysis, locked: false));
-    }
-  }
+  // Every match is listed, in the order it came; a like past the free window
+  // only carries its lock.
+  final visible = <MyLikesEntry>[
+    for (final analysis in matches)
+      MyLikesEntry(
+        analysis: analysis,
+        game: savedAnalysisToCardGame(analysis),
+        // Local time so "Today" matches the user's day, not UTC (created_at
+        // parses as UTC from Supabase).
+        likedAt: analysis.createdAt.toLocal(),
+        isLocked: isLikedGameLocked(analysis.id, window: window),
+      ),
+  ];
 
   // Sort override is already applied in Supabase. Keep the synthetic bucket so
   // a sorted list reads as one ordered result instead of being regrouped by day.
   final List<MapEntry<String, List<MyLikesEntry>>> sections;
   if (isSorted) {
-    sections =
-        visible.isEmpty
-            ? const <MapEntry<String, List<MyLikesEntry>>>[]
-            : [MapEntry('__sorted__', visible)];
+    sections = visible.isEmpty
+        ? const <MapEntry<String, List<MyLikesEntry>>>[]
+        : [MapEntry('__sorted__', visible)];
   } else {
     sections = groupEntriesByLikedAt(visible);
   }
 
   final openable = <SavedAnalysis>[
     for (final section in sections)
-      for (final entry in section.value) entry.analysis,
+      for (final entry in section.value)
+        if (!entry.isLocked) entry.analysis,
   ];
-
-  final archived =
-      window == null ? 0 : math.max(0, totalLiked - window.length);
 
   return MyLikesData(
     sections: sections,
     openableAnalyses: openable,
     totalLiked: totalLiked,
     visibleCount: visible.length,
-    archivedCount: archived,
-    // Un-narrowed, every archived like "matches"; the folder count is exact
-    // even when the row list was truncated.
-    archivedMatchCount: isNarrowed ? archivedMatches : archived,
-    archivedMatchCountIsExact:
-        !isNarrowed || matches.length < _kPostgrestMaxRows,
     isNarrowed: isNarrowed,
-    lockedPreview: archived > 0 ? lockedPreview : const <MyLikesEntry>[],
   );
 }
 
@@ -362,9 +319,9 @@ final myLikesViewProvider = FutureProvider.autoDispose<MyLikesData>((
   final unlimited = ref.watch(myLikesUnlimitedProvider);
   final folder = await ref.watch(likedGamesFolderProvider.future);
 
-  // Search, filter, sort and tag filtering are all free inside My Likes. The
-  // only free-tier restriction is the window of the latest
-  // [kFreeMyLikesVisibleLimit] likes, so the active filter applies for everyone.
+  // Search, filter, sort and tag filtering are all free inside My Likes, and
+  // every like is listed. The only free-tier restriction is which likes open
+  // freely: the latest [kFreeMyLikesVisibleLimit].
   final filter = filterState.filter;
   final isNarrowed =
       filter.hasActiveFilters ||
@@ -394,8 +351,9 @@ final myLikesViewProvider = FutureProvider.autoDispose<MyLikesData>((
 
   final matches = results[0] as List<SavedAnalysis>;
   final total = results[1] as int;
-  final windowSource =
-      needsWindowQuery ? results[2] as List<SavedAnalysis> : matches;
+  final windowSource = needsWindowQuery
+      ? results[2] as List<SavedAnalysis>
+      : matches;
 
   return buildMyLikesData(
     matches: matches,

@@ -35,7 +35,20 @@ class EventViewShell extends StatefulWidget {
     this.scrollableTabs = false,
     this.contentOverride,
     this.secondaryTabs = false,
+    this.onTabChanged,
+    this.tabLongPressFor,
+    this.tabLongPressHint,
   });
+
+  /// Reports the tab the shell moved to (a tap, a swipe, or a controller
+  /// request), so a parent can remember it.
+  final ValueChanged<int>? onTabChanged;
+
+  /// What holding tab `index` does, or null to leave it press-only.
+  final VoidCallback? Function(int index)? tabLongPressFor;
+
+  /// What assistive technology announces for a tab's long press.
+  final String Function(int index)? tabLongPressHint;
 
   /// Renders only tabs and pages inside a parent screen. The parent owns the
   /// header and horizontal swipe; these secondary tabs remain tappable.
@@ -169,6 +182,7 @@ class _EventViewShellState extends State<EventViewShell> {
   void _select(int index) {
     if (index < 0 || index >= widget.tabs.length) return;
     FocusScope.of(context).unfocus();
+    if (index != _selected) widget.onTabChanged?.call(index);
     setState(() => _selected = index);
     if (!_pages.hasClients) return;
     if (MediaQuery.disableAnimationsOf(context)) {
@@ -378,6 +392,8 @@ class _EventViewShellState extends State<EventViewShell> {
                           initialSelection: widget.initialTab,
                           currentSelection: _selected,
                           onSelectionChanged: _select,
+                          longPressFor: widget.tabLongPressFor,
+                          longPressHint: widget.tabLongPressHint,
                         )),
             ),
             if (widget.homeTab) SizedBox(height: 12.h),
@@ -396,6 +412,7 @@ class _EventViewShellState extends State<EventViewShell> {
                       onPageChanged: (index) {
                         if (index == _selected) return;
                         FocusScope.of(context).unfocus();
+                        widget.onTabChanged?.call(index);
                         setState(() => _selected = index);
                       },
                       itemBuilder: (context, index) => PrimaryScrollController(

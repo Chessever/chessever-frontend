@@ -173,6 +173,14 @@ FeedItem? _itemFromJson(Map<String, Object?> json, DateTime now) {
     if (!plies.any((ply) => ply.cp != null || ply.mate != null)) {
       plies = buildFlowPlies(parsed);
     }
+    // Clocks are not cached: they come back off the PGN parsed above.
+    final moves = parsed.moves;
+    plies = [
+      for (var i = 0; i < plies.length; i++)
+        i == 0 || i > moves.length
+            ? plies[i]
+            : plies[i].withClock(moves[i - 1].clock),
+    ];
     final result =
         normalizeFlowResult(json['result'] as String?) ?? parsed.result;
     final expectedResult = switch (game.gameStatus) {

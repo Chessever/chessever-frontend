@@ -396,6 +396,36 @@ class HubPixelArtwork extends StatelessWidget {
   }
 }
 
+/// The My Likes heart as a card's mark: the animated pixel heart in a
+/// [size] square, for the My Likes card wherever it is drawn (the Library
+/// list, a My Space tile), so the destination wears one heart everywhere.
+///
+/// [PixelScene.mark] keeps [headroom] clear above the heart for
+/// the hearts that drift off it, which would sit the heart itself that much
+/// low in the slot. The mark is lifted by half of it, so the heart's body is
+/// what centres on the slot and the drifting hearts rise past its top edge.
+class LikesHeartMark extends StatelessWidget {
+  const LikesHeartMark({super.key, required this.size});
+
+  /// The room [PixelScene.mark] leaves above an art with embers.
+  static const double headroom = 10;
+
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    return ExcludeSemantics(
+      child: Transform.translate(
+        offset: const Offset(0, -headroom / 2),
+        child: SizedBox.square(
+          dimension: size,
+          child: const HubPixelArtwork(section: SpaceSection.likes),
+        ),
+      ),
+    );
+  }
+}
+
 /// Press feedback for a hub tile: it settles to 0.97 under the finger on a
 /// spring and springs back on release, so the tap is felt before the route
 /// pushes. No scale under reduced motion.
