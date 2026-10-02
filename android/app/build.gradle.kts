@@ -1,4 +1,5 @@
     import java.util.Properties
+    import java.util.Base64
 
     val keystoreProperties = Properties()
     val keystorePropertiesFile = rootProject.file("key.properties")
@@ -57,12 +58,12 @@
         }
 
         // Dart defines keep the native SDK app id paired with the ad units.
-        val adDefines = (project.findProperty("dart-defines") as? String)
+        val adDefines: Map<String, String> = (project.findProperty("dart-defines") as? String)
             ?.split(",")?.mapNotNull { encoded ->
-                val decoded = String(java.util.Base64.getDecoder().decode(encoded))
+                val decoded = String(Base64.getDecoder().decode(encoded), Charsets.UTF_8)
                 val parts = decoded.split("=", limit = 2)
                 if (parts.size == 2) parts[0] to parts[1] else null
-            }?.toMap() ?: emptyMap()
+            }?.toMap() ?: emptyMap<String, String>()
         defaultConfig {
             manifestPlaceholders["admobAppId"] =
                 "ca-app-pub-3940256099942544~3347511713"
