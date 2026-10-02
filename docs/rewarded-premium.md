@@ -173,3 +173,12 @@ Device check: as a free user, try clipboard imports, file selection, Board
 Editor PGN paste, and opening a PGN from Files. Dismissing the chooser must
 prevent the import; completing an ad or subscribing must resume it. Let access
 expire on the preview, then tap a game or Save and verify another prompt.
+
+## Premium chooser design
+
+The chooser follows the supplied charcoal mockup: compact Watch ad and Upgrade
+buttons, a play icon, close and Not now actions, and button-local loading states.
+The expiry dialog keeps Watch ad again / Upgrade / Go back and cannot be dismissed
+with close or platform Back. All dismissal and secondary actions are disabled
+while an ad, confirmation, or upgrade is in progress. Text wraps and the dialog
+scrolls on narrow screens or large accessibility text. The app typeface is retained.
