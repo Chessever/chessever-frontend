@@ -409,8 +409,15 @@ class _ChessBoardBottomNavBarState
     // usable while browsing inline games (games expand covers PV + table instead).
     return BoardArrowKeyShortcuts(
       isActivePage: widget.isActivePage,
+      // The keyboard gets exactly what the two arrow buttons above get.
       onPrevious: widget.canMoveBackward ? widget.onLeftMove : null,
       onNext: widget.canMoveForward ? widget.onRightMove : null,
+      onHoldPreviousStart:
+          widget.canMoveBackward ? widget.onLongPressBackwardStart : null,
+      onHoldPreviousEnd: widget.onLongPressBackwardEnd,
+      onHoldNextStart:
+          widget.canMoveForward ? widget.onLongPressForwardStart : null,
+      onHoldNextEnd: widget.onLongPressForwardEnd,
       child: isTabletLandscape
           ? GestureDetector(
               // Absorb horizontal drags so taps in the bottom bar don't trigger

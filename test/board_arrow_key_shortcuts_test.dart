@@ -2,6 +2,7 @@ import 'package:chessever2/e2e/e2e_ids.dart';
 import 'package:chessever2/providers/engine_settings_provider.dart';
 import 'package:chessever2/screens/chessboard/analysis/chess_game.dart';
 import 'package:chessever2/screens/chessboard/analysis/chess_game_navigator.dart';
+import 'package:chessever2/screens/chessboard/utils/move_hold_repeater.dart';
 import 'package:chessever2/screens/chessboard/widgets/board_arrow_key_shortcuts.dart';
 import 'package:chessever2/screens/chessboard/widgets/chess_board_bottom_nav_bar.dart';
 import 'package:chessever2/theme/app_theme.dart';
@@ -26,11 +27,19 @@ Widget _shortcuts({
   bool active = true,
   VoidCallback? previous,
   VoidCallback? next,
+  VoidCallback? holdPreviousStart,
+  VoidCallback? holdPreviousEnd,
+  VoidCallback? holdNextStart,
+  VoidCallback? holdNextEnd,
   Widget child = const SizedBox.expand(),
 }) => BoardArrowKeyShortcuts(
   isActivePage: active,
   onPrevious: previous,
   onNext: next,
+  onHoldPreviousStart: holdPreviousStart,
+  onHoldPreviousEnd: holdPreviousEnd,
+  onHoldNextStart: holdNextStart,
+  onHoldNextEnd: holdNextEnd,
   child: child,
 );
 
@@ -48,8 +57,12 @@ void main() {
           ChessGame.fromPgn('keyboard-game', '1. e4 e5 2. Nf3 *'),
         );
         addTearDown(nav.dispose);
+        final hold = MoveHoldRepeater();
+        addTearDown(hold.stop);
         var backwardCalls = 0;
         var forwardCalls = 0;
+        var holdStarts = 0;
+        var holdEnds = 0;
         late StateSetter rebuild;
         await tester.pumpWidget(
           ProviderScope(
@@ -75,6 +88,18 @@ void main() {
                         forwardCalls++;
                         nav.goToNextMove();
                       }),
+                      onLongPressForwardStart: () {
+                        holdStarts++;
+                        hold.start(() {
+                          if (!nav.state.canGoForward) return MoveHoldStep.end;
+                          setState(nav.goToNextMove);
+                          return MoveHoldStep.moved;
+                        });
+                      },
+                      onLongPressForwardEnd: () {
+                        holdEnds++;
+                        hold.stop();
+                      },
                       canMoveForward: nav.state.canGoForward,
                       canMoveBackward: nav.state.canGoBackward,
                       showEngineAnalysis: false,
@@ -103,20 +128,31 @@ void main() {
         await tester.tap(find.byKey(e2eKey(E2eIds.boardMoveBack)));
         await tester.pump();
         expect(nav.state.movePointer, isEmpty);
+        // A held arrow is one tap, then the scrub the arrow's long-press runs.
+        // Touch taps above already reported their own long-press cancels.
+        final endsBeforeHold = holdEnds;
         await tester.sendKeyDownEvent(LogicalKeyboardKey.arrowRight);
         await tester.pump();
         expect(nav.state.movePointer, [0]);
+        // Android repeats the key on its own clock; that must not add steps.
+        await tester.sendKeyRepeatEvent(LogicalKeyboardKey.arrowRight);
         await tester.sendKeyRepeatEvent(LogicalKeyboardKey.arrowRight);
         await tester.pump();
+        expect(nav.state.movePointer, [0]);
+        expect(holdStarts, 0);
+        await tester.pump(kBoardArrowKeyHoldDelay);
+        expect(holdStarts, 1);
+        await tester.pump(MoveHoldRepeater.intervalAfter(0));
         expect(nav.state.movePointer, [1]);
-        await tester.sendKeyRepeatEvent(LogicalKeyboardKey.arrowRight);
-        await tester.pump();
+        await tester.pump(MoveHoldRepeater.intervalAfter(1));
         expect(nav.state.movePointer, [2]);
         final atEndCalls = forwardCalls;
-        await tester.sendKeyRepeatEvent(LogicalKeyboardKey.arrowRight);
-        await tester.pump();
+        await tester.pump(const Duration(seconds: 1));
+        expect(nav.state.movePointer, [2]);
+        expect(holdEnds, endsBeforeHold);
         await tester.sendKeyUpEvent(LogicalKeyboardKey.arrowRight);
         await tester.pump();
+        expect(holdEnds, endsBeforeHold + 1);
         expect(forwardCalls, atEndCalls);
         expect(nav.state.game.mainline.length, 3);
         expect(FocusManager.instance.primaryFocus, same(focusBefore));
@@ -478,5 +514,159 @@ void main() {
     await _press(tester, LogicalKeyboardKey.arrowRight);
     expect(steps, 2);
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('held arrow scrubs until release; a quick press never does', (
+    tester,
+  ) async {
+    var steps = 0;
+    var starts = 0;
+    var ends = 0;
+    await tester.pumpWidget(
+      _app(
+        _shortcuts(
+          next: () => steps++,
+          holdNextStart: () => starts++,
+          holdNextEnd: () => ends++,
+        ),
+      ),
+    );
+    await _press(tester, LogicalKeyboardKey.arrowRight);
+    await tester.pump(kBoardArrowKeyHoldDelay * 2);
+    expect([steps, starts, ends], [1, 0, 0]);
+
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.arrowRight);
+    await tester.pump(
+      kBoardArrowKeyHoldDelay - const Duration(milliseconds: 1),
+    );
+    expect([steps, starts, ends], [2, 0, 0]);
+    await tester.pump(const Duration(milliseconds: 1));
+    expect([steps, starts, ends], [2, 1, 0]);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.arrowRight);
+    await tester.pump();
+    expect([steps, starts, ends], [2, 1, 1]);
+  });
+
+  for (final loss in ['page', 'route', 'background', 'unmount']) {
+    testWidgets('held arrow lets go when the board loses the keys ($loss)', (
+      tester,
+    ) async {
+      final navigatorKey = GlobalKey<NavigatorState>();
+      var starts = 0;
+      var ends = 0;
+      var active = true;
+      var show = true;
+      late StateSetter rebuild;
+      addTearDown(
+        () => tester.binding.handleAppLifecycleStateChanged(
+          AppLifecycleState.resumed,
+        ),
+      );
+      await tester.pumpWidget(
+        _app(
+          StatefulBuilder(
+            builder: (context, setState) {
+              rebuild = setState;
+              return show
+                  ? _shortcuts(
+                      active: active,
+                      next: () {},
+                      holdNextStart: () => starts++,
+                      holdNextEnd: () => ends++,
+                    )
+                  : const SizedBox.expand();
+            },
+          ),
+          navigatorKey: navigatorKey,
+        ),
+      );
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.arrowRight);
+      await tester.pump(kBoardArrowKeyHoldDelay);
+      expect([starts, ends], [1, 0]);
+      switch (loss) {
+        case 'page':
+          rebuild(() => active = false);
+        case 'route':
+          navigatorKey.currentState!.push<void>(
+            MaterialPageRoute(builder: (_) => const Scaffold()),
+          );
+        case 'background':
+          tester.binding.handleAppLifecycleStateChanged(
+            AppLifecycleState.inactive,
+          );
+        case 'unmount':
+          rebuild(() => show = false);
+      }
+      await tester.pump();
+      expect([starts, ends], [1, 1]);
+      // iOS can drop the key-up of a cancelled press; a late one changes nothing.
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.arrowRight);
+      await tester.pump();
+      expect([starts, ends], [1, 1]);
+      expect(tester.takeException(), isNull);
+    });
+  }
+
+  testWidgets('the other arrow takes the hold over', (tester) async {
+    final log = <String>[];
+    await tester.pumpWidget(
+      _app(
+        _shortcuts(
+          previous: () => log.add('previous'),
+          next: () => log.add('next'),
+          holdPreviousStart: () => log.add('holdPrevious'),
+          holdPreviousEnd: () => log.add('endPrevious'),
+          holdNextStart: () => log.add('holdNext'),
+          holdNextEnd: () => log.add('endNext'),
+        ),
+      ),
+    );
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.arrowRight);
+    await tester.pump(kBoardArrowKeyHoldDelay);
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.arrowLeft);
+    await tester.pump(kBoardArrowKeyHoldDelay);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.arrowRight);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.arrowLeft);
+    await tester.pump();
+    expect(log, [
+      'next',
+      'holdNext',
+      'endNext',
+      'previous',
+      'holdPrevious',
+      'endPrevious',
+    ]);
+  });
+
+  testWidgets('a press that began in a text field never scrubs the board', (
+    tester,
+  ) async {
+    final controller = TextEditingController(text: 'abcd');
+    final fieldFocus = FocusNode();
+    addTearDown(controller.dispose);
+    addTearDown(fieldFocus.dispose);
+    var steps = 0;
+    var starts = 0;
+    await tester.pumpWidget(
+      _app(
+        _shortcuts(
+          next: () => steps++,
+          holdNextStart: () => starts++,
+          child: TextField(controller: controller, focusNode: fieldFocus),
+        ),
+      ),
+    );
+    fieldFocus.requestFocus();
+    controller.selection = const TextSelection.collapsed(offset: 1);
+    await tester.pump();
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.arrowRight);
+    await tester.pump();
+    expect(controller.selection.baseOffset, 2);
+    fieldFocus.unfocus();
+    await tester.pump(kBoardArrowKeyHoldDelay * 2);
+    await tester.sendKeyRepeatEvent(LogicalKeyboardKey.arrowRight);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.arrowRight);
+    await tester.pump();
+    expect([steps, starts], [0, 0]);
   });
 }

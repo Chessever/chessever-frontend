@@ -16,6 +16,8 @@ import 'package:chessever2/screens/chessboard/chess_board_screen_new.dart';
 import 'package:chessever2/screens/chessboard/analysis/chess_game.dart';
 import 'package:chessever2/screens/chessboard/game_review/game_analysis_report_store.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
+import 'package:chessever2/screens/chessboard/utils/move_hold_repeater.dart';
+import 'package:chessever2/screens/chessboard/widgets/board_arrow_key_shortcuts.dart';
 import 'package:chessever2/screens/chessboard/widgets/chess_board_bottom_navbar.dart';
 import 'package:chessever2/screens/gamebase/models/models.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
@@ -147,6 +149,23 @@ void main() {
     ]);
     expect(container.read(selectionClear), atEndClear);
     expect(container.read(provider).requireValue.allMoves.length, 2);
+
+    // A held arrow keeps walking through the board's own long-press hold, so
+    // iPadOS, which reports no key repeat, still scrubs.
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.arrowLeft);
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(container.read(provider).requireValue.analysisState.movePointer, [
+      0,
+    ]);
+    await tester.pump(kBoardArrowKeyHoldDelay);
+    await tester.pump(MoveHoldRepeater.intervalAfter(0));
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(
+      container.read(provider).requireValue.analysisState.movePointer,
+      isEmpty,
+    );
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.arrowLeft);
+    await tester.pump(const Duration(milliseconds: 100));
     await tester.pumpWidget(const SizedBox.shrink());
     container.dispose();
     // Dispose the subscription sync timer and drain existing delayed board/
