@@ -1,3 +1,6 @@
+import 'package:chessever2/services/rewarded_premium/rewarded_safe_interceptor.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:chessever2/services/rewarded_premium/rewarded_session.dart';
 import 'package:chessever2/repository/gamebase/collections/collection_search_query.dart';
 import 'package:chessever2/config/gamebase_environment.dart';
 import 'dart:convert';
@@ -8,7 +11,6 @@ import 'package:chessever2/repository/lichess/cloud_eval/cloud_eval.dart';
 import 'package:dio/dio.dart';
 import 'package:dio/io.dart';
 import 'package:chessever2/main.dart';
-import 'package:logarte/logarte.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -146,7 +148,13 @@ class GamebaseRepository {
       );
     }
     if (!hasApiKey) throw const MissingGamebaseApiKeyException();
-    return {'X-API-Key': _apiKey, 'Accept': 'application/json'};
+    return {'X-API-Key': _apiKey, 'Accept': 'application/json',
+      ...RewardedSession.instance.headers,
+      if (RewardedSession.instance.active &&
+          Supabase.instance.client.auth.currentSession != null)
+        'Authorization':
+            'Bearer ${Supabase.instance.client.auth.currentSession!.accessToken}',
+    };
   }
 
   /// Filter keys shared by aggregates and position-games requests.
@@ -2020,6 +2028,6 @@ final gamebaseRepositoryProvider = Provider<GamebaseRepository>((ref) {
     createHttpClient: () =>
         HttpClient()..idleTimeout = const Duration(seconds: 60),
   );
-  dio.interceptors.add(LogarteDioInterceptor(logarte));
+  dio.interceptors.add(RewardedSafeLogInterceptor(logarte));
   return GamebaseRepository(dio);
 });

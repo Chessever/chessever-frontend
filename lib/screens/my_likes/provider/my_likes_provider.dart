@@ -1,3 +1,4 @@
+import 'package:chessever2/services/rewarded_premium/rewarded_access_provider.dart';
 import 'dart:math' as math;
 
 import 'package:chessever2/repository/liked_games/liked_games_provider.dart';
@@ -214,10 +215,10 @@ final myLikesUnlimitedProvider =
 class MyLikesUnlimitedNotifier extends Notifier<bool> {
   @override
   bool build() {
-    ref.listen<SubscriptionState>(subscriptionProvider, (_, next) {
+    ref.listen<SubscriptionState>(featureAccessStateProvider, (_, next) {
       state = next.isSubscribed || (next.isLoading && state);
     });
-    final now = ref.read(subscriptionProvider);
+    final now = ref.read(featureAccessStateProvider);
     return now.isSubscribed || now.isLoading;
   }
 }

@@ -1,5 +1,5 @@
+import 'package:chessever2/services/rewarded_premium/rewarded_access_provider.dart';
 import 'package:chessever2/repository/gamebase/gamebase_repository.dart';
-import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
 import 'package:chessever2/screens/chessboard/chess_board_screen_new.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
 import 'package:chessever2/screens/library/miniatures/miniatures_access.dart';
@@ -38,7 +38,7 @@ Future<void> openMiniatureGame({
 }) async {
   if (index < 0 || index >= games.length) return;
 
-  final subscription = ref.read(subscriptionProvider);
+  final subscription = ref.read(featureAccessStateProvider);
   final locked = isMiniatureGameLocked(
     games[index].lastMoveTime,
     isSubscribed: subscription.isSubscribed,

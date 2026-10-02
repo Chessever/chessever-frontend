@@ -49,3 +49,9 @@ verify_jwt = false
 # Validates the session and OneSignal device ownership in the function.
 [functions.push-token-sync]
 verify_jwt = false
+
+# Rewarded grants authenticate the user in-body; Google SSV uses its signature.
+[functions.rewarded-premium]
+verify_jwt = false
+[functions.rewarded-premium-ssv]
+verify_jwt = false

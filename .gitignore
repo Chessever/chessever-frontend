@@ -251,3 +251,7 @@ fastlane/.env*
 
 # Local production client SDK configuration
 config/production-internal-push.local.json
+
+# Local AdMob production build configuration
+ios/Flutter/AdMob-production.xcconfig
+supabase/tests/node_modules/

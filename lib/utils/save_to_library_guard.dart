@@ -1,5 +1,5 @@
+import 'package:chessever2/services/rewarded_premium/rewarded_access_provider.dart';
 import 'package:chessever2/repository/library/library_repository.dart';
-import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
 import 'package:chessever2/utils/library_utils.dart';
 import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
 import 'package:flutter/material.dart';
@@ -27,7 +27,7 @@ Future<bool> canSaveMoreGames(
 }) async {
   final container = ProviderScope.containerOf(context, listen: false);
 
-  if (container.read(subscriptionProvider).isSubscribed) return true;
+  if (container.read(featureAccessStateProvider).isSubscribed) return true;
 
   final repository = container.read(libraryRepositoryProvider);
   final currentCount = await repository.getTotalAnalysisCountForCurrentUser();

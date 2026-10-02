@@ -1,3 +1,6 @@
+import 'package:chessever2/services/rewarded_premium/rewarded_access_provider.dart';
+import 'package:chessever2/services/rewarded_premium/rewarded_ads.dart';
+import 'package:chessever2/widgets/paywall/rewarded_premium/rewarded_access_ui.dart';
 import 'dart:async';
 import 'dart:io' show Platform;
 import 'package:flutter/foundation.dart';
@@ -99,7 +102,29 @@ Future<bool> showPremiumPaywallSheet({
   String? featureId,
   String? returnTo,
   PremiumResume? onEntitled,
+  bool allowRewarded = true,
 }) async {
+  if (allowRewarded && RewardedAdsConfig.available) {
+    final container = ProviderScope.containerOf(context, listen: false);
+    if (container.read(subscriptionProvider).isLoading) {
+      await container.read(subscriptionProvider.notifier).refresh();
+      if (!context.mounted) return false;
+    }
+    if (container.read(premiumAccessProvider)) {
+      return resumePremiumAction(context, onEntitled: onEntitled);
+    }
+    final unlocked = await showRewardedAccessChoice(
+      context,
+      upgrade: (host) => showPremiumPaywallSheet(
+        context: host,
+        featureId: featureId,
+        returnTo: returnTo,
+        allowRewarded: false,
+      ),
+    );
+    if (!unlocked || !context.mounted) return false;
+    return resumePremiumAction(context, onEntitled: onEntitled);
+  }
   final initialUser = Supabase.instance.client.auth.currentUser;
   if (initialUser == null || initialUser.isAnonymous) {
     final authenticated = await showAuthUpgradeSheet(
@@ -182,8 +207,18 @@ Future<bool> requirePremiumGuard(
   String? returnTo,
   PremiumResume? onEntitled,
 }) async {
-  if (kDebugMode) return resumePremiumAction(context, onEntitled: onEntitled);
+  if (kDebugMode && !RewardedAdsConfig.available) {
+    return resumePremiumAction(context, onEntitled: onEntitled);
+  }
 
+  if (RewardedAdsConfig.available) {
+    return showPremiumPaywallSheet(
+      context: context,
+      featureId: featureId,
+      returnTo: returnTo,
+      onEntitled: onEntitled,
+    );
+  }
   // First ensure user is authenticated (not anonymous)
   final isAuthenticated = await requireFullAuthGuard(context);
   if (!isAuthenticated) return false;
@@ -210,8 +245,18 @@ Future<bool> requirePremiumGuardNoRef(
   String? returnTo,
   PremiumResume? onEntitled,
 }) async {
-  if (kDebugMode) return resumePremiumAction(context, onEntitled: onEntitled);
+  if (kDebugMode && !RewardedAdsConfig.available) {
+    return resumePremiumAction(context, onEntitled: onEntitled);
+  }
 
+  if (RewardedAdsConfig.available) {
+    return showPremiumPaywallSheet(
+      context: context,
+      featureId: featureId,
+      returnTo: returnTo,
+      onEntitled: onEntitled,
+    );
+  }
   final isAuthenticated = await requireFullAuthGuard(context);
   if (!isAuthenticated) return false;
 

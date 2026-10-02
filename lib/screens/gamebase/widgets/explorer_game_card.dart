@@ -1,10 +1,10 @@
+import 'package:chessever2/services/rewarded_premium/rewarded_access_provider.dart';
 import 'dart:async';
 
 import 'package:chessever2/providers/board_settings_provider_new.dart';
 import 'package:chessever2/providers/engine_settings_provider.dart';
 import 'package:chessever2/repository/gamebase/gamebase_repository.dart';
 import 'package:chessever2/repository/gamebase/search/gamebase_search_models.dart';
-import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
 import 'package:chessever2/screens/chessboard/widgets/chess_board_from_fen_new.dart';
 import 'package:chessever2/screens/chessboard/widgets/evaluation_bar_widget.dart';
 import 'package:chessever2/screens/chessboard/widgets/player_first_row_detail_widget.dart';
@@ -785,7 +785,7 @@ class _ExplorerGameCardState extends ConsumerState<ExplorerGameCard> {
   /// Mirrors [requirePremiumGuard] / explorer free-window: debug bypass.
   bool get _freeUserLocked {
     if (kDebugMode) return false;
-    return !ref.watch(subscriptionProvider.select((s) => s.isSubscribed));
+    return !ref.watch(featureAccessStateProvider.select((s) => s.isSubscribed));
   }
 
   /// Premium gate for every interactive path on this card.
