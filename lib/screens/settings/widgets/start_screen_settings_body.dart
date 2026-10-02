@@ -10,7 +10,7 @@ import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 /// Settings › Customization: which section and which Home page the app opens
-/// on. Premium, like holding a bottom tab (see [makeBottomTabDefault]).
+/// on. Premium, like holding a bottom tab or a tab title.
 class StartScreenSettingsBody extends ConsumerStatefulWidget {
   const StartScreenSettingsBody({super.key});
 

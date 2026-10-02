@@ -18,6 +18,13 @@ class SegmentedSwitcher extends StatefulWidget {
   final List<Widget>? optionLabels;
   final bool notifyOnReselect;
 
+  /// What holding segment `index` does, or null to leave it press-only.
+  /// Holding never selects the segment.
+  final VoidCallback? Function(int index)? longPressFor;
+
+  /// What assistive technology announces for a segment's long press.
+  final String Function(int index)? longPressHint;
+
   /// When true, segments size to their content and scroll horizontally instead
   /// of splitting the width into equal thirds. Used for the 4-tab team layout.
   final bool isScrollable;
@@ -38,6 +45,8 @@ class SegmentedSwitcher extends StatefulWidget {
     this.optionLabels,
     this.notifyOnReselect = false,
     this.isScrollable = false,
+    this.longPressFor,
+    this.longPressHint,
   }) : assert(
          initialSelection >= 0 && initialSelection < options.length,
          'initialSelection must be within options range',
@@ -107,6 +116,21 @@ class _SegmentedSwitcherState extends State<SegmentedSwitcher> {
     }
   }
 
+  /// A segment's tap target: select on tap, and run [longPressFor] on hold.
+  Widget _segmentTarget(int index, {required Widget child}) {
+    final onLongPress = widget.longPressFor?.call(index);
+    final target = GestureDetector(
+      onTap: () => _onSelectionChanged(index),
+      onLongPress: onLongPress,
+      behavior: HitTestBehavior.opaque,
+      child: child,
+    );
+    final hint = onLongPress == null ? null : widget.longPressHint?.call(index);
+    // Only the segments that announce a hold carry the extra semantics node.
+    if (hint == null) return target;
+    return Semantics(onLongPressHint: hint, child: target);
+  }
+
   void _onSelectionChanged(int index, {bool fromExternal = false}) {
     if (!mounted) return;
     final isReselect = index == _selectedIndex;
@@ -173,9 +197,8 @@ class _SegmentedSwitcherState extends State<SegmentedSwitcher> {
                             .withOpacity(textOpacity),
                       );
 
-                  return GestureDetector(
-                    onTap: () => _onSelectionChanged(index),
-                    behavior: HitTestBehavior.opaque,
+                  return _segmentTarget(
+                    index,
                     child: AnimatedContainer(
                       duration: const Duration(milliseconds: 250),
                       curve: Curves.easeInOutCubic,
@@ -260,9 +283,8 @@ class _SegmentedSwitcherState extends State<SegmentedSwitcher> {
                   );
 
               return Expanded(
-                child: GestureDetector(
-                  onTap: () => _onSelectionChanged(index),
-                  behavior: HitTestBehavior.opaque,
+                child: _segmentTarget(
+                  index,
                   child: Container(
                     alignment: Alignment.center,
                     padding: EdgeInsets.symmetric(vertical: 8.h),

@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:chessever2/screens/home/start_screen.dart';
 import 'package:chessever2/screens/home/widget/bottom_nav_bar.dart';
 import 'package:chessever2/services/analytics/analytics_service.dart';
 import 'package:chessever2/theme/app_colors.dart';
@@ -49,8 +50,9 @@ class TabletNavRail extends ConsumerWidget {
                   return _NavRailItem(
                     item: item,
                     isSelected: selectedItem == item,
-                    onLongPress: () =>
-                        unawaited(makeBottomTabDefault(context, ref, item)),
+                    onLongPress: () => unawaited(
+                      makeStartScreenDefault(context, ref, section: item),
+                    ),
                     onTap: () {
                       final previous = ref.read(
                         selectedBottomNavBarItemProvider,
