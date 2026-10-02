@@ -127,3 +127,21 @@ On Android and iOS, the user checks:
    Switch accounts and verify the prior reward is unavailable.
 6. Test no inventory, network loss during confirmation, and delayed SSV.
    Retry confirmation must not show another ad. Check required privacy options.
+
+
+## Premium-only reports
+
+As of 35.35.7+3534, generating any report (including the first) and opening a
+cached/completed report or the Reports archive require paid or active rewarded
+access. The existing Watch ad / Upgrade chooser runs before those actions,
+including in debug. Interrupted work does not resume without access.
+
+Migration `20261002170755_premium_only_game_reports.sql` removes the server's
+free first-report and same-game daily allowances in production. Both paid and
+verified rewarded claims remain supported. Existing reports and claim history
+are retained. The shared server claim policy also applies to older clients.
+
+Device check: with a fresh free account, tap Generate Report and Reports;
+dismiss the chooser and verify nothing opens or generates. Repeat for a cached
+report. Complete an ad and verify both generation and viewing work until expiry;
+subscribers should open directly. Saved reports remain after access expires.

@@ -1,3 +1,4 @@
+import 'package:chessever2/widgets/paywall/game_report_access.dart';
 import 'dart:async';
 
 import 'package:chessever2/screens/collections/event_view_shell.dart';
@@ -26,9 +27,12 @@ import 'package:intl/intl.dart';
 /// toggle instead of a one-word "Games" tab.
 class ReportsScreen extends ConsumerStatefulWidget {
   const ReportsScreen({super.key});
-  static Future<void> open(BuildContext context) => Navigator.of(
-    context,
-  ).push(MaterialPageRoute<void>(builder: (_) => const ReportsScreen()));
+  static Future<void> open(BuildContext context) async {
+    if (!await ensureGameReportAccess(context) || !context.mounted) return;
+    await Navigator.of(
+      context,
+    ).push(MaterialPageRoute<void>(builder: (_) => const ReportsScreen()));
+  }
 
   @override
   ConsumerState<ReportsScreen> createState() => _ReportsScreenState();
