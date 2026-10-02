@@ -5,7 +5,6 @@ import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/theme/app_colors.dart';
-import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/widgets/rounded_search_bar.dart';
 import 'package:chessever2/screens/standings/player_standing_model.dart';
 import 'package:chessever2/repository/local_storage/favorite/favourate_standings_player_services.dart';
@@ -285,7 +284,7 @@ class _PlayerList extends ConsumerWidget {
                 isFavorite: player['isFavorite'] ?? false,
                 onBeforeToggle: () async {
                   final authOk = await requireFullAuthGuard(context);
-                  if (!authOk) return false;
+                  if (!authOk || !context.mounted) return false;
                   // Check limit if adding (not currently favorite)
                   if (player['isFavorite'] != true) {
                     return await canAddMoreFavorites(context, ref);
@@ -364,7 +363,7 @@ class _PlayerList extends ConsumerWidget {
       // Pre-flight `canAddMoreFavorites` already gates the common path; this
       // catches the race where the server-side count is ahead of local state.
       if (context.mounted) {
-        await showPremiumPaywallSheet(context: context);
+        await showPremiumPaywallSheet(context: context, allowRewarded: false);
       }
     } catch (e) {
       debugPrint('Error updating Supabase favorites: $e');

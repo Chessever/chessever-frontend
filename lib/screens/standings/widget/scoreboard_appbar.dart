@@ -93,7 +93,7 @@ class _ScoreboardAppbarState extends ConsumerState<ScoreboardAppbar>
         }
       } on FavoriteLimitExceededException {
         if (mounted) {
-          await showPremiumPaywallSheet(context: context);
+          await showPremiumPaywallSheet(context: context, allowRewarded: false);
         }
       } catch (e) {
         debugPrint('Error toggling favorite: $e');

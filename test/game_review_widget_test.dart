@@ -30,6 +30,32 @@ Future<GameAnalysisClaimResult> _allowClaim(String _) async =>
     );
 
 void main() {
+  test('free controller cannot generate even its first report', () async {
+    var claims = 0;
+    final controller = MobileGameReviewController(
+      canAccess: () => false,
+      claimQuota: (_) async {
+        claims++;
+        return const GameAnalysisClaimResult(
+          allowed: true,
+          reason: 'free',
+          isPremium: false,
+        );
+      },
+    );
+    addTearDown(controller.dispose);
+    controller.configure(
+      game: ChessGame.fromPgn('locked-first', '[Result "1-0"]\n\n1. e4 e5 1-0'),
+      active: true,
+      finished: true,
+      whiteRating: 0,
+      blackRating: 0,
+    );
+    await controller.retry();
+    expect(claims, 0);
+    expect(controller.reviewState.reportState.status, GameReportStatus.idle);
+  });
+
   test('review eligibility and reveal state follow the configured game', () {
     final controller = MobileGameReviewController(claimQuota: _allowClaim);
     addTearDown(controller.dispose);
@@ -113,10 +139,9 @@ void main() {
   // the timer-behind-a-delay shape the removed version used, without making a
   // unit test sit through the delay.
   test('the controller holds no auto-start timer at all', () {
-    final source =
-        io.File(
-          'lib/screens/chessboard/game_review/game_review_provider.dart',
-        ).readAsStringSync();
+    final source = io.File(
+      'lib/screens/chessboard/game_review/game_review_provider.dart',
+    ).readAsStringSync();
     expect(source, isNot(contains('autoStart')));
     expect(source, isNot(contains('_scheduleAnalyze')));
     expect(source, isNot(contains('Timer(')));
@@ -182,7 +207,10 @@ void main() {
       ) {
         await Future<void>.delayed(const Duration(milliseconds: 10));
       }
-      expect(controller.reviewState.reportState.status, GameReportStatus.running);
+      expect(
+        controller.reviewState.reportState.status,
+        GameReportStatus.running,
+      );
       expect(claims, 1);
 
       // Swipe-away / game leave cancels promptly via setActive(false).
@@ -288,7 +316,10 @@ void main() {
       ) {
         await Future<void>.delayed(const Duration(milliseconds: 10));
       }
-      expect(controller.reviewState.reportState.status, GameReportStatus.running);
+      expect(
+        controller.reviewState.reportState.status,
+        GameReportStatus.running,
+      );
       expect(claims, 1);
       final claimsAtRun = claims;
 
@@ -421,69 +452,76 @@ void main() {
     },
   );
 
-  test('interrupted pending run resumes on configure without re-claim', () async {
-    // Unique line so session cache from other tests cannot satisfy this fp.
-    final game = ChessGame.fromPgn(
-      'pending-resume',
-      '[White "A"]\n[Black "B"]\n[Result "1-0"]\n\n'
-      '1. c4 c5 2. Nc3 Nc6 1-0',
-    );
-    final store = GameAnalysisReportStore.memory();
-    final fingerprint = gameReportFingerprint(game);
-    await store.markPending(fingerprint);
-    var claims = 0;
-    final reportController = GameAnalysisReportController(
-      evaluator: _evaluator,
-      store: store,
-    );
-    final controller = MobileGameReviewController(
-      reportController: reportController,
-      claimQuota: (_) async {
-        claims++;
-        return const GameAnalysisClaimResult(
-          allowed: true,
-          reason: 'premium',
-          isPremium: true,
-        );
-      },
-    );
-    addTearDown(() {
-      controller.dispose();
-      // Store-backed completes write the static session map — isolate peers.
-      GameAnalysisReportController.clearSessionCacheForTest();
-    });
+  test(
+    'interrupted pending run resumes on configure without re-claim',
+    () async {
+      // Unique line so session cache from other tests cannot satisfy this fp.
+      final game = ChessGame.fromPgn(
+        'pending-resume',
+        '[White "A"]\n[Black "B"]\n[Result "1-0"]\n\n'
+            '1. c4 c5 2. Nc3 Nc6 1-0',
+      );
+      final store = GameAnalysisReportStore.memory();
+      final fingerprint = gameReportFingerprint(game);
+      await store.markPending(fingerprint);
+      var claims = 0;
+      final reportController = GameAnalysisReportController(
+        evaluator: _evaluator,
+        store: store,
+      );
+      final controller = MobileGameReviewController(
+        reportController: reportController,
+        claimQuota: (_) async {
+          claims++;
+          return const GameAnalysisClaimResult(
+            allowed: true,
+            reason: 'premium',
+            isPremium: true,
+          );
+        },
+      );
+      addTearDown(() {
+        controller.dispose();
+        // Store-backed completes write the static session map — isolate peers.
+        GameAnalysisReportController.clearSessionCacheForTest();
+      });
 
-    controller.configure(
-      game: game,
-      active: true,
-      finished: true,
-      whiteRating: 2100,
-      blackRating: 2050,
-    );
+      controller.configure(
+        game: game,
+        active: true,
+        finished: true,
+        whiteRating: 2100,
+        blackRating: 2050,
+      );
 
-    for (
-      var i = 0;
-      i < 100 &&
-          controller.reviewState.reportState.status !=
-              GameReportStatus.completed;
-      i++
-    ) {
-      await Future<void>.delayed(const Duration(milliseconds: 20));
-    }
-    expect(
-      controller.reviewState.reportState.status,
-      GameReportStatus.completed,
-      reason: 'durable pending must auto-restart analysis after process death',
-    );
-    expect(claims, 0, reason: 'interrupted resume must not spend a new claim');
-    expect(await store.isPending(fingerprint), isFalse);
-  });
+      for (
+        var i = 0;
+        i < 100 &&
+            controller.reviewState.reportState.status !=
+                GameReportStatus.completed;
+        i++
+      ) {
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+      }
+      expect(
+        controller.reviewState.reportState.status,
+        GameReportStatus.completed,
+        reason:
+            'durable pending must auto-restart analysis after process death',
+      );
+      expect(
+        claims,
+        0,
+        reason: 'interrupted resume must not spend a new claim',
+      );
+      expect(await store.isPending(fingerprint), isFalse);
+    },
+  );
 
   test('app lifecycle pause path does not deactivate game review (source)', () {
-    final boardSource =
-        io.File(
-          'lib/screens/chessboard/chess_board_screen_new.dart',
-        ).readAsStringSync();
+    final boardSource = io.File(
+      'lib/screens/chessboard/chess_board_screen_new.dart',
+    ).readAsStringSync();
     expect(
       boardSource,
       contains('deactivateGameReview: false'),
@@ -607,10 +645,9 @@ void main() {
   );
 
   test('openGameReview analyze-then-sheet; mid-run reconnect without cancel', () {
-    final boardSource =
-        io.File(
-          'lib/screens/chessboard/chess_board_screen_new.dart',
-        ).readAsStringSync();
+    final boardSource = io.File(
+      'lib/screens/chessboard/chess_board_screen_new.dart',
+    ).readAsStringSync();
     final openIndex = boardSource.indexOf('void openGameReview()');
     expect(openIndex, greaterThan(0));
     final openBody = boardSource.substring(openIndex, openIndex + 1800);
@@ -633,7 +670,8 @@ void main() {
     expect(
       openAfterAnalyzeIdx,
       greaterThan(analyzeIdx),
-      reason: 'fresh generate opens the sheet only after requestAnalysis returns',
+      reason:
+          'fresh generate opens the sheet only after requestAnalysis returns',
     );
 
     // Mid-run branch reconnects the sheet without calling requestAnalysis first.
@@ -647,17 +685,13 @@ void main() {
     expect(runningBranch, isNot(contains('requestAnalysis')));
     expect(runningBranch, isNot(contains('stopAnalysis')));
 
-    final reportSource =
-        io.File(
-          'lib/screens/chessboard/game_review/game_analysis_report.dart',
-        ).readAsStringSync();
+    final reportSource = io.File(
+      'lib/screens/chessboard/game_review/game_analysis_report.dart',
+    ).readAsStringSync();
     // Cancel must set cancelled status before awaiting Stockfish teardown.
     final cancelIdx = reportSource.indexOf('Future<void> cancel() async');
     expect(cancelIdx, greaterThan(0));
-    final cancelBody = reportSource.substring(
-      cancelIdx,
-      cancelIdx + 800,
-    );
+    final cancelBody = reportSource.substring(cancelIdx, cancelIdx + 800);
     final statusBeforeAwait =
         cancelBody.indexOf('GameReportStatus.cancelled') <
         cancelBody.indexOf('cancelEvaluationsForOwner');
@@ -666,29 +700,36 @@ void main() {
       isTrue,
       reason: 'UI status must leave running before engine cancel await',
     );
-    expect(cancelBody, isNot(contains('will restart when this game is active')));
+    expect(
+      cancelBody,
+      isNot(contains('will restart when this game is active')),
+    );
 
     // requestAnalysis must no-op while running (keep mid-run alive).
-    final providerSource =
-        io.File(
-          'lib/screens/chessboard/game_review/game_review_provider.dart',
-        ).readAsStringSync();
+    final providerSource = io.File(
+      'lib/screens/chessboard/game_review/game_review_provider.dart',
+    ).readAsStringSync();
     final requestIdx = providerSource.indexOf(
       'Future<void> requestAnalysis(BuildContext context) async',
     );
     expect(requestIdx, greaterThan(0));
     final requestBody = providerSource.substring(requestIdx, requestIdx + 600);
-    expect(requestBody, contains('if (_reportController.state.isRunning) return;'));
+    expect(
+      requestBody,
+      contains('if (_reportController.state.isRunning) return;'),
+    );
     expect(requestBody, isNot(contains('stopAnalysis')));
     expect(requestBody, isNot(contains('cancel()')));
 
     // Board eval must resume when the review sheet hides, and must not hard-defer
     // MultiPV while the sheet is open (Arun #285 freeze collateral).
-    final boardProviderSource =
-        io.File(
-          'lib/screens/chessboard/provider/chess_board_screen_provider_new.dart',
-        ).readAsStringSync();
-    expect(boardProviderSource, isNot(contains('_deferredReviewEvaluationFen')));
+    final boardProviderSource = io.File(
+      'lib/screens/chessboard/provider/chess_board_screen_provider_new.dart',
+    ).readAsStringSync();
+    expect(
+      boardProviderSource,
+      isNot(contains('_deferredReviewEvaluationFen')),
+    );
     expect(
       boardProviderSource,
       isNot(contains('Deferring board evaluation while sheet is visible')),
@@ -706,7 +747,10 @@ void main() {
     // No early-return that clears isEvaluating solely because the sheet is open.
     final updateIdx = boardProviderSource.indexOf('void _updateEvaluation({');
     expect(updateIdx, greaterThan(0));
-    final updateHead = boardProviderSource.substring(updateIdx, updateIdx + 700);
+    final updateHead = boardProviderSource.substring(
+      updateIdx,
+      updateIdx + 700,
+    );
     expect(updateHead, isNot(contains('if (_gameReviewVisible)')));
   });
 
@@ -869,10 +913,9 @@ void main() {
             san: chessGame.mainline[i].san,
             uci: chessGame.mainline[i].uci,
             isWhite: chessGame.mainline[i].turn == ChessColor.white,
-            classification:
-                i.isEven
-                    ? GameMoveClassification.bestMove
-                    : GameMoveClassification.inaccuracy,
+            classification: i.isEven
+                ? GameMoveClassification.bestMove
+                : GameMoveClassification.inaccuracy,
             evaluation: const GameReportLine(
               moves: ['a2a3'],
               depth: 8,
@@ -965,9 +1008,7 @@ void main() {
           body: Column(
             children: [
               GameAnalysisButton(
-                state: MobileGameReviewState(
-                  isEligible: true,
-                ),
+                state: MobileGameReviewState(isEligible: true),
                 onPressed: _noop,
               ),
               GameAnalysisButton(
@@ -993,9 +1034,7 @@ void main() {
               GameAnalysisButton(
                 state: MobileGameReviewState(
                   isEligible: true,
-                  reportState: GameReportState(
-                    status: GameReportStatus.failed,
-                  ),
+                  reportState: GameReportState(status: GameReportStatus.failed),
                 ),
                 onPressed: _noop,
               ),
@@ -1245,10 +1284,9 @@ void main() {
     expect(radius.topRight.x, GameReviewSheetExtents.topRadius);
     // No scrim and no modal barrier: a tap above the sheet has to reach the
     // board underneath instead of being swallowed (or dismissing the sheet).
-    final sheetTop =
-        tester
-            .getTopLeft(find.byKey(const ValueKey('game-review-full-sheet')))
-            .dy;
+    final sheetTop = tester
+        .getTopLeft(find.byKey(const ValueKey('game-review-full-sheet')))
+        .dy;
     await tester.tapAt(Offset(200, sheetTop - 40));
     await tester.pump();
     expect(boardTaps, 1);
@@ -1285,7 +1323,7 @@ void main() {
       final chessGame = ChessGame.fromPgn(
         'sheet-hold',
         '[White "Ada"]\n[Black "Grace"]\n[Result "1-0"]\n\n'
-        '1. e4 e5 2. Nf3 Nc6 3. Bb5 a6 4. Ba4 Nf6 1-0',
+            '1. e4 e5 2. Nf3 Nc6 3. Bb5 a6 4. Ba4 Nf6 1-0',
       );
       final controller = MobileGameReviewController(
         reportController: GameAnalysisReportController(evaluator: _evaluator),
@@ -1575,12 +1613,12 @@ void main() {
     // The whole point of the measured anchor: the sheet's top edge lands
     // exactly the requested distance up from the bottom of its host, so it
     // finishes right under the board's player row on any device.
-    final hostBottom =
-        tester.getBottomLeft(find.byType(DraggableScrollableSheet)).dy;
-    final sheetTop =
-        tester
-            .getTopLeft(find.byKey(const ValueKey('game-review-full-sheet')))
-            .dy;
+    final hostBottom = tester
+        .getBottomLeft(find.byType(DraggableScrollableSheet))
+        .dy;
+    final sheetTop = tester
+        .getTopLeft(find.byKey(const ValueKey('game-review-full-sheet')))
+        .dy;
     expect(hostBottom - sheetTop, closeTo(200, 0.5));
   });
 
@@ -1656,10 +1694,9 @@ ChessBoardStateNew _boardState({
     analysisState: AnalysisBoardState(
       currentMoveIndex: currentMoveIndex,
       branchPointMoveIndex: inVariation ? 0 : null,
-      analysisMoves:
-          inVariation
-              ? const <Move>[NormalMove(from: Square.e2, to: Square.e4)]
-              : const <Move>[],
+      analysisMoves: inVariation
+          ? const <Move>[NormalMove(from: Square.e2, to: Square.e4)]
+          : const <Move>[],
     ),
   );
 }
@@ -1675,10 +1712,9 @@ Future<EnhancedCloudEval> _evaluator(
 }) async {
   onProgress?.call(depth, 500);
   final whiteToMove = fen.split(' ')[1] == 'w';
-  final top =
-      whiteToMove
-          ? (fen.startsWith('rnbqkbnr/pppppppp') ? 'e2e4' : 'g1f3')
-          : 'e7e5';
+  final top = whiteToMove
+      ? (fen.startsWith('rnbqkbnr/pppppppp') ? 'e2e4' : 'g1f3')
+      : 'e7e5';
   final second = whiteToMove ? 'd2d4' : 'd7d5';
   final third = whiteToMove ? 'c2c4' : 'c7c5';
   return EnhancedCloudEval(

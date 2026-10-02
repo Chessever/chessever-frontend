@@ -115,14 +115,119 @@ On Android and iOS, the user checks:
 1. Free account or guest: tap a locked feature, see Watch ad and Upgrade.
    Cancel the chooser; nothing unlocks. Close an ad early; nothing unlocks.
 2. Complete a test impression with the configured verification path: after
-   confirmation the original action runs once and the top timer starts.
+   confirmation the original action runs once. Access lasts ten minutes without
+   an on-screen countdown.
    Check another premium feature, rankings, reports, collections, save/import
    limits, and signed-in chat. Required account ownership prompts still apply.
 3. Background the app; return before expiry and verify elapsed time is deducted.
    Return after expiry and verify one popup with three choices.
 4. Renew twice and verify each later expiry prompts again. Upgrade and verify
-   the timer disappears. Go back and verify a free screen with saved data intact.
+   rewarded expiry prompts stop. Go back and verify a free screen with saved data intact.
 5. Kill and relaunch the app before expiry; verify another ad is required.
    Switch accounts and verify the prior reward is unavailable.
 6. Test no inventory, network loss during confirmation, and delayed SSV.
    Retry confirmation must not show another ad. Check required privacy options.
+
+
+## Premium-only reports
+
+As of 35.35.7+3534, generating any report (including the first) and opening a
+cached/completed report require paid or active rewarded access. Browsing the
+Reports archive is free; opening one of its boards requires access. The existing Watch ad / Upgrade chooser runs before those actions,
+including in debug. Interrupted work does not resume without access.
+
+Migration `20261002170755_premium_only_game_reports.sql` removes the server's
+free first-report and same-game daily allowances in production. Both paid and
+verified rewarded claims remain supported. Existing reports and claim history
+are retained. The shared server claim policy also applies to older clients.
+
+Device check: with a fresh free account, tap Generate Report or a board inside
+Reports; dismiss the chooser and verify no board opens or report generates. Repeat for a cached
+report. Complete an ad and verify both generation and viewing work until expiry;
+subscribers should open directly. Saved reports remain after access expires.
+
+## Followed-player limit
+
+Rewarded access keeps the free limit of three followed players, including players
+added from Countrymen. Only a paid subscription raises this limit. At the cap,
+adding another player opens the subscription paywall without a rewarded option.
+Existing follows remain intact, and removing a player is always allowed.
+
+Device check: with three follows and active rewarded access, try to add a fourth
+from Countrymen and a player profile. Both must show the subscription paywall
+and keep the count at three. Remove one and confirm a replacement can be added.
+
+Discovery → Reports remains browsable without Premium. Each locked report card
+uses the My Likes greyscale and padlock style; tapping a card shows Watch ad or
+Upgrade before opening the board. Paid or active rewarded access removes locks.
+
+## Premium PGN imports
+
+PGN clipboard and file imports require paid or active rewarded access, including
+Board Editor → Paste PGN and files opened/shared from outside the app. The
+existing Watch ad / Upgrade chooser appears before importing. Preview board
+opening and saving recheck access after expiry; parsed games stay intact.
+FEN paste and previously saved library content are unchanged.
+
+Device check: as a free user, try clipboard imports, file selection, Board
+Editor PGN paste, and opening a PGN from Files. Dismissing the chooser must
+prevent the import; completing an ad or subscribing must resume it. Let access
+expire on the preview, then tap a game or Save and verify another prompt.
+
+## Premium chooser design
+
+The chooser follows the supplied charcoal mockup: compact Watch ad and Upgrade
+buttons, a play icon, close and Not now actions, and button-local loading states.
+The expiry dialog keeps Watch ad again / Upgrade / Go back and cannot be dismissed
+with close or platform Back. All dismissal and secondary actions are disabled
+while an ad, confirmation, or upgrade is in progress. Text wraps and the dialog
+scrolls on narrow screens or large accessibility text. The app typeface is retained.
+
+## Subscription-only home customization
+
+Rewarded access does not unlock Settings → Customization → Start section /
+Home page, or holding a phone bottom tab / tablet rail item to set the start
+screen. Those actions require a paid subscription and show Upgrade without a
+Watch ad option. Previously saved defaults are preserved.
+
+Device check: during rewarded access, try both customization rows and hold a
+navigation tab. None may open its picker/confirmation without a subscription.
+Paid users should still be able to change and persist their defaults.
+
+## Subscription-only database allowances
+
+Ad-unlocked access keeps the free limits of three owned databases and ten saved
+game rows across all databases. This includes nested database creation and
+saving/bulk-saving imported PGNs. At either cap, only subscribing raises the
+limit; the paywall does not offer Watch ad. PGN import itself still supports
+rewarded access. Existing databases and saved games are preserved.
+
+Device check: during rewarded access, try creating a fourth database from
+Library, My Space, a folder, and the save/import pickers; each must be blocked.
+With ten saved games, a new single or bulk save must request a subscription.
+
+## Feed scrolling
+
+Free viewers can open Feed and view its first post. Swiping or tapping Next
+shows the Watch ad / Upgrade chooser before revealing subsequent posts.
+Dismissal returns to the first post; confirmed paid or rewarded access continues
+to the next post and allows scrolling. Free visits start on the first post
+rather than restoring a previously unlocked position. Expiry returns scrolling
+to the first-post allowance.
+
+Device check: swipe after the first post and dismiss the chooser; the second
+post must stay hidden. Try again and complete an ad; verify the second post
+appears and further swipes work. Also verify a subscriber never sees the gate.
+
+## Smart Events and My Likes game access
+
+Both lists stay browsable, but opening any of their games requires paid or
+active rewarded access. This includes the latest twenty My Likes games, every
+card layout, context-menu Open, and Smart Event games reached through a player
+scorecard. My Likes cards show a lock whenever game access is unavailable.
+The existing archive window, search, removal, and stored likes remain intact.
+
+Device check: on a free account, tap a recent like and Smart Event games in
+list/board/grid modes, including the scorecard route. Dismiss Watch ad / Upgrade
+and verify no board opens. Complete an ad and verify the selected game opens;
+paid subscribers should bypass the popup.

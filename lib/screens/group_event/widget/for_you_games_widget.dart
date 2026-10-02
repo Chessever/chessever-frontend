@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
 import 'package:chessever2/services/native_ads_config.dart';
+import 'package:chessever2/services/home_ad_remote_config.dart';
 import 'package:chessever2/services/rewarded_premium/rewarded_access_provider.dart';
 import 'package:chessever2/widgets/ads/today_native_ad.dart';
 
@@ -294,6 +295,7 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
     final viewMode = ref.watch(gamesListViewModeProvider);
     final events = state.events;
     final showNativeAd = NativeAdsConfig.available &&
+        ref.watch(homeNativeAdEnabledProvider) &&
         events.length >= 2 &&
         !ref.watch(subscriptionProvider.select((s) => s.isLoading)) &&
         !ref.watch(premiumAccessProvider);

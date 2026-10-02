@@ -1,5 +1,3 @@
-import 'package:chessever2/services/rewarded_premium/rewarded_session.dart';
-import 'package:chessever2/config/app_environment.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'package:chessever2/repository/favorites/models/favorite_player.dart';
@@ -193,8 +191,7 @@ class FavoritePlayersNotifierNew extends AsyncNotifier<List<FavoritePlayer>> {
       // which lags behind the latest INSERT by the round-trip time. The
       // same race let users slip past the saved-games cap before — same
       // pattern, same fix.
-      final isSubscribed = (!AppEnvironment.isTest && RewardedSession.instance.active) ||
-          await RevenueCatService().isSubscribed();
+      final isSubscribed = await RevenueCatService().isSubscribed();
       if (!isSubscribed) {
         final currentCount = await _supabase
             .from('user_favorite_players')

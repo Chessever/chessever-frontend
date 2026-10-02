@@ -1,3 +1,4 @@
+import 'package:chessever2/widgets/paywall/game_report_access.dart';
 import 'package:chessever2/config/feature_flags.dart';
 import 'package:chessever2/providers/country_dropdown_provider.dart';
 import 'widgets/notation_scroll.dart';
@@ -11513,6 +11514,11 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
       final sheet = GameReviewSheetScope.maybeOf(context);
       if (sheet == null) return;
       unawaited(() async {
+        if (!await ensureGameReportAccess(context) ||
+            !mounted ||
+            !context.mounted) {
+          return;
+        }
         final viewController = ref.read(
           analysisViewSessionProvider(widget.game.gameId).notifier,
         );

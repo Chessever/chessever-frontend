@@ -1,3 +1,4 @@
+import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
 import 'package:chessever2/repository/local_storage/local_storage_repository.dart';
 import 'package:chessever2/screens/collections/collections_tab_provider.dart';
 import 'package:chessever2/screens/for_you/providers/for_you_tab_provider.dart';
@@ -37,7 +38,11 @@ void main() {
       expect(readDefaultEventsCategory(), GroupEventCategory.upcoming);
       expect(readDefaultCollectionsTab(), CollectionsTab.authors);
 
-      final container = ProviderContainer();
+      final container = ProviderContainer(
+        overrides: [
+          subscriptionProvider.overrideWith((ref) => _PaidSubscription()),
+        ],
+      );
       addTearDown(container.dispose);
       expect(
         container.read(selectedGroupCategoryProvider),
@@ -94,8 +99,11 @@ void main() {
       WidgetTester tester,
       void Function(BuildContext context, WidgetRef ref) onHold,
     ) async {
-      container = ProviderContainer();
-      addTearDown(container.dispose);
+      container = ProviderContainer(
+        overrides: [
+          subscriptionProvider.overrideWith((ref) => _PaidSubscription()),
+        ],
+      );
       await tester.pumpWidget(
         UncontrolledProviderScope(
           container: container,
@@ -165,6 +173,8 @@ void main() {
       );
       // Clear the snack timer before the test ends.
       await tester.pump(const Duration(seconds: 6));
+      await tester.pumpWidget(const SizedBox.shrink());
+      container.dispose();
     });
 
     testWidgets('cancelling saves nothing', (tester) async {
@@ -184,6 +194,8 @@ void main() {
 
       expect(prefs.getString(defaultBottomTabPrefsKey), isNull);
       expect(prefs.getString(defaultForYouTabPrefsKey), isNull);
+      await tester.pumpWidget(const SizedBox.shrink());
+      container.dispose();
     });
 
     testWidgets('a held tab title saves that tab, not the shown one', (
@@ -214,6 +226,8 @@ void main() {
       expect(prefs.getString(defaultBottomTabPrefsKey), 'tournaments');
       expect(prefs.getString(defaultEventsCategoryPrefsKey), 'upcoming');
       await tester.pump(const Duration(seconds: 6));
+      await tester.pumpWidget(const SizedBox.shrink());
+      container.dispose();
     });
 
     testWidgets('an Events nav hold during a search saves the list under it', (
@@ -244,6 +258,8 @@ void main() {
       );
       await tester.tap(find.text('Cancel'));
       await settle(tester);
+      await tester.pumpWidget(const SizedBox.shrink());
+      container.dispose();
     });
 
     testWidgets('a Collections nav hold saves the page it is on', (
@@ -273,6 +289,8 @@ void main() {
       expect(prefs.getString(defaultCollectionsTabPrefsKey), 'authors');
       expect(hostContext.mounted, isTrue);
       await tester.pump(const Duration(seconds: 6));
+      await tester.pumpWidget(const SizedBox.shrink());
+      container.dispose();
     });
   });
 
@@ -348,4 +366,15 @@ void main() {
       expect(held, isEmpty);
     });
   });
+}
+
+class _PaidSubscription extends SubscriptionNotifier {
+  _PaidSubscription() : super() {
+    state = SubscriptionState(isSubscribed: true, isLoading: false);
+  }
+
+  // Keep a resolved subscriber while RevenueCat is unavailable under test.
+  @override
+  set state(SubscriptionState value) =>
+      super.state = value.copyWith(isSubscribed: true, isLoading: false);
 }

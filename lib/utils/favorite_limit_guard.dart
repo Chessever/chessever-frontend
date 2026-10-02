@@ -1,4 +1,4 @@
-import 'package:chessever2/services/rewarded_premium/rewarded_access_provider.dart';
+import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
 import 'package:chessever2/utils/favorite_constants.dart';
 import 'package:chessever2/widgets/app_snack.dart';
 import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
@@ -10,8 +10,8 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 ///
 /// Onboarding enforces a hard cap of [kFreeFavoriteLimit] with a friendly
 /// "add more after signing in" toast — never a paywall, because there's no
-/// account yet. In-app, premium bypasses the cap and free users get the
-/// paywall at the limit.
+/// account yet. In-app, only paid subscriptions bypass the cap. Free and
+/// rewarded users get the subscription paywall at the limit.
 ///
 /// When [currentSelectedCount] is provided (e.g. during onboarding where
 /// selections are local), it is used instead of the provider count.
@@ -31,7 +31,7 @@ Future<bool> canAddMoreFavorites(
     return false;
   }
 
-  final isSubscribed = ref.read(featureAccessStateProvider).isSubscribed;
+  final isSubscribed = ref.read(subscriptionProvider).isSubscribed;
   if (isSubscribed) return true;
 
   // Fresh server-side count. Reading the realtime AsyncNotifier's cached
@@ -55,5 +55,5 @@ Future<bool> canAddMoreFavorites(
   if (currentCount < kFreeFavoriteLimit) return true;
 
   if (!context.mounted) return false;
-  return await showPremiumPaywallSheet(context: context);
+  return await showPremiumPaywallSheet(context: context, allowRewarded: false);
 }

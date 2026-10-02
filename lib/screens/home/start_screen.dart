@@ -5,7 +5,7 @@ import 'package:chessever2/screens/home/widget/bottom_nav_bar.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/widgets/alert_dialog/alert_modal.dart';
 import 'package:chessever2/widgets/app_snack.dart';
-import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
+import 'package:chessever2/widgets/paywall/home_customization_access.dart';
 import 'package:flutter/widgets.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -71,7 +71,7 @@ Future<void> makeStartScreenDefault(
   HapticFeedbackService.buttonPress();
   // Read now, not after the paywall: the viewer means the page they held.
   final target = page ?? currentStartPage(ref, section);
-  await requirePremiumGuard(
+  await ensureHomeCustomizationAccess(
     context,
     ref,
     featureId: 'default_start_tab',

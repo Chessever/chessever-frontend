@@ -1,4 +1,4 @@
-import 'package:chessever2/services/rewarded_premium/rewarded_access_provider.dart';
+import 'package:chessever2/widgets/paywall/premium_game_access.dart';
 import 'dart:async';
 
 import 'package:chessever2/main.dart' show routeObserver;
@@ -47,7 +47,6 @@ import 'package:chessever2/widgets/game_filter/game_filter_model.dart';
 import 'package:chessever2/widgets/game_filter/game_search_filter_bar.dart';
 import 'package:chessever2/widgets/game_filter/rating_tier_filter.dart';
 import 'package:chessever2/widgets/generic_error_widget.dart';
-import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
 import 'package:chessever2/widgets/scroll_to_top_bus.dart';
 import 'package:chessever2/widgets/segmented_switcher.dart';
 import 'package:chessever2/widgets/skeleton_widget.dart';
@@ -1820,9 +1819,11 @@ class _GamesTabState extends ConsumerState<_GamesTab>
   }
 
   Future<bool> _guardGameOpen(BuildContext context) async {
-    if (ref.read(featureAccessStateProvider).isSubscribed) return true;
-    if (!context.mounted) return false;
-    return await showPremiumPaywallSheet(context: context);
+    return ensurePremiumGameAccess(
+      context,
+      featureId: 'smart_event_games',
+      returnTo: 'smart_event/games',
+    );
   }
 
   Widget _buildGridGame(
@@ -2527,9 +2528,11 @@ class _EventsTabState extends ConsumerState<_EventsTab>
   }
 
   Future<bool> _guardGameOpen(BuildContext context) async {
-    if (ref.read(featureAccessStateProvider).isSubscribed) return true;
-    if (!context.mounted) return false;
-    return await showPremiumPaywallSheet(context: context);
+    return ensurePremiumGameAccess(
+      context,
+      featureId: 'smart_event_games',
+      returnTo: 'smart_event/games',
+    );
   }
 
   Widget _buildGridGame({

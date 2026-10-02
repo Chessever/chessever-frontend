@@ -1,7 +1,9 @@
 # Today native ad
 
 The production Android/iOS Today feed displays one Native Advanced ad between
-its first and second regular events. Pinned smart events stay above them.
+its first and second regular events only when Firebase Remote Config enables
+`home_native_ad_enabled`. The in-app default is **false** (hidden). Pinned
+smart events stay above them.
 There is no placement with fewer than two regular events, while subscription
 status is loading, or with paid/active rewarded Premium access. Other tabs and
 ChessEver Test do not request native ads.
@@ -11,6 +13,25 @@ video media area above the 120×120 minimum. The card reserves 350 logical pixel
 of height to fit the media and text assets. ATT,
 UMP consent, test-device configuration and SDK initialization share the rewarded
 ad setup. Unavailable inventory and loading failures collapse the placement.
+
+## Firebase Remote Config
+
+In Firebase project `chessever-53078` (shared by production Android and iOS),
+open Remote Config and create `home_native_ad_enabled` with Boolean type and a
+default value of `false`, then publish. Publish `true` to show the placement;
+publish `false` to hide it. No Analytics audience targeting is needed for this
+single global parameter. If the platforms use separate Firebase projects,
+configure the parameter in each project.
+
+The feed starts hidden, then applies Firebase's cached activated value and
+fetches the latest values. A real-time listener activates published changes
+while connected, without another app release. Normal fetches use a one-hour
+minimum interval (one minute in debug). Network failures retain the last
+activated value, or false when none exists. This is not an instant offline
+kill switch. Test flavor, unsupported platforms, and `NATIVE_ADS_ENABLED=false`
+skip Remote Config for this placement. Rewarded access is unchanged.
+
+This integration must be included in a new installed app version first.
 
 ## Configuration
 
@@ -36,7 +57,8 @@ invalid ID override disables the placement on that platform in profile/release.
 
 ## Device checks
 
-- Free user, Today, two or more events: one labeled ad after the first regular
+- Publish false: no ad, load request or blank space. Publish true while online:
+  a free user on Today with two or more events sees one labeled ad after the first regular
   event; event navigation, pagination and refresh still work.
 - Check phone and tablet, light and dark themes, and scrolling away and back.
 - Other tabs, fewer than two events, and ChessEver Test: no placement.

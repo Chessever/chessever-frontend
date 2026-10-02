@@ -1,3 +1,5 @@
+import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
+import 'package:chessever2/widgets/paywall/pgn_import_access.dart';
 import 'package:chessever2/services/rewarded_premium/rewarded_access_provider.dart';
 import 'dart:async';
 import 'dart:io';
@@ -27,6 +29,7 @@ import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/logger/logger.dart';
+import 'package:chessever2/utils/library_utils.dart';
 import 'package:chessever2/utils/pgn_multi_parser.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/user_error_message.dart';
@@ -313,6 +316,7 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
   }
 
   Future<void> _handlePickPgnFile() async {
+    if (!await ensurePgnImportAccess(context) || !context.mounted) return;
     FilePickerResult? result;
     try {
       result = await FilePicker.platform.pickFiles(
@@ -354,6 +358,7 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
   }
 
   Future<void> _handleImportPgnFromClipboard() async {
+    if (!await ensurePgnImportAccess(context) || !context.mounted) return;
     final clipboard = await Clipboard.getData(Clipboard.kTextPlain);
     final text = clipboard?.text?.trim();
     if (text == null || text.isEmpty) {
@@ -398,6 +403,23 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
       defaultToDatabase: true,
     );
     if (data == null || data.name.trim().isEmpty) return;
+    if (data.nodeType == LibraryFolder.nodeTypeDatabase &&
+        !ref.read(subscriptionProvider).isSubscribed) {
+      final folders = await ref.read(libraryFoldersStreamProvider.future);
+      final owned = folders
+          .where(
+            (folder) =>
+                !folder.isSubscribed &&
+                folder.id != kTwicBookId &&
+                folder.isDatabase,
+          )
+          .length;
+      if (!mounted) return;
+      if (owned >= kFreeBookCreationLimit) {
+        await showPremiumPaywallSheet(context: context, allowRewarded: false);
+        return;
+      }
+    }
 
     try {
       await ref

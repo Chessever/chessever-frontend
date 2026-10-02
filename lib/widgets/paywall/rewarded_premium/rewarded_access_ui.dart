@@ -23,6 +23,7 @@ Future<bool> showRewardedAccessChoice(
           context: context,
           useRootNavigator: true,
           barrierDismissible: !expired,
+          barrierColor: Colors.black.withValues(alpha: 0.56),
           builder: (_) => _AccessChoice(upgrade: upgrade, expired: expired),
         ) ??
         false;
@@ -41,9 +42,13 @@ class _AccessChoice extends ConsumerStatefulWidget {
 
 class _AccessChoiceState extends ConsumerState<_AccessChoice> {
   bool _busy = false;
+  bool _upgrading = false;
   Future<void> _watch() async {
     if (_busy) return;
-    setState(() => _busy = true);
+    setState(() {
+      _busy = true;
+      _upgrading = false;
+    });
     try {
       final unlocked = await ref
           .read(rewardedAccessProvider.notifier)
@@ -81,7 +86,10 @@ class _AccessChoiceState extends ConsumerState<_AccessChoice> {
 
   Future<void> _upgrade() async {
     if (_busy) return;
-    setState(() => _busy = true);
+    setState(() {
+      _busy = true;
+      _upgrading = true;
+    });
     try {
       final upgraded = await widget.upgrade(context);
       if (upgraded && mounted) Navigator.of(context).pop(true);
@@ -101,8 +109,15 @@ class _AccessChoiceState extends ConsumerState<_AccessChoice> {
   @override
   Widget build(BuildContext context) {
     final reward = ref.watch(rewardedAccessProvider);
-    final theme = Theme.of(context);
-    final dark = theme.brightness == Brightness.dark;
+    const card = Color(0xFF242A30);
+    const primary = Color(0xFF10B9DF);
+    const primaryInk = Color(0xFF07232B);
+    const titleInk = Color(0xFFF5F7FA);
+    const bodyInk = Color(0xFFC5CDD6);
+    const secondaryInk = Color(0xFF35CCED);
+    const outline = Color(0xFF74818E);
+    final confirming = reward.pending;
+    final watching = _busy && !_upgrading;
     ref.listen<bool>(subscriptionProvider.select((s) => s.isSubscribed), (
       _,
       paid,
@@ -111,71 +126,193 @@ class _AccessChoiceState extends ConsumerState<_AccessChoice> {
     });
     return PopScope(
       canPop: !widget.expired && !_busy,
-      child: AlertDialog(
-        backgroundColor: dark ? const Color(0xFF262A30) : Colors.white,
+      child: Dialog(
+        backgroundColor: card,
         surfaceTintColor: Colors.transparent,
+        insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+        constraints: const BoxConstraints(maxWidth: 352),
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(24),
-          side: BorderSide(color: theme.colorScheme.outlineVariant),
+          borderRadius: BorderRadius.circular(20),
+          side: const BorderSide(color: Color(0xFF39454D)),
         ),
-        title: Text(
-          widget.expired ? 'Your Premium access has ended' : 'Unlock Premium',
-          textAlign: TextAlign.center,
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text(
-              reward.pending
-                  ? 'Confirming your reward…'
-                  : 'Watch a complete ad for 10 minutes of access to all Premium features, or upgrade for ongoing access.',
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 16),
-            if (_busy) const Center(child: CircularProgressIndicator()),
-            const SizedBox(height: 8),
-            FilledButton(
-              onPressed: _busy ? null : _watch,
-              style: FilledButton.styleFrom(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 12,
+        child: SingleChildScrollView(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 20, 20, 12),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: Semantics(
+                        namesRoute: true,
+                        header: true,
+                        child: Text(
+                          widget.expired
+                              ? 'Your Premium access has ended'
+                              : 'Unlock Premium',
+                          style: const TextStyle(
+                            color: titleInk,
+                            fontSize: 24,
+                            height: 1.25,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                    ),
+                    if (!widget.expired)
+                      IconButton(
+                        tooltip: 'Close',
+                        onPressed: _busy
+                            ? null
+                            : () => Navigator.of(context).pop(false),
+                        constraints: const BoxConstraints(
+                          minWidth: 44,
+                          minHeight: 44,
+                        ),
+                        padding: EdgeInsets.zero,
+                        visualDensity: VisualDensity.standard,
+                        color: bodyInk,
+                        disabledColor: outline,
+                        icon: const Icon(Icons.close, size: 20),
+                      ),
+                  ],
                 ),
-              ),
-              child: Text(
-                reward.pending
-                    ? 'Retry confirmation'
-                    : widget.expired
-                    ? 'Watch ad again'
-                    : 'Watch ad — unlock Premium for 10 minutes',
-                textAlign: TextAlign.center,
-              ),
-            ),
-            const SizedBox(height: 8),
-            OutlinedButton(
-              onPressed: _busy ? null : _upgrade,
-              style: OutlinedButton.styleFrom(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 12,
+                const SizedBox(height: 12),
+                Text(
+                  confirming
+                      ? 'Confirming your reward…'
+                      : 'Watch an ad for 10 minutes of access to all Premium features.',
+                  style: const TextStyle(
+                    color: bodyInk,
+                    fontSize: 16,
+                    height: 1.5,
+                  ),
                 ),
-              ),
-              child: const Text(
-                'Upgrade to Premium',
-                textAlign: TextAlign.center,
-              ),
+                const SizedBox(height: 24),
+                FilledButton(
+                  onPressed: _busy ? null : _watch,
+                  style: FilledButton.styleFrom(
+                    backgroundColor: primary,
+                    foregroundColor: primaryInk,
+                    disabledBackgroundColor: watching
+                        ? primary
+                        : const Color(0xFF334149),
+                    disabledForegroundColor: watching ? primaryInk : outline,
+                    minimumSize: const Size(0, 48),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 12,
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    textStyle: const TextStyle(
+                      fontSize: 16,
+                      height: 1.25,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      if (watching)
+                        const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: primaryInk,
+                          ),
+                        )
+                      else if (!confirming)
+                        const Icon(Icons.play_arrow_rounded, size: 20),
+                      if (watching || !confirming) const SizedBox(width: 8),
+                      Flexible(
+                        child: Text(
+                          watching
+                              ? confirming
+                                    ? 'Confirming…'
+                                    : 'Loading ad…'
+                              : confirming
+                              ? 'Retry confirmation'
+                              : widget.expired
+                              ? 'Watch ad again'
+                              : 'Watch ad',
+                          textAlign: TextAlign.center,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 12),
+                OutlinedButton(
+                  onPressed: _busy ? null : _upgrade,
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: secondaryInk,
+                    disabledForegroundColor: _upgrading
+                        ? secondaryInk
+                        : outline,
+                    side: const BorderSide(color: outline),
+                    minimumSize: const Size(0, 48),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 12,
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    textStyle: const TextStyle(
+                      fontSize: 16,
+                      height: 1.25,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      if (_busy && _upgrading) ...[
+                        const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: secondaryInk,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                      ],
+                      Flexible(
+                        child: Text(
+                          _busy && _upgrading ? 'Opening…' : 'Upgrade',
+                          textAlign: TextAlign.center,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 4),
+                TextButton(
+                  onPressed: _busy
+                      ? null
+                      : () => Navigator.of(context).pop(false),
+                  style: TextButton.styleFrom(
+                    foregroundColor: bodyInk,
+                    disabledForegroundColor: outline,
+                    minimumSize: const Size(0, 44),
+                    textStyle: const TextStyle(
+                      fontSize: 14,
+                      height: 1.4,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                  child: Text(widget.expired ? 'Go back' : 'Not now'),
+                ),
+              ],
             ),
-            if (widget.expired)
-              TextButton(
-                onPressed: _busy
-                    ? null
-                    : () {
-                        Navigator.of(context).pop(false);
-                      },
-                child: const Text('Go back', textAlign: TextAlign.center),
-              ),
-          ],
+          ),
         ),
       ),
     );
@@ -274,49 +411,11 @@ class _RewardedAccessHostState extends ConsumerState<RewardedAccessHost>
   @override
   Widget build(BuildContext context) {
     if (!RewardedAdsConfig.available) return widget.child;
-    final reward = ref.watch(rewardedAccessProvider);
-    final paid = ref.watch(subscriptionProvider.select((s) => s.isSubscribed));
+    // Keep expiry handling active without adding a countdown or changing the
+    // screen's safe-area padding.
+    ref.listen(rewardedAccessProvider, (_, _) => _scheduleExpiry());
+    ref.listen(subscriptionProvider, (_, _) => _scheduleExpiry());
     _scheduleExpiry();
-    return Column(
-      children: [
-        if (reward.active && !paid)
-          Material(
-            color: Theme.of(context).colorScheme.primaryContainer,
-            child: SafeArea(
-              bottom: false,
-              child: Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 6,
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    const Icon(Icons.timer_outlined, size: 18),
-                    const SizedBox(width: 8),
-                    Text(
-                      'Premium access · ${formatRewardedRemaining(reward.remaining)}',
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        Expanded(
-          child: reward.active && !paid
-              ? MediaQuery.removePadding(
-                  context: context,
-                  removeTop: true,
-                  child: widget.child,
-                )
-              : widget.child,
-        ),
-      ],
-    );
+    return widget.child;
   }
-}
-
-String formatRewardedRemaining(Duration duration) {
-  final seconds = (duration.inMilliseconds / 1000).ceil().clamp(0, 600);
-  return '${(seconds ~/ 60).toString().padLeft(2, '0')}:${(seconds % 60).toString().padLeft(2, '0')}';
 }

@@ -1,3 +1,4 @@
+import 'package:chessever2/widgets/paywall/pgn_import_access.dart';
 import 'package:chessever2/screens/chessboard/analysis/chess_game.dart';
 import 'package:chessever2/screens/chessboard/chess_board_screen_new.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
@@ -107,7 +108,8 @@ class _PgnImportPreviewScreenState
     }
   }
 
-  void _openGame(List<ChessGame> visibleGames, int index) {
+  Future<void> _openGame(List<ChessGame> visibleGames, int index) async {
+    if (!await ensurePgnImportAccess(context) || !mounted) return;
     HapticFeedbackService.cardTap();
     // Build a minimal GamesTourModel per game, embedding the full PGN so
     // ChessBoardScreenNew can render it without a Supabase lookup.

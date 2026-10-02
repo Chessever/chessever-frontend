@@ -836,7 +836,7 @@ class _FavoritesPlayersTabState extends ConsumerState<FavoritesPlayersTab>
         }
       } on FavoriteLimitExceededException {
         if (mounted) {
-          await showPremiumPaywallSheet(context: context);
+          await showPremiumPaywallSheet(context: context, allowRewarded: false);
         }
       } catch (e) {
         debugPrint('Error toggling favorite: $e');
