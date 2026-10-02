@@ -125,6 +125,7 @@ List<FeedPly> buildFlowPlies(
         mate: game.moves[i].mate,
         moment: moments[i],
         moveClass: game.moves[i].moveClass,
+        clock: game.moves[i].clock,
       ),
   ]);
 }

@@ -1,9 +1,8 @@
+import 'package:chessever2/services/rewarded_premium/rewarded_access_provider.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
-
-import '../../../revenue_cat_service/subscribe_state.dart';
 import '../../../utils/app_typography.dart';
 import '../../../utils/responsive_helper.dart';
 import '../../../widgets/game_filter/rating_tier_filter.dart';
@@ -571,7 +570,7 @@ class _PlayerSearchField extends HookConsumerWidget {
     }
 
     final isSubscribed = ref.watch(
-      subscriptionProvider.select((s) => s.isSubscribed),
+      featureAccessStateProvider.select((s) => s.isSubscribed),
     );
 
     if (!isSubscribed) {

@@ -10,7 +10,6 @@ import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/paywall/manage_subscription_sheet.dart';
 import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 /// Who My Profile shows.
@@ -301,7 +300,8 @@ class _PlanRow extends ConsumerWidget {
         if (isPremium) {
           showManageSubscriptionSheet(context);
         } else {
-          showPremiumPaywallSheet(context: context, featureId: 'my_profile');
+          showPremiumPaywallSheet(allowRewarded: false,
+            context: context, featureId: 'my_profile');
         }
       },
     );
@@ -314,8 +314,7 @@ class _ProfileRow extends StatelessWidget {
   const _ProfileRow({
     required this.title,
     this.subtitle,
-    required this.onTap,
-  });
+    required this.onTap});
 
   final String title;
   final String? subtitle;

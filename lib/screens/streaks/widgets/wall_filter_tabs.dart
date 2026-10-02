@@ -1,6 +1,5 @@
+import 'package:chessever2/services/rewarded_premium/rewarded_access_provider.dart';
 import 'dart:async';
-
-import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
 import 'package:chessever2/screens/streaks/models/streak_models.dart';
 import 'package:chessever2/screens/streaks/providers/streak_providers.dart';
 import 'package:chessever2/screens/streaks/widgets/wall_common.dart';
@@ -41,7 +40,7 @@ class _WallFilterTabsState extends ConsumerState<WallFilterTabs> {
   }
 
   bool get _premium =>
-      ref.read(subscriptionProvider.select((s) => s.isSubscribed));
+      ref.read(featureAccessStateProvider.select((s) => s.isSubscribed));
 
   /// Runs [apply] once the viewer may narrow the wall.
   Future<void> _narrow(void Function() apply) async {
@@ -102,7 +101,7 @@ class _WallFilterTabsState extends ConsumerState<WallFilterTabs> {
   Widget build(BuildContext context) {
     final filter = ref.watch(streakWallFilterProvider);
     final locked = !ref.watch(
-      subscriptionProvider.select((s) => s.isSubscribed),
+      featureAccessStateProvider.select((s) => s.isSubscribed),
     );
     final gap = 18.w;
 

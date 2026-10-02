@@ -1,2 +1,6 @@
 #include? "Pods/Target Support Files/Pods-Runner/Pods-Runner.debug-production.xcconfig"
 #include "Generated.xcconfig"
+
+// Production AdMob app id; optional local overrides must match the Dart define.
+ADMOB_APP_ID = ca-app-pub-3681310687796023~5640461560
+#include? "AdMob-production.xcconfig"

@@ -1,3 +1,4 @@
+import 'package:chessever2/services/rewarded_premium/rewarded_access_provider.dart';
 import 'dart:async';
 import 'dart:io';
 import 'package:chessever2/repository/library/library_book_publication.dart';
@@ -29,7 +30,6 @@ import 'package:chessever2/utils/logger/logger.dart';
 import 'package:chessever2/utils/pgn_multi_parser.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/user_error_message.dart';
-import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
 import 'package:chessever2/widgets/alert_dialog/alert_modal.dart';
 import 'package:chessever2/widgets/app_snack.dart';
 import 'package:chessever2/widgets/board_navigation_icon.dart';
@@ -86,7 +86,7 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
   /// reloads page 0 server-side, so sort/filter/search cover the whole folder.
   BookPaginationKey get _currentPaginationKey {
     final filterState = ref.read(folderFilterProvider(_folderFilterKey));
-    final subscription = ref.read(subscriptionProvider);
+    final subscription = ref.read(featureAccessStateProvider);
     final canFilterAndSort =
         subscription.isSubscribed || subscription.isLoading;
     final effectiveFilter = canFilterAndSort
@@ -561,7 +561,7 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
     // Watch the inputs that feed the pagination key so a filter/sort/search or
     // premium-state change rebuilds and swaps to the matching server query.
     final filterState = ref.watch(folderFilterProvider(_folderFilterKey));
-    ref.watch(subscriptionProvider);
+    ref.watch(featureAccessStateProvider);
     final bookAsync = ref.watch(
       bookGamesPaginatedProvider(_currentPaginationKey),
     );
@@ -859,7 +859,7 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
               ? bookState.games
               : const <SavedAnalysis>[];
           final filterState = ref.watch(folderFilterProvider(_folderFilterKey));
-          final subscription = ref.watch(subscriptionProvider);
+          final subscription = ref.watch(featureAccessStateProvider);
           final canFilterAndSort =
               subscription.isSubscribed || subscription.isLoading;
           final hasActiveFilters =

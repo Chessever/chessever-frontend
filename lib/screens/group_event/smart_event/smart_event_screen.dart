@@ -1,10 +1,10 @@
+import 'package:chessever2/services/rewarded_premium/rewarded_access_provider.dart';
 import 'dart:async';
 
 import 'package:chessever2/main.dart' show routeObserver;
 import 'package:chessever2/providers/favorite_events_provider.dart';
 import 'package:chessever2/repository/favorites/models/favorite_event.dart';
 import 'package:chessever2/repository/gamebase/search/gamebase_search_models.dart';
-import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
 import 'package:chessever2/screens/chessboard/provider/game_pgn_stream_provider.dart';
 import 'package:chessever2/screens/for_you/open_for_you_event.dart';
@@ -1851,7 +1851,7 @@ class _GamesTabState extends ConsumerState<_GamesTab>
   }
 
   Future<bool> _guardGameOpen(BuildContext context) async {
-    if (ref.read(subscriptionProvider).isSubscribed) return true;
+    if (ref.read(featureAccessStateProvider).isSubscribed) return true;
     if (!context.mounted) return false;
     return await showPremiumPaywallSheet(context: context);
   }
@@ -2558,7 +2558,7 @@ class _EventsTabState extends ConsumerState<_EventsTab>
   }
 
   Future<bool> _guardGameOpen(BuildContext context) async {
-    if (ref.read(subscriptionProvider).isSubscribed) return true;
+    if (ref.read(featureAccessStateProvider).isSubscribed) return true;
     if (!context.mounted) return false;
     return await showPremiumPaywallSheet(context: context);
   }

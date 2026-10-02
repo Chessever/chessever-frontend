@@ -70,7 +70,7 @@ class DiscoveryRepository {
     final Object? rows;
     try {
       rows = await client().rpc(
-        'most_liked_games',
+        'most_liked_ranking_preview',
         params: {
           'p_from': window.from.toUtc().toIso8601String(),
           'p_to': window.to.toUtc().toIso8601String(),

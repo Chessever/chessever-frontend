@@ -1,3 +1,6 @@
+import 'package:chessever2/services/rewarded_premium/rewarded_ads.dart';
+import 'package:chessever2/services/native_ads_config.dart';
+import 'package:chessever2/services/rewarded_premium/rewarded_access_provider.dart';
 import 'package:chessever2/widgets/profile_avatar_editor.dart';
 import 'dart:io';
 
@@ -512,7 +515,8 @@ class _GetPremiumCardState extends ConsumerState<_GetPremiumCard> {
                 HapticFeedbackService.buttonPress();
                 final authOk = await requireFullAuthGuard(context);
                 if (!authOk || !context.mounted) return;
-                await showPremiumPaywallSheet(context: context);
+                await showPremiumPaywallSheet(allowRewarded: false,
+                  context: context);
               },
               child: Container(
                 padding: EdgeInsets.symmetric(
@@ -742,7 +746,7 @@ class _MenuItem extends StatelessWidget {
 }
 
 /// About Dialog with social media and privacy policy
-class _AboutDialog extends StatelessWidget {
+class _AboutDialog extends ConsumerWidget {
   const _AboutDialog({required this.version});
 
   final String version;
@@ -755,7 +759,11 @@ class _AboutDialog extends StatelessWidget {
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    ref.watch(rewardedAccessProvider);
+    final rewarded = (RewardedAdsConfig.available || NativeAdsConfig.available)
+        ? ref.read(rewardedAccessProvider.notifier)
+        : null;
     return Container(
       constraints: BoxConstraints(maxWidth: 340.w),
       decoration: BoxDecoration(
@@ -869,6 +877,27 @@ class _AboutDialog extends StatelessWidget {
                   delay: 400,
                 ),
                 SizedBox(height: 12.h),
+                if (rewarded?.ads.privacyOptionsRequired == true) ...[
+                  _LinkButton(
+                    icon: Icons.tune,
+                    label: 'Ad privacy options',
+                    subtitle: 'Manage your advertising privacy choices',
+                    onTap: () async {
+                      try {
+                        await rewarded!.ads.showPrivacyOptions();
+                      } catch (_) {
+                        if (context.mounted) {
+                          showAppSnack(
+                            context,
+                            'Privacy options are unavailable. Please try again.',
+                          );
+                        }
+                      }
+                    },
+                    delay: 450,
+                  ),
+                  SizedBox(height: 12.h),
+                ],
                 _LinkButton(
                   icon: Icons.privacy_tip_outlined,
                   label: 'Privacy Policy',

@@ -93,6 +93,31 @@ bool hasUsableClockDisplay(String? value) {
   return trimmed != '--:--' && trimmed != '-:--:--' && trimmed != '-';
 }
 
+/// The clock a player's row shows at [moveIndex] of a game whose per-ply
+/// clock displays are [moveTimes] (index 0 is White's first move, `-1` the
+/// start position): the clock that player last stopped on, skipping
+/// placeholder entries, else their earliest sample when their first clocked
+/// move is still ahead. Null when the side has no usable sample at all.
+String? clockDisplayAtMove(
+  List<String> moveTimes, {
+  required int moveIndex,
+  required bool isWhitePlayer,
+}) {
+  if (moveTimes.isEmpty) return null;
+  final side = isWhitePlayer ? 0 : 1;
+  for (var i = moveIndex; i >= 0; i--) {
+    if (i % 2 == side &&
+        i < moveTimes.length &&
+        hasUsableClockDisplay(moveTimes[i])) {
+      return moveTimes[i];
+    }
+  }
+  for (var i = side; i < moveTimes.length; i += 2) {
+    if (hasUsableClockDisplay(moveTimes[i])) return moveTimes[i];
+  }
+  return null;
+}
+
 String normalizeChessFenForComparison(String? fen) {
   if (fen == null) return '';
   final parts = fen.trim().split(RegExp(r'\s+'));

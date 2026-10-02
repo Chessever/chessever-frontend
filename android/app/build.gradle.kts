@@ -1,4 +1,5 @@
     import java.util.Properties
+    import java.util.Base64
 
     val keystoreProperties = Properties()
     val keystorePropertiesFile = rootProject.file("key.properties")
@@ -56,10 +57,24 @@
             manifestPlaceholders["authRedirectScheme"] = "com.chessever.app"
         }
 
+        // Dart defines keep the native SDK app id paired with the ad units.
+        val adDefines: Map<String, String> = (project.findProperty("dart-defines") as? String)
+            ?.split(",")?.mapNotNull { encoded ->
+                val decoded = String(Base64.getDecoder().decode(encoded), Charsets.UTF_8)
+                val parts = decoded.split("=", limit = 2)
+                if (parts.size == 2) parts[0] to parts[1] else null
+            }?.toMap() ?: emptyMap<String, String>()
+        defaultConfig {
+            manifestPlaceholders["admobAppId"] =
+                "ca-app-pub-3940256099942544~3347511713"
+        }
+
         flavorDimensions += "environment"
         productFlavors {
             create("production") {
                 dimension = "environment"
+                manifestPlaceholders["admobAppId"] = adDefines["ADMOB_ANDROID_APP_ID"]
+                    ?: "ca-app-pub-3681310687796023~4858872090"
                 manifestPlaceholders["appName"] = "ChessEver"
                 manifestPlaceholders["authRedirectScheme"] = "com.chessever.app"
             }

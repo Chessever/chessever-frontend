@@ -354,7 +354,7 @@ void main() {
         'https://example.test',
         'placeholder',
         httpClient: MockClient((request) async {
-          if (request.url.path.endsWith('/rpc/most_liked_games')) {
+          if (request.url.path.endsWith('/rpc/most_liked_ranking_preview')) {
             return _json([
               for (var i = 0; i < rows.length; i++)
                 {'source_game_id': rows[i]['id'], 'like_count': 100 - i},

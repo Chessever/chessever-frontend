@@ -1,4 +1,5 @@
 import 'package:chessever2/widgets/segmented_switcher.dart';
+import 'package:chessever2/screens/for_you/discovery/widgets/discovery_game_cards.dart';
 import 'package:chessever2/screens/chessboard/analysis/chess_game.dart';
 import 'package:chessever2/screens/my_likes/widgets/my_likes_game_card.dart';
 import 'package:chessever2/screens/my_likes/widgets/date_section_header.dart';
@@ -40,6 +41,8 @@ import 'package:chessever2/widgets/player_initials_avatar.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 // ---------------------------------------------------------------- doubles
 
@@ -285,6 +288,15 @@ Future<void> _teardown(WidgetTester tester, ProviderContainer container) async {
 }
 
 void main() {
+  setUpAll(() async {
+    TestWidgetsFlutterBinding.ensureInitialized();
+    SharedPreferences.setMockInitialValues({});
+    await Supabase.initialize(
+      url: 'https://placeholder.supabase.co',
+      publishableKey: 'placeholder-publishable-key',
+    );
+  });
+
   for (final tab in ['Games', 'Players']) {
     testWidgets('Likes $tab keeps the period tabs and arrows in view while '
         'its list scrolls', (tester) async {
@@ -615,19 +627,43 @@ void main() {
     await _teardown(tester, container);
   });
 
-  testWidgets('a free account sees the locked periods and the Players '
+  testWidgets('a free account browses every period and keeps the Players '
       'unlock', (tester) async {
     final container = await _pump(tester, subscribed: false);
     await tester.tap(find.bySemanticsLabel('Most liked, Today'));
     await _settle(tester);
 
-    // Week, Month and Year each carry the padlock, and so does the arrow to
-    // earlier days.
-    expect(find.byType(DiscoveryPadlock), findsNWidgets(4));
+    // Only the earlier-date arrow is locked; period tabs are freely browsable.
+    expect(find.byType(DiscoveryPadlock), findsOneWidget);
     expect(
       find.textContaining(kMostLikedUpgradeCta, findRichText: true),
-      findsOneWidget,
+      findsNothing,
     );
+
+    for (final period in [
+      MostLikedPeriod.week,
+      MostLikedPeriod.month,
+      MostLikedPeriod.year,
+    ]) {
+      await tester.tap(find.bySemanticsLabel('Most liked, ${period.label}'));
+      await _settle(tester);
+      expect(container.read(mostLikedPeriodProvider), period);
+      final list = tester.widget<DiscoveryGameList>(
+        find.byType(DiscoveryGameList).first,
+      );
+      expect(list.onOpen, isNotNull);
+      expect(list.lockedFor?.call(0), isTrue);
+
+      // Exercise the opening handler, not just the locked appearance. Debug
+      // builds without rewarded configuration must still show a paywall.
+      list.onOpen!(list.games, 0);
+      await _settle(tester);
+      expect(find.text('Sign in to get Premium'), findsOneWidget);
+      Navigator.of(tester.element(find.text('Sign in to get Premium'))).pop();
+      await _settle(tester);
+      expect(find.byType(MostLikedScreen), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    }
 
     await tester.tap(find.text('Players'));
     await _settle(tester);

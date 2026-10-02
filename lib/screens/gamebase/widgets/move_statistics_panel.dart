@@ -1,8 +1,9 @@
+import 'package:chessever2/services/rewarded_premium/rewarded_access_provider.dart';
+import 'package:chessever2/services/rewarded_premium/rewarded_ads.dart';
 import 'dart:async';
 import 'dart:ui' show ImageFilter;
 
 import 'package:chessever2/providers/board_settings_provider_new.dart';
-import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
 import 'package:chessever2/screens/gamebase/utils/space_position_draft.dart';
 import 'package:chessever2/screens/library/widgets/library_context_menu.dart';
 import 'package:chessever2/screens/library/widgets/menu_preview_surface.dart';
@@ -706,7 +707,7 @@ class MoveStatisticsPanel extends HookConsumerWidget {
     );
 
     final isSubscribed = ref.watch(
-      subscriptionProvider.select((s) => s.isSubscribed),
+      featureAccessStateProvider.select((s) => s.isSubscribed),
     );
     final effectiveMoveNumber =
         ref.read(gamebaseExplorerProvider.notifier).effectiveMoveNumber;
@@ -2115,7 +2116,9 @@ class _ExplorerPremiumGate extends ConsumerWidget {
             ),
             SizedBox(height: 8.h),
             Text(
-              'Games are won past book. Unlock Premium to keep mining master '
+              'Games are won past book. '
+              '${RewardedAdsConfig.available ? 'Upgrade or watch an ad' : 'Unlock Premium'} '
+              'to keep mining master '
               'data deep into the middlegame — score trends, sideline '
               'frequency, novelties, and the exact paths titled players take '
               'beyond move 10.',

@@ -74,6 +74,16 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
   /// has not reached its last move (the Feed) must not print the outcome.
   final bool? revealResult;
 
+  /// Per-ply clock displays of a replay that has no board state (the Feed),
+  /// in [ChessBoardStateNew.moveTimes]' own shape. Non-null puts the row in
+  /// replay mode: the clock is the one this player had at [replayMoveIndex]
+  /// rather than the game's latest snapshot, it never counts down, and the
+  /// side to move is the caller's [isCurrentPlayer].
+  final List<String>? replayMoveTimes;
+
+  /// The mainline move the replay shows (`-1` for the start position).
+  final int replayMoveIndex;
+
   const PlayerFirstRowDetailWidget({
     super.key,
     required this.playerView,
@@ -92,7 +102,11 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
     this.showSubSecondClock = false,
     this.nameMenu,
     this.revealResult,
+    this.replayMoveTimes,
+    this.replayMoveIndex = -1,
   });
+
+  bool get isReplay => replayMoveTimes != null;
 
   bool get _nameMenuEnabled =>
       nameMenu ?? (showSubSecondClock && playerView == PlayerView.boardView);
@@ -101,7 +115,7 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final baseGameModel = chessBoardState?.game ?? gamesTourModel;
     final scopedClockGame =
-        showClock && baseGameModel.gameStatus.isOngoing
+        showClock && !isReplay && baseGameModel.gameStatus.isOngoing
             ? watchLiveGameClock(ref, baseGameModel, batchKey: liveBatchKey)
             : null;
     final effectiveGameModel = scopedClockGame ?? baseGameModel;
@@ -148,7 +162,9 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
     final latestMainlineIndex =
         chessBoardState == null ? -1 : chessBoardState!.moveSans.length - 1;
     final isShowingLivePosition =
-        chessBoardState == null
+        isReplay
+            ? false
+            : chessBoardState == null
             ? true
             : isShowingLiveBoardPosition(
               currentFen: currentPosition?.fen,
@@ -268,38 +284,16 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
 
     // Calculate move time from state if available, otherwise use game model's time
     final moveTime = useMemoized(() {
-      String? calculatedMoveTime;
-      final moveTimes = chessBoardState?.moveTimes ?? const <String>[];
-
-      if (moveTimes.isNotEmpty && effectiveMoveIndex >= 0) {
-        // Historical clock display is tied to the last move made by this player
-        // up to the currently navigated mainline ply. Skip placeholder entries
-        // so a partially-clocked PGN can fall back to an earlier real sample.
-        for (int i = effectiveMoveIndex; i >= 0; i--) {
-          final wasMoveByThisPlayer =
-              (i % 2 == 0 && isWhitePlayer) || (i % 2 == 1 && !isWhitePlayer);
-
-          if (wasMoveByThisPlayer &&
-              i < moveTimes.length &&
-              hasUsableClockDisplay(moveTimes[i])) {
-            calculatedMoveTime = moveTimes[i];
-            break;
-          }
-        }
-      }
-
-      // Archived games open at the initial position (move index -1). There is
-      // no previous move to inspect there, so use this side's earliest PGN
-      // clock sample as the initial display. The same fallback covers a player
-      // whose first recorded move is still ahead of the current position.
-      if (calculatedMoveTime == null && moveTimes.isNotEmpty) {
-        for (int i = isWhitePlayer ? 0 : 1; i < moveTimes.length; i += 2) {
-          if (hasUsableClockDisplay(moveTimes[i])) {
-            calculatedMoveTime = moveTimes[i];
-            break;
-          }
-        }
-      }
+      // Historical clock display is tied to the last move made by this player
+      // up to the currently navigated mainline ply (placeholders skipped, so a
+      // partially-clocked PGN falls back to an earlier real sample). Archived
+      // games open at the initial position (move index -1): there the side's
+      // earliest PGN clock sample is the initial display.
+      var calculatedMoveTime = clockDisplayAtMove(
+        replayMoveTimes ?? chessBoardState?.moveTimes ?? const <String>[],
+        moveIndex: isReplay ? replayMoveIndex : effectiveMoveIndex,
+        isWhitePlayer: isWhitePlayer,
+      );
 
       // Final fallback to a usable game snapshot supplied by the database.
       if (calculatedMoveTime == null) {
@@ -313,7 +307,13 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
       }
 
       return calculatedMoveTime;
-    }, [chessBoardState, isWhitePlayer, effectiveGameModel]);
+    }, [
+      chessBoardState,
+      isWhitePlayer,
+      effectiveGameModel,
+      replayMoveTimes,
+      replayMoveIndex,
+    ]);
 
     // Game-level check: does this game have ANY clock data? Must be stable
     // across move navigation — keying visibility off the currently navigated
@@ -323,6 +323,7 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
     // in the same slot instead.
     final hasClockData =
         (chessBoardState?.moveTimes.any(hasUsableClockDisplay) ?? false) ||
+        (replayMoveTimes?.any(hasUsableClockDisplay) ?? false) ||
         hasUsableClockDisplay(moveTime) ||
         (isWhitePlayer
             ? effectiveGameModel.whiteClockSeconds != null ||
@@ -1157,6 +1158,7 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
                 isCurrentPlayer: visibleIsCurrentPlayer,
                 timeStyle: timeStyle,
                 moveTime: moveTime,
+                isReplay: isReplay,
                 // Belt-and-suspenders: even if a caller passes the flag on a
                 // card/list/grid row, the extra digit is board-view only.
                 showSubSecondClock:
@@ -1293,6 +1295,7 @@ class _PlayerClock extends StatelessWidget {
     required this.isCurrentPlayer,
     required this.timeStyle,
     required this.moveTime,
+    required this.isReplay,
     required this.showSubSecondClock,
   });
 
@@ -1302,6 +1305,9 @@ class _PlayerClock extends StatelessWidget {
   final bool isCurrentPlayer;
   final TextStyle timeStyle;
   final String? moveTime;
+
+  /// The row follows a replay's ply, never the game's latest position.
+  final bool isReplay;
   final bool showSubSecondClock;
 
   @override
@@ -1318,7 +1324,9 @@ class _PlayerClock extends StatelessWidget {
     final latestMainlineIndex =
         chessBoardState == null ? -1 : chessBoardState!.moveSans.length - 1;
     final isShowingLivePosition =
-        chessBoardState == null
+        isReplay
+            ? false
+            : chessBoardState == null
             ? true
             : isShowingLiveBoardPosition(
               currentFen: currentPosition?.fen,

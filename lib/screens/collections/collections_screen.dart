@@ -1,3 +1,4 @@
+import 'package:chessever2/services/rewarded_premium/rewarded_access_provider.dart';
 import 'package:chessever2/screens/collections/collection_author_screen.dart';
 import 'package:chessever2/screens/collections/opening_event_card.dart'
     show collectionOpeningName, OpeningEventCard;
@@ -18,7 +19,6 @@ import 'package:chessever2/providers/favorite_events_provider.dart';
 import 'package:chessever2/repository/favorites/models/favorite_event.dart';
 import 'package:chessever2/screens/chessboard/chess_board_screen_new.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
-import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
 import 'package:chessever2/screens/collections/collection_bindings.dart';
 import 'package:chessever2/screens/collections/collection_plate_row.dart';
 export 'package:chessever2/screens/collections/collection_plate_row.dart';
@@ -360,7 +360,7 @@ class CollectionCard extends ConsumerWidget {
     final views = (engagement?['viewCount'] as num?)?.toInt() ?? c.viewCount;
     final stars = (engagement?['starCount'] as num?)?.toInt() ?? c.starCount;
 
-    final subscription = ref.watch(subscriptionProvider);
+    final subscription = ref.watch(featureAccessStateProvider);
     final locked = isCollectionLocked(
       c,
       isSubscribed: subscription.isSubscribed,
@@ -779,7 +779,7 @@ class _CollectionScreenState extends ConsumerState<CollectionScreen> {
   }
 
   bool _isLocked(Collection c) {
-    final subscription = ref.read(subscriptionProvider);
+    final subscription = ref.read(featureAccessStateProvider);
     return isCollectionLocked(
       c,
       isSubscribed: subscription.isSubscribed,
@@ -888,7 +888,7 @@ class _CollectionScreenState extends ConsumerState<CollectionScreen> {
       return;
     }
     if (_phase == CollectionUnlockPhase.failed ||
-        ref.read(subscriptionProvider).isSubscribed) {
+        ref.read(featureAccessStateProvider).isSubscribed) {
       HapticFeedbackService.buttonPress();
       _startConfirm();
       return;
@@ -932,7 +932,7 @@ class _CollectionScreenState extends ConsumerState<CollectionScreen> {
               final slug = widget.collection.slug;
               final detail = ref.watch(collectionDetailProvider(slug));
               final c = detail.valueOrNull ?? widget.collection;
-              final subscription = ref.watch(subscriptionProvider);
+              final subscription = ref.watch(featureAccessStateProvider);
               final locked = isCollectionLocked(
                 c,
                 isSubscribed: subscription.isSubscribed,
@@ -1032,7 +1032,7 @@ class _CollectionScreenState extends ConsumerState<CollectionScreen> {
     final slug = widget.collection.slug;
     final detail = ref.watch(collectionDetailProvider(slug));
     final c = detail.valueOrNull ?? widget.collection;
-    final subscription = ref.watch(subscriptionProvider);
+    final subscription = ref.watch(featureAccessStateProvider);
     final starred = collectionIsFavorited(
       ref.watch(favoriteEventsProvider).valueOrNull ?? const <FavoriteEvent>[],
       c,

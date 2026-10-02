@@ -50,6 +50,7 @@ class FeedPly {
     this.mate,
     this.moment,
     this.moveClass,
+    this.clock,
   });
 
   final String fen;
@@ -67,6 +68,24 @@ class FeedPly {
   /// (`$240`–`$247`) or a standard glyph NAG (`$1`–`$6`). Null when the PGN
   /// says nothing about it.
   final MoveClass? moveClass;
+
+  /// The mover's clock after the move, from the PGN's `[%clk]`, formatted as
+  /// the board screen shows it. Null when the move carries no clock. Never
+  /// cached: a cached page reads it back off its own PGN.
+  final String? clock;
+
+  FeedPly withClock(String? clock) => clock == this.clock
+      ? this
+      : FeedPly(
+          fen: fen,
+          san: san,
+          uci: uci,
+          cp: cp,
+          mate: mate,
+          moment: moment,
+          moveClass: moveClass,
+          clock: clock,
+        );
 
   /// The move's class for sound, badge and landing: the PGN's own verdict,
   /// else the judgement Feed read off the eval swing (same lichess table the
@@ -170,6 +189,13 @@ class FeedItem {
   final ReportGameType? reportType;
 
   int get plyCount => plies.length - 1;
+
+  /// Per-move clock displays in the board screen's `moveTimes` shape: index
+  /// 0 is the first move, moves without a clock hold the `-:--:--`
+  /// placeholder.
+  List<String> get moveClocks => [
+    for (var i = 1; i < plies.length; i++) plies[i].clock ?? '-:--:--',
+  ];
 
   FeedItem copyWith({String? reason, FeedSignal? signal}) => FeedItem(
     game: game,
