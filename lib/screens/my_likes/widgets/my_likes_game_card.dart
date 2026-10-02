@@ -6,7 +6,7 @@ import 'package:chessever2/screens/for_you/discovery/widgets/discovery_common.da
 import 'package:chessever2/screens/library/widgets/library_game_card.dart';
 import 'package:chessever2/screens/library/widgets/saved_game_actions.dart';
 import 'package:chessever2/screens/library/widgets/swipe_action_card.dart';
-import 'package:chessever2/screens/my_likes/widgets/my_likes_archive_boundary.dart';
+import 'package:chessever2/screens/my_likes/provider/my_likes_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';

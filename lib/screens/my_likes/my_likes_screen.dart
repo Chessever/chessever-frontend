@@ -16,7 +16,6 @@ import 'package:chessever2/screens/my_likes/provider/my_likes_provider.dart';
 import 'package:chessever2/screens/my_likes/my_likes_hub_screen.dart';
 import 'package:chessever2/screens/my_likes/widgets/date_section_header.dart'
     show DateSectionHeader, formatLikedDateHeader;
-import 'package:chessever2/screens/my_likes/widgets/my_likes_archive_boundary.dart';
 import 'package:chessever2/screens/my_likes/widgets/my_likes_game_card.dart';
 import 'package:chessever2/screens/my_space/models/space_shortcut.dart';
 import 'package:chessever2/repository/library/library_game_event.dart';
@@ -57,8 +56,8 @@ class MyLikesScreen extends StatelessWidget {
 /// My Likes' Games page — the For You → Favorites → Games view without the
 /// tab bar, sourced from the user's liked games. Same search + filter + date
 /// sections + game cards; sections are bucketed by when each game was liked.
-/// Free users see their latest [kFreeMyLikesVisibleLimit] likes; older ones
-/// stay stored behind the archive boundary until Premium brings them back.
+/// Everyone sees every like; a free user's latest [kFreeMyLikesVisibleLimit]
+/// open freely and older ones open through the Premium guard.
 ///
 /// A page of [MyLikesHubScreen]: the hub's frame carries back and the title;
 /// this page starts with the same search and filters as Favorites.
@@ -313,30 +312,6 @@ class _MyLikesGamesPageState extends ConsumerState<MyLikesGamesPage>
           ],
         ),
       ),
-    );
-  }
-
-  /// Opens the paywall from the archive boundary. The sheet sits over My
-  /// Likes, so a purchase lands right back here; the view re-derives from the
-  /// entitlement and the full history is in place.
-  Future<void> _viewFullHistory() async {
-    HapticFeedbackService.buttonPress();
-    await requirePremiumGuard(
-      context,
-      ref,
-      featureId: kMyLikesHistoryFeatureId,
-      returnTo: kMyLikesReturnTo,
-      onEntitled: () {
-        if (!mounted) return;
-        ref.invalidate(myLikesViewProvider);
-        if (ref.read(featureAccessStateProvider).isSubscribed) {
-          showAppSnack(
-            context,
-            'Your full My Likes history is back',
-            tone: AppSnackTone.success,
-          );
-        }
-      },
     );
   }
 
@@ -646,22 +621,6 @@ class _MyLikesGamesPageState extends ConsumerState<MyLikesGamesPage>
       if (isSortedBucket || !isCollapsed) addRows(list);
     }
 
-    if (data.showsArchiveBoundary) {
-      items.add(
-        () => Padding(
-          padding: EdgeInsets.only(top: 4.h),
-          child: MyLikesArchiveBoundary(
-            key: const ValueKey('mylikes_archive_boundary'),
-            data: data,
-            onViewHistory: _viewFullHistory,
-          ),
-        ),
-      );
-      // A glimpse of what is kept: the next archived likes, locked. Tapping
-      // one opens the paywall and, once unlocked, the game itself.
-      addRows(data.lockedPreview);
-    }
-
     _pageEntries = entries;
     _pageTagCounts = tagCounts;
     _pageGames = [for (final e in entries) e.game];
@@ -681,8 +640,8 @@ class _MyLikesGamesPageState extends ConsumerState<MyLikesGamesPage>
     );
   }
 
-  /// Library's original one-card-per-game layout, with the current archive
-  /// boundary and access policy kept intact.
+  /// Library's original one-card-per-game layout, with the current access
+  /// policy kept intact.
   Widget _buildArchiveSectionsSliver(MyLikesData data) {
     final tagCounts =
         ref.watch(myLikesTagCountsProvider).valueOrNull ?? _lastTagCounts;
@@ -719,16 +678,6 @@ class _MyLikesGamesPageState extends ConsumerState<MyLikesGamesPage>
         );
       }
       if (sorted || !collapsed) addGames(section.value);
-    }
-    if (data.showsArchiveBoundary) {
-      items.add(
-        () => MyLikesArchiveBoundary(
-          key: const ValueKey('mylikes_archive_boundary'),
-          data: data,
-          onViewHistory: _viewFullHistory,
-        ),
-      );
-      addGames(data.lockedPreview);
     }
     return SliverPadding(
       padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 8.h),

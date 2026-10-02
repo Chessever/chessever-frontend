@@ -158,8 +158,8 @@ class MyLikesAboutPage extends StatelessWidget {
         ),
         SizedBox(height: 24.h),
         Text(
-          'Your latest $kFreeMyLikesVisibleLimit likes are free. Premium opens '
-          'your full history. Older likes stay saved.',
+          'Every like stays in your list. Your latest '
+          '$kFreeMyLikesVisibleLimit open freely, older ones with Premium.',
           style: AppTypography.textSmRegular.copyWith(
             color: colors.textSecondary,
           ),
@@ -269,23 +269,6 @@ List<MyLikesPlayer> myLikesPlayers(List<SavedAnalysis> likes) {
   return list;
 }
 
-/// The likes this viewer can open: every one with Premium, else the free
-/// window (their latest [kFreeMyLikesVisibleLimit]). The Players and Events
-/// pages count only these, so a count never promises games the Games page
-/// holds behind the paywall.
-List<SavedAnalysis> myLikesVisible(WidgetRef ref, List<SavedAnalysis> likes) {
-  if (likes.length <= kFreeMyLikesVisibleLimit) return likes;
-  final window = freeLikesWindow(
-    likes,
-    unlimited: ref.watch(myLikesUnlimitedProvider),
-  );
-  if (window == null) return likes;
-  return [
-    for (final a in likes)
-      if (!isLikedGameLocked(a.id, window: window)) a,
-  ];
-}
-
 /// Everyone in the liked games, as faces and names; picking one shows their
 /// liked games.
 class MyLikesPlayersPage extends ConsumerWidget {
@@ -302,7 +285,7 @@ class MyLikesPlayersPage extends ConsumerWidget {
           ? const _Quiet(text: "Couldn't load your likes")
           : const _Loading();
     }
-    final players = myLikesPlayers(myLikesVisible(ref, list));
+    final players = myLikesPlayers(list);
     if (players.isEmpty) return const _LikesEmpty();
     final gutter = ResponsiveHelper.adaptive(phone: 16.w, tablet: 24.w);
     return ListView.separated(
@@ -480,7 +463,7 @@ class MyLikesEventsPage extends ConsumerWidget {
           ? const _Quiet(text: "Couldn't load your likes")
           : const _Loading();
     }
-    final events = myLikesEvents(myLikesVisible(ref, list));
+    final events = myLikesEvents(list);
     if (events.isEmpty) return const _LikesEmpty();
     // By name only, the most liked first and at most a few hundred: the
     // rest draw by name alone.

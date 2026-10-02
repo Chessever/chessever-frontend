@@ -18,8 +18,8 @@ class AnalyzedGamesPage {
 
 // ---------------------------------------------------------------- Most Liked
 
-/// The ranking periods of Most Liked. The current day is free; every other
-/// day, and every Week, Month and Year, is Premium.
+/// The ranking periods of Most Liked. Every period is browsed by everyone;
+/// opening a game outside the current day goes through the Premium guard.
 enum MostLikedPeriod { today, week, month, year }
 
 extension MostLikedPeriodX on MostLikedPeriod {
@@ -34,8 +34,7 @@ extension MostLikedPeriodX on MostLikedPeriod {
 }
 
 /// How a ranking is read: the games themselves, or the players who have
-/// games in it (the way Miniatures has Games and Players). Players is
-/// Premium.
+/// games in it (the way Miniatures has Games and Players).
 enum MostLikedView { games, players }
 
 extension MostLikedViewX on MostLikedView {
@@ -43,8 +42,6 @@ extension MostLikedViewX on MostLikedView {
     MostLikedView.games => 'Games',
     MostLikedView.players => 'Players',
   };
-
-  bool get isPremium => this == MostLikedView.players;
 }
 
 /// The first day there are likes to rank: the liked-games folder shipped on
@@ -115,8 +112,8 @@ class MostLikedQuery {
   /// Whether this is the period holding [now] (the newest one there is).
   bool isCurrent(DateTime now) => start == mostLikedPeriodStart(period, now);
 
-  /// Only the current day is free. Earlier days and every longer period sit
-  /// behind the Premium boundary, the same rule the server enforces.
+  /// Only the current day's games open freely. Earlier days and every longer
+  /// period are browsed by everyone, their games opening through the guard.
   bool isFree(DateTime now) =>
       period == MostLikedPeriod.today && isCurrent(now);
 

@@ -358,7 +358,7 @@ void main() {
 
       final yesterday = today.previous!;
       expect(yesterday.start, DateTime(2026, 9, 22));
-      expect(yesterday.isFree(now), isFalse); // earlier days are Premium
+      expect(yesterday.isFree(now), isFalse); // earlier days open via the guard
       expect(yesterday.next(now), today);
 
       final week = MostLikedQuery(MostLikedPeriod.week, now);
