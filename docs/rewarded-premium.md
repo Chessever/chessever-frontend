@@ -193,3 +193,15 @@ Watch ad option. Previously saved defaults are preserved.
 Device check: during rewarded access, try both customization rows and hold a
 navigation tab. None may open its picker/confirmation without a subscription.
 Paid users should still be able to change and persist their defaults.
+
+## Subscription-only database allowances
+
+Ad-unlocked access keeps the free limits of three owned databases and ten saved
+game rows across all databases. This includes nested database creation and
+saving/bulk-saving imported PGNs. At either cap, only subscribing raises the
+limit; the paywall does not offer Watch ad. PGN import itself still supports
+rewarded access. Existing databases and saved games are preserved.
+
+Device check: during rewarded access, try creating a fourth database from
+Library, My Space, a folder, and the save/import pickers; each must be blocked.
+With ten saved games, a new single or bulk save must request a subscription.

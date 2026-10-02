@@ -1,3 +1,6 @@
+import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
+import 'package:chessever2/utils/library_utils.dart';
+import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
 import 'dart:async';
 
 import 'package:chessever2/e2e/e2e_ids.dart';
@@ -563,6 +566,18 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
     if (insertCount > 0) {
       final allowed = await canSaveMoreGames(context, gamesToAdd: insertCount);
       if (!allowed || !mounted) return;
+    }
+
+    if (_isCreatingNewFolder && !ref.read(subscriptionProvider).isSubscribed) {
+      final nodes = await ref.read(libraryRepositoryProvider).getFolders();
+      final owned = nodes.where(
+        (node) => !node.isSubscribed && node.id != kTwicBookId && node.isDatabase,
+      ).length;
+      if (!mounted) return;
+      if (owned >= kFreeBookCreationLimit) {
+        await showPremiumPaywallSheet(context: context, allowRewarded: false);
+        return;
+      }
     }
 
     setState(() {

@@ -1,5 +1,5 @@
 import 'package:chessever2/widgets/paywall/pgn_import_access.dart';
-import 'package:chessever2/services/rewarded_premium/rewarded_access_provider.dart';
+import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
 import 'package:chessever2/e2e/e2e_ids.dart';
 import 'package:chessever2/repository/library/library_repository.dart';
 import 'package:chessever2/repository/library/models/library_folder.dart';
@@ -183,7 +183,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
   }
 
   Future<void> _handleCreateFolder() async {
-    final isPremium = ref.read(featureAccessStateProvider).isSubscribed;
+    final isPremium = ref.read(subscriptionProvider).isSubscribed;
     if (!isPremium) {
       final folders = await ref.read(libraryFoldersStreamProvider.future);
       final ownedBookCount = folders
@@ -191,7 +191,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
           .length;
       if (ownedBookCount >= kFreeBookCreationLimit) {
         if (!mounted) return;
-        await showPremiumPaywallSheet(context: context);
+        await showPremiumPaywallSheet(context: context, allowRewarded: false);
         return;
       }
     }

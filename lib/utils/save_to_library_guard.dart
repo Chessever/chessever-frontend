@@ -1,4 +1,4 @@
-import 'package:chessever2/services/rewarded_premium/rewarded_access_provider.dart';
+import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
 import 'package:chessever2/repository/library/library_repository.dart';
 import 'package:chessever2/utils/library_utils.dart';
 import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
@@ -7,7 +7,8 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 /// Whether the user is allowed to save [gamesToAdd] more games to their library.
 ///
-/// Premium users always pass. Free users are capped at [kFreeSavedGamesLimit]
+/// Paid subscribers always pass. Free and rewarded users are capped at
+/// [kFreeSavedGamesLimit]
 /// total saved games across every database; when adding [gamesToAdd] would
 /// push the total above the cap, the paywall is shown and the future resolves
 /// to whether the user subscribed during that sheet.
@@ -27,12 +28,12 @@ Future<bool> canSaveMoreGames(
 }) async {
   final container = ProviderScope.containerOf(context, listen: false);
 
-  if (container.read(featureAccessStateProvider).isSubscribed) return true;
+  if (container.read(subscriptionProvider).isSubscribed) return true;
 
   final repository = container.read(libraryRepositoryProvider);
   final currentCount = await repository.getTotalAnalysisCountForCurrentUser();
   if (currentCount + gamesToAdd <= kFreeSavedGamesLimit) return true;
 
   if (!context.mounted) return false;
-  return await showPremiumPaywallSheet(context: context);
+  return await showPremiumPaywallSheet(context: context, allowRewarded: false);
 }
