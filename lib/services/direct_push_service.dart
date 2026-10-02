@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
-import 'package:firebase_core/firebase_core.dart';
+import 'package:chessever2/services/firebase_app.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
@@ -52,7 +52,7 @@ class DirectPushService with WidgetsBindingObserver {
       if (defaultTargetPlatform == TargetPlatform.iOS) {
         await _tapRouter.initializeNative(_open);
       }
-      if (Firebase.apps.isEmpty) await Firebase.initializeApp();
+      await ensureFirebaseInitialized();
       FirebaseMessaging.onBackgroundMessage(directPushBackgroundHandler);
       await _local.initialize(
         const InitializationSettings(android: AndroidInitializationSettings('@mipmap/ic_launcher'),
