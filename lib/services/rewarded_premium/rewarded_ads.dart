@@ -8,7 +8,12 @@ import 'package:flutter/material.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 
 abstract final class RewardedAdsConfig {
-  static const enabled = bool.fromEnvironment('REWARDED_PREMIUM_ENABLED');
+  // Store builds enable the validated production flow without an extra CI flag.
+  // Debug/profile validation remains opt-in; the test flavor is excluded below.
+  static const enabled = bool.fromEnvironment(
+    'REWARDED_PREMIUM_ENABLED',
+    defaultValue: kReleaseMode,
+  );
   static bool get available =>
       !AppEnvironment.isTest &&
       !kIsWeb &&

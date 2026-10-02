@@ -1,8 +1,8 @@
 # Rewarded Premium access
 
 Production Android/iOS only. ChessEver Test never requests ads or accepts
-rewarded access. Live ads are disabled by default until configuration and
-backend deployment are complete. No deployment is performed by this change.
+rewarded access. Rewarded access is enabled by default in production release builds. Debug and
+profile builds require an explicit opt-in.
 
 ## Configuration
 
@@ -13,9 +13,17 @@ The supplied production IDs are configured as defaults:
 | Android | `ca-app-pub-3681310687796023~4858872090` | `ca-app-pub-3681310687796023/8590975808` |
 | iOS | `ca-app-pub-3681310687796023~5640461560` | `ca-app-pub-3681310687796023/8331032066` |
 
-Rewarded access remains disabled by default. After backend deployment and AdMob
-verification/privacy setup, enable the production flavor with
-`REWARDED_PREMIUM_ENABLED=true` as a Flutter Dart define.
+Production release builds enable rewarded access by default.
+`REWARDED_PREMIUM_ENABLED=false` disables it at build time. Debug/profile
+builds require `REWARDED_PREMIUM_ENABLED=true`. For end-to-end reward validation,
+use a registered physical test device with:
+
+```bash
+flutter run --profile --dart-define-from-file=.env --dart-define=REWARDED_PREMIUM_ENABLED=true
+```
+
+Google sample units in debug builds cannot activate production rewards; the
+production server accepts only the configured first-party rewarded units.
 The four `ADMOB_ANDROID_APP_ID`, `ADMOB_ANDROID_REWARDED_ID`,
 `ADMOB_IOS_APP_ID`, and `ADMOB_IOS_REWARDED_ID` Dart defines can override these
 defaults. Android's native SDK app ID reads the same override. If overriding
