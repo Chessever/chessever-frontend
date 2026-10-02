@@ -6,14 +6,12 @@ import 'package:chessever2/screens/for_you/discovery/widgets/discovery_common.da
 import 'package:chessever2/screens/library/widgets/library_game_card.dart';
 import 'package:chessever2/screens/library/widgets/saved_game_actions.dart';
 import 'package:chessever2/screens/library/widgets/swipe_action_card.dart';
-import 'package:chessever2/screens/my_likes/widgets/my_likes_archive_boundary.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/app_button.dart';
 import 'package:chessever2/widgets/card_context_menu.dart';
-import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:chessever2/theme/app_colors.dart';
@@ -50,28 +48,18 @@ class MyLikesGameCard extends ConsumerWidget {
   /// chips render with the dominant tag first.
   final Map<String, int>? tagCounts;
 
-  /// Opens the game on the board. For a locked card this is only reached after
-  /// the user successfully subscribes via the paywall.
+  /// The parent's gated opening action: checks paid/rewarded access before
+  /// opening the board, for both recent and archived likes.
   final VoidCallback onOpen;
 
   /// Unlikes the game (hard-deletes the saved analysis).
   final Future<void> Function() onRemove;
 
-  /// Opens the paywall; a confirmed purchase or restore resumes straight into
-  /// this game.
-  Future<void> _handleLockedTap(BuildContext context, WidgetRef ref) async {
-    await requirePremiumGuard(
-      context,
-      ref,
-      featureId: kMyLikesHistoryFeatureId,
-      returnTo: kMyLikesReturnTo,
-      onEntitled: onOpen,
-    );
-  }
-
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    void openLocked() => _handleLockedTap(context, ref);
+    // The parent owns the live access check for every like, including recent
+    // ones. All card/menu taps delegate to that same gated action.
+    void openLocked() => onOpen();
 
     Widget buildCard({VoidCallback? onLongPress, Widget? trailing}) {
       final card = LibraryGameCard(

@@ -218,3 +218,16 @@ to the first-post allowance.
 Device check: swipe after the first post and dismiss the chooser; the second
 post must stay hidden. Try again and complete an ad; verify the second post
 appears and further swipes work. Also verify a subscriber never sees the gate.
+
+## Smart Events and My Likes game access
+
+Both lists stay browsable, but opening any of their games requires paid or
+active rewarded access. This includes the latest twenty My Likes games, every
+card layout, context-menu Open, and Smart Event games reached through a player
+scorecard. My Likes cards show a lock whenever game access is unavailable.
+The existing archive window, search, removal, and stored likes remain intact.
+
+Device check: on a free account, tap a recent like and Smart Event games in
+list/board/grid modes, including the scorecard route. Dismiss Watch ad / Upgrade
+and verify no board opens. Complete an ad and verify the selected game opens;
+paid subscribers should bypass the popup.

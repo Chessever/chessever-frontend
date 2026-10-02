@@ -1,3 +1,4 @@
+import 'package:chessever2/widgets/paywall/premium_game_access.dart';
 import 'dart:io' as io;
 import 'dart:math' as math;
 import 'package:chessever2/e2e/e2e_ids.dart';
@@ -1076,7 +1077,15 @@ class _ScoreCardPage extends ConsumerWidget {
                           : game.whitePlayer;
                       final result = _getPlayerResult(game, isWhite);
 
-                      void openGame() {
+                      Future<void> openGame() async {
+                        if (ref.read(chessboardViewFromProviderNew) == ChessboardView.smartEvent) {
+                          final allowed = await ensurePremiumGameAccess(
+                            context,
+                            featureId: 'smart_event_games',
+                            returnTo: 'smart_event/games',
+                          );
+                          if (!allowed || !context.mounted) return;
+                        }
                         final navigation = scoreCardGameNavigationContext(
                           hasEventContext: hasEventContext,
                         );

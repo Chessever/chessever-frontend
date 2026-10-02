@@ -487,13 +487,13 @@ void main() {
       expect(find.byType(DiscoveryPadlock), findsNothing);
     });
 
-    testWidgets('a tap on the padlock raises the paywall, then opens', (
+    testWidgets('a tap on the padlock delegates to the parent access gate', (
       tester,
     ) async {
       final opens = await pumpCard(tester, locked: true);
       await tester.tap(find.byType(DiscoveryPadlock));
       await tester.pump(const Duration(milliseconds: 400));
-      // Debug builds pass the Premium guard straight through.
+      // The parent callback owns the strict gate for every liked game.
       expect(opens(), 1);
     });
 

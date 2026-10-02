@@ -1,3 +1,4 @@
+import 'package:chessever2/widgets/paywall/premium_game_access.dart';
 import 'package:chessever2/services/rewarded_premium/rewarded_access_provider.dart';
 import 'dart:async';
 import 'package:chessever2/services/rewarded_premium/rewarded_ads.dart';
@@ -176,42 +177,32 @@ class _MyLikesGamesPageState extends ConsumerState<MyLikesGamesPage>
     ref.read(myLikesFilterProvider.notifier).toggleTag(trimmed);
   }
 
-  Future<void> _openAnalysis(SavedAnalysis analysis) async {
-    // Re-validate the lock at tap time against the live entitlement: a card is
-    // built from one view snapshot, and only games inside the free window are
-    // openable without Premium.
-    final openable =
-        ref.read(myLikesViewProvider).valueOrNull?.openableAnalyses ??
-        _lastData?.openableAnalyses ??
-        const <SavedAnalysis>[];
-    final locked =
-        !ref.read(myLikesUnlimitedProvider) &&
-        !openable.any((a) => a.id == analysis.id);
+  bool _openingAnalysis = false;
 
-    void open() {
-      if (!mounted) return;
+  Future<void> _openAnalysis(SavedAnalysis analysis) async {
+    if (_openingAnalysis) return;
+    _openingAnalysis = true;
+    try {
+      final allowed = await ensurePremiumGameAccess(
+        context,
+        featureId: kMyLikesHistoryFeatureId,
+        returnTo: kMyLikesReturnTo,
+      );
+      if (!allowed || !mounted) return;
+      // Read the collection after unlock so newly available likes can be swiped.
+      final openable =
+          ref.read(myLikesViewProvider).valueOrNull?.openableAnalyses ??
+          _lastData?.openableAnalyses ??
+          const <SavedAnalysis>[];
       final index = openable.indexWhere((a) => a.id == analysis.id);
       if (index >= 0) {
         loadSavedAnalysisWithSwiping(context, openable, index);
       } else {
-        // Not in the openable list yet (e.g. just unlocked via the paywall
-        // before the list recomputed) — open this single game directly.
         loadSavedAnalysis(context, analysis);
       }
+    } finally {
+      _openingAnalysis = false;
     }
-
-    if (!locked) {
-      open();
-      return;
-    }
-    // A confirmed purchase or restore resumes straight into this game.
-    await requirePremiumGuard(
-      context,
-      ref,
-      featureId: kMyLikesHistoryFeatureId,
-      returnTo: kMyLikesReturnTo,
-      onEntitled: open,
-    );
   }
 
   Future<void> _removeAnalysis(SavedAnalysis analysis) async {
@@ -687,6 +678,7 @@ class _MyLikesGamesPageState extends ConsumerState<MyLikesGamesPage>
     final tagCounts =
         ref.watch(myLikesTagCountsProvider).valueOrNull ?? _lastTagCounts;
     final items = <Widget Function()>[];
+    final hasAccess = ref.watch(premiumAccessProvider);
 
     void addGames(List<MyLikesEntry> entries) {
       for (final entry in entries) {
@@ -695,7 +687,7 @@ class _MyLikesGamesPageState extends ConsumerState<MyLikesGamesPage>
             key: ValueKey('mylikes_${entry.analysis.id}'),
             analysis: entry.analysis,
             game: entry.game,
-            isLocked: entry.isLocked,
+            isLocked: entry.isLocked || !hasAccess,
             tagCounts: tagCounts,
             onOpen: () => _openAnalysis(entry.analysis),
             onRemove: () => _removeAnalysis(entry.analysis),
@@ -754,6 +746,7 @@ class _MyLikesGamesPageState extends ConsumerState<MyLikesGamesPage>
   /// One row of cards: [count] cards from [start] of the page's list.
   Widget _likesRow({required int start, required int count}) {
     final entries = _pageEntries;
+    final hasAccess = ref.watch(premiumAccessProvider);
     final tagCounts = _pageTagCounts;
     return DiscoveryGameList(
       key: ValueKey('mylikes_row_${entries[start].analysis.id}'),
@@ -767,7 +760,8 @@ class _MyLikesGamesPageState extends ConsumerState<MyLikesGamesPage>
       onOpen: (_, index) => _openAnalysis(entries[index].analysis),
       labelFor: (index) => _likeLine(entries[index], tagCounts),
       rowLabelFor: (index) => _likeLine(entries[index], tagCounts),
-      lockedFor: (index) => entries[index].isLocked,
+      lockedFor: (index) =>
+          entries[index].isLocked || !hasAccess,
       menuActionsFor: (menuContext, index) {
         final analysis = entries[index].analysis;
         return savedGameMenuActions(
@@ -778,7 +772,7 @@ class _MyLikesGamesPageState extends ConsumerState<MyLikesGamesPage>
           onDelete: () => _removeAnalysis(analysis),
           deleteLabel: 'Remove from likes',
           deleteIcon: Icons.heart_broken_rounded,
-          locked: entries[index].isLocked,
+          locked: entries[index].isLocked || !ref.read(premiumAccessProvider),
           showSpaceAction: false,
           showShareAction: false,
         );
