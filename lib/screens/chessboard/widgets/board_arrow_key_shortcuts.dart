@@ -14,7 +14,7 @@ const Duration kBoardArrowKeyHoldDelay = Duration(milliseconds: 350);
 ///
 /// Does not request focus: touch, text editing and accessibility keep their own
 /// focus. The visible board handles plain arrows before focus traversal can
-/// reinterpret them as selecting controls or scrolling the game pager.
+/// reinterpret them as moving focus between controls.
 ///
 /// The hold is timed here instead of following the OS key repeat. iPadOS never
 /// sends repeat events to Flutter, and Android's repeat rate is not the board's
@@ -177,7 +177,12 @@ class _BoardArrowKeyShortcutsState extends State<BoardArrowKeyShortcuts>
       return KeyEventResult.handled;
     }
     if (event is KeyRepeatEvent) {
-      return _heldKey == key ? KeyEventResult.handled : KeyEventResult.ignored;
+      // The hold timer paces a held arrow, so a repeat never steps. While the
+      // board owns the arrows it never reaches focus traversal either, even
+      // for a press this state did not take (the bar remounted mid-hold).
+      return _heldKey == key || _ownsArrows
+          ? KeyEventResult.handled
+          : KeyEventResult.ignored;
     }
     // Synthesized downs only resync key state after a reconnect.
     if (event.synthesized || !_ownsArrows) return KeyEventResult.ignored;
@@ -189,7 +194,7 @@ class _BoardArrowKeyShortcutsState extends State<BoardArrowKeyShortcuts>
     step?.call();
     _heldKey = key;
     _holdTimer = Timer(kBoardArrowKeyHoldDelay, _beginHold);
-    // Disabled arrows are a no-op, not a request to move focus or scroll.
+    // Disabled arrows are a no-op, not a request to move focus.
     return KeyEventResult.handled;
   }
 
