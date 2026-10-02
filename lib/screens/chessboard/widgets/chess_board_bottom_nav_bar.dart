@@ -2,6 +2,7 @@ import 'dart:math' as math;
 import 'package:chessever2/e2e/e2e_ids.dart';
 import 'package:chessever2/providers/engine_settings_provider.dart';
 import 'package:chessever2/screens/chessboard/utils/live_stream_coachmark.dart';
+import 'package:chessever2/screens/chessboard/widgets/board_arrow_key_shortcuts.dart';
 import 'package:chessever2/screens/chessboard/widgets/chess_board_bottom_navbar.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
@@ -406,18 +407,22 @@ class _ChessBoardBottomNavBarState
 
     // Bottom nav always stays put so explorer game-card focus arrows remain
     // usable while browsing inline games (games expand covers PV + table instead).
-    if (!isTabletLandscape) {
-      return bar;
-    }
-
-    return GestureDetector(
-      // Absorb horizontal drags so taps in the bottom bar don't trigger
-      // the parent PageView on tablet landscape.
-      onHorizontalDragStart: (_) {},
-      onHorizontalDragUpdate: (_) {},
-      onHorizontalDragEnd: (_) {},
-      behavior: HitTestBehavior.opaque,
-      child: bar,
+    return BoardArrowKeyShortcuts(
+      isActivePage: widget.isActivePage,
+      // The same enabled tap callbacks the two arrow buttons above get.
+      onPrevious: widget.canMoveBackward ? widget.onLeftMove : null,
+      onNext: widget.canMoveForward ? widget.onRightMove : null,
+      child: isTabletLandscape
+          ? GestureDetector(
+              // Absorb horizontal drags so taps in the bottom bar don't trigger
+              // the parent PageView on tablet landscape.
+              onHorizontalDragStart: (_) {},
+              onHorizontalDragUpdate: (_) {},
+              onHorizontalDragEnd: (_) {},
+              behavior: HitTestBehavior.opaque,
+              child: bar,
+            )
+          : bar,
     );
   }
 }
