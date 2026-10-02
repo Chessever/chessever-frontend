@@ -4875,6 +4875,7 @@ class ChessBoardScreenNotifierNew
 
   void jumpToEnd() {
     _releaseLog('🎯 JUMP TO END called');
+    _exitPvPreviewIfActive();
     final currentState = state.value;
     if (currentState == null) return;
 

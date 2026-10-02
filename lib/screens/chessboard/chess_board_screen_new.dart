@@ -7613,14 +7613,18 @@ class _BottomNavBar extends ConsumerWidget {
         clearBoardSelection();
         notifier.moveBackward();
       },
+      // Holding an arrow jumps straight to the first / last position instead
+      // of pacing through the moves one by one.
       onBoardLongPressBackwardStart: () {
         clearBoardSelection();
-        notifier.startLongPressBackward();
+        HapticFeedback.mediumImpact();
+        notifier.jumpToStart();
       },
       onBoardLongPressBackwardEnd: () => notifier.stopLongPress(),
       onBoardLongPressForwardStart: () {
         clearBoardSelection();
-        notifier.startLongPressForward();
+        HapticFeedback.mediumImpact();
+        notifier.jumpToEnd();
       },
       onBoardLongPressForwardEnd: () => notifier.stopLongPress(),
     );
