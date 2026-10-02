@@ -1,3 +1,4 @@
+import 'package:chessever2/widgets/paywall/pgn_import_access.dart';
 import 'package:chessever2/services/rewarded_premium/rewarded_access_provider.dart';
 import 'dart:math' as math;
 
@@ -41,6 +42,7 @@ Future<bool> showImportPgnToFolderSheet({
   String? sourceLabel,
 }) async {
   if (games.isEmpty) return false;
+  if (!await ensurePgnImportAccess(context) || !context.mounted) return false;
   final allowed = await canSaveMoreGames(context, gamesToAdd: games.length);
   if (!allowed) return false;
   if (!context.mounted) return false;
@@ -237,6 +239,8 @@ class _ImportPgnToFolderPageState
       showAppSnack(context, 'Select at least one folder');
       return;
     }
+
+    if (!await ensurePgnImportAccess(context) || !mounted) return;
 
     // Pre-flight used games.length only; actual rows = games × folders.
     final allowed = await canSaveMoreGames(

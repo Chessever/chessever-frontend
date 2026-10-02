@@ -1,3 +1,4 @@
+import 'package:chessever2/widgets/paywall/pgn_import_access.dart';
 import 'package:chessever2/services/rewarded_premium/rewarded_access_provider.dart';
 import 'package:chessever2/e2e/e2e_ids.dart';
 import 'package:chessever2/repository/library/library_repository.dart';
@@ -112,6 +113,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
   }
 
   Future<void> _handlePickPgnFile() async {
+    if (!await ensurePgnImportAccess(context) || !context.mounted) return;
     FilePickerResult? result;
     try {
       result = await FilePicker.platform.pickFiles(
@@ -149,6 +151,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
   }
 
   Future<void> _handleImportPgnFromClipboard() async {
+    if (!await ensurePgnImportAccess(context) || !context.mounted) return;
     final clipboard = await Clipboard.getData(Clipboard.kTextPlain);
     final text = clipboard?.text?.trim();
     if (text == null || text.isEmpty) {

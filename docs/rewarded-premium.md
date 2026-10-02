@@ -160,3 +160,16 @@ and keep the count at three. Remove one and confirm a replacement can be added.
 Discovery → Reports remains browsable without Premium. Each locked report card
 uses the My Likes greyscale and padlock style; tapping a card shows Watch ad or
 Upgrade before opening the board. Paid or active rewarded access removes locks.
+
+## Premium PGN imports
+
+PGN clipboard and file imports require paid or active rewarded access, including
+Board Editor → Paste PGN and files opened/shared from outside the app. The
+existing Watch ad / Upgrade chooser appears before importing. Preview board
+opening and saving recheck access after expiry; parsed games stay intact.
+FEN paste and previously saved library content are unchanged.
+
+Device check: as a free user, try clipboard imports, file selection, Board
+Editor PGN paste, and opening a PGN from Files. Dismissing the chooser must
+prevent the import; completing an ad or subscribing must resume it. Let access
+expire on the preview, then tap a game or Save and verify another prompt.
