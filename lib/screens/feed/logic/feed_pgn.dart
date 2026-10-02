@@ -3,6 +3,7 @@ import 'package:chessever2/screens/chessboard/game_review/game_analysis_report.d
     show GameMoveClassification;
 import 'package:chessever2/screens/chessboard/utils/game_share_utils.dart'
     show classificationFromNags, legacyClassificationFromComments;
+import 'package:chessever2/utils/pgn_clock_utils.dart';
 import 'package:dartchess/dartchess.dart';
 import 'package:flutter/foundation.dart';
 
@@ -31,6 +32,7 @@ class FeedPgnMove {
     this.mate,
     this.nags = const <int>[],
     this.classification,
+    this.clock,
   });
 
   /// 1-based: ply 1 is White's first move (or the first move after a FEN).
@@ -53,6 +55,10 @@ class FeedPgnMove {
   /// ChessEver report class carried by the `$240`–`$247` block (or the legacy
   /// comment directive), when the PGN was exported from a finished report.
   final GameMoveClassification? classification;
+
+  /// The mover's clock after the move, from `[%clk]`, as the board screen
+  /// displays it (`01:23:45`, `04:07`). Null when the move carries no clock.
+  final String? clock;
 
   Side get mover => before.turn;
   bool get hasEval => cp != null || mate != null;
@@ -136,6 +142,16 @@ String? normalizeFlowResult(String? raw) {
   return (cp: null, mate: null);
 }
 
+/// Reads `[%clk]` out of a move's comments, formatted for display.
+String? parseFlowClock(Iterable<String>? comments) {
+  if (comments == null) return null;
+  for (final comment in comments) {
+    final clock = extractPgnClockStringFromComment(comment);
+    if (clock != null) return formatPgnClockForDisplay(clock);
+  }
+  return null;
+}
+
 /// Parses [pgn]'s mainline for Feed. Variations are ignored — a clip only ever
 /// plays the game as it happened — which also keeps this far cheaper than
 /// [ChessGame.fromPgn] on annotated PGNs.
@@ -187,6 +203,7 @@ FeedPgnGame? parseFlowPgn(String pgn, {int maxPlies = 400}) {
         classification:
             classificationFromNags(nags) ??
             legacyClassificationFromComments(data.comments),
+        clock: parseFlowClock(data.comments),
       ),
     );
     position = next;
