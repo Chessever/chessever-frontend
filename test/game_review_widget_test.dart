@@ -1027,7 +1027,7 @@ void main() {
     expect(buttonWidthBoxes, hasLength(5));
   });
 
-  testWidgets('saved report keeps absent metrics and starting eval blank', (
+  testWidgets('saved report shows its metrics and keeps the starting eval blank', (
     tester,
   ) async {
     GameAnalysisReportController.clearSessionCacheForTest();
@@ -1066,7 +1066,23 @@ void main() {
     );
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 500));
-    expect(find.text('–', findRichText: true), findsNWidgets(2));
+    // Accuracy and game rating are derived from the saved scores, so neither
+    // row falls back to its placeholder dash.
+    expect(report.whiteAccuracy, isNotNull);
+    expect(report.blackEstimatedRating, isNotNull);
+    expect(find.text('–', findRichText: true), findsNothing);
+    expect(find.text('—', findRichText: true), findsNothing);
+    expect(
+      find.text(
+        '${report.whiteAccuracy!.toStringAsFixed(1)}%',
+        findRichText: true,
+      ),
+      findsWidgets,
+    );
+    expect(
+      find.text('${report.blackEstimatedRating}', findRichText: true),
+      findsWidgets,
+    );
     expect(find.text('0.0%', findRichText: true), findsNothing);
     expect(find.text('Start'), findsOneWidget);
     await tester.tap(find.byKey(const ValueKey('game-review-next-move')));
