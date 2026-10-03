@@ -1,3 +1,4 @@
+import 'package:chessever2/screens/library/miniatures/miniature_game_launcher.dart';
 import 'package:chessever2/widgets/segmented_switcher.dart';
 import 'package:chessever2/screens/for_you/discovery/widgets/discovery_game_cards.dart';
 import 'package:chessever2/screens/chessboard/analysis/chess_game.dart';
@@ -684,6 +685,39 @@ void main() {
     expect(find.byType(MostLikedPlayersList), findsOneWidget);
     await _teardown(tester, container);
   });
+
+  for (final date in [DateTime.now(), DateTime.utc(2020, 1, 1)]) {
+    testWidgets('Miniatures requires access for game dated $date', (
+      tester,
+    ) async {
+      final game = _ranking(1).first.game.copyWith(lastMoveTime: date);
+      final container = await _pump(
+        tester,
+        subscribed: false,
+        home: Consumer(
+          builder: (context, ref, _) => Scaffold(
+            body: TextButton(
+              onPressed: () => openMiniatureGame(
+                context: context,
+                ref: ref,
+                games: [game],
+                index: 0,
+              ),
+              child: const Text('Open miniature'),
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.text('Open miniature'));
+      await _settle(tester);
+      expect(find.text('Sign in to get Premium'), findsOneWidget);
+      expect(find.byType(CircularProgressIndicator), findsNothing);
+      Navigator.of(tester.element(find.text('Sign in to get Premium'))).pop();
+      await _settle(tester);
+      expect(tester.takeException(), isNull);
+      await _teardown(tester, container);
+    });
+  }
 
   testWidgets('the hub stays on today after the page picks a week', (
     tester,
