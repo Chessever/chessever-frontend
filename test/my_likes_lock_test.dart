@@ -1,5 +1,3 @@
-import 'dart:math' as math;
-
 import 'package:chessever2/providers/auth_state_provider.dart';
 import 'package:chessever2/repository/authentication/model/app_user.dart';
 import 'package:chessever2/repository/library/library_repository.dart';
@@ -270,39 +268,12 @@ void main() {
     }
 
     for (final width in [320.0, 390.0]) {
-      testWidgets('cuts the shared padlock notch clear of every line at '
+      testWidgets('restricted like keeps tags, menu and no lock at '
           '${width.toInt()}pt', (tester) async {
         await pumpCard(tester, locked: true, width: width);
-
-        expect(find.text('PREMIUM'), findsNothing);
-        // Tags stay behind the paywall; their slot holds the notch.
-        expect(find.text('Trap'), findsNothing);
-
-        final card = tester.getRect(find.byType(MyLikesGameCard));
-        final size = math.min(22.w, 22.h);
-        final notch = Rect.fromLTRB(
-          card.right - size,
-          card.bottom - size,
-          card.right,
-          card.bottom,
-        );
-        final lock = tester.getRect(find.byType(DiscoveryPadlock));
-        expect(lock.center.dx, moreOrLessEquals(notch.center.dx));
-        expect(lock.center.dy, moreOrLessEquals(notch.center.dy));
-
-        final lines = find.descendant(
-          of: find.byType(MyLikesGameCard),
-          matching: find.byType(Text),
-        );
-        expect(lines, findsWidgets);
-        for (final line in tester.widgetList(lines)) {
-          final rect = tester.getRect(find.byWidget(line));
-          expect(
-            rect.overlaps(notch),
-            isFalse,
-            reason: '"${(line as Text).data}" runs into the notch',
-          );
-        }
+        expect(find.text('Trap'), findsOneWidget);
+        expect(find.byType(DiscoveryPadlock), findsNothing);
+        expect(find.byType(ColorFiltered), findsNothing);
         expect(tester.takeException(), isNull);
       });
     }
@@ -315,15 +286,16 @@ void main() {
       expect(find.byType(DiscoveryPadlock), findsNothing);
     });
 
-    testWidgets('a tap on the padlock delegates to the parent access gate', (
-      tester,
-    ) async {
-      final opens = await pumpCard(tester, locked: true);
-      await tester.tap(find.byType(DiscoveryPadlock));
-      await tester.pump(const Duration(milliseconds: 400));
-      // The parent callback owns the strict gate for every liked game.
-      expect(opens(), 1);
-    });
+    testWidgets(
+      'a tap on the identical card delegates to the parent access gate',
+      (tester) async {
+        final opens = await pumpCard(tester, locked: true);
+        await tester.tap(find.byType(MyLikesGameCard));
+        await tester.pump(const Duration(milliseconds: 400));
+        // The parent callback owns the strict gate for every liked game.
+        expect(opens(), 1);
+      },
+    );
 
     for (final locked in [false, true]) {
       testWidgets(
@@ -340,7 +312,7 @@ void main() {
           expect(find.text('Remove from likes'), findsOneWidget);
           expect(find.text('Add to My Space'), findsNothing);
           expect(find.text('Share game'), findsNothing);
-          expect(find.text('Copy PGN'), locked ? findsNothing : findsOneWidget);
+          expect(find.text('Copy PGN'), findsOneWidget);
         },
       );
     }

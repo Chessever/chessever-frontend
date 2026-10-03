@@ -84,10 +84,19 @@ List<LibraryMenuAction> savedGameMenuActions({
   bool locked = false,
   bool showSpaceAction = true,
   bool showShareAction = true,
+  Future<bool> Function()? beforeContentAction,
 }) {
   final spaceDraft = ref == null || locked || !showSpaceAction
       ? null
       : _savedGameSpaceDraft(analysis);
+  // Hosts with tap-only gates keep identical menus. Copy/edit/move must
+  // pass the same gate before they can expose or reopen a protected copy.
+  Future<void> contentAction(Future<void> Function() action) async {
+    if (beforeContentAction != null && !await beforeContentAction()) return;
+    if (!context.mounted) return;
+    await action();
+  }
+
   final actions = <LibraryMenuAction>[
     LibraryMenuAction(
       icon: Icons.open_in_new_rounded,
@@ -98,34 +107,37 @@ List<LibraryMenuAction> savedGameMenuActions({
       LibraryMenuAction(
         icon: Icons.edit_note_rounded,
         label: 'Edit & annotate',
-        onSelected: () => _editAndAnnotate(context, analysis, onChanged),
+        onSelected: () =>
+            contentAction(() => _editAndAnnotate(context, analysis, onChanged)),
       ),
     if (!locked) ...[
       if (showShareAction)
         LibraryMenuAction(
           icon: Icons.ios_share_rounded,
           label: 'Share game',
-          onSelected: () => _shareGame(context, analysis),
+          onSelected: () => contentAction(() => _shareGame(context, analysis)),
         ),
       LibraryMenuAction(
         icon: Icons.copy_rounded,
         label: 'Copy PGN',
-        onSelected: () => _copyPgn(context, analysis),
+        onSelected: () => contentAction(() => _copyPgn(context, analysis)),
       ),
       LibraryMenuAction(
         icon: Icons.content_paste_go_rounded,
         label: 'Copy FEN',
-        onSelected: () => _copyFen(context, analysis),
+        onSelected: () => contentAction(() => _copyFen(context, analysis)),
       ),
     ],
     if (!readOnly && !locked)
       LibraryMenuAction(
         icon: Icons.drive_file_move_rounded,
         label: 'Move to database',
-        onSelected: () => showMoveGameToDatabaseSheet(
-          context: context,
-          analysis: analysis,
-          onMoved: onChanged,
+        onSelected: () => contentAction(
+          () => showMoveGameToDatabaseSheet(
+            context: context,
+            analysis: analysis,
+            onMoved: onChanged,
+          ),
         ),
       ),
     if (ref != null && spaceDraft != null && spaceDraft.canAddToMySpace)

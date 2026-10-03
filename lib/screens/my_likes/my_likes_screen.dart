@@ -562,7 +562,7 @@ class _MyLikesGamesPageState extends ConsumerState<MyLikesGamesPage>
   /// rows or full boards. Each card carries one line over it (where the
   /// game was played and its tags), swipes away to unlike, and holds the
   /// saved game's own menu (open, edit, share, copy, move, My Space,
-  /// remove). A like behind the free window is greyed with the padlock after
+  /// remove). Every like uses the same full-color shared game card;
   /// its line and opens the paywall. Built a row at a time as it scrolls in.
   Widget _buildSectionsSliver(MyLikesData data) {
     if (widget.standalone) return _buildArchiveSectionsSliver(data);
@@ -647,6 +647,11 @@ class _MyLikesGamesPageState extends ConsumerState<MyLikesGamesPage>
             analysis: entry.analysis,
             game: entry.game,
             isLocked: entry.isLocked || !hasAccess,
+            beforeContentAction: () => ensurePremiumGameAccess(
+              context,
+              featureId: kMyLikesHistoryFeatureId,
+              returnTo: kMyLikesReturnTo,
+            ),
             tagCounts: tagCounts,
             onOpen: () => _openAnalysis(entry.analysis),
             onRemove: () => _removeAnalysis(entry.analysis),
@@ -695,7 +700,6 @@ class _MyLikesGamesPageState extends ConsumerState<MyLikesGamesPage>
   /// One row of cards: [count] cards from [start] of the page's list.
   Widget _likesRow({required int start, required int count}) {
     final entries = _pageEntries;
-    final hasAccess = ref.watch(premiumAccessProvider);
     final tagCounts = _pageTagCounts;
     return DiscoveryGameList(
       key: ValueKey('mylikes_row_${entries[start].analysis.id}'),
@@ -709,7 +713,6 @@ class _MyLikesGamesPageState extends ConsumerState<MyLikesGamesPage>
       onOpen: (_, index) => _openAnalysis(entries[index].analysis),
       labelFor: (index) => _likeLine(entries[index], tagCounts),
       rowLabelFor: (index) => _likeLine(entries[index], tagCounts),
-      lockedFor: (index) => entries[index].isLocked || !hasAccess,
       menuActionsFor: (menuContext, index) {
         final analysis = entries[index].analysis;
         return savedGameMenuActions(
@@ -720,7 +723,11 @@ class _MyLikesGamesPageState extends ConsumerState<MyLikesGamesPage>
           onDelete: () => _removeAnalysis(analysis),
           deleteLabel: 'Remove from likes',
           deleteIcon: Icons.heart_broken_rounded,
-          locked: entries[index].isLocked || !ref.read(premiumAccessProvider),
+          beforeContentAction: () => ensurePremiumGameAccess(
+            context,
+            featureId: kMyLikesHistoryFeatureId,
+            returnTo: kMyLikesReturnTo,
+          ),
           showSpaceAction: false,
           showShareAction: false,
         );
@@ -756,10 +763,8 @@ class _MyLikesGamesPageState extends ConsumerState<MyLikesGamesPage>
       blackName: analysis.blackName,
     );
     final short = discoveryShortEventName(event) ?? event;
-    final tags = entry.isLocked
-        ? const <String>[]
-        : ([...analysis.tags]
-            ..sort((a, b) => (tagCounts[b] ?? 0).compareTo(tagCounts[a] ?? 0)));
+    final tags = [...analysis.tags]
+      ..sort((a, b) => (tagCounts[b] ?? 0).compareTo(tagCounts[a] ?? 0));
     final parts = [
       if (short != null && short.trim().isNotEmpty)
         DiscoveryMetaPart.text(short),
@@ -770,11 +775,7 @@ class _MyLikesGamesPageState extends ConsumerState<MyLikesGamesPage>
       parts: parts.isEmpty
           ? const [DiscoveryMetaPart.text('Liked game')]
           : parts,
-      semanticsLabel: [
-        ?event,
-        ...tags,
-        if (entry.isLocked) 'Premium',
-      ].join(', '),
+      semanticsLabel: [?event, ...tags].join(', '),
     );
   }
 

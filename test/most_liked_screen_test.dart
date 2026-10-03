@@ -662,7 +662,8 @@ void main() {
         find.byType(DiscoveryGameList).first,
       );
       expect(list.onOpen, isNotNull);
-      expect(list.lockedFor?.call(0), isTrue);
+      expect(list.lockedFor, isNull);
+      expect(find.byType(DiscoveryPadlock), findsNothing);
 
       // Exercise the opening handler, not just the locked appearance. Debug
       // builds without rewarded configuration must still show a paywall.

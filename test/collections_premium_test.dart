@@ -33,12 +33,8 @@ import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart'
     show PremiumResume;
 import 'package:chessever2/widgets/segmented_switcher.dart';
-import 'package:chessever2/widgets/skeleton_widget.dart';
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart' show RenderParagraph;
-import 'dart:ui' show SemanticsAction;
 import 'package:flutter/services.dart' show FontLoader;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -429,18 +425,6 @@ Future<void> _teardown(WidgetTester tester) async {
 }
 
 Finder _rich(String text) => find.textContaining(text, findRichText: true);
-
-const _confirming = 'Confirming your Premium\u2026';
-const _confirmFailed = "Couldn't confirm your Premium just now.";
-
-/// Lets [total] of fake time pass a second at a time, so the confirm's
-/// backoff timers and the reads they start all run.
-Future<void> _wait(WidgetTester tester, Duration total) async {
-  for (var t = Duration.zero; t < total; t += const Duration(seconds: 1)) {
-    await tester.pump(const Duration(seconds: 1));
-  }
-  await _settle(tester);
-}
 
 /// A widget test that takes its tree down at the end.
 void _widgetTest(String name, Future<void> Function(WidgetTester) body) {
@@ -944,903 +928,58 @@ void main() {
   });
 
   group('a Premium book', () {
-    _widgetTest('a free viewer gets the preview and never the games', (
-      tester,
-    ) async {
-      final repo = _Repo(detail: _book(contentLocked: true, events: _events));
-      await _pump(
-        tester,
-        repo: repo,
-        subscribed: false,
-        home: () => CollectionScreen(collection: _book()),
+    for (final subscribed in [false, true]) {
+      _widgetTest(
+        'same shared game preview, no browse-time unlock paid=$subscribed',
+        (tester) async {
+          final repo = _Repo(
+            detail: _book(contentLocked: !subscribed, events: _events),
+          );
+          await _pump(
+            tester,
+            repo: repo,
+            subscribed: subscribed,
+            home: () => CollectionScreen(collection: _book()),
+          );
+          expect(find.byType(DiscoveryGameList), findsWidgets);
+          expect(find.byType(DiscoveryPadlock), findsNothing);
+          expect(find.byKey(const ValueKey('collection_unlock')), findsNothing);
+          expect(find.textContaining('Read all'), findsNothing);
+          expect(repo.gamesCalls, 1);
+          await _showTab(tester, 'About');
+          expect(find.text('by Garry Kasparov'), findsOneWidget);
+          expect(find.text('4 games'), findsOneWidget);
+          expect(find.byKey(const ValueKey('collection_unlock')), findsNothing);
+        },
       );
-
-      // The preview opens on About: credits, and the one way in, which
-      // carries the count (the facts do not say it again above it).
-      expect(find.text('by Garry Kasparov'), findsOneWidget);
-      expect(find.byKey(const ValueKey('collection_unlock')), findsOneWidget);
-      expect(_rich('Read all 4 games in this collection'), findsOneWidget);
-      expect(find.text('4 games'), findsNothing);
-
-      // The contents are visible, every entry locked.
-      await _showTab(tester, 'Games');
-      expect(_rich('The Matches'), findsOneWidget);
-      expect(_rich('Moscow 1984'), findsOneWidget);
-      // A chapter's title may take two lines, as a part's does.
-      expect(tester.widget<RichText>(_rich('Moscow 1984')).maxLines, 2);
-      expect(find.text('3 games'), findsOneWidget);
-      expect(find.byType(DiscoveryPadlock), findsWidgets);
-      expect(find.byType(DiscoveryGameList), findsNothing);
-
-      // A book's tabs include Players: locked, the tab offers the way in
-      // without asking for anything behind the paywall. Its Events stay on
-      // About, open to everyone, locked or not.
-      await tester.tap(
-        find
-            .descendant(
-              of: find.byType(SegmentedSwitcher),
-              matching: find.text('Players'),
-            )
-            .first,
-      );
-      await _settle(tester);
-      expect(find.byKey(const ValueKey('collection_unlock')), findsWidgets);
-      await _showTab(tester, 'Events');
-      expect(find.text('World Championship 1985'), findsOneWidget);
-      expect(find.text('Game 16 is the octopus knight.'), findsOneWidget);
-
-      // Nothing behind the paywall was asked for.
-      expect(repo.gamesCalls, 0);
-      expect(repo.playersCalls, 0);
-    });
-
-    _widgetTest('a subscriber reads the games', (tester) async {
-      final repo = _Repo(detail: _book(contentLocked: false));
-      await _pump(
-        tester,
-        repo: repo,
-        subscribed: true,
-        home: () => CollectionScreen(collection: _book()),
-      );
-      // Opens on its games.
-      expect(find.byType(DiscoveryGameList), findsWidgets);
-      expect(find.byKey(const ValueKey('collection_unlock')), findsNothing);
-      expect(repo.gamesCalls, 1);
-    });
-
-    _widgetTest('the server opening a book opens it, subscription or not', (
-      tester,
-    ) async {
-      // A web subscriber the app's store state does not know about.
-      final repo = _Repo(detail: _book(contentLocked: false));
-      await _pump(
-        tester,
-        repo: repo,
-        subscribed: false,
-        home: () => CollectionScreen(collection: _book()),
-      );
-      await _showTab(tester, 'Games');
-      expect(find.byType(DiscoveryGameList), findsWidgets);
-      expect(find.byKey(const ValueKey('collection_unlock')), findsNothing);
-    });
-
-    _widgetTest('a refusal from the server is the preview, not an error', (
-      tester,
-    ) async {
-      // The store says subscribed; the server has not seen the purchase.
-      final repo = _Repo(
-        detail: _book(),
-        gamesError: const CollectionsRequestException(
-          'Premium required',
-          statusCode: 403,
-          code: 'premium_required',
-        ),
-      );
-      await _pump(
-        tester,
-        repo: repo,
-        subscribed: true,
-        home: () => CollectionScreen(collection: _book()),
-      );
-      expect(_rich('Moscow 1985'), findsOneWidget);
-      expect(find.textContaining('session'), findsNothing);
-      // A subscriber is never offered the paywall: the page confirms their
-      // Premium with the server instead, and says so.
-      expect(find.byKey(const ValueKey('collection_unlock')), findsNothing);
-      expect(find.text(_confirming), findsOneWidget);
-      // About says the same where its way in would be.
-      await _showTab(tester, 'About');
-      expect(find.text(_confirming), findsOneWidget);
-    });
-
+    }
     _widgetTest(
-      'a subscriber the server still locks: confirmed until it opens',
+      'denied metadata is an honest retry, not substitute event rows',
       (tester) async {
-        // Just bought: the server still holds its "not Premium" answer.
-        final repo = _Repo(detail: _book(contentLocked: true));
+        final repo = _Repo(
+          detail: _book(),
+          gamesError: const CollectionsRequestException(
+            'Premium required',
+            statusCode: 403,
+            code: 'premium_required',
+          ),
+        );
         await _pump(
           tester,
           repo: repo,
-          subscribed: true,
+          subscribed: false,
           home: () => CollectionScreen(collection: _book()),
         );
-        expect(find.text(_confirming), findsOneWidget);
-        expect(find.byKey(const ValueKey('collection_unlock')), findsNothing);
-        // While it confirms, the locked chapters wait with it.
-        final asked = repo.detailCalls;
-        await tester.tap(_rich('Moscow 1984'));
-        await tester.pump();
-        expect(repo.detailCalls, asked);
-
-        // It asks again on its own, with a backoff, and only for the verdict:
-        // the games wait for the server to open them.
-        final gamesAsked = repo.gamesCalls;
-        await _wait(tester, const Duration(seconds: 6));
-        expect(repo.detailCalls, greaterThan(asked + 1));
-        expect(find.text(_confirming), findsOneWidget);
-        expect(repo.gamesCalls, gamesAsked);
-
-        // The server sees the purchase: the next ask opens the book.
-        repo.detail = _book(contentLocked: false);
-        await _wait(tester, const Duration(seconds: 9));
-        expect(find.byType(DiscoveryGameList), findsWidgets);
-        expect(find.text(_confirming), findsNothing);
         expect(
-          find.byKey(const ValueKey('collection_unlock_status')),
-          findsNothing,
-        );
-      },
-    );
-
-    _widgetTest('the confirm asks the server anew; the page\'s own reads do '
-        'not', (tester) async {
-      final repo = _Repo(detail: _book(contentLocked: true));
-      await _pump(
-        tester,
-        repo: repo,
-        subscribed: true,
-        home: () => CollectionScreen(collection: _book()),
-      );
-      await _wait(tester, const Duration(seconds: 3));
-      // The page's first read is plain; every re-check skips the server's
-      // cached "not Premium".
-      expect(repo.freshDetailReads.first, isFalse);
-      expect(repo.freshDetailReads.skip(1), everyElement(isTrue));
-      expect(repo.freshDetailReads.length, greaterThan(1));
-
-      repo.detail = _book(contentLocked: false);
-      await _wait(tester, const Duration(seconds: 6));
-      expect(find.byType(DiscoveryGameList), findsWidgets);
-      // The proof read of the games went out fresh too, and nothing is
-      // held once the confirm is over.
-      expect(repo.freshGamesReads, contains(isTrue));
-      expect(repo.isFreshAccess('kasparov-karpov'), isFalse);
-    });
-
-    _widgetTest('a confirm that runs out says so, and Try again asks again', (
-      tester,
-    ) async {
-      final repo = _Repo(detail: _book(contentLocked: true));
-      final container = await _pump(
-        tester,
-        repo: repo,
-        subscribed: true,
-        home: () => CollectionScreen(collection: _book()),
-      );
-      await _wait(tester, const Duration(seconds: 40));
-      expect(find.text(_confirming), findsNothing);
-      expect(find.text(_confirmFailed), findsOneWidget);
-      expect(
-        find.byKey(const ValueKey('collection_unlock_retry')),
-        findsOneWidget,
-      );
-      expect(container.read(collectionConfirmFailedAtProvider), isNotNull);
-
-      final asked = repo.detailCalls;
-      await tester.tap(find.byKey(const ValueKey('collection_unlock_retry')));
-      await tester.pump();
-      expect(find.text(_confirming), findsOneWidget);
-      await _settle(tester);
-      expect(repo.detailCalls, greaterThan(asked));
-
-      // It opens this time: the failure is forgotten.
-      repo.detail = _book(contentLocked: false);
-      await _wait(tester, const Duration(seconds: 3));
-      expect(find.byType(DiscoveryGameList), findsWidgets);
-      expect(container.read(collectionConfirmFailedAtProvider), isNull);
-    });
-
-    _widgetTest('a confirm that ran out a moment ago is said again at once', (
-      tester,
-    ) async {
-      final repo = _Repo(detail: _book(contentLocked: true));
-      await _pump(
-        tester,
-        repo: repo,
-        subscribed: true,
-        overrides: [
-          collectionConfirmFailedAtProvider.overrideWith(
-            (ref) => DateTime.now(),
-          ),
-        ],
-        home: () => CollectionScreen(collection: _book()),
-      );
-      expect(find.text(_confirmFailed), findsOneWidget);
-      final asked = repo.detailCalls;
-      await _wait(tester, const Duration(seconds: 12));
-      // No confirm of its own this time: only a tap asks again.
-      expect(repo.detailCalls, asked);
-    });
-
-    _widgetTest('the Premium check out of reach reads as a retry', (
-      tester,
-    ) async {
-      final repo = _Repo(
-        detail: _book(),
-        gamesError: const CollectionsRequestException(
-          'Entitlement check unavailable',
-          statusCode: 503,
-          code: 'access_check_unavailable',
-        ),
-      );
-      await _pump(
-        tester,
-        repo: repo,
-        subscribed: true,
-        home: () => CollectionScreen(collection: _book()),
-      );
-      expect(
-        find.text("Couldn't check your Premium access just now."),
-        findsOneWidget,
-      );
-      expect(find.text('Try again'), findsOneWidget);
-    });
-
-    _widgetTest('the way in opens the paywall; entitled, the page re-asks', (
-      tester,
-    ) async {
-      final unlocks = <_Unlock>[];
-      final repo = _Repo(detail: _book(contentLocked: true));
-      await _pump(
-        tester,
-        repo: repo,
-        subscribed: false,
-        unlocks: unlocks,
-        home: () => CollectionScreen(collection: _book()),
-      );
-      await tester.tap(find.byKey(const ValueKey('collection_unlock')));
-      await _settle(tester);
-      expect(unlocks, hasLength(1));
-      expect(unlocks.single.featureId, 'collection_books');
-      expect(unlocks.single.returnTo, 'collections/collection');
-
-      // A locked chapter is a way in too.
-      await _showTab(tester, 'Games');
-      await tester.tap(_rich('Moscow 1984'));
-      await _settle(tester);
-      expect(unlocks, hasLength(2));
-
-      // The purchase goes through: the server is asked again, and opens it.
-      final before = repo.detailCalls;
-      repo.detail = _book(contentLocked: false);
-      await unlocks.last.then!();
-      await _settle(tester);
-      expect(repo.detailCalls, greaterThan(before));
-      expect(find.byType(DiscoveryGameList), findsWidgets);
-      expect(find.byKey(const ValueKey('collection_unlock')), findsNothing);
-    });
-
-    _widgetTest(
-      'related Players shows confirmation and retry on its own route',
-      (tester) async {
-        const collection = Collection(
-          id: 'premium-event',
-          slug: 'premium-event',
-          kind: CollectionKind.event,
-          title: 'Selected event games',
-          access: CollectionAccess.premium,
-          contentLocked: true,
-          gameCount: 4,
-        );
-        final unlocks = <_Unlock>[];
-        await _pump(
-          tester,
-          repo: _Repo(detail: collection),
-          subscribed: false,
-          unlocks: unlocks,
-          home: () => const CollectionScreen(collection: collection),
-        );
-        await _showTab(tester, 'Players');
-        await tester.tap(find.byKey(const ValueKey('collection_unlock')));
-        await _settle(tester);
-        expect(unlocks, hasLength(1));
-        await unlocks.single.then!();
-        await tester.pump();
-        expect(find.text(_confirming), findsOneWidget);
-        expect(find.byKey(const ValueKey('collection_unlock')), findsNothing);
-        await _wait(tester, const Duration(seconds: 40));
-        expect(find.text(_confirmFailed), findsOneWidget);
-        expect(
-          find.byKey(const ValueKey('collection_unlock_retry')),
+          find.text("Game previews aren't available from this server yet."),
           findsOneWidget,
         );
-        expect(tester.takeException(), isNull);
+        expect(find.text('Try again'), findsOneWidget);
+        expect(find.byType(DiscoveryPadlock), findsNothing);
+        expect(find.byKey(const ValueKey('collection_unlock')), findsNothing);
+        expect(_rich('Moscow 1984'), findsNothing);
       },
     );
-
-    _widgetTest('a purchase the server sees late: the page confirms it', (
-      tester,
-    ) async {
-      final unlocks = <_Unlock>[];
-      final repo = _Repo(detail: _book(contentLocked: true));
-      await _pump(
-        tester,
-        repo: repo,
-        subscribed: false,
-        unlocks: unlocks,
-        home: () => CollectionScreen(collection: _book()),
-      );
-      await tester.tap(find.byKey(const ValueKey('collection_unlock')));
-      await _settle(tester);
-      // Bought, but the server still holds "not Premium" for a while.
-      await unlocks.single.then!();
-      await tester.pump();
-      expect(find.text(_confirming), findsOneWidget);
-      expect(find.byKey(const ValueKey('collection_unlock')), findsNothing);
-      await _wait(tester, const Duration(seconds: 12));
-      expect(find.text(_confirming), findsOneWidget);
-      // No second paywall while it confirms.
-      expect(unlocks, hasLength(1));
-
-      repo.detail = _book(contentLocked: false);
-      await _wait(tester, const Duration(seconds: 10));
-      // Asked for from About's "Read all 4 games": the book opens on them.
-      expect(find.byType(DiscoveryGameList), findsWidgets);
-      expect(find.text(_confirming), findsNothing);
-    });
-
-    for (final opened in [_book(), _book(contentLocked: true)]) {
-      _widgetTest(
-        'a subscriber the server locks never sees the offer, '
-        'not even for a frame (opened ${opened.contentLocked == null ? 'from the list' : 'on About'})',
-        (tester) async {
-          final repo = _Repo(detail: _book(contentLocked: true));
-          tester.view.physicalSize = const Size(390, 2400);
-          tester.view.devicePixelRatio = 1;
-          addTearDown(tester.view.resetPhysicalSize);
-          addTearDown(tester.view.resetDevicePixelRatio);
-          final container = ProviderContainer(
-            overrides: [
-              collectionsRepositoryProvider.overrideWithValue(repo),
-              subscriptionProvider.overrideWith((ref) => _Subscription(true)),
-              spaceShortcutsProvider.overrideWith(_NoShortcuts.new),
-              boardSettingsProviderNew.overrideWith(_BoardSettings.new),
-              engineSettingsProviderNew.overrideWith(_EngineSettings.new),
-            ],
-          );
-          addTearDown(container.dispose);
-          await tester.pumpWidget(
-            UncontrolledProviderScope(
-              container: container,
-              child: MaterialApp(
-                theme: AppTheme.darkTheme,
-                home: Builder(
-                  builder: (context) {
-                    ResponsiveHelper.init(context);
-                    return CollectionScreen(collection: opened);
-                  },
-                ),
-              ),
-            ),
-          );
-          final onAbout = opened.contentLocked == true;
-          // Frame by frame, from the first one to the server's verdict and on.
-          var confirmingSeen = false;
-          for (var i = 0; i < 30; i++) {
-            expect(
-              find.byKey(const ValueKey('collection_unlock')),
-              findsNothing,
-              reason: 'frame $i',
-            );
-            // About's facts keep the count: the line under them never jumps.
-            if (onAbout) {
-              expect(find.text('4 games'), findsOneWidget, reason: 'frame $i');
-            }
-            confirmingSeen |= find.text(_confirming).evaluate().isNotEmpty;
-            await tester.pump(const Duration(milliseconds: 16));
-          }
-          expect(confirmingSeen, isTrue);
-        },
-      );
-    }
-
-    _widgetTest('the games stay the preview while the page re-checks, '
-        'never a skeleton', (tester) async {
-      // No verdict from the detail (its check was down), and the games
-      // route refuses: the page confirms, re-reading the games each try.
-      final repo = _Repo(
-        detail: _book(),
-        gamesError: const CollectionsRequestException(
-          'Premium required',
-          statusCode: 403,
-          code: 'premium_required',
-        ),
-      );
-      await _pump(
-        tester,
-        repo: repo,
-        subscribed: true,
-        home: () => CollectionScreen(collection: _book()),
-      );
-      expect(find.text(_confirming), findsOneWidget);
-      final asked = repo.gamesCalls;
-      for (var i = 0; i < 400; i++) {
-        await tester.pump(const Duration(milliseconds: 50));
-        expect(find.byType(SkeletonWidget), findsNothing, reason: 'tick $i');
-        expect(_rich('Moscow 1984'), findsOneWidget, reason: 'tick $i');
-      }
-      expect(repo.gamesCalls, greaterThan(asked + 2));
-    });
-
-    _widgetTest('a proof read that breaks is no answer, never the book '
-        'opening', (tester) async {
-      final repo = _Repo(
-        detail: _book(),
-        gamesError: const CollectionsRequestException(
-          'Premium required',
-          statusCode: 403,
-          code: 'premium_required',
-        ),
-      );
-      final container = await _pump(
-        tester,
-        repo: repo,
-        subscribed: true,
-        home: () => CollectionScreen(collection: _book()),
-      );
-      expect(find.text(_confirming), findsOneWidget);
-      // The server gives no verdict and the games read now breaks outright.
-      repo.gamesError = const CollectionsRequestException(
-        'Premium access could not be checked right now',
-        statusCode: 503,
-        code: 'access_check_unavailable',
-      );
-      final asked = repo.detailCalls;
-      await _wait(tester, const Duration(seconds: 40));
-      // It kept asking, and ran out as a confirm that did not go through:
-      // nothing counted the broken read as the server opening the book.
-      expect(repo.detailCalls, greaterThan(asked + 3));
-      expect(container.read(collectionConfirmFailedAtProvider), isNotNull);
-    });
-
-    _widgetTest('a session the server refuses: sign in again, then it '
-        'confirms on the new one', (tester) async {
-      final repo = _Repo(
-        detail: _book(contentLocked: true, lockReason: 'auth_required'),
-      );
-      var signIns = 0;
-      await _pump(
-        tester,
-        repo: repo,
-        subscribed: true,
-        overrides: [
-          collectionSignInProvider.overrideWithValue((context) async {
-            signIns++;
-            return true;
-          }),
-        ],
-        home: () => CollectionScreen(collection: _book()),
-      );
-      expect(find.text(_confirming), findsOneWidget);
-      // Refused twice in a row: no waiting out the whole window.
-      await _wait(tester, const Duration(seconds: 3));
-      expect(find.text(_confirming), findsNothing);
-      expect(find.text('Your sign-in has expired.'), findsOneWidget);
-      expect(find.text(_confirmFailed), findsNothing);
-      final signIn = find.byKey(const ValueKey('collection_unlock_sign_in'));
-      expect(signIn, findsOneWidget);
-
-      // Signed in again: the page asks on the new session, which opens it.
-      repo.detail = _book(contentLocked: false);
-      await tester.tap(signIn);
-      await _settle(tester);
-      expect(signIns, 1);
-      expect(find.byType(DiscoveryGameList), findsWidgets);
-    });
-
-    _widgetTest('a locked book without contents shows who plays in it', (
-      tester,
-    ) async {
-      final bare = Collection(
-        id: 'b9',
-        slug: 'my-system',
-        kind: CollectionKind.book,
-        title: 'My System',
-        author: 'Aron Nimzowitsch',
-        gameCount: 40,
-        contentLocked: true,
-        players: const ['Nimzowitsch, Aron', 'Capablanca, Jose Raul'],
-      );
-      await _pump(
-        tester,
-        repo: _Repo(detail: bare),
-        subscribed: false,
-        home: () => CollectionScreen(collection: bare),
-      );
-      await _showTab(tester, 'Games');
-      expect(find.byKey(const ValueKey('collection_unlock')), findsWidgets);
-      expect(
-        find.text('Nimzowitsch, Aron · Capablanca, Jose Raul'),
-        findsWidgets,
-      );
-    });
-
-    _widgetTest('a book\'s About shows its whole jacket, standing', (
-      tester,
-    ) async {
-      final covered = Collection(
-        id: 'b1',
-        slug: 'kasparov-karpov',
-        kind: CollectionKind.book,
-        title: 'Kasparov vs Karpov',
-        coverUrl: 'https://example.invalid/cover.jpg',
-        gameCount: 4,
-        contentLocked: true,
-      );
-      await _pump(
-        tester,
-        repo: _Repo(detail: covered),
-        subscribed: false,
-        home: () => CollectionScreen(collection: covered),
-      );
-      final cover = tester.getSize(find.byType(CachedNetworkImage).first);
-      expect(cover.height / cover.width, closeTo(1.5, 0.01));
-    });
-
-    _widgetTest(
-      'book metadata shares a row and the star is separately accessible',
-      (tester) async {
-        const book = Collection(
-          id: 'compact',
-          slug: 'compact',
-          kind: CollectionKind.book,
-          title: 'Advanced',
-          author: 'Durarbayli',
-          gameCount: 2,
-          viewCount: 12,
-          starCount: 3,
-        );
-        final handle = tester.ensureSemantics();
-
-        await _pump(
-          tester,
-          repo: _Repo(detail: book),
-          subscribed: true,
-          size: const Size(393, 900),
-          home: () => Scaffold(body: ListView(children: [CollectionCard(collection: book)])),
-        );
-        expect(
-          tester.getCenter(find.text('2 games')).dy,
-          closeTo(
-            tester
-                .getCenter(find.byKey(const ValueKey('collection_card_views')))
-                .dy,
-            0.01,
-          ),
-        );
-        double inkBottom(Finder finder) {
-          final paragraph = tester.renderObject<RenderParagraph>(finder);
-          final firstDigit = paragraph.text.toPlainText().indexOf(
-            RegExp(r'\d'),
-          );
-          final box = paragraph
-              .getBoxesForSelection(
-                TextSelection(
-                  baseOffset: firstDigit,
-                  extentOffset: firstDigit + 1,
-                ),
-              )
-              .single;
-          return tester.getTopLeft(finder).dy + box.bottom;
-        }
-
-        final countInkBottom = inkBottom(find.text('2 games'));
-        expect(
-          inkBottom(find.byKey(const ValueKey('collection_card_views'))),
-          closeTo(countInkBottom, 0.01),
-        );
-        expect(find.text('3 stars'), findsNothing);
-        final starCount = find.byKey(
-          const ValueKey('collection_card_star_count'),
-        );
-        expect(find.text('3'), findsOneWidget);
-        final star = find.bySemanticsLabel('Star Advanced');
-        expect(star, findsOneWidget);
-        expect(
-          tester.getCenter(starCount).dy,
-          closeTo(
-            tester.getCenter(find.byType(CollectionPlateRow)).dy + 23 - 4.sp,
-            0.01,
-          ),
-        );
-        expect(
-          tester.getRect(star).contains(tester.getRect(starCount).center),
-          isTrue,
-        );
-        expect(tester.getSize(star).width, greaterThanOrEqualTo(48));
-        expect(tester.getSize(star).height, greaterThanOrEqualTo(48));
-        expect(
-          tester
-              .getSemantics(star)
-              .getSemanticsData()
-              .hasAction(SemanticsAction.tap),
-          isTrue,
-        );
-        expect(
-          find.bySemanticsLabel(
-            RegExp('Advanced, by Durarbayli.*12 views.*3 stars'),
-          ),
-          findsOneWidget,
-        );
-        expect(tester.takeException(), isNull);
-        handle.dispose();
-      },
-    );
-
-    for (final theme in [AppTheme.darkTheme, AppTheme.lightTheme]) {
-      _widgetTest(
-        'book details reflow at large type in RTL (${theme.brightness.name})',
-        (tester) async {
-          const book = Collection(
-            id: 'reflow',
-            slug: 'reflow',
-            kind: CollectionKind.book,
-            title: 'A long collection title for careful study',
-            author: 'A long author name',
-            coverUrl: 'https://example.invalid/cover.jpg',
-            gameCount: 500,
-            viewCount: 99999999,
-            starCount: 1000000,
-            about: 'A substantial book description.',
-            foreword: 'A personal foreword.',
-            authorBio: 'The author biography.',
-            annotator: 'Another contributor',
-            annotatorBio: 'The annotator biography.',
-          );
-          await _pump(
-            tester,
-            repo: _Repo(detail: book),
-            subscribed: true,
-            size: const Size(320, 1600),
-            textScale: 2,
-            theme: theme,
-            direction: TextDirection.rtl,
-            home: () => Scaffold(
-              body: ListView(children: [CollectionCard(collection: book)]),
-            ),
-          );
-          expect(tester.takeException(), isNull);
-          final card = tester.getRect(find.byType(CollectionPlateRow));
-          for (final text in ['500 games', '99999999', '1000000']) {
-            final rect = tester.getRect(
-              text == '99999999'
-                  ? find.byKey(const ValueKey('collection_card_views'))
-                  : find.text(text),
-            );
-            expect(rect.left, greaterThanOrEqualTo(card.left));
-            expect(rect.right, lessThanOrEqualTo(card.right));
-          }
-          await _pump(
-            tester,
-            repo: _Repo(detail: book),
-            subscribed: false,
-            size: const Size(320, 2400),
-            textScale: 2,
-            theme: theme,
-            direction: TextDirection.rtl,
-            home: () => CollectionScreen(collection: book),
-          );
-          expect(tester.takeException(), isNull);
-          final about = find.byKey(const ValueKey('book_about_content'));
-          expect(about, findsOneWidget);
-          final description = find.text('A substantial book description.');
-          final foreword = find.text('A personal foreword.');
-          expect(
-            tester.getTopLeft(description).dy,
-            lessThan(tester.getTopLeft(find.text('Foreword')).dy),
-          );
-          expect(
-            tester.getRect(description).right,
-            closeTo(tester.getRect(foreword).right, 0.1),
-          );
-          final cover = tester.widget<CachedNetworkImage>(
-            find.byType(CachedNetworkImage).first,
-          );
-          expect(cover.fit, BoxFit.contain);
-          expect(find.textContaining('The games collected in'), findsNothing);
-        },
-      );
-    }
-
-    _widgetTest('its card carries the padlock for a free viewer only', (
-      tester,
-    ) async {
-      final repo = _Repo(detail: _book());
-      await _pump(
-        tester,
-        repo: repo,
-        subscribed: false,
-        home: () => Scaffold(body: CollectionCard(collection: _book())),
-      );
-      expect(find.byType(DiscoveryPadlock), findsOneWidget);
-      expect(
-        find.bySemanticsLabel(RegExp('Kasparov vs Karpov.*Premium')),
-        findsOneWidget,
-      );
-    });
-
-    _widgetTest('a long credit gives way to the padlock, never the reverse', (
-      tester,
-    ) async {
-      final long = Collection(
-        id: 'b2',
-        slug: 'kasparov-on-kasparov',
-        kind: CollectionKind.book,
-        title: 'Garry Kasparov on Garry Kasparov',
-        author: 'Garry Kasparov and Dmitry Plisetsky',
-        gameCount: 55,
-      );
-      final repo = _Repo(detail: long);
-      await _pump(
-        tester,
-        repo: repo,
-        subscribed: false,
-        size: const Size(320, 900),
-        textScale: 1.3,
-        home: () => Scaffold(
-          body: Padding(
-            padding: const EdgeInsets.all(16),
-            child: CollectionCard(collection: long),
-          ),
-        ),
-      );
-      final lock = find.byKey(const ValueKey('collection_card_padlock'));
-      expect(lock, findsOneWidget);
-      final rect = tester.getRect(lock);
-      expect(rect.width, greaterThan(0));
-      expect(
-        tester.getRect(find.byType(CollectionPlateRow)).contains(rect.center),
-        isTrue,
-      );
-      // The credit has a line of its own and the count one of its own, the
-      // padlock after it: neither is cut to make room for the other.
-      final count = tester.renderObject<RenderParagraph>(find.text('55 games'));
-      expect(count.didExceedMaxLines, isFalse);
-      final credit = tester.renderObject<RenderParagraph>(
-        find.text('by Garry Kasparov and Dmitry Plisetsky'),
-      );
-      expect(credit.maxLines, 2);
-      expect(credit.overflow, TextOverflow.ellipsis);
-      expect(
-        tester.getRect(find.text('55 games')).top,
-        greaterThanOrEqualTo(
-          tester
-              .getRect(find.text('by Garry Kasparov and Dmitry Plisetsky'))
-              .bottom,
-        ),
-      );
-    });
-
-    _widgetTest('book and event cards share a landscape picture '
-        'with identical proportions', (tester) async {
-      final repo = _Repo(detail: _book());
-      await _pump(
-        tester,
-        repo: repo,
-        subscribed: true,
-        home: () => Scaffold(
-          body: ListView(
-            padding: const EdgeInsets.all(16),
-            children: [
-              CollectionCard(collection: _book()),
-              CollectionCard(collection: _event()),
-            ],
-          ),
-        ),
-      );
-      final plates = find.descendant(
-        of: find.byType(CollectionPlateRow),
-        matching: find.byType(ClipRRect),
-      );
-      final book = tester.getSize(plates.at(0));
-      final event = tester.getSize(plates.at(1));
-      // Books use the existing event picture proportions.
-      expect(book.width / book.height, closeTo(1.25, 0.01));
-      expect(event.width / event.height, closeTo(1.25, 0.01));
-    });
-
-    for (final (size, scale) in [
-      (const Size(393, 900), 1.0),
-      (const Size(375, 900), 1.3),
-      (const Size(320, 900), 1.3),
-    ]) {
-      _widgetTest('an event card keeps author, year and place within its '
-          'lines (${size.width.toInt()} pt, ${scale}x)', (tester) async {
-        final repo = _Repo(detail: _book());
-        await _pump(
-          tester,
-          repo: repo,
-          subscribed: false,
-          size: size,
-          textScale: scale,
-          home: () => Scaffold(
-            body: ListView(
-              padding: const EdgeInsets.all(16),
-              children: [
-                CollectionCard(collection: _event()),
-                CollectionCard(
-                  collection: _event(
-                    location: 'Saint Louis',
-                    start: DateTime(2025, 8, 18),
-                    end: DateTime(2025, 8, 30),
-                    author: 'GM Durarbayli',
-                  ),
-                ),
-                CollectionCard(
-                  collection: _event(
-                    location: 'Moscow',
-                    start: DateTime(1984, 9, 10),
-                    end: DateTime(1985, 2, 15),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        );
-        // Just the year, never a date range; the author leads when known.
-        // Each identity may wrap at the separator, so its parts are found
-        // separately.
-        for (final parts in [
-          ['2024', 'Wijk aan Zee'],
-          ['Durarbayli', '2025', 'Saint Louis'],
-          ['1984', 'Moscow'],
-        ]) {
-          final reason = parts.join(' ');
-          final found = find.textContaining(parts.first);
-          expect(found, findsOneWidget, reason: reason);
-          for (final part in parts.skip(1)) {
-            expect(find.textContaining(part), findsOneWidget, reason: reason);
-          }
-          final paragraph = tester.renderObject<RenderParagraph>(found);
-          expect(paragraph.didExceedMaxLines, isFalse, reason: reason);
-          // Broken at the separator, when it breaks: no line ends on a dot.
-          expect(
-            tester.widget<Text>(found).data,
-            isNot(contains(' ·\n')),
-            reason: reason,
-          );
-        }
-        expect(find.textContaining('13-28'), findsNothing);
-        // The count stands on its own line, whole.
-        expect(
-          tester
-              .renderObject<RenderParagraph>(find.text('91 games').first)
-              .didExceedMaxLines,
-          isFalse,
-        );
-      });
-    }
-
-    _widgetTest('a subscriber sees no padlock', (tester) async {
-      final repo = _Repo(detail: _book());
-      await _pump(
-        tester,
-        repo: repo,
-        subscribed: true,
-        home: () => Scaffold(body: CollectionCard(collection: _book())),
-      );
-      expect(find.byType(DiscoveryPadlock), findsNothing);
-    });
   });
 
   group('bindings', () {
@@ -1914,13 +1053,13 @@ void main() {
       expect(find.text('Kasparov vs Karpov'), findsOneWidget);
       expect(find.text('The 1985 match, move by move.'), findsOneWidget);
       // Premium, and this viewer is not.
-      expect(find.byType(DiscoveryPadlock), findsOneWidget);
+      expect(find.byType(DiscoveryPadlock), findsNothing);
 
       // The book opens on its preview.
       await tester.tap(find.text('Kasparov vs Karpov'));
       await _settle(tester);
       expect(find.byType(CollectionScreen), findsOneWidget);
-      expect(find.byKey(const ValueKey('collection_unlock')), findsOneWidget);
+      expect(find.byKey(const ValueKey('collection_unlock')), findsNothing);
     });
 
     _widgetTest('the event About tab lists its books under its facts', (
@@ -2226,32 +1365,31 @@ void main() {
         t.data!,
     ];
 
-    _widgetTest(
-      'books and events share About, Games and Players tabs',
-      (tester) async {
-        await _pump(
-          tester,
-          repo: _Repo(detail: _book(contentLocked: false)),
-          subscribed: true,
-          home: () => CollectionScreen(collection: _book()),
-        );
-        // expect(tabLabels(tester), ['About', 'Openings', 'Games', 'Players']);
-        expect(tabLabels(tester), ['About', 'Games', 'Players']);
-        await _teardown(tester);
+    _widgetTest('books and events share About, Games and Players tabs', (
+      tester,
+    ) async {
+      await _pump(
+        tester,
+        repo: _Repo(detail: _book(contentLocked: false)),
+        subscribed: true,
+        home: () => CollectionScreen(collection: _book()),
+      );
+      // expect(tabLabels(tester), ['About', 'Openings', 'Games', 'Players']);
+      expect(tabLabels(tester), ['About', 'Games', 'Players']);
+      await _teardown(tester);
 
-        await _pump(
-          tester,
-          repo: _Repo(detail: _event()),
-          subscribed: false,
-          home: () => CollectionScreen(collection: _event()),
-        );
-        expect(tabLabels(tester), ['About', 'Games', 'Players']);
-        // A free event opens on its games, as it always did.
-        expect(find.byType(DiscoveryGameList), findsWidgets);
-        await _showTab(tester, 'Players');
-        expect(find.text('No players in this collection yet.'), findsOneWidget);
-      },
-    );
+      await _pump(
+        tester,
+        repo: _Repo(detail: _event()),
+        subscribed: false,
+        home: () => CollectionScreen(collection: _event()),
+      );
+      expect(tabLabels(tester), ['About', 'Games', 'Players']);
+      // A free event opens on its games, as it always did.
+      expect(find.byType(DiscoveryGameList), findsWidgets);
+      await _showTab(tester, 'Players');
+      expect(find.text('No players in this collection yet.'), findsOneWidget);
+    });
 
     _widgetTest('a book\'s About: every credit, the description, then the '
         'foreword', (tester) async {
@@ -2278,6 +1416,7 @@ void main() {
         subscribed: false,
         home: () => CollectionScreen(collection: book),
       );
+      await _showTab(tester, 'About');
       expect(find.text('by Garry Kasparov'), findsOneWidget);
       expect(find.text('Annotated by Dmitry Plisetsky'), findsOneWidget);
       expect(find.text('Everyman Chess · 2008'), findsOneWidget);
@@ -2291,7 +1430,7 @@ void main() {
         lessThan(tester.getTopLeft(find.text('Foreword')).dy),
       );
       // The preview is free: About, foreword and all, with the way in.
-      expect(find.byKey(const ValueKey('collection_unlock')), findsOneWidget);
+      expect(find.byKey(const ValueKey('collection_unlock')), findsNothing);
     });
 
     _widgetTest('a book with none of the optional fields: About shows what '
@@ -2347,7 +1486,7 @@ void main() {
       expect(find.text('by Garry Kasparov'), findsOneWidget);
       expect(find.text('Timman annotates round 7.'), findsOneWidget);
       // A Premium book for a viewer without Premium: the padlock.
-      expect(find.byType(DiscoveryPadlock), findsOneWidget);
+      expect(find.byType(DiscoveryPadlock), findsNothing);
 
       repo.detail = _book();
       await tester.tap(find.text('Kasparov vs Karpov'));
@@ -2357,7 +1496,7 @@ void main() {
         find.byType(CollectionScreen, skipOffstage: false),
         findsNWidgets(2),
       );
-      expect(find.byKey(const ValueKey('collection_unlock')), findsOneWidget);
+      expect(find.byKey(const ValueKey('collection_unlock')), findsNothing);
     });
 
     _widgetTest('an event\'s Books tab: none, and a failure with a retry', (

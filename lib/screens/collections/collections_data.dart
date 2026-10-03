@@ -14,9 +14,8 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 export 'package:chessever2/repository/gamebase/collections/collections_models.dart';
 
-/// A collection's game, as the app's game card and board take it: players,
-/// result and the final position from its PGN, which it carries whole
-/// (comments, NAGs and variations included) for the board to replay.
+/// A collection game with either safe browse metadata or an authorized PGN.
+/// Browse models must be resolved through fetchPlayableGames before board use.
 @immutable
 class CollectionGame {
   const CollectionGame({required this.card, required this.game});
@@ -27,6 +26,50 @@ class CollectionGame {
 
   String get id => card.id;
   String? get sectionId => card.sectionId;
+
+  /// Browse-only: structured metadata, never PGN, comments or variations.
+  static CollectionGame? fromPreviewCard(CollectionGameCard card) {
+    card = card.withoutPgn();
+    if (card.id.isEmpty) return null;
+    PlayerCard side(CollectionPlayerSide data) => PlayerCard(
+      name: data.name,
+      title: data.title ?? '',
+      rating: data.elo ?? 0,
+      federation: data.fed ?? '',
+      countryCode: data.fed ?? '',
+      fideId: int.tryParse(data.fideId ?? ''),
+      gamebasePlayerId: data.playerId,
+      team: null,
+    );
+    return CollectionGame(
+      card: card,
+      game: GamesTourModel(
+        gameId: card.id,
+        source: GameSource.localAnalysis,
+        whitePlayer: side(card.white),
+        blackPlayer: side(card.black),
+        whiteTimeDisplay: '--:--',
+        blackTimeDisplay: '--:--',
+        whiteClockCentiseconds: 0,
+        blackClockCentiseconds: 0,
+        gameStatus: switch (card.result) {
+          '1-0' => GameStatus.whiteWins,
+          '0-1' => GameStatus.blackWins,
+          '1/2-1/2' => GameStatus.draw,
+          _ => GameStatus.ongoing,
+        },
+        roundId: card.roundTag ?? '',
+        tourId: card.event ?? '',
+        fen: card.finalFen,
+        lastMove: card.lastMove,
+        boardNr: card.board,
+        gameDay: card.playedOn,
+        lastMoveTime: card.playedAt,
+        eco: card.eco,
+        openingName: card.opening,
+      ),
+    );
+  }
 
   /// Null when the card has no PGN or the PGN cannot be read at all.
   static CollectionGame? fromCard(CollectionGameCard card) {
@@ -519,11 +562,19 @@ class CollectionsRepository {
     return _api.getCollection(slug, bearer: await _accessToken(), fresh: fresh);
   }
 
-  /// All of a collection's games with their PGN, in the API's order. A
-  /// Premium collection the viewer is not entitled to throws a
-  /// [CollectionsRequestException] with
-  /// [CollectionsRequestException.isPremiumGate].
-  Future<List<CollectionGame>> fetchGames(String slug) async {
+  /// Browse requests never ask for protected PGN. Older servers still gate
+  /// this metadata endpoint; preserve that refusal instead of a payload fallback.
+  Future<List<CollectionGame>> fetchGames(String slug) =>
+      _fetchGames(slug, includePgn: false);
+
+  /// Protected content, requested only by the gated opening action.
+  Future<List<CollectionGame>> fetchPlayableGames(String slug) =>
+      _fetchGames(slug, includePgn: true);
+
+  Future<List<CollectionGame>> _fetchGames(
+    String slug, {
+    required bool includePgn,
+  }) async {
     final fresh = isFreshAccess(slug);
     final bearer = await _accessToken();
     final cards = await _allPages<CollectionGameCard>(
@@ -531,7 +582,7 @@ class CollectionsRepository {
       fetch: (offset) async {
         final page = await _api.getCollectionGames(
           slug,
-          includePgn: true,
+          includePgn: includePgn,
           limit: gamesPageSize,
           offset: offset,
           bearer: bearer,
@@ -543,7 +594,10 @@ class CollectionsRepository {
     final seen = <String>{};
     return [
       for (final card in cards)
-        if (seen.add(card.id)) ?CollectionGame.fromCard(card),
+        if (seen.add(card.id))
+          ?(includePgn
+              ? CollectionGame.fromCard(card)
+              : CollectionGame.fromPreviewCard(card)),
     ];
   }
 
@@ -561,7 +615,7 @@ class CollectionsRepository {
           slug,
           search: search,
           playerKey: playerKey,
-          includePgn: true,
+          includePgn: false,
           limit: gamesPageSize,
           offset: offset,
           bearer: bearer,
@@ -573,7 +627,7 @@ class CollectionsRepository {
     final seen = <String>{};
     return [
       for (final card in cards)
-        if (seen.add(card.id)) ?CollectionGame.fromCard(card),
+        if (seen.add(card.id)) ?CollectionGame.fromPreviewCard(card),
     ];
   }
 
@@ -621,7 +675,7 @@ class CollectionsRepository {
         final page = await _api.getCollectionGames(
           slug,
           eco: eco,
-          includePgn: true,
+          includePgn: false,
           limit: gamesPageSize,
           offset: offset,
           bearer: bearer,
@@ -633,7 +687,7 @@ class CollectionsRepository {
     final seen = <String>{};
     return [
       for (final card in cards)
-        if (seen.add(card.id)) ?CollectionGame.fromCard(card),
+        if (seen.add(card.id)) ?CollectionGame.fromPreviewCard(card),
     ];
   }
 
