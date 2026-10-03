@@ -190,7 +190,7 @@ Future<void> _disposeExplorer(
 
 void main() {
   testWidgets(
-    'unsubscribed users see a locked player field and applied filters drop player state',
+    'unsubscribed users see the same sheet for an applied player filter and Apply keeps it once the guard passes',
     (tester) async {
       final container = _createContainer(isSubscribed: false);
       try {
@@ -210,17 +210,26 @@ void main() {
 
         await _openFilters(tester);
 
+        // The search field still opens the paywall on tap instead of typing.
         final playerField = tester.widget<TextField>(find.byType(TextField));
         expect(playerField.readOnly, isTrue);
 
+        // The applied player and its colour render exactly as for Premium.
+        expect(find.text('GM Magnus Carlsen'), findsOneWidget);
+        expect(find.text('Color'), findsOneWidget);
+        expect(find.text('Clear all'), findsOneWidget);
+
+        // Apply asks the Premium guard, which passes straight through in a
+        // debug build, and the player filter is kept instead of dropped.
         await tester.ensureVisible(find.text('Apply'));
         await tester.tap(find.text('Apply'));
         await tester.pumpAndSettle();
 
+        expect(find.text('Apply'), findsNothing);
         final filters = container.read(gamebaseExplorerProvider).filters;
-        expect(filters.playerIds, isEmpty);
-        expect(filters.selectedPlayers, isEmpty);
-        expect(filters.playerColor, isNull);
+        expect(filters.playerIds, [magnus.id]);
+        expect(filters.selectedPlayers.map((player) => player.id), [magnus.id]);
+        expect(filters.playerColor, GamebasePlayerColor.white);
       } finally {
         await _disposeExplorer(tester, container);
       }

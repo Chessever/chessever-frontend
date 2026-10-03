@@ -57,8 +57,8 @@ class MyLikesScreen extends StatelessWidget {
 /// My Likes' Games page — the For You → Favorites → Games view without the
 /// tab bar, sourced from the user's liked games. Same search + filter + date
 /// sections + game cards; sections are bucketed by when each game was liked.
-/// Everyone sees every like; a free user's latest [kFreeMyLikesVisibleLimit]
-/// open freely and older ones open through the Premium guard.
+/// Everyone sees every like; opening one goes through the Premium access
+/// guard.
 ///
 /// A page of [MyLikesHubScreen]: the hub's frame carries back and the title;
 /// this page starts with the same search and filters as Favorites.
@@ -137,9 +137,8 @@ class _MyLikesGamesPageState extends ConsumerState<MyLikesGamesPage>
   Future<void> _showFilterDialog() async {
     HapticFeedbackService.buttonPress();
     // Search + filter + sort inside My Likes are free for everyone. The only
-    // free-tier restriction is the window of the latest likes, enforced in
-    // [myLikesViewProvider] / [_openAnalysis] — not here. So no paywall on
-    // applying a filter or sort.
+    // gate is at open ([_openAnalysis]), not here, so no paywall on applying
+    // a filter or sort.
     final result = await showGameFilterDialog(
       context: context,
       currentFilter: ref.read(myLikesFilterProvider).filter,
@@ -562,8 +561,8 @@ class _MyLikesGamesPageState extends ConsumerState<MyLikesGamesPage>
   /// rows or full boards. Each card carries one line over it (where the
   /// game was played and its tags), swipes away to unlike, and holds the
   /// saved game's own menu (open, edit, share, copy, move, My Space,
-  /// remove). Every like uses the same full-color shared game card;
-  /// its line and opens the paywall. Built a row at a time as it scrolls in.
+  /// remove). Every like uses the same full-color shared game card. Built a
+  /// row at a time as it scrolls in.
   Widget _buildSectionsSliver(MyLikesData data) {
     if (widget.standalone) return _buildArchiveSectionsSliver(data);
     // Library-wide tag → game-count map. Reuses the cached counts that drive
@@ -637,7 +636,6 @@ class _MyLikesGamesPageState extends ConsumerState<MyLikesGamesPage>
     final tagCounts =
         ref.watch(myLikesTagCountsProvider).valueOrNull ?? _lastTagCounts;
     final items = <Widget Function()>[];
-    final hasAccess = ref.watch(premiumAccessProvider);
 
     void addGames(List<MyLikesEntry> entries) {
       for (final entry in entries) {
@@ -646,7 +644,6 @@ class _MyLikesGamesPageState extends ConsumerState<MyLikesGamesPage>
             key: ValueKey('mylikes_${entry.analysis.id}'),
             analysis: entry.analysis,
             game: entry.game,
-            isLocked: entry.isLocked || !hasAccess,
             beforeContentAction: () => ensurePremiumGameAccess(
               context,
               featureId: kMyLikesHistoryFeatureId,
@@ -750,8 +747,7 @@ class _MyLikesGamesPageState extends ConsumerState<MyLikesGamesPage>
   }
 
   /// "[glyph] Sinquefield Cup · Endgame · Trap": where the game was played,
-  /// then its tags, the most used first. A locked like keeps its tags
-  /// behind the paywall with the rest of the analysis.
+  /// then its tags, the most used first.
   Widget _likeLine(MyLikesEntry entry, Map<String, int> tagCounts) {
     final analysis = entry.analysis;
     final md = analysis.chessGame.metadata;

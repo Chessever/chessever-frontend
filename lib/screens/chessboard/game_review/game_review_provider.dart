@@ -108,8 +108,11 @@ class MobileGameReviewState {
 
 /// Coordinates whole-game analysis for one board page.
 ///
-/// Reports are on-demand and require paid or active rewarded Premium access,
-/// including the first generation and viewing previously completed reports.
+/// Reports are on-demand. Generating one and opening the report both require
+/// paid or active rewarded Premium access, including the first generation, and
+/// the tap is where that is asked for. A report this device or the game's PGN
+/// already holds is adopted for every tier, so the board, the notation and the
+/// Game Analysis button read the same for a free account as for Premium.
 /// Nothing is generated just from opening a board.
 ///
 /// Premium used to auto-start a couple of seconds after the board went active.
@@ -153,6 +156,10 @@ class MobileGameReviewController extends StateNotifier<MobileGameReviewState> {
   /// Riverpod consumer). Riverpod UI still watches [state] via the provider.
   final _ReviewSheetListenable _sheetListenable = _ReviewSheetListenable();
   ChessGame? _game;
+
+  /// The game instance whose stored-report lookup last came back empty, by
+  /// identity: a richer object for the same mainline is looked up afresh.
+  ChessGame? _noStoredReportGame;
   int? _whiteRating;
   int? _blackRating;
   bool _active = false;
@@ -186,6 +193,7 @@ class MobileGameReviewController extends StateNotifier<MobileGameReviewState> {
     _active = active;
 
     if (changed) {
+      _noStoredReportGame = null;
       _reportController.invalidate();
       _emit(
         MobileGameReviewState(
@@ -198,8 +206,9 @@ class MobileGameReviewController extends StateNotifier<MobileGameReviewState> {
         ),
       );
       // Previous generations: session memory, disk, then the saved game PGN.
-      // Cached reports do not consume the free daily quota.
-      if (state.isEligible && _canAccess()) {
+      // Adopting one is local (no engine, no server call, no quota), so it
+      // runs for every tier. Access is asked for when the report is opened.
+      if (state.isEligible) {
         if (!_reportController.loadCachedReport(fingerprint)) {
           unawaited(_loadExistingReport(game));
         }
@@ -245,6 +254,7 @@ class MobileGameReviewController extends StateNotifier<MobileGameReviewState> {
     }
     // Becoming the visible page again: resume any durable interrupted run.
     if (active) {
+      _noStoredReportGame = null;
       unawaited(_maybeResumeInterruptedRun());
     }
   }
@@ -264,6 +274,7 @@ class MobileGameReviewController extends StateNotifier<MobileGameReviewState> {
     await _reportController.recoverAfterForeground();
     if (!mounted) return;
     // Process may have been killed mid-run (pending intent, no live loop).
+    _noStoredReportGame = null;
     await _maybeResumeInterruptedRun();
   }
 
@@ -276,18 +287,28 @@ class MobileGameReviewController extends StateNotifier<MobileGameReviewState> {
         blackRating: _blackRating,
       );
 
-  /// Restarts a report that was interrupted (process death / dispose) for the
-  /// configured game, without spending another free-tier claim.
+  /// Adopts a report the configured game already has, then restarts one that
+  /// was interrupted (process death / dispose) without spending another
+  /// free-tier claim.
+  ///
+  /// Adopting is local and runs for every tier. Restarting runs analysis, so it
+  /// stays behind access.
   Future<void> _maybeResumeInterruptedRun() async {
-    if (!mounted || !_active || !_canAccess()) return;
+    if (!mounted || !_active) return;
     if (!state.isEligible) return;
     if (_reportController.state.isRunning) return;
     if (_reportController.state.status == GameReportStatus.completed) return;
     final game = _game;
     final fingerprint = state.fingerprint;
     if (game == null || fingerprint == null) return;
-    if (await _loadExistingReport(game)) return;
-    if (!mounted || !_active || state.fingerprint != fingerprint) return;
+    // configure() lands here on every board rebuild (each engine tick), so a
+    // game that already missed is not looked up on disk and in its PGN again.
+    if (!identical(_noStoredReportGame, game)) {
+      if (await _loadExistingReport(game)) return;
+      if (!mounted || !_active || state.fingerprint != fingerprint) return;
+      _noStoredReportGame = game;
+    }
+    if (!_canAccess()) return;
     final interrupted = await _reportController.hasInterruptedRun(fingerprint);
     if (!interrupted ||
         !mounted ||

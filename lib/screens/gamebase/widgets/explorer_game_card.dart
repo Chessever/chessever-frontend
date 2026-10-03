@@ -706,9 +706,9 @@ String _withoutRedundantYear(String label, String year) {
 /// horizontally scrollable SAN chip strip at the bottom.
 ///
 /// Interaction mapping (Trello #984):
-/// - Free users: any tap/scroll interaction on the card shows the paywall
-///   (cards stay visible as a teaser under the free move window).
-/// - Premium: tap notation strip / chip → FOCUS; bottom-nav arrows walk the
+/// - The card builds and scrolls the same for every account. Focus, open and
+///   the long-press menu ask for Premium at the tap (`_requirePremium`).
+/// - Tap notation strip / chip → FOCUS; bottom-nav arrows walk the
 ///   continuation on the miniboard. **Body tap always opens the full game**
 ///   (never clear-focus-only — that only snapped the mini-board fen). When
 ///   focused, open continues from the focused ply (`boardFen`).
@@ -781,9 +781,10 @@ class _ExplorerGameCardState extends ConsumerState<ExplorerGameCard> {
   bool _isThisCardFocused(ExplorerGameFocus? focus) =>
       focus != null && focus.gameId == widget.game.gameId;
 
-  /// True when this card must reject interaction and surface the paywall.
-  /// Mirrors [requirePremiumGuard] / explorer free-window: debug bypass.
-  bool get _freeUserLocked {
+  /// True when the account holds no Premium access, paid or rewarded. Only
+  /// releases a focus that outlived its access; the card builds the same for
+  /// every account. Mirrors [requirePremiumGuard]: debug bypass.
+  bool get _lacksPremiumAccess {
     if (kDebugMode) return false;
     return !ref.watch(featureAccessStateProvider.select((s) => s.isSubscribed));
   }
@@ -1266,34 +1267,19 @@ class _ExplorerGameCardState extends ConsumerState<ExplorerGameCard> {
       child: ClipRRect(borderRadius: radius, child: card),
     );
 
-    // Free users may *see* the teaser cards, but any interaction hits paywall.
-    // Full-card barrier so chip scrolls / nested gestures can't slip through.
-    if (_freeUserLocked && isFocused) {
-      // Drop stale focus if subscription lapsed while a card was focused.
+    // A focused card walks its game with no further gate, so a focus that
+    // outlived its Premium access (rewarded window ended, subscription
+    // lapsed) is released. Every other gate on this card is at the tap.
+    if (_lacksPremiumAccess && isFocused) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
         ref.read(explorerFocusedGameProvider.notifier).clear();
       });
     }
 
-    final Widget body =
-        _freeUserLocked
-            ? Stack(
-              children: [
-                IgnorePointer(child: shell),
-                Positioned.fill(
-                  child: GestureDetector(
-                    behavior: HitTestBehavior.opaque,
-                    onTap: () => requirePremiumGuard(context, ref),
-                  ),
-                ),
-              ],
-            )
-            : shell;
-
     // One exact height for every card — the contract the inline strip's
     // card-by-card paging rests on.
-    return SizedBox(height: cardHeight, child: body);
+    return SizedBox(height: cardHeight, child: shell);
   }
 
   Widget _buildChip(

@@ -881,28 +881,6 @@ final collectionBooksOfEventCollectionProvider = FutureProvider.autoDispose
 bool isCollectionPremiumGate(Object? error) =>
     error is CollectionsRequestException && error.isPremiumGate;
 
-/// Whether this viewer reads [collection]'s games, or sees its preview and
-/// the paywall.
-///
-/// The server decides: once a detail read carries its verdict
-/// ([Collection.contentLocked]) that is the answer, whatever the app
-/// believes about the subscription (a subscriber whose store purchase has
-/// not reached the server yet is still locked; a web subscriber the app
-/// does not know about is not). Until then (the list row, or a server from
-/// before the gate) a Premium collection is locked for a viewer the app
-/// knows is not subscribed, and open while the subscription is still
-/// loading, so a subscriber never sees a lock flash.
-bool isCollectionLocked(
-  Collection collection, {
-  required bool isSubscribed,
-  required bool subscriptionLoading,
-}) {
-  if (!collection.isPremium) return false;
-  final verdict = collection.contentLocked;
-  if (verdict != null) return verdict;
-  return !isSubscribed && !subscriptionLoading;
-}
-
 /// The paywall's feature id for a Premium collection: a fixed identifier
 /// for the upgrade analytics, never the collection's own name or id.
 String collectionPaywallFeatureId(CollectionKind kind) => switch (kind) {

@@ -1,5 +1,3 @@
-import 'package:chessever2/screens/for_you/discovery/widgets/discovery_common.dart'
-    show DiscoveryPadlock;
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
@@ -10,11 +8,9 @@ import 'package:flutter/material.dart';
 /// The row every collection list draws: the [plate] on the left
 /// ([plateSize]: an event's 5:4 picture or a book's 2:3 cover), the title
 /// (two lines at most), the [meta] line ([metaMaxLines] of them), the
-/// [tally] under it, and the optional [note] last. [locked] trails the
-/// tally (or, without one, the meta) with the Premium padlock, which the
-/// text gives way to. A null [onTap] draws the row with no press and no
-/// target (an event the server could not resolve still shows what the book
-/// covers).
+/// [tally] under it, and the optional [note] last. A null [onTap] draws the
+/// row with no press and no target (an event the server could not resolve
+/// still shows what the book covers).
 class CollectionPlateRow extends StatelessWidget {
   const CollectionPlateRow({
     super.key,
@@ -25,7 +21,6 @@ class CollectionPlateRow extends StatelessWidget {
     this.plateSize,
     this.metaMaxLines = 1,
     this.tally,
-    this.locked = false,
     this.note,
     this.onTap,
     this.menuActions,
@@ -62,7 +57,6 @@ class CollectionPlateRow extends StatelessWidget {
 
   /// How much the collection holds ("55 games"), on its own line.
   final String? tally;
-  final bool locked;
   final String? note;
   final VoidCallback? onTap;
   final CardMenuActionsBuilder? menuActions;
@@ -78,20 +72,6 @@ class CollectionPlateRow extends StatelessWidget {
     final line = meta;
     final count = tally;
     final caption = note;
-
-    // The padlock stands outside the text, so a long credit or a larger
-    // text size shortens the words and never cuts the lock off with them.
-    Widget withLock(Widget? text) => Row(
-      children: [
-        if (text != null) Flexible(child: text),
-        if (locked) ...[
-          if (text != null) SizedBox(width: DiscoveryPadlock.gap),
-          const DiscoveryPadlock(
-            key: ValueKey<String>('collection_card_padlock'),
-          ),
-        ],
-      ],
-    );
 
     final Widget? metaText = line == null
         ? null
@@ -123,10 +103,7 @@ class CollectionPlateRow extends StatelessWidget {
           height: 1.2,
         ),
       ),
-      if (metaText != null) ...[
-        SizedBox(height: 4.h),
-        count == null ? withLock(metaText) : metaText,
-      ],
+      if (metaText != null) ...[SizedBox(height: 4.h), metaText],
     ];
     final details = ExcludeSemantics(
       child: Column(
@@ -156,25 +133,12 @@ class CollectionPlateRow extends StatelessWidget {
               crossAxisAlignment: WrapCrossAlignment.center,
               children: [
                 if (count != null)
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Flexible(
-                        child: Text(
-                          count,
-                          style: AppTypography.textXsRegular.copyWith(
-                            color: colors.textSecondary,
-                            fontFeatures: const [FontFeature.tabularFigures()],
-                          ),
-                        ),
-                      ),
-                      if (locked) ...[
-                        SizedBox(width: DiscoveryPadlock.gap),
-                        const DiscoveryPadlock(
-                          key: ValueKey<String>('collection_card_padlock'),
-                        ),
-                      ],
-                    ],
+                  Text(
+                    count,
+                    style: AppTypography.textXsRegular.copyWith(
+                      color: colors.textSecondary,
+                      fontFeatures: const [FontFeature.tabularFigures()],
+                    ),
                   ),
                 ...detailItems,
                 if (stats != null) stats!,
@@ -182,20 +146,15 @@ class CollectionPlateRow extends StatelessWidget {
             ),
           ] else if (count != null) ...[
             SizedBox(height: metaText == null ? 4.h : 2.h),
-            withLock(
-              Text(
-                count,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: metaStyle.copyWith(
-                  color: colors.textSecondary,
-                  fontFeatures: const [FontFeature.tabularFigures()],
-                ),
+            Text(
+              count,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: metaStyle.copyWith(
+                color: colors.textSecondary,
+                fontFeatures: const [FontFeature.tabularFigures()],
               ),
             ),
-          ] else if (metaText == null && locked) ...[
-            SizedBox(height: 4.h),
-            withLock(null),
           ],
           if (!compactDetails && stats != null) ...[
             SizedBox(height: 6.h),

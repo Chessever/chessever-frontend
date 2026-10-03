@@ -175,14 +175,10 @@ Color discoveryHeartInk(BuildContext context) {
 const String kDiscoveryGlue = '\u2060';
 
 /// The Premium padlock (the design's 12 x 14 lock), drawn bare in brand cyan
-/// unless [color] says otherwise (a disabled action draws it muted).
+/// unless [color] says otherwise.
 ///
-/// One placement for every locked control on the page: the lock trails the
-/// words (or the chevron) it gates, [gap] after them, at the default size,
-/// centred on their line. Once per boundary: it marks the locked control
-/// itself (a tab, the date arrow, the players row, a tour tile's outcome),
-/// never the outcome line that sells a boundary those controls already
-/// mark ([DiscoveryUpgradeLine]).
+/// One placement everywhere: the lock trails the words it gates, [gap] after
+/// them, at the default size, centred on their line.
 class DiscoveryPadlock extends StatelessWidget {
   const DiscoveryPadlock({
     super.key,
@@ -248,50 +244,6 @@ class _PadlockPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_PadlockPainter oldDelegate) => oldDelegate.color != color;
-}
-
-/// Which corner a [DiscoveryLockNotch] is cut into.
-enum DiscoveryNotchCorner { topRight, bottomRight }
-
-/// A square cut out of a locked surface's corner in the page colour, with the
-/// padlock centred in it. Reads as a notch in the object, not a badge on it.
-class DiscoveryLockNotch extends StatelessWidget {
-  const DiscoveryLockNotch({
-    super.key,
-    required this.size,
-    this.corner = DiscoveryNotchCorner.topRight,
-  });
-
-  final double size;
-  final DiscoveryNotchCorner corner;
-
-  @override
-  Widget build(BuildContext context) {
-    final radius = Radius.circular(3.w);
-    final lock = (size * 0.42).clamp(8.0, 12.0);
-    return SizedBox.square(
-      dimension: size,
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          color: context.colors.background,
-          borderRadius: switch (corner) {
-            DiscoveryNotchCorner.topRight => BorderRadius.only(
-              bottomLeft: radius,
-            ),
-            DiscoveryNotchCorner.bottomRight => BorderRadius.only(
-              topLeft: radius,
-            ),
-          },
-        ),
-        child: Center(
-          child: CustomPaint(
-            size: Size(lock * 12 / 14, lock),
-            painter: _PadlockPainter(context.colors.accentText),
-          ),
-        ),
-      ),
-    );
-  }
 }
 
 // ---------------------------------------------------------------- glyphs
@@ -572,10 +524,9 @@ class DiscoverySeeAllHeader extends StatelessWidget {
 /// spring (and jumps under reduced motion); the labels trade ink with it as
 /// it passes, so colour and position move as one.
 ///
-/// Each segment is a 44-high target over the 34-high track. A [locked]
-/// segment carries the padlock after its label; [leading] sets a glyph
-/// before it (a time control). With [enabled] off the labels stay in place
-/// as the boundary but offer nothing: no track, no thumb, no padlocks, no
+/// Each segment is a 44-high target over the 34-high track; [leading] sets
+/// a glyph before its label (a time control). With [enabled] off the labels
+/// stay in place as the boundary but offer nothing: no track, no thumb, no
 /// taps, one quiet announcement.
 class DiscoverySegments<T> extends StatelessWidget {
   const DiscoverySegments({
@@ -585,7 +536,6 @@ class DiscoverySegments<T> extends StatelessWidget {
     required this.label,
     required this.onSelect,
     required this.semanticsPrefix,
-    this.locked,
     this.leading,
     this.enabled = true,
     this.disabledSuffix = 'not live yet',
@@ -596,7 +546,6 @@ class DiscoverySegments<T> extends StatelessWidget {
   final String Function(T value) label;
   final ValueChanged<T> onSelect;
   final String semanticsPrefix;
-  final bool Function(T value)? locked;
   final Widget Function(T value)? leading;
   final bool enabled;
 
@@ -670,9 +619,6 @@ class DiscoverySegments<T> extends StatelessWidget {
                                     ? (1 - (at - i).abs()).clamp(0.0, 1.0)
                                     : 0.0,
                                 enabled: enabled,
-                                locked:
-                                    enabled &&
-                                    (locked?.call(values[i]) ?? false),
                                 leading: leading?.call(values[i]),
                               ),
                             ),
@@ -738,7 +684,6 @@ class DiscoverySegments<T> extends StatelessWidget {
   }
 
   Widget _target(T value, bool isSelected) {
-    final isLocked = locked?.call(value) ?? false;
     void select() {
       if (isSelected) return;
       HapticFeedbackService.selection();
@@ -750,11 +695,7 @@ class DiscoverySegments<T> extends StatelessWidget {
       button: true,
       selected: isSelected,
       inMutuallyExclusiveGroup: true,
-      label: [
-        semanticsPrefix,
-        label(value),
-        if (isLocked) 'Premium',
-      ].join(', '),
+      label: '$semanticsPrefix, ${label(value)}',
       onTap: select,
       excludeSemantics: true,
       child: GestureDetector(
@@ -803,7 +744,6 @@ class _SegmentLabel extends StatelessWidget {
     required this.text,
     required this.on,
     required this.enabled,
-    required this.locked,
     this.leading,
   });
 
@@ -812,7 +752,6 @@ class _SegmentLabel extends StatelessWidget {
   /// How far the thumb sits under this segment, 0 to 1.
   final double on;
   final bool enabled;
-  final bool locked;
   final Widget? leading;
 
   @override
@@ -861,10 +800,6 @@ class _SegmentLabel extends StatelessWidget {
                   Text(text, maxLines: 1, style: style),
                 ],
               ),
-              if (locked) ...[
-                SizedBox(width: DiscoveryPadlock.gap),
-                const DiscoveryPadlock(),
-              ],
             ],
           ),
         ),
@@ -879,11 +814,10 @@ class _SegmentLabel extends StatelessWidget {
 enum DiscoveryActionLead { none, plus }
 
 /// Discovery's one action look: accent ink at label size, a plus before it
-/// when it creates something, the Premium padlock after the words when the
-/// action is locked ([DiscoveryPadlock]'s one placement), and the up-right
-/// arrow after it when the action leaves for somewhere else. Every action
-/// on the page wears this and nothing else does, so accent ink always means
-/// "tap here" and plain ink always means "information".
+/// when it creates something, and the up-right arrow after it when the
+/// action leaves for somewhere else. Every action on the page wears this
+/// and nothing else does, so accent ink always means "tap here" and plain
+/// ink always means "information".
 ///
 /// A null [onTap] draws the same line in the quietest ink with no target: a
 /// boundary that is visible but not for sale yet. [wraps] lets a long
@@ -896,7 +830,6 @@ class DiscoveryAction extends StatelessWidget {
     required this.label,
     required this.onTap,
     this.lead = DiscoveryActionLead.none,
-    this.trailingPadlock = false,
     this.arrow = false,
     this.wraps = false,
     this.endsSection = false,
@@ -906,7 +839,6 @@ class DiscoveryAction extends StatelessWidget {
   final String label;
   final VoidCallback? onTap;
   final DiscoveryActionLead lead;
-  final bool trailingPadlock;
   final bool arrow;
   final bool wraps;
   final bool endsSection;
@@ -932,23 +864,15 @@ class DiscoveryAction extends StatelessWidget {
       child: Center(child: glyph),
     );
 
-    // Trailing glyphs ride inline, so on a wrapped outcome they follow the
-    // last word instead of hanging off the far edge; the word joiner keeps
-    // them on that word's line, never alone on a line of their own.
+    // The trailing arrow rides inline, so on a wrapped outcome it follows
+    // the last word instead of hanging off the far edge; the word joiner
+    // keeps it on that word's line, never alone on a line of its own.
     final text = Text.rich(
       TextSpan(
         children: [
           TextSpan(text: label),
-          if (trailingPadlock || arrow) const TextSpan(text: kDiscoveryGlue),
-          if (trailingPadlock)
-            WidgetSpan(
-              alignment: PlaceholderAlignment.middle,
-              child: Padding(
-                padding: EdgeInsets.only(left: DiscoveryPadlock.gap),
-                child: DiscoveryPadlock(color: ink),
-              ),
-            ),
-          if (arrow)
+          if (arrow) ...[
+            const TextSpan(text: kDiscoveryGlue),
             WidgetSpan(
               alignment: PlaceholderAlignment.middle,
               child: Padding(
@@ -960,6 +884,7 @@ class DiscoveryAction extends StatelessWidget {
                 ),
               ),
             ),
+          ],
         ],
       ),
       maxLines: wraps ? 2 : 1,
@@ -1009,80 +934,23 @@ class DiscoveryAction extends StatelessWidget {
 
 /// A Premium outcome under a section's content: the exact outcome ("View
 /// weekly, monthly, and yearly rankings") and the arrow, on the gutter,
-/// always its section's last line. It sells a boundary the section's own
-/// locked controls already mark (the Week tab, the earlier-days arrow, a
-/// locked card), so it carries no padlock of its own: the boundary is
-/// stated once, and the sentence itself appears once per page. Its screen
-/// reader label still says Premium. [onTap] null shows it as a boundary
-/// that is not live yet.
-///
-/// [quiet] is the hub's form, under a preview whose header already carries
-/// "See all": the padlock and the outcome in quiet ink, no arrow, so a
-/// section offers one link out and the boundary reads as a fact about it.
-/// The line still opens the paywall.
+/// always its section's last line. It carries no padlock: the sentence
+/// states the boundary, once per page. Its screen reader label still says
+/// Premium. [onTap] null shows it as a boundary that is not live yet.
 class DiscoveryUpgradeLine extends StatelessWidget {
   const DiscoveryUpgradeLine({
     super.key,
     required this.label,
     required this.onTap,
     this.semanticsLabel,
-    this.quiet = false,
   });
 
   final String label;
   final VoidCallback? onTap;
   final String? semanticsLabel;
-  final bool quiet;
-
-  Widget _quiet(BuildContext context) {
-    final ink = context.colors.textSecondary;
-    final line = MediaQuery.textScalerOf(context).scale(13.f) * 18 / 13;
-    final body = DiscoveryInkFloor(
-      minHeight: 44.w,
-      inset: math.max(0, (44.w - line) / 2),
-      endsSection: true,
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SizedBox(
-            height: line,
-            child: Center(child: DiscoveryPadlock(color: ink)),
-          ),
-          SizedBox(width: 6.w),
-          Flexible(
-            child: Text(
-              label,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: discoveryType(context, DiscoveryType.label, color: ink),
-            ),
-          ),
-        ],
-      ),
-    );
-    final tap = onTap;
-    return Padding(
-      padding: EdgeInsets.symmetric(horizontal: discoveryGutter),
-      child: Align(
-        alignment: Alignment.centerLeft,
-        child: Semantics(
-          container: true,
-          button: tap != null,
-          label: semanticsLabel ?? '$label, Premium',
-          onTap: tap,
-          excludeSemantics: true,
-          child: tap == null
-              ? body
-              : WallPressable(pressScale: 0.97, onTap: tap, child: body),
-        ),
-      ),
-    );
-  }
 
   @override
   Widget build(BuildContext context) {
-    if (quiet) return _quiet(context);
     return Padding(
       padding: EdgeInsets.symmetric(horizontal: discoveryGutter),
       child: Align(
@@ -1103,9 +971,8 @@ class DiscoveryUpgradeLine extends StatelessWidget {
 // ---------------------------------------------------------------- stepper
 
 /// "‹  Thu 24 Sep  ›": the one date control on the page. The arrows are 44
-/// targets; a [previousLocked] arrow carries the padlock after its chevron
-/// (the page's one placement, see [DiscoveryPadlock]); a null callback
-/// draws its chevron in the divider ink and takes no tap.
+/// targets; a null callback draws its chevron in the divider ink and takes
+/// no tap.
 ///
 /// Set in a header with `trailingReachesEdge`, [edgeInset] puts the next
 /// chevron's ink on the gutter while its target runs to the screen edge.
@@ -1117,7 +984,6 @@ class DiscoveryDateStepper extends StatelessWidget {
     required this.nextSemantics,
     required this.onPrevious,
     required this.onNext,
-    this.previousLocked = false,
     this.labelSemantics,
     this.edgeInset = 0,
   });
@@ -1127,7 +993,6 @@ class DiscoveryDateStepper extends StatelessWidget {
   final String nextSemantics;
   final VoidCallback? onPrevious;
   final VoidCallback? onNext;
-  final bool previousLocked;
   final String? labelSemantics;
   final double edgeInset;
 
@@ -1138,7 +1003,6 @@ class DiscoveryDateStepper extends StatelessWidget {
       children: [
         _StepArrow(
           pointsLeft: true,
-          locked: previousLocked && onPrevious != null,
           semanticLabel: previousSemantics,
           onTap: onPrevious,
         ),
@@ -1154,8 +1018,6 @@ class DiscoveryDateStepper extends StatelessWidget {
         ),
         _StepArrow(
           pointsLeft: false,
-          locked: false,
-          reserveLock: previousLocked && onPrevious != null,
           semanticLabel: nextSemantics,
           onTap: onNext,
           endInset: edgeInset,
@@ -1168,22 +1030,14 @@ class DiscoveryDateStepper extends StatelessWidget {
 class _StepArrow extends StatelessWidget {
   const _StepArrow({
     required this.pointsLeft,
-    required this.locked,
     required this.semanticLabel,
     required this.onTap,
     this.endInset = 0,
-    this.reserveLock = false,
   });
 
   final bool pointsLeft;
-  final bool locked;
   final String semanticLabel;
   final VoidCallback? onTap;
-
-  /// Keeps the padlock's room (empty) between the label and this chevron,
-  /// so a date whose other arrow carries the padlock sits evenly between
-  /// its two chevrons.
-  final bool reserveLock;
 
   /// Space kept clear after the chevron inside the target.
   final double endInset;
@@ -1194,23 +1048,10 @@ class _StepArrow extends StatelessWidget {
     final ink = enabled
         ? context.colors.textSecondary
         : context.colors.dividerStrong;
-    final lockRoom = DiscoveryPadlock.gap + const DiscoveryPadlock().width.w;
-    final glyph = Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        if (reserveLock) SizedBox(width: lockRoom),
-        DiscoveryChevron(color: ink, turns: pointsLeft ? 2 : 0),
-        if (locked) ...[
-          SizedBox(width: DiscoveryPadlock.gap),
-          const DiscoveryPadlock(),
-        ],
-      ],
-    );
+    final glyph = DiscoveryChevron(color: ink, turns: pointsLeft ? 2 : 0);
     final target = 44.w;
     final box = SizedBox(
-      width: endInset > 0
-          ? math.max(target, endInset + 20.w + (reserveLock ? lockRoom : 0))
-          : target,
+      width: endInset > 0 ? math.max(target, endInset + 20.w) : target,
       height: target,
       child: endInset > 0
           ? Padding(

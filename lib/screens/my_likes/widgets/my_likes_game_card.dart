@@ -6,8 +6,6 @@ import 'package:chessever2/screens/library/widgets/saved_game_actions.dart';
 import 'package:chessever2/screens/library/widgets/swipe_action_card.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/theme/app_theme.dart';
-import 'package:chessever2/widgets/paywall/premium_game_access.dart';
-import 'package:chessever2/screens/my_likes/provider/my_likes_provider.dart';
 import 'package:chessever2/widgets/card_context_menu.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -20,17 +18,18 @@ class MyLikesGameCard extends ConsumerWidget {
     super.key,
     required this.analysis,
     required this.game,
-    required this.isLocked,
     required this.onOpen,
     required this.onRemove,
+    required this.beforeContentAction,
     this.tagCounts,
-    this.beforeContentAction,
   });
 
   final SavedAnalysis analysis;
   final GamesTourModel game;
-  final bool isLocked;
-  final Future<bool> Function()? beforeContentAction;
+
+  /// The parent's access check, awaited before a menu action that reads the
+  /// game (edit, copy, move).
+  final Future<bool> Function() beforeContentAction;
 
   /// Library-wide tag → game-count map. Threaded into [LibraryGameCard] so
   /// chips render with the dominant tag first.
@@ -57,16 +56,7 @@ class MyLikesGameCard extends ConsumerWidget {
         deleteIcon: Icons.heart_broken_rounded,
         showSpaceAction: false,
         showShareAction: false,
-        beforeContentAction:
-            beforeContentAction ??
-            () async {
-              if (!isLocked) return true;
-              return ensurePremiumGameAccess(
-                context,
-                featureId: kMyLikesHistoryFeatureId,
-                returnTo: kMyLikesReturnTo,
-              );
-            },
+        beforeContentAction: beforeContentAction,
       ),
       child: LibraryGameCard(
         game: game,

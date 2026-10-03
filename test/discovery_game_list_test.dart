@@ -278,7 +278,9 @@ void main() {
     }
 
     for (final mode in GamesListViewMode.values) {
-      testWidgets('Reports locks reflect access in $mode', (tester) async {
+      testWidgets('Reports cards are the same with and without access in '
+          '$mode', (tester) async {
+        Size? cardSize;
         for (final hasAccess in [false, true]) {
           final repository = _ReportsRepository();
           final container = await open(
@@ -288,24 +290,25 @@ void main() {
             hasAccess: hasAccess,
           );
           await complete(tester, repository, 0, [_game('report')]);
-          expect(
-            find.byType(DiscoveryPadlock),
-            hasAccess ? findsNothing : findsOneWidget,
-          );
-          final card = tester.widget<DiscoveryGameCard>(
-            find.byType(DiscoveryGameCard).first,
-          );
+          expect(find.byType(DiscoveryPadlock), findsNothing);
+          final cardFinder = find.byType(DiscoveryGameCard).first;
+          final card = tester.widget<DiscoveryGameCard>(cardFinder);
+          // The tap is the only gate, and the long-press rows are the
+          // card's own for both tiers.
           expect(card.onOpen, isNotNull);
-          expect(card.lockedFor?.call(0) ?? false, !hasAccess);
-          if (!hasAccess) {
-            expect(
-              card.menuActionsFor!(
-                tester.element(find.byType(DiscoveryGameCard).first),
-                0,
-              ),
-              isEmpty,
-            );
-          }
+          final menus = [
+            ...tester
+                .widgetList<GridGameCardWrapperWidget>(_gridCards)
+                .map((c) => c.menuActions),
+            ...tester
+                .widgetList<GameCardWrapperWidget>(_listCards)
+                .map((c) => c.menuActions),
+          ];
+          expect(menus, [null]);
+          // No label slot for either tier: one card height.
+          final size = tester.getSize(cardFinder);
+          expect(size, cardSize ?? size);
+          cardSize = size;
           expect(tester.takeException(), isNull);
           await _teardown(tester, container);
         }
@@ -833,7 +836,7 @@ void main() {
     });
   });
 
-  group('row labels, rows from an offset, menus and locks', () {
+  group('row labels, rows from an offset and menus', () {
     Widget label(int i) => DiscoveryCardMeta(
       key: ValueKey('row_label_$i'),
       parts: [DiscoveryMetaPart.figure('${19 + i}', unit: ' moves')],
@@ -925,32 +928,6 @@ void main() {
         await _teardown(tester, container);
       });
     }
-
-    testWidgets('a locked card is greyed with the padlock after its line, '
-        'and an open one is not', (tester) async {
-      final container = await _pump(
-        tester,
-        DiscoveryGameList(
-          games: _games(2),
-          streamEnabled: false,
-          labelFor: label,
-          lockedFor: (i) => i == 1,
-        ),
-      );
-      expect(find.byType(DiscoveryPadlock), findsOneWidget);
-      expect(find.byType(ColorFiltered), findsOneWidget);
-      final lock = tester.getCenter(find.byType(DiscoveryPadlock));
-      final open = tester.getCenter(find.byKey(const ValueKey('row_label_0')));
-      final shut = tester.getCenter(find.byKey(const ValueKey('row_label_1')));
-      expect(lock.dx, greaterThan(shut.dx));
-      // Paired cards keep one top edge, lock or no lock.
-      expect(
-        tester.getTopLeft(find.byKey(const ValueKey('discovery_grid_g0'))).dy,
-        tester.getTopLeft(find.byKey(const ValueKey('discovery_grid_g1'))).dy,
-      );
-      expect(open.dy, moreOrLessEquals(shut.dy, epsilon: 0.5));
-      await _teardown(tester, container);
-    });
   });
 
   group('streams and engine', () {

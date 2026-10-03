@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'package:chessever2/services/rewarded_premium/rewarded_ads.dart';
 
 import 'package:chessever2/chat/botvinnik_icon.dart';
 import 'package:chessever2/chat/chat_api.dart';
@@ -124,6 +123,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   String? _error;
   bool _loading = true;
   bool _sending = false;
+  bool _upgradeOpen = false;
   final Set<String> _feedbackPending = {};
   String? _appVersion;
   String? _buildNumber;
@@ -384,14 +384,36 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       } else {
         unawaited(ref.read(botvinnikQuotaProvider.notifier).refresh());
       }
+      // The worker turned the send away for want of Premium: the quota was
+      // not loaded, or had gone stale, when the guard above ran. Nothing was
+      // stored, so the message goes back into the composer and the popup the
+      // guard would have shown opens. Text typed since the send is left
+      // alone: the refused message keeps its bubble instead.
+      final upgradeRequired =
+          chatComposerAccess(isSignedIn: true, quota: error.quota) ==
+          ChatComposerAccess.upgradeRequired;
+      final restore = upgradeRequired && _controller.text.isEmpty;
       setState(() {
         _error = error.quota != null && error.quota!.remaining <= 0
             ? null
             : error.message;
-        if (_messages.isNotEmpty && _messages.last.content.isEmpty) {
+        if (restore) {
+          _messages = [
+            for (final message in _messages)
+              if (message.id != localUser.id && message.id != localAssistant.id)
+                message,
+          ];
+        } else if (_messages.isNotEmpty && _messages.last.content.isEmpty) {
           _messages = _messages.sublist(0, _messages.length - 1);
         }
       });
+      if (restore) {
+        _controller.value = TextEditingValue(
+          text: content,
+          selection: TextSelection.collapsed(offset: content.length),
+        );
+      }
+      if (upgradeRequired) unawaited(_showUpgrade(resend: restore));
     } finally {
       if (mounted) setState(() => _sending = false);
     }
@@ -467,10 +489,44 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     await _load();
   }
 
-  Future<void> _showUpgrade() async {
-    await showPremiumPaywallSheet(context: context);
-    if (!mounted) return;
-    await ref.read(botvinnikQuotaProvider.notifier).refresh();
+  /// Opens the Premium popup. [resend] sends what is in the composer once the
+  /// viewer is entitled; it is false when that text is not the message the
+  /// popup interrupted.
+  Future<void> _showUpgrade({bool resend = true}) async {
+    // The paywall checks the store before its sheet appears, long enough for
+    // a second tap on send to stack another one.
+    if (_upgradeOpen) return;
+    _upgradeOpen = true;
+    try {
+      // onEntitled rather than the returned bool: it holds the resend below
+      // until a purchase celebration has closed.
+      var entitled = false;
+      await showPremiumPaywallSheet(
+        context: context,
+        onEntitled: () => entitled = true,
+      );
+      if (!mounted) return;
+      await ref.read(botvinnikQuotaProvider.notifier).refresh();
+      if (!mounted || !entitled) return;
+      final quota = ref.read(botvinnikQuotaProvider).valueOrNull;
+      if (chatComposerAccess(isSignedIn: true, quota: quota) ==
+          ChatComposerAccess.upgradeRequired) {
+        // The app counts the viewer as entitled before the worker does (a
+        // purchase it has not heard of yet). An entitled viewer gets no
+        // popup, so say why the message did not go.
+        showAppSnack(
+          context,
+          'Premium is still being confirmed. Try again in a moment.',
+        );
+        return;
+      }
+      // Send the message the popup interrupted, still in the composer. Only
+      // once the worker reports the unlocked allowance: a send it would turn
+      // away comes straight back here.
+      if (resend && quota != null && quota.remaining > 0) unawaited(_send());
+    } finally {
+      _upgradeOpen = false;
+    }
   }
 
   void _readQuota(Map<String, dynamic> data) {
@@ -698,9 +754,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                 onSignIn: _showLogin,
               ),
               ChatComposerAccess.exhausted => const _ChatDailyLimitNotice(),
-              ChatComposerAccess.upgradeRequired => _ChatUpgradeGate(
-                onUpgrade: _showUpgrade,
-              ),
+              // An account with no allowance keeps the composer: _send opens
+              // the Premium popup when the message is sent.
+              ChatComposerAccess.upgradeRequired ||
               ChatComposerAccess.enabled => _ChatComposer(
                 controller: _controller,
                 sending: _sending,
@@ -1096,63 +1152,6 @@ class _ChatDailyLimitNotice extends StatelessWidget {
               Icon(Icons.warning_amber_rounded, color: colors.tertiary),
               const SizedBox(width: 12),
               const Expanded(child: Text(chatDailyLimitMessage)),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _ChatUpgradeGate extends StatelessWidget {
-  const _ChatUpgradeGate({required this.onUpgrade});
-  final Future<void> Function() onUpgrade;
-
-  @override
-  Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    return Material(
-      color: colorScheme.surface,
-      child: SafeArea(
-        top: false,
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            border: Border(top: BorderSide(color: colorScheme.outlineVariant)),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.symmetric(vertical: 5),
-                color: colorScheme.surfaceContainerHighest,
-                alignment: Alignment.center,
-                child: Text(
-                  RewardedAdsConfig.available
-                      ? 'Watch an ad for 10 minutes of Premium access.'
-                      : 'Botvinnik is available with Premium.',
-                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                    color: colorScheme.onSurfaceVariant,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
-                child: SizedBox(
-                  width: double.infinity,
-                  child: FilledButton.icon(
-                    onPressed: onUpgrade,
-                    icon: const Icon(Icons.workspace_premium_rounded),
-                    label: Text(
-                      RewardedAdsConfig.available
-                          ? 'Upgrade or watch ad to continue chatting'
-                          : 'Upgrade to continue chatting',
-                      textAlign: TextAlign.center,
-                    ),
-                  ),
-                ),
-              ),
             ],
           ),
         ),

@@ -356,9 +356,9 @@ SpaceShortcut collectionSpaceDraft(Collection c) {
 /// Space.
 ///
 /// Books and events share the landscape plate in lists; a book's About
-/// page preserves its complete jacket. A Premium collection the viewer cannot read yet
-/// carries the padlock after its game count (the page's one lock
-/// placement); it still opens, on its preview. [note] is the team's caption
+/// page preserves its complete jacket. A Premium collection is drawn like any
+/// other and opens on its preview; its games ask for access when one is
+/// opened. [note] is the team's caption
 /// when the card is listed for an event ("Chapter 7 is this match's
 /// decisive game").
 class CollectionCard extends ConsumerWidget {

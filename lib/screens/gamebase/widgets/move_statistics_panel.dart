@@ -1,13 +1,10 @@
 import 'package:chessever2/services/rewarded_premium/rewarded_access_provider.dart';
-import 'package:chessever2/services/rewarded_premium/rewarded_ads.dart';
 import 'dart:async';
-import 'dart:ui' show ImageFilter;
 
 import 'package:chessever2/providers/board_settings_provider_new.dart';
 import 'package:chessever2/screens/gamebase/utils/space_position_draft.dart';
 import 'package:chessever2/screens/library/widgets/library_context_menu.dart';
 import 'package:chessever2/screens/library/widgets/menu_preview_surface.dart';
-import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/figurine_notation.dart';
 import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
 import 'package:chessever2/widgets/space_shortcut_drafts.dart';
@@ -55,9 +52,10 @@ const double _kColumnGap = 4;
 /// visible gap between the last engine line and the first move.
 const double _kHeaderRowHeight = 34;
 
-/// Free users see explorer aggregates up to and including the 10th full move
-/// (ply 20). `currentMoveNumber` is `ply + 1`, so anything above 20 means the
-/// current position is *past* move 10 and premium is required.
+/// Free accounts step through the explorer up to the 10th full move. Once
+/// `currentMoveNumber` (`ply + 1`) reaches this value, the next step forward
+/// asks for Premium. Reading the table is never gated: it builds the same for
+/// every account at any depth.
 const int kFreeExplorerMoveNumberLimit = 20;
 
 /// When this many games (or fewer) remain in the explored position, the panel
@@ -711,14 +709,11 @@ class MoveStatisticsPanel extends HookConsumerWidget {
     );
     final effectiveMoveNumber =
         ref.read(gamebaseExplorerProvider.notifier).effectiveMoveNumber;
-    // Mirror `requirePremiumGuard`: bypass in debug so engineers can exercise
-    // deep positions without a live RevenueCat subscription.
-    final pastFreeLimit = effectiveMoveNumber > kFreeExplorerMoveNumberLimit;
-    final showGate = pastFreeLimit && !isSubscribed && !kDebugMode;
-    // True when the current position is the last free step — the next ply
-    // would land past move 10. Used to paywall *before* navigating into the
-    // gated zone, rather than letting the user advance and then blurring the
-    // panel behind them.
+    // True when playing a move from here would step past move 10. The table
+    // builds the same for every account; this only decides whether a move-row
+    // tap asks for Premium first. Mirrors `requirePremiumGuard`: bypassed in
+    // debug so engineers can exercise deep positions without a live
+    // RevenueCat subscription.
     final nextStepCrossesLimit =
         !isSubscribed &&
         !kDebugMode &&
@@ -744,7 +739,7 @@ class MoveStatisticsPanel extends HookConsumerWidget {
     );
     final requestedInlineQuery = useState<GamebasePositionGamesQuery?>(null);
     useEffect(() {
-      if (showGate || state.currentFen.trim().isEmpty) return null;
+      if (state.currentFen.trim().isEmpty) return null;
       final timer = Timer(_kExplorerGamesWarmSettle, () {
         // Back on a position whose page is still held from minutes ago: ask
         // again before attaching, so neither the table's layout nor the
@@ -754,9 +749,9 @@ class MoveStatisticsPanel extends HookConsumerWidget {
         ref.read(explorerGamesPrefetchProvider).preload([inlineQuery]);
       });
       return timer.cancel;
-    }, [inlineQuery, showGate]);
+    }, [inlineQuery]);
     final inlinePage =
-        !showGate && requestedInlineQuery.value == inlineQuery
+        requestedInlineQuery.value == inlineQuery
             ? ref.watch(positionGamesProvider(inlineQuery)).valueOrNull
             : null;
     final hasInlinePage =
@@ -803,10 +798,7 @@ class MoveStatisticsPanel extends HookConsumerWidget {
       };
     }, [state.currentFen]);
     final prefetchSignature =
-        showGate ||
-                exactFenSession ||
-                state.isLoading ||
-                sortedAggregates.isEmpty
+        exactFenSession || state.isLoading || sortedAggregates.isEmpty
             ? null
             : explorerGamesPrefetchSignature(
               fen: state.currentFen,
@@ -869,28 +861,25 @@ class MoveStatisticsPanel extends HookConsumerWidget {
     // sheet here with its own header, its own list and different cards; the
     // reader is looking at the same explorer, so they get the same table.
     final fenOnlyGames =
-        !showGate &&
-        (exactFenSession ||
-            (!state.isLoading &&
-                state.moveAggregates.isEmpty &&
-                _isPastIndexedAggregateWindow(
-                  state: state,
-                  effectiveMoveNumber: effectiveMoveNumber,
-                )));
+        exactFenSession ||
+        (!state.isLoading &&
+            state.moveAggregates.isEmpty &&
+            _isPastIndexedAggregateWindow(
+              state: state,
+              effectiveMoveNumber: effectiveMoveNumber,
+            ));
 
     // Mirrors the inline-games condition in `_buildListChildren` — the page
     // grid, the bottom reserve and the physics all hinge on the strip really
     // being there.
     final showInlineGames =
         fenOnlyGames ||
-        (!showGate &&
-            (hasInlinePage ||
-                (!state.isLoading &&
-                    sortedAggregates.isNotEmpty &&
-                    state.totalGames > 0 &&
-                    state.totalGames <= kExplorerInlineGamesLimit)));
-    final showSkeleton =
-        state.isLoading && !hasStaleData && !showGate && !showInlineGames;
+        hasInlinePage ||
+        (!state.isLoading &&
+            sortedAggregates.isNotEmpty &&
+            state.totalGames > 0 &&
+            state.totalGames <= kExplorerInlineGamesLimit);
+    final showSkeleton = state.isLoading && !hasStaleData && !showInlineGames;
     final pagesGames = showInlineGames && pageMetrics != null;
 
     final movesHeader = ExplorerMovesHeader(
@@ -914,7 +903,7 @@ class MoveStatisticsPanel extends HookConsumerWidget {
       );
     }
 
-    if (state.error != null && !showGate && !showInlineGames) {
+    if (state.error != null && !showInlineGames) {
       return withMovesHeader(
         Center(
           child: Padding(
@@ -933,7 +922,6 @@ class MoveStatisticsPanel extends HookConsumerWidget {
     // empty table there really does mean an unseen position. Past it, the
     // FEN-keyed strip below answers instead — see `fenOnlyGames`.
     if (state.moveAggregates.isEmpty &&
-        !showGate &&
         !state.isLoading &&
         !fenOnlyGames &&
         !hasInlinePage) {
@@ -947,7 +935,7 @@ class MoveStatisticsPanel extends HookConsumerWidget {
       );
     }
 
-    final Widget mainContent = Column(
+    return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         if (state.isLoading)
@@ -1088,7 +1076,6 @@ class MoveStatisticsPanel extends HookConsumerWidget {
                         ref,
                         state,
                         aggregates: sortedAggregates,
-                        showGate: showGate,
                         nextStepCrossesLimit: nextStepCrossesLimit,
                         gamesSectionKey: gamesSectionKey,
                         showInlineGames: showInlineGames,
@@ -1104,36 +1091,6 @@ class MoveStatisticsPanel extends HookConsumerWidget {
         ),
       ],
     );
-
-    if (showGate) {
-      return Stack(
-        children: [
-          mainContent,
-          Positioned.fill(
-            child: ClipRRect(
-              child: BackdropFilter(
-                filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
-                child: Container(
-                  // Paper frost in light: a black veil drops the gate copy
-                  // to ~1.9:1 there.
-                  color:
-                      context.isLightTheme
-                          ? context.colors.surface.withValues(alpha: 0.72)
-                          : Colors.black.withValues(alpha: 0.4),
-                  child: GestureDetector(
-                    onTap: () => requirePremiumGuard(context, ref),
-                    behavior: HitTestBehavior.opaque,
-                    child: const _ExplorerPremiumGate(),
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ],
-      );
-    }
-
-    return mainContent;
   }
 
   List<Widget> _buildListChildren(
@@ -1141,7 +1098,6 @@ class MoveStatisticsPanel extends HookConsumerWidget {
     WidgetRef ref,
     GamebaseExplorerState state, {
     required List<MoveAggregate> aggregates,
-    required bool showGate,
     required bool nextStepCrossesLimit,
     required bool showInlineGames,
     bool fenOnlyGames = false,
@@ -1178,14 +1134,6 @@ class MoveStatisticsPanel extends HookConsumerWidget {
       return children;
     }
 
-    if (aggregates.isEmpty && showGate) {
-      for (var i = 0; i < 5; i++) {
-        if (i > 0) children.add(divider());
-        children.add(const _MoveStatisticsPlaceholderRow());
-      }
-      return children;
-    }
-
     for (var i = 0; i < aggregates.length; i++) {
       final aggregate = aggregates[i];
       if (i > 0) children.add(divider());
@@ -1200,13 +1148,17 @@ class MoveStatisticsPanel extends HookConsumerWidget {
             // A move-row tap always releases a focused game card so the
             // arrows return to the main board instantly (Trello #984).
             ref.read(explorerFocusedGameProvider.notifier).clear();
-            if (showGate) {
-              await requirePremiumGuard(context, ref);
-              return;
-            }
             if (nextStepCrossesLimit) {
               final unlocked = await requirePremiumGuard(context, ref);
-              if (!unlocked) return;
+              if (!unlocked || !context.mounted) return;
+              // The popup can outlast the position (an ad runs for a while
+              // and a live board keeps moving). This row belongs to the
+              // position it was tapped in, so play it only if that still
+              // stands.
+              if (ref.read(gamebaseExplorerProvider).currentFen !=
+                  state.currentFen) {
+                return;
+              }
             }
             if (onMove != null) {
               onMove!(aggregate.uci);
@@ -1234,8 +1186,8 @@ class MoveStatisticsPanel extends HookConsumerWidget {
     }
 
     // Inline games section once few enough games remain in this position.
-    // The blur gate already covers the whole panel past the free limit, so
-    // no extra gating is needed here.
+    // Listed for every account at any depth; each card asks for Premium when
+    // it is opened or walked.
     if (showInlineGames) {
       children.add(divider());
       children.add(
@@ -1421,79 +1373,6 @@ class _MoveStatisticsSummaryRow extends ConsumerWidget {
               style: TextStyle(
                 color: context.colors.textSecondary,
                 fontSize: 12.f,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-/// Placeholder row for blurred stats teaser.
-class _MoveStatisticsPlaceholderRow extends StatelessWidget {
-  const _MoveStatisticsPlaceholderRow();
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: EdgeInsets.symmetric(horizontal: 12.sp, vertical: 10.sp),
-      child: Row(
-        children: [
-          Expanded(
-            flex: _kMoveColumnFlex,
-            child: Row(
-              children: [
-                Container(
-                  width: 20.w,
-                  height: 12.h,
-                  decoration: BoxDecoration(
-                    color: context.colors.textSecondary.withValues(alpha: 0.15),
-                    borderRadius: BorderRadius.circular(2.br),
-                  ),
-                ),
-                SizedBox(width: 4.w),
-                Container(
-                  width: 30.w,
-                  height: 14.h,
-                  decoration: BoxDecoration(
-                    color: context.colors.textSecondary.withValues(alpha: 0.25),
-                    borderRadius: BorderRadius.circular(2.br),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          SizedBox(width: _kColumnGap.sp),
-          Expanded(
-            flex: _kResultsColumnFlex,
-            child: Container(
-              height: 14.h,
-              decoration: BoxDecoration(
-                color: context.colors.textSecondary.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(16.br),
-              ),
-            ),
-          ),
-          SizedBox(width: _kColumnGap.sp),
-          Expanded(
-            flex: _kGamesColumnFlex,
-            child: Container(
-              height: 12.h,
-              decoration: BoxDecoration(
-                color: context.colors.textSecondary.withValues(alpha: 0.15),
-                borderRadius: BorderRadius.circular(2.br),
-              ),
-            ),
-          ),
-          SizedBox(width: _kColumnGap.sp),
-          Expanded(
-            flex: _kLastColumnFlex,
-            child: Container(
-              height: 12.h,
-              decoration: BoxDecoration(
-                color: context.colors.textSecondary.withValues(alpha: 0.15),
-                borderRadius: BorderRadius.circular(2.br),
               ),
             ),
           ),
@@ -2078,81 +1957,4 @@ List<double> _scoreSegmentWidths(
       availableWidth - widths.fold<double>(0, (sum, width) => sum + width);
   widths[widths.length - 1] += drift;
   return widths;
-}
-
-/// CTA shown in place of the move-aggregate table when the current position
-/// is past the 10th full move and the user is not subscribed.
-class _ExplorerPremiumGate extends ConsumerWidget {
-  const _ExplorerPremiumGate();
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    return Center(
-      child: Padding(
-        padding: EdgeInsets.symmetric(horizontal: 24.sp, vertical: 24.sp),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 56.w,
-              height: 56.h,
-              decoration: BoxDecoration(
-                color: kPrimaryColor.withValues(alpha: 0.12),
-                shape: BoxShape.circle,
-              ),
-              child: Icon(
-                Icons.auto_stories_rounded,
-                color: context.colors.accentText,
-                size: 28.ic,
-              ),
-            ),
-            SizedBox(height: 16.h),
-            Text(
-              'Theory ends here. Prep doesn’t.',
-              textAlign: TextAlign.center,
-              style: AppTypography.textLgBold.copyWith(
-                color: context.colors.textPrimary,
-              ),
-            ),
-            SizedBox(height: 8.h),
-            Text(
-              'Games are won past book. '
-              '${RewardedAdsConfig.available ? 'Upgrade or watch an ad' : 'Unlock Premium'} '
-              'to keep mining master '
-              'data deep into the middlegame — score trends, sideline '
-              'frequency, novelties, and the exact paths titled players take '
-              'beyond move 10.',
-              textAlign: TextAlign.center,
-              style: AppTypography.textSmMedium.copyWith(
-                color: context.colors.textSecondary,
-                height: 1.35,
-              ),
-            ),
-            SizedBox(height: 20.h),
-            GestureDetector(
-              onTap: () => requirePremiumGuard(context, ref),
-              child: Container(
-                padding: EdgeInsets.symmetric(horizontal: 24.w, vertical: 12.h),
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(12.br),
-                  gradient: LinearGradient(
-                    colors: [kPrimaryColor, kDarkBlue],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
-                ),
-                child: Text(
-                  'Unlock deeper prep',
-                  style: AppTypography.textMdBold.copyWith(
-                    color: kBlackColor,
-                    letterSpacing: 0.2,
-                  ),
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
 }

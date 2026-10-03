@@ -650,32 +650,6 @@ void main() {
       });
       expect(CollectionEventAnchors(site: 'Moscow').isEmpty, isTrue);
     });
-
-    test(
-      'the server verdict decides; the app guesses only until it has it',
-      () {
-        bool locked(
-          Collection c, {
-          bool subscribed = false,
-          bool loading = false,
-        }) => isCollectionLocked(
-          c,
-          isSubscribed: subscribed,
-          subscriptionLoading: loading,
-        );
-
-        // A free collection is never locked.
-        expect(locked(_book(access: CollectionAccess.free)), isFalse);
-        // No verdict yet: locked for a viewer known not to subscribe, open for
-        // a subscriber and while the subscription loads (no lock flash).
-        expect(locked(_book()), isTrue);
-        expect(locked(_book(), subscribed: true), isFalse);
-        expect(locked(_book(), loading: true), isFalse);
-        // The verdict wins either way.
-        expect(locked(_book(contentLocked: false)), isFalse);
-        expect(locked(_book(contentLocked: true), subscribed: true), isTrue);
-      },
-    );
   });
 
   group('repository', () {

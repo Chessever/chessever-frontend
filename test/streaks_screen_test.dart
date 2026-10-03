@@ -270,17 +270,26 @@ void main() {
     expect(find.byType(WallRow), findsNWidgets(_floorIds(_std).length));
   });
 
-  testWidgets('locked filters carry the padlock only without Premium', (
+  testWidgets('filter tabs render the same with and without Premium', (
     tester,
   ) async {
-    await _pump(tester);
-    // Eight age groups beyond "All ages", Women and Playing now.
-    expect(find.byType(WallLockGlyph), findsNWidgets(10));
-  });
+    // The last tab sits after every Premium one, so any extra mark moves it.
+    Rect lastTab() => tester.getRect(find.text('Playing now').last);
+    Finder marked() => find.descendant(
+      of: find.byType(WallFilterTabs),
+      matching: find.byWidgetPredicate(
+        (w) => w is Semantics && (w.properties.label ?? '').contains('Premium'),
+      ),
+    );
 
-  testWidgets('subscribers see no padlocks', (tester) async {
+    await _pump(tester);
+    final free = lastTab();
+    expect(marked(), findsNothing);
+
+    await tester.pumpWidget(const SizedBox.shrink());
     await _pump(tester, subscribed: true);
-    expect(find.byType(WallLockGlyph), findsNothing);
+    expect(lastTab(), free);
+    expect(marked(), findsNothing);
   });
 
   testWidgets('initialClass opens straight onto that wall', (tester) async {

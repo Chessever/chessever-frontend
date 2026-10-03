@@ -1295,9 +1295,9 @@ class _GamebaseChessBoardState extends ConsumerState<_GamebaseChessBoard> {
                     return;
                   }
                   // Playing this move would land past the free-tier
-                  // boundary — surface the paywall instead of advancing
-                  // and then blurring the panel. Chessground snaps the
-                  // piece back when state doesn't change.
+                  // boundary: ask for Premium before advancing.
+                  // Chessground snaps the piece back when state doesn't
+                  // change.
                   if (!kDebugMode &&
                       !ref.read(featureAccessStateProvider).isSubscribed) {
                     final currentMoveNumber = ref
@@ -1453,6 +1453,10 @@ class _ExplorerFilterSheetState extends ConsumerState<ExplorerFilterSheet> {
   final FocusNode _playerSearchFocusNode = FocusNode();
   String _playerSearchQuery = '';
 
+  /// True while Apply is waiting on the Premium popup, so a second tap cannot
+  /// stack another popup and close the sheet twice.
+  bool _applying = false;
+
   @override
   void initState() {
     super.initState();
@@ -1516,21 +1520,6 @@ class _ExplorerFilterSheetState extends ConsumerState<ExplorerFilterSheet> {
 
   bool _canUsePlayerFilter(bool isSubscribed) {
     return widget.scopedPlayer != null || isSubscribed;
-  }
-
-  GamebaseFilters _sanitizePlayerFilters(
-    GamebaseFilters filters, {
-    required bool canUsePlayerFilter,
-  }) {
-    if (widget.scopedPlayer != null || canUsePlayerFilter) {
-      return filters;
-    }
-
-    return filters.copyWith(
-      playerIds: const [],
-      selectedPlayers: const [],
-      playerColor: null,
-    );
   }
 
   Widget _buildPlayerSearchField({required bool canUsePlayerFilter}) {
@@ -1648,24 +1637,40 @@ class _ExplorerFilterSheetState extends ConsumerState<ExplorerFilterSheet> {
     });
   }
 
-  void _apply() {
-    final canUsePlayerFilter = _canUsePlayerFilter(
-      ref.read(featureAccessStateProvider).isSubscribed,
-    );
+  Future<void> _apply() async {
+    if (_applying) return;
     final treeBackedPlayerScope = widget.scopedPlayer != null;
-    final finalFilters = _sanitizePlayerFilters(
-      _draftFilters.copyWith(
-        minRating: treeBackedPlayerScope ? null : _effectiveMinRating,
-        maxRating: treeBackedPlayerScope ? null : _effectiveMaxRating,
-        gameResult: treeBackedPlayerScope ? null : _draftFilters.gameResult,
-        yearFrom: treeBackedPlayerScope ? null : _effectiveYearFrom,
-        yearTo: treeBackedPlayerScope ? null : _effectiveYearTo,
-      ),
-      canUsePlayerFilter: canUsePlayerFilter,
+    final finalFilters = _draftFilters.copyWith(
+      minRating: treeBackedPlayerScope ? null : _effectiveMinRating,
+      maxRating: treeBackedPlayerScope ? null : _effectiveMaxRating,
+      gameResult: treeBackedPlayerScope ? null : _draftFilters.gameResult,
+      yearFrom: treeBackedPlayerScope ? null : _effectiveYearFrom,
+      yearTo: treeBackedPlayerScope ? null : _effectiveYearTo,
     );
 
-    Navigator.pop(context);
-    ref.read(gamebaseExplorerProvider.notifier).updateFilters(finalFilters);
+    void applyAndClose() {
+      Navigator.pop(context);
+      ref.read(gamebaseExplorerProvider.notifier).updateFilters(finalFilters);
+    }
+
+    // Filtering by player is Premium outside a player-scoped explorer. The
+    // sheet shows the draft as it is for every account and asks here, at
+    // Apply. A refusal leaves the sheet open with the draft intact.
+    final needsPremium =
+        finalFilters.playerIds.isNotEmpty &&
+        !_canUsePlayerFilter(ref.read(featureAccessStateProvider).isSubscribed);
+    if (needsPremium) {
+      // Resumed through onEntitled so the pop waits for the purchase
+      // celebration and closes this sheet, not the route above it.
+      _applying = true;
+      try {
+        await requirePremiumGuard(context, ref, onEntitled: applyAndClose);
+      } finally {
+        _applying = false;
+      }
+      return;
+    }
+    applyAndClose();
   }
 
   bool _isScopedPlayerDraft(GamebaseFilters filters) {
@@ -1726,10 +1731,7 @@ class _ExplorerFilterSheetState extends ConsumerState<ExplorerFilterSheet> {
       featureAccessStateProvider.select((s) => s.isSubscribed),
     );
     final canUsePlayerFilter = _canUsePlayerFilter(isSubscribed);
-    final filters = _sanitizePlayerFilters(
-      _draftFilters,
-      canUsePlayerFilter: canUsePlayerFilter,
-    );
+    final filters = _draftFilters;
     final isTreeBackedPlayerScope = widget.scopedPlayer != null;
     final hasActiveDraft = _hasActiveDraft(filters);
 
@@ -2071,7 +2073,7 @@ class _ExplorerFilterSheetState extends ConsumerState<ExplorerFilterSheet> {
                   _buildPlayerSearchField(
                     canUsePlayerFilter: canUsePlayerFilter,
                   ),
-                  if (canUsePlayerFilter && _playerSearchQuery.length >= 2) ...[
+                  if (_playerSearchQuery.length >= 2) ...[
                     SizedBox(height: 8.sp),
                     _PlayerSearchResults(
                       query: _playerSearchQuery,
@@ -2080,7 +2082,6 @@ class _ExplorerFilterSheetState extends ConsumerState<ExplorerFilterSheet> {
                   ],
                 ],
                 if (widget.scopedPlayer == null &&
-                    canUsePlayerFilter &&
                     filters.selectedPlayers.isNotEmpty) ...[
                   SizedBox(height: 10.sp),
                   Wrap(

@@ -362,10 +362,8 @@ Widget _labelled({
 /// opening (Miniatures fetch their PGN first); by default a card opens the
 /// board on this list, kept exactly as shown.
 ///
-/// [menuActionsFor] replaces a card's long-press rows, [wrapCard] wraps a
-/// card (a swipe to remove), and [lockedFor] greys a card and sets the
-/// padlock after its label (its tap goes through [onOpen], which raises the
-/// paywall).
+/// [menuActionsFor] replaces a card's long-press rows and [wrapCard] wraps a
+/// card (a swipe to remove).
 ///
 /// Streaming: with [liveBatchKeyFor], only games that can stream (unfinished
 /// Supabase games, [shouldSubscribeToLiveGame]) subscribe, each on the batch
@@ -390,7 +388,6 @@ class DiscoveryGameList extends ConsumerWidget {
     this.allowStockfishFallback = false,
     this.menuActionsFor,
     this.wrapCard,
-    this.lockedFor,
     this.viewMode,
   });
 
@@ -440,9 +437,6 @@ class DiscoveryGameList extends ConsumerWidget {
 
   /// Wraps a card, its label included.
   final Widget Function(int index, Widget card)? wrapCard;
-
-  /// Whether a card is behind the paywall.
-  final bool Function(int index)? lockedFor;
 
   /// How many games a list of [length] draws in [mode] from [start].
   static int shownFor(
@@ -498,7 +492,6 @@ class DiscoveryGameList extends ConsumerWidget {
       allowStockfishFallback: allowStockfishFallback,
       menuActionsFor: menuActionsFor,
       wrapCard: wrapCard,
-      lockedFor: lockedFor,
     );
 
     final out = <Widget>[];
@@ -581,8 +574,6 @@ class DiscoveryGameCard extends ConsumerWidget {
     this.rowLabelFor,
     this.liveBatchKeyFor,
     this.allowStockfishFallback = false,
-    this.menuActionsFor,
-    this.lockedFor,
   });
 
   final List<GamesTourModel> games;
@@ -595,9 +586,6 @@ class DiscoveryGameCard extends ConsumerWidget {
   final Widget? Function(int index)? rowLabelFor;
   final LiveGamesBatchKey? Function(int index)? liveBatchKeyFor;
   final bool allowStockfishFallback;
-  final List<LibraryMenuAction> Function(BuildContext context, int index)?
-  menuActionsFor;
-  final bool Function(int index)? lockedFor;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -616,9 +604,8 @@ class DiscoveryGameCard extends ConsumerWidget {
       liveBatchKeyFor: liveBatchKeyFor,
       shownBatch: null,
       allowStockfishFallback: allowStockfishFallback,
-      menuActionsFor: menuActionsFor,
+      menuActionsFor: null,
       wrapCard: null,
-      lockedFor: lockedFor,
     );
     return switch (viewMode) {
       GamesListViewMode.chessBoardGrid => kit.gridCard(index),
@@ -647,11 +634,9 @@ class _CardKit {
     required this.allowStockfishFallback,
     required this.menuActionsFor,
     required this.wrapCard,
-    required this.lockedFor,
   }) : labelled =
            (viewMode == GamesListViewMode.gamesCard ? rowLabelFor : labelFor) !=
-               null ||
-           lockedFor != null {
+           null {
     slot = labelled ? _labelSlotHeight(context) : 0.0;
   }
 
@@ -671,7 +656,6 @@ class _CardKit {
   final List<LibraryMenuAction> Function(BuildContext context, int index)?
   menuActionsFor;
   final Widget Function(int index, Widget card)? wrapCard;
-  final bool Function(int index)? lockedFor;
 
   /// Whether every card keeps the one-line label slot over it.
   final bool labelled;
@@ -691,8 +675,6 @@ class _CardKit {
     return batchFor != null ? batchFor(index) : shownBatch?[game.gameId];
   }
 
-  bool _locked(int index) => lockedFor?.call(index) ?? false;
-
   Widget _badged(int index, Widget card) {
     final badge = badgeFor;
     if (badge == null) return card;
@@ -702,31 +684,9 @@ class _CardKit {
     );
   }
 
-  Widget? _labelOf(int index) {
-    final line = _label?.call(index);
-    if (!_locked(index)) return line;
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        if (line != null) ...[
-          Flexible(child: line),
-          SizedBox(width: DiscoveryPadlock.gap),
-        ],
-        const DiscoveryPadlock(),
-      ],
-    );
-  }
-
   Widget _finish(int index, Widget card) {
-    var out = card;
-    if (_locked(index)) {
-      out = Semantics(
-        label: 'Premium game',
-        child: ColorFiltered(colorFilter: _greyscale, child: out),
-      );
-    }
     final wrap = wrapCard;
-    return wrap == null ? out : wrap(index, out);
+    return wrap == null ? card : wrap(index, card);
   }
 
   Widget listCard(int index, {required bool board}) {
@@ -777,7 +737,7 @@ class _CardKit {
       index,
       _labelled(
         slot: slot,
-        label: _labelOf(index),
+        label: _label?.call(index),
         card: card,
         inset: board ? _boardCardInset : _rowInset,
       ),
@@ -817,18 +777,10 @@ class _CardKit {
     if (!labelled) return _finish(index, card);
     return _finish(
       index,
-      _labelled(slot: slot, label: _labelOf(index), card: card),
+      _labelled(slot: slot, label: _label?.call(index), card: card),
     );
   }
 }
-
-/// Greyscale for a card behind the paywall.
-const ColorFilter _greyscale = ColorFilter.matrix(<double>[
-  0.2126, 0.7152, 0.0722, 0, 0, //
-  0.2126, 0.7152, 0.0722, 0, 0, //
-  0.2126, 0.7152, 0.0722, 0, 0, //
-  0, 0, 0, 0.6, 0, //
-]);
 
 /// [DiscoveryGameList] while its games load: the same cards in the same
 /// view, as plates of their loaded size, so nothing moves when the games

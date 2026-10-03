@@ -1,6 +1,5 @@
 import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
 import 'package:chessever2/widgets/paywall/pgn_import_access.dart';
-import 'package:chessever2/services/rewarded_premium/rewarded_access_provider.dart';
 import 'dart:async';
 import 'dart:io';
 import 'package:chessever2/repository/library/library_book_publication.dart';
@@ -83,22 +82,16 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
     isSubscribed: _isSubscribed,
   );
 
-  /// Pagination key derived from the live filter/sort/search + premium state.
-  /// Filter/sort are premium-only, so free users always query with the default
-  /// filter (matching the dialog's premium gate). Search is free. A changed key
+  /// Pagination key derived from the live filter/sort/search state. The stored
+  /// filter is always the one queried: applying a filter or sort is gated at
+  /// Apply in [_showFilterDialog], never here. Search is free. A changed key
   /// reloads page 0 server-side, so sort/filter/search cover the whole folder.
   BookPaginationKey get _currentPaginationKey {
     final filterState = ref.read(folderFilterProvider(_folderFilterKey));
-    final subscription = ref.read(featureAccessStateProvider);
-    final canFilterAndSort =
-        subscription.isSubscribed || subscription.isLoading;
-    final effectiveFilter = canFilterAndSort
-        ? filterState.filter
-        : GameFilter.defaultFilter();
     return BookPaginationKey(
       folderId: widget.folder.id,
       isSubscribed: _isSubscribed,
-      filter: effectiveFilter,
+      filter: filterState.filter,
       search: filterState.searchQuery.trim(),
       tags: filterState.selectedTags,
     );
@@ -580,10 +573,9 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // Watch the inputs that feed the pagination key so a filter/sort/search or
-    // premium-state change rebuilds and swaps to the matching server query.
+    // Watch the inputs that feed the pagination key so a filter/sort/search
+    // change rebuilds and swaps to the matching server query.
     final filterState = ref.watch(folderFilterProvider(_folderFilterKey));
-    ref.watch(featureAccessStateProvider);
     final bookAsync = ref.watch(
       bookGamesPaginatedProvider(_currentPaginationKey),
     );
@@ -881,11 +873,7 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
               ? bookState.games
               : const <SavedAnalysis>[];
           final filterState = ref.watch(folderFilterProvider(_folderFilterKey));
-          final subscription = ref.watch(featureAccessStateProvider);
-          final canFilterAndSort =
-              subscription.isSubscribed || subscription.isLoading;
-          final hasActiveFilters =
-              canFilterAndSort && filterState.filter.hasActiveFilters;
+          final hasActiveFilters = filterState.filter.hasActiveFilters;
           final hasActiveTag = filterState.selectedTags.isNotEmpty;
 
           // Child folders aren't part of the games query, so filter them by the

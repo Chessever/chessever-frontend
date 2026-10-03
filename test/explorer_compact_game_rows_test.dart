@@ -1136,10 +1136,10 @@ void main() {
           ).readAsStringSync();
       expect(source, contains('GameCardChessboard'));
       expect(source, contains('requirePremiumGuard'));
-      // Free users: full-card barrier + per-action gate → paywall on interact.
-      expect(source, contains('_freeUserLocked'));
+      // Every account gets the same card: no barrier over it, the gate is
+      // per action, at the tap.
       expect(source, contains('_requirePremium'));
-      expect(source, contains('IgnorePointer(child: shell)'));
+      expect(source, isNot(contains('IgnorePointer(child: shell)')));
       expect(source, contains('focusNotifier.focus('));
       expect(source, contains('openGamebaseGame('));
       expect(source, contains('_buildChip'));

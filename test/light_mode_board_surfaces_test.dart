@@ -263,30 +263,28 @@ void main() {
       like,
     ).copyWith(gameStatus: GameStatus.whiteWins);
 
-    for (final locked in [false, true]) {
-      testWidgets('like card reads on paper (locked: $locked)', (tester) async {
-        await pumpSurface(
-          tester,
-          Padding(
-            padding: const EdgeInsets.all(16),
-            child: Align(
-              alignment: Alignment.topCenter,
-              child: MyLikesGameCard(
-                analysis: like,
-                game: game,
-                isLocked: locked,
-                onOpen: _noop,
-                onRemove: () async {},
-              ),
+    testWidgets('like card reads on paper', (tester) async {
+      await pumpSurface(
+        tester,
+        Padding(
+          padding: const EdgeInsets.all(16),
+          child: Align(
+            alignment: Alignment.topCenter,
+            child: MyLikesGameCard(
+              analysis: like,
+              game: game,
+              onOpen: _noop,
+              onRemove: () async {},
+              beforeContentAction: () async => true,
             ),
           ),
-          theme: AppTheme.lightTheme,
-          overrides: [spaceShortcutsProvider.overrideWith(_NoShortcuts.new)],
-          settle: false,
-        );
-        expectNoContrastMisses(audit(tester), where: 'MyLikesGameCard');
-      });
-    }
+        ),
+        theme: AppTheme.lightTheme,
+        overrides: [spaceShortcutsProvider.overrideWith(_NoShortcuts.new)],
+        settle: false,
+      );
+      expectNoContrastMisses(audit(tester), where: 'MyLikesGameCard');
+    });
   });
 
   group('explorer', () {

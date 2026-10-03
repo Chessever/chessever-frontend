@@ -31,8 +31,15 @@ Future<GameAnalysisClaimResult> _allowClaim(String _) async =>
 
 void main() {
   test('free controller cannot generate even its first report', () async {
+    // A stored report is adopted for every tier, so idle only speaks about
+    // generation when this game has none: empty session map, empty store.
+    GameAnalysisReportController.clearSessionCacheForTest();
+    addTearDown(GameAnalysisReportController.clearSessionCacheForTest);
     var claims = 0;
     final controller = MobileGameReviewController(
+      reportController: GameAnalysisReportController(
+        store: GameAnalysisReportStore.memory(),
+      ),
       canAccess: () => false,
       claimQuota: (_) async {
         claims++;

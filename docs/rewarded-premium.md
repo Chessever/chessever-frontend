@@ -157,9 +157,9 @@ Device check: with three follows and active rewarded access, try to add a fourth
 from Countrymen and a player profile. Both must show the subscription paywall
 and keep the count at three. Remove one and confirm a replacement can be added.
 
-Discovery → Reports remains browsable without Premium. Each locked report card
-uses the My Likes greyscale and padlock style; tapping a card shows Watch ad or
-Upgrade before opening the board. Paid or active rewarded access removes locks.
+Discovery → Reports remains browsable without Premium. Report cards look
+the same for every tier (no greyscale, no padlock); tapping a card shows Watch
+ad or Upgrade before opening the board.
 
 ## Premium PGN imports
 

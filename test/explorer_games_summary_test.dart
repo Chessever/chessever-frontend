@@ -58,7 +58,7 @@ void main() {
         'class _MoveStatisticsSummaryRow',
       );
       final nextClass = source.indexOf(
-        'class _MoveStatisticsPlaceholderRow',
+        'class _MoveStatisticsSkeletonRow',
         summaryClassStart,
       );
       expect(summaryClassStart, greaterThan(0));

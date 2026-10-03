@@ -1,4 +1,3 @@
-import 'package:chessever2/services/rewarded_premium/rewarded_access_provider.dart';
 import 'package:chessever2/widgets/paywall/game_report_access.dart';
 import 'dart:async';
 
@@ -237,47 +236,41 @@ class _ReportsGamesState extends ConsumerState<_ReportsGames> {
     return rows;
   }
 
-  Widget _buildRow(
-    _ReportRow row,
-    List<GamesTourModel> games,
-    int columns,
-    bool locked,
-  ) => switch (row) {
-    _ReportDay(:final day, :final firstGameId) => Padding(
-      key: ValueKey('reports_day_$firstGameId'),
-      padding: EdgeInsets.only(bottom: 12.h),
-      child: GameDateHeader(
-        dateLabel: _dateLabel(day),
-        isExpanded: !_collapsedDates.contains(day),
-        onToggle: () => _toggleDay(day),
-      ),
-    ),
-    _ReportGamesRow(:final start, :final count, :final isLast) => Padding(
-      key: ValueKey('reports_row_${games[start].gameId}'),
-      padding: EdgeInsets.only(bottom: isLast ? 16.h : 12.h),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          for (var column = 0; column < columns; column++) ...[
-            if (column > 0) SizedBox(width: 12.sp),
-            Expanded(
-              child: column < count
-                  ? DiscoveryGameCard(
-                      games: games,
-                      index: start + column,
-                      streamEnabled: false,
-                      lockedFor: locked ? (_) => true : null,
-                      onOpen: (games, index) =>
-                          unawaited(_openReport(games, index)),
-                      menuActionsFor: locked ? (_, _) => const [] : null,
-                    )
-                  : const SizedBox.shrink(),
-            ),
-          ],
-        ],
-      ),
-    ),
-  };
+  Widget _buildRow(_ReportRow row, List<GamesTourModel> games, int columns) =>
+      switch (row) {
+        _ReportDay(:final day, :final firstGameId) => Padding(
+          key: ValueKey('reports_day_$firstGameId'),
+          padding: EdgeInsets.only(bottom: 12.h),
+          child: GameDateHeader(
+            dateLabel: _dateLabel(day),
+            isExpanded: !_collapsedDates.contains(day),
+            onToggle: () => _toggleDay(day),
+          ),
+        ),
+        _ReportGamesRow(:final start, :final count, :final isLast) => Padding(
+          key: ValueKey('reports_row_${games[start].gameId}'),
+          padding: EdgeInsets.only(bottom: isLast ? 16.h : 12.h),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              for (var column = 0; column < columns; column++) ...[
+                if (column > 0) SizedBox(width: 12.sp),
+                Expanded(
+                  child: column < count
+                      ? DiscoveryGameCard(
+                          games: games,
+                          index: start + column,
+                          streamEnabled: false,
+                          onOpen: (games, index) =>
+                              unawaited(_openReport(games, index)),
+                        )
+                      : const SizedBox.shrink(),
+                ),
+              ],
+            ],
+          ),
+        ),
+      };
 
   void _checkAfterLayout() {
     if (_checkScheduled) return;
@@ -309,7 +302,6 @@ class _ReportsGamesState extends ConsumerState<_ReportsGames> {
         if (scroll != null && scroll.hasClients) scroll.jumpTo(0);
       });
     });
-    final locked = !ref.watch(premiumAccessProvider);
     final gameType = ref.watch(reportsGameTypeProvider);
     final reports = ref.watch(reportsPaginationProvider);
     final mode = ref.watch(gamesListViewModeProvider);
@@ -367,8 +359,7 @@ class _ReportsGamesState extends ConsumerState<_ReportsGames> {
                   ),
                   sliver: SliverList(
                     delegate: SliverChildBuilderDelegate(
-                      (context, index) =>
-                          _buildRow(rows[index], items, perRow, locked),
+                      (context, index) => _buildRow(rows[index], items, perRow),
                       childCount: rows.length,
                       addAutomaticKeepAlives: false,
                     ),

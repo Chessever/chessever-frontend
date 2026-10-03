@@ -13,8 +13,8 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 /// FIDE age groups, then Women and Playing now, as one row of plain text
 /// tabs: the selected ones are white and bold, the rest sit at 70 %.
 ///
-/// Everything but "All ages" is Premium. Locked labels carry a small cyan
-/// padlock, and narrowing the wall goes through the app's premium guard
+/// Everything but "All ages" is Premium, yet the tabs look the same for
+/// every account: narrowing the wall goes through the app's premium guard
 /// (which passes for subscribers and in debug builds). Widening it back
 /// never asks.
 class WallFilterTabs extends ConsumerStatefulWidget {
@@ -100,9 +100,6 @@ class _WallFilterTabsState extends ConsumerState<WallFilterTabs> {
   @override
   Widget build(BuildContext context) {
     final filter = ref.watch(streakWallFilterProvider);
-    final locked = !ref.watch(
-      featureAccessStateProvider.select((s) => s.isSubscribed),
-    );
     final gap = 18.w;
 
     final tabs = <Widget>[
@@ -111,24 +108,17 @@ class _WallFilterTabsState extends ConsumerState<WallFilterTabs> {
           key: age == filter.age ? _selectedAge : null,
           label: age.label,
           selected: age == filter.age,
-          locked: locked && age != StreakAgeGroup.all,
           onTap: () => _onAge(age),
         ),
         SizedBox(width: gap),
       ],
       // A wider pause marks the switch from "pick one age" to two toggles.
       SizedBox(width: 10.w),
-      _TextTab(
-        label: 'Women',
-        selected: filter.womenOnly,
-        locked: locked,
-        onTap: _onWomen,
-      ),
+      _TextTab(label: 'Women', selected: filter.womenOnly, onTap: _onWomen),
       SizedBox(width: gap),
       _TextTab(
         label: 'Playing now',
         selected: filter.playingNow,
-        locked: locked,
         onTap: _onPlaying,
       ),
     ];
@@ -151,13 +141,11 @@ class _TextTab extends StatelessWidget {
     super.key,
     required this.label,
     required this.selected,
-    required this.locked,
     required this.onTap,
   });
 
   final String label;
   final bool selected;
-  final bool locked;
   final VoidCallback onTap;
 
   @override
@@ -170,91 +158,28 @@ class _TextTab extends StatelessWidget {
     return Semantics(
       button: true,
       selected: selected,
-      label: locked ? '$label, Premium' : label,
+      label: label,
       excludeSemantics: true,
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTap: onTap,
         child: SizedBox(
           height: 44.w,
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
+          child: Stack(
+            alignment: Alignment.centerLeft,
             children: [
-              Stack(
-                alignment: Alignment.centerLeft,
-                children: [
-                  Visibility(
-                    visible: false,
-                    maintainSize: true,
-                    maintainAnimation: true,
-                    maintainState: true,
-                    child: Text(label, maxLines: 1, style: bold),
-                  ),
-                  Text(label, maxLines: 1, style: style),
-                ],
+              Visibility(
+                visible: false,
+                maintainSize: true,
+                maintainAnimation: true,
+                maintainState: true,
+                child: Text(label, maxLines: 1, style: bold),
               ),
-              if (locked) ...[SizedBox(width: 4.w), const WallLockGlyph()],
+              Text(label, maxLines: 1, style: style),
             ],
           ),
         ),
       ),
     );
   }
-}
-
-/// The Premium padlock: the design's 12 x 14 lock drawn at 8 x 10, in brand
-/// cyan, bare (no tile behind it).
-class WallLockGlyph extends StatelessWidget {
-  const WallLockGlyph({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return ExcludeSemantics(
-      child: CustomPaint(
-        size: Size(8.w, 10.w),
-        painter: _PadlockPainter(context.colors.accentText),
-      ),
-    );
-  }
-}
-
-class _PadlockPainter extends CustomPainter {
-  const _PadlockPainter(this.color);
-
-  final Color color;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    // Fitted like the SVG's viewBox: uniform scale, centred both ways.
-    final k = size.width / 12 < size.height / 14
-        ? size.width / 12
-        : size.height / 14;
-    canvas.save();
-    canvas.translate((size.width - 12 * k) / 2, (size.height - 14 * k) / 2);
-    canvas.scale(k);
-    final shackle = Path()
-      ..moveTo(3.25, 6.2)
-      ..lineTo(3.25, 4.3)
-      ..arcToPoint(const Offset(8.75, 4.3), radius: const Radius.circular(2.75))
-      ..lineTo(8.75, 6.2);
-    canvas.drawPath(
-      shackle,
-      Paint()
-        ..color = color
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 1.8
-        ..strokeCap = StrokeCap.round,
-    );
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(
-        const Rect.fromLTWH(1, 6.2, 10, 7),
-        const Radius.circular(1.8),
-      ),
-      Paint()..color = color,
-    );
-    canvas.restore();
-  }
-
-  @override
-  bool shouldRepaint(_PadlockPainter oldDelegate) => oldDelegate.color != color;
 }

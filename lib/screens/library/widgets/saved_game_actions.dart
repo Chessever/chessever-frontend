@@ -26,12 +26,11 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 /// Pass the *card's own* [context] — the menu anchors to that render box.
 /// [onDelete] is the host's existing remove handler (it owns the undo snack and
 /// list refresh); omit it to hide the destructive row. [readOnly] is for games
-/// inside a subscribed database, which the user does not own. [locked] is a
-/// paywalled My Likes card: the game's content stays behind the paywall, so
-/// only opening (which raises it) and removing are offered; that includes
-/// "Add to My Space", whose pin would reopen the locked copy. With a [ref],
-/// an unlocked game's menu also offers "Add to My Space" whenever the game
-/// points back at a source game My Space can reopen.
+/// inside a subscribed database, which the user does not own. The rows are
+/// the same for every tier: a host whose games sit behind Premium passes
+/// [beforeContentAction], which is asked when a row is tapped. With a [ref],
+/// the menu also offers "Add to My Space" whenever the game points back at a
+/// source game My Space can reopen.
 Future<void> showSavedGameActions({
   required BuildContext context,
   required SavedAnalysis analysis,
@@ -43,7 +42,6 @@ Future<void> showSavedGameActions({
   IconData deleteIcon = Icons.delete_outline_rounded,
   VoidCallback? onChanged,
   bool readOnly = false,
-  bool locked = false,
   bool showSpaceAction = true,
   bool showShareAction = true,
 }) {
@@ -59,7 +57,6 @@ Future<void> showSavedGameActions({
       deleteIcon: deleteIcon,
       onChanged: onChanged,
       readOnly: readOnly,
-      locked: locked,
       showSpaceAction: showSpaceAction,
       showShareAction: showShareAction,
     ),
@@ -81,12 +78,11 @@ List<LibraryMenuAction> savedGameMenuActions({
   IconData deleteIcon = Icons.delete_outline_rounded,
   VoidCallback? onChanged,
   bool readOnly = false,
-  bool locked = false,
   bool showSpaceAction = true,
   bool showShareAction = true,
   Future<bool> Function()? beforeContentAction,
 }) {
-  final spaceDraft = ref == null || locked || !showSpaceAction
+  final spaceDraft = ref == null || !showSpaceAction
       ? null
       : _savedGameSpaceDraft(analysis);
   // Hosts with tap-only gates keep identical menus. Copy/edit/move must
@@ -103,32 +99,30 @@ List<LibraryMenuAction> savedGameMenuActions({
       label: 'Open game',
       onSelected: onOpen,
     ),
-    if (!readOnly && !locked)
+    if (!readOnly)
       LibraryMenuAction(
         icon: Icons.edit_note_rounded,
         label: 'Edit & annotate',
         onSelected: () =>
             contentAction(() => _editAndAnnotate(context, analysis, onChanged)),
       ),
-    if (!locked) ...[
-      if (showShareAction)
-        LibraryMenuAction(
-          icon: Icons.ios_share_rounded,
-          label: 'Share game',
-          onSelected: () => contentAction(() => _shareGame(context, analysis)),
-        ),
+    if (showShareAction)
       LibraryMenuAction(
-        icon: Icons.copy_rounded,
-        label: 'Copy PGN',
-        onSelected: () => contentAction(() => _copyPgn(context, analysis)),
+        icon: Icons.ios_share_rounded,
+        label: 'Share game',
+        onSelected: () => contentAction(() => _shareGame(context, analysis)),
       ),
-      LibraryMenuAction(
-        icon: Icons.content_paste_go_rounded,
-        label: 'Copy FEN',
-        onSelected: () => contentAction(() => _copyFen(context, analysis)),
-      ),
-    ],
-    if (!readOnly && !locked)
+    LibraryMenuAction(
+      icon: Icons.copy_rounded,
+      label: 'Copy PGN',
+      onSelected: () => contentAction(() => _copyPgn(context, analysis)),
+    ),
+    LibraryMenuAction(
+      icon: Icons.content_paste_go_rounded,
+      label: 'Copy FEN',
+      onSelected: () => contentAction(() => _copyFen(context, analysis)),
+    ),
+    if (!readOnly)
       LibraryMenuAction(
         icon: Icons.drive_file_move_rounded,
         label: 'Move to database',

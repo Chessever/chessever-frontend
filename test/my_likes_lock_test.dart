@@ -216,7 +216,7 @@ void main() {
     });
   });
 
-  group('locked like card', () {
+  group('like card', () {
     // A finished game, so the card draws a result rather than a live eval bar.
     final like = _like(3, tags: const ['Trap']);
     final game = savedAnalysisToCardGame(
@@ -225,7 +225,6 @@ void main() {
 
     Future<int Function()> pumpCard(
       WidgetTester tester, {
-      required bool locked,
       double width = 390,
     }) async {
       tester.view.physicalSize = Size(width, 800);
@@ -251,9 +250,9 @@ void main() {
                       child: MyLikesGameCard(
                         analysis: like,
                         game: game,
-                        isLocked: locked,
                         onOpen: () => opens++,
                         onRemove: () async {},
+                        beforeContentAction: () async => true,
                       ),
                     ),
                   ),
@@ -268,9 +267,9 @@ void main() {
     }
 
     for (final width in [320.0, 390.0]) {
-      testWidgets('restricted like keeps tags, menu and no lock at '
+      testWidgets('a like keeps its tags and has no lock at '
           '${width.toInt()}pt', (tester) async {
-        await pumpCard(tester, locked: true, width: width);
+        await pumpCard(tester, width: width);
         expect(find.text('Trap'), findsOneWidget);
         expect(find.byType(DiscoveryPadlock), findsNothing);
         expect(find.byType(ColorFiltered), findsNothing);
@@ -278,44 +277,30 @@ void main() {
       });
     }
 
-    testWidgets('an unlocked like keeps its tags and has no lock', (
+    testWidgets('a tap on the card delegates to the parent access gate', (
       tester,
     ) async {
-      await pumpCard(tester, locked: false);
-      expect(find.text('Trap'), findsOneWidget);
-      expect(find.byType(DiscoveryPadlock), findsNothing);
+      final opens = await pumpCard(tester);
+      await tester.tap(find.byType(MyLikesGameCard));
+      await tester.pump(const Duration(milliseconds: 400));
+      // The parent callback owns the strict gate for every liked game.
+      expect(opens(), 1);
     });
 
-    testWidgets(
-      'a tap on the identical card delegates to the parent access gate',
-      (tester) async {
-        final opens = await pumpCard(tester, locked: true);
-        await tester.tap(find.byType(MyLikesGameCard));
-        await tester.pump(const Duration(milliseconds: 400));
-        // The parent callback owns the strict gate for every liked game.
-        expect(opens(), 1);
-      },
-    );
+    testWidgets('a like keeps its actions without My Space or share', (
+      tester,
+    ) async {
+      await pumpCard(tester);
+      await tester.longPress(find.byType(MyLikesGameCard));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
 
-    for (final locked in [false, true]) {
-      testWidgets(
-        locked
-            ? 'a locked like cannot be added to My Space'
-            : 'an open like keeps its actions without My Space or share',
-        (tester) async {
-          await pumpCard(tester, locked: locked);
-          await tester.longPress(find.byType(MyLikesGameCard));
-          await tester.pump();
-          await tester.pump(const Duration(milliseconds: 400));
-
-          expect(find.text('Open game'), findsOneWidget);
-          expect(find.text('Remove from likes'), findsOneWidget);
-          expect(find.text('Add to My Space'), findsNothing);
-          expect(find.text('Share game'), findsNothing);
-          expect(find.text('Copy PGN'), findsOneWidget);
-        },
-      );
-    }
+      expect(find.text('Open game'), findsOneWidget);
+      expect(find.text('Remove from likes'), findsOneWidget);
+      expect(find.text('Add to My Space'), findsNothing);
+      expect(find.text('Share game'), findsNothing);
+      expect(find.text('Copy PGN'), findsOneWidget);
+    });
   });
 
   group('My Likes providers', () {
