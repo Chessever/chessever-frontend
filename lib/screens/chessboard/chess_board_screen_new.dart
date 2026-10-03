@@ -241,6 +241,11 @@ class _BoardZoomScope extends InheritedNotifier<ValueNotifier<double?>> {
 /// stay faintly visible — not the persisted gamebase toggle preference.
 final boardExplorerPanelVisibleProvider = StateProvider<bool>((_) => false);
 
+// Board-local command: stored standalone Explorer preferences do not choose
+// the opening surface of a game. Only an explicit book-button tap toggles it.
+final boardExplorerToggleRequestProvider =
+    StateProvider.autoDispose.family<int, String>((ref, gameId) => 0);
+
 final _androidPipBoardRecoveryEpochProvider = StateProvider.family<int, String>(
   (_, _) => 0,
 );
@@ -3117,7 +3122,9 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
   Future<void> _toggleGamebase() async {
     final allowed = await requireFullAuthGuard(context);
     if (!allowed) return;
-    ref.read(gamebaseOverlayEnabledProvider.notifier).toggle();
+    if (!mounted) return;
+    final game = _resolveGameForIndex(_currentPageIndex);
+    ref.read(boardExplorerToggleRequestProvider(game.gameId).notifier).state++;
   }
 
   @override
@@ -7518,11 +7525,8 @@ class _BottomNavBar extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    // PERF: Use .select() to only rebuild when the enabled state changes
-    final gamebaseEnabled = ref.watch(
-      gamebaseOverlayEnabledProvider.select((s) => s.valueOrNull ?? true),
-    );
-    final isGamebaseActive = showGamebaseButton ? gamebaseEnabled : false;
+    final explorerPanelVisible = ref.watch(boardExplorerPanelVisibleProvider);
+    final isGamebaseActive = showGamebaseButton && explorerPanelVisible;
 
     final params = ChessBoardProviderParams(game: game, index: index);
     final notifier = ref.read(chessBoardScreenProviderNew(params).notifier);
@@ -7553,6 +7557,17 @@ class _BottomNavBar extends ConsumerWidget {
         ? previewCanMoveBackward
         : canMoveBackward;
 
+    // Taps follow the existing active line/explicit PV preview. Holds exit
+    // those contexts to absolute game endpoints, including at a branch tail.
+    final mainline = navigatorState?.game.mainline;
+    final canJumpToStart = isPreviewActive ||
+        (navigatorState?.canGoBackward ?? baseCanMoveBackward);
+    final canJumpToEnd = isPreviewActive ||
+        (mainline != null
+            ? mainline.isNotEmpty &&
+                !listEquals(navigatorState!.movePointer, [mainline.length - 1])
+            : baseCanMoveForward);
+
     final selectionClearKey = _boardSelectionClearKey(game, index);
 
     void clearBoardSelection() {
@@ -7580,15 +7595,15 @@ class _BottomNavBar extends ConsumerWidget {
       }
     });
 
-    final explorerPanelVisible = ref.watch(boardExplorerPanelVisibleProvider);
-
     // Shipped arrow ownership (Trello #984). Pin expands games over PV only;
     // it must never steal arrows from a focused card.
     final arrows = resolveBoardNavArrowRouting(
-      focus: explorerFocus,
+      focus: explorerPanelVisible ? explorerFocus : null,
       focusNotifier: explorerFocusNotifier,
       boardCanMoveForward: effectiveCanMoveForward,
       boardCanMoveBackward: effectiveCanMoveBackward,
+      boardCanJumpToStart: canJumpToStart,
+      boardCanJumpToEnd: canJumpToEnd,
       // Normal board arrows only navigate saved notation/PV-preview moves.
       // Do not fall through to engine/PV insertion at the end of notation.
       onBoardForward: () {
@@ -8124,6 +8139,9 @@ class _AnalysisGameBody extends ConsumerWidget {
           return LikeNudgeOverlay(
             pageIndex: index,
             child: _AnalysisSwipePanels(
+              key: ValueKey('analysis_panels_${game.gameId}'),
+              gameId: game.gameId,
+              isActivePage: index == currentPageIndex,
               movesDisplay: movesDisplay,
               gamebaseDisplay: gamebaseDisplay,
               syncWithGamebaseToggle: showGamebaseButton,
@@ -10966,11 +10984,13 @@ class _SkeletonContainer extends StatelessWidget {
 /// pattern but kept screen-local: each chess board screen instance has its
 /// own page controller so swiping in one game doesn't bleed into another.
 ///
-/// When [syncWithGamebaseToggle] is true (passed by tour-game contexts that
-/// also surface the explicit "open Gamebase" toggle button), the page index
-/// stays in sync with [gamebaseOverlayEnabledProvider] in both directions.
+/// The explicit book button and swipe remain available. Stored standalone
+/// Explorer preferences never choose the opening panel of a game route.
 class _AnalysisSwipePanels extends ConsumerStatefulWidget {
   const _AnalysisSwipePanels({
+    super.key,
+    required this.gameId,
+    required this.isActivePage,
     required this.movesDisplay,
     required this.gamebaseDisplay,
     required this.syncWithGamebaseToggle,
@@ -10979,6 +10999,8 @@ class _AnalysisSwipePanels extends ConsumerStatefulWidget {
   final Widget movesDisplay;
   final Widget gamebaseDisplay;
   final bool syncWithGamebaseToggle;
+  final String gameId;
+  final bool isActivePage;
 
   @override
   ConsumerState<_AnalysisSwipePanels> createState() =>
@@ -10992,17 +11014,11 @@ class _AnalysisSwipePanelsState extends ConsumerState<_AnalysisSwipePanels> {
   @override
   void initState() {
     super.initState();
-    if (widget.syncWithGamebaseToggle) {
-      final enabled =
-          ref.read(gamebaseOverlayEnabledProvider).valueOrNull ?? false;
-      _currentPage = enabled ? 1 : 0;
-    }
     _pageController = PageController(initialPage: _currentPage);
     // Seed visibility for bottom-nav translucency (post-frame: ref write safe).
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      ref.read(boardExplorerPanelVisibleProvider.notifier).state =
-          _currentPage == 1;
+      if (!mounted || !widget.isActivePage) return;
+      _publishPanelVisibility();
     });
   }
 
@@ -11012,16 +11028,34 @@ class _AnalysisSwipePanelsState extends ConsumerState<_AnalysisSwipePanels> {
     super.dispose();
   }
 
+  void _publishPanelVisibility() {
+    ref.read(boardExplorerPanelVisibleProvider.notifier).state =
+        _currentPage == 1;
+    if (_currentPage != 1) {
+      ref.read(explorerInlineGamesPinnedProvider.notifier).state = false;
+      ref.read(explorerFocusedGameProvider.notifier).clear();
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant _AnalysisSwipePanels oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.isActivePage && !oldWidget.isActivePage) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && widget.isActivePage) _publishPanelVisibility();
+      });
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     if (widget.syncWithGamebaseToggle) {
-      ref.listen<AsyncValue<bool>>(gamebaseOverlayEnabledProvider, (
+      ref.listen<int>(boardExplorerToggleRequestProvider(widget.gameId), (
         previous,
         next,
       ) {
-        final enabled = next.valueOrNull ?? false;
-        final targetPage = enabled ? 1 : 0;
-        if (targetPage == _currentPage || !_pageController.hasClients) return;
+        if (!widget.isActivePage || !_pageController.hasClients) return;
+        final targetPage = _currentPage == 0 ? 1 : 0;
         _pageController.animateToPage(
           targetPage,
           duration: const Duration(milliseconds: 280),
@@ -11036,28 +11070,28 @@ class _AnalysisSwipePanelsState extends ConsumerState<_AnalysisSwipePanels> {
       physics: const ClampingScrollPhysics(),
       onPageChanged: (page) {
         _currentPage = page;
-        // Light translucent bottom nav while explorer is showing so games
-        // under the bar stay faintly visible.
-        ref.read(boardExplorerPanelVisibleProvider.notifier).state = page == 1;
-        // Leaving explorer always restores the bottom nav.
-        if (page != 1) {
-          ref.read(explorerInlineGamesPinnedProvider.notifier).state = false;
-        }
-        if (!widget.syncWithGamebaseToggle) return;
-        // Keep the toggle button reflection in sync with the swipe so the
-        // button label/icon doesn't lie about the visible panel.
-        final notifier = ref.read(gamebaseOverlayEnabledProvider.notifier);
-        final currentEnabled =
-            ref.read(gamebaseOverlayEnabledProvider).valueOrNull ?? false;
-        final shouldEnable = page == 1;
-        if (currentEnabled != shouldEnable) {
-          notifier.setEnabled(shouldEnable);
-        }
+        // Only the active game publishes chrome/arrow ownership. Preloaded
+        // adjacent games must not steal the visible game's focused card.
+        if (widget.isActivePage) _publishPanelVisibility();
       },
       children: [widget.movesDisplay, widget.gamebaseDisplay],
     );
   }
 }
+
+@visibleForTesting
+Widget boardAnalysisSwipePanelsForTesting({
+  required String gameId,
+  bool isActivePage = true,
+  bool syncWithGamebaseToggle = true,
+}) => _AnalysisSwipePanels(
+  key: ValueKey('analysis_panels_$gameId'),
+  gameId: gameId,
+  isActivePage: isActivePage,
+  syncWithGamebaseToggle: syncWithGamebaseToggle,
+  movesDisplay: const Center(child: Text('Notation fixture')),
+  gamebaseDisplay: const Center(child: Text('Explorer fixture')),
+);
 
 class _NextMoveOptionsPanel extends StatelessWidget {
   final List<NextMoveOption> options;

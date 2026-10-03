@@ -328,8 +328,7 @@ class _ChessBoardBottomNavBarState
           svgPath: SvgAsset.left_arrow,
           width: buttonWidth,
           onPressed: widget.canMoveBackward ? widget.onLeftMove : null,
-          onLongPressStart:
-              widget.canMoveBackward ? widget.onLongPressBackwardStart : null,
+          onLongPressStart: widget.onLongPressBackwardStart,
           onLongPressEnd: widget.onLongPressBackwardEnd,
         ),
 
@@ -338,8 +337,7 @@ class _ChessBoardBottomNavBarState
           svgPath: SvgAsset.right_arrow,
           width: buttonWidth,
           onPressed: widget.canMoveForward ? widget.onRightMove : null,
-          onLongPressStart:
-              widget.canMoveForward ? widget.onLongPressForwardStart : null,
+          onLongPressStart: widget.onLongPressForwardStart,
           onLongPressEnd: widget.onLongPressForwardEnd,
           showBadge: widget.showUnseenMoveBadge,
         ),

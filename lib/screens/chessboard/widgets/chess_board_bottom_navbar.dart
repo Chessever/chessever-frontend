@@ -210,7 +210,9 @@ class ChessSvgBottomNavbarWithLongPress extends StatelessWidget {
                         height: 24.h,
                         width: 24.w,
                         colorFilter: ColorFilter.mode(
-                          onPressed != null ? context.colors.textPrimary : context.colors.textPrimaryMuted,
+                          onPressed != null || onLongPressStart != null
+                              ? context.colors.textPrimary
+                              : context.colors.textPrimaryMuted,
                           BlendMode.srcIn,
                         ),
                       ),
