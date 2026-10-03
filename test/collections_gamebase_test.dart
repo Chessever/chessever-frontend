@@ -591,7 +591,7 @@ void main() {
   });
 
   group('CollectionsRepository', () {
-    test('reads every page of games with PGN until the total', () async {
+    test('reads every metadata page without PGN until the total', () async {
       final api = _FakeGamebase([
         for (var i = 0; i < 450; i++)
           _gameJson('g$i', orderIndex: i, pgn: i.isEven ? _pgnA : _pgnB),
@@ -601,7 +601,11 @@ void main() {
       expect(games.first.id, 'g0');
       expect(games.last.id, 'g449');
       expect(api.gameCalls.map((c) => c.offset), [0, 200, 400]);
-      expect(api.gameCalls.every((c) => c.includePgn), isTrue);
+      expect(api.gameCalls.every((c) => !c.includePgn), isTrue);
+      expect(
+        games.every((g) => g.game.pgn == null && g.card.pgn == null),
+        isTrue,
+      );
     });
 
     test('steps by the page the server actually returned', () async {
@@ -613,14 +617,19 @@ void main() {
       expect(api.gameCalls.map((c) => c.offset), [0, 50, 100]);
     });
 
-    test('drops games without PGN and duplicate ids', () async {
+    test('browse retains PGN-less metadata and deduplicates ids', () async {
       final api = _FakeGamebase([
         _gameJson('a', pgn: _pgnA),
         _gameJson('b'),
         _gameJson('a', pgn: _pgnA),
       ]);
       final games = await CollectionsRepository(api).fetchGames('slug');
-      expect(games.map((g) => g.id), ['a']);
+      expect(games.map((g) => g.id), ['a', 'b']);
+      final playable = await CollectionsRepository(
+        api,
+      ).fetchPlayableGames('slug');
+      expect(playable.map((g) => g.id), ['a']);
+      expect(api.gameCalls.last.includePgn, isTrue);
     });
   });
 }

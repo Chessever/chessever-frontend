@@ -1,4 +1,8 @@
 import 'package:chessever2/services/rewarded_premium/rewarded_access_provider.dart';
+import 'package:chessever2/screens/chessboard/widgets/chess_board_from_fen_new.dart'
+    show showGameShareOverlay;
+import 'package:chessever2/screens/my_space/actions/space_menu_action.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/utils/game_space_shortcut.dart';
 import 'dart:math' as math;
 import 'package:chessever2/screens/chessboard/provider/game_pgn_stream_provider.dart'
     show LiveGamesBatchKey;
@@ -14,7 +18,9 @@ import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/board_like_heart.dart';
 import 'package:chessever2/widgets/skeleton_widget.dart';
-import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
+import 'package:chessever2/widgets/paywall/premium_game_access.dart';
+import 'package:chessever2/screens/library/widgets/library_context_menu.dart';
 import 'package:chessever2/widgets/time_control_glyph.dart';
 import 'package:chessever2/screens/my_space/models/space_shortcut.dart';
 import 'package:chessever2/screens/for_you/discovery/widgets/discovery_event_card.dart';
@@ -180,7 +186,7 @@ class MostLikedPeriodBar extends ConsumerWidget {
 /// The Most liked page's ranking: the community ranking of games by how many
 /// people liked them. Every period, every earlier date and the Players view
 /// (everyone with a game in the ranking) are browsed the same by everyone;
-/// only opening a game beyond Today goes through the Premium guard. Every
+/// opening a game in any period goes through the Premium guard. Every
 /// period is a calendar one the date control walks: a day, a
 /// Monday-to-Sunday week, a month, a year.
 ///
@@ -295,10 +301,66 @@ class _PageBody extends ConsumerWidget {
   /// The ranking is the current day's (not an earlier day's).
   final bool isToday;
 
-  /// Opening games beyond Today requires Premium access.
+  /// Opening games in every period requires Premium access.
   final bool locked;
   final VoidCallback onUpgrade;
   final VoidCallback onRetry;
+
+  Future<bool> _access(BuildContext context) async =>
+      ensurePremiumGameAccess(
+        context,
+        featureId: 'most_liked_rankings',
+        returnTo: discoveryReturnTo('most_liked'),
+      );
+
+  Future<void> _openRankedGame(
+    BuildContext context,
+    WidgetRef ref,
+    List<GamesTourModel> games,
+    int index,
+  ) async {
+    if (!await _access(context) || !context.mounted) return;
+    openDiscoveryGame(context, ref, games, index);
+  }
+
+  List<LibraryMenuAction> _gameMenu(
+    BuildContext context,
+    WidgetRef ref,
+    List<GamesTourModel> games,
+    int index,
+  ) {
+    final game = games[index];
+    final draft = gameSpaceShortcutDraft(game);
+    final space = draft == null
+        ? null
+        : spaceMenuAction(context: context, ref: ref, draft: draft);
+    return [
+      LibraryMenuAction(
+        icon: Icons.open_in_new_rounded,
+        label: 'Open game',
+        onSelected: () => _openRankedGame(context, ref, games, index),
+      ),
+      LibraryMenuAction(
+        icon: Icons.ios_share_rounded,
+        label: 'Share',
+        onSelected: () async {
+          if (!await _access(context) || !context.mounted) return;
+          await showGameShareOverlay(context, ref, game);
+        },
+      ),
+      if (space != null)
+        LibraryMenuAction(
+          icon: space.icon,
+          label: space.label,
+          enabled: space.enabled,
+          visible: space.visible,
+          onSelected: () async {
+            if (!await _access(context) || !context.mounted) return;
+            await space.onSelected();
+          },
+        ),
+    ];
+  }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -364,22 +426,11 @@ class _PageBody extends ConsumerWidget {
             : const <String, LiveGamesBatchKey>{};
         list = DiscoveryGameList(
           games: games,
-          lockedFor: (_) => !isToday && locked,
-          onOpen: (games, index) {
-            void open() => openDiscoveryGame(context, ref, games, index);
-            if (!isToday && locked) {
-              // Board access must be gated in debug sessions too: the shared
-              // guard intentionally bypasses other gates when ads are disabled.
-              showPremiumPaywallSheet(
-                context: context,
-                featureId: 'most_liked_rankings',
-                returnTo: discoveryReturnTo('most_liked'),
-                onEntitled: open,
-              );
-            } else {
-              open();
-            }
-          },
+          onOpen: (games, index) => _openRankedGame(context, ref, games, index),
+          // Identical controls, with the same tap-time gate before any
+          // PGN share lookup or shortcut write.
+          menuActionsFor: (menuContext, index) =>
+              _gameMenu(context, ref, games, index),
           badgeFor: (i, boardSize) => _heart(visible[i], boardSize),
           rowLabelFor: (i) => _likesMeta(visible[i]),
           streamEnabled: isCurrent,

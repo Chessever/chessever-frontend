@@ -1,3 +1,4 @@
+import 'package:chessever2/screens/library/miniatures/miniature_game_launcher.dart';
 import 'package:chessever2/widgets/segmented_switcher.dart';
 import 'package:chessever2/screens/for_you/discovery/widgets/discovery_game_cards.dart';
 import 'package:chessever2/screens/chessboard/analysis/chess_game.dart';
@@ -628,7 +629,7 @@ void main() {
   });
 
   testWidgets('a free account browses every period, every date and the '
-      'Players list; only opening an earlier game is gated', (tester) async {
+      'Players list; opening any game is gated', (tester) async {
     final container = await _pump(tester, subscribed: false);
     await tester.tap(find.bySemanticsLabel('Most liked, Today'));
     await _settle(tester);
@@ -651,6 +652,7 @@ void main() {
     await _settle(tester);
 
     for (final period in [
+      MostLikedPeriod.today,
       MostLikedPeriod.week,
       MostLikedPeriod.month,
       MostLikedPeriod.year,
@@ -662,7 +664,8 @@ void main() {
         find.byType(DiscoveryGameList).first,
       );
       expect(list.onOpen, isNotNull);
-      expect(list.lockedFor?.call(0), isTrue);
+      expect(list.lockedFor, isNull);
+      expect(find.byType(DiscoveryPadlock), findsNothing);
 
       // Exercise the opening handler, not just the locked appearance. Debug
       // builds without rewarded configuration must still show a paywall.
@@ -682,6 +685,39 @@ void main() {
     expect(find.byType(MostLikedPlayersList), findsOneWidget);
     await _teardown(tester, container);
   });
+
+  for (final date in [DateTime.now(), DateTime.utc(2020, 1, 1)]) {
+    testWidgets('Miniatures requires access for game dated $date', (
+      tester,
+    ) async {
+      final game = _ranking(1).first.game.copyWith(lastMoveTime: date);
+      final container = await _pump(
+        tester,
+        subscribed: false,
+        home: Consumer(
+          builder: (context, ref, _) => Scaffold(
+            body: TextButton(
+              onPressed: () => openMiniatureGame(
+                context: context,
+                ref: ref,
+                games: [game],
+                index: 0,
+              ),
+              child: const Text('Open miniature'),
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.text('Open miniature'));
+      await _settle(tester);
+      expect(find.text('Sign in to get Premium'), findsOneWidget);
+      expect(find.byType(CircularProgressIndicator), findsNothing);
+      Navigator.of(tester.element(find.text('Sign in to get Premium'))).pop();
+      await _settle(tester);
+      expect(tester.takeException(), isNull);
+      await _teardown(tester, container);
+    });
+  }
 
   testWidgets('the hub stays on today after the page picks a week', (
     tester,

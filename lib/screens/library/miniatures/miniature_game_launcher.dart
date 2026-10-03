@@ -1,4 +1,3 @@
-import 'package:chessever2/services/rewarded_premium/rewarded_access_provider.dart';
 import 'package:chessever2/repository/gamebase/gamebase_repository.dart';
 import 'package:chessever2/screens/chessboard/chess_board_screen_new.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
@@ -13,9 +12,11 @@ import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/user_error_message.dart';
 import 'package:chessever2/widgets/alert_dialog/alert_modal.dart';
 import 'package:chessever2/widgets/app_snack.dart';
-import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
+import 'package:chessever2/widgets/paywall/premium_game_access.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+
+bool _openingMiniature = false;
 
 /// Opens a miniature on the board.
 ///
@@ -24,15 +25,9 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 /// into the board from the Miniatures screen goes through here so the fetch,
 /// the spinner and the error handling stay in one place.
 ///
-/// Free users may open only games dated **Today** (see
-/// [isMiniatureGameLocked]); older or undated games show the premium paywall
-/// and do not navigate until the user is subscribed. A confirmed purchase or
-/// restore resumes straight into the game that was tapped. [returnTo] names
-/// the surface that resumes, for the paywall analytics (a fixed identifier).
-///
-/// [games] is the whole list on screen, every day of it. A free account's
-/// board is handed Today's games only, so swiping there never walks past the
-/// guard into an earlier day.
+/// Every game, including Today, requires paid or active rewarded Premium access.
+/// Confirmation resumes the tapped game once, before fetching its movetext.
+/// The list remains browsable and the unlocked board receives the whole list.
 Future<void> openMiniatureGame({
   required BuildContext context,
   required WidgetRef ref,
@@ -42,49 +37,24 @@ Future<void> openMiniatureGame({
 }) async {
   if (index < 0 || index >= games.length) return;
 
-  final subscription = ref.read(featureAccessStateProvider);
-  final locked = isMiniatureGameLocked(
-    games[index].lastMoveTime,
-    isSubscribed: subscription.isSubscribed,
-    subscriptionLoading: subscription.isLoading,
-  );
-  if (!locked) {
-    final archiveLocked = isMiniaturesArchiveLocked(
-      isSubscribed: subscription.isSubscribed,
-      subscriptionLoading: subscription.isLoading,
+  if (_openingMiniature || !context.mounted) return;
+  _openingMiniature = true;
+  try {
+    final allowed = await ensurePremiumGameAccess(
+      context,
+      featureId: kMiniaturesArchiveFeatureId,
+      returnTo: returnTo,
     );
-    if (archiveLocked) {
-      final today = splitMiniaturesAtToday(
-        games,
-        (game) => game.lastMoveTime,
-      ).today;
-      final tapped = games[index].gameId;
-      return _launchMiniatureGame(
-        context: context,
-        ref: ref,
-        games: today,
-        index: today.indexWhere((game) => game.gameId == tapped),
-      );
-    }
-    return _launchMiniatureGame(
+    if (!allowed || !context.mounted) return;
+    await _launchMiniatureGame(
       context: context,
       ref: ref,
       games: games,
       index: index,
     );
+  } finally {
+    _openingMiniature = false;
   }
-  await requirePremiumGuard(
-    context,
-    ref,
-    featureId: kMiniaturesArchiveFeatureId,
-    returnTo: returnTo,
-    onEntitled: () => _launchMiniatureGame(
-      context: context,
-      ref: ref,
-      games: games,
-      index: index,
-    ),
-  );
 }
 
 Future<void> _launchMiniatureGame({

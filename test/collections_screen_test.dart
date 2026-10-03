@@ -146,6 +146,9 @@ class _FakeCollections extends CollectionsRepository {
   @override
   Future<List<CollectionGame>> fetchGames(String slug) async => games;
 
+  @override
+  Future<List<CollectionGame>> fetchPlayableGames(String slug) async => games;
+
   final filteredQueries = <({CollectionSearchQuery query, String? player})>[];
   final filteredSlugs = <String>[];
   @override
@@ -1206,7 +1209,10 @@ void main() {
       expect(find.byType(FigmaPlayerCard), findsOneWidget);
       expect(find.text('2 games'), findsNothing);
       expect(
-        find.descendant(of: find.byType(FigmaPlayerCard), matching: find.text('2')),
+        find.descendant(
+          of: find.byType(FigmaPlayerCard),
+          matching: find.text('2'),
+        ),
         findsOneWidget,
       );
       expect(find.text('0'), findsNothing);

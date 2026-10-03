@@ -819,6 +819,37 @@ class CollectionGameCard {
   final String? collectionSlug;
   final String? collectionTitle;
 
+  /// Copy of the structured browse metadata without protected PGN.
+  CollectionGameCard withoutPgn() => CollectionGameCard(
+    id: id,
+    white: white,
+    black: black,
+    sectionId: sectionId,
+    orderIndex: orderIndex,
+    result: result,
+    roundTag: roundTag,
+    board: board,
+    playedOn: playedOn,
+    playedAt: playedAt,
+    event: event,
+    site: site,
+    eco: eco,
+    opening: opening,
+    annotator: annotator,
+    startingFen: startingFen,
+    finalFen: finalFen,
+    lastMove: lastMove,
+    plyCount: plyCount,
+    commentCount: commentCount,
+    nagCount: nagCount,
+    variationCount: variationCount,
+    hasAnnotations: hasAnnotations,
+    contentHash: contentHash,
+    updatedAt: updatedAt,
+    collectionSlug: collectionSlug,
+    collectionTitle: collectionTitle,
+  );
+
   /// Whether [playerKey] (a [CollectionPlayer.key]) played this game.
   bool involves(String playerKey) =>
       white.key == playerKey || black.key == playerKey;

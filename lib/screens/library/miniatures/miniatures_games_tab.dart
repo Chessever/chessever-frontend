@@ -34,7 +34,7 @@ import 'package:chessever2/screens/chessboard/utils/legible_ink.dart';
 /// switching to grid or board here switches it everywhere.
 ///
 /// Everyone browses the same list: every day, every filter. Only opening a
-/// game from before Today goes through the Premium guard (see
+/// game, including Today, goes through the Premium guard (see
 /// miniature_game_launcher.dart).
 class MiniaturesGamesTab extends ConsumerStatefulWidget {
   const MiniaturesGamesTab({super.key, this.now});

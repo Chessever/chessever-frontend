@@ -20,11 +20,8 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 /// move 25, served by the gamebase `/api/miniatures` index.
 ///
 /// Laid out like Favorites and Countrymen — a Games / Players / About tab
-/// triple over a shared page view. Today is free: its games open, and search,
-/// filters, players and add-to-folder work on it. Every earlier day is the
-/// Premium archive: for a free account the Games tab lists Today only, under
-/// a date control whose earlier-day step goes through the paywall, and ends
-/// on "Explore the Miniatures archive" (see miniatures_access.dart).
+/// triple over a shared page view. Everyone browses every day and filter.
+/// Opening any game requires a subscription or rewarded Premium access.
 class MiniaturesScreen extends ConsumerStatefulWidget {
   const MiniaturesScreen({super.key});
 

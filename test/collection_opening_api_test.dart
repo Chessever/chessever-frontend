@@ -82,7 +82,7 @@ void main() {
       ]);
       expect(requests[2].queryParameters['eco'], 'C60');
       expect(requests[3].queryParameters['eco'], 'C60');
-      expect(requests[3].queryParameters['include'], 'pgn');
+      expect(requests[3].queryParameters.containsKey('include'), isFalse);
       expect(requests[3].headers['Authorization'], 'Bearer test-session');
       expect(requests[4].queryParameters['offset'], 40);
       expect(requests[4].headers['Authorization'], 'Bearer test-session');
