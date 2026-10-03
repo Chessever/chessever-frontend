@@ -673,13 +673,14 @@ class _BubbleLayout extends SingleChildLayoutDelegate {
 }
 
 /// The recorded game evaluation, always in its own slot above the scrub bar.
-/// Missing or hidden evaluations are stated explicitly instead of drawing a
-/// synthetic flat curve. The existing scrub strip remains the move control.
+/// No viewer setting hides it: the one case with no curve is a game that
+/// has no recorded evaluations, which is stated explicitly instead of
+/// drawing a synthetic flat curve. The existing scrub strip remains the
+/// move control.
 class FeedEvaluationGraph extends StatefulWidget {
   const FeedEvaluationGraph({
     required this.item,
     required this.ply,
-    required this.showEvaluations,
     required this.onSeek,
     required this.onStart,
     required this.onUpdate,
@@ -689,7 +690,6 @@ class FeedEvaluationGraph extends StatefulWidget {
 
   final FeedItem item;
   final int ply;
-  final bool showEvaluations;
   final ValueChanged<double> onSeek;
   final ValueChanged<double> onStart;
   final ValueChanged<double> onUpdate;
@@ -737,10 +737,7 @@ class _FeedEvaluationGraphState extends State<FeedEvaluationGraph> {
   @override
   Widget build(BuildContext context) {
     final colors = context.colors;
-    final hasCurve = widget.showEvaluations && widget.item.hasEvals;
-    final unavailable = widget.showEvaluations
-        ? 'No recorded evaluation'
-        : 'Evaluation hidden';
+    final hasCurve = widget.item.hasEvals;
     return SizedBox(
       key: const ValueKey('feed_evaluation_graph'),
       height: FeedEvaluationGraph.heightFor(MediaQuery.textScalerOf(context)),
@@ -926,7 +923,7 @@ class _FeedEvaluationGraphState extends State<FeedEvaluationGraph> {
                   )
                 : Center(
                     child: Text(
-                      unavailable,
+                      'No recorded evaluation',
                       textAlign: TextAlign.center,
                       style: AppTypography.textSmRegular.copyWith(
                         color: colors.textSecondary,

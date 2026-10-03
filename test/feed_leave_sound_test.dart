@@ -480,7 +480,6 @@ class _RecordingEngine extends FeedEngine {
   @override
   Future<CloudEval?> evaluate(
     String fen, {
-    required EngineSettings settings,
     required void Function(List<Pv> pvs, int depth) onUpdate,
   }) async => null;
 

@@ -815,32 +815,62 @@ void main() {
       },
     );
 
-    for (final setting in ['missing', 'engine off', 'no spoilers']) {
-      testWidgets('persistent graph respects $setting evaluations', (
+    testWidgets('a game with no recorded evaluation says so, and its scrub '
+        'shows the move bubble', (tester) async {
+      await _pump(tester, games: 1);
+      expect(find.bySemanticsLabel('Game evaluation graph'), findsNothing);
+      expect(find.text('No recorded evaluation'), findsOneWidget);
+      // The bar still stands beside the board, neutral until a number exists.
+      expect(find.byKey(const ValueKey('feed_eval_bar')), findsOneWidget);
+      final strip = tester.getRect(find.byType(FeedScrubStrip));
+      final gesture = await tester.startGesture(strip.center);
+      await gesture.moveBy(const Offset(60, 0));
+      await tester.pump();
+      expect(find.bySemanticsLabel('Game evaluation graph'), findsNothing);
+      expect(find.byType(FeedMoveBubble), findsOneWidget);
+      await gesture.up();
+      await tester.pump();
+      await _tearDown(tester);
+    });
+
+    // A post's evaluation is always on: nothing the viewer set for the board
+    // screen or for an event reaches it.
+    for (final (setting, engine, noSpoilers) in const [
+      ('engine analysis off', EngineSettings(showEngineAnalysis: false), false),
+      (
+        'the on-board gauge off',
+        EngineSettings(showEngineGaugeOnBoard: false),
+        false,
+      ),
+      ('every gauge off', EngineSettings(showEngineGauge: false), false),
+      ("the event's No Spoilers on", EngineSettings(), true),
+    ]) {
+      testWidgets('the graph, the bar and the number are shown with $setting', (
         tester,
       ) async {
         await _pump(
           tester,
           games: 1,
-          evals: setting != 'missing',
-          analysis: setting != 'engine off',
-          noSpoilers: setting == 'no spoilers',
+          evals: true,
+          engine: engine,
+          noSpoilers: noSpoilers,
         );
-        expect(find.bySemanticsLabel('Game evaluation graph'), findsNothing);
+        expect(find.bySemanticsLabel('Game evaluation graph'), findsOneWidget);
+        expect(find.byKey(const ValueKey('feed_eval_bar')), findsOneWidget);
+        expect(find.text('Evaluation hidden'), findsNothing);
+        expect(find.text('No recorded evaluation'), findsNothing);
+        // The number beside the move, over the chart.
         expect(
-          find.text(
-            setting == 'missing'
-                ? 'No recorded evaluation'
-                : 'Evaluation hidden',
-          ),
-          findsOneWidget,
+          tester.widget<FeedMoveInfoRow>(find.byType(FeedMoveInfoRow)).trailing,
+          '+0.2',
         );
+        // The chart carries the scrub, so no move bubble stands in for it.
         final strip = tester.getRect(find.byType(FeedScrubStrip));
         final gesture = await tester.startGesture(strip.center);
         await gesture.moveBy(const Offset(60, 0));
         await tester.pump();
-        expect(find.bySemanticsLabel('Game evaluation graph'), findsNothing);
-        expect(find.byType(FeedMoveBubble), findsOneWidget);
+        expect(find.bySemanticsLabel('Game evaluation graph'), findsOneWidget);
+        expect(find.byType(FeedMoveBubble), findsNothing);
         await gesture.up();
         await tester.pump();
         await _tearDown(tester);
@@ -1018,7 +1048,7 @@ Future<_Feed> _pump(
   Future<void>? adds,
   Size size = const Size(393, 852),
   bool evals = false,
-  bool analysis = true,
+  EngineSettings engine = const EngineSettings(),
   bool noSpoilers = false,
   _FakeFeed Function(List<FeedItem> items, FeedMore more)? makeFeed,
 }) async {
@@ -1049,7 +1079,7 @@ Future<_Feed> _pump(
         currentUserProvider.overrideWithValue(null),
         subscriptionProvider.overrideWith((ref) => _FreeSubscription()),
         engineSettingsProviderNew.overrideWith(
-          () => _TestEngineSettings(analysis),
+          () => _TestEngineSettings(engine),
         ),
         eventNoSpoilersProvider.overrideWith(
           (ref, tourId) => _MemoryNoSpoilers(ref, tourId, noSpoilers),
@@ -1224,11 +1254,10 @@ class _RecordingMoveSound extends FeedMoveSound {
 }
 
 class _TestEngineSettings extends EngineSettingsNotifierNew {
-  _TestEngineSettings(this.analysis);
-  final bool analysis;
+  _TestEngineSettings(this.settings);
+  final EngineSettings settings;
   @override
-  Future<EngineSettings> build() async =>
-      EngineSettings(showEngineAnalysis: analysis);
+  Future<EngineSettings> build() async => settings;
 }
 
 class _MemoryNoSpoilers extends EventNoSpoilersController {
@@ -1246,7 +1275,6 @@ class _NoEngine extends FeedEngine {
   @override
   Future<CloudEval?> evaluate(
     String fen, {
-    required EngineSettings settings,
     required void Function(List<Pv> pvs, int depth) onUpdate,
   }) async => null;
 

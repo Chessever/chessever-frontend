@@ -670,28 +670,85 @@ void main() {
     },
   );
 
-  group('eval bar follows the engine settings', () {
+  group('eval bar is always on, whatever the engine settings', () {
     testWidgets('shown by default, beside the board', (tester) async {
       await _pumpFeed(tester);
       expect(find.byKey(const ValueKey('feed_eval_bar')), findsOneWidget);
       await _tearDown(tester);
     });
 
-    testWidgets('hidden when the on-board gauge is off', (tester) async {
-      await _pumpFeed(
-        tester,
-        engineSettings: const EngineSettings(showEngineGaugeOnBoard: false),
-      );
-      expect(find.byKey(const ValueKey('feed_eval_bar')), findsNothing);
-      await _tearDown(tester);
-    });
+    for (final (setting, engineSettings) in const [
+      ('the on-board gauge off', EngineSettings(showEngineGaugeOnBoard: false)),
+      ('every gauge off', EngineSettings(showEngineGauge: false)),
+      ('engine analysis off', EngineSettings(showEngineAnalysis: false)),
+    ]) {
+      testWidgets('shown with $setting, on the same geometry', (tester) async {
+        await _pumpFeed(tester);
+        final bar = tester.getRect(find.byKey(const ValueKey('feed_eval_bar')));
+        final board = tester.getRect(find.byType(FeedLiveBoard));
+        await _tearDown(tester);
 
-    testWidgets('hidden when the engine is off', (tester) async {
-      await _pumpFeed(
-        tester,
-        engineSettings: const EngineSettings(showEngineAnalysis: false),
+        await _pumpFeed(tester, engineSettings: engineSettings);
+        expect(
+          tester.getRect(find.byKey(const ValueKey('feed_eval_bar'))),
+          bar,
+        );
+        expect(tester.getRect(find.byType(FeedLiveBoard)), board);
+        await _tearDown(tester);
+      });
+
+      testWidgets('with $setting, a paused post still asks the engine and '
+          'prints its number', (tester) async {
+        final engine = _RecordingEngine(cp: 150);
+        await _pumpFeed(tester, engine: engine, engineSettings: engineSettings);
+        final board = tester.getRect(find.byType(FeedLiveBoard));
+        await tester.tapAt(_squareCenter(board, 'a5'));
+        await tester.pump(const Duration(milliseconds: 300));
+        await tester.pump(const Duration(milliseconds: 100));
+        expect(find.byKey(const ValueKey('feed_paused')), findsOneWidget);
+        expect(engine.searched, isNotEmpty);
+        expect(find.text('+1.5'), findsOneWidget);
+        await _tearDown(tester);
+      });
+    }
+
+    testWidgets("with the event's No Spoilers on, the player rows keep their "
+        'result column and print the result on the last move', (tester) async {
+      Rect resultColumn(String row) => tester.getRect(
+        find.descendant(
+          of: find.byKey(ValueKey(row)),
+          matching: find.byKey(const ValueKey('player-row-evaluation-space')),
+        ),
       );
-      expect(find.byKey(const ValueKey('feed_eval_bar')), findsNothing);
+
+      await _pumpFeed(tester);
+      final white = resultColumn('feed_row_white');
+      final black = resultColumn('feed_row_black');
+      expect(white.width, greaterThan(0));
+      await _tearDown(tester);
+
+      await _pumpFeed(tester, noSpoilers: true);
+      expect(resultColumn('feed_row_white'), white);
+      expect(resultColumn('feed_row_black'), black);
+      expect(find.byKey(const ValueKey('feed_eval_bar')), findsOneWidget);
+
+      for (var i = 0; i < 12; i++) {
+        await tester.pump(const Duration(milliseconds: 700));
+      }
+      expect(
+        find.descendant(
+          of: find.byKey(const ValueKey('feed_row_white')),
+          matching: find.text('1'),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: find.byKey(const ValueKey('feed_row_black')),
+          matching: find.text('0'),
+        ),
+        findsOneWidget,
+      );
       await _tearDown(tester);
     });
 
@@ -856,6 +913,7 @@ Future<_Feed> _pumpFeed(
   CloudEval? Function(String fen)? cached,
   ThemeData? theme,
   List<Override>? accessOverrides,
+  bool noSpoilers = false,
 }) async {
   tester.view.devicePixelRatio = 3;
   tester.view.physicalSize = const Size(393 * 3, 852 * 3);
@@ -883,7 +941,9 @@ Future<_Feed> _pumpFeed(
         engineSettingsProviderNew.overrideWith(
           () => _TestEngineSettings(engineSettings),
         ),
-        eventNoSpoilersProvider.overrideWith(_MemoryNoSpoilers.new),
+        eventNoSpoilersProvider.overrideWith(
+          (ref, tourId) => _MemoryNoSpoilers(ref, tourId, noSpoilers),
+        ),
         feedCachedEvalProvider.overrideWith(
           (ref, fen) async => cached?.call(fen),
         ),
@@ -1073,11 +1133,14 @@ class _TestEngineSettings extends EngineSettingsNotifierNew {
 
 /// No Spoilers double: never reads the local database.
 class _MemoryNoSpoilers extends EventNoSpoilersController {
-  _MemoryNoSpoilers(Ref ref, String tourId) : super(ref: ref, tourId: tourId);
+  _MemoryNoSpoilers(Ref ref, String tourId, this.enabled)
+    : super(ref: ref, tourId: tourId);
+
+  final bool enabled;
 
   @override
   Future<void> load() async {
-    state = const EventNoSpoilersState(enabled: false, isLoading: false);
+    state = EventNoSpoilersState(enabled: enabled, isLoading: false);
   }
 }
 
@@ -1093,7 +1156,6 @@ class _RecordingEngine extends FeedEngine {
   @override
   Future<CloudEval?> evaluate(
     String fen, {
-    required EngineSettings settings,
     required void Function(List<Pv> pvs, int depth) onUpdate,
   }) async {
     searched.add(fen);

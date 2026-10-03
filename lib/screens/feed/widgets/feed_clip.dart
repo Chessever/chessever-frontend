@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:math' as math;
 
-import 'package:chessever2/providers/engine_settings_provider.dart';
 import 'package:chessever2/repository/liked_games/liked_games_provider.dart';
 import 'package:chessever2/screens/board_editor/board_editor_screen.dart';
 import 'package:chessever2/screens/chessboard/classification_fx/move_class.dart';
@@ -43,7 +42,6 @@ import 'package:chessever2/screens/my_space/providers/space_shortcuts_provider.d
 import 'package:chessever2/screens/my_space/widgets/pixel_flame.dart';
 import 'package:chessever2/screens/player_profile/player_profile_data_source.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
-import 'package:chessever2/screens/tour_detail/games_tour/providers/event_no_spoilers_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/utils/game_space_shortcut.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/game_card_wrapper_provider.dart';
 import 'package:chessever2/services/deep_link_service.dart';
@@ -1611,10 +1609,11 @@ class _FeedClipState extends ConsumerState<FeedClip>
       FeedStripToken(number: line.numberAt(j), san: line.moves[j].san),
   ];
 
-  /// [showEval] is the eval bar's own visibility: the number beside the
-  /// transport is the bar's value, so it hides with it (engine off, No
-  /// Spoilers, gauge off).
-  Widget _buildStrip(FeedLayout l, int shown, {required bool showEval}) {
+  /// The move strip in the evaluation graph's slot while the viewer plays
+  /// their own line: its moves, the steps and "Back to game". With no line
+  /// it falls back to the game's own strip, where the number beside the
+  /// transport is the eval bar's value in words.
+  Widget _buildStrip(FeedLayout l, int shown) {
     final stripHeight = _line == null
         ? l.infoHeight
         : FeedLayout.moveStripHeightFor(MediaQuery.textScalerOf(context));
@@ -1647,7 +1646,7 @@ class _FeedClipState extends ConsumerState<FeedClip>
     }
 
     final p = _playback;
-    final evalText = showEval ? feedEvalText(_item, shown) : '';
+    final evalText = feedEvalText(_item, shown);
     final playing = p.isPlaying;
     return FeedMoveStrip(
       tokens: _gameTokens(),
@@ -1957,6 +1956,9 @@ class _FeedClipState extends ConsumerState<FeedClip>
               : PlayerProfileDataSource.twic,
           nameMenu: true,
           revealResult: revealResult,
+          // The Feed shows every game's outcome and evaluation itself, so the
+          // event's No Spoilers preference does not reach its rows either.
+          ignoreNoSpoilers: true,
         ),
       ),
     );
@@ -1964,10 +1966,6 @@ class _FeedClipState extends ConsumerState<FeedClip>
 
   // ------------------------------------------------------------ eval bar
 
-  /// What the clip may say about the engine, by the board screen's rules.
-  /// [evals] is the engine toggle and an event's No Spoilers: it gates the
-  /// report chart. [bar] adds the on-board gauge setting: it gates the eval
-  /// bar and the move strip's number, which is the bar's value in words.
   /// Whether the viewer had liked the game when the post was first built,
   /// so a like or unlike here moves the loaded count by one.
   bool? _likedAtOpen;
@@ -1981,37 +1979,12 @@ class _FeedClipState extends ConsumerState<FeedClip>
     return (base + delta).clamp(0, 1 << 30).toInt();
   }
 
-  ({bool bar, bool evals}) _watchEvalVisibility() {
-    final gauge = ref.watch(
-      engineSettingsProviderNew.select(
-        (s) => s.valueOrNull?.shouldShowEngineGaugeOnBoard ?? true,
-      ),
-    );
-    final analysis = ref.watch(
-      engineSettingsProviderNew.select(
-        (s) => s.valueOrNull?.showEngineAnalysis ?? true,
-      ),
-    );
-    final game = _game;
-    final hidden =
-        game.source == GameSource.supabase &&
-        ref.watch(
-          eventNoSpoilersProvider(game.tourId).select(
-            (state) => shouldHideEventEvaluation(
-              isBroadcastGame: true,
-              spoilerState: state,
-            ),
-          ),
-        );
-    final evals = analysis && !hidden;
-    return (bar: gauge && evals, evals: evals);
-  }
-
-  /// The number for the position on the board. A finished position speaks
-  /// for itself (mate, or a drawn end, as the board screen scores them); the
-  /// game line uses the PGN's own evals; anything else asks
-  /// [feedPositionEvalProvider]: the cache while the clip plays, the engine
-  /// (the viewer's gauge settings) once the viewer has the board.
+  /// The number for the position on the board, whatever the viewer's engine
+  /// or No Spoilers settings say elsewhere: a post always shows its
+  /// evaluation. A finished position speaks for itself (mate, or a drawn
+  /// end, as the board screen scores them); the game line uses the PGN's own
+  /// evals; anything else asks [feedPositionEvalProvider]: the cache while
+  /// the clip plays, the engine once the viewer has the board.
   FeedEval _watchEval(_BoardView view, {required bool exploring}) {
     final position = view.position;
     if (position == null) return FeedEval.none;
@@ -2061,8 +2034,6 @@ class _FeedClipState extends ConsumerState<FeedClip>
         : null;
     final saved =
         ref.watch(feedGameSavedProvider(_game.likeId)).valueOrNull ?? false;
-    final evalVisibility = _watchEvalVisibility();
-    final showBar = evalVisibility.bar;
 
     final p = _playback;
     final line = _line;
@@ -2071,17 +2042,14 @@ class _FeedClipState extends ConsumerState<FeedClip>
     final ply = _item.plies[shown];
     // The rows print the result only on the game's final position.
     final revealResult = !exploring && shown >= _item.plies.length - 1;
-    // The report chart is an eval curve, so it keeps to the same rules as the
-    // bar's number; with evals hidden the scrub shows the move bubble.
-    final showChart = _item.hasEvals && evalVisibility.evals;
-    final showBubble = p.isScrubbing && !showChart;
+    // The report chart carries the move while scrubbing; only a game with no
+    // recorded evaluations has no chart, and its scrub shows the move bubble.
+    final showBubble = p.isScrubbing && !_item.hasEvals;
     // The result card steps aside while the viewer plays the final position.
     final showEndCard =
         p.isEnded && !p.isScrubbing && !exploring && !_cardAside && !p.isHeld;
     final view = _view();
-    final eval = showBar
-        ? _watchEval(view, exploring: exploring)
-        : FeedEval.none;
+    final eval = _watchEval(view, exploring: exploring);
     _shownEval = eval.hasValue ? eval : null;
 
     final moment = shown > 0 ? ply.moment : null;
@@ -2112,7 +2080,7 @@ class _FeedClipState extends ConsumerState<FeedClip>
         final l = FeedLayout.resolve(
           constraints,
           MediaQuery.textScalerOf(context),
-          evalWidth: showBar ? 20.w : 0,
+          evalWidth: 20.w,
           infoHeight: 0,
           chartHeight: FeedEvaluationGraph.heightFor(
             MediaQuery.textScalerOf(context),
@@ -2250,21 +2218,20 @@ class _FeedClipState extends ConsumerState<FeedClip>
             children: [
               Row(
                 children: [
-                  if (showBar)
-                    EvaluationBarWidget(
-                      key: const ValueKey('feed_eval_bar'),
-                      width: l.evalWidth,
-                      height: l.board,
-                      isFlipped: false,
-                      evaluation: _barEvaluation(eval),
-                      mate: eval.mate,
-                      isEvaluating: eval.evaluating,
-                      isWhiteToMove: view.position?.turn != Side.black,
-                      positionKey: view.position?.fen ?? view.fen,
-                      // "#", as the game card and the move strip say, not
-                      // the ±100 the bar is filled with.
-                      isCheckmate: view.position?.isCheckmate ?? false,
-                    ),
+                  EvaluationBarWidget(
+                    key: const ValueKey('feed_eval_bar'),
+                    width: l.evalWidth,
+                    height: l.board,
+                    isFlipped: false,
+                    evaluation: _barEvaluation(eval),
+                    mate: eval.mate,
+                    isEvaluating: eval.evaluating,
+                    isWhiteToMove: view.position?.turn != Side.black,
+                    positionKey: view.position?.fen ?? view.fen,
+                    // "#", as the game card and the move strip say, not
+                    // the ±100 the bar is filled with.
+                    isCheckmate: view.position?.isCheckmate ?? false,
+                  ),
                   board,
                 ],
               ),
@@ -2343,13 +2310,12 @@ class _FeedClipState extends ConsumerState<FeedClip>
                     child: exploring
                         ? Align(
                             child: RepaintBoundary(
-                              child: _buildStrip(l, shown, showEval: showBar),
+                              child: _buildStrip(l, shown),
                             ),
                           )
                         : FeedEvaluationGraph(
                             item: _item,
                             ply: shown,
-                            showEvaluations: evalVisibility.evals,
                             onSeek: _onScrubTap,
                             onStart: _onScrubStart,
                             onUpdate: _onScrubUpdate,

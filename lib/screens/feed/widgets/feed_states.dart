@@ -1,4 +1,3 @@
-import 'package:chessever2/providers/engine_settings_provider.dart';
 import 'package:chessever2/screens/feed/providers/feed_provider.dart';
 import 'package:chessever2/screens/feed/widgets/feed_action_row.dart';
 import 'package:chessever2/screens/feed/widgets/feed_layout.dart';
@@ -7,15 +6,13 @@ import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:flutter/material.dart';
-import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 /// First-load placeholder: one skeleton post on the whole page, exactly as
 /// Feed's pages stand, so the first board drops into the space the skeleton
 /// board already occupies.
 ///
-/// [puzzles] is for the Puzzle tab, whose boards always have the progress
-/// rail beside them; Feed's game posts show the eval bar only when the
-/// viewer's engine settings do.
+/// [puzzles] is for the Puzzle tab, whose boards have the progress rail
+/// beside them where Feed's game posts have the eval bar.
 class FeedSkeleton extends StatelessWidget {
   const FeedSkeleton({this.puzzles = false, super.key});
 
@@ -25,7 +22,7 @@ class FeedSkeleton extends StatelessWidget {
   Widget build(BuildContext context) {
     return Semantics(
       label: 'Loading Feed',
-      child: ExcludeSemantics(child: FeedSkeletonPost(evalColumn: puzzles)),
+      child: ExcludeSemantics(child: FeedSkeletonPost(puzzle: puzzles)),
     );
   }
 }
@@ -34,14 +31,15 @@ class FeedSkeleton extends StatelessWidget {
 /// the header line, both player rows around the board, the move strip, the
 /// actions and the scrub line at the foot.
 ///
-/// The column left of the board is drawn only where the post it stands for
-/// will have one: always with [evalColumn], otherwise when the viewer's
-/// engine settings show the eval bar, as [FeedClip] decides it. So the
-/// board lands where the skeleton board was, eval bar or not.
-class FeedSkeletonPost extends ConsumerWidget {
-  const FeedSkeletonPost({this.evalColumn = false, super.key});
+/// The column left of the board is always drawn, as wide as the post's own:
+/// a game post always has its eval bar and a puzzle its rail, so the board
+/// lands where the skeleton board was.
+class FeedSkeletonPost extends StatelessWidget {
+  const FeedSkeletonPost({this.puzzle = false, super.key});
 
-  final bool evalColumn;
+  /// Lays out a puzzle post instead of a game: its info row under the
+  /// board, its actions on the page gutter, and no evaluation chart.
+  final bool puzzle;
 
   /// The counter the skeleton keeps room for: a game's own counter is as
   /// wide as its widest ("14/14"), and in tabular figures every two-digit
@@ -52,30 +50,18 @@ class FeedSkeletonPost extends ConsumerWidget {
   static const String counterAtRest = '0/88';
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
     final colors = context.colors;
     final tone = colors.skeleton;
     final toneDeep = colors.surface;
-    final showBar =
-        evalColumn ||
-        (ref.watch(
-              engineSettingsProviderNew.select(
-                (s) => s.valueOrNull?.shouldShowEngineGaugeOnBoard ?? true,
-              ),
-            ) &&
-            ref.watch(
-              engineSettingsProviderNew.select(
-                (s) => s.valueOrNull?.showEngineAnalysis ?? true,
-              ),
-            ));
     return LayoutBuilder(
       builder: (context, constraints) {
         final l = FeedLayout.resolve(
           constraints,
           MediaQuery.textScalerOf(context),
-          evalWidth: showBar ? 20.w : 0,
-          infoHeight: evalColumn ? null : 0,
-          chartHeight: evalColumn
+          evalWidth: 20.w,
+          infoHeight: puzzle ? null : 0,
+          chartHeight: puzzle
               ? 0
               : FeedEvaluationGraph.heightFor(MediaQuery.textScalerOf(context)),
         );
@@ -88,8 +74,8 @@ class FeedSkeletonPost extends ConsumerWidget {
                 borderRadius: BorderRadius.circular(radius),
               ),
             );
-        // The real rows keep the result's 20.w column before the flag
-        // whether or not the eval bar shows (a finished game's score).
+        // The real rows keep the result's 20.w column before the flag (a
+        // finished game's score).
         Widget playerRow(double nameWidth) => SizedBox(
           height: l.rowHeight,
           child: Row(
@@ -142,12 +128,11 @@ class FeedSkeletonPost extends ConsumerWidget {
             content(
               Row(
                 children: [
-                  if (showBar)
-                    Container(
-                      width: l.evalWidth,
-                      height: l.board,
-                      color: toneDeep,
-                    ),
+                  Container(
+                    width: l.evalWidth,
+                    height: l.board,
+                    color: toneDeep,
+                  ),
                   SizedBox.square(
                     key: const ValueKey('feed_skeleton_board'),
                     dimension: l.board,
@@ -174,7 +159,7 @@ class FeedSkeletonPost extends ConsumerWidget {
               ),
             ),
             SizedBox(height: l.actionsSpace),
-            (evalColumn ? fullRow : content)(
+            (puzzle ? fullRow : content)(
               SizedBox(
                 height: l.actionsHeight,
                 // Game posts offer Analyze, Share, Save and Like.
@@ -183,7 +168,7 @@ class FeedSkeletonPost extends ConsumerWidget {
             ),
             // [FeedLayout.scrubSpace], as on a post.
             const Spacer(),
-            if (!evalColumn)
+            if (!puzzle)
               SizedBox(
                 height: l.chartHeight,
                 child: Padding(

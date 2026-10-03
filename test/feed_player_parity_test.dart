@@ -320,7 +320,8 @@ Future<void> _pumpBoth(WidgetTester tester, GamesTourModel game) async {
   }
 }
 
-/// Neither surface draws an eval bar here, so no engine is asked.
+/// The game card draws no eval bar here, so it asks no engine. The Feed's
+/// bar is always on, whatever these say; off screen it asks none either.
 class _Settings extends EngineSettingsNotifierNew {
   @override
   Future<EngineSettings> build() async => const EngineSettings(

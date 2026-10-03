@@ -39,8 +39,8 @@ class FeedLayout {
     required this.foot,
   });
 
-  /// [evalWidth] is the column left of the board: the eval bar (0 when the
-  /// viewer's engine settings hide it) or the puzzle rail.
+  /// [evalWidth] is the column left of the board: the eval bar or the
+  /// puzzle rail.
   factory FeedLayout.resolve(
     BoxConstraints constraints,
     TextScaler scaler, {
@@ -178,7 +178,7 @@ class FeedLayout {
   final double height;
   final double board;
 
-  /// The column left of the board; 0 when the eval bar is hidden.
+  /// The column left of the board: the eval bar or the puzzle rail.
   final double evalWidth;
   final double metaHeight;
   final double rowHeight;

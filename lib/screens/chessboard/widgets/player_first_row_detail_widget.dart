@@ -84,6 +84,14 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
   /// The mainline move the replay shows (`-1` for the start position).
   final int replayMoveIndex;
 
+  /// True leaves the event's No Spoilers preference out of this row: the
+  /// lookup is skipped, so a finished game keeps its result column from the
+  /// first frame and prints its result as it does with No Spoilers off. For a
+  /// surface that shows the game's outcome and evaluation itself whatever the
+  /// viewer's settings (the Feed). False, every other caller, keeps the usual
+  /// rules.
+  final bool ignoreNoSpoilers;
+
   const PlayerFirstRowDetailWidget({
     super.key,
     required this.playerView,
@@ -104,6 +112,7 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
     this.revealResult,
     this.replayMoveTimes,
     this.replayMoveIndex = -1,
+    this.ignoreNoSpoilers = false,
   });
 
   bool get isReplay => replayMoveTimes != null;
@@ -125,7 +134,7 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
     // (same short-circuit as board cards in chess_board_from_fen_new). Broadcast
     // games do load it while ongoing because No Spoilers also hides live evals.
     final isArchiveSource = effectiveGameModel.source != GameSource.supabase;
-    final needsSpoilerLookup = !isArchiveSource;
+    final needsSpoilerLookup = !isArchiveSource && !ignoreNoSpoilers;
     final spoilerState =
         needsSpoilerLookup
             ? ref.watch(eventNoSpoilersProvider(effectiveGameModel.tourId))
@@ -146,6 +155,7 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
             : false;
     final revealSpoilers =
         isArchiveSource ||
+        ignoreNoSpoilers ||
         !effectiveGameModel.gameStatus.isFinished ||
         spoilersRevealedForGame ||
         (spoilerState != null &&

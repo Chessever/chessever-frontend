@@ -1,6 +1,5 @@
 import 'dart:async';
 
-import 'package:chessever2/providers/engine_settings_provider.dart';
 import 'package:chessever2/repository/lichess/cloud_eval/cloud_eval.dart';
 import 'package:chessever2/screens/chessboard/provider/current_eval_provider.dart';
 import 'package:chessever2/screens/chessboard/provider/stockfish_singleton.dart';
@@ -59,21 +58,23 @@ class FeedEvalRequest {
 abstract class FeedEngine {
   const FeedEngine();
 
-  /// Searches [fen] under the viewer's evaluation-gauge settings, reporting
-  /// each deeper result through [onUpdate]. Resolves to the settled result,
-  /// or null when the search was cancelled or found nothing.
+  /// Searches [fen], reporting each deeper result through [onUpdate].
+  /// Resolves to the settled result, or null when the search was cancelled
+  /// or found nothing.
   Future<CloudEval?> evaluate(
     String fen, {
-    required EngineSettings settings,
     required void Function(List<Pv> pvs, int depth) onUpdate,
   });
 
   Future<void> cancel();
 }
 
-/// The board screen's own engine, under the same rules: the evaluation
-/// gauge's search time and depth cap from the viewer's engine settings, one
-/// line, the visible position first.
+/// The board screen's own engine on the Feed's own budget: one line, the
+/// visible position first, [searchDuration] per position.
+///
+/// The budget is fixed. The viewer's engine settings belong to the board
+/// screen: a longer or unlimited search time there, or the gauge or the
+/// analysis switched off, changes nothing about a post's search.
 ///
 /// Never passes `allowInDebug`: debug builds deliberately run no board
 /// Stockfish (see [kEnableStockfishInDebug]), so there the bar simply stays
@@ -83,24 +84,21 @@ class StockfishFeedEngine extends FeedEngine {
 
   static const String ownerId = 'feed_clip';
 
-  /// Depth used when the viewer picked an unlimited search time: the Feed is
-  /// a glance, not an analysis session.
-  static const int unlimitedDepth = 30;
+  /// How long one position is searched: the Feed is a glance, not an
+  /// analysis session. The evaluation gauge's default search time.
+  static const Duration searchDuration = Duration(seconds: 5);
+
+  /// The evaluation gauge's depth cap.
+  static const int maxDepth = 99;
 
   @override
   Future<CloudEval?> evaluate(
     String fen, {
-    required EngineSettings settings,
     required void Function(List<Pv> pvs, int depth) onUpdate,
   }) async {
-    final duration = settings.searchDurationFor(
-      EngineComponent.evaluationGauge,
-    );
-    final maxDepth = settings.maxDepthFor(EngineComponent.evaluationGauge);
     final result = await StockfishSingleton().evaluatePosition(
       fen,
-      depth: duration == null ? unlimitedDepth.clamp(1, maxDepth) : 15,
-      searchDuration: duration,
+      searchDuration: searchDuration,
       maxDepth: maxDepth,
       multiPV: 1,
       isCurrentPosition: true,
@@ -146,9 +144,10 @@ final feedCachedEvalProvider = FutureProvider.autoDispose
 /// The eval bar's number for one Feed position.
 ///
 /// Cache first (free and instant for anything the app has seen); on a miss,
-/// and only when [FeedEvalRequest.allowEngine], the engine under the
-/// viewer's evaluation-gauge settings, streaming deeper results as they
-/// land. Leaving the position (or the Feed) cancels the search.
+/// and only when [FeedEvalRequest.allowEngine], the engine, streaming deeper
+/// results as they land. Leaving the position (or the Feed) cancels the
+/// search. No viewer setting is read on the way: the number is always
+/// worked out.
 final feedPositionEvalProvider = StreamProvider.autoDispose
     .family<FeedEval, FeedEvalRequest>((ref, request) {
       final controller = StreamController<FeedEval>();
@@ -188,12 +187,9 @@ final feedPositionEvalProvider = StreamProvider.autoDispose
           emit(FeedEval.none);
           return;
         }
-        final settings = await ref.watch(engineSettingsProviderNew.future);
-        if (disposed) return;
         search = ++_feedSearchSeq;
         final result = await engine.evaluate(
           request.fen,
-          settings: settings,
           onUpdate: (pvs, depth) {
             if (pvs.isEmpty || pvs.first.moves.isEmpty) return;
             emit(feedEvalFromPv(pvs.first, whiteToMove: whiteToMove));
