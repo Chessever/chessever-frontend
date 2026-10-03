@@ -1443,9 +1443,9 @@ void main() {
     );
   });
 
-  group('focused card long-press auto-repeat', () {
+  group('focused card long-press endpoint navigation', () {
     testWidgets(
-      'long-press forward advances multiple plies then stop freezes ply',
+      'long-press forward immediately reaches continuation end and stays there',
       (tester) async {
         final container = ProviderContainer();
         addTearDown(container.dispose);
@@ -1495,16 +1495,10 @@ void main() {
         expect(boardLongPressForwardStarts, 0);
 
         routing.onLongPressForwardStart!();
-        expect(focusNotifier.isLongPressing, isTrue);
-
-        // First tick at 150ms, second at 300ms → at least 2 steps.
-        await tester.pump(kExplorerCardLongPressInterval);
-        final plyAfterOne = container.read(explorerFocusedGameProvider)!.ply;
-        expect(plyAfterOne, greaterThan(0));
-
-        await tester.pump(kExplorerCardLongPressInterval);
-        final plyAfterTwo = container.read(explorerFocusedGameProvider)!.ply;
-        expect(plyAfterTwo, greaterThan(plyAfterOne));
+        expect(focusNotifier.isLongPressing, isFalse);
+        expect(container.read(explorerFocusedGameProvider)!.ply, 4);
+        await tester.pump(kExplorerCardLongPressInterval * 2);
+        expect(container.read(explorerFocusedGameProvider)!.ply, 4);
 
         // Release stops further advances.
         routing.onLongPressForwardEnd!();
@@ -1555,7 +1549,8 @@ void main() {
         );
 
         routing.onLongPressForwardStart!();
-        // Enough ticks to pass the end of a 3-ply line (max ply = 2).
+        expect(container.read(explorerFocusedGameProvider)!.ply, 2);
+        // Remaining held time cannot overshoot the available continuation.
         await tester.pump(kExplorerCardLongPressInterval * 6);
 
         final focus = container.read(explorerFocusedGameProvider)!;
@@ -1568,7 +1563,7 @@ void main() {
     );
 
     testWidgets(
-      'long-press backward auto-repeats then stops at start',
+      'long-press backward immediately reaches anchor and stays there',
       (tester) async {
         final container = ProviderContainer();
         addTearDown(container.dispose);
@@ -1614,17 +1609,8 @@ void main() {
         expect(routing.onLongPressBackwardEnd, isNotNull);
 
         routing.onLongPressBackwardStart!();
-        await tester.pump(kExplorerCardLongPressInterval);
-        final plyAfterOne = container.read(explorerFocusedGameProvider)!.ply;
-        expect(plyAfterOne, lessThan(4));
-
-        await tester.pump(kExplorerCardLongPressInterval);
-        expect(
-          container.read(explorerFocusedGameProvider)!.ply,
-          lessThan(plyAfterOne),
-        );
-
-        // Run out the line to the start.
+        expect(container.read(explorerFocusedGameProvider)!.ply, -1);
+        // Remaining held time cannot overshoot the anchor.
         await tester.pump(kExplorerCardLongPressInterval * 8);
         expect(container.read(explorerFocusedGameProvider)!.ply, -1);
         expect(focusNotifier.isLongPressing, isFalse);

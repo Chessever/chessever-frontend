@@ -81,6 +81,7 @@ class ExplorerFocusedGameNotifier extends StateNotifier<ExplorerGameFocus?> {
   }
 
   void jumpTo(int ply) {
+    stopLongPress();
     final current = state;
     if (current == null) return;
     state = current.copyWith(ply: ply.clamp(-1, current.sans.length - 1));
@@ -222,6 +223,8 @@ BoardNavArrowRouting resolveBoardNavArrowRouting({
   required ExplorerFocusedGameNotifier focusNotifier,
   required bool boardCanMoveForward,
   required bool boardCanMoveBackward,
+  bool? boardCanJumpToStart,
+  bool? boardCanJumpToEnd,
   required VoidCallback onBoardForward,
   required VoidCallback onBoardBackward,
   required VoidCallback onBoardLongPressBackwardStart,
@@ -235,14 +238,15 @@ BoardNavArrowRouting resolveBoardNavArrowRouting({
       onRightMove: focus.canGoForward ? focusNotifier.forward : null,
       canMoveForward: focus.canGoForward,
       canMoveBackward: focus.canGoBackward,
-      // Long-press auto-repeats through the card continuation (same model as
-      // board notation hold). End always stops so release/cancel is safe even
-      // when the line already ended mid-hold.
+      // Preserve focused-card ownership, but hold jumps immediately to the
+      // available continuation's anchor/end just like board start/end holds.
       onLongPressBackwardStart:
-          focus.canGoBackward ? focusNotifier.startLongPressBackward : null,
+          focus.canGoBackward ? () => focusNotifier.jumpTo(-1) : null,
       onLongPressBackwardEnd: focusNotifier.stopLongPress,
       onLongPressForwardStart:
-          focus.canGoForward ? focusNotifier.startLongPressForward : null,
+          focus.canGoForward
+              ? () => focusNotifier.jumpTo(focus.sans.length - 1)
+              : null,
       onLongPressForwardEnd: focusNotifier.stopLongPress,
     );
   }
@@ -251,10 +255,15 @@ BoardNavArrowRouting resolveBoardNavArrowRouting({
     onRightMove: boardCanMoveForward ? onBoardForward : null,
     canMoveForward: boardCanMoveForward,
     canMoveBackward: boardCanMoveBackward,
-    onLongPressBackwardStart: onBoardLongPressBackwardStart,
+    onLongPressBackwardStart:
+        (boardCanJumpToStart ?? boardCanMoveBackward)
+            ? onBoardLongPressBackwardStart
+            : null,
     onLongPressBackwardEnd: onBoardLongPressBackwardEnd,
     onLongPressForwardStart:
-        boardCanMoveForward ? onBoardLongPressForwardStart : null,
+        (boardCanJumpToEnd ?? boardCanMoveForward)
+            ? onBoardLongPressForwardStart
+            : null,
     onLongPressForwardEnd: onBoardLongPressForwardEnd,
   );
 }

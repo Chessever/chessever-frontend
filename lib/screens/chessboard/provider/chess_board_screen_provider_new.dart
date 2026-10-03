@@ -4833,41 +4833,26 @@ class ChessBoardScreenNotifierNew
     _syncAnalysisFromNavigator(updatedState);
   }
 
+  void _cancelQueuedNavigationForJump() {
+    for (final request in _navigationQueue) {
+      if (!request.completer.isCompleted) request.completer.complete();
+    }
+    _navigationQueue.clear();
+  }
+
   void jumpToStart() {
     _releaseLog('🎯 JUMP TO START called');
+    stopLongPress();
+    _cancelQueuedNavigationForJump();
     _exitPvPreviewIfActive();
     // User manually navigated to start
     final currentState = state.value;
     if (currentState == null) return;
 
     if (currentState.isAnalysisMode) {
-      // Check if variant is selected
-      if (currentState.selectedVariantIndex != null) {
-        _releaseLog(
-          '🎯 JUMP TO START: Variant selected, jumping to variant start',
-        );
-        // Jump to start of variant (root position)
-        final currentMoveIndex = currentState.currentMoveIndex;
-        final rootPointer =
-            currentMoveIndex < 0 ? const <int>[] : [currentMoveIndex];
-        _analysisNavigator?.goToMovePointerUnchecked(rootPointer);
-
-        // Reset variant move pointer
-        state = AsyncValue.data(
-          currentState.copyWith(variantMovePointer: const []),
-        );
-      } else {
-        _releaseLog('🎯 JUMP TO START: No variant, jumping to game start');
-        _analysisNavigator?.goToHead();
-      }
-
-      // Sync state after navigation
-      if (_analysisGame != null) {
-        final updatedState = ref.read(
-          chessGameNavigatorProvider(_analysisGame!),
-        );
-        _syncAnalysisFromNavigator(updatedState);
-      }
+      // Holds are absolute game navigation, even with an engine line selected
+      // or a saved notation variation active. Never insert suggested moves.
+      goToMovePointer(const []);
     } else {
       goToMove(-1);
     }
@@ -4875,53 +4860,19 @@ class ChessBoardScreenNotifierNew
 
   void jumpToEnd() {
     _releaseLog('🎯 JUMP TO END called');
+    stopLongPress();
+    _cancelQueuedNavigationForJump();
     _exitPvPreviewIfActive();
     final currentState = state.value;
     if (currentState == null) return;
 
     if (currentState.isAnalysisMode) {
-      // Check if variant is selected
-      if (currentState.selectedVariantIndex != null) {
-        _releaseLog(
-          '🎯 JUMP TO END: Variant selected, playing all variant moves',
-        );
-        final selectedVariant =
-            currentState.principalVariations[currentState
-                .selectedVariantIndex!];
-        final totalMoves = selectedVariant.moves.length;
-        final currentProgress = currentState.variantMovePointer.length;
-
-        _releaseLog(
-          '🎯 JUMP TO END: totalMoves=$totalMoves, currentProgress=$currentProgress',
-        );
-
-        // Play all remaining moves in the variant
-        for (int i = currentProgress; i < totalMoves; i++) {
-          final move = selectedVariant.moves[i];
-          if (move is NormalMove && !isPromotionPawnMove(move)) {
-            _analysisNavigator?.makeOrGoToMove(move.uci);
-          }
-        }
-
-        // Update variant move pointer to the end
-        state = AsyncValue.data(
-          currentState.copyWith(
-            variantMovePointer: List.generate(totalMoves, (index) => index),
-          ),
-        );
-      } else {
-        // Jumping to mainline tail
-        _releaseLog('🎯 JUMP TO END: No variant, jumping to game end');
-        _analysisNavigator?.goToTail();
-      }
-
-      // Sync state after navigation
-      if (_analysisGame != null) {
-        final updatedState = ref.read(
-          chessGameNavigatorProvider(_analysisGame!),
-        );
-        _syncAnalysisFromNavigator(updatedState);
-      }
+      final navigator = navigatorStateSnapshot();
+      if (navigator == null) return;
+      // goToTail follows the current variation; the hold contract is the
+      // game's last available mainline move, not the engine or variation tail.
+      final mainline = navigator.game.mainline;
+      goToMovePointer(mainline.isEmpty ? const [] : [mainline.length - 1]);
     } else {
       // Non-analysis mode — resume auto-following live moves
       _isFollowingLive = true;
@@ -5711,37 +5662,15 @@ class ChessBoardScreenNotifierNew
       isEvaluating: currentState.isEvaluating,
     );
 
-    final bool shouldDefaultSelect =
-        previousSelection == null &&
-        pvLines.isNotEmpty &&
-        currentState.isAnalysisMode;
-
     // CRITICAL FIX: Check if we're in middle of variant exploration
     final bool inVariantExploration =
         previousSelection != null &&
         previousVariantPointer.isNotEmpty &&
         previousBaseFen != null;
 
-    if (shouldDefaultSelect) {
-      // New variant selection - lock current position as base
-      final arrowShapes = _maybeSuppressShapes(
-        nextState,
-        _getAllVariantArrowShapes(
-          pvLines,
-          0,
-          isThreatsMode: currentState.isThreatsMode,
-        ),
-      );
-      nextState = nextState.copyWith(
-        selectedVariantIndex: 0,
-        variantBaseFen: baseFen,
-        variantBaseMovePointer: baseMovePointer,
-        variantBaseLastMove: currentState.analysisState.lastMove,
-        variantBaseMoveIndex: currentState.analysisState.currentMoveIndex,
-        variantMovePointer: const [],
-        shapes: arrowShapes,
-      );
-    } else if (previousSelection != null &&
+    // Engine delivery populates suggestions, not a user selection. Explicit
+    // PV preview/play/insert controls still select and preserve their line.
+    if (previousSelection != null &&
         previousSelection < pvLines.length &&
         currentState.isAnalysisMode) {
       // Variant was already selected
