@@ -16,10 +16,45 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 /// Resolves (and lazily creates) the per-user special "Liked Games" folder.
 /// Identical mechanically to any user-created folder.
+///
+/// Keyed on the signed-in account. The provider is keep-alive, so without the
+/// id a guest who signs in, or a sign out and in as someone else, would keep
+/// reading and writing the previous account's folder.
 final likedGamesFolderProvider = FutureProvider<LibraryFolder>((ref) async {
+  // The key only. Whether there is a session to look the folder up for is the
+  // repository's call: it asks the SDK, which still holds the session when
+  // the app-level auth state has no user.
+  ref.watch(_likedGamesAccountIdProvider);
   final repo = ref.watch(libraryRepositoryProvider);
   return repo.ensureLikedGamesFolder();
 });
+
+/// The account the liked folder is resolved for: the signed-in user's id, held
+/// through the moments the app-level auth state has no user.
+///
+/// No user there is not a sign-out. A token refresh that failed offline, a
+/// sign-in sheet that is open, and a guest who backed out of one all leave the
+/// session alive with the user missing, for up to a token lifetime. Following
+/// the id to null would look the folder up again, blank every heart while it
+/// answered (for good when offline) and reload the list over likes still being
+/// saved. So the folder moves on only when another account's id arrives.
+///
+/// Only the id is selected: a token refresh or a profile edit hands out a new
+/// user object for the same account, and changes nothing here.
+final _likedGamesAccountIdProvider =
+    NotifierProvider<_LikedGamesAccountId, String?>(_LikedGamesAccountId.new);
+
+class _LikedGamesAccountId extends Notifier<String?> {
+  @override
+  String? build() {
+    final id = ref.watch(currentUserProvider.select((user) => user?.id));
+    // On a rebuild this still reads the id held before it.
+    return id ?? stateOrNull;
+  }
+
+  @override
+  bool updateShouldNotify(String? previous, String? next) => previous != next;
+}
 
 /// All saved analyses inside the user's "Liked Games" folder, newest-first.
 /// Drives the heart fill state on the board and the in-folder list.
@@ -27,6 +62,13 @@ final likedGamesProvider =
     AsyncNotifierProvider<LikedGamesNotifier, List<SavedAnalysis>>(
       LikedGamesNotifier.new,
     );
+
+/// Counts the like writes that have settled on the server: a like saved, an
+/// unlike or a tag change landed, or a failed write rolled back and reloaded.
+/// It never moves on an optimistic state change, so a list that refetches on
+/// it reads what the server already holds. A plain counter, so watching it
+/// does not create [LikedGamesNotifier].
+final likedGamesWriteRevisionProvider = StateProvider<int>((ref) => 0);
 
 /// Immediate per-game tag selection while the canonical liked row is being
 /// created or updated. `null` means "use the saved row"; an empty list means
@@ -66,13 +108,20 @@ class LikedGamesNotifier extends AsyncNotifier<List<SavedAnalysis>> {
   /// last visible selection is also the final server value.
   final Map<String, Future<bool>> _tagWriteChains = <String, Future<bool>>{};
 
+  /// How often one reload reads the list while writes keep settling under it.
+  static const int _maxReloadReads = 3;
+
   @override
   Future<List<SavedAnalysis>> build() async {
-    ref.onDispose(() {
-      _inFlight.clear();
-      _tagWriteChains.clear();
-      _toggleOps.clear();
-    });
+    // The in-flight bookkeeping above is not cleared here. This build runs
+    // again when the account changes or a failed folder lookup is retried, and
+    // the writes still out must keep their de-dupe and their tag queue. Each
+    // entry removes itself when its write settles.
+
+    // Games re-filed outside the like path (see [_onAnalysisMoved]).
+    final moves = LibraryRepository.analysisMoves.listen(_onAnalysisMoved);
+    ref.onDispose(moves.cancel);
+
     final folder = await ref.watch(likedGamesFolderProvider.future);
     final all = await _repo.getSavedAnalyses(folderId: folder.id);
     return all;
@@ -87,6 +136,13 @@ class LikedGamesNotifier extends AsyncNotifier<List<SavedAnalysis>> {
   /// Optimistically likes/unlikes [game], using the same SavedAnalysis path
   /// as the "Add to library" flow. Returns the new state (`true` = now liked).
   /// Source-agnostic — works for broadcast, gamebase and twic games alike.
+  ///
+  /// Throws, with nothing written, when the liked list or its folder cannot
+  /// be read, or when the folder is another account's. A write that fails
+  /// after that is rolled back and answered with the state it left.
+  ///
+  /// A call made before the list was loaded waits for it and never unlikes:
+  /// a game that turns out to be liked already is answered with `true`.
   Future<bool> toggle(GamesTourModel game) async {
     // Like identity is the original game (for saved-analysis games this is the
     // sourceGameId, not the synthetic `saved_analysis_<id>` gameId), so a game
@@ -103,20 +159,92 @@ class LikedGamesNotifier extends AsyncNotifier<List<SavedAnalysis>> {
     _toggleOps[likeId] = op.future;
 
     try {
+      // What this tap could see, read before the first await. Every heart
+      // draws a list that is not loaded as "not liked", so a tap made then
+      // asked for a like: waiting for the list and then toggling would delete
+      // the like, its tags and its date, of a game the user just tried to
+      // like. The exception is a list still held from before (the previous
+      // account's, while the next one loads) that said "liked": that tap asked
+      // for an unlike, and must not end up adding a like.
+      final loaded = _listLoaded;
+      final mayLike = loaded || !isLiked(likeId);
+      // A like is never decided against a list that is not loaded: that reads
+      // every game as "not liked", so it inserts a second row for a game
+      // already liked and collapses the session list to that one game. A
+      // failure here is thrown to the caller, nothing optimistic has happened
+      // yet. With the list already there this adds no await.
+      if (!loaded) await _loadList();
       final folder = await ref.read(likedGamesFolderProvider.future);
-      final list = List<SavedAnalysis>.from(state.valueOrNull ?? const []);
+      // With no app-level user (see [_likedGamesAccountIdProvider]) the like
+      // is written for the folder's own account. With no session at all the
+      // repository refuses the write itself.
+      final userId = ref.read(currentUserProvider)?.id ?? folder.userId;
+      if (folder.userId != userId) {
+        // The folder was resolved for another account (a sign-in mid-session).
+        // Writing now would file this like in that account's folder.
+        ref.invalidate(likedGamesFolderProvider);
+        throw Exception('Liked folder belongs to another account');
+      }
+      return await _toggleLoaded(
+        game,
+        likeId: likeId,
+        folder: folder,
+        userId: userId,
+        mayUnlike: loaded,
+        mayLike: mayLike,
+      );
+    } finally {
+      _inFlight.remove(likeId);
+      if (identical(_toggleOps[likeId], op.future)) {
+        _toggleOps.remove(likeId);
+      }
+      op.complete();
+    }
+  }
+
+  /// The like or unlike itself, once the list is loaded and [folder] is known
+  /// to be [userId]'s. Optimistic: a failed write is taken back, the list is
+  /// reloaded, and the answer is the state that leaves.
+  ///
+  /// [mayUnlike] and [mayLike] hold a tap made on a list that was not loaded
+  /// to what it could have meant: it never deletes a like, and it adds one
+  /// only when the list it held did not already show the game as liked.
+  Future<bool> _toggleLoaded(
+    GamesTourModel game, {
+    required String likeId,
+    required LibraryFolder folder,
+    required String userId,
+    required bool mayUnlike,
+    required bool mayLike,
+  }) async {
+    SavedAnalysis? unliked;
+    var unlikedAt = 0;
+    try {
+      final list = List<SavedAnalysis>.from(state.requireValue);
       final existing = list.firstWhereOrNull((a) => a.sourceGameId == likeId);
 
       if (existing != null) {
+        // Its row has no id yet: another toggle is still saving this like, and
+        // there is nothing on the server to delete. Or the tap asked for a
+        // like on a list that could not show this one: it is liked, as asked.
+        if (existing.id.isEmpty || !mayUnlike) return true;
         // OPTIMISTIC unlike
+        unliked = existing;
+        unlikedAt = list.indexOf(existing);
         list.removeWhere((a) => a.id == existing.id);
         state = AsyncValue.data(list);
-        await _repo.deleteSavedAnalysis(existing.id);
+        // Scoped to the liked folder: a row since moved into a database is no
+        // longer a like, and an unlike must not delete it there.
+        await _repo.deleteSavedAnalysis(existing.id, folderId: folder.id);
+        // A list read that was out during the delete may have put the row back.
+        _dropRow(existing.id);
+        _serverChanged();
         return false;
       }
 
-      final userId = ref.read(currentUserProvider)?.id;
-      if (userId == null) throw Exception('User not authenticated');
+      // The tap saw a like in a list that has since been replaced, and asked
+      // to remove it. There is none to remove, and none is added.
+      if (!mayLike) return false;
 
       final chessGame = await _resolveChessGame(game);
       final now = DateTime.now();
@@ -138,9 +266,14 @@ class LikedGamesNotifier extends AsyncNotifier<List<SavedAnalysis>> {
         updatedAt: now,
       );
 
+      // The PGN resolve can be a network round trip, and another like may have
+      // landed during it. Insert into the list as it is now, not into the copy
+      // taken before the wait, or that other like is dropped from the list.
+      final current = state.requireValue;
+      if (current.any((a) => a.sourceGameId == likeId)) return true;
+
       // OPTIMISTIC insert with a placeholder id; will be reconciled on reload.
-      list.insert(0, analysis);
-      state = AsyncValue.data(list);
+      state = AsyncValue.data([analysis, ...current]);
 
       final created = await _repo.createSavedAnalysis(analysis);
       final localTags =
@@ -153,9 +286,14 @@ class LikedGamesNotifier extends AsyncNotifier<List<SavedAnalysis>> {
               : created;
       final reconciled =
           List<SavedAnalysis>.from(state.valueOrNull ?? const [])
-            ..removeWhere((a) => a.id.isEmpty && a.sourceGameId == likeId)
+            ..removeWhere(
+              (a) =>
+                  (a.id.isEmpty && a.sourceGameId == likeId) ||
+                  a.id == created.id,
+            )
             ..insert(0, displayCreated);
       state = AsyncValue.data(reconciled);
+      _serverChanged();
       try {
         await ref
             .read(likeLearningPromptTrackerProvider)
@@ -168,15 +306,98 @@ class LikedGamesNotifier extends AsyncNotifier<List<SavedAnalysis>> {
       return true;
     } catch (e) {
       debugPrint('[LikedGames] toggle failed: $e');
+      // Take the optimistic change back before reloading: a reload that fails
+      // too keeps the list it has, and that list must not show a like that was
+      // never saved or hide one that was never deleted.
+      _undoOptimistic(unsavedLikeId: likeId, undeleted: unliked, at: unlikedAt);
       await _reload();
+      _serverChanged();
       return isLiked(likeId);
-    } finally {
-      _inFlight.remove(likeId);
-      if (identical(_toggleOps[likeId], op.future)) {
-        _toggleOps.remove(likeId);
-      }
-      op.complete();
     }
+  }
+
+  /// Whether the list is loaded and settled. A load in flight, or one that
+  /// failed, can still expose the last list it had (the previous account's
+  /// right after a sign-in), which is not a list to decide a like against.
+  bool get _listLoaded => state.hasValue && !state.isLoading && !state.hasError;
+
+  /// Tells the lists that follow the server that a like write has settled
+  /// there. See [likedGamesWriteRevisionProvider].
+  void _serverChanged() =>
+      ref.read(likedGamesWriteRevisionProvider.notifier).state++;
+
+  /// Waits for a list that is not loaded: for the load in flight, then for one
+  /// reload when that load (or an earlier one) failed. Throws what kept it
+  /// from loading, so "not loaded" is never read as "no likes".
+  Future<void> _loadList() async {
+    if (state.isLoading) {
+      try {
+        await future;
+      } catch (_) {
+        // Falls through to the one reload below.
+      }
+    }
+    if (!_listLoaded) await _reload();
+    if (_listLoaded) return;
+    final error = state.error;
+    if (error != null) {
+      Error.throwWithStackTrace(error, state.stackTrace ?? StackTrace.current);
+    }
+    throw StateError('Liked games are not loaded');
+  }
+
+  /// Takes the row [analysisId] out of a loaded list. Returns whether it was
+  /// there.
+  bool _dropRow(String analysisId) {
+    if (!_listLoaded) return false;
+    final current = state.requireValue;
+    if (!current.any((a) => a.id == analysisId)) return false;
+    state = AsyncValue.data([
+      for (final analysis in current)
+        if (analysis.id != analysisId) analysis,
+    ]);
+    return true;
+  }
+
+  /// A saved game was re-filed outside the like path: "Move to database" from
+  /// a card menu, or the Undo of that move. The sheet that made the move is
+  /// closed by the time its Undo runs, so this does not rely on any screen
+  /// reporting back.
+  void _onAnalysisMoved(SavedAnalysisMove move) {
+    final folder = ref.read(likedGamesFolderProvider).valueOrNull;
+    if (folder == null) return;
+    if (move.folderId == folder.id) {
+      // Back in the liked folder: a like again, and this list has no row to
+      // show for it. Left out, its heart would read empty and a tap would save
+      // the game a second time.
+      _serverChanged();
+      unawaited(_reload());
+      return;
+    }
+    // Out of the liked folder: no longer a like.
+    if (_dropRow(move.analysisId)) _serverChanged();
+  }
+
+  /// Undoes an optimistic change in the list as it is now: drops the id-less
+  /// placeholder of the like [unsavedLikeId] when it was not saved, and puts
+  /// [undeleted] back at [at] when its delete did not go through.
+  void _undoOptimistic({
+    String? unsavedLikeId,
+    SavedAnalysis? undeleted,
+    int at = 0,
+  }) {
+    final current = state.valueOrNull;
+    if (current == null) return;
+    final next = List<SavedAnalysis>.from(current);
+    if (unsavedLikeId != null) {
+      next.removeWhere((a) => a.id.isEmpty && a.sourceGameId == unsavedLikeId);
+    }
+    var changed = next.length != current.length;
+    if (undeleted != null && !next.any((a) => a.id == undeleted.id)) {
+      next.insert(at > next.length ? next.length : at, undeleted);
+      changed = true;
+    }
+    if (changed) state = AsyncValue.data(next);
   }
 
   /// Mirrors the resolution used by `add_to_folder_sheet.dart` so a liked
@@ -282,15 +503,35 @@ class LikedGamesNotifier extends AsyncNotifier<List<SavedAnalysis>> {
   /// than a GamesTourModel). Optimistic; reloads and returns `false` on failure
   /// so the caller can surface the error.
   Future<bool> removeAnalysis(SavedAnalysis analysis) async {
-    final list = List<SavedAnalysis>.from(state.valueOrNull ?? const [])
-      ..removeWhere((a) => a.id == analysis.id);
+    // Same rule as [toggle]: the list is only edited once it is loaded, or one
+    // removal would replace it with an empty one. With the list already there
+    // this adds no await.
+    if (!_listLoaded) {
+      try {
+        await _loadList();
+      } catch (e) {
+        debugPrint('[LikedGames] removeAnalysis failed: $e');
+        return false;
+      }
+    }
+    final list = List<SavedAnalysis>.from(state.requireValue);
+    final at = list.indexWhere((a) => a.id == analysis.id);
+    final removed = at == -1 ? null : list[at];
+    list.removeWhere((a) => a.id == analysis.id);
     state = AsyncValue.data(list);
     try {
-      await _repo.deleteSavedAnalysis(analysis.id);
+      // Scoped to the liked folder, like the unlike in [toggle]: a card left on
+      // screen after its game was moved to a database must not delete it there.
+      final folder = await ref.read(likedGamesFolderProvider.future);
+      await _repo.deleteSavedAnalysis(analysis.id, folderId: folder.id);
+      _dropRow(analysis.id);
+      _serverChanged();
       return true;
     } catch (e) {
       debugPrint('[LikedGames] removeAnalysis failed: $e');
+      _undoOptimistic(undeleted: removed, at: at == -1 ? 0 : at);
       await _reload();
+      _serverChanged();
       return false;
     }
   }
@@ -338,6 +579,7 @@ class LikedGamesNotifier extends AsyncNotifier<List<SavedAnalysis>> {
         tags: tags,
       );
       _replaceAnalysis(updated);
+      _serverChanged();
       ref.read(likedGamePendingTagsProvider(likeId).notifier).state = null;
       return true;
     } catch (e) {
@@ -419,10 +661,48 @@ class LikedGamesNotifier extends AsyncNotifier<List<SavedAnalysis>> {
   }
 
   Future<void> _reload() async {
-    state = await AsyncValue.guard(() async {
-      final folder = await ref.read(likedGamesFolderProvider.future);
-      return _repo.getSavedAnalyses(folderId: folder.id);
-    });
+    // The folder provider is keep-alive, so a lookup that failed once (offline
+    // at cold start, say) would be re-read as the same error for the whole app
+    // run. Drop it so this reload asks again.
+    var folderLookup = ref.read(likedGamesFolderProvider);
+    if (folderLookup.hasError && !folderLookup.isLoading) {
+      ref.invalidate(likedGamesFolderProvider);
+      folderLookup = ref.read(likedGamesFolderProvider);
+    }
+    if (folderLookup.isLoading) {
+      // This notifier rebuilds with its folder and fetches the list once the
+      // folder is known: that build is the reload.
+      try {
+        await future;
+      } catch (e) {
+        debugPrint('[LikedGames] reload failed: $e');
+      }
+      return;
+    }
+
+    AsyncValue<List<SavedAnalysis>> next;
+    var reads = 0;
+    int revision;
+    do {
+      revision = ref.read(likedGamesWriteRevisionProvider);
+      next = await AsyncValue.guard(() async {
+        final folder = await ref.read(likedGamesFolderProvider.future);
+        return _repo.getSavedAnalyses(folderId: folder.id);
+      });
+      // A write that settled while this read was out is not in it: assigning
+      // it would drop a like just saved, and the next tap would save the game
+      // twice. Read again, a bounded number of times.
+    } while (++reads < _maxReloadReads &&
+        !next.hasError &&
+        revision != ref.read(likedGamesWriteRevisionProvider));
+    // A refetch that fails keeps the list already held: replacing it with an
+    // error would blank every heart and the My Space tally over one bad
+    // request.
+    if (next.hasError && state.hasValue) {
+      debugPrint('[LikedGames] reload failed, list kept: ${next.error}');
+      return;
+    }
+    state = next;
   }
 
   Future<void> refresh() => _reload();

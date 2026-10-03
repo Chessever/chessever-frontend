@@ -7,6 +7,7 @@ import 'package:chessever2/repository/library/models/saved_analysis.dart';
 import 'package:chessever2/repository/library/models/shared_book_preview.dart';
 import 'package:chessever2/repository/supabase/base_repository.dart';
 import 'package:chessever2/widgets/game_filter/game_filter_model.dart';
+import 'package:flutter/foundation.dart' show protected;
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -15,7 +16,29 @@ final libraryRepositoryProvider = AutoDisposeProvider<LibraryRepository>(
   (ref) => LibraryRepository(),
 );
 
+/// A saved analysis that was just re-filed: its row id and the folder it now
+/// sits in.
+typedef SavedAnalysisMove = ({String analysisId, String folderId});
+
+// One for the app, not one per repository: [libraryRepositoryProvider] is
+// auto-dispose, and the Undo of a move runs on a repository captured by a
+// sheet that has already closed.
+final StreamController<SavedAnalysisMove> _analysisMoves =
+    StreamController<SavedAnalysisMove>.broadcast();
+
 class LibraryRepository extends BaseRepository {
+  /// Every move of a saved analysis to another folder, announced once the
+  /// server has it. The liked list follows it: a game moved out of My Likes is
+  /// no longer a like, and one moved back by the move's Undo is a like again,
+  /// whichever screen made the move.
+  static Stream<SavedAnalysisMove> get analysisMoves => _analysisMoves.stream;
+
+  /// Announces a move that has landed on [analysisMoves].
+  @protected
+  void announceAnalysisMove(String analysisId, String folderId) {
+    _analysisMoves.add((analysisId: analysisId, folderId: folderId));
+  }
+
   // ============ FOLDER METHODS ============
 
   /// Get all folders for the current user, ordered by order_index
@@ -124,34 +147,47 @@ class LibraryRepository extends BaseRepository {
     final userId = supabase.auth.currentUser?.id;
     if (userId == null) throw Exception('User not authenticated');
 
-    final existing =
+    final existing = await _selectLikedGamesFolder(userId);
+    if (existing != null) return existing;
+
+    final nextOrder = await _getNextFolderOrder();
+    try {
+      final response =
+          await supabase
+              .from('user_folders')
+              .insert({
+                'user_id': userId,
+                'name': 'My Likes',
+                'color': '#F5453A',
+                'icon': 'liked',
+                'order_index': nextOrder,
+                'is_liked_games': true,
+              })
+              .select()
+              .single();
+      return LibraryFolder.fromSupabase(response);
+    } on PostgrestException catch (e) {
+      // Unique violation: another caller (the Library's default folders, a
+      // second lookup) created the folder between the select and this insert.
+      // The folder exists, so read it rather than fail the lookup.
+      if (e.code != '23505') rethrow;
+      final raced = await _selectLikedGamesFolder(userId);
+      if (raced == null) rethrow;
+      return raced;
+    }
+  });
+
+  /// The user's `is_liked_games` folder, or null when there is none yet.
+  Future<LibraryFolder?> _selectLikedGamesFolder(String userId) async {
+    final row =
         await supabase
             .from('user_folders')
             .select()
             .eq('user_id', userId)
             .eq('is_liked_games', true)
             .maybeSingle();
-
-    if (existing != null) {
-      return LibraryFolder.fromSupabase(existing);
-    }
-
-    final nextOrder = await _getNextFolderOrder();
-    final response =
-        await supabase
-            .from('user_folders')
-            .insert({
-              'user_id': userId,
-              'name': 'My Likes',
-              'color': '#F5453A',
-              'icon': 'liked',
-              'order_index': nextOrder,
-              'is_liked_games': true,
-            })
-            .select()
-            .single();
-    return LibraryFolder.fromSupabase(response);
-  });
+    return row == null ? null : LibraryFolder.fromSupabase(row);
+  }
 
   /// Update a folder
   Future<LibraryFolder> updateFolder(LibraryFolder folder) =>
@@ -703,17 +739,21 @@ class LibraryRepository extends BaseRepository {
         .eq('user_id', userId);
   });
 
-  /// Delete a saved analysis
-  Future<void> deleteSavedAnalysis(String analysisId) =>
+  /// Delete a saved analysis. With [folderId], only while the row still sits
+  /// in that folder: an unlike passes the liked folder, so it can never delete
+  /// a game that has since been moved into one of the user's databases.
+  Future<void> deleteSavedAnalysis(String analysisId, {String? folderId}) =>
       handleApiCall(() async {
         final userId = supabase.auth.currentUser?.id;
         if (userId == null) throw Exception('User not authenticated');
 
-        await supabase
+        var query = supabase
             .from('user_saved_analyses')
             .delete()
             .eq('id', analysisId)
             .eq('user_id', userId);
+        if (folderId != null) query = query.eq('folder_id', folderId);
+        await query;
       });
 
   /// Move analysis to a different folder. `folderId` is required — the DB
@@ -731,6 +771,7 @@ class LibraryRepository extends BaseRepository {
             .update({'folder_id': folderId})
             .eq('id', analysisId)
             .eq('user_id', userId);
+        announceAnalysisMove(analysisId, folderId);
       });
 
   /// Toggle favorite status

@@ -364,9 +364,9 @@ class _MyLikesCard extends ConsumerWidget {
       ref.watch(likedGamesProvider.select(likesSummary)),
     );
     return CollectionPlateRow(
-      plate: Center(
-        child: Icon(Icons.favorite, size: 40.sp, color: context.colors.danger),
-      ),
+      // The heart the Library's My Likes card wears, at the size it wears
+      // it there, so the destination has one mark on both pages.
+      plate: Center(child: LikesHeartMark(size: 64.0.h)),
       title: 'My Likes',
       meta: 'Your saved games',
       tally: caption,

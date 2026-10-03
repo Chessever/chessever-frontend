@@ -426,6 +426,31 @@ class LikesHeartMark extends StatelessWidget {
   }
 }
 
+/// [LikesHeartMark] at a title's glyph size, for the head of the My Likes
+/// page: the same heart, smaller.
+///
+/// The pixel grid wants whole blocks a few pixels wide, which a glyph-sized
+/// slot cannot give it (the blocks would be thinner than their own gaps). So
+/// the mark is laid out at the size the Library card draws it and scaled
+/// down into the [size] square, blocks, pulse and all.
+class LikesHeartGlyph extends StatelessWidget {
+  const LikesHeartGlyph({super.key, required this.size});
+
+  /// The slot the mark is laid out in before it is scaled: the Library
+  /// card's own, where the heart's blocks are five pixels wide.
+  static const double _drawn = 64;
+
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox.square(
+      dimension: size,
+      child: const FittedBox(child: LikesHeartMark(size: _drawn)),
+    );
+  }
+}
+
 /// Press feedback for a hub tile: it settles to 0.97 under the finger on a
 /// spring and springs back on release, so the tap is felt before the route
 /// pushes. No scale under reduced motion.

@@ -871,20 +871,11 @@ class _LibraryBackgroundDecoration extends StatelessWidget {
                   letterSpacing: -0.5,
                 ),
               ),
-              SizedBox(height: 4.h),
-              Text(
-                'at your fingertips',
-                textAlign: TextAlign.center,
-                style: AppTypography.displayXsMedium.copyWith(
-                  color: context.colors.textPrimary,
-                  letterSpacing: -0.5,
-                ),
-              ),
-              SizedBox(height: 20.h),
+              SizedBox(height: 12.h),
               Padding(
                 padding: EdgeInsets.symmetric(horizontal: 20.w),
                 child: Text(
-                  'Search any player, opening, or tournament. Save games to your personal folders for study.',
+                  'Search any game. Save the ones you study.',
                   style: AppTypography.textSmRegular.copyWith(
                     color: context.colors.textPrimary,
                     height: 1.5,

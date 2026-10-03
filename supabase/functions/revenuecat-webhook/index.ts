@@ -5,54 +5,6 @@ console.log("RevenueCat Webhook Function Started!");
 
 const ATTRIBUTION_WINDOW_MS = 14 * 24 * 60 * 60 * 1000;
 
-// Free-tier caps enforced server-side when a user drops back to free. Keep in
-// sync with kFreeFavoriteLimit / kFreeSavedGamesLimit in the Flutter app
-// (lib/utils/favorite_constants.dart, lib/utils/library_utils.dart).
-const FREE_FAVORITE_PLAYERS_LIMIT = 3;
-const FREE_SAVED_ANALYSES_LIMIT = 10;
-
-async function trimToFreeTier(
-  supabase: ReturnType<typeof createClient>,
-  appUserId: string,
-): Promise<void> {
-  if (!appUserId) return;
-
-  const [favRes, savedRes] = await Promise.all([
-    supabase.rpc("trim_favorite_players_to_top_n", {
-      p_user_id: appUserId,
-      p_keep: FREE_FAVORITE_PLAYERS_LIMIT,
-    }),
-    supabase.rpc("trim_saved_analyses_to_recent_n", {
-      p_user_id: appUserId,
-      p_keep: FREE_SAVED_ANALYSES_LIMIT,
-    }),
-  ]);
-
-  if (favRes.error) {
-    console.warn(
-      `trim_favorite_players_to_top_n failed for ${appUserId}: ${favRes.error.message}`,
-    );
-  } else {
-    console.log(
-      `Trimmed ${
-        favRes.data ?? 0
-      } favorite players for ${appUserId} (cap ${FREE_FAVORITE_PLAYERS_LIMIT}).`,
-    );
-  }
-
-  if (savedRes.error) {
-    console.warn(
-      `trim_saved_analyses_to_recent_n failed for ${appUserId}: ${savedRes.error.message}`,
-    );
-  } else {
-    console.log(
-      `Trimmed ${
-        savedRes.data ?? 0
-      } saved analyses for ${appUserId} (cap ${FREE_SAVED_ANALYSES_LIMIT}).`,
-    );
-  }
-}
-
 type Platform = "ios" | "android" | "web" | "unknown";
 type AttributionSource = "install" | "stamp";
 type SubscriptionProvider = "apple" | "google" | "revenuecat";
@@ -466,16 +418,13 @@ Deno.serve(async (req) => {
     await upsertSubscriptionState(supabase, event, isTrialPeriod);
 
     // EXPIRATION fires when the user's entitlement actually ends (auto-renew
-    // off + period_end reached, or revoked). At that point the user is back
-    // on the free tier and must obey the free-tier caps server-side, since
-    // the client guards only block *new* adds — they never prune existing
-    // overage left behind by the previous premium session.
+    // off + period_end reached, or revoked). The subscription row above is
+    // all that changes: nothing the user saved, liked or followed is removed.
+    // A free account keeps everything it has and the client guards only stop
+    // *new* adds past the free limits.
     if (eventType === "EXPIRATION") {
-      if (appUserId) {
-        await trimToFreeTier(supabase, appUserId);
-      }
       return new Response(
-        JSON.stringify({ message: "Free-tier limits enforced" }),
+        JSON.stringify({ message: "Subscription expiry recorded" }),
         {
           status: 200,
           headers: { "Content-Type": "application/json" },

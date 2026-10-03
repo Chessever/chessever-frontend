@@ -972,9 +972,18 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
       _errorMessage = null;
     });
 
-    final nowLiked = await ref
-        .read(likedGamesProvider.notifier)
-        .toggle(widget.config.state.game);
+    // The notifier throws when it cannot decide (the likes cannot be read,
+    // say); that is a like that did not happen, and the sheet must not be
+    // left waiting on it.
+    bool nowLiked;
+    try {
+      nowLiked = await ref
+          .read(likedGamesProvider.notifier)
+          .toggle(widget.config.state.game);
+    } catch (error) {
+      debugPrint('[SaveAnalysisSheet] like toggle failed: $error');
+      nowLiked = false;
+    }
 
     ref.invalidate(folderAnalysisCountProvider);
     ref.invalidate(libraryFoldersStreamProvider);
@@ -1924,7 +1933,17 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
     // for the in-flight toggle before writing.
     if (nextTags.isNotEmpty && !ref.read(isGameLikedProvider(_likeId))) {
       unawaited(
-        ref.read(likedGamesProvider.notifier).toggle(widget.config.state.game),
+        ref
+            .read(likedGamesProvider.notifier)
+            .toggle(widget.config.state.game)
+            .then<void>(
+              (_) {},
+              // The tag write below reports the failure; the like's own
+              // error must not surface as an unhandled one.
+              onError: (Object error) {
+                debugPrint('[SaveAnalysisSheet] like toggle failed: $error');
+              },
+            ),
       );
     }
 

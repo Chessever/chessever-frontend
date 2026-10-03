@@ -32,6 +32,7 @@ import 'package:chessever2/screens/library/widgets/saved_game_actions.dart';
 import 'package:chessever2/screens/my_likes/my_likes_hub_screen.dart';
 import 'package:chessever2/screens/my_likes/my_likes_screen.dart';
 import 'package:chessever2/screens/my_likes/provider/my_likes_provider.dart';
+import 'package:chessever2/screens/my_likes/widgets/my_likes_game_card.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/event_no_spoilers_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_list_view_mode_provider.dart';
 import 'package:chessever2/theme/app_theme.dart';
@@ -301,13 +302,17 @@ Future<ProviderContainer> _pump(
   GamesListViewMode mode = GamesListViewMode.gamesCard,
   _Collections? repo,
   NavigatorObserver? observer,
+  // Whether the My Likes view was derived with every like past the free
+  // window. Defaults to the tier; set apart from it to stand in for a view
+  // read before the entitlement has re-derived it.
+  bool? likesLocked,
 }) async {
   tester.view.physicalSize = const Size(390, 844);
   tester.view.devicePixelRatio = 1;
   final likes = buildMyLikesData(
     matches: _saved,
     totalLiked: 2,
-    window: paid ? null : <String>{},
+    window: (likesLocked ?? !paid) ? <String>{} : null,
   );
   final container = ProviderContainer(
     overrides: [
@@ -669,6 +674,39 @@ void main() {
       ),
       isTrue,
     );
+    await _close(tester, c);
+  });
+
+  testWidgets('My Likes hands the board every listed like once access is '
+      'granted', (tester) async {
+    addTearDown(tester.view.reset);
+    final observer = _NavigationProbe();
+    // Access was just unlocked, and the view still carries the locks it was
+    // derived with: nothing in it counts as openable yet.
+    final c = await _pump(
+      tester,
+      const MyLikesScreen(),
+      true,
+      observer: observer,
+      likesLocked: true,
+    );
+    expect(c.read(myLikesViewProvider).requireValue.openableAnalyses, isEmpty);
+    final initial = observer.lastPage;
+    tester.widget<MyLikesGameCard>(find.byType(MyLikesGameCard).at(1)).onOpen();
+    await tester.idle();
+    expect(observer.lastPage, isNot(same(initial)));
+    final route = observer.lastPage as MaterialPageRoute<dynamic>;
+    // Inspect only the real navigation payload: do not start native engines.
+    final dynamic board = route.builder(
+      tester.element(find.byType(MyLikesScreen)),
+    );
+    // Both likes in page order, opened on the tapped one: not the tapped game
+    // alone, which is what the stale openable list used to leave.
+    expect((board.games as List).map((dynamic g) => g.likeId), [
+      'fixture-game-1',
+      'fixture-game-2',
+    ]);
+    expect(board.currentIndex, 1);
     await _close(tester, c);
   });
 

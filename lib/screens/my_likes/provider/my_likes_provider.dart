@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:chessever2/services/rewarded_premium/rewarded_access_provider.dart';
 
 import 'package:chessever2/repository/liked_games/liked_games_provider.dart';
@@ -310,9 +312,16 @@ MyLikesData buildMyLikesData({
 /// The My Likes view, derived from a fresh Supabase query over the liked-games
 /// folder plus the active filter/search/tag and subscription state. Filtering
 /// is intentionally not performed over the already-downloaded liked-games cache.
+///
+/// It runs again whenever a like, an unlike or a tag write has settled on the
+/// server ([likedGamesWriteRevisionProvider]): a like still being saved when
+/// the screen opened appears by itself, and a change made on a board opened
+/// from here shows on return. It follows the settled writes, not the session
+/// list, so it never refetches on an optimistic unlike before its delete lands.
 final myLikesViewProvider = FutureProvider.autoDispose<MyLikesData>((
   ref,
 ) async {
+  ref.watch(likedGamesWriteRevisionProvider);
   final repo = ref.watch(libraryRepositoryProvider);
   final filterState = ref.watch(myLikesFilterProvider);
   // Only the entitlement matters here; offerings loads must not refetch.
@@ -363,3 +372,16 @@ final myLikesViewProvider = FutureProvider.autoDispose<MyLikesData>((
     isSorted: filter.hasActiveSorts,
   );
 });
+
+/// Re-reads everything My Likes draws from, after a liked row itself was
+/// changed outside the like path: "Move to database" takes it out of the liked
+/// folder, "Edit & annotate" rewrites it. The session list and the view both
+/// refresh, so the card is redrawn, or leaves, at once.
+///
+/// Takes the container rather than a widget's `ref`: the card that raised the
+/// menu may be gone by the time the action reports back.
+void refreshMyLikes(ProviderContainer container) {
+  unawaited(container.read(likedGamesProvider.notifier).refresh());
+  container.invalidate(myLikesViewProvider);
+  container.invalidate(myLikesTagCountsProvider);
+}

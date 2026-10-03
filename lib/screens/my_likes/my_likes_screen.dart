@@ -187,14 +187,20 @@ class _MyLikesGamesPageState extends ConsumerState<MyLikesGamesPage>
         returnTo: kMyLikesReturnTo,
       );
       if (!allowed || !mounted) return;
-      // Read the collection after unlock so newly available likes can be swiped.
-      final openable =
-          ref.read(myLikesViewProvider).valueOrNull?.openableAnalyses ??
-          _lastData?.openableAnalyses ??
-          const <SavedAnalysis>[];
-      final index = openable.indexWhere((a) => a.id == analysis.id);
+      // The guard has granted access, so the board swipes through every listed
+      // like in page order. Not `openableAnalyses`: it leaves out the likes
+      // past the free window, and is read here before the entitlement has
+      // re-derived the view, so a first open after an unlock got 20 games (or
+      // only the tapped one).
+      final data = ref.read(myLikesViewProvider).valueOrNull ?? _lastData;
+      final listed = <SavedAnalysis>[
+        for (final section
+            in data?.sections ?? const <MapEntry<String, List<MyLikesEntry>>>[])
+          for (final entry in section.value) entry.analysis,
+      ];
+      final index = listed.indexWhere((a) => a.id == analysis.id);
       if (index >= 0) {
-        loadSavedAnalysisWithSwiping(context, openable, index);
+        loadSavedAnalysisWithSwiping(context, listed, index);
       } else {
         loadSavedAnalysis(context, analysis);
       }
@@ -271,11 +277,9 @@ class _MyLikesGamesPageState extends ConsumerState<MyLikesGamesPage>
                       size: 20.sp,
                     ),
                   ),
-                  Icon(
-                    Icons.favorite_rounded,
-                    color: context.colors.danger,
-                    size: 20.sp,
-                  ),
+                  // The heart the Library's My Likes card wears, at the
+                  // size the title's glyph always had.
+                  LikesHeartGlyph(size: 20.sp),
                   SizedBox(width: 8.w),
                   Expanded(
                     child: Text(
@@ -712,6 +716,7 @@ class _MyLikesGamesPageState extends ConsumerState<MyLikesGamesPage>
       rowLabelFor: (index) => _likeLine(entries[index], tagCounts),
       menuActionsFor: (menuContext, index) {
         final analysis = entries[index].analysis;
+        final container = ProviderScope.containerOf(menuContext, listen: false);
         return savedGameMenuActions(
           context: menuContext,
           ref: ref,
@@ -720,6 +725,9 @@ class _MyLikesGamesPageState extends ConsumerState<MyLikesGamesPage>
           onDelete: () => _removeAnalysis(analysis),
           deleteLabel: 'Remove from likes',
           deleteIcon: Icons.heart_broken_rounded,
+          // A moved or edited game is redrawn, or leaves, at once: a card left
+          // behind after "Move to database" would point at the database copy.
+          onChanged: () => refreshMyLikes(container),
           beforeContentAction: () => ensurePremiumGameAccess(
             context,
             featureId: kMyLikesHistoryFeatureId,
@@ -883,6 +891,12 @@ class _MyLikesGamesPageState extends ConsumerState<MyLikesGamesPage>
             SizedBox(height: 20.h),
             TextButton(
               onPressed: () {
+                // The folder lookup is keep-alive: a failed one would be
+                // re-read as the same error, and Retry could never recover.
+                final folderLookup = ref.read(likedGamesFolderProvider);
+                if (folderLookup.hasError && !folderLookup.isLoading) {
+                  ref.invalidate(likedGamesFolderProvider);
+                }
                 ref.invalidate(myLikesViewProvider);
                 ref.invalidate(myLikesTagCountsProvider);
                 ref.read(likedGamesProvider.notifier).refresh();

@@ -4,6 +4,7 @@ import 'package:chessever2/repository/library/library_game_event.dart';
 import 'package:chessever2/screens/library/widgets/library_game_card.dart';
 import 'package:chessever2/screens/library/widgets/saved_game_actions.dart';
 import 'package:chessever2/screens/library/widgets/swipe_action_card.dart';
+import 'package:chessever2/screens/my_likes/provider/my_likes_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/widgets/card_context_menu.dart';
@@ -46,18 +47,26 @@ class MyLikesGameCard extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final content = CardContextMenu(
       onPreviewTap: onOpen,
-      actions: (cardContext) => savedGameMenuActions(
-        context: cardContext,
-        ref: ref,
-        analysis: analysis,
-        onOpen: onOpen,
-        onDelete: onRemove,
-        deleteLabel: 'Remove from likes',
-        deleteIcon: Icons.heart_broken_rounded,
-        showSpaceAction: false,
-        showShareAction: false,
-        beforeContentAction: beforeContentAction,
-      ),
+      actions: (cardContext) {
+        // The container, not `ref`: this card may be gone by the time a menu
+        // action reports back (the game it moved is no longer a like).
+        final container = ProviderScope.containerOf(cardContext, listen: false);
+        return savedGameMenuActions(
+          context: cardContext,
+          ref: ref,
+          analysis: analysis,
+          onOpen: onOpen,
+          onDelete: onRemove,
+          deleteLabel: 'Remove from likes',
+          deleteIcon: Icons.heart_broken_rounded,
+          // A moved or edited game is redrawn, or leaves, at once: a card left
+          // behind after "Move to database" would point at the database copy.
+          onChanged: () => refreshMyLikes(container),
+          showSpaceAction: false,
+          showShareAction: false,
+          beforeContentAction: beforeContentAction,
+        );
+      },
       child: LibraryGameCard(
         game: game,
         eventName: _eventName(analysis),

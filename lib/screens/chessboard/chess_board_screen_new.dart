@@ -10012,11 +10012,38 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
       },
     );
 
-    // Fire-and-forget — the notifier handles optimistic state + rollback.
+    // Fire-and-forget — the notifier handles optimistic state + rollback. A
+    // write that did not land is said: the heart has already flown, and it
+    // must not be the only answer to a like that was never saved.
+    final messenger = ScaffoldMessenger.maybeOf(context);
+    void reportLikeFailure([Object? error]) {
+      if (messenger == null || !messenger.mounted) return;
+      showAppSnackOn(
+        messenger,
+        userFacingError(
+          error,
+          fallback: wasLiked
+              ? "Couldn't remove this like. Please try again."
+              : "Couldn't save your like. Please try again.",
+        ),
+        tone: AppSnackTone.danger,
+      );
+    }
+
     final toggleFuture = ref
         .read(likedGamesProvider.notifier)
         .toggle(game)
-        .then<void>((_) {});
+        .then<void>(
+          (nowLiked) {
+            // The notifier answers with the state it left; the same as
+            // before the tap means the write was rolled back.
+            if (nowLiked == wasLiked) reportLikeFailure();
+          },
+          onError: (Object error) {
+            debugPrint('[HeartFlight] like-toggle failed: $error');
+            reportLikeFailure(error);
+          },
+        );
     final visualFloor = Future<void>.delayed(
       wasLiked ? _likeInteractionUnlikeDuration : _likeInteractionLikeDuration,
     );
