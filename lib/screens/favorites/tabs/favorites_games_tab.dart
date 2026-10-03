@@ -1328,7 +1328,7 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
             title: player.title,
           );
     } on FavoriteLimitExceededException {
-      if (mounted) await showPremiumPaywallSheet(context: context);
+      if (mounted) await showPremiumPaywallSheet(context: context, allowRewarded: false);
     } catch (error) {
       if (mounted) {
         showAppSnack(

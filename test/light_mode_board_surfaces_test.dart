@@ -11,11 +11,9 @@ import 'package:chessever2/screens/library/widgets/book_saved_game_card.dart';
 import 'package:chessever2/screens/library/widgets/folder_card.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/event_no_spoilers_provider.dart';
 import 'package:chessever2/screens/library/utils/load_saved_analysis.dart';
-import 'package:chessever2/screens/my_likes/provider/my_likes_provider.dart';
 import 'package:chessever2/screens/gamebase/utils/continuation_line.dart';
 import 'package:chessever2/screens/gamebase/widgets/explorer_game_card.dart';
 import 'package:dartchess/dartchess.dart';
-import 'package:chessever2/screens/my_likes/widgets/my_likes_archive_boundary.dart';
 import 'package:chessever2/screens/my_likes/widgets/my_likes_game_card.dart';
 import 'package:chessever2/screens/my_space/models/space_shortcut.dart';
 import 'package:chessever2/screens/my_space/providers/space_shortcuts_provider.dart';
@@ -289,28 +287,6 @@ void main() {
         expectNoContrastMisses(audit(tester), where: 'MyLikesGameCard');
       });
     }
-
-    testWidgets('archive boundary reads on paper', (tester) async {
-      await pumpSurface(
-        tester,
-        Padding(
-          padding: const EdgeInsets.all(16),
-          child: MyLikesArchiveBoundary(
-            data: const MyLikesData(
-              sections: [],
-              openableAnalyses: [],
-              totalLiked: 34,
-              visibleCount: 20,
-              archivedCount: 14,
-              archivedMatchCount: 14,
-            ),
-            onViewHistory: _noop,
-          ),
-        ),
-        theme: AppTheme.lightTheme,
-      );
-      expectNoContrastMisses(audit(tester), where: 'MyLikesArchiveBoundary');
-    });
   });
 
   group('explorer', () {

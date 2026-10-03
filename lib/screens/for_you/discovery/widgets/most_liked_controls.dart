@@ -18,8 +18,7 @@ import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 /// "‹  21–27 Sep  ›": walks the picked period one day, week, month or year
-/// at a time. Earlier periods are Premium for free accounts, shown by the
-/// padlock beside the arrow, and stop at the first day there were likes; the
+/// at a time. Earlier periods stop at the first day there were likes; the
 /// next arrow is disabled on the current period, since the future has no
 /// ranking. The page's one date control ([DiscoveryDateStepper]), so it
 /// reads exactly like the Miniatures one.
@@ -28,7 +27,6 @@ class MostLikedDateControl extends StatelessWidget {
     super.key,
     required this.query,
     required this.now,
-    required this.locked,
     required this.onPrevious,
     required this.onNext,
     this.edgeInset = 0,
@@ -36,9 +34,6 @@ class MostLikedDateControl extends StatelessWidget {
 
   final MostLikedQuery query;
   final DateTime now;
-
-  /// Earlier periods sit behind the Premium boundary for this viewer.
-  final bool locked;
 
   /// Null when there is no earlier period to go to.
   final VoidCallback? onPrevious;
@@ -62,11 +57,8 @@ class MostLikedDateControl extends StatelessWidget {
     return DiscoveryDateStepper(
       label: label,
       labelSemantics: 'Most liked, $label',
-      previousSemantics: locked
-          ? 'Previous $_unit, Premium'
-          : 'Previous $_unit',
+      previousSemantics: 'Previous $_unit',
       nextSemantics: 'Next $_unit',
-      previousLocked: locked,
       onPrevious: onPrevious,
       onNext: onNext,
       edgeInset: edgeInset,
@@ -197,7 +189,7 @@ class _PlayerRow extends ConsumerWidget {
           );
         }
       } on FavoriteLimitExceededException {
-        if (context.mounted) await showPremiumPaywallSheet(context: context);
+        if (context.mounted) await showPremiumPaywallSheet(context: context, allowRewarded: false);
       } catch (error) {
         if (context.mounted) {
           showAppSnack(

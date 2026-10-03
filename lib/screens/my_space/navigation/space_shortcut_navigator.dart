@@ -31,9 +31,7 @@ import 'package:chessever2/screens/library/twic_contents_screen.dart';
 import 'package:chessever2/screens/library/utils/load_saved_analysis.dart';
 import 'package:chessever2/screens/my_likes/my_likes_screen.dart';
 import 'package:chessever2/screens/my_likes/provider/my_likes_provider.dart'
-    show isArchivedLike;
-import 'package:chessever2/screens/my_likes/widgets/my_likes_archive_boundary.dart'
-    show kMyLikesHistoryFeatureId;
+    show isArchivedLike, kMyLikesHistoryFeatureId;
 import 'package:chessever2/screens/my_space/actions/space_share.dart'
     show isSpaceCalendarEvent;
 import 'package:chessever2/screens/my_space/models/space_shortcut.dart';

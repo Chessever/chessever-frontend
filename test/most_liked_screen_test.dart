@@ -627,18 +627,28 @@ void main() {
     await _teardown(tester, container);
   });
 
-  testWidgets('a free account browses every period and keeps the Players '
-      'unlock', (tester) async {
+  testWidgets('a free account browses every period, every date and the '
+      'Players list; only opening an earlier game is gated', (tester) async {
     final container = await _pump(tester, subscribed: false);
     await tester.tap(find.bySemanticsLabel('Most liked, Today'));
     await _settle(tester);
 
-    // Only the earlier-date arrow is locked; period tabs are freely browsable.
-    expect(find.byType(DiscoveryPadlock), findsOneWidget);
+    // Nothing on the page is locked or sold: no padlock on the date control,
+    // no upgrade line in place of the ranking.
+    expect(find.byType(DiscoveryPadlock), findsNothing);
     expect(
       find.textContaining(kMostLikedUpgradeCta, findRichText: true),
       findsNothing,
     );
+
+    // The earlier-date arrow walks back like it does for Premium.
+    tester
+        .widget<MostLikedDateControl>(find.byType(MostLikedDateControl))
+        .onPrevious!();
+    await _settle(tester);
+    expect(container.read(mostLikedDayProvider), isNotNull);
+    container.read(mostLikedDayProvider.notifier).state = null;
+    await _settle(tester);
 
     for (final period in [
       MostLikedPeriod.week,
@@ -665,16 +675,10 @@ void main() {
       expect(tester.takeException(), isNull);
     }
 
+    // Players lists everyone in the ranking, with nothing to unlock first.
     await tester.tap(find.text('Players'));
     await _settle(tester);
-    expect(find.text('See everyone in this ranking'), findsOneWidget);
-    expect(find.byType(MostLikedPlayersList), findsNothing);
-
-    // Debug builds let the guard through, as the paywall would on a
-    // purchase; the list then opens in place.
-    await tester.tap(find.textContaining('Unlock', findRichText: true));
-    await _settle(tester);
-    expect(container.read(mostLikedViewProvider), MostLikedView.players);
+    expect(find.text('See everyone in this ranking'), findsNothing);
     expect(find.byType(MostLikedPlayersList), findsOneWidget);
     await _teardown(tester, container);
   });

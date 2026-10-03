@@ -134,6 +134,7 @@ class LikesAboutPage extends ConsumerWidget {
               SizedBox(height: 20.h),
               Text(
                 'Double-tap the chessboard or tap its heart to like a game. '
+                'Double-tap a liked game again to unlike it. '
                 'Your saved games are in My Likes, also available in Library.',
                 style: AppTypography.textSmRegular.copyWith(
                   color: context.colors.textSecondary,
@@ -141,10 +142,10 @@ class LikesAboutPage extends ConsumerWidget {
               ),
               SizedBox(height: 20.h),
               Text(
-                'Browse Today, Week, Month and Year rankings for free. '
-                'Today’s games open for free. To open games in other periods, '
-                'watch an ad for temporary Premium access or upgrade. '
-                'Earlier dates and the Players list also require Premium access.',
+                'Browse every ranking for free: Today, Week, Month and Year, '
+                'earlier dates and the Players list. To open a game from '
+                'outside Today, watch an ad for temporary Premium access or '
+                'upgrade.',
                 style: AppTypography.textSmRegular.copyWith(
                   color: context.colors.textSecondary,
                 ),

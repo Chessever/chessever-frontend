@@ -50,7 +50,8 @@ class ReportTypeChips extends StatelessWidget {
             child: ChoiceChip(
               key: ValueKey('report_type_${type?.key ?? 'all'}'),
               selected: selected == type,
-              onSelected: (_) => onSelected(type),
+              // Tapping the active type again clears it back to All.
+              onSelected: (_) => onSelected(selected == type ? null : type),
               showCheckmark: false,
               avatar: Icon(
                 iconFor(type),

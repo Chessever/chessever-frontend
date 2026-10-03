@@ -1,3 +1,4 @@
+import 'package:chessever2/services/rewarded_premium/rewarded_access_provider.dart';
 import 'dart:async';
 
 import 'package:chessever2/providers/board_settings_provider_new.dart';
@@ -244,6 +245,7 @@ void main() {
       GamesListViewMode mode = GamesListViewMode.chessBoardGrid,
       Size screen = _phone,
       double textScale = 1,
+      bool hasAccess = false,
     }) => _pump(
       tester,
       const ReportsScreen(),
@@ -253,6 +255,7 @@ void main() {
       scrollingPage: true,
       extraOverrides: [
         discoveryRepositoryProvider.overrideWithValue(repository),
+        premiumAccessProvider.overrideWithValue(hasAccess),
       ],
     );
 
@@ -272,6 +275,41 @@ void main() {
         ),
       );
       await _settle(tester);
+    }
+
+    for (final mode in GamesListViewMode.values) {
+      testWidgets('Reports locks reflect access in $mode', (tester) async {
+        for (final hasAccess in [false, true]) {
+          final repository = _ReportsRepository();
+          final container = await open(
+            tester,
+            repository,
+            mode: mode,
+            hasAccess: hasAccess,
+          );
+          await complete(tester, repository, 0, [_game('report')]);
+          expect(
+            find.byType(DiscoveryPadlock),
+            hasAccess ? findsNothing : findsOneWidget,
+          );
+          final card = tester.widget<DiscoveryGameCard>(
+            find.byType(DiscoveryGameCard).first,
+          );
+          expect(card.onOpen, isNotNull);
+          expect(card.lockedFor?.call(0) ?? false, !hasAccess);
+          if (!hasAccess) {
+            expect(
+              card.menuActionsFor!(
+                tester.element(find.byType(DiscoveryGameCard).first),
+                0,
+              ),
+              isEmpty,
+            );
+          }
+          expect(tester.takeException(), isNull);
+          await _teardown(tester, container);
+        }
+      });
     }
 
     testWidgets(

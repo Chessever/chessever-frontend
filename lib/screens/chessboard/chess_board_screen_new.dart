@@ -1,3 +1,4 @@
+import 'package:chessever2/widgets/paywall/game_report_access.dart';
 import 'package:chessever2/config/feature_flags.dart';
 import 'package:chessever2/providers/country_dropdown_provider.dart';
 import 'widgets/notation_scroll.dart';
@@ -4206,80 +4207,14 @@ class _GamePage extends ConsumerWidget {
         showClock: showClock,
       ),
     );
-    return _ArrowKeyStepper(
-      game: game,
-      index: currentGameIndex,
-      isActivePage: currentGameIndex == currentPageIndex,
-      child: _BoardShareBoundaryScope(
-        child: MediaQuery.removeViewInsets(
-          context: context,
-          removeBottom: true,
-          child: scaffold,
-        ),
+    return _BoardShareBoundaryScope(
+      child: MediaQuery.removeViewInsets(
+        context: context,
+        removeBottom: true,
+        child: scaffold,
       ),
     );
   }
-}
-
-/// Steps the visible game with a hardware keyboard's ←/→ arrows (an iPad
-/// with a keyboard, or desktop). Only the foreground page of the top route
-/// answers, and never while a text field holds focus.
-class _ArrowKeyStepper extends ConsumerStatefulWidget {
-  const _ArrowKeyStepper({
-    required this.game,
-    required this.index,
-    required this.isActivePage,
-    required this.child,
-  });
-
-  final GamesTourModel game;
-  final int index;
-  final bool isActivePage;
-  final Widget child;
-
-  @override
-  ConsumerState<_ArrowKeyStepper> createState() => _ArrowKeyStepperState();
-}
-
-class _ArrowKeyStepperState extends ConsumerState<_ArrowKeyStepper> {
-  @override
-  void initState() {
-    super.initState();
-    HardwareKeyboard.instance.addHandler(_handleKey);
-  }
-
-  @override
-  void dispose() {
-    HardwareKeyboard.instance.removeHandler(_handleKey);
-    super.dispose();
-  }
-
-  bool _handleKey(KeyEvent event) {
-    if (!widget.isActivePage || event is! KeyDownEvent) return false;
-    final route = ModalRoute.of(context);
-    if (route != null && !route.isCurrent) return false;
-    // Caret movement inside a text field is the field's own business.
-    if (FocusManager.instance.primaryFocus?.context?.widget is EditableText) {
-      return false;
-    }
-    final notifier = ref.read(
-      chessBoardScreenProviderNew(
-        ChessBoardProviderParams(game: widget.game, index: widget.index),
-      ).notifier,
-    );
-    if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
-      unawaited(notifier.moveForward());
-      return true;
-    }
-    if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
-      unawaited(notifier.moveBackward());
-      return true;
-    }
-    return false;
-  }
-
-  @override
-  Widget build(BuildContext context) => widget.child;
 }
 
 class _LoadingScreen extends StatelessWidget {
@@ -7679,14 +7614,18 @@ class _BottomNavBar extends ConsumerWidget {
         clearBoardSelection();
         notifier.moveBackward();
       },
+      // Holding an arrow jumps straight to the first / last position instead
+      // of pacing through the moves one by one.
       onBoardLongPressBackwardStart: () {
         clearBoardSelection();
-        notifier.startLongPressBackward();
+        HapticFeedback.mediumImpact();
+        notifier.jumpToStart();
       },
       onBoardLongPressBackwardEnd: () => notifier.stopLongPress(),
       onBoardLongPressForwardStart: () {
         clearBoardSelection();
-        notifier.startLongPressForward();
+        HapticFeedback.mediumImpact();
+        notifier.jumpToEnd();
       },
       onBoardLongPressForwardEnd: () => notifier.stopLongPress(),
     );
@@ -11575,6 +11514,11 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
       final sheet = GameReviewSheetScope.maybeOf(context);
       if (sheet == null) return;
       unawaited(() async {
+        if (!await ensureGameReportAccess(context) ||
+            !mounted ||
+            !context.mounted) {
+          return;
+        }
         final viewController = ref.read(
           analysisViewSessionProvider(widget.game.gameId).notifier,
         );

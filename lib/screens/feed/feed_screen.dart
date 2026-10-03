@@ -1,3 +1,5 @@
+import 'package:chessever2/services/rewarded_premium/rewarded_access_provider.dart';
+import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
 import 'dart:async';
 import 'dart:math' as math;
 
@@ -74,6 +76,15 @@ class FeedScreen extends ConsumerStatefulWidget {
 /// and the page is gone, Feed starts from the top.
 final feedCurrentEntryKeyProvider = StateProvider<String?>((ref) => null);
 
+final feedAccessPromptProvider = Provider<Future<bool> Function(BuildContext)>(
+  (ref) =>
+      (context) => showPremiumPaywallSheet(
+        context: context,
+        featureId: 'feed_scroll',
+        returnTo: 'feed',
+      ),
+);
+
 class _FeedScreenState extends ConsumerState<FeedScreen>
     with WidgetsBindingObserver, RouteAware {
   late final PageController _pages;
@@ -95,6 +106,7 @@ class _FeedScreenState extends ConsumerState<FeedScreen>
   bool _appResumed = true;
   bool _routeCurrent = true;
   bool _scrollLocked = false;
+  bool _accessPromptOpen = false;
   bool _announcedFirst = false;
   ModalRoute<void>? _route;
   late final StateController<bool> _open;
@@ -158,6 +170,7 @@ class _FeedScreenState extends ConsumerState<FeedScreen>
 
   /// The page to open on: the one the viewer left, when it is still there.
   int _restoredIndex() {
+    if (!ref.read(premiumAccessProvider)) return 0;
     final key = ref.read(feedCurrentEntryKeyProvider);
     if (key == null) return 0;
     final index = ref.read(feedEntriesProvider).indexWhere((e) => e.key == key);
@@ -318,6 +331,10 @@ class _FeedScreenState extends ConsumerState<FeedScreen>
 
   void _onPageChanged(int index, List<FeedEntry> entries) {
     if (_homing) return;
+    if (index > 0 && !ref.read(premiumAccessProvider)) {
+      unawaited(_unlockScrolling());
+      return;
+    }
     if (index == _index) {
       _reportHomeIfPending(index, entries);
       return;
@@ -334,6 +351,27 @@ class _FeedScreenState extends ConsumerState<FeedScreen>
     }
     if (_seen.value) feedSfxSafely(ref.read(feedSfxProvider).playSwipe);
     _reportVisible(index, entries);
+  }
+
+  Future<void> _unlockScrolling() async {
+    if (_accessPromptOpen || !mounted) return;
+    _accessPromptOpen = true;
+    try {
+      // Page changes can arrive during layout; open the modal after this frame.
+      await WidgetsBinding.instance.endOfFrame;
+      if (!mounted) return;
+      final allowed = await ref.read(feedAccessPromptProvider)(context);
+      if (!mounted || !_pages.hasClients) return;
+      if (allowed && ref.read(premiumAccessProvider)) {
+        setState(() {});
+        await WidgetsBinding.instance.endOfFrame;
+        if (mounted) _onPageChanged(1, ref.read(feedEntriesProvider));
+      } else {
+        _pages.jumpToPage(0);
+      }
+    } finally {
+      _accessPromptOpen = false;
+    }
   }
 
   /// Freezes the pages the viewer has reached and keeps games coming: the
@@ -573,6 +611,16 @@ class _FeedScreenState extends ConsumerState<FeedScreen>
     required FeedMore more,
     required bool visible,
   }) {
+    if (i > 0 && !ref.read(premiumAccessProvider)) {
+      return FeedMessage(
+        key: const ValueKey('feed_premium_gate'),
+        title: 'Keep exploring Feed',
+        body:
+            'Watch an ad for 10 minutes of Premium access, or upgrade to keep scrolling.',
+        actionLabel: 'Unlock Premium',
+        onAction: () => unawaited(_unlockScrolling()),
+      );
+    }
     if (i >= entries.length) {
       return FeedTail(
         key: _tailKey,
@@ -617,6 +665,15 @@ class _FeedScreenState extends ConsumerState<FeedScreen>
 
   @override
   Widget build(BuildContext context) {
+    final hasAccess = ref.watch(premiumAccessProvider);
+    ref.listen<bool>(premiumAccessProvider, (previous, next) {
+      if (previous == true && !next) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted || !_pages.hasClients) return;
+          _pages.jumpToPage(0);
+        });
+      }
+    });
     final feed = ref.watch(feedProvider);
     final entries = ref.watch(feedEntriesProvider);
     final visible = _isSeen;
@@ -670,7 +727,7 @@ class _FeedScreenState extends ConsumerState<FeedScreen>
                 : feedPagePhysics,
             onPageChanged: (i) => _onPageChanged(i, entries),
             // One page more than there are posts: the tail.
-            itemCount: entries.length + 1,
+            itemCount: hasAccess ? entries.length + 1 : 2,
             // Pages keep their state by identity, not position, so an entry
             // that is recaptioned (or a list that grows) never restarts a
             // clip.

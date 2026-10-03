@@ -34,6 +34,7 @@ async function database() {
     create table public.user_saved_analyses(user_id uuid,folder_id uuid,source_game_id text,created_at timestamptz);
   `);
   await db.exec(migration);
+  await db.exec(await readFile(new URL('../migrations/20261002170755_premium_only_game_reports.sql',import.meta.url),'utf8'));
   return db;
 }
 async function scalar(db, sql, params=[]) {return (await db.query(sql,params)).rows[0].value;}
@@ -103,5 +104,21 @@ test('premium rankings accept a verified session and reject expired or unknown s
     const from='2026-01-01';const to='2026-02-01';
     assert.deepEqual((await db.query('select * from public.most_liked_games($1,$2,$3,$4)',[from,to,12,token])).rows,[]);
     await assert.rejects(db.query('select * from public.most_liked_games($1,$2,$3,$4)',[from,to,12,'b'.repeat(43)]),/premium_required/);
+  } finally {await db.close();}
+});
+
+
+test('first report and repeated free report claims require premium', async()=>{
+  const db=await database();try {
+    await caller(db);
+    for (let i=0;i<2;i++) {
+      const result=await scalar(db,'select public.claim_game_analysis_report($1) as value',['first-game']);
+      assert.equal(result.allowed,false);
+      assert.equal(result.reason,'premium_required');
+    }
+    await db.exec('reset role');
+    await db.exec('create or replace function public._user_has_premium(uuid) returns boolean language sql stable as $$select true$$');
+    await caller(db);
+    assert.equal((await scalar(db,'select public.claim_game_analysis_report($1) as value',['first-game'])).allowed,true);
   } finally {await db.close();}
 });

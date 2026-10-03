@@ -1,5 +1,3 @@
-import 'package:chessever2/services/rewarded_premium/rewarded_session.dart';
-import 'package:chessever2/config/app_environment.dart';
 // lib/repository/local_storage/favorite/favourate_standings_player_services.dart
 
 import 'dart:async';
@@ -134,8 +132,7 @@ class FavoriteStandingsPlayerService {
       } else {
         // Enforce favorite limit for free users before adding
         if (favorites.length >= kFreeFavoriteLimit) {
-          final isSubscribed = (!AppEnvironment.isTest && RewardedSession.instance.active) ||
-              await RevenueCatService().isSubscribed();
+          final isSubscribed = await RevenueCatService().isSubscribed();
           if (!isSubscribed) {
             debugPrint(
               '[FavoriteStandings] Free user at limit ($kFreeFavoriteLimit), blocking add',

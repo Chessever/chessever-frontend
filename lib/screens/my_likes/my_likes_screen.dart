@@ -1,3 +1,4 @@
+import 'package:chessever2/widgets/paywall/premium_game_access.dart';
 import 'package:chessever2/services/rewarded_premium/rewarded_access_provider.dart';
 import 'dart:async';
 import 'package:chessever2/services/rewarded_premium/rewarded_ads.dart';
@@ -16,7 +17,6 @@ import 'package:chessever2/screens/my_likes/provider/my_likes_provider.dart';
 import 'package:chessever2/screens/my_likes/my_likes_hub_screen.dart';
 import 'package:chessever2/screens/my_likes/widgets/date_section_header.dart'
     show DateSectionHeader, formatLikedDateHeader;
-import 'package:chessever2/screens/my_likes/widgets/my_likes_archive_boundary.dart';
 import 'package:chessever2/screens/my_likes/widgets/my_likes_game_card.dart';
 import 'package:chessever2/screens/my_space/models/space_shortcut.dart';
 import 'package:chessever2/repository/library/library_game_event.dart';
@@ -57,8 +57,8 @@ class MyLikesScreen extends StatelessWidget {
 /// My Likes' Games page — the For You → Favorites → Games view without the
 /// tab bar, sourced from the user's liked games. Same search + filter + date
 /// sections + game cards; sections are bucketed by when each game was liked.
-/// Free users see their latest [kFreeMyLikesVisibleLimit] likes; older ones
-/// stay stored behind the archive boundary until Premium brings them back.
+/// Everyone sees every like; a free user's latest [kFreeMyLikesVisibleLimit]
+/// open freely and older ones open through the Premium guard.
 ///
 /// A page of [MyLikesHubScreen]: the hub's frame carries back and the title;
 /// this page starts with the same search and filters as Favorites.
@@ -176,42 +176,32 @@ class _MyLikesGamesPageState extends ConsumerState<MyLikesGamesPage>
     ref.read(myLikesFilterProvider.notifier).toggleTag(trimmed);
   }
 
-  Future<void> _openAnalysis(SavedAnalysis analysis) async {
-    // Re-validate the lock at tap time against the live entitlement: a card is
-    // built from one view snapshot, and only games inside the free window are
-    // openable without Premium.
-    final openable =
-        ref.read(myLikesViewProvider).valueOrNull?.openableAnalyses ??
-        _lastData?.openableAnalyses ??
-        const <SavedAnalysis>[];
-    final locked =
-        !ref.read(myLikesUnlimitedProvider) &&
-        !openable.any((a) => a.id == analysis.id);
+  bool _openingAnalysis = false;
 
-    void open() {
-      if (!mounted) return;
+  Future<void> _openAnalysis(SavedAnalysis analysis) async {
+    if (_openingAnalysis) return;
+    _openingAnalysis = true;
+    try {
+      final allowed = await ensurePremiumGameAccess(
+        context,
+        featureId: kMyLikesHistoryFeatureId,
+        returnTo: kMyLikesReturnTo,
+      );
+      if (!allowed || !mounted) return;
+      // Read the collection after unlock so newly available likes can be swiped.
+      final openable =
+          ref.read(myLikesViewProvider).valueOrNull?.openableAnalyses ??
+          _lastData?.openableAnalyses ??
+          const <SavedAnalysis>[];
       final index = openable.indexWhere((a) => a.id == analysis.id);
       if (index >= 0) {
         loadSavedAnalysisWithSwiping(context, openable, index);
       } else {
-        // Not in the openable list yet (e.g. just unlocked via the paywall
-        // before the list recomputed) — open this single game directly.
         loadSavedAnalysis(context, analysis);
       }
+    } finally {
+      _openingAnalysis = false;
     }
-
-    if (!locked) {
-      open();
-      return;
-    }
-    // A confirmed purchase or restore resumes straight into this game.
-    await requirePremiumGuard(
-      context,
-      ref,
-      featureId: kMyLikesHistoryFeatureId,
-      returnTo: kMyLikesReturnTo,
-      onEntitled: open,
-    );
   }
 
   Future<void> _removeAnalysis(SavedAnalysis analysis) async {
@@ -313,30 +303,6 @@ class _MyLikesGamesPageState extends ConsumerState<MyLikesGamesPage>
           ],
         ),
       ),
-    );
-  }
-
-  /// Opens the paywall from the archive boundary. The sheet sits over My
-  /// Likes, so a purchase lands right back here; the view re-derives from the
-  /// entitlement and the full history is in place.
-  Future<void> _viewFullHistory() async {
-    HapticFeedbackService.buttonPress();
-    await requirePremiumGuard(
-      context,
-      ref,
-      featureId: kMyLikesHistoryFeatureId,
-      returnTo: kMyLikesReturnTo,
-      onEntitled: () {
-        if (!mounted) return;
-        ref.invalidate(myLikesViewProvider);
-        if (ref.read(featureAccessStateProvider).isSubscribed) {
-          showAppSnack(
-            context,
-            'Your full My Likes history is back',
-            tone: AppSnackTone.success,
-          );
-        }
-      },
     );
   }
 
@@ -646,22 +612,6 @@ class _MyLikesGamesPageState extends ConsumerState<MyLikesGamesPage>
       if (isSortedBucket || !isCollapsed) addRows(list);
     }
 
-    if (data.showsArchiveBoundary) {
-      items.add(
-        () => Padding(
-          padding: EdgeInsets.only(top: 4.h),
-          child: MyLikesArchiveBoundary(
-            key: const ValueKey('mylikes_archive_boundary'),
-            data: data,
-            onViewHistory: _viewFullHistory,
-          ),
-        ),
-      );
-      // A glimpse of what is kept: the next archived likes, locked. Tapping
-      // one opens the paywall and, once unlocked, the game itself.
-      addRows(data.lockedPreview);
-    }
-
     _pageEntries = entries;
     _pageTagCounts = tagCounts;
     _pageGames = [for (final e in entries) e.game];
@@ -681,12 +631,13 @@ class _MyLikesGamesPageState extends ConsumerState<MyLikesGamesPage>
     );
   }
 
-  /// Library's original one-card-per-game layout, with the current archive
-  /// boundary and access policy kept intact.
+  /// Library's original one-card-per-game layout, with the current access
+  /// policy kept intact.
   Widget _buildArchiveSectionsSliver(MyLikesData data) {
     final tagCounts =
         ref.watch(myLikesTagCountsProvider).valueOrNull ?? _lastTagCounts;
     final items = <Widget Function()>[];
+    final hasAccess = ref.watch(premiumAccessProvider);
 
     void addGames(List<MyLikesEntry> entries) {
       for (final entry in entries) {
@@ -695,7 +646,7 @@ class _MyLikesGamesPageState extends ConsumerState<MyLikesGamesPage>
             key: ValueKey('mylikes_${entry.analysis.id}'),
             analysis: entry.analysis,
             game: entry.game,
-            isLocked: entry.isLocked,
+            isLocked: entry.isLocked || !hasAccess,
             tagCounts: tagCounts,
             onOpen: () => _openAnalysis(entry.analysis),
             onRemove: () => _removeAnalysis(entry.analysis),
@@ -719,16 +670,6 @@ class _MyLikesGamesPageState extends ConsumerState<MyLikesGamesPage>
         );
       }
       if (sorted || !collapsed) addGames(section.value);
-    }
-    if (data.showsArchiveBoundary) {
-      items.add(
-        () => MyLikesArchiveBoundary(
-          key: const ValueKey('mylikes_archive_boundary'),
-          data: data,
-          onViewHistory: _viewFullHistory,
-        ),
-      );
-      addGames(data.lockedPreview);
     }
     return SliverPadding(
       padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 8.h),
@@ -754,6 +695,7 @@ class _MyLikesGamesPageState extends ConsumerState<MyLikesGamesPage>
   /// One row of cards: [count] cards from [start] of the page's list.
   Widget _likesRow({required int start, required int count}) {
     final entries = _pageEntries;
+    final hasAccess = ref.watch(premiumAccessProvider);
     final tagCounts = _pageTagCounts;
     return DiscoveryGameList(
       key: ValueKey('mylikes_row_${entries[start].analysis.id}'),
@@ -767,7 +709,7 @@ class _MyLikesGamesPageState extends ConsumerState<MyLikesGamesPage>
       onOpen: (_, index) => _openAnalysis(entries[index].analysis),
       labelFor: (index) => _likeLine(entries[index], tagCounts),
       rowLabelFor: (index) => _likeLine(entries[index], tagCounts),
-      lockedFor: (index) => entries[index].isLocked,
+      lockedFor: (index) => entries[index].isLocked || !hasAccess,
       menuActionsFor: (menuContext, index) {
         final analysis = entries[index].analysis;
         return savedGameMenuActions(
@@ -778,7 +720,7 @@ class _MyLikesGamesPageState extends ConsumerState<MyLikesGamesPage>
           onDelete: () => _removeAnalysis(analysis),
           deleteLabel: 'Remove from likes',
           deleteIcon: Icons.heart_broken_rounded,
-          locked: entries[index].isLocked,
+          locked: entries[index].isLocked || !ref.read(premiumAccessProvider),
           showSpaceAction: false,
           showShareAction: false,
         );

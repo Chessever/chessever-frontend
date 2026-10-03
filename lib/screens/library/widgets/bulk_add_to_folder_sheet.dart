@@ -1,4 +1,4 @@
-import 'package:chessever2/services/rewarded_premium/rewarded_access_provider.dart';
+import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
 import 'dart:math' as math;
 
 import 'package:chessever2/repository/gamebase/gamebase_repository.dart';
@@ -227,7 +227,7 @@ class _BulkAddToFolderPageState extends ConsumerState<_BulkAddToFolderPage> {
   Future<void> _handleCreateNewBook() async {
     if (_isSaving) return;
 
-    final isPremium = ref.read(featureAccessStateProvider).isSubscribed;
+    final isPremium = ref.read(subscriptionProvider).isSubscribed;
     if (!isPremium) {
       final folders = await ref.read(libraryFoldersStreamProvider.future);
       final ownedBookCount =
@@ -238,7 +238,7 @@ class _BulkAddToFolderPageState extends ConsumerState<_BulkAddToFolderPage> {
               .length;
       if (ownedBookCount >= kFreeBookCreationLimit) {
         if (!mounted) return;
-        await showPremiumPaywallSheet(context: context);
+        await showPremiumPaywallSheet(context: context, allowRewarded: false);
         return;
       }
     }

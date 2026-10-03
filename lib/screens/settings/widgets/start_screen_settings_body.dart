@@ -5,12 +5,12 @@ import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
-import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
+import 'package:chessever2/widgets/paywall/home_customization_access.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 /// Settings › Customization: which section and which Home page the app opens
-/// on. Premium, like holding a bottom tab (see [makeBottomTabDefault]).
+/// on. Premium, like holding a bottom tab or a tab title.
 class StartScreenSettingsBody extends ConsumerStatefulWidget {
   const StartScreenSettingsBody({super.key});
 
@@ -25,7 +25,7 @@ class _StartScreenSettingsBodyState
   late ForYouTab _homePage = readDefaultForYouTab();
 
   Future<void> _pickSection() async {
-    final allowed = await requirePremiumGuard(
+    final allowed = await ensureHomeCustomizationAccess(
       context,
       ref,
       featureId: 'default_start_tab',
@@ -46,7 +46,7 @@ class _StartScreenSettingsBodyState
   }
 
   Future<void> _pickHomePage() async {
-    final allowed = await requirePremiumGuard(
+    final allowed = await ensureHomeCustomizationAccess(
       context,
       ref,
       featureId: 'default_start_tab',

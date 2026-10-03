@@ -1,3 +1,5 @@
+import 'package:chessever2/widgets/paywall/game_report_access.dart';
+import 'package:chessever2/services/rewarded_premium/rewarded_access_provider.dart';
 import 'dart:async';
 
 import 'package:chessever2/repository/gamebase/gamebase_repository.dart';
@@ -60,15 +62,13 @@ class MobileGameReviewState {
     return MobileGameReviewState(
       reportState: reportState ?? this.reportState,
       fingerprint: fingerprint ?? this.fingerprint,
-      revealedFingerprint:
-          clearRevealed
-              ? null
-              : (revealedFingerprint ?? this.revealedFingerprint),
+      revealedFingerprint: clearRevealed
+          ? null
+          : (revealedFingerprint ?? this.revealedFingerprint),
       isEligible: isEligible ?? this.isEligible,
-      unavailableMessage:
-          clearUnavailableMessage
-              ? null
-              : (unavailableMessage ?? this.unavailableMessage),
+      unavailableMessage: clearUnavailableMessage
+          ? null
+          : (unavailableMessage ?? this.unavailableMessage),
     );
   }
 
@@ -108,11 +108,9 @@ class MobileGameReviewState {
 
 /// Coordinates whole-game analysis for one board page.
 ///
-/// **On-demand for everyone.** Nothing is generated until the reader asks for
-/// it — no tier auto-starts a report from opening a board. What the tier decides
-/// is how often they may ask: free users get 1 new report per UTC day, premium
-/// users as many as they want (both authorized by the `claim_game_analysis_report`
-/// RPC, which returns allowed for premium without spending a slot).
+/// Reports are on-demand and require paid or active rewarded Premium access,
+/// including the first generation and viewing previously completed reports.
+/// Nothing is generated just from opening a board.
 ///
 /// Premium used to auto-start a couple of seconds after the board went active.
 /// Do not put that back: it spent engine time and battery on reports nobody had
@@ -123,7 +121,9 @@ class MobileGameReviewController extends StateNotifier<MobileGameReviewState> {
     Future<GameAnalysisClaimResult> Function(String fingerprint)? claimQuota,
     GameReportBookLookup? bookLookup,
     GameReportRemoteRunner? remoteRunner,
-  }) : _reportController =
+    bool Function()? canAccess,
+  }) : _canAccess = canAccess ?? (() => true),
+       _reportController =
            reportController ??
            GameAnalysisReportController(
              bookLookup: bookLookup,
@@ -144,6 +144,7 @@ class MobileGameReviewController extends StateNotifier<MobileGameReviewState> {
     _reportController.addListener(_onReportChanged);
   }
 
+  final bool Function() _canAccess;
   final GameAnalysisReportController _reportController;
   final Future<GameAnalysisClaimResult> Function(String fingerprint)
   _claimQuota;
@@ -198,9 +199,9 @@ class MobileGameReviewController extends StateNotifier<MobileGameReviewState> {
       );
       // Previous generations: session memory, disk, then the saved game PGN.
       // Cached reports do not consume the free daily quota.
-      if (state.isEligible) {
+      if (state.isEligible && _canAccess()) {
         if (!_reportController.loadCachedReport(fingerprint)) {
-          unawaited(_reportController.loadExistingReport(game));
+          unawaited(_loadExistingReport(game));
         }
       }
     } else {
@@ -266,20 +267,32 @@ class MobileGameReviewController extends StateNotifier<MobileGameReviewState> {
     await _maybeResumeInterruptedRun();
   }
 
+  /// A report this device or the game's saved PGN already holds. The known
+  /// ratings travel with it so a PGN-restored report can anchor its game rating.
+  Future<bool> _loadExistingReport(ChessGame game) =>
+      _reportController.loadExistingReport(
+        game,
+        whiteRating: _whiteRating,
+        blackRating: _blackRating,
+      );
+
   /// Restarts a report that was interrupted (process death / dispose) for the
   /// configured game, without spending another free-tier claim.
   Future<void> _maybeResumeInterruptedRun() async {
-    if (!mounted || !_active) return;
+    if (!mounted || !_active || !_canAccess()) return;
     if (!state.isEligible) return;
     if (_reportController.state.isRunning) return;
     if (_reportController.state.status == GameReportStatus.completed) return;
     final game = _game;
     final fingerprint = state.fingerprint;
     if (game == null || fingerprint == null) return;
-    if (await _reportController.loadExistingReport(game)) return;
+    if (await _loadExistingReport(game)) return;
     if (!mounted || !_active || state.fingerprint != fingerprint) return;
     final interrupted = await _reportController.hasInterruptedRun(fingerprint);
-    if (!interrupted || !mounted || !_active || state.fingerprint != fingerprint) {
+    if (!interrupted ||
+        !mounted ||
+        !_active ||
+        state.fingerprint != fingerprint) {
       return;
     }
     // Same user request that already claimed — re-enter analyze only.
@@ -300,7 +313,7 @@ class MobileGameReviewController extends StateNotifier<MobileGameReviewState> {
   }
 
   void reveal() {
-    if (!mounted) return;
+    if (!mounted || !_canAccess()) return;
     final fingerprint = state.fingerprint;
     if (fingerprint == null || fingerprint == state.revealedFingerprint) {
       return;
@@ -329,6 +342,11 @@ class MobileGameReviewController extends StateNotifier<MobileGameReviewState> {
   /// notation entry point and the sheet's Analyze / Retry action both land here.
   Future<void> requestAnalysis(BuildContext context) async {
     if (!mounted) return;
+    if (!await ensureGameReportAccess(context) ||
+        !mounted ||
+        !context.mounted) {
+      return;
+    }
     if (_reportController.state.isRunning) return;
     if (!state.isEligible) return;
     final game = _game;
@@ -338,7 +356,7 @@ class MobileGameReviewController extends StateNotifier<MobileGameReviewState> {
     final hostContext = context;
 
     // Cached / already-completed reports never spend a free slot.
-    if (await _reportController.loadExistingReport(game)) return;
+    if (await _loadExistingReport(game)) return;
     if (!mounted || !hostContext.mounted || state.fingerprint != fingerprint) {
       return;
     }
@@ -365,10 +383,11 @@ class MobileGameReviewController extends StateNotifier<MobileGameReviewState> {
     // No context: nothing can be surfaced to the reader (no auth sheet, no
     // paywall), so the server claim is the only gate. Tests drive this seam;
     // every in-app entry point passes a context.
+    if (!_canAccess()) return;
     final game = _game;
     if (game == null) return;
     final fingerprint = gameReportFingerprint(game);
-    if (await _reportController.loadExistingReport(game)) return;
+    if (await _loadExistingReport(game)) return;
     if (!mounted || state.fingerprint != fingerprint) return;
     final claim = await _claimQuota(fingerprint);
     if (!claim.allowed || !mounted || state.fingerprint != fingerprint) return;
@@ -394,7 +413,7 @@ class MobileGameReviewController extends StateNotifier<MobileGameReviewState> {
         final retry = await _claimQuota(fingerprint);
         if (retry.allowed) return true;
         if (!hostContext.mounted) return false;
-        if (retry.dailyLimitReached) {
+        if (retry.dailyLimitReached || retry.reason == 'premium_required') {
           final subscribed = await showPremiumPaywallSheet(
             context: hostContext,
           );
@@ -406,7 +425,7 @@ class MobileGameReviewController extends StateNotifier<MobileGameReviewState> {
         return false;
       }
 
-      if (result.dailyLimitReached) {
+      if (result.dailyLimitReached || result.reason == 'premium_required') {
         final subscribed = await showPremiumPaywallSheet(context: hostContext);
         if (subscribed && hostContext.mounted) {
           final afterPay = await _claimQuota(fingerprint);
@@ -446,18 +465,19 @@ class MobileGameReviewController extends StateNotifier<MobileGameReviewState> {
 /// Per-board-page game review. [StateNotifierProvider] so UI watches immutable
 /// [MobileGameReviewState] and rebuilds when report status/progress changes —
 /// including when the report completes and notation should attach icons.
-final mobileGameReviewProvider = StateNotifierProvider.autoDispose.family<
-  MobileGameReviewController,
-  MobileGameReviewState,
-  ChessBoardProviderParams
->((ref, params) {
-  return MobileGameReviewController(
-    claimQuota:
-        (fingerprint) =>
+final mobileGameReviewProvider = StateNotifierProvider.autoDispose
+    .family<
+      MobileGameReviewController,
+      MobileGameReviewState,
+      ChessBoardProviderParams
+    >((ref, params) {
+      return MobileGameReviewController(
+        canAccess: () => ref.read(premiumAccessProvider),
+        claimQuota: (fingerprint) =>
             ref.read(gameAnalysisQuotaRepositoryProvider).claim(fingerprint),
-    bookLookup: _gamebaseBookLookup(ref),
-  );
-});
+        bookLookup: _gamebaseBookLookup(ref),
+      );
+    });
 
 /// Opening-tree lookup backed by the game database.
 ///

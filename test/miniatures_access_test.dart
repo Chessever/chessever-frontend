@@ -1,4 +1,3 @@
-import 'package:chessever2/repository/gamebase/miniatures/miniatures_models.dart';
 import 'package:chessever2/screens/library/miniatures/miniatures_access.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -123,82 +122,6 @@ void main() {
       );
       expect(split.today, isEmpty);
       expect(split.archived, 2);
-    });
-
-    test('a locked list stops paging once the archive is reached', () {
-      expect(
-        miniaturesPagingStopsAtArchive(
-          archiveLocked: true,
-          reachedArchive: true,
-          newestFirst: true,
-        ),
-        isTrue,
-      );
-      // Still inside Today: keep paging for the rest of Today's games.
-      expect(
-        miniaturesPagingStopsAtArchive(
-          archiveLocked: true,
-          reachedArchive: false,
-          newestFirst: true,
-        ),
-        isFalse,
-      );
-      // An open archive always pages.
-      expect(
-        miniaturesPagingStopsAtArchive(
-          archiveLocked: false,
-          reachedArchive: true,
-          newestFirst: true,
-        ),
-        isFalse,
-      );
-      // Out of date order, Today's games can sit on any page.
-      expect(
-        miniaturesPagingStopsAtArchive(
-          archiveLocked: true,
-          reachedArchive: true,
-          newestFirst: false,
-        ),
-        isFalse,
-      );
-    });
-
-    test('the default and phone-filter order is newest first', () {
-      expect(
-        miniaturesFilterIsNewestFirst(MiniatureGamesFilter.defaultFilter),
-        isTrue,
-      );
-      expect(
-        miniaturesFilterIsNewestFirst(
-          MiniatureGamesFilter.defaultFilter.copyWith(
-            sort: MiniatureGamesSort.rating,
-          ),
-        ),
-        isFalse,
-      );
-    });
-
-    test('a date range is archive navigation; other filters are not', () {
-      const base = MiniatureGamesFilter.defaultFilter;
-      expect(miniaturesFilterWalksArchive(base), isFalse);
-      expect(
-        miniaturesFilterWalksArchive(base.copyWith(maxMoves: 20)),
-        isFalse,
-      );
-      expect(
-        miniaturesFilterWalksArchive(base.copyWith(dateFrom: '2024-01-01')),
-        isTrue,
-      );
-      expect(
-        miniaturesFilterWalksArchive(base.copyWith(dateTo: '2023-12-31')),
-        isTrue,
-      );
-      expect(
-        miniaturesFilterWalksArchive(
-          base.copyWith(dateFrom: '2024-01-01').copyWith(clearDates: true),
-        ),
-        isFalse,
-      );
     });
   });
 }

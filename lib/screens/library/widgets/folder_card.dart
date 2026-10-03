@@ -26,6 +26,7 @@ import 'package:chessever2/utils/user_error_message.dart';
 import 'package:chessever2/widgets/alert_dialog/alert_modal.dart';
 import 'package:chessever2/widgets/app_snack.dart';
 import 'package:chessever2/widgets/card_context_menu.dart';
+import 'package:chessever2/widgets/hub_tile.dart';
 import 'package:chessever2/widgets/svg_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -278,21 +279,26 @@ class FolderCard extends ConsumerWidget {
           Stack(
             clipBehavior: Clip.none,
             children: [
-              Container(
-                width: iconSize,
-                height: iconSize,
-                decoration: BoxDecoration(
-                  color: context.colors.surfaceRecessed,
-                  borderRadius: BorderRadius.circular(iconRadius),
-                ),
-                child: Center(
-                  child: _buildNodeIcon(
-                    context,
-                    size: svgSize,
-                    isLiked: isLiked,
+              // My Likes wears the app's animated heart, bare and filling
+              // the slot the other cards give their glyph tile.
+              if (isLiked)
+                LikesHeartMark(size: iconSize)
+              else
+                Container(
+                  width: iconSize,
+                  height: iconSize,
+                  decoration: BoxDecoration(
+                    color: context.colors.surfaceRecessed,
+                    borderRadius: BorderRadius.circular(iconRadius),
+                  ),
+                  child: Center(
+                    child: _buildNodeIcon(
+                      context,
+                      size: svgSize,
+                      isLiked: isLiked,
+                    ),
                   ),
                 ),
-              ),
               // Shared link badge for subscribed books
               if (folder.isSubscribed)
                 Positioned(

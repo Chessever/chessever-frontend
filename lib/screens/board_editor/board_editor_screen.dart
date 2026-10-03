@@ -1,3 +1,4 @@
+import 'package:chessever2/widgets/paywall/pgn_import_access.dart';
 import 'package:chessever2/e2e/e2e_ids.dart';
 import 'package:chessever2/providers/board_settings_provider_new.dart';
 import 'package:chessever2/repository/lichess/cloud_eval/cloud_eval.dart';
@@ -207,6 +208,7 @@ class _BoardEditorScreenState extends ConsumerState<BoardEditorScreen> {
   }
 
   Future<void> _pastePgn() async {
+    if (!await ensurePgnImportAccess(context) || !context.mounted) return;
     final clipboard = await Clipboard.getData(Clipboard.kTextPlain);
     final pgn = clipboard?.text?.trim();
     if (pgn == null || pgn.isEmpty) {

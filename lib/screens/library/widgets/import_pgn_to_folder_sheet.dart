@@ -1,4 +1,5 @@
-import 'package:chessever2/services/rewarded_premium/rewarded_access_provider.dart';
+import 'package:chessever2/widgets/paywall/pgn_import_access.dart';
+import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
 import 'dart:math' as math;
 
 import 'package:chessever2/repository/library/library_repository.dart';
@@ -41,6 +42,7 @@ Future<bool> showImportPgnToFolderSheet({
   String? sourceLabel,
 }) async {
   if (games.isEmpty) return false;
+  if (!await ensurePgnImportAccess(context) || !context.mounted) return false;
   final allowed = await canSaveMoreGames(context, gamesToAdd: games.length);
   if (!allowed) return false;
   if (!context.mounted) return false;
@@ -174,7 +176,7 @@ class _ImportPgnToFolderPageState
   Future<void> _handleCreateNewBook() async {
     if (_isSaving) return;
 
-    final isPremium = ref.read(featureAccessStateProvider).isSubscribed;
+    final isPremium = ref.read(subscriptionProvider).isSubscribed;
     if (!isPremium) {
       final folders = await ref.read(libraryFoldersStreamProvider.future);
       final ownedBookCount =
@@ -185,7 +187,7 @@ class _ImportPgnToFolderPageState
               .length;
       if (ownedBookCount >= kFreeBookCreationLimit) {
         if (!mounted) return;
-        await showPremiumPaywallSheet(context: context);
+        await showPremiumPaywallSheet(context: context, allowRewarded: false);
         return;
       }
     }
@@ -237,6 +239,8 @@ class _ImportPgnToFolderPageState
       showAppSnack(context, 'Select at least one folder');
       return;
     }
+
+    if (!await ensurePgnImportAccess(context) || !mounted) return;
 
     // Pre-flight used games.length only; actual rows = games × folders.
     final allowed = await canSaveMoreGames(

@@ -1,4 +1,5 @@
-import 'package:chessever2/services/rewarded_premium/rewarded_access_provider.dart';
+import 'package:chessever2/widgets/paywall/pgn_import_access.dart';
+import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
 import 'package:chessever2/repository/library/library_book_publication.dart';
 import 'package:chessever2/screens/collections/collections_data.dart';
 import 'package:chessever2/screens/library/library_book_screen.dart';
@@ -416,14 +417,14 @@ Future<void> _createDatabase(
   WidgetRef ref,
   ScaffoldMessengerState? messenger,
 ) async {
-  if (!ref.read(featureAccessStateProvider).isSubscribed) {
+  if (!ref.read(subscriptionProvider).isSubscribed) {
     final folders = await ref.read(libraryFoldersStreamProvider.future);
     final owned = folders
         .where((f) => !f.isSubscribed && f.id != kTwicBookId && f.isDatabase)
         .length;
     if (owned >= kFreeBookCreationLimit) {
       if (!context.mounted) return;
-      await showPremiumPaywallSheet(context: context);
+      await showPremiumPaywallSheet(context: context, allowRewarded: false);
       return;
     }
   }
@@ -471,6 +472,7 @@ Future<void> _createDatabase(
 }
 
 Future<void> _importFromClipboard(BuildContext context) async {
+    if (!await ensurePgnImportAccess(context) || !context.mounted) return;
   final clipboard = await Clipboard.getData(Clipboard.kTextPlain);
   final text = clipboard?.text?.trim();
   if (!context.mounted) return;
@@ -498,6 +500,7 @@ Future<void> _importFromClipboard(BuildContext context) async {
 }
 
 Future<void> _pickPgnFile(BuildContext context) async {
+    if (!await ensurePgnImportAccess(context) || !context.mounted) return;
   FilePickerResult? result;
   try {
     result = await FilePicker.platform.pickFiles(

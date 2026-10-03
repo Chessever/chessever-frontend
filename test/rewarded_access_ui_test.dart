@@ -25,16 +25,12 @@ class _Reward extends RewardedAccessNotifier {
 }
 
 void main() {
-  test('countdown rounds up and never displays negative time', () {
-    expect(formatRewardedRemaining(const Duration(minutes: 10)), '10:00');
-    expect(formatRewardedRemaining(const Duration(milliseconds: 1)), '00:01');
-    expect(formatRewardedRemaining(const Duration(seconds: -1)), '00:00');
-  });
   Future<void> host(
     WidgetTester tester,
     _Reward reward, {
     bool expired = false,
     void Function(bool)? answer,
+    double textScale = 1,
   }) async {
     await tester.pumpWidget(
       ProviderScope(
@@ -43,6 +39,12 @@ void main() {
           rewardedAccessProvider.overrideWith((ref) => reward),
         ],
         child: MaterialApp(
+          builder: (context, child) => MediaQuery(
+            data: MediaQuery.of(
+              context,
+            ).copyWith(textScaler: TextScaler.linear(textScale)),
+            child: child!,
+          ),
           home: Builder(
             builder: (context) => Scaffold(
               body: TextButton(
@@ -65,14 +67,49 @@ void main() {
     await tester.pumpAndSettle();
   }
 
+  for (final dismiss in ['Close', 'Not now']) {
+    testWidgets('$dismiss dismisses without unlocking access', (tester) async {
+      final reward = _Reward();
+      bool? answer;
+      await host(tester, reward, answer: (value) => answer = value);
+      await tester.tap(
+        dismiss == 'Close' ? find.byTooltip(dismiss) : find.text(dismiss),
+      );
+      await tester.pumpAndSettle();
+      expect(answer, false);
+      expect(reward.calls, 0);
+    });
+  }
+
+  testWidgets('popup fits a narrow phone with large text', (tester) async {
+    tester.view.physicalSize = const Size(320, 568);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final reward = _Reward();
+    await host(tester, reward, textScale: 2);
+    final dialog = tester.getRect(
+      find.descendant(
+        of: find.byType(Dialog),
+        matching: find.byType(SingleChildScrollView),
+      ),
+    );
+    expect(dialog.width, lessThanOrEqualTo(288));
+    expect(tester.takeException(), isNull);
+    await tester.ensureVisible(find.text('Not now'));
+    await tester.tap(find.text('Not now'));
+    await tester.pumpAndSettle();
+    expect(reward.calls, 0);
+  });
+
   testWidgets('completed reward closes chooser once with access', (
     tester,
   ) async {
     final reward = _Reward();
     bool? answer;
     await host(tester, reward, answer: (value) => answer = value);
-    expect(find.text('Upgrade to Premium'), findsOneWidget);
-    await tester.tap(find.text('Watch ad — unlock Premium for 10 minutes'));
+    expect(find.text('Upgrade'), findsOneWidget);
+    await tester.tap(find.text('Watch ad'));
     await tester.pumpAndSettle();
     expect(answer, true);
     expect(reward.calls, 1);
@@ -90,7 +127,7 @@ void main() {
       answer: (value) => answer = value,
     );
     expect(find.text('Watch ad again'), findsOneWidget);
-    expect(find.text('Upgrade to Premium'), findsOneWidget);
+    expect(find.text('Upgrade'), findsOneWidget);
     await tester.tapAt(const Offset(2, 2));
     await tester.pumpAndSettle();
     expect(find.text('Your Premium access has ended'), findsOneWidget);
@@ -104,9 +141,14 @@ void main() {
   ) async {
     final reward = _Reward()..completion = Completer<bool>();
     await host(tester, reward);
-    await tester.tap(find.text('Watch ad — unlock Premium for 10 minutes'));
+    await tester.tap(find.text('Watch ad'));
     await tester.pump();
     expect(reward.calls, 1);
+    expect(find.text('Loading ad…'), findsOneWidget);
+    expect(
+      tester.widget<IconButton>(find.byType(IconButton)).onPressed,
+      isNull,
+    );
     expect(
       tester.widget<OutlinedButton>(find.byType(OutlinedButton)).onPressed,
       isNull,

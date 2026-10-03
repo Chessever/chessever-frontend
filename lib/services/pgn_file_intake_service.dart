@@ -1,3 +1,4 @@
+import 'package:chessever2/widgets/paywall/pgn_import_access.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -237,6 +238,7 @@ class PgnFileIntakeService {
     String? sourceLabel,
     String? initialFolderId,
   }) async {
+    if (!await ensurePgnImportAccess(context) || !context.mounted) return false;
     final parsed = parsePgnsToChessGames(text);
     if (parsed.isEmpty) {
       if (context.mounted) {
@@ -355,7 +357,10 @@ class PgnFileIntakeService {
     }
 
     final navigator = navigatorKey.currentState;
-    if (navigator == null) return;
+    if (navigator == null || !navigator.mounted) return;
+    if (!await ensurePgnImportAccess(navigator.context) || !navigator.mounted) {
+      return;
+    }
 
     final games = parsed.map((e) => e.chessGame).toList();
 
