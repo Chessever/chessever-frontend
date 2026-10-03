@@ -186,7 +186,7 @@ class MostLikedPeriodBar extends ConsumerWidget {
 /// The Most liked page's ranking: the community ranking of games by how many
 /// people liked them. Every period, every earlier date and the Players view
 /// (everyone with a game in the ranking) are browsed the same by everyone;
-/// only opening a game beyond Today goes through the Premium guard. Every
+/// opening a game in any period goes through the Premium guard. Every
 /// period is a calendar one the date control walks: a day, a
 /// Monday-to-Sunday week, a month, a year.
 ///
@@ -301,14 +301,13 @@ class _PageBody extends ConsumerWidget {
   /// The ranking is the current day's (not an earlier day's).
   final bool isToday;
 
-  /// Opening games beyond Today requires Premium access.
+  /// Opening games in every period requires Premium access.
   final bool locked;
   final VoidCallback onUpgrade;
   final VoidCallback onRetry;
 
   Future<bool> _access(BuildContext context) async =>
-      isToday ||
-      await ensurePremiumGameAccess(
+      ensurePremiumGameAccess(
         context,
         featureId: 'most_liked_rankings',
         returnTo: discoveryReturnTo('most_liked'),

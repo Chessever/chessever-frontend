@@ -143,8 +143,8 @@ class LikesAboutPage extends ConsumerWidget {
               SizedBox(height: 20.h),
               Text(
                 'Browse every ranking for free: Today, Week, Month and Year, '
-                'earlier dates and the Players list. To open a game from '
-                'outside Today, watch an ad for temporary Premium access or '
+                'earlier dates and the Players list. To open any game, '
+                'watch an ad for temporary Premium access or '
                 'upgrade.',
                 style: AppTypography.textSmRegular.copyWith(
                   color: context.colors.textSecondary,

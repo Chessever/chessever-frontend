@@ -628,7 +628,7 @@ void main() {
   });
 
   testWidgets('a free account browses every period, every date and the '
-      'Players list; only opening an earlier game is gated', (tester) async {
+      'Players list; opening any game is gated', (tester) async {
     final container = await _pump(tester, subscribed: false);
     await tester.tap(find.bySemanticsLabel('Most liked, Today'));
     await _settle(tester);
@@ -651,6 +651,7 @@ void main() {
     await _settle(tester);
 
     for (final period in [
+      MostLikedPeriod.today,
       MostLikedPeriod.week,
       MostLikedPeriod.month,
       MostLikedPeriod.year,
