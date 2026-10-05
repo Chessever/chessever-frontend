@@ -872,13 +872,54 @@ class MoveStatisticsPanel extends HookConsumerWidget {
     // Mirrors the inline-games condition in `_buildListChildren` — the page
     // grid, the bottom reserve and the physics all hinge on the strip really
     // being there.
+    //
+    // One position, one games request. The strip can be on screen before the
+    // statistics answer (`hasInlinePage`), fed by the move-line endpoint; a
+    // deep position's statistics then land empty and `fenOnlyGames` turns
+    // true. Following that flag would re-ask the same position through the
+    // FEN endpoint under a strip the reader is already walking: the cards
+    // reload and the focused card loses the arrows. So the endpoint the strip
+    // first showed this position with is kept until the position or the
+    // filters change, and the strip stays up while that position reloads.
+    final stripMovesKey = GamebasePositionGamesQuery.fromFilters(
+      fen: state.currentFen,
+      moves: state.exploredMoves,
+      filters: state.filters,
+    );
+    final stripFenKey = GamebasePositionGamesQuery.fromFilters(
+      fen: state.currentFen,
+      filters: state.filters,
+      useFenEndpoint: true,
+    );
+    final stripEndpoint =
+        useRef<({GamebasePositionGamesQuery key, bool useFen})?>(null);
+    final heldEndpoint = stripEndpoint.value;
+    // A move-line page that turns out empty past the indexed window still
+    // hands over to the FEN endpoint: it had nothing to keep on screen.
+    final keptEndpoint =
+        heldEndpoint != null &&
+                heldEndpoint.key ==
+                    (heldEndpoint.useFen ? stripFenKey : stripMovesKey) &&
+                (heldEndpoint.useFen || hasInlinePage || !fenOnlyGames)
+            ? heldEndpoint
+            : null;
     final showInlineGames =
         fenOnlyGames ||
         hasInlinePage ||
+        (keptEndpoint != null && state.isLoading) ||
         (!state.isLoading &&
             sortedAggregates.isNotEmpty &&
             state.totalGames > 0 &&
             state.totalGames <= kExplorerInlineGamesLimit);
+    stripEndpoint.value =
+        showInlineGames
+            ? keptEndpoint ??
+                (
+                  key: fenOnlyGames ? stripFenKey : stripMovesKey,
+                  useFen: fenOnlyGames,
+                )
+            : null;
+    final gamesUseFenEndpoint = stripEndpoint.value?.useFen ?? fenOnlyGames;
     final showSkeleton = state.isLoading && !hasStaleData && !showInlineGames;
     final pagesGames = showInlineGames && pageMetrics != null;
 
@@ -1080,6 +1121,7 @@ class MoveStatisticsPanel extends HookConsumerWidget {
                         gamesSectionKey: gamesSectionKey,
                         showInlineGames: showInlineGames,
                         fenOnlyGames: fenOnlyGames,
+                        gamesUseFenEndpoint: gamesUseFenEndpoint,
                         gamesBoardSize: pageMetrics?.boardSize,
                         onGamesCardCountChanged: onGamesCardCountChanged,
                         gamesEvalWindow: evalWindow,
@@ -1101,6 +1143,7 @@ class MoveStatisticsPanel extends HookConsumerWidget {
     required bool nextStepCrossesLimit,
     required bool showInlineGames,
     bool fenOnlyGames = false,
+    bool gamesUseFenEndpoint = false,
     GlobalKey? gamesSectionKey,
     double? gamesBoardSize,
     ValueChanged<int>? onGamesCardCountChanged,
@@ -1126,7 +1169,7 @@ class MoveStatisticsPanel extends HookConsumerWidget {
             boardSize: gamesBoardSize,
             onCardCountChanged: onGamesCardCountChanged,
             evalWindow: gamesEvalWindow,
-            useFenEndpoint: true,
+            useFenEndpoint: gamesUseFenEndpoint,
             emptyMessage: 'No games match this position',
           ),
         ),
@@ -1189,7 +1232,9 @@ class MoveStatisticsPanel extends HookConsumerWidget {
     // Listed for every account at any depth; each card asks for Premium when
     // it is opened or walked.
     if (showInlineGames) {
-      children.add(divider());
+      // No rows above (statistics still loading): no rule to draw under them,
+      // and none to drop when the strip becomes the whole table.
+      if (children.isNotEmpty) children.add(divider());
       children.add(
         KeyedSubtree(
           key: gamesSectionKey,
@@ -1200,6 +1245,7 @@ class MoveStatisticsPanel extends HookConsumerWidget {
             boardSize: gamesBoardSize,
             onCardCountChanged: onGamesCardCountChanged,
             evalWindow: gamesEvalWindow,
+            useFenEndpoint: gamesUseFenEndpoint,
           ),
         ),
       );
