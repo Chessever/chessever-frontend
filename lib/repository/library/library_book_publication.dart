@@ -43,6 +43,7 @@ class LibraryBookMetadata {
     this.coverUrl = '',
     this.authorCredit,
     this.authorPhotoUrl = '',
+    this.authorAbout,
   });
 
   final String title;
@@ -61,6 +62,11 @@ class LibraryBookMetadata {
   /// The credited author's own photo. Set only by its upload, never sent.
   final String authorPhotoUrl;
 
+  /// The author's description of themselves, shown on their author page and
+  /// under "About the author". Null when the server predates it (it then
+  /// refuses the key), so it is only sent when known or when one is written.
+  final String? authorAbout;
+
   factory LibraryBookMetadata.fromJson(Map<String, dynamic> json) =>
       LibraryBookMetadata(
         title: json['title'] as String? ?? '',
@@ -75,6 +81,9 @@ class LibraryBookMetadata {
             ? LibraryAuthorCredit.parse(json['authorCredit'])
             : null,
         authorPhotoUrl: json['authorPhotoUrl'] as String? ?? '',
+        authorAbout: json.containsKey('authorBio')
+            ? json['authorBio'] as String? ?? ''
+            : null,
       );
 
   Map<String, dynamic> toJson() => {
@@ -87,6 +96,8 @@ class LibraryBookMetadata {
     'publishedYear': publishedYear,
     'coverUrl': _nullable(coverUrl),
     if (authorCredit != null) 'authorCredit': authorCredit!.name,
+    // Null clears what this collection wrote about the author.
+    if (authorAbout != null) 'authorAbout': _nullable(authorAbout!),
   };
 
   static String? _nullable(String value) =>
