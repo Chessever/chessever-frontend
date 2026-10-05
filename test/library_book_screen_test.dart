@@ -290,7 +290,7 @@ void main() {
     await _pump(tester, publisher);
     expect(find.text('Foreword'), findsNothing);
     expect(find.text('Publisher'), findsNothing);
-    expect(find.text('Optional'), findsNWidgets(3));
+    expect(find.text('Optional'), findsNWidgets(4));
     await _tap(tester, 'Save private draft');
     expect(publisher.saves.single.metadata.foreword, 'Kept foreword');
     expect(publisher.saves.single.metadata.publisher, 'ChessEver');
@@ -460,6 +460,52 @@ void main() {
       final sent = publisher.saves.single.metadata;
       expect(sent.authorCredit, isNull);
       expect(sent.toJson().containsKey('authorCredit'), isFalse);
+    });
+
+    testWidgets('an older server never receives an empty description', (
+      tester,
+    ) async {
+      // An older server refuses the key: an empty one is never sent.
+      final older = _Publisher();
+      await _pump(tester, older);
+      expect(find.text('About the author'), findsOneWidget);
+      await _tap(tester, 'Save private draft');
+      expect(
+        older.saves.single.metadata.toJson().containsKey('authorAbout'),
+        isFalse,
+      );
+    });
+
+    testWidgets('a server that knows descriptions gets the edited one back', (
+      tester,
+    ) async {
+      // Null (an emptied field) clears what the collection wrote.
+      final publisher = _Publisher()
+        ..publication = LibraryBookPublication(
+          status: 'draft',
+          bookId: 'book-1',
+          metadata: LibraryBookMetadata.fromJson(const {
+            'title': 'My study',
+            'author': 'Owner',
+            'about': 'A chess study',
+            'authorBio': 'Coach from Baku.',
+          }),
+        );
+      await _pump(tester, publisher);
+      expect(find.text('Coach from Baku.'), findsOneWidget);
+      await tester.enterText(
+        find.widgetWithText(TextFormField, 'Coach from Baku.'),
+        '  Coach and author.  ',
+      );
+      await _tap(tester, 'Save private draft');
+      expect(
+        publisher.saves.single.metadata.toJson()['authorAbout'],
+        'Coach and author.',
+      );
+      expect(
+        const LibraryBookMetadata(title: 'T', authorAbout: ' ').toJson(),
+        containsPair('authorAbout', null),
+      );
     });
 
     testWidgets('a server that knows credits gets "self" back for "Me"', (

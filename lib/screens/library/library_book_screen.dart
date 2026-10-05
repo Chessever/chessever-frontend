@@ -71,7 +71,7 @@ Future<void> openLibraryBookEditor(
 /// page. Foreword and publisher are not edited here: the publisher is always
 /// ChessEver's own editor, and a foreword belongs to a printed book, not to
 /// a folder of games. Whatever the server already holds for them is kept.
-enum _Field { title, subtitle, author, year, about }
+enum _Field { title, subtitle, author, year, about, authorAbout }
 
 /// Which preview the field is drawn in: the list row or the collection page.
 const _listFields = {_Field.title, _Field.author};
@@ -183,6 +183,7 @@ class _LibraryBookScreenState extends ConsumerState<LibraryBookScreen> {
       _Field.subtitle: m.subtitle,
       _Field.author: m.author,
       _Field.about: m.about,
+      _Field.authorAbout: m.authorAbout ?? '',
       _Field.year: m.publishedYear?.toString() ?? '',
     };
     for (final entry in values.entries) {
@@ -353,6 +354,13 @@ class _LibraryBookScreenState extends ConsumerState<LibraryBookScreen> {
       subtitle: _text(_Field.subtitle).trim(),
       author: _text(_Field.author).trim(),
       about: _text(_Field.about).trim(),
+      // An older server refuses the key, so an empty one it never showed
+      // is left out.
+      authorAbout:
+          _publication?.metadata.authorAbout != null ||
+              _text(_Field.authorAbout).trim().isNotEmpty
+          ? _text(_Field.authorAbout).trim()
+          : null,
       // Not editable here; carried through so a save never erases them.
       foreword: saved?.foreword ?? '',
       publisher: saved?.publisher ?? '',
@@ -525,6 +533,20 @@ class _LibraryBookScreenState extends ConsumerState<LibraryBookScreen> {
       if (next == LibraryAuthorCredit.other && _authorPrefilled) {
         author.clear();
         _authorPrefilled = false;
+      }
+      // The description is about whoever was credited: one that was only
+      // loaded does not follow the credit to another person, and comes back
+      // with the credit it was loaded for.
+      final about = _fields[_Field.authorAbout]!;
+      final loaded = _publication?.metadata.authorAbout?.trim() ?? '';
+      final loadedFor =
+          _publication?.metadata.authorCredit ?? LibraryAuthorCredit.self;
+      if (loaded.isNotEmpty) {
+        if (next != loadedFor && about.text.trim() == loaded) {
+          about.clear();
+        } else if (next == loadedFor && about.text.trim().isEmpty) {
+          about.text = loaded;
+        }
       }
       _suggestions = const [];
       _suggestionsFor = '';
@@ -768,6 +790,8 @@ class _LibraryBookScreenState extends ConsumerState<LibraryBookScreen> {
         return _validateForReview && value.isEmpty
             ? 'Describe this collection'
             : null;
+      case _Field.authorAbout:
+        return null;
       case _Field.year:
         if (value.isEmpty) return null;
         final year = int.tryParse(value);
@@ -858,7 +882,9 @@ class _LibraryBookScreenState extends ConsumerState<LibraryBookScreen> {
                 ),
                 const _TidySpacesFormatter(),
               ],
-              _Field.about => [const _TidySpacesFormatter(multiline: true)],
+              _Field.about || _Field.authorAbout => [
+                const _TidySpacesFormatter(multiline: true),
+              ],
               _ => [const _TidySpacesFormatter()],
             },
             // Author is a proper name: every word starts upper-case, so
@@ -1071,6 +1097,18 @@ class _LibraryBookScreenState extends ConsumerState<LibraryBookScreen> {
                               limit: 60,
                               above: _creditSwitch(),
                               below: _authorExtras(published),
+                            ),
+                            _field(
+                              _Field.authorAbout,
+                              label: 'About the author',
+                              optional: true,
+                              where: _creditsOther
+                                  ? 'A few lines about them, on their author page and under “About the author” here. Leave it empty to keep what their other collections say.'
+                                  : 'A few lines about you, on your author page and under “About the author” here.',
+                              hint:
+                                  'e.g. International Master and coach from Baku, writing about endgames since 2015.',
+                              lines: 3,
+                              limit: 4000,
                             ),
                             _field(
                               _Field.year,
