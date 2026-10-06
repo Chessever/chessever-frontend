@@ -1,6 +1,11 @@
 import { handoffNotification } from "./notification_handoff.ts";
+import { HISTORICAL_EVENT_TYPES } from "./historical_guard.ts";
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
+import {
+  favoriteNamesForBoard,
+  groupFavoriteBoardCopy,
+} from "./favorite_copy.ts";
 import { collectFavoriteMatches } from "./favorite_match.ts";
 import { filterGameStartedPlayerRecipients } from "./player_game_recipients.ts";
 import { chunk, packForUrlBudget } from "./postgrest_in.ts";
@@ -283,6 +288,23 @@ async function processItem(item: OutboxItem) {
 
   try {
     const context = await buildContext(item);
+    if (HISTORICAL_EVENT_TYPES.has(item.event_type)) {
+      // Same DB policy as the producer also protects queued/manual replay rows.
+      const reason = await runQuery<string>("Historical notification guard", () =>
+        supabase.rpc("notification_replay_reason", {
+          p_round_id: item.round_id ?? context.round?.id ?? null,
+          p_tour_id: item.tour_id ?? context.tourId ?? null,
+          p_group_id: item.group_broadcast_id ?? context.groupBroadcastId ?? null,
+          p_event_type: item.event_type,
+          p_origin: typeof item.payload?.notification_origin === "string"
+            ? item.payload.notification_origin : null,
+        })
+      );
+      if (reason) {
+        await markSkipped(item.id, reason);
+        return { id: item.id, status: "skipped", reason };
+      }
+    }
     if (item.event_type === "round_started") {
       if (!item.round_id) {
         await markSkipped(item.id, "missing_round_id");
@@ -452,22 +474,37 @@ async function processItem(item: OutboxItem) {
           const board = context.roundBoards.get(gameId);
           // Unreachable: gameIds were filtered against roundBoards above.
           if (!board) continue;
-          await sendOneSignal(userIds, {
+          const fallback = {
             title,
             body: `${formatPlayerName(board.white)} vs ${
               formatPlayerName(board.black)
             } is live.`,
-            url: null,
-            // Board-level payload: tapping opens that game (deep_link_service
-            // routes `game_started` by game_id) and the push collapses per
-            // board instead of once per round.
-            data: {
-              ...buildRoundStartedNotificationData(context, roundId),
-              type: "game_started",
-              game_id: gameId,
+          };
+          const copyGroups = groupFavoriteBoardCopy(
+            userIds,
+            context.playerFavoriteMap,
+            {
+              board,
+              eventType: "game_started",
+              eventHeader: title,
+              fallback,
             },
-            androidChannelId: channelForEvent("round_started"),
-          });
+          );
+          for (const group of copyGroups) {
+            await sendOneSignal(group.userIds, {
+              ...group.copy,
+              url: null,
+              // Board-level payload: tapping opens that game (deep_link_service
+              // routes `game_started` by game_id) and the push collapses per
+              // board instead of once per round.
+              data: {
+                ...buildRoundStartedNotificationData(context, roundId),
+                type: "game_started",
+                game_id: gameId,
+              },
+              androidChannelId: channelForEvent("round_started"),
+            });
+          }
           sentBoards.add(gameId);
         }
 
@@ -769,7 +806,7 @@ async function processItem(item: OutboxItem) {
 
       // Title clearly signals results, not a new round starting.
       const title = roundName
-        ? `${eventName} — ${roundName} Results`
+        ? `${eventName} - ${roundName} Results`
         : `${eventName} Results`;
 
       // Results are embedded in the payload by the DB trigger.
@@ -842,13 +879,25 @@ async function processItem(item: OutboxItem) {
         formatPlayerName(black)
       }: ${result}`;
 
-      await sendOneSignal(Array.from(filteredUserIds), {
-        title,
-        body,
-        url: null,
-        data: { type: "game_finished", game_id: item.game_id },
-        androidChannelId: channelForEvent("game_finished"),
-      });
+      const copyGroups = groupFavoriteBoardCopy(
+        filteredUserIds,
+        context.playerFavoriteMap,
+        {
+          board: { white, black },
+          eventType: "game_finished",
+          status,
+          eventHeader: buildEventHeader(context.eventName, context.round?.name),
+          fallback: { title, body },
+        },
+      );
+      for (const group of copyGroups) {
+        await sendOneSignal(group.userIds, {
+          ...group.copy,
+          url: null,
+          data: { type: "game_finished", game_id: item.game_id },
+          androidChannelId: channelForEvent("game_finished"),
+        });
+      }
 
       await markSent(item.id);
       return {
@@ -921,7 +970,29 @@ async function processItem(item: OutboxItem) {
     }
 
     const notification = buildNotification(context, item);
-    await sendOneSignal(Array.from(filteredUserIds), notification);
+    if (item.event_type === "game_started") {
+      const payload = item.payload ?? {};
+      const copyGroups = groupFavoriteBoardCopy(
+        filteredUserIds,
+        context.playerFavoriteMap,
+        {
+          board: {
+            white: (payload.player_white as string) ??
+              context.game?.player_white ?? "White",
+            black: (payload.player_black as string) ??
+              context.game?.player_black ?? "Black",
+          },
+          eventType: "game_started",
+          eventHeader: buildEventHeader(context.eventName, context.round?.name),
+          fallback: notification,
+        },
+      );
+      for (const group of copyGroups) {
+        await sendOneSignal(group.userIds, { ...notification, ...group.copy });
+      }
+    } else {
+      await sendOneSignal(Array.from(filteredUserIds), notification);
+    }
 
     // Record a cooldown window so that round_started skips these users.
     // Only record for the users who actually received this push (1-favorite users).
@@ -1262,18 +1333,30 @@ async function buildContext(item: OutboxItem) {
     roundBoards = roundPlayers.roundBoards;
   }
 
-  const { eventUserIds, playerUserIds } = await resolveRecipients({
-    groupBroadcastId,
-    eventName,
-    fideIds: Array.from(fideIdSet),
-    players: Array.from(playerNames),
-  });
+  const { eventUserIds, playerUserIds, playerFavoriteRows } =
+    await resolveRecipients({
+      groupBroadcastId,
+      eventName,
+      fideIds: Array.from(fideIdSet),
+      players: Array.from(playerNames),
+    });
 
-  // Per-user favorite names are only used to word round_started / heads-up.
+  // Per-user favorite names word board alerts as well as round heads-up.
   // game_started must not load every board in the round — Olympiad R1 Open is
   // 404 games, and doing that on each of 200 start rows is what left those
   // rows stuck in `processing` on 2026-09-16.
   let playerFavoriteMap = new Map<string, string[]>();
+  if (
+    item.event_type === "game_started" || item.event_type === "game_finished"
+  ) {
+    // Reuse the board-scoped recipient match: no extra query or round scan.
+    for (const [uid, rows] of playerFavoriteRows) {
+      playerFavoriteMap.set(
+        uid,
+        favoriteNamesForBoard(rows, game?.players ?? []),
+      );
+    }
+  }
   if (
     (item.event_type === "round_started" ||
       item.event_type === "round_heads_up") &&
@@ -1484,6 +1567,10 @@ async function resolveRecipients(args: {
 }) {
   const eventUserIds = new Set<string>();
   const playerUserIds = new Set<string>();
+  const playerFavoriteRows = new Map<
+    string,
+    Array<{ fide_id: string | null; player_name: string | null }>
+  >();
 
   if (args.groupBroadcastId) {
     // Match every id shape used across Calendar / For You / Current:
@@ -1543,7 +1630,12 @@ async function resolveRecipients(args: {
           .range(from, to),
     });
     for (const row of matches) {
-      if (row.user_id) playerUserIds.add(row.user_id);
+      if (row.user_id) {
+        playerUserIds.add(row.user_id);
+        const rows = playerFavoriteRows.get(row.user_id) ?? [];
+        rows.push(row);
+        playerFavoriteRows.set(row.user_id, rows);
+      }
     }
   } catch (error) {
     // Event-starred users are already in eventUserIds. A lookup failure
@@ -1583,7 +1675,7 @@ async function resolveRecipients(args: {
     }
   }
 
-  return { eventUserIds, playerUserIds };
+  return { eventUserIds, playerUserIds, playerFavoriteRows };
 }
 
 type TimeControlLookup = {
@@ -1648,7 +1740,7 @@ function classifyTimeControlString(
   // 1. Explicit speed words win outright. Checked slowest-first so a mixed
   //    label ("classical & rapid", "rapid & blitz") resolves to the slower
   //    bucket.
-  if (/\b(classical|standard|clásico|classic)\b/.test(s)) return "classical";
+  if (/\b(classical|standard|cl\u00e1sico|classic)\b/.test(s)) return "classical";
   if (/\brapid\b/.test(s)) return "rapid";
   if (/\bblitz\b/.test(s)) return "blitz";
   if (/\bbullet\b/.test(s)) return "blitz"; // app has no bullet bucket
@@ -1662,7 +1754,7 @@ function classifyTimeControlString(
   //    increment suffix is not matched.
   if (
     /\d+\s*\/\s*\d+/.test(s) ||
-    /\d+\s*(?:moves?|m[oó]vimientos?|jugadas?|z(?:ü|u)ge|mvs)\b/.test(s)
+    /\d+\s*(?:moves?|m[o\u00f3]vimientos?|jugadas?|z(?:\u00fc|u)ge|mvs)\b/.test(s)
   ) {
     return "classical";
   }
@@ -1685,7 +1777,7 @@ function classifyTimeControlString(
   // 5. Increment seconds: number anchored to a second marker.
   let incrementSeconds = 0;
   const secMatch = s.match(
-    /(\d+)\s*(?:segundos|seconds|second|secs|sec|seg|sek|s\b|''|"|″)/,
+    /(\d+)\s*(?:segundos|seconds|second|secs|sec|seg|sek|s\b|''|"|\u2033)/,
   );
   if (secMatch) incrementSeconds = parseFloat(secMatch[1]);
 
@@ -2189,45 +2281,45 @@ const ANDROID_CHANNELS = {
 type Template = { title: string; body: string };
 
 const ROUND_STARTED_EVENT: Template[] = [
-  { title: "{e} — {r}", body: "Games are live" },
+  { title: "{e} - {r}", body: "Games are live" },
   { title: "{e} is live", body: "{r}: First moves have been played" },
-  { title: "{e} — {r}", body: "Games just started" },
+  { title: "{e} - {r}", body: "Games just started" },
   { title: "{e}", body: "{r} started. Watch live." },
-  { title: "{e} — {r}", body: "The wait is over. Games are live." },
+  { title: "{e} - {r}", body: "The wait is over. Games are live." },
   { title: "{e} is live", body: "{r}. Don't miss it." },
-  { title: "{e} — {r}", body: "It's live. Get in here." },
+  { title: "{e} - {r}", body: "It's live. Get in here." },
   { title: "{e}", body: "{r} is underway. Follow the games live." },
-  { title: "{e} — {r}", body: "The round just started" },
+  { title: "{e} - {r}", body: "The round just started" },
   { title: "{e}", body: "{r} started. Games are live now." },
 ];
 
 const ROUND_HEADS_UP_PLAYER: Template[] = [
-  { title: "{e} — {r}", body: "{p} at the board in {t}" },
+  { title: "{e} - {r}", body: "{p} at the board in {t}" },
   { title: "Heads up", body: "{p} in {e} {r}. {t} to go." },
   { title: "{e} in {t}", body: "{r}: {p} on the schedule" },
-  { title: "{e} — {r}", body: "{p} in about {t}. Don't forget." },
-  { title: "Heads up", body: "{p} in {t}. {e} — {r}." },
-  { title: "{e} — {r}", body: "{p} in about {t}" },
+  { title: "{e} - {r}", body: "{p} in about {t}. Don't forget." },
+  { title: "Heads up", body: "{p} in {t}. {e} - {r}." },
+  { title: "{e} - {r}", body: "{p} in about {t}" },
   { title: "{e}", body: "{r}: {p} at the board in {t}. Got time?" },
   { title: "Heads up", body: "{r} in {t}. {p} at the board." },
-  { title: "{e} — {r}", body: "{t} to go. {p} on the schedule." },
+  { title: "{e} - {r}", body: "{t} to go. {p} on the schedule." },
   { title: "Almost time", body: "{p} in {e} {r}. About {t}." },
-  { title: "{e} — {r}", body: "{p} coming up in {t}" },
-  { title: "Heads up", body: "{p} in {t}. {e} — {r}." },
+  { title: "{e} - {r}", body: "{p} coming up in {t}" },
+  { title: "Heads up", body: "{p} in {t}. {e} - {r}." },
   { title: "{e}", body: "{r}: {p} in {t}. Clear your schedule." },
-  { title: "{e} — {r}", body: "{t} until {p} at the board" },
+  { title: "{e} - {r}", body: "{t} until {p} at the board" },
   { title: "Heads up", body: "{p} in {e} {r}. About {t} out." },
 ];
 
 const ROUND_HEADS_UP_EVENT: Template[] = [
   { title: "Heads up", body: "{e} {r} starts in {t}" },
-  { title: "{e} — {r}", body: "Starting in {t}" },
+  { title: "{e} - {r}", body: "Starting in {t}" },
   { title: "{e} in {t}", body: "{r} starting soon" },
   { title: "Heads up", body: "{e} {r} in {t}. Set a reminder." },
-  { title: "{e} — {r}", body: "About {t} to go" },
+  { title: "{e} - {r}", body: "About {t} to go" },
   { title: "{e}", body: "{r} starts in {t}. Don't miss it." },
   { title: "Heads up", body: "{e} {r} in about {t}" },
-  { title: "{e} — {r}", body: "{t} to go" },
+  { title: "{e} - {r}", body: "{t} to go" },
   { title: "Almost time", body: "{e} {r} in {t}" },
   { title: "{e}", body: "{r}: {t} until games begin" },
 ];
@@ -2252,8 +2344,8 @@ function fillTemplate(
       .replace(/\{t\}/g, vars.t ?? "");
     // Clean up dangling separators when round name is empty
     result = result
-      .replace(/ — (?=\.|,|$)/g, "") // "Event — ." → "Event."
-      .replace(/ — \s*$/g, "") // "Event — " → "Event"
+      .replace(/ - (?=\.|,|$)/g, "") // "Event - ." → "Event."
+      .replace(/ - \s*$/g, "") // "Event - " → "Event"
       .replace(/:\s*\./g, ".") // ": ." → "."
       .replace(/:\s*$/g, "") // trailing ":"
       .replace(/\s{2,}/g, " ") // collapse double spaces
@@ -2302,8 +2394,8 @@ function formatResultSymbol(status: string): string {
   if (s === "1-0" || s === "W") return "1-0";
   if (s === "0-1" || s === "B") return "0-1";
   if (
-    s === "1/2-1/2" || s === "½-½" || s === "D" || s.toUpperCase() === "DRAW"
-  ) return "½-½";
+    s === "1/2-1/2" || s === "\u00bd-\u00bd" || s === "D" || s.toUpperCase() === "DRAW"
+  ) return "\u00bd-\u00bd";
   return s || "*";
 }
 
@@ -2333,7 +2425,7 @@ function buildResultsBody(
     return `${w} ${sym} ${b}`;
   });
 
-  let body = parts.join(" · ");
+  let body = parts.join("; ");
   if (rest > 0) body += ` +${rest} more`;
   return body;
 }
@@ -2424,7 +2516,7 @@ function buildEventHeader(
   eventName: string | null,
   roundName: string | null | undefined,
 ): string | null {
-  if (eventName && roundName) return `${eventName} — ${roundName}`;
+  if (eventName && roundName) return `${eventName} - ${roundName}`;
   if (eventName) return eventName;
   return null;
 }
@@ -2452,7 +2544,7 @@ function buildRoundEventDisplayName(
     return eventName;
   }
 
-  return `${eventName} — ${sectionName}`;
+  return `${eventName} - ${sectionName}`;
 }
 
 function extractTourSection(
@@ -2466,7 +2558,7 @@ function extractTourSection(
   const normalizedTour = normalizeEventLabel(tourName);
   if (!normalizedTour.startsWith(normalizedEvent)) return null;
 
-  return tourName.slice(eventName.length).replace(/^\s*[-–—:|]\s*/, "")
+  return tourName.slice(eventName.length).replace(/^\s*[-\u2013\u2014:|]\s*/, "")
     .trim() || null;
 }
 

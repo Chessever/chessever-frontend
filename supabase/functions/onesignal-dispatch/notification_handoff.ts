@@ -15,7 +15,7 @@ export async function handoffNotification(
   };
   const hash=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(canonical({outboxId,notification,recipients})));
   const eventKey=`${outboxId}:${Array.from(new Uint8Array(hash),b=>b.toString(16).padStart(2,'0')).join('')}`;
-  const res=await fetch(`${endpoint.replace(/\/$/,'')}/internal/notifications`,{method:'POST',headers:{authorization:`Bearer ${secret}`,'content-type':'application/json'},
+  const res=await fetch(`${endpoint.replace(/\/$/,'')}/internal/notifications`,{method:'POST',headers:{authorization:`Bearer ${secret}`,'content-type':'application/json; charset=utf-8'},
     body:JSON.stringify({eventKey,userIds:recipients,title:notification.title,body:notification.body,data:notification.data,url:notification.url??'',
       ttlSeconds:['game_started','round_started'].includes(String(notification.data.type))?900:86400,
       iosSound:notification.iosSound,androidSound:notification.androidSound}),signal:AbortSignal.timeout(15000)});
