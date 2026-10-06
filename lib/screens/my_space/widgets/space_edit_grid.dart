@@ -33,6 +33,8 @@ class SpaceEditItem {
     required this.builder,
     this.band = 0,
     this.wide = false,
+    this.selectable = true,
+    this.radius,
   });
 
   final String key;
@@ -49,6 +51,14 @@ class SpaceEditItem {
   /// others take (a saved row among grid cards). Its circle stands in a
   /// lane before it.
   final bool wide;
+
+  /// Wears a selection circle and can be removed. A card that cannot (one
+  /// of the page's own) still moves, and a tap on it in Edit does nothing.
+  final bool selectable;
+
+  /// The card's corner radius, so its socket, its lifted shadow and an
+  /// empty slot beside it share its shape. Null: the cards' usual 8.
+  final double? radius;
 }
 
 /// Where a card's selection circle stands.
@@ -65,6 +75,11 @@ enum SpaceEditMark {
   /// board (grid and board view), which keep their width and their place,
   /// so Edit reflows nothing.
   board,
+
+  /// Over the card's own top-left corner, whatever it draws: every card
+  /// keeps its width and its place, so turning Edit on moves nothing (My
+  /// Space's home).
+  corner,
 }
 
 /// How long a finger rests on a card before it lifts.
@@ -230,6 +245,15 @@ List<List<String>> spaceEditRows(
   return rows;
 }
 
+/// Where [lifted] goes in [order] to stand right after [anchor]: the index
+/// a drop on [anchor]'s free half moves it to.
+int spaceEditSlotTarget(List<String> order, String lifted, String anchor) {
+  final from = order.indexOf(lifted);
+  final at = order.indexOf(anchor);
+  if (from < 0 || at < 0) return from;
+  return from < at ? at : at + 1;
+}
+
 /// The board a card draws, in [root]'s coordinates: the largest square box
 /// inside it at least half its width. Null for a card with no board.
 /// Read after layout (or from a layout callback).
@@ -295,6 +319,10 @@ class SpaceEditGrid extends StatefulWidget {
     this.controller,
     this.closing = false,
     this.onClosed,
+    this.editing = true,
+    this.emptySlots = false,
+    this.footer,
+    this.scrollCacheExtent,
   });
 
   final List<SpaceEditItem> items;
@@ -323,6 +351,19 @@ class SpaceEditGrid extends StatefulWidget {
   final ScrollController? controller;
   final bool closing;
   final VoidCallback? onClosed;
+
+  /// Off, the grid is the page itself: the same cards in the same places,
+  /// each taking its own taps, with no circles and no hold. Turning it on
+  /// only grows the circles in, so a page that is its own Edit never shifts.
+  final bool editing;
+
+  /// In Edit, the free half of a row whose one card takes half shows as an
+  /// empty slot: where another half card can go.
+  final bool emptySlots;
+
+  /// Rides after the last row (an empty page's line, a loading plate).
+  final Widget? footer;
+  final ScrollCacheExtent? scrollCacheExtent;
 
   @override
   State<SpaceEditGrid> createState() => _SpaceEditGridState();
@@ -365,6 +406,7 @@ class _SpaceEditGridState extends State<SpaceEditGrid>
   Widget? _liftedCell;
   Size _liftedSize = Size.zero;
   double _liftedLane = 0;
+  double _liftedRadius = 0;
   Offset _grab = Offset.zero;
 
   /// A card of a one-column run (a list, a wide row) is carried straight up
@@ -388,6 +430,16 @@ class _SpaceEditGridState extends State<SpaceEditGrid>
   Timer? _enterDone;
   Timer? _closeDone;
   bool _closedSent = false;
+
+  /// The grid as last laid out, for a drag to find its empty slots.
+  int _columns = 1;
+  double _cellWidth = 0;
+  double _gapNow = 0;
+
+  /// Whether the circles (and empty slots) are built: through Edit, and
+  /// until they have shrunk away after it.
+  bool _marks = false;
+  Timer? _leaveDone;
 
   bool get _still => MediaQuery.maybeDisableAnimationsOf(context) ?? false;
 
@@ -422,8 +474,9 @@ class _SpaceEditGridState extends State<SpaceEditGrid>
     );
     _land.addListener(_onLanding);
     _autoscroll = createTicker(_onAutoscroll);
+    _marks = widget.editing;
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
+      if (!mounted || !widget.editing) return;
       widget.closing ? _close() : _open();
     });
   }
@@ -449,7 +502,11 @@ class _SpaceEditGridState extends State<SpaceEditGrid>
     }
     final lifted = _lifted;
     if (lifted != null && !now.contains(lifted)) _cancelLift();
-    if (widget.closing != old.closing) widget.closing ? _close() : _open();
+    if (widget.editing != old.editing) {
+      widget.editing ? _open() : _leave();
+    } else if (widget.editing && widget.closing != old.closing) {
+      widget.closing ? _close() : _open();
+    }
   }
 
   @override
@@ -458,6 +515,7 @@ class _SpaceEditGridState extends State<SpaceEditGrid>
     _glideOff?.cancel();
     _enterDone?.cancel();
     _closeDone?.cancel();
+    _leaveDone?.cancel();
     _hold?.dispose();
     _autoscroll.dispose();
     _enter.dispose();
@@ -472,8 +530,10 @@ class _SpaceEditGridState extends State<SpaceEditGrid>
 
   void _open() {
     _closeDone?.cancel();
+    _leaveDone?.cancel();
     _closedSent = false;
     _enterDone?.cancel();
+    if (!_marks) setState(() => _marks = true);
     if (_still) {
       _enter.value = 1;
       return;
@@ -500,6 +560,34 @@ class _SpaceEditGridState extends State<SpaceEditGrid>
     _enter.animateTo(0).whenCompleteOrCancel(_sendClosed);
     _closeDone?.cancel();
     _closeDone = Timer(const Duration(milliseconds: 520), _sendClosed);
+  }
+
+  /// Edit ends on a grid that is also the page: a held card goes back, the
+  /// circles shrink away, and the cards take their own taps again at once.
+  void _leave() {
+    if (_lifted != null) setState(_cancelLift);
+    _hold?.dispose();
+    _hold = null;
+    _enterDone?.cancel();
+    _leaveDone?.cancel();
+    void gone() {
+      _leaveDone?.cancel();
+      if (mounted && !widget.editing && _marks) {
+        setState(() => _marks = false);
+      }
+    }
+
+    if (_still) {
+      _enter.value = 0;
+      gone();
+      return;
+    }
+    // Leaving is quicker than arriving: the reader has already decided.
+    _enter.animateTo(0).whenCompleteOrCancel(gone);
+    _leaveDone = Timer(const Duration(milliseconds: 420), () {
+      _enter.value = 0;
+      gone();
+    });
   }
 
   void _sendClosed() {
@@ -553,6 +641,7 @@ class _SpaceEditGridState extends State<SpaceEditGrid>
   /// A finger came down on [key]'s card: the grid's hold starts counting.
   void _holdDown(PointerDownEvent event, String key) {
     if (widget.onReorder == null ||
+        !widget.editing ||
         widget.closing ||
         _lifted != null ||
         _landing) {
@@ -587,6 +676,7 @@ class _SpaceEditGridState extends State<SpaceEditGrid>
     _grab = box.globalToLocal(global);
     _liftedLeft = _columnOf(item) ? box.localToGlobal(Offset.zero).dx : null;
     _liftedLane = _markOf(item) == SpaceEditMark.lane ? kSpaceEditLane : 0;
+    _liftedRadius = item.radius ?? 8.br;
     _finger.value = global;
     _liftedCell = _cellFace(
       item,
@@ -642,19 +732,61 @@ class _SpaceEditGridState extends State<SpaceEditGrid>
     ];
     final from = order.indexOf(key);
     if (from < 0) return;
-    final to = spaceNearestSlot(
-      centers,
-      center,
-      from,
-      hysteresis: (widget.gap ?? 12.sp) * 0.5,
-    );
-    if (to == from || centers[to] == away) return;
+    final hysteresis = (widget.gap ?? 12.sp) * 0.5;
+    var to = spaceNearestSlot(centers, center, from, hysteresis: hysteresis);
+    if (centers[to] == away) to = from;
+    if (widget.emptySlots) {
+      to = _nearestFreeHalf(order, key, center, to, centers, hysteresis);
+    }
+    if (to == from) return;
     HapticFeedbackService.selection();
     setState(() {
       _order = [...order]
         ..removeAt(from)
         ..insert(to, key);
     });
+  }
+
+  /// [to], or the place beside a lone half card when the lifted card's
+  /// centre is nearer that card's free half than to [to]'s card: a drop on
+  /// an empty slot lands in it, beside its neighbour.
+  int _nearestFreeHalf(
+    List<String> order,
+    String key,
+    Offset center,
+    int to,
+    List<Offset> centers,
+    double hysteresis,
+  ) {
+    final lifted = _byKey[key];
+    if (lifted == null || lifted.wide || _columns < 2) return to;
+    final band = _bands[key] ?? 0;
+    final from = order.indexOf(key);
+    // Rows as they would stand without the lifted card, so its own empty
+    // row, and the slot its leaving opens, read as they will.
+    final rest = [
+      for (final k in order)
+        if (k != key) k,
+    ];
+    var best = to;
+    var bestDistance = (centers[to] - center).distance;
+    for (final row in spaceEditRows(rest, _byKey, _columns)) {
+      final last = row.last;
+      final item = _byKey[last];
+      if (item == null || item.wide || row.length >= _columns) continue;
+      if ((_bands[last] ?? 0) != band) continue;
+      final box = _cellBox(last);
+      if (box == null) continue;
+      final slot =
+          box.localToGlobal(box.size.center(Offset.zero)) +
+          Offset(_cellWidth + _gapNow, 0);
+      final d = (slot - center).distance;
+      if (d + hysteresis < bestDistance) {
+        bestDistance = d;
+        best = spaceEditSlotTarget(order, key, last);
+      }
+    }
+    return from == best ? from : best;
   }
 
   void _onAutoscroll(Duration _) {
@@ -758,7 +890,9 @@ class _SpaceEditGridState extends State<SpaceEditGrid>
   ) {
     final reorder = widget.onReorder;
     final item = _byKey[key];
-    if (reorder == null || item == null || _lifted != null) return const {};
+    if (reorder == null || item == null || _lifted != null || !widget.editing) {
+      return const {};
+    }
     final band = spaceEditBand(order, _bands, key);
     final at = band.indexOf(key);
     if (at < 0) return const {};
@@ -802,6 +936,8 @@ class _SpaceEditGridState extends State<SpaceEditGrid>
       enter: _enter,
       faceCircle: widget.faceCircle,
       faceTop: widget.faceTop,
+      editing: widget.editing,
+      marks: _marks,
     );
   }
 
@@ -818,12 +954,16 @@ class _SpaceEditGridState extends State<SpaceEditGrid>
       glide: _glide,
       face: _cellFace(item, selected: selected, width: width),
       selected: selected,
+      editing: widget.editing,
       moves: _moves(k, order),
       onToggle: () {
+        if (!item.selectable) return;
         HapticFeedbackService.selection();
         widget.onToggle(k);
       },
-      onPointerDown: widget.onReorder == null ? null : (e) => _holdDown(e, k),
+      onPointerDown: widget.onReorder == null || !widget.editing
+          ? null
+          : (e) => _holdDown(e, k),
     );
   }
 
@@ -841,8 +981,14 @@ class _SpaceEditGridState extends State<SpaceEditGrid>
         final columns = itemWidth != null
             ? math.max(1, ((inner + gap) / (itemWidth + gap)).floor())
             : math.max(1, widget.columns);
-        final cellWidth = itemWidth ?? (inner - (columns - 1) * gap) / columns;
+        final cellWidth = math.max(
+          0.0,
+          itemWidth ?? (inner - (columns - 1) * gap) / columns,
+        );
         final rows = spaceEditRows(order, _byKey, columns);
+        _columns = columns;
+        _cellWidth = cellWidth;
+        _gapNow = gap;
 
         Widget row(BuildContext context, int i) {
           final keys = rows[i];
@@ -851,7 +997,7 @@ class _SpaceEditGridState extends State<SpaceEditGrid>
           if (keys.length == 1 && (first.wide || columns == 1)) {
             content = _cell(keys.first, first.wide ? inner : cellWidth, order);
           } else {
-            content = Row(
+            final cells = Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 for (var j = 0; j < keys.length; j++) ...[
@@ -860,6 +1006,28 @@ class _SpaceEditGridState extends State<SpaceEditGrid>
                 ],
               ],
             );
+            final free = columns - keys.length;
+            content = widget.emptySlots && free > 0 && itemWidth == null
+                // The same tree in and out of Edit, so the cells never
+                // remount as the slot comes and goes.
+                ? Stack(
+                    children: [
+                      cells,
+                      if (_marks)
+                        for (var j = keys.length; j < columns; j++)
+                          Positioned(
+                            left: j * (cellWidth + gap),
+                            top: 0,
+                            bottom: 0,
+                            width: cellWidth,
+                            child: _EmptySlot(
+                              enter: _enter,
+                              radius: first.radius ?? 8.br,
+                            ),
+                          ),
+                    ],
+                  )
+                : cells;
           }
           return Padding(
             padding: EdgeInsets.fromLTRB(
@@ -876,6 +1044,7 @@ class _SpaceEditGridState extends State<SpaceEditGrid>
           ignoring: widget.closing,
           child: CustomScrollView(
             controller: _scroll,
+            scrollCacheExtent: widget.scrollCacheExtent,
             physics: const AlwaysScrollableScrollPhysics(
               parent: BouncingScrollPhysics(),
             ),
@@ -891,6 +1060,8 @@ class _SpaceEditGridState extends State<SpaceEditGrid>
                   addRepaintBoundaries: false,
                 ),
               ),
+              if (widget.footer case final footer?)
+                SliverToBoxAdapter(child: footer),
               SliverToBoxAdapter(child: SizedBox(height: widget.bottom)),
             ],
           ),
@@ -945,7 +1116,7 @@ class _SpaceEditGridState extends State<SpaceEditGrid>
                 color: shade,
                 ground: colors.background,
                 lane: _liftedLane,
-                radius: 8.br,
+                radius: _liftedRadius,
                 child: child,
               ),
             ),
@@ -968,6 +1139,8 @@ class _EditFace extends StatelessWidget {
     required this.enter,
     required this.faceCircle,
     required this.faceTop,
+    this.editing = true,
+    this.marks = true,
   });
 
   final SpaceEditItem item;
@@ -977,6 +1150,12 @@ class _EditFace extends StatelessWidget {
   final Animation<double> enter;
   final double? faceCircle;
   final double faceTop;
+
+  /// Off, the card takes its own touches (the grid is the page).
+  final bool editing;
+
+  /// Whether the circle is built at all (Edit, or its way out).
+  final bool marks;
 
   /// How far along [enter] is, with a spring's last hair counted as there.
   static double _grown(Animation<double> enter) {
@@ -989,7 +1168,7 @@ class _EditFace extends StatelessWidget {
     final check = SpaceEditCheck(
       key: ValueKey<String>('space_edit_check_${item.key}'),
       selected: selected,
-      onPicture: mark == SpaceEditMark.board,
+      onPicture: mark == SpaceEditMark.board || mark == SpaceEditMark.corner,
     );
     final size = kSpaceEditCheck;
     // Grows from nothing on the enter spring and shrinks back on the way
@@ -1000,11 +1179,36 @@ class _EditFace extends StatelessWidget {
           Transform.scale(scale: _grown(enter), child: child),
       child: check,
     );
+    // The same two wrappers in and out of Edit, so the card never remounts
+    // (its photo never reloads) as Edit comes and goes.
     Widget card(double width) => IgnorePointer(
-      child: ExcludeSemantics(child: item.builder(context, width)),
+      ignoring: editing,
+      child: ExcludeSemantics(
+        excluding: editing,
+        child: item.builder(context, width),
+      ),
     );
 
     switch (mark) {
+      case SpaceEditMark.corner:
+        final inset = kSpaceEditBoardInset;
+        return SizedBox(
+          width: width,
+          child: Stack(
+            clipBehavior: Clip.none,
+            children: [
+              card(width),
+              if (marks && item.selectable)
+                Positioned(
+                  left: inset,
+                  top: inset,
+                  width: size,
+                  height: size,
+                  child: growing(),
+                ),
+            ],
+          ),
+        );
       case SpaceEditMark.lane:
         final lane = kSpaceEditLane;
         return SizedBox(
@@ -1098,10 +1302,12 @@ class _EditCell extends StatefulWidget {
     required this.moves,
     required this.onToggle,
     required this.onPointerDown,
+    this.editing = true,
   });
 
   final SpaceEditItem item;
   final double width;
+  final bool editing;
   final bool lifted;
   final double liftedHeight;
 
@@ -1153,6 +1359,7 @@ class _EditCellState extends State<_EditCell>
           padding: EdgeInsets.only(left: widget.laneInset),
           child: _Socket(
             key: ValueKey<String>('space_edit_socket_${widget.item.key}'),
+            radius: widget.item.radius ?? 8.br,
           ),
         ),
       );
@@ -1168,32 +1375,39 @@ class _EditCellState extends State<_EditCell>
       );
     }
 
+    final editing = widget.editing;
+    final selectable = widget.item.selectable;
+    // Out of Edit the cell steps aside: no tap of its own, no semantics of
+    // its own, so the card's own take over. The tree stays the same.
     final gestures = <Type, GestureRecognizerFactory>{
-      TapGestureRecognizer:
-          GestureRecognizerFactoryWithHandlers<TapGestureRecognizer>(
-            TapGestureRecognizer.new,
-            (r) => r
-              ..onTapDown = ((_) => _press(true))
-              ..onTapUp = ((_) => _press(false))
-              ..onTapCancel = (() => _press(false))
-              ..onTap = widget.onToggle,
-          ),
+      if (editing)
+        TapGestureRecognizer:
+            GestureRecognizerFactoryWithHandlers<TapGestureRecognizer>(
+              TapGestureRecognizer.new,
+              (r) => r
+                ..onTapDown = ((_) => _press(true))
+                ..onTapUp = ((_) => _press(false))
+                ..onTapCancel = (() => _press(false))
+                ..onTap = widget.onToggle,
+            ),
     };
 
     return _SpaceGlide(
       controller: _glide,
       active: widget.glide && !still,
       child: Semantics(
-        container: true,
-        button: true,
-        selected: widget.selected,
-        label: widget.item.label,
-        onTap: widget.onToggle,
+        container: editing,
+        button: editing && selectable,
+        selected: editing && selectable ? widget.selected : null,
+        label: editing ? widget.item.label : null,
+        onTap: editing && selectable ? widget.onToggle : null,
         customSemanticsActions: widget.moves,
         child: Listener(
           onPointerDown: widget.onPointerDown,
           child: RawGestureDetector(
-            behavior: HitTestBehavior.opaque,
+            behavior: editing
+                ? HitTestBehavior.opaque
+                : HitTestBehavior.deferToChild,
             gestures: gestures,
             excludeFromSemantics: true,
             child: body,
@@ -1206,7 +1420,9 @@ class _EditCellState extends State<_EditCell>
 
 /// The place a lifted card left: a recessed plate of its shape.
 class _Socket extends StatelessWidget {
-  const _Socket({super.key});
+  const _Socket({super.key, required this.radius});
+
+  final double radius;
 
   @override
   Widget build(BuildContext context) {
@@ -1216,7 +1432,38 @@ class _Socket extends StatelessWidget {
         color: context.isLightTheme
             ? colors.surfaceRecessed
             : colors.surface.withValues(alpha: 0.45),
-        borderRadius: BorderRadius.circular(8.br),
+        borderRadius: BorderRadius.circular(radius),
+      ),
+    );
+  }
+}
+
+/// The free half of a row in Edit: a hairline outline of a card's shape,
+/// fading in with the circles, saying another half card fits here. Never
+/// on the page outside Edit.
+class _EmptySlot extends StatelessWidget {
+  const _EmptySlot({required this.enter, required this.radius});
+
+  final Animation<double> enter;
+  final double radius;
+
+  @override
+  Widget build(BuildContext context) {
+    final edge = context.colors.textPrimary.withValues(
+      alpha: context.isLightTheme ? 0.12 : 0.14,
+    );
+    return IgnorePointer(
+      child: AnimatedBuilder(
+        animation: enter,
+        builder: (context, child) =>
+            Opacity(opacity: enter.value.clamp(0.0, 1.0), child: child),
+        child: DecoratedBox(
+          key: const ValueKey<String>('space_edit_empty_slot'),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(radius),
+            border: Border.all(color: edge),
+          ),
+        ),
       ),
     );
   }

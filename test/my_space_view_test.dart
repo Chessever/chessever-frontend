@@ -21,6 +21,7 @@ import 'package:chessever2/screens/my_space/models/space_shortcut.dart';
 import 'package:chessever2/screens/my_space/my_space_view.dart';
 import 'package:chessever2/screens/my_space/providers/space_auto_provider.dart';
 import 'package:chessever2/screens/my_space/my_prep_screen.dart';
+import 'package:chessever2/screens/my_space/providers/space_home_layout_provider.dart';
 import 'package:chessever2/screens/my_space/providers/space_hub_providers.dart';
 import 'package:chessever2/screens/my_space/providers/space_game_card_provider.dart'
     show spaceGameCardProvider;
@@ -745,13 +746,13 @@ void main() {
     );
 
     await _openHomeEdit(tester);
-    expect(find.text('Nothing to edit yet.'), findsOneWidget);
+    // The page's own cards stay, movable but never selectable.
+    expect(find.text('My Prep'), findsOneWidget);
     expect(find.byType(SpaceEditCheck), findsNothing);
     final done = find.byKey(const ValueKey<String>('space_edit_done'));
     expect(done.hitTestable(), findsOneWidget);
     await tester.tap(done);
     await _settleEdit(tester);
-    expect(find.text('Nothing to edit yet.'), findsNothing);
     expect(find.byKey(const ValueKey<String>('space_edit_done')), findsNothing);
     expect(find.text('My Likes'), findsOneWidget);
     expect(find.text('My Prep'), findsOneWidget);
@@ -990,11 +991,15 @@ void main() {
     expect(find.text('Removed 2 from My Space'), findsOneWidget);
     expect(find.text('Undo'), findsOneWidget);
     expect(favorites.unfollows, 0);
+    // The page's own cards are still there to arrange: Edit stays open.
+    expect(
+      find.byKey(const ValueKey<String>('space_edit_done')).hitTestable(),
+      findsOneWidget,
+    );
 
     await tester.tap(find.text('Undo'));
     await _settleEdit(tester);
     expect(store.state.requireValue, seed);
-    await _openHomeEdit(tester);
     expect(find.byType(SpaceEditCheck), findsNWidgets(2));
     expect(favorites.unfollows, 0);
 
@@ -1092,6 +1097,217 @@ void main() {
     await tester.tap(find.byKey(const ValueKey<String>('space_edit_done')));
     await _settleEdit(tester);
     expect(shown(), expected);
+    expect(tester.takeException(), isNull);
+    await _drain(tester);
+  });
+
+  group('home arrangement', () {
+    test('fixed cards slot in after their count of pins', () {
+      expect(spaceHomeOrder(['a', 'b'], kSpaceHomeDefaultPlaces), [
+        kSpaceHomeMyPrep,
+        kSpaceHomeLibrary,
+        kSpaceHomeLikes,
+        'a',
+        'b',
+      ]);
+      final order = [
+        kSpaceHomeMyPrep,
+        'a',
+        kSpaceHomeLikes,
+        'b',
+        kSpaceHomeLibrary,
+      ];
+      final places = spaceHomePlaces(order);
+      expect(places, [
+        (key: kSpaceHomeMyPrep, pinsBefore: 0),
+        (key: kSpaceHomeLikes, pinsBefore: 1),
+        (key: kSpaceHomeLibrary, pinsBefore: 2),
+      ]);
+      expect(spaceHomeOrder(['a', 'b'], places), order);
+      // A removed pin never loses a fixed card: it falls to the end.
+      expect(spaceHomeOrder(['a'], places), [
+        kSpaceHomeMyPrep,
+        'a',
+        kSpaceHomeLikes,
+        kSpaceHomeLibrary,
+      ]);
+    });
+
+    test('a drop on a free half lands right after the card beside it', () {
+      final order = ['prep', 'likes', 'library', 'a'];
+      expect(spaceEditSlotTarget(order, 'library', 'prep'), 1);
+      expect(spaceEditSlotTarget(order, 'prep', 'library'), 2);
+    });
+
+    test('a stored arrangement missing or repeating a card is repaired', () {
+      expect(
+        normalizeSpaceHomePlaces([
+          (key: kSpaceHomeLikes, pinsBefore: 3),
+          (key: kSpaceHomeLikes, pinsBefore: 0),
+          (key: 'home:unknown', pinsBefore: 1),
+        ]),
+        [
+          (key: kSpaceHomeMyPrep, pinsBefore: 0),
+          (key: kSpaceHomeLibrary, pinsBefore: 0),
+          (key: kSpaceHomeLikes, pinsBefore: 3),
+        ],
+      );
+    });
+  });
+
+  testWidgets('Edit starts in place: no card moves or resizes, and only saved '
+      'cards wear a circle', (tester) async {
+    final a = _pin(
+      SpaceShortcut.draft(
+        kind: SpaceShortcutKind.folder,
+        targetId: 'a',
+        title: 'Database A',
+      ),
+      'a',
+      30,
+    );
+    final smart = _pin(_smartDraft(2600), 'smart', 20);
+    final tips = _Tips()..markSkipped();
+    await _pumpSpace(
+      tester,
+      [a, smart],
+      height: 844,
+      withAddFab: true,
+      extra: [
+        spaceEditTutorialStoreProvider.overrideWithValue(tips),
+        _noSmartMembers,
+      ],
+    );
+    await _settleEdit(tester);
+    final cards = <Finder>[
+      find.byKey(const ValueKey('my_space_my_prep_tile')),
+      find.byKey(const ValueKey('my_space_library_tile')),
+      find.byKey(const ValueKey<String>('my_space_likes_card')),
+      find.ancestor(
+        of: find.text(a.title),
+        matching: find.byType(SpaceSavedRow),
+      ),
+      find.byType(SmartEventCard),
+    ];
+    final before = [for (final c in cards) tester.getRect(c)];
+    // My Prep and Library share the first row, half each.
+    expect(before[0].top, before[1].top);
+    expect(before[0].width, closeTo(before[1].width, 0.01));
+
+    await _openHomeEdit(tester);
+    expect([for (final c in cards) tester.getRect(c)], before);
+    expect(_selectedKeys(tester), isEmpty);
+    expect(find.byType(SpaceEditCheck), findsNWidgets(2));
+    for (final key in [kSpaceHomeMyPrep, kSpaceHomeLibrary, kSpaceHomeLikes]) {
+      expect(
+        find.byKey(ValueKey<String>('space_edit_check_$key')),
+        findsNothing,
+      );
+    }
+    // A tap on one of the page's own cards neither selects nor opens it.
+    await tester.tap(cards[0]);
+    await _settleEdit(tester);
+    expect(_selectedKeys(tester), isEmpty);
+    expect(find.byType(MySpaceView), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey<String>('space_edit_done')));
+    await _settleEdit(tester);
+    expect([for (final c in cards) tester.getRect(c)], before);
+    expect(find.byType(SpaceEditCheck), findsNothing);
+    expect(tester.takeException(), isNull);
+    await _drain(tester);
+  });
+
+  testWidgets('Edit moves the page\'s own cards too: Library leaves My Prep\'s '
+      'row, rows keep at most two, and the arrangement holds after Done', (
+    tester,
+  ) async {
+    final a = _pin(
+      SpaceShortcut.draft(
+        kind: SpaceShortcutKind.folder,
+        targetId: 'a',
+        title: 'Database A',
+      ),
+      'a',
+      30,
+    );
+    final b = _pin(
+      SpaceShortcut.draft(
+        kind: SpaceShortcutKind.folder,
+        targetId: 'b',
+        title: 'Database B',
+      ),
+      'b',
+      20,
+    );
+    final tips = _Tips()..markSkipped();
+    final store = await _pumpSpace(
+      tester,
+      [a, b],
+      height: 844,
+      withAddFab: true,
+      extra: [spaceEditTutorialStoreProvider.overrideWithValue(tips)],
+    );
+    final prep = find.byKey(const ValueKey('my_space_my_prep_tile'));
+    final library = find.byKey(const ValueKey('my_space_library_tile'));
+    final likes = find.byKey(const ValueKey<String>('my_space_likes_card'));
+    final rowA = find.ancestor(
+      of: find.text(a.title),
+      matching: find.byType(SpaceSavedRow),
+    );
+    final half = tester.getSize(library).width;
+
+    Future<void> drag(Finder what, Offset to) async {
+      final from = tester.getCenter(what);
+      final gesture = await tester.startGesture(from);
+      await tester.pump(kSpaceEditLiftDelay + const Duration(milliseconds: 60));
+      for (var i = 0; i < 10; i++) {
+        await gesture.moveBy((to - from) / 10);
+        await tester.pump(const Duration(milliseconds: 16));
+      }
+      await gesture.up();
+      await _settleEdit(tester);
+    }
+
+    await _openHomeEdit(tester);
+    expect(find.byKey(const ValueKey('space_edit_empty_slot')), findsNothing);
+    // Library down onto My Likes: it takes My Likes' place, below it.
+    await drag(library, tester.getCenter(likes));
+    expect(
+      tester.getRect(library).top,
+      greaterThan(tester.getRect(likes).bottom),
+    );
+    expect(tester.getRect(likes).top, greaterThan(tester.getRect(prep).bottom));
+    // Half cards keep their half alone; the free halves show as slots.
+    expect(tester.getSize(prep).width, closeTo(half, 0.01));
+    expect(tester.getSize(library).width, closeTo(half, 0.01));
+    expect(
+      find.byKey(const ValueKey('space_edit_empty_slot')),
+      findsNWidgets(2),
+    );
+
+    // Library back up beside My Prep: the pair shares a row again.
+    // Onto the free half beside My Prep: it lands in that slot.
+    await drag(library, tester.getCenter(prep) + Offset(half + 12, 0));
+    expect(tester.getRect(library).top, closeTo(tester.getRect(prep).top, 0.5));
+
+    // My Likes down past the first database: a fixed card among the pins.
+    await drag(likes, tester.getCenter(rowA));
+    expect(tester.getRect(likes).top, greaterThan(tester.getRect(rowA).bottom));
+    final container = ProviderScope.containerOf(tester.element(prep));
+    expect(container.read(spaceHomeLayoutProvider), [
+      (key: kSpaceHomeMyPrep, pinsBefore: 0),
+      (key: kSpaceHomeLibrary, pinsBefore: 0),
+      (key: kSpaceHomeLikes, pinsBefore: 1),
+    ]);
+    // The pins kept their own order; nothing was removed.
+    expect(store.state.requireValue.map((pin) => pin.key), [a.key, b.key]);
+
+    await tester.tap(find.byKey(const ValueKey<String>('space_edit_done')));
+    await _settleEdit(tester);
+    expect(find.byKey(const ValueKey('space_edit_empty_slot')), findsNothing);
+    expect(tester.getRect(library).top, closeTo(tester.getRect(prep).top, 0.5));
+    expect(tester.getRect(likes).top, greaterThan(tester.getRect(rowA).bottom));
     expect(tester.takeException(), isNull);
     await _drain(tester);
   });

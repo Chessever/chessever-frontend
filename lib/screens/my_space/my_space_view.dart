@@ -16,6 +16,7 @@ import 'package:chessever2/screens/library/library_screen.dart';
 import 'package:chessever2/widgets/hub_context_art.dart';
 // import 'package:chessever2/screens/my_space/providers/space_auto_provider.dart';
 import 'package:chessever2/screens/my_space/providers/space_edit_mode_provider.dart';
+import 'package:chessever2/screens/my_space/providers/space_home_layout_provider.dart';
 import 'package:chessever2/screens/my_space/providers/space_hub_providers.dart';
 import 'package:chessever2/screens/my_space/providers/space_shortcuts_provider.dart';
 import 'package:chessever2/screens/my_space/widgets/space_database.dart';
@@ -25,7 +26,7 @@ import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
-import 'package:chessever2/utils/scroll_cache.dart';
+
 // import 'package:chessever2/widgets/event_card/event_card.dart';
 // import 'package:chessever2/widgets/event_card/event_context_menu.dart'
 //     show eventSpaceDraft;
@@ -35,6 +36,7 @@ import 'package:chessever2/widgets/hub_tile_captions.dart';
 import 'package:chessever2/widgets/skeleton_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:motor/motor.dart';
 
 /// Guidance for the two supported My Space products.
 const String kMyDatabaseEmptyText =
@@ -49,8 +51,11 @@ Future<void> openMyPrep(BuildContext context) {
   return MyPrepScreen.open(context);
 }
 
-/// The My Space tab, with My Prep and Library tiles, a permanent
-/// My Likes archive card, and saved compact cards without category headers.
+/// The My Space tab: My Prep and Library tiles, a permanent My Likes card
+/// and the saved compact cards, in one arrangement the reader owns ([+],
+/// Edit). Edit happens in place: the page does not move as it starts, every
+/// card (the page's own included) can be held and dropped anywhere, rows
+/// hold at most two, and only saved cards can be removed.
 ///
 /// Works signed out too: the shortcuts provider keeps a device-local list
 /// for guests.
@@ -64,15 +69,12 @@ class MySpaceView extends ConsumerStatefulWidget {
 }
 
 class _MySpaceViewState extends ConsumerState<MySpaceView> {
-  final _pageScroll = SpaceStartController();
-  final _editScroll = SpaceStartController();
+  final _pageScroll = ScrollController();
   final Set<String> _selected = {};
-  bool _closing = false;
 
   @override
   void dispose() {
     _pageScroll.dispose();
-    _editScroll.dispose();
     super.dispose();
   }
 
@@ -85,6 +87,19 @@ class _MySpaceViewState extends ConsumerState<MySpaceView> {
     setState(() {
       if (!_selected.remove(key)) _selected.add(key);
     });
+  }
+
+  /// A drop: the pins take their new order in the store, and the page's own
+  /// cards their new places among them.
+  void _reorder(String key, List<String> order) {
+    ref.read(spaceHomeLayoutProvider.notifier).placeFrom(order);
+    if (spaceHomeIsFixed(key)) return;
+    unawaited(
+      ref.read(spaceShortcutsProvider.notifier).moveWithinVisible(key, [
+        for (final k in order)
+          if (!spaceHomeIsFixed(k)) k,
+      ]),
+    );
   }
 
   Future<void> _removeSelected(Set<String> all) async {
@@ -103,16 +118,8 @@ class _MySpaceViewState extends ConsumerState<MySpaceView> {
     }
     if (!mounted) return;
     setState(_selected.clear);
-    final removed = spaceRemovePinsSelected(
-      context: context,
-      ref: ref,
-      keys: keys,
-    );
-    if (keys.containsAll(all)) {
-      _setEditing(false);
-      setState(() => _closing = false);
-    }
-    await removed;
+    // The page's own cards stay, and stay movable: Edit stays open.
+    await spaceRemovePinsSelected(context: context, ref: ref, keys: keys);
   }
 
   Future<void> _refresh() async {
@@ -127,14 +134,7 @@ class _MySpaceViewState extends ConsumerState<MySpaceView> {
   Widget build(BuildContext context) {
     ref.listen(spaceEditModeProvider, (previous, next) {
       if (previous == next) return;
-      setState(() {
-        _selected.clear();
-        _closing = !next;
-        if (next) {
-          _pageScroll.start = _pageScroll.at ?? _pageScroll.start;
-          _editScroll.start = 0;
-        }
-      });
+      setState(_selected.clear);
       if (next &&
           (ref.read(spaceCompactDatabaseGroupsProvider)?.isNotEmpty ?? false)) {
         // Teach selection and reordering for the visible products.
@@ -154,8 +154,10 @@ class _MySpaceViewState extends ConsumerState<MySpaceView> {
         (s) => s.valueOrNull?.any((pin) => pin.canAddToMySpace) ?? false,
       ),
     );
+    final order = spaceHomeOrder([
+      for (final pin in pins) pin.key,
+    ], ref.watch(spaceHomeLayoutProvider));
     final tablet = ResponsiveHelper.isTablet;
-    final gutter = hubGutter;
 
     Widget frame(Widget child) => tablet
         ? Center(
@@ -168,195 +170,290 @@ class _MySpaceViewState extends ConsumerState<MySpaceView> {
           )
         : child;
 
-    if (editing || _closing) {
-      return PopScope(
-        canPop: !editing,
-        onPopInvokedWithResult: (didPop, _) {
-          if (!didPop && editing) _setEditing(false);
-        },
-        child: frame(
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
+    // Under the last row, at the air the page has always left there.
+    final Widget? footer = groups == null
+        ? const _DatabaseSkeleton()
+        : (!pinned ? const _DatabaseEmpty() : null);
+
+    final grid = SpaceHomeGrid(
+      pins: pins,
+      fixed: _fixedCards(context),
+      order: order,
+      editing: editing,
+      selected: _selected,
+      onToggle: _toggle,
+      onReorder: _reorder,
+      controller: widget.scrollController ?? _pageScroll,
+      top: 16.sp,
+      // Keep the last row above My Space's restored add button.
+      bottom: 24.sp + 72,
+      footer: footer == null
+          ? null
+          : Padding(
+              padding: EdgeInsets.only(top: 16.sp),
+              child: footer,
+            ),
+    );
+
+    return PopScope(
+      canPop: !editing,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop && editing) _setEditing(false);
+      },
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          Positioned.fill(
+            child: RefreshIndicator(
+              onRefresh: _refresh,
+              // Edit holds the page still: a pull there is a reorder's
+              // overscroll, not a refresh.
+              notificationPredicate: editing
+                  ? (_) => false
+                  : defaultScrollNotificationPredicate,
+              color: context.colors.textPrimary,
+              backgroundColor: context.colors.surface,
+              child: frame(grid),
+            ),
+          ),
+          // Over the page, beside the add button, so Edit's controls take
+          // no room from the cards and nothing moves as Edit starts.
+          _SpaceEditBar(
+            shown: editing,
+            selected: _selected.length,
+            onRemove: _selected.isEmpty
+                ? null
+                : () => unawaited(_removeSelected(keys)),
+            onDone: () => _setEditing(false),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// My Prep, Library and My Likes: the page's own cards. Any of them moves
+  /// anywhere; none is ever removed.
+  Map<String, SpaceEditItem> _fixedCards(BuildContext context) => {
+    kSpaceHomeMyPrep: SpaceEditItem(
+      key: kSpaceHomeMyPrep,
+      label: 'My Prep',
+      selectable: false,
+      radius: 14.br,
+      builder: (_, _) => const _MyPrepTile(),
+    ),
+    kSpaceHomeLibrary: SpaceEditItem(
+      key: kSpaceHomeLibrary,
+      label: 'Library',
+      selectable: false,
+      radius: 14.br,
+      builder: (_, _) => const _LibraryTile(),
+    ),
+    kSpaceHomeLikes: SpaceEditItem(
+      key: kSpaceHomeLikes,
+      label: 'My Likes',
+      selectable: false,
+      wide: true,
+      builder: (_, _) =>
+          const _MyLikesCard(key: ValueKey<String>('my_space_likes_card')),
+    ),
+  };
+}
+
+/// Edit's controls, floating on the add button's line at the page's left
+/// edge: Done, and Remove (live once something is selected). It rises in as
+/// Edit starts and is gone once Edit ends.
+class _SpaceEditBar extends StatefulWidget {
+  const _SpaceEditBar({
+    required this.shown,
+    required this.selected,
+    required this.onRemove,
+    required this.onDone,
+  });
+
+  final bool shown;
+  final int selected;
+  final VoidCallback? onRemove;
+  final VoidCallback onDone;
+
+  @override
+  State<_SpaceEditBar> createState() => _SpaceEditBarState();
+}
+
+class _SpaceEditBarState extends State<_SpaceEditBar>
+    with SingleTickerProviderStateMixin {
+  late final SingleMotionController _show = SingleMotionController(
+    motion: const CupertinoMotion.snappy(
+      duration: Duration(milliseconds: 300),
+      snapToEnd: true,
+    ),
+    vsync: this,
+    initialValue: 0,
+  );
+  late bool _built = widget.shown;
+  Timer? _goneSoon;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.shown) _show.value = 1;
+  }
+
+  @override
+  void didUpdateWidget(_SpaceEditBar old) {
+    super.didUpdateWidget(old);
+    if (widget.shown == old.shown) return;
+    _goneSoon?.cancel();
+    final still = MediaQuery.disableAnimationsOf(context);
+    if (widget.shown) {
+      setState(() => _built = true);
+      if (still) {
+        _show.value = 1;
+        return;
+      }
+      unawaited(_show.animateTo(1));
+      // A held ticker never leaves Edit's controls unseen.
+      _goneSoon = Timer(const Duration(milliseconds: 420), () {
+        if (mounted && widget.shown) _show.value = 1;
+      });
+      return;
+    }
+    void gone() {
+      _goneSoon?.cancel();
+      if (mounted && !widget.shown) setState(() => _built = false);
+    }
+
+    if (still) {
+      _show.value = 0;
+      gone();
+      return;
+    }
+    _show.animateTo(0).whenCompleteOrCancel(gone);
+    // A held ticker never strands the bar on the page.
+    _goneSoon = Timer(const Duration(milliseconds: 360), gone);
+  }
+
+  @override
+  void dispose() {
+    _goneSoon?.cancel();
+    _show.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!_built) return const SizedBox.shrink();
+    final colors = context.colors;
+    final light = context.isLightTheme;
+    // The add button's own side and margin, so the two share one line.
+    final side = 56.ic.clamp(52.0, 64.0);
+    final bottom =
+        kFloatingActionButtonMargin + MediaQuery.paddingOf(context).bottom;
+    final count = widget.selected;
+    final bar = DecoratedBox(
+      decoration: BoxDecoration(
+        color: light ? colors.popup : colors.surface,
+        borderRadius: BorderRadius.circular(side / 2),
+        border: Border.all(
+          color: colors.textPrimary.withValues(alpha: light ? 0.08 : 0.1),
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: light ? 0.1 : 0.32),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: ConstrainedBox(
+        constraints: BoxConstraints(minHeight: side),
+        child: Padding(
+          padding: EdgeInsets.symmetric(horizontal: 6.w),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
             children: [
-              Padding(
-                padding: EdgeInsets.fromLTRB(gutter, 8.sp, gutter, 4.sp),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        'My Space',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: AppTypography.textLgMedium.copyWith(
-                          color: context.colors.textPrimary,
-                        ),
-                      ),
-                    ),
-                    SizedBox(width: 12.w),
-                    DiscoveryAction(
-                      key: const ValueKey<String>('space_edit_remove'),
-                      label: _selected.isEmpty
-                          ? 'Remove'
-                          : 'Remove ${_selected.length}',
-                      semanticsLabel: _selected.isEmpty
-                          ? 'Remove, select something first'
-                          : 'Remove ${_selected.length} from My Space',
-                      onTap: !editing || _selected.isEmpty
-                          ? null
-                          : () => unawaited(_removeSelected(keys)),
-                    ),
-                    SizedBox(width: 16.w),
-                    DiscoveryAction(
-                      key: const ValueKey<String>('space_edit_done'),
-                      label: 'Done',
-                      semanticsLabel: 'Done editing',
-                      onTap: editing ? () => _setEditing(false) : null,
-                    ),
-                  ],
-                ),
+              // Done leads, so it never moves as Remove counts up.
+              DiscoveryAction(
+                key: const ValueKey<String>('space_edit_done'),
+                label: 'Done',
+                semanticsLabel: 'Done editing',
+                onTap: widget.shown ? widget.onDone : null,
               ),
-              Expanded(
-                child: editing && pins.isEmpty
-                    ? Center(
-                        child: Padding(
-                          padding: EdgeInsets.all(gutter),
-                          child: Text(
-                            groups == null
-                                ? 'Loading My Space…'
-                                : 'Nothing to edit yet.',
-                            style: AppTypography.textSmMedium.copyWith(
-                              color: context.colors.textSecondary,
-                            ),
-                          ),
-                        ),
-                      )
-                    : SpaceHomeEdit(
-                        pins: pins,
-                        selected: _selected,
-                        onToggle: _toggle,
-                        onReorder: (key, order) => unawaited(
-                          ref
-                              .read(spaceShortcutsProvider.notifier)
-                              .moveWithinVisible(key, order),
-                        ),
-                        controller: widget.scrollController ?? _editScroll,
-                        closing: _closing,
-                        onClosed: () {
-                          if (mounted) setState(() => _closing = false);
-                        },
-                      ),
+              Container(
+                width: 1,
+                height: 18.sp,
+                margin: EdgeInsets.symmetric(horizontal: 4.w),
+                color: colors.textPrimary.withValues(alpha: 0.12),
+              ),
+              // At the largest text sizes Remove gives way, never Done.
+              Flexible(
+                child: DiscoveryAction(
+                  key: const ValueKey<String>('space_edit_remove'),
+                  label: count == 0 ? 'Remove' : 'Remove $count',
+                  semanticsLabel: count == 0
+                      ? 'Remove, select something first'
+                      : 'Remove $count from My Space',
+                  onTap: widget.onRemove,
+                  wraps: true,
+                ),
               ),
             ],
           ),
         ),
-      );
-    }
-
-    // Only supported pins participate in the empty state and editable list.
-    final body = <({String key, Widget child})>[];
-    if (groups == null) {
-      body.add((key: 'space_skeleton', child: const _DatabaseSkeleton()));
-    } else {
-      if (!pinned) {
-        body.add((key: 'space_empty_text', child: const _DatabaseEmpty()));
-        // Product scope: event suggestions are retained below for later.
-        // body.add((key: 'space_suggestions', child: const _Suggestions()));
-      }
-      for (final g in groups) {
-        body.add((
-          key: 'space_group_${g.section.name}_${g.items.first.key}',
-          child: SpaceDatabaseGroupView(
-            group: g,
-            gutter: gutter,
-            compact: true,
-          ),
-        ));
-      }
-    }
-    final lead = 2;
-    final count = lead + body.length;
-
-    Widget padded(Widget child) => Padding(
-      padding: EdgeInsets.symmetric(horizontal: gutter),
-      child: child,
-    );
-
-    final list = ListView.builder(
-      key: const PageStorageKey<String>('my_space_list'),
-      controller: widget.scrollController ?? _pageScroll,
-      scrollCacheExtent: kListScrollCacheExtent,
-      physics: const AlwaysScrollableScrollPhysics(
-        parent: BouncingScrollPhysics(),
       ),
-      // Keep the last row above My Space's restored add button.
-      padding: EdgeInsets.only(top: 16.sp, bottom: 24.sp + 72),
-      itemCount: count,
-      // Groups keep their state as saved things come and go around them.
-      findChildIndexCallback: (key) {
-        if (key is! ValueKey<String>) return null;
-        if (key.value == 'my_space_tiles') return 0;
-        if (key.value == 'my_space_likes_card') return 1;
-        final at = body.indexWhere((b) => b.key == key.value);
-        return at < 0 ? null : lead + at;
-      },
-      itemBuilder: (context, index) {
-        if (index == 0) {
-          return KeyedSubtree(
-            key: const ValueKey<String>('my_space_tiles'),
-            child: padded(const _MySpaceTiles()),
-          );
-        }
-        if (index == 1) {
-          return Padding(
-            key: const ValueKey<String>('my_space_likes_card'),
-            padding: EdgeInsets.fromLTRB(gutter, 12.sp, gutter, 16.sp),
-            child: const _MyLikesCard(),
-          );
-        }
-        final at = index - lead;
-        final item = body[at];
-        return Padding(
-          key: ValueKey<String>(item.key),
-          // Every saved card uses the Events list's gap. The explanation
-          // and suggested cards set their own spacing.
-          padding: EdgeInsets.only(
-            top: at == 0 || !item.key.startsWith('space_group_') ? 0 : 12.sp,
-          ),
-          child: item.child,
-        );
-      },
     );
-
-    return RefreshIndicator(
-      onRefresh: _refresh,
-      color: context.colors.textPrimary,
-      backgroundColor: context.colors.surface,
-      child: frame(list),
+    return Positioned(
+      left: hubGutter,
+      right: hubGutter + side + 12.w,
+      bottom: bottom,
+      child: Align(
+        alignment: Alignment.bottomLeft,
+        child: IgnorePointer(
+          ignoring: !widget.shown,
+          child: AnimatedBuilder(
+            animation: _show,
+            builder: (context, child) {
+              // A spring's last hair counts as home, so the bar rests
+              // exactly in place rather than a fraction of a point short.
+              final v = _show.value.clamp(0.0, 1.0);
+              final t = v >= 0.995 ? 1.0 : v;
+              return Opacity(
+                opacity: t,
+                child: Transform.translate(
+                  offset: Offset(0, (1 - t) * 10),
+                  child: Transform.scale(
+                    scale: 0.96 + 0.04 * t,
+                    alignment: Alignment.bottomLeft,
+                    child: child,
+                  ),
+                ),
+              );
+            },
+            child: bar,
+          ),
+        ),
+      ),
     );
   }
 }
 
 // ------------------------------------------------------------------ tiles
 
-class _MySpaceTiles extends StatelessWidget {
-  const _MySpaceTiles();
+class _MyPrepTile extends StatelessWidget {
+  const _MyPrepTile();
 
   @override
-  Widget build(BuildContext context) => HubTileRow(
-    left: HubTile(
-      key: const ValueKey('my_space_my_prep_tile'),
-      title: 'My Prep',
-      caption: 'Your games and opponents',
-      artwork: const HubSceneBackdrop(scene: HubScene.myPrep),
-      onTap: () => openMyPrep(context),
-    ),
-    right: const _LibraryTile(),
+  Widget build(BuildContext context) => HubTile(
+    key: const ValueKey('my_space_my_prep_tile'),
+    title: 'My Prep',
+    caption: 'Your games and opponents',
+    artwork: const HubSceneBackdrop(scene: HubScene.myPrep),
+    onTap: () => openMyPrep(context),
   );
 }
 
 /// Permanent archive entry, sharing the saved cards' horizontal event frame.
 class _MyLikesCard extends ConsumerWidget {
-  const _MyLikesCard();
+  const _MyLikesCard({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {

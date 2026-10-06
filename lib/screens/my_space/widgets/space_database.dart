@@ -39,6 +39,7 @@ import 'package:chessever2/screens/my_space/providers/space_players_provider.dar
 import 'package:chessever2/screens/my_space/providers/space_shortcuts_provider.dart';
 import 'package:chessever2/screens/my_space/widgets/pixel_art.dart';
 import 'package:chessever2/screens/my_space/widgets/space_edit_grid.dart';
+import 'package:chessever2/utils/scroll_cache.dart';
 import 'package:chessever2/screens/my_space/widgets/space_opening_card.dart';
 import 'package:chessever2/screens/my_space/widgets/space_player_strip.dart';
 import 'package:chessever2/screens/my_space/widgets/space_rail.dart';
@@ -1839,27 +1840,40 @@ class SpaceGroupPage extends ConsumerWidget {
 
 // ------------------------------------------------------------------ edit
 
-/// Home's saved pins in one movable list, using the existing Edit circles,
-/// hold gesture and real card faces. Every kind shares the same drag band.
-class SpaceHomeEdit extends ConsumerWidget {
-  const SpaceHomeEdit({
+/// My Space's home as one arrangement, the page and its Edit in one: the
+/// page's own cards ([fixed], by key) among the saved [pins], in [order],
+/// rows of at most two (a half card pairs with the next half card; every
+/// other card takes its row). Turning [editing] on changes no card's size or
+/// place: circles grow in on the removable cards' corners, a free half slot
+/// outlines itself, and a hold lifts any card, the page's own included, to
+/// drop it anywhere. [onReorder] gets the moved key and the whole new order.
+class SpaceHomeGrid extends ConsumerWidget {
+  const SpaceHomeGrid({
     super.key,
     required this.pins,
+    required this.fixed,
+    required this.order,
+    required this.editing,
     required this.selected,
     required this.onToggle,
     required this.onReorder,
     required this.controller,
-    this.closing = false,
-    this.onClosed,
+    this.top = 0,
+    this.bottom = 0,
+    this.footer,
   });
 
   final List<SpaceShortcut> pins;
+  final Map<String, SpaceEditItem> fixed;
+  final List<String> order;
+  final bool editing;
   final Set<String> selected;
   final ValueChanged<String> onToggle;
   final void Function(String key, List<String> order) onReorder;
   final ScrollController controller;
-  final bool closing;
-  final VoidCallback? onClosed;
+  final double top;
+  final double bottom;
+  final Widget? footer;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -1871,32 +1885,16 @@ class SpaceHomeEdit extends ConsumerWidget {
         ? ref.watch(spaceLibraryFoldersProvider).folders
         : const <LibraryFolder>[];
 
+    // The page's own cards, as the page draws them: Edit only lays its
+    // circles over them, so nothing inside a card changes either.
     Widget card(SpaceShortcut pin) {
       switch (pin.section) {
         case SpaceSection.events:
-          return _savedEventCard(context, ref, pin, events, editing: true);
-        case SpaceSection.players:
-          return Align(
-            alignment: AlignmentDirectional.centerStart,
-            child: SpacePlayerFace(
-              shortcut: pin,
-              width: SpacePlayerStrip.itemWidth,
-            ),
-          );
-        case SpaceSection.games:
-          final face = watchSpaceGameFace(ref, pin);
-          return face.players == SpaceGamePlayers.ready
-              ? DiscoveryGameCard(
-                  key: ValueKey<String>('space_edit_game_${pin.key}'),
-                  games: [face.game],
-                  index: 0,
-                  streamEnabled: false,
-                )
-              : SpaceSavedRow(shortcut: pin, disclosure: false);
+          return _savedEventCard(context, ref, pin, events);
         case SpaceSection.openings:
           return SpaceOpeningCard(shortcut: pin);
         case SpaceSection.smartEvents:
-          return _SavedSmartEvent(shortcut: pin, disclosure: false);
+          return _SavedSmartEvent(shortcut: pin);
         case SpaceSection.library:
         case SpaceSection.links:
         case SpaceSection.likes:
@@ -1905,32 +1903,44 @@ class SpaceHomeEdit extends ConsumerWidget {
             pin,
             library: pin.section == SpaceSection.library,
             folders: folders,
-            editing: true,
           );
+        case SpaceSection.players:
+        case SpaceSection.games:
+          return SpaceSavedRow(shortcut: pin);
       }
     }
 
     // Read providers during build, before the grid's deferred builders run.
-    final cards = {for (final pin in pins) pin.key: card(pin)};
+    final byKey = <String, SpaceEditItem>{
+      ...fixed,
+      for (final pin in pins)
+        pin.key: SpaceEditItem(
+          key: pin.key,
+          label: pin.title,
+          wide: true,
+          builder: (_, _) => card(pin),
+        ),
+    };
     return SpaceEditGrid(
       controller: controller,
       items: [
-        for (final pin in pins)
-          SpaceEditItem(
-            key: pin.key,
-            label: pin.title,
-            builder: (_, _) => cards[pin.key]!,
-          ),
+        for (final key in order)
+          if (byKey[key] case final item?) item,
       ],
       selected: selected,
       onToggle: onToggle,
       onReorder: onReorder,
+      editing: editing,
+      emptySlots: true,
+      columns: 2,
       gutter: hubGutter,
       gap: 12.sp,
-      top: 8.sp,
-      bottom: 24.sp + 72,
-      closing: closing,
-      onClosed: onClosed,
+      runSpacing: 12.sp,
+      mark: SpaceEditMark.corner,
+      top: top,
+      bottom: bottom,
+      footer: footer,
+      scrollCacheExtent: kListScrollCacheExtent,
     );
   }
 }
