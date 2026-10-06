@@ -1,7 +1,8 @@
 import 'package:chessever2/screens/library/utils/gamebase_pgn_builder.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
+import 'package:chessever2/utils/average_game_rating.dart';
 
-const int miniatureMissingRatingFallback = 1800;
+const int miniatureMissingRatingFallback = missingGameRatingFallback;
 
 /// Round-id marker stamped on every miniature row.
 ///
@@ -473,17 +474,8 @@ class GamebaseMiniature {
   final String? whiteFed;
   final String? blackFed;
 
-  int get effectiveAverageRating {
-    final effectiveWhite =
-        whiteElo != null && whiteElo! > 0
-            ? whiteElo!
-            : miniatureMissingRatingFallback;
-    final effectiveBlack =
-        blackElo != null && blackElo! > 0
-            ? blackElo!
-            : miniatureMissingRatingFallback;
-    return ((effectiveWhite + effectiveBlack) / 2).round();
-  }
+  int get effectiveAverageRating =>
+      effectiveAverageGameRating(whiteElo, blackElo);
 
   factory GamebaseMiniature.fromJson(Map<String, dynamic> json) {
     return GamebaseMiniature(

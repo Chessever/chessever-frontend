@@ -4,6 +4,7 @@ import 'package:chessever2/screens/for_you/discovery/data/discovery_repository.d
 import 'package:chessever2/screens/for_you/discovery/models/discovery_models.dart';
 import 'package:chessever2/screens/for_you/discovery/models/report_game_type.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
+import 'package:chessever2/utils/average_game_rating.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 const kReportsFirstPageMaxAge = Duration(minutes: 2);
@@ -71,6 +72,11 @@ final reportsPaginationProvider =
 /// each day. Sort all loaded cards together so page boundaries do not split a
 /// day's ranking; pagination keeps its original server order and cursor.
 final reportsGamesProvider = Provider.autoDispose<List<GamesTourModel>>((ref) {
+  int averageRating(GamesTourModel game) => effectiveAverageGameRating(
+    game.whitePlayer.rating,
+    game.blackPlayer.rating,
+  );
+
   final games = ref
       .watch(reportsPaginationProvider.select((state) => state.items))
       .toList(growable: false);
@@ -82,9 +88,7 @@ final reportsGamesProvider = Provider.autoDispose<List<GamesTourModel>>((ref) {
       if (rightDay == null) return -1;
       return rightDay.compareTo(leftDay);
     }
-    final byRating = (discoveryAverageRating(right) ?? 0).compareTo(
-      discoveryAverageRating(left) ?? 0,
-    );
+    final byRating = averageRating(right).compareTo(averageRating(left));
     if (byRating != 0) return byRating;
     return left.gameId.compareTo(right.gameId);
   });

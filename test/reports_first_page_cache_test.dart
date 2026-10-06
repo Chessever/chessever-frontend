@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:chessever2/repository/gamebase/miniatures/miniatures_models.dart';
 import 'package:chessever2/screens/for_you/discovery/data/discovery_repository.dart';
 import 'package:chessever2/screens/for_you/discovery/models/discovery_models.dart';
 import 'package:chessever2/screens/for_you/discovery/models/report_game_type.dart';
@@ -195,6 +196,68 @@ void main() {
       'weak-recent',
     );
     expect(container.read(reportsPaginationProvider).hasMore, isFalse);
+    visit.close();
+  });
+
+  testCache('Reports match Miniatures for missing and fractional ratings', (
+    tester,
+  ) async {
+    final visit = container.listen(reportsGamesProvider, (_, __) {});
+    final today = DateTime.utc(2026, 10, 6);
+    final ratings = [
+      (id: 'z-black-missing', white: 2800, black: null),
+      (id: 'z-whole', white: 2601, black: 2601),
+      (id: 'a-half', white: 2600, black: 2601),
+      (id: 'weak-rated', white: 1700, black: 1700),
+      (id: 'a-white-missing', white: null, black: 2800),
+      (id: 'both-missing', white: null, black: null),
+      (id: 'negative-missing', white: -1, black: 0),
+    ];
+    final miniatures = [
+      for (final rating in ratings)
+        GamebaseMiniature(
+          gameId: rating.id,
+          avgRating: null,
+          plyCount: 20,
+          finalMoveNumber: 10,
+          result: 'W',
+          timeControl: 'CLASSICAL',
+          isOnline: false,
+          date: today,
+          whiteElo: rating.white,
+          blackElo: rating.black,
+        ),
+    ];
+    repository.requests.single.result.complete(
+      AnalyzedGamesPage(
+        items: [
+          for (final rating in ratings)
+            _game(
+              rating.id,
+              lastMoveTime: today,
+              whiteRating: rating.white ?? 0,
+              blackRating: rating.black ?? 0,
+            ),
+        ],
+      ),
+    );
+    await flush(tester);
+    final miniatureIds = orderMiniaturesByDayAndAverageRating(
+      miniatures,
+    ).map((game) => game.gameId);
+    expect(miniatureIds, [
+      'a-half',
+      'z-whole',
+      'a-white-missing',
+      'z-black-missing',
+      'both-missing',
+      'negative-missing',
+      'weak-rated',
+    ]);
+    expect(
+      container.read(reportsGamesProvider).map((game) => game.gameId),
+      miniatureIds,
+    );
     visit.close();
   });
 
