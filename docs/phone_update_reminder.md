@@ -25,8 +25,9 @@ Policy
   optional snooze/ignore state but still wait for a safe route. There was no
   separate settings manual-check UI to change; the existing store launch uses
   Upgrader's platform-specific URL contract unchanged.
-- Back/barrier dismissal is not a three-day snooze. It consumes that entry's
-  prompt; the next safe launch/resume may offer again.
+- Back/barrier dismissal of an optional offer also saves a three-day snooze,
+  starting when the dialog is dismissed, so it does not return on every resume.
+  Mandatory offers cannot be dismissed this way.
 - Device wall-clock changes affect the absolute local deadline; no network clock
   or background scheduling is introduced.
 
