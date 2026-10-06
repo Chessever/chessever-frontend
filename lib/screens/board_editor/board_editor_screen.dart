@@ -1,3 +1,4 @@
+import 'package:chessever2/board_scan/board_scan_screen.dart';
 import 'package:chessever2/widgets/paywall/pgn_import_access.dart';
 import 'package:chessever2/e2e/e2e_ids.dart';
 import 'package:chessever2/providers/board_settings_provider_new.dart';
@@ -183,6 +184,14 @@ class _BoardEditorScreenState extends ConsumerState<BoardEditorScreen> {
             ),
       ),
     );
+  }
+
+  Future<void> _importImage() async {
+    final fen = await importBoardImage(context);
+    if (!mounted || fen == null) return;
+    setState(_clearPgnOverride);
+    ref.read(boardEditorProvider.notifier).loadFen(fen);
+    showAppSnack(context, 'Review the detected pieces before analyzing.');
   }
 
   Future<void> _pasteFen() async {
@@ -675,6 +684,11 @@ class _BoardEditorScreenState extends ConsumerState<BoardEditorScreen> {
                 textAlign: TextAlign.center,
               ),
             ),
+          ),
+          IconButton(
+            tooltip: 'Import board image',
+            onPressed: _importImage,
+            icon: const Icon(Icons.add_photo_alternate_outlined),
           ),
           const _AddToSpaceButton(),
           SizedBox(width: 4.w),
