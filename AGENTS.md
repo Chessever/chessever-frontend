@@ -1,20 +1,31 @@
 # Chessever Frontend — Agent Rules
 
-## Test app and broadcasting environment isolation
+## Production app and environment selection
 
-This repository is the Chessever **test-flavored app**. By default, all work here targets the **test Supabase branch/project** and the companion broadcasting repository at `projects/chessever-broadcasting` (available from this workspace as `../chessever-broadcasting`). These test targets are the only environments in scope unless the user explicitly says otherwise.
+This repository targets the **production ChessEver app** by default. Berkay
+retired the ChessEver Test app on 2026-10-06. Do not select the `chessevertest`
+flavor, `lib/main_test.dart`, test Supabase, or a test release workflow unless
+the user explicitly requests historical test-environment work.
 
-- Keep app, Supabase, and broadcasting work on the intended test branches and test configuration. Use test-only URLs, credentials, secrets, topics, migrations, and deployment targets.
-- **Never check out, merge, rebase, push to, modify, query, migrate, deploy to, or otherwise operate on `main`, production branches/projects, production Supabase, production services, production secrets/URLs, or any production version of the broadcasting system while working on this test app or `projects/chessever-broadcasting`.**
-- Do not assume that a similarly named branch, project, URL, key, or environment is safe. Verify that every backend-affecting or external command points to the test target before running it.
-- If a target is ambiguous or a requested action could affect main/production, stop and ask for explicit confirmation. Main/production work is allowed only when the user explicitly names the exact target and operation.
+- Mobile releases use `stable`, the production flavor/entrypoint (`lib/main.dart`),
+  and the existing production Android/iOS release workflows.
+- App, Supabase, and companion broadcasting work at `../chessever-broadcasting`
+  targets the intended production configuration when that work is in scope.
+- Verify the exact project, URL, credentials, topic, migration target, and release
+  workflow before every backend-affecting or external command. Do not infer an
+  environment from a similar name or fall back to test configuration.
+- Production is the default target, not permission to make unrelated changes.
+  Perform only the operations authorized by the user's task; ask when the actual
+  target or a destructive operation is ambiguous.
+- Never use the abandoned `main` branch for development, merging, or releases.
+  Keep credentials and local environment files out of commits and published assets.
 
 ## Branches: `stable` ships, `main` is dead
 
 **`stable` is the only branch that matters here.** It is where work is committed,
-where releases are cut, and the branch every Codemagic build is triggered
-against (`"branch":"stable"` in the API payload — production *and* ChessEver
-Test workflows alike).
+where releases are cut, and the branch every production Codemagic build is
+triggered against (`"branch":"stable"` in the API payload). ChessEver Test
+workflows are retired and are not release targets.
 
 `main` is an **abandoned branch**, not a release line. As of 2026-08-11 it sits
 at `36a466da` (2026-06-16, `pubspec` version `21.0.0+2100`) — **383 commits
@@ -129,5 +140,6 @@ chessever_frontend_desktop_oss/scripts/which_repo_owns_function.sh <slug>
 ## Local commit preference
 
 - Commit completed mobile changes locally after validation, including the required version bump.
-- Keep commits local. Do not push unless the user explicitly asks.
+- Keep commits local unless the user asks to push, merge a PR, or ship a release;
+  those requests authorize the pushes needed for that task.
 - Exclude credentials and local environment configuration, and preserve unrelated working-tree changes.
