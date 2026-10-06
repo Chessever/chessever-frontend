@@ -67,6 +67,36 @@ final reportsPaginationProvider =
       );
     });
 
+/// Like Miniatures, show newest days first and highest average ratings within
+/// each day. Sort all loaded cards together so page boundaries do not split a
+/// day's ranking; pagination keeps its original server order and cursor.
+final reportsGamesProvider = Provider.autoDispose<List<GamesTourModel>>((ref) {
+  final games = ref
+      .watch(reportsPaginationProvider.select((state) => state.items))
+      .toList(growable: false);
+  games.sort((left, right) {
+    final leftDay = _reportUtcDay(left.lastMoveTime);
+    final rightDay = _reportUtcDay(right.lastMoveTime);
+    if (leftDay != rightDay) {
+      if (leftDay == null) return 1;
+      if (rightDay == null) return -1;
+      return rightDay.compareTo(leftDay);
+    }
+    final byRating = (discoveryAverageRating(right) ?? 0).compareTo(
+      discoveryAverageRating(left) ?? 0,
+    );
+    if (byRating != 0) return byRating;
+    return left.gameId.compareTo(right.gameId);
+  });
+  return List.unmodifiable(games);
+});
+
+int? _reportUtcDay(DateTime? date) {
+  if (date == null) return null;
+  final utc = date.toUtc();
+  return utc.year * 10000 + utc.month * 100 + utc.day;
+}
+
 /// One in-flight page at a time. Refresh supersedes earlier requests without
 /// letting a late response replace the fresh list or advance its cursor.
 class ReportsPaginationNotifier extends StateNotifier<ReportsPaginationState> {

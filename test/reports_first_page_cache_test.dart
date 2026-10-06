@@ -35,13 +35,18 @@ class _Repository implements DiscoveryRepository {
       throw StateError('Unexpected call');
 }
 
-GamesTourModel _game(String id) => GamesTourModel(
+GamesTourModel _game(
+  String id, {
+  DateTime? lastMoveTime,
+  int whiteRating = 2700,
+  int blackRating = 2700,
+}) => GamesTourModel(
   gameId: id,
   whitePlayer: PlayerCard(
     name: 'White',
     federation: 'IN',
     title: 'GM',
-    rating: 2700,
+    rating: whiteRating,
     countryCode: 'IN',
     team: null,
   ),
@@ -49,7 +54,7 @@ GamesTourModel _game(String id) => GamesTourModel(
     name: 'Black',
     federation: 'IN',
     title: 'GM',
-    rating: 2700,
+    rating: blackRating,
     countryCode: 'IN',
     team: null,
   ),
@@ -60,6 +65,7 @@ GamesTourModel _game(String id) => GamesTourModel(
   gameStatus: GameStatus.whiteWins,
   roundId: 'round',
   tourId: 'tour',
+  lastMoveTime: lastMoveTime,
 );
 
 void main() {
@@ -100,6 +106,95 @@ void main() {
     expect(state.items.single.gameId, 'first');
     expect(state.isLoading, isFalse);
     expect(repository.requests, hasLength(1));
+    visit.close();
+  });
+
+  testCache('day ratings merge across pages without changing the cursor', (
+    tester,
+  ) async {
+    final visit = container.listen(reportsGamesProvider, (_, __) {});
+    final today = DateTime.utc(2026, 10, 6);
+    const cursor = (
+      lastMoveTime: '2026-10-06T10:00:00.123456Z',
+      gameId: 'tie-b',
+    );
+    repository.requests.single.result.complete(
+      AnalyzedGamesPage(
+        items: [
+          _game(
+            'weak-recent',
+            lastMoveTime: today.add(const Duration(hours: 20)),
+            whiteRating: 2400,
+            blackRating: 2400,
+          ),
+          _game(
+            'tie-b',
+            lastMoveTime: today.add(const Duration(hours: 10)),
+            whiteRating: 2600,
+            blackRating: 2600,
+          ),
+        ],
+        nextCursor: cursor,
+      ),
+    );
+    await flush(tester);
+    expect(container.read(reportsGamesProvider).map((g) => g.gameId), [
+      'tie-b',
+      'weak-recent',
+    ]);
+
+    unawaited(
+      container.read(reportsPaginationProvider.notifier).loadNextPage(),
+    );
+    expect(repository.requests.last.after, cursor);
+    repository.requests.last.result.complete(
+      AnalyzedGamesPage(
+        items: [
+          _game(
+            'tie-a',
+            lastMoveTime: today.add(const Duration(hours: 9)),
+            whiteRating: 2600,
+            blackRating: 2600,
+          ),
+          _game(
+            'strong-average',
+            lastMoveTime: DateTime.parse('2026-10-06T04:00:00+03:00'),
+          ),
+          _game(
+            'older-strongest',
+            lastMoveTime: today.subtract(const Duration(days: 1)),
+            whiteRating: 2900,
+            blackRating: 2900,
+          ),
+          _game('undated', whiteRating: 3000, blackRating: 3000),
+        ],
+      ),
+    );
+    await flush(tester);
+    expect(container.read(reportsGamesProvider).map((g) => g.gameId), [
+      'strong-average',
+      'tie-a',
+      'tie-b',
+      'weak-recent',
+      'older-strongest',
+      'undated',
+    ]);
+    expect(
+      container.read(reportsPaginationProvider).items.map((g) => g.gameId),
+      [
+        'weak-recent',
+        'tie-b',
+        'tie-a',
+        'strong-average',
+        'older-strongest',
+        'undated',
+      ],
+    );
+    expect(
+      container.read(reportsFirstPageProvider).requireValue.items.first.gameId,
+      'weak-recent',
+    );
+    expect(container.read(reportsPaginationProvider).hasMore, isFalse);
     visit.close();
   });
 

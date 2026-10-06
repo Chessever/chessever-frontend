@@ -211,8 +211,7 @@ class _ReportsGamesState extends ConsumerState<_ReportsGames> {
 
   List<_ReportRow> _rows(List<GamesTourModel> games, int columns) {
     final rows = <_ReportRow>[];
-    // Keep the server's order, including undated/fallback dates. Grouping must
-    // never move a later page above cards already visible to the reader.
+    // The presentation provider keeps each day together in rating order.
     for (var start = 0; start < games.length;) {
       final day = _dayOf(games[start]);
       var end = start + 1;
@@ -308,7 +307,7 @@ class _ReportsGamesState extends ConsumerState<_ReportsGames> {
     final perRow = mode == GamesListViewMode.chessBoardGrid
         ? (ResponsiveHelper.isTablet && ResponsiveHelper.isLandscape ? 4 : 2)
         : 1;
-    final items = _visibleItems(reports.items);
+    final items = _visibleItems(ref.watch(reportsGamesProvider));
     final rows = _rows(items, perRow);
     final horizontalPadding = ResponsiveHelper.adaptive(
       phone: 16.w,

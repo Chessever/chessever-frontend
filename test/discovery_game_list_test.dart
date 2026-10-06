@@ -103,20 +103,22 @@ GamesTourModel _game(
   GameSource source = GameSource.supabase,
   GameStatus status = GameStatus.whiteWins,
   DateTime? lastMoveTime,
+  int whiteRating = 2700,
+  int blackRating = 2700,
 }) {
-  PlayerCard player(String name) => PlayerCard(
+  PlayerCard player(String name, int rating) => PlayerCard(
     name: name,
     federation: 'IND',
     title: 'GM',
-    rating: 2700,
+    rating: rating,
     countryCode: 'IN',
     team: null,
   );
   return GamesTourModel(
     gameId: id,
     source: source,
-    whitePlayer: player('White, Player'),
-    blackPlayer: player('Black, Player'),
+    whitePlayer: player('White, Player', whiteRating),
+    blackPlayer: player('Black, Player', blackRating),
     whiteTimeDisplay: '--:--',
     blackTimeDisplay: '--:--',
     whiteClockCentiseconds: 0,
@@ -278,6 +280,52 @@ void main() {
     }
 
     for (final mode in GamesListViewMode.values) {
+      testWidgets('Reports rank each day by average rating in $mode', (
+        tester,
+      ) async {
+        final repository = _ReportsRepository();
+        final container = await open(tester, repository, mode: mode);
+        final today = DateTime.utc(2026, 10, 6);
+        await complete(tester, repository, 0, [
+          _game(
+            'weak-recent',
+            lastMoveTime: today.add(const Duration(hours: 20)),
+            whiteRating: 2400,
+            blackRating: 2400,
+          ),
+          _game(
+            'high-white',
+            lastMoveTime: today.add(const Duration(hours: 12)),
+            whiteRating: 2800,
+            blackRating: 2200,
+          ),
+          _game('strong-average', lastMoveTime: today),
+          _game(
+            'older-strongest',
+            lastMoveTime: today.subtract(const Duration(days: 1)),
+            whiteRating: 2900,
+            blackRating: 2900,
+          ),
+        ]);
+
+        final firstCard = tester.widget<DiscoveryGameCard>(
+          find.byType(DiscoveryGameCard).first,
+        );
+        expect(firstCard.games.map((game) => game.gameId), [
+          'strong-average',
+          'high-white',
+          'weak-recent',
+          'older-strongest',
+        ]);
+        expect(firstCard.index, 0);
+        expect(
+          container.read(reportsPaginationProvider).items.first.gameId,
+          'weak-recent',
+        );
+        expect(tester.takeException(), isNull);
+        await _teardown(tester, container);
+      });
+
       testWidgets('Reports cards are the same with and without access in '
           '$mode', (tester) async {
         Size? cardSize;
