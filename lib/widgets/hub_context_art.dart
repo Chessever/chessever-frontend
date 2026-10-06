@@ -4,7 +4,15 @@ import 'package:flutter/material.dart';
 export 'hub_paired_hearts.dart' show HubLikesBackdrop;
 
 /// Full-card contextual artwork, independent of game or network data.
-enum HubScene { feed, miniatures, reports, library, smartEvents, mostLiked }
+enum HubScene {
+  feed,
+  miniatures,
+  reports,
+  library,
+  smartEvents,
+  mostLiked,
+  myPrep,
+}
 
 class HubSceneBackdrop extends StatelessWidget {
   const HubSceneBackdrop({super.key, required this.scene});
@@ -17,6 +25,7 @@ class HubSceneBackdrop extends StatelessWidget {
       HubScene.library => 'assets/pngs/hub_library_icon.webp',
       HubScene.smartEvents => 'assets/pngs/hub_smart_events_icon.webp',
       HubScene.mostLiked => 'assets/pngs/hub_most_liked_icon.webp',
+      HubScene.myPrep => 'assets/pngs/hub_my_prep_icon.webp',
       _ => 'assets/pngs/hub_${scene.name}_simple.webp',
     },
   );

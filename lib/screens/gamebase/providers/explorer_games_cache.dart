@@ -668,6 +668,23 @@ class ExplorerGamesCache {
   }
 
   Future<GamebaseSearchQueryResponse> _send(GamebasePositionGamesQuery query) {
+    final playerId = query.playerId;
+    if (playerId != null && GamebaseLocalGames.isLocalId(playerId)) {
+      final local = GamebaseLocalGames.positionResolver?.call(
+        GamebaseLocalPositionQuery(
+          playerId: playerId,
+          fen: query.fen,
+          uci: query.uci,
+          color: query.color,
+          timeControl: query.timeControl,
+          pageNumber: query.pageNumber,
+          pageSize: query.pageSize,
+          sortBy: query.sortBy,
+          sortDirection: query.sortDirection,
+        ),
+      );
+      if (local != null) return Future.value(local);
+    }
     final repository = _repositoryOf();
     if (query.useFenEndpoint) {
       return repository.getFenPositionGames(

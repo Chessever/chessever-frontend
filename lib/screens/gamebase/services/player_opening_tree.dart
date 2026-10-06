@@ -3,6 +3,12 @@ import 'package:flutter/foundation.dart';
 
 enum PlayerOpeningTreeStatus { idle, building, complete, canceled, error }
 
+/// Opening trees built on the device (My Prep) for a `prep:` player id,
+/// served to the explorer in place of a server-built tree.
+abstract final class LocalPlayerOpeningTrees {
+  static PlayerOpeningTreeIndex? Function(String playerId)? resolver;
+}
+
 @immutable
 class PlayerOpeningTreeProgress {
   const PlayerOpeningTreeProgress({

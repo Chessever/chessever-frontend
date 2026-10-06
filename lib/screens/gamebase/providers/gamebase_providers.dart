@@ -1544,6 +1544,21 @@ class PlayerOpeningTreeBuildController
   }
 
   Future<void> _run(int generation) async {
+    final local = GamebaseLocalGames.isLocalId(_playerId)
+        ? LocalPlayerOpeningTrees.resolver?.call(_playerId)
+        : null;
+    if (local != null) {
+      state = PlayerOpeningTreeState(
+        playerId: _playerId,
+        treeId: local.treeId,
+        index: local,
+        progress: PlayerOpeningTreeProgress(
+          status: PlayerOpeningTreeStatus.complete,
+          indexedPositions: local.positionCount,
+        ),
+      );
+      return;
+    }
     try {
       final repository = _ref.read(gamebaseRepositoryProvider);
       final memorialSourceIdentity = _memorialSourceIdentity;

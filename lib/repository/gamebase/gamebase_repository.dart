@@ -563,6 +563,9 @@ class GamebaseRepository {
   /// Fetch a game by ID with full PGN included.
   /// Returns a [GamebaseGameWithPgn] containing the game data and raw PGN.
   Future<GamebaseGameWithPgn?> getGameWithPgn(String id) async {
+    if (GamebaseLocalGames.isLocalId(id)) {
+      return GamebaseLocalGames.gameResolver?.call(id);
+    }
     if (kDebugMode) {
       debugPrint('[GamebaseRepository] getGameWithPgn called with id: $id');
     }
@@ -2010,6 +2013,200 @@ class GamebaseRepository {
       throw Exception('Failed to load FEN position games: $e');
     }
   }
+
+  /// Fetch a Lichess or Chess.com account as one server-cached PGN snapshot,
+  /// the same endpoint desktop Prep uses.
+  ///
+  /// The server keeps a shared snapshot per account and selection, refreshes
+  /// it on a schedule, and revalidates a stale one on request. A cold account
+  /// answers 202 while it is prepared; that surfaces as
+  /// [GamebaseExternalPlayerPgnPreparingException] so the caller can poll.
+  /// [cadence] `frequent` asks the server to keep this snapshot fresher than
+  /// the daily default (the user's own accounts). Older servers ignore it.
+  Future<GamebasePlayerPgnExport?> getExternalPlayerGamesPgn({
+    required GamebaseExternalPlayerSource source,
+    required String username,
+    bool refresh = false,
+    bool prepare = true,
+    int? sinceMs,
+    int? dateFromMs,
+    int? untilMs,
+    Set<String> timeControls = const {},
+    String? cadence,
+    Duration? receiveTimeout,
+    CancelToken? cancelToken,
+  }) async {
+    final cleanUsername = username.trim();
+    if (cleanUsername.isEmpty) return null;
+
+    try {
+      final path =
+          '$_baseUrl/api/player/${source.apiPathSegment}/'
+          '${Uri.encodeComponent(cleanUsername)}/games.pgn';
+      final response = await _dio.get<String>(
+        path,
+        cancelToken: cancelToken,
+        queryParameters: <String, dynamic>{
+          if (refresh) 'refresh': 'true',
+          if (prepare) 'prepare': 'true',
+          if (sinceMs != null && sinceMs >= 0) 'since': sinceMs,
+          if (dateFromMs != null) 'dateFrom': dateFromMs,
+          if (untilMs != null) 'until': untilMs,
+          if (timeControls.isNotEmpty)
+            'timeControls': (timeControls.toList()..sort()).join(','),
+          if (cadence != null && cadence.isNotEmpty) 'cadence': cadence,
+        },
+        options: Options(
+          headers: <String, String>{
+            ..._headers,
+            'Accept': 'application/x-chess-pgn, text/plain, */*',
+          },
+          receiveTimeout: receiveTimeout ?? const Duration(minutes: 5),
+          responseType: ResponseType.plain,
+        ),
+      );
+
+      if (response.statusCode == 202 ||
+          response.headers.value('x-pgn-cache')?.toLowerCase() == 'warming') {
+        final retryAfterSeconds =
+            int.tryParse(response.headers.value('retry-after') ?? '') ?? 15;
+        final progress = _parseExternalPlayerPgnWarmProgress(response.data);
+        throw GamebaseExternalPlayerPgnPreparingException(
+          retryAfter: Duration(seconds: retryAfterSeconds.clamp(1, 60)),
+          preparedGameCount: progress.preparedGameCount,
+          expectedGameCount: progress.expectedGameCount,
+        );
+      }
+
+      return GamebasePlayerPgnExport(
+        pgn: response.data ?? '',
+        gameCount:
+            int.tryParse(response.headers.value('x-game-count') ?? '') ?? 0,
+        cacheStatus: response.headers.value('x-pgn-cache'),
+        snapshotStatus: response.headers.value('x-pgn-snapshot'),
+        filterVersion: response.headers.value('x-pgn-filter-version'),
+      );
+    } on DioException catch (e) {
+      final statusCode = e.response?.statusCode;
+      if (statusCode == 403 || statusCode == 405 || statusCode == 501) {
+        return null;
+      }
+      rethrow;
+    }
+  }
+}
+
+/// One server PGN export of a player's games.
+class GamebasePlayerPgnExport {
+  const GamebasePlayerPgnExport({
+    required this.pgn,
+    required this.gameCount,
+    this.cacheStatus,
+    this.snapshotStatus,
+    this.filterVersion,
+  });
+
+  final String pgn;
+  final int gameCount;
+
+  /// `hit` when the server's snapshot was already current.
+  final String? cacheStatus;
+
+  /// `delta` when [pgn] only holds games newer than the request's `since`.
+  final String? snapshotStatus;
+
+  /// `1` once the server honours time-control and date selections.
+  final String? filterVersion;
+}
+
+({int? preparedGameCount, int? expectedGameCount})
+_parseExternalPlayerPgnWarmProgress(String? body) {
+  try {
+    final decoded = jsonDecode(body ?? '');
+    final progress = decoded is Map ? decoded['progress'] : null;
+    if (progress is! Map) {
+      return (preparedGameCount: null, expectedGameCount: null);
+    }
+    int? count(Object? value) => value is int && value >= 0 ? value : null;
+    return (
+      preparedGameCount: count(progress['preparedGameCount']),
+      expectedGameCount: count(progress['expectedGameCount']),
+    );
+  } on FormatException {
+    return (preparedGameCount: null, expectedGameCount: null);
+  }
+}
+
+/// The server is still preparing an account's snapshot; ask again after
+/// [retryAfter].
+class GamebaseExternalPlayerPgnPreparingException implements Exception {
+  const GamebaseExternalPlayerPgnPreparingException({
+    required this.retryAfter,
+    this.preparedGameCount,
+    this.expectedGameCount,
+  });
+
+  final Duration retryAfter;
+  final int? preparedGameCount;
+  final int? expectedGameCount;
+
+  @override
+  String toString() => 'External player PGN cache is being prepared.';
+}
+
+enum GamebaseExternalPlayerSource {
+  lichess,
+  chesscom;
+
+  String get apiPathSegment => name;
+
+  String get label => switch (this) {
+    GamebaseExternalPlayerSource.lichess => 'Lichess',
+    GamebaseExternalPlayerSource.chesscom => 'Chess.com',
+  };
+}
+
+/// Games that live on the device rather than the server (My Prep's
+/// downloaded Lichess and Chess.com games) and are reached through the same
+/// explorer and board paths as server games. Their ids carry a `prep:`
+/// prefix the server never issues, so a lookup that matches nothing here
+/// still goes to the server.
+abstract final class GamebaseLocalGames {
+  static const String idPrefix = 'prep:';
+
+  static GamebaseGameWithPgn? Function(String id)? gameResolver;
+  static GamebaseSearchQueryResponse? Function(
+    GamebaseLocalPositionQuery query,
+  )?
+  positionResolver;
+
+  static bool isLocalId(String? id) => id?.startsWith(idPrefix) ?? false;
+}
+
+/// The parts of an explorer games request a device-local source answers.
+@immutable
+class GamebaseLocalPositionQuery {
+  const GamebaseLocalPositionQuery({
+    required this.playerId,
+    required this.fen,
+    this.uci,
+    this.color,
+    this.timeControl,
+    this.pageNumber = 0,
+    this.pageSize = 20,
+    this.sortBy = GamebaseSortField.date,
+    this.sortDirection = GamebaseSortDirection.desc,
+  });
+
+  final String playerId;
+  final String fen;
+  final String? uci;
+  final String? color;
+  final TimeControl? timeControl;
+  final int pageNumber;
+  final int pageSize;
+  final GamebaseSortField sortBy;
+  final GamebaseSortDirection sortDirection;
 }
 
 final gamebaseRepositoryProvider = Provider<GamebaseRepository>((ref) {

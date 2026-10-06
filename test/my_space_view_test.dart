@@ -754,7 +754,7 @@ void main() {
     expect(find.text('Nothing to edit yet.'), findsNothing);
     expect(find.byKey(const ValueKey<String>('space_edit_done')), findsNothing);
     expect(find.text('My Likes'), findsOneWidget);
-    expect(find.text('Smart Events'), findsOneWidget);
+    expect(find.text('My Prep'), findsOneWidget);
     expect(find.text(kMyDatabaseEmptyText), findsOneWidget);
     expect(tester.takeException(), isNull);
     await _drain(tester);
@@ -1108,7 +1108,7 @@ void main() {
         ),
       ],
     );
-    expect(find.text('Smart Events'), findsOneWidget);
+    expect(find.text('My Prep'), findsOneWidget);
     expect(find.text('Library'), findsOneWidget);
     expect(find.text('My Likes'), findsOneWidget);
     expect(find.text('No likes yet'), findsOneWidget);
@@ -2765,8 +2765,7 @@ void main() {
     ]) {
       await tester.tap(target);
       await settleRoute();
-      final prep = tester.widget<MyPrepScreen>(find.byType(MyPrepScreen));
-      expect(MyPrepScreen.tabs[prep.initialTab], 'Openings');
+      expect(find.byType(MyPrepOpeningsScreen), findsOneWidget);
       expect(find.byType(SpaceSectionScreen), findsNothing);
       navigator.pop();
       await settleRoute();

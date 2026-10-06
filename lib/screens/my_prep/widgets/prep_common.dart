@@ -1,0 +1,300 @@
+import 'package:chessever2/screens/my_prep/models/prep_models.dart';
+import 'package:chessever2/screens/my_prep/services/prep_analysis.dart';
+import 'package:chessever2/services/fide_photo_service.dart';
+import 'package:chessever2/theme/app_colors.dart';
+import 'package:chessever2/utils/app_typography.dart';
+import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/widgets/federation_flag.dart';
+import 'package:chessever2/widgets/player_initials_avatar.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
+import 'package:hooks_riverpod/hooks_riverpod.dart';
+
+/// Chess.com's green, used only on its own mark and source chips.
+const Color kChessComGreen = Color(0xFF81B64C);
+
+/// A provider's logo on the white tile both brands are designed for, the
+/// way desktop Prep shows them.
+class PrepSourceMark extends StatelessWidget {
+  const PrepSourceMark({super.key, required this.source, this.size = 20});
+
+  final PrepSource source;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    final inner = size * 0.68;
+    return ExcludeSemantics(
+      child: Container(
+        width: size,
+        height: size,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(size * 0.28),
+          border: Border.all(color: context.colors.divider, width: 0.5),
+        ),
+        child: switch (source) {
+          PrepSource.lichess => SvgPicture.asset(
+            'assets/svgs/lichess_logo.svg',
+            width: inner,
+            height: inner,
+          ),
+          PrepSource.chesscom => Image.asset(
+            'assets/pngs/chesscom_pawn.png',
+            width: inner,
+            height: inner,
+            fit: BoxFit.contain,
+            filterQuality: FilterQuality.medium,
+          ),
+        },
+      ),
+    );
+  }
+}
+
+/// The marks of every source a profile reads, overlapping like a stack.
+class PrepSourceMarks extends StatelessWidget {
+  const PrepSourceMarks({super.key, required this.sources, this.size = 18});
+
+  final Iterable<PrepSource> sources;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    final list = sources.toSet().toList()
+      ..sort((a, b) => a.index.compareTo(b.index));
+    if (list.isEmpty) return const SizedBox.shrink();
+    final step = size * 0.72;
+    return SizedBox(
+      width: size + step * (list.length - 1),
+      height: size,
+      child: Stack(
+        children: [
+          for (var i = 0; i < list.length; i++)
+            Positioned(
+              left: step * i,
+              child: PrepSourceMark(source: list[i], size: size),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+final _fidePhotoProvider = FutureProvider.autoDispose.family<String?, String?>(
+  (ref, fideId) => FidePhotoService.getPhotoUrlOrNull(fideId),
+);
+
+/// A profile's picture: its FIDE photo for famous players, a Chess.com
+/// avatar when one exists, or initials, with the title band the app's
+/// player cards use.
+class PrepAvatar extends ConsumerWidget {
+  const PrepAvatar({
+    super.key,
+    required this.name,
+    required this.size,
+    this.photoUrl,
+    this.fideId,
+    this.title,
+  });
+
+  final String name;
+  final double size;
+  final String? photoUrl;
+  final String? fideId;
+  final String? title;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final fidePhoto = fideId == null
+        ? null
+        : ref.watch(_fidePhotoProvider(fideId)).valueOrNull;
+    return PlayerInitialsAvatar(
+      photoUrl: fidePhoto ?? photoUrl,
+      initials: prepInitials(name),
+      size: size,
+      title: title,
+    );
+  }
+}
+
+String prepInitials(String name) {
+  final words = name
+      .split(RegExp(r'[\s_\-]+'))
+      .where((w) => w.isNotEmpty)
+      .toList();
+  if (words.isEmpty) return '?';
+  if (words.length == 1) {
+    return words.first.substring(0, words.first.length.clamp(0, 2)).toUpperCase();
+  }
+  return (words.first[0] + words.last[0]).toUpperCase();
+}
+
+/// A small flag, or nothing when the country is unknown.
+class PrepFlag extends StatelessWidget {
+  const PrepFlag({super.key, required this.country});
+  final String? country;
+
+  @override
+  Widget build(BuildContext context) {
+    if (!FederationFlag.hasVisibleFlag(country)) return const SizedBox.shrink();
+    return Padding(
+      padding: EdgeInsets.only(right: 6.w),
+      child: FederationFlag(
+        federation: country,
+        width: 16.w,
+        height: 11.h,
+        borderRadius: BorderRadius.circular(2.br),
+      ),
+    );
+  }
+}
+
+/// Wins, draws and losses as one proportional bar.
+class PrepResultBar extends StatelessWidget {
+  const PrepResultBar({super.key, required this.tally, this.height = 6});
+
+  final PrepTally tally;
+  final double height;
+
+  @override
+  Widget build(BuildContext context) {
+    final total = tally.total;
+    final colors = context.colors;
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(height),
+      child: SizedBox(
+        height: height,
+        child: total == 0
+            ? ColoredBox(color: colors.surfaceRecessed)
+            : Row(
+                children: [
+                  if (tally.wins > 0)
+                    Expanded(
+                      flex: tally.wins,
+                      child: ColoredBox(color: colors.successStrong),
+                    ),
+                  if (tally.draws > 0)
+                    Expanded(
+                      flex: tally.draws,
+                      child: ColoredBox(color: colors.textTertiary),
+                    ),
+                  if (tally.losses > 0)
+                    Expanded(
+                      flex: tally.losses,
+                      child: ColoredBox(color: colors.danger),
+                    ),
+                ],
+              ),
+      ),
+    );
+  }
+}
+
+/// `+12 =4 −3`, coloured like the bar.
+class PrepTallyText extends StatelessWidget {
+  const PrepTallyText({super.key, required this.tally, this.style});
+
+  final PrepTally tally;
+  final TextStyle? style;
+
+  @override
+  Widget build(BuildContext context) {
+    final base = (style ?? AppTypography.textXsMedium).copyWith(
+      fontFeatures: const [FontFeature.tabularFigures()],
+    );
+    final colors = context.colors;
+    return Text.rich(
+      TextSpan(
+        children: [
+          TextSpan(
+            text: '+${tally.wins}',
+            style: base.copyWith(color: colors.successStrong),
+          ),
+          TextSpan(
+            text: '  =${tally.draws}',
+            style: base.copyWith(color: colors.textSecondary),
+          ),
+          TextSpan(
+            text: '  −${tally.losses}',
+            style: base.copyWith(color: colors.danger),
+          ),
+        ],
+      ),
+      semanticsLabel:
+          '${tally.wins} wins, ${tally.draws} draws, ${tally.losses} losses',
+    );
+  }
+}
+
+/// A row of headline numbers, in the player profile's stat style.
+class PrepStatStrip extends StatelessWidget {
+  const PrepStatStrip({super.key, required this.items});
+
+  final List<(String label, String value)> items;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: 8.sp, vertical: 14.sp),
+      decoration: BoxDecoration(
+        color: context.colors.surface,
+        borderRadius: BorderRadius.circular(12.br),
+      ),
+      child: Row(
+        children: [
+          for (final (label, value) in items)
+            Expanded(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: AppTypography.textXsMedium.copyWith(
+                      color: context.colors.textPrimaryMuted,
+                    ),
+                  ),
+                  SizedBox(height: 4.h),
+                  Text(
+                    value,
+                    maxLines: 1,
+                    style: AppTypography.textLgBold.copyWith(
+                      color: context.colors.textPrimary,
+                      fontFeatures: const [FontFeature.tabularFigures()],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+/// "Synced 3 h ago" style wording.
+String prepSyncedAgo(int? ms) {
+  if (ms == null) return 'Not downloaded yet';
+  final diff = DateTime.now().difference(DateTime.fromMillisecondsSinceEpoch(ms));
+  if (diff.inMinutes < 1) return 'Updated just now';
+  if (diff.inMinutes < 60) return 'Updated ${diff.inMinutes} min ago';
+  if (diff.inHours < 24) return 'Updated ${diff.inHours} h ago';
+  if (diff.inDays == 1) return 'Updated yesterday';
+  return 'Updated ${diff.inDays} days ago';
+}
+
+String prepCount(int n) {
+  if (n < 1000) return '$n';
+  final text = n.toString();
+  final buffer = StringBuffer();
+  for (var i = 0; i < text.length; i++) {
+    if (i > 0 && (text.length - i) % 3 == 0) buffer.write(',');
+    buffer.write(text[i]);
+  }
+  return buffer.toString();
+}
+
+String prepGamesLabel(int n) => n == 1 ? '1 game' : '${prepCount(n)} games';

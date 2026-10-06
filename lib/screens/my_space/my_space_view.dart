@@ -43,13 +43,13 @@ const String kMyDatabaseEmptyText =
 /// How many live events a new user is offered to save.
 const int kMySpaceSuggestions = 3;
 
-/// Opens the My Prep placeholder in its existing route.
+/// Opens My Prep: the reader's games, opponents and favorite players.
 Future<void> openMyPrep(BuildContext context) {
   HapticFeedbackService.cardTap();
   return MyPrepScreen.open(context);
 }
 
-/// The My Space tab, with Smart Events and Library tiles, a permanent
+/// The My Space tab, with My Prep and Library tiles, a permanent
 /// My Likes archive card, and saved compact cards without category headers.
 ///
 /// Works signed out too: the shortcuts provider keeps a device-local list
@@ -344,11 +344,11 @@ class _MySpaceTiles extends StatelessWidget {
   @override
   Widget build(BuildContext context) => HubTileRow(
     left: HubTile(
-      key: const ValueKey('my_space_smart_events_tile'),
-      title: 'Smart Events',
-      caption: 'Your saved events',
-      artwork: const HubSceneBackdrop(scene: HubScene.smartEvents),
-      onTap: () => spaceOpenGroup(context, SpaceSection.smartEvents),
+      key: const ValueKey('my_space_my_prep_tile'),
+      title: 'My Prep',
+      caption: 'Your games and opponents',
+      artwork: const HubSceneBackdrop(scene: HubScene.myPrep),
+      onTap: () => openMyPrep(context),
     ),
     right: const _LibraryTile(),
   );

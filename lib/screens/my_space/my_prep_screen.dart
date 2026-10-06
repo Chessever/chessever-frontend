@@ -1,3 +1,4 @@
+import 'package:chessever2/screens/my_prep/my_prep_home_screen.dart';
 import 'package:chessever2/screens/for_you/discovery/widgets/discovery_common.dart'
     show DiscoveryAction;
 import 'package:chessever2/screens/my_space/actions/space_edit_actions.dart';
@@ -20,17 +21,24 @@ import 'package:dartchess/dartchess.dart' show Side, kInitialFEN;
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
-/// My Prep remains addressable while its preparation tools are deferred.
-/// Existing opening/database data is kept in its own stores.
+/// My Prep's entry point: My games, Opponents and Favorites. Saved
+/// openings and positions keep their own page ([MyPrepOpeningsScreen]).
 class MyPrepScreen extends StatelessWidget {
   const MyPrepScreen({super.key, this.initialTab = 0});
 
-  // Retained for existing callers and saved shortcut routes.
   final int initialTab;
-  static const List<String> tabs = ['Databases', 'Openings'];
-  static int get openingsTab => tabs.indexOf('Openings');
+  static const List<String> tabs = MyPrepHomeScreen.tabs;
+
+  /// Retained for callers that opened the old Openings tab; they now reach
+  /// the saved lines page directly.
+  static const int openingsTab = -1;
 
   static Future<void> open(BuildContext context, {int initialTab = 0}) {
+    if (initialTab == openingsTab) {
+      return Navigator.of(context).push(
+        MaterialPageRoute<void>(builder: (_) => const MyPrepOpeningsScreen()),
+      );
+    }
     return Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (_) => MyPrepScreen(initialTab: initialTab),
@@ -39,28 +47,24 @@ class MyPrepScreen extends StatelessWidget {
   }
 
   @override
+  Widget build(BuildContext context) =>
+      MyPrepHomeScreen(initialTab: initialTab);
+}
+
+/// The saved openings and positions, on their own page.
+class MyPrepOpeningsScreen extends StatelessWidget {
+  const MyPrepOpeningsScreen({super.key});
+
+  @override
   Widget build(BuildContext context) => Scaffold(
     backgroundColor: context.colors.background,
     appBar: AppBar(
       backgroundColor: context.colors.background,
       foregroundColor: context.colors.textPrimary,
-      title: Text('My Prep', style: AppTypography.textMdMedium),
+      title: Text('Saved openings', style: AppTypography.textMdMedium),
       centerTitle: true,
     ),
-    body: SafeArea(
-      child: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(32),
-          child: Text(
-            'Coming soon',
-            textAlign: TextAlign.center,
-            style: AppTypography.textLgBold.copyWith(
-              color: context.colors.textPrimary,
-            ),
-          ),
-        ),
-      ),
-    ),
+    body: const SafeArea(child: MyPrepOpeningsPage()),
   );
 }
 
