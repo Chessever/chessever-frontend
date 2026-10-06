@@ -38,16 +38,4 @@ class BoardScanPosition {
     }
     return '${rows.join('/')} ${blackToMove ? 'b' : 'w'} - - 0 1';
   }
-
-  /// Rotate the detected position, not just the board's viewing orientation.
-  BoardScanPosition rotated() {
-    final next = <String, String>{};
-    for (var r = 0; r < 8; r++) {
-      for (var c = 0; c < 8; c++) {
-        next[boardScanSquares[c * 8 + 7 - r]] =
-            squares[boardScanSquares[r * 8 + c]]!;
-      }
-    }
-    return BoardScanPosition(squares: next);
-  }
 }

@@ -18,21 +18,6 @@ void main() {
     );
   });
   test(
-    'rotation changes the actual square mapping and four rotations restore it',
-    () {
-      final squares = {for (final square in boardScanSquares) square: '-'};
-      squares['a8'] = 'wR';
-      squares['h1'] = 'bK';
-      var position = BoardScanPosition(squares: squares);
-      expect(position.rotated().squares['h8'], 'wR');
-      expect(position.rotated().squares['a1'], 'bK');
-      for (var i = 0; i < 4; i++) {
-        position = position.rotated();
-      }
-      expect(position.squares, squares);
-    },
-  );
-  test(
     'perspective projection matches all corners and rejects crossed handles',
     () {
       final corners = [

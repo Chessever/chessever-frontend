@@ -99,6 +99,7 @@ class _BoardScanScreenState extends State<BoardScanScreen> {
   late bool _photo = widget.photo;
   bool _busy = false;
   bool _blackToMove = false;
+  bool _flipped = false;
   String? _error;
   BoardScanPosition? _position;
 
@@ -225,13 +226,16 @@ class _BoardScanScreenState extends State<BoardScanScreen> {
                           'Check every piece against your image. You can fix pieces in the board editor next.',
                         ),
                         const SizedBox(height: 16),
-                        BoardScanPreview(size: width, fen: position.fen()),
+                        BoardScanPreview(
+                          size: width,
+                          fen: position.fen(),
+                          flipped: _flipped,
+                        ),
                         const SizedBox(height: 16),
                         TextButton.icon(
-                          onPressed: () =>
-                              setState(() => _position = position.rotated()),
-                          icon: const Icon(Icons.rotate_right),
-                          label: const Text('Rotate position 90°'),
+                          onPressed: () => setState(() => _flipped = !_flipped),
+                          icon: const Icon(Icons.swap_vert),
+                          label: const Text('Flip board'),
                         ),
                         const Text('Side to move'),
                         const SizedBox(height: 8),
