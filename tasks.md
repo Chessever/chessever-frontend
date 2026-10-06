@@ -76,6 +76,5 @@ Contract (gamebase, no SQL migration, everything in collection.metadata jsonb):
 
 - All code for both workstreams is merged: web #684/#689, desktop #269/#270, mobile pushed to stable, gamebase #98/#99. The cover and author-photo routes are on gamebase `origin/main` too; `codex/collection-identity-hydration` is only 1 commit ahead of it.
 - The two unchecked lines above ("Mobile (me)", "Web console UI") are leftovers: both are done (`bb297ca3`, `27a9b1c1` + `56b70a55`).
-- BLOCKED on Berkay: the gamebase deploy. Per north_star.md, no backend deploy without his confirmed target (which environment, who deploys). Until it is live, cover and author-photo uploads show "not available here yet". Unauthenticated probes of service.chessever.com return 404 for every path, so they cannot show what is deployed.
-- Open product decision: web still has no screen for publishing a library folder.
-- The auto-nudge loop was stopped here: nothing is left to do without those two answers.
+- ~~BLOCKED on the gamebase deploy~~ WRONG, retracted 2026-10-07: production was already serving it. `service.chessever.com/media/collection-covers/...` and `/media/collection-authors/...` answer with the media router's own 404 (`Cache-Control: public, max-age=60`, `nosniff`), which only exists in builds that include the cover and author-photo work. Collection publishing is DONE and live.
+- Open product decision (optional, not a blocker): web still has no screen for publishing a library folder.
