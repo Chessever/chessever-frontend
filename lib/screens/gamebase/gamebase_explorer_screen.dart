@@ -1,3 +1,4 @@
+import 'package:chessever2/board_scan/board_scan_screen.dart';
 import 'package:chessever2/services/rewarded_premium/rewarded_access_provider.dart';
 import 'dart:async';
 import 'dart:math' as math;
@@ -811,6 +812,12 @@ class _GamebaseExplorerScreenState extends ConsumerState<GamebaseExplorerScreen>
       ),
       actions: [
         IconButton(
+          key: const ValueKey<String>('board_import_image'),
+          tooltip: 'Import board image',
+          icon: Icon(Icons.add_photo_alternate_outlined, size: 22.ic),
+          onPressed: _importBoardImage,
+        ),
+        IconButton(
           key: e2eKey(E2eIds.openingExplorerSaveButton),
           icon: Icon(
             Icons.save_outlined,
@@ -980,6 +987,20 @@ class _GamebaseExplorerScreenState extends ConsumerState<GamebaseExplorerScreen>
         isAtGameEnd: false,
       ),
     );
+  }
+
+  Future<void> _importBoardImage() async {
+    final detectedFen = await importBoardImage(context);
+    if (!mounted || detectedFen == null) return;
+    final editedFen = await Navigator.of(context).push<String>(
+      MaterialPageRoute(
+        builder: (_) => boardEditorAt(detectedFen, returnFenOnDone: true),
+      ),
+    );
+    if (!mounted || editedFen == null || editedFen.trim().isEmpty) return;
+    ref
+        .read(gamebaseExplorerProvider.notifier)
+        .setPosition(editedFen, startingFen: editedFen);
   }
 
   Future<void> _openBoardEditor() async {
