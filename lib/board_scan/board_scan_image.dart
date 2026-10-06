@@ -177,3 +177,64 @@ List<Map<String, String>> _quadrants((Uint8List, List<Offset>, bool) input) {
   }
   return result;
 }
+
+/// The original view retains file/rank labels for automatic camera alignment.
+Future<Map<String, dynamic>> boardScanSource(
+  BoardScanImage image,
+  List<Offset> corners,
+) => compute(_source, (image.bytes, corners));
+
+Map<String, dynamic> _source((Uint8List, List<Offset>) input) {
+  var image = img.decodeJpg(input.$1)!;
+  if (math.max(image.width, image.height) > 1024) {
+    image = img.copyResize(
+      image,
+      width: image.width >= image.height ? 1024 : null,
+      height: image.height > image.width ? 1024 : null,
+      interpolation: img.Interpolation.linear,
+    );
+  }
+  final width = image.width, height = image.height;
+  final edge = input.$2[1] - input.$2[0];
+  final angle = -math.atan2(edge.dy * height, edge.dx * width);
+  final ca = math.cos(angle), sa = math.sin(angle);
+  final expandedWidth = (width * ca).abs() + (height * sa).abs();
+  final expandedHeight = (width * sa).abs() + (height * ca).abs();
+  image.backgroundColor = img.ColorRgb8(255, 255, 255);
+  image = img.copyRotate(
+    image,
+    angle: angle * 180 / math.pi,
+    interpolation: img.Interpolation.linear,
+  );
+  final rotatedWidth = image.width, rotatedHeight = image.height;
+  final corners = [
+    for (final p in input.$2)
+      {
+        'x':
+            (((p.dx * width - width / 2) * ca -
+                        (p.dy * height - height / 2) * sa +
+                        expandedWidth / 2) /
+                    rotatedWidth)
+                .clamp(0.0, 1.0),
+        'y':
+            (((p.dx * width - width / 2) * sa +
+                        (p.dy * height - height / 2) * ca +
+                        expandedHeight / 2) /
+                    rotatedHeight)
+                .clamp(0.0, 1.0),
+      },
+  ];
+  if (math.max(image.width, image.height) > 1024) {
+    image = img.copyResize(
+      image,
+      width: image.width >= image.height ? 1024 : null,
+      height: image.height > image.width ? 1024 : null,
+      interpolation: img.Interpolation.linear,
+    );
+  }
+  return {
+    'image':
+        'data:image/jpeg;base64,${base64Encode(img.encodeJpg(image, quality: 85))}',
+    'corners': corners,
+  };
+}

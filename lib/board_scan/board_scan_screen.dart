@@ -123,7 +123,13 @@ class _BoardScanScreenState extends State<BoardScanScreen> {
         photo: _photo,
       );
       if (!mounted) return;
-      final position = await _api.scan(quadrants, photo: _photo);
+      final source = await boardScanSource(widget.image, _corners);
+      if (!mounted) return;
+      final position = await _api.scan(
+        quadrants,
+        photo: _photo,
+        source: source,
+      );
       if (mounted) setState(() => _position = position);
     } catch (error) {
       if (mounted) {

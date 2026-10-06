@@ -28,6 +28,7 @@ class BoardScanApi {
   Future<BoardScanPosition> scan(
     List<Map<String, String>> quadrants, {
     required bool photo,
+    Map<String, dynamic>? source,
   }) async {
     final supabase = Supabase.instance.client;
     var session = supabase.auth.currentSession;
@@ -40,6 +41,7 @@ class BoardScanApi {
     final body = jsonEncode({
       'kind': photo ? 'photo' : 'diagram',
       'quadrants': quadrants,
+      if (source != null) 'source': source,
     });
     for (var attempt = 0; attempt < 2; attempt++) {
       final response = await _client
