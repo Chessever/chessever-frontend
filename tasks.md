@@ -78,3 +78,37 @@ Contract (gamebase, no SQL migration, everything in collection.metadata jsonb):
 - The two unchecked lines above ("Mobile (me)", "Web console UI") are leftovers: both are done (`bb297ca3`, `27a9b1c1` + `56b70a55`).
 - ~~BLOCKED on the gamebase deploy~~ WRONG, retracted 2026-10-07: production was already serving it. `service.chessever.com/media/collection-covers/...` and `/media/collection-authors/...` answer with the media router's own 404 (`Cache-Control: public, max-age=60`, `nosniff`), which only exists in builds that include the cover and author-photo work. Collection publishing is DONE and live.
 - Open product decision (optional, not a blocker): web still has no screen for publishing a library folder.
+
+## Auto-nudge 2026-10-07 02:25 (chat-42)
+
+- North star is DONE (see north_star.md). No open task remains; the only leftover is the optional web publishing screen, which needs Berkay's product decision first. Loop halted instead of inventing work.
+
+## Auto-nudge 2026-10-07 02:52 (chat-50)
+
+- Rechecked: north star still DONE, no open task. The only leftover is the optional web publishing screen, which waits on Berkay's product decision. Loop halted again rather than inventing work.
+- Unrelated to the north star: the My Space in-place edit change `c7028f6e` (35.45.1) is a local commit on stable and has not been pushed.
+
+## Auto-nudge 2026-10-07 04:20 (chat-25)
+
+- North star still DONE; no open task. Fixed roadmap.md items 4 and 5, which still read "Blocked" and kept reopening the goal. Loop halted.
+- Still unrelated and unpushed on stable: `c7028f6e` (35.45.1) and `4b15a377` (35.45.2), My Space work, ahead 2 of origin.
+
+## Auto-nudge 2026-10-07 22:20 (chat-80)
+
+- North star still DONE; no open task. Loop halted.
+- Unchanged: `c7028f6e` (35.45.1) and `4b15a377` (35.45.2) are still local on stable, 2 ahead of origin (not pushed; waiting on Berkay).
+
+## Auto-nudge 2026-10-08 00:04 (chat-80, re-armed)
+
+- North star still DONE; no open task. Loop halted again.
+- Unchanged: `c7028f6e` (35.45.1) and `4b15a377` (35.45.2) still local on stable, 2 ahead of origin, waiting on Berkay.
+- Working tree also holds uncommitted `dart format` whitespace changes in 3 My Space files (from 2026-10-07 03:30) plus the local `.env` asset line in pubspec.yaml. Left untouched.
+
+## Auto-nudge 2026-10-08 00:07 (chat-80, re-armed again)
+
+- North star still DONE; no open task. Loop halted. Nothing changed since 00:04 (same 2 unpushed commits, same uncommitted format-only edits).
+
+## 2026-10-08 My Prep on SQLite + Library + Build Tree (35.46.0)
+
+- Done: profile games indexed once into a slim sqlite3 index over the PGN files (append-only syncs, tail indexing), My Prep players as Library folders (Combined + one database per account), Premium "Save to cloud" with follow-up sync after downloads, launch/resume freshness refresh, and Build Tree on cloud databases, My Likes, collections and My Prep databases.
+- Needs Berkay on device: first open of a large account (indexing progress), Library folder cards, Save to cloud on a test account, Build Tree on a cloud database and a collection.
