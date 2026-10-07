@@ -58,6 +58,9 @@ class SpaceAddFab extends ConsumerStatefulWidget {
   /// What the button announces.
   static const label = 'Add to My Space';
 
+  /// What it announces in Edit, where a tap saves and ends Edit.
+  static const saveLabel = 'Save edits';
+
   @override
   ConsumerState<SpaceAddFab> createState() => _SpaceAddFabState();
 }
@@ -96,24 +99,26 @@ class _SpaceAddFabState extends ConsumerState<SpaceAddFab>
 
   Future<void> _toggle() async {
     if (_open) return;
+    // In Edit the button is Edit's save: one tap ends it, no popover.
+    if (ref.read(spaceEditModeProvider)) {
+      HapticFeedbackService.buttonPress();
+      ref.read(spaceEditModeProvider.notifier).state = false;
+      return;
+    }
     final box = context.findRenderObject() as RenderBox?;
     if (box == null || !box.hasSize) return;
     HapticFeedbackService.buttonPress();
     final anchor = box.localToGlobal(Offset.zero) & box.size;
     setState(() => _open = true);
     _setTurn(1);
-    final picked = await Navigator.of(context).push<_SpaceAddAction>(
-      _SpaceAddPopoverRoute(
-        anchor: anchor,
-        editing: ref.read(spaceEditModeProvider),
-      ),
-    );
+    final picked = await Navigator.of(
+      context,
+    ).push<_SpaceAddAction>(_SpaceAddPopoverRoute(anchor: anchor));
     if (!mounted) return;
     setState(() => _open = false);
     _setTurn(0);
     if (picked?.edit == true) {
-      final mode = ref.read(spaceEditModeProvider.notifier);
-      mode.state = !mode.state;
+      ref.read(spaceEditModeProvider.notifier).state = true;
     } else if (picked?.section case final section?) {
       ref.read(spaceEditModeProvider.notifier).state = false;
       await openSpaceAdd(context, ref, section);
@@ -122,7 +127,7 @@ class _SpaceAddFabState extends ConsumerState<SpaceAddFab>
 
   @override
   Widget build(BuildContext context) {
-    ref.watch(spaceEditModeProvider);
+    final editing = ref.watch(spaceEditModeProvider);
     final light = context.isLightTheme;
     final reduce = MediaQuery.disableAnimationsOf(context);
     // The launcher's own side, so the swap between the two never shifts.
@@ -133,8 +138,8 @@ class _SpaceAddFabState extends ConsumerState<SpaceAddFab>
     return Semantics(
       container: true,
       button: true,
-      label: SpaceAddFab.label,
-      expanded: _open,
+      label: editing ? SpaceAddFab.saveLabel : SpaceAddFab.label,
+      expanded: editing ? null : _open,
       child: Listener(
         // Raw pointer events: the press shows on touch-down, not after the
         // tap recognizer's wait.
@@ -175,18 +180,47 @@ class _SpaceAddFabState extends ConsumerState<SpaceAddFab>
                   ),
                 );
               },
+              // Edit swaps the "+" for a check in place: same button, same
+              // spot, now the way to save.
               child: Center(
-                child: AnimatedBuilder(
-                  animation: _turn,
-                  builder: (context, child) => Transform.rotate(
-                    // "+" to "×": an eighth of a turn.
-                    angle: _turn.value * math.pi / 4,
-                    child: child,
+                child: AnimatedSwitcher(
+                  duration: reduce
+                      ? Duration.zero
+                      : const Duration(milliseconds: 200),
+                  switchInCurve: Curves.easeOutCubic,
+                  switchOutCurve: Curves.easeInCubic,
+                  transitionBuilder: (child, animation) => FadeTransition(
+                    opacity: animation,
+                    child: ScaleTransition(
+                      scale: Tween<double>(
+                        begin: 0.6,
+                        end: 1,
+                      ).animate(animation),
+                      child: child,
+                    ),
                   ),
-                  child: CustomPaint(
-                    size: Size.square(side * 0.36),
-                    painter: const _PlusPainter(color: BotvinnikMark.teal),
-                  ),
+                  child: editing
+                      ? Icon(
+                          Icons.check_rounded,
+                          key: const ValueKey<String>('space_fab_save'),
+                          size: side * 0.46,
+                          color: BotvinnikMark.teal,
+                        )
+                      : AnimatedBuilder(
+                          key: const ValueKey<String>('space_fab_add'),
+                          animation: _turn,
+                          builder: (context, child) => Transform.rotate(
+                            // "+" to "×": an eighth of a turn.
+                            angle: _turn.value * math.pi / 4,
+                            child: child,
+                          ),
+                          child: CustomPaint(
+                            size: Size.square(side * 0.36),
+                            painter: const _PlusPainter(
+                              color: BotvinnikMark.teal,
+                            ),
+                          ),
+                        ),
                 ),
               ),
             ),
@@ -264,11 +298,10 @@ class _RoundLipPainter extends CustomPainter {
 /// The popover as a route: back and the scrim both close it, and it sits
 /// over the whole page (bottom bar included) while it is open.
 class _SpaceAddPopoverRoute extends PopupRoute<_SpaceAddAction> {
-  _SpaceAddPopoverRoute({required this.anchor, required this.editing});
+  _SpaceAddPopoverRoute({required this.anchor});
 
   /// The add button's rect in global coordinates.
   final Rect anchor;
-  final bool editing;
 
   @override
   Color? get barrierColor => null;
@@ -291,14 +324,13 @@ class _SpaceAddPopoverRoute extends PopupRoute<_SpaceAddAction> {
     BuildContext context,
     Animation<double> animation,
     Animation<double> secondaryAnimation,
-  ) => _SpaceAddPopover(anchor: anchor, editing: editing);
+  ) => _SpaceAddPopover(anchor: anchor);
 }
 
 class _SpaceAddPopover extends StatefulWidget {
-  const _SpaceAddPopover({required this.anchor, required this.editing});
+  const _SpaceAddPopover({required this.anchor});
 
   final Rect anchor;
-  final bool editing;
 
   @override
   State<_SpaceAddPopover> createState() => _SpaceAddPopoverState();
@@ -421,8 +453,8 @@ class _SpaceAddPopoverState extends State<_SpaceAddPopover>
                 onTap: () => _close(_SpaceAddAction.add(choice.section)),
               ),
             _PopoverRow(
-              icon: widget.editing ? Icons.check_rounded : Icons.edit_outlined,
-              label: widget.editing ? 'Done editing' : 'Edit',
+              icon: Icons.edit_outlined,
+              label: 'Edit',
               onTap: () => _close(const _SpaceAddAction.edit()),
             ),
           ],

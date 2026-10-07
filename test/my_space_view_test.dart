@@ -631,6 +631,15 @@ Future<void> _settleEdit(WidgetTester tester) async {
   }
 }
 
+/// The add button's check, shown in its place while the home is in Edit.
+final Finder _fabSave = find.byKey(const ValueKey<String>('space_fab_save'));
+
+/// Saves the home's Edit with the add button's check.
+Future<void> _saveHomeEdit(WidgetTester tester) async {
+  await tester.tap(find.byType(SpaceAddFab));
+  await _settleEdit(tester);
+}
+
 Future<void> _openHomeEdit(WidgetTester tester) async {
   await tester.tap(find.byType(SpaceAddFab));
   await _settleEdit(tester);
@@ -749,11 +758,17 @@ void main() {
     // The page's own cards stay, movable but never selectable.
     expect(find.text('My Prep'), findsOneWidget);
     expect(find.byType(SpaceEditCheck), findsNothing);
-    final done = find.byKey(const ValueKey<String>('space_edit_done'));
-    expect(done.hitTestable(), findsOneWidget);
-    await tester.tap(done);
-    await _settleEdit(tester);
+    // Edit adds no controls of its own: the add button turns into its save.
     expect(find.byKey(const ValueKey<String>('space_edit_done')), findsNothing);
+    expect(
+      find.byKey(const ValueKey<String>('space_edit_remove')),
+      findsNothing,
+    );
+    expect(_fabSave.hitTestable(), findsOneWidget);
+    expect(find.bySemanticsLabel(SpaceAddFab.saveLabel), findsOneWidget);
+    await _saveHomeEdit(tester);
+    expect(_fabSave, findsNothing);
+    expect(find.bySemanticsLabel(SpaceAddFab.label), findsOneWidget);
     expect(find.text('My Likes'), findsOneWidget);
     expect(find.text('My Prep'), findsOneWidget);
     expect(find.text(kMyDatabaseEmptyText), findsOneWidget);
@@ -821,8 +836,8 @@ void main() {
 
     await _openHomeEdit(tester);
     expect(_selectedKeys(tester), isEmpty);
-    final done = find.byKey(const ValueKey<String>('space_edit_done'));
-    final doneRect = tester.getRect(done);
+    final save = find.byType(SpaceAddFab);
+    final saveRect = tester.getRect(save);
     final edit = find.descendant(
       of: find.byType(SpaceEditGrid),
       matching: find.byType(CustomScrollView),
@@ -834,17 +849,13 @@ void main() {
     );
     await _settleEdit(tester);
     expect(_selectedKeys(tester), {lines.last.key});
-    expect(tester.getRect(done), doneRect);
-    for (final key in ['space_edit_remove', 'space_edit_done']) {
-      final action = find.byKey(ValueKey<String>(key));
-      expect(action.hitTestable(), findsOneWidget);
-      final rect = tester.getRect(action);
-      expect(rect.left, greaterThanOrEqualTo(0));
-      expect(rect.right, lessThanOrEqualTo(320));
-      expect(rect.top, greaterThanOrEqualTo(0));
-      expect(rect.bottom, lessThanOrEqualTo(568));
-      expect(rect.height, greaterThanOrEqualTo(44));
-    }
+    expect(tester.getRect(save), saveRect);
+    expect(_fabSave.hitTestable(), findsOneWidget);
+    expect(saveRect.left, greaterThanOrEqualTo(0));
+    expect(saveRect.right, lessThanOrEqualTo(320));
+    expect(saveRect.top, greaterThanOrEqualTo(0));
+    expect(saveRect.bottom, lessThanOrEqualTo(568));
+    expect(saveRect.height, greaterThanOrEqualTo(44));
     expect(hostScroll.offset, greaterThan(0));
     hostScroll.jumpTo(0);
     await _settleEdit(tester);
@@ -855,9 +866,9 @@ void main() {
           .hitTestable(),
       findsOneWidget,
     );
-    await tester.tap(done);
-    await _settleEdit(tester);
+    await _saveHomeEdit(tester);
     expect(find.byType(SpaceEditCheck), findsNothing);
+    expect(find.text(lines.last.title), findsNothing);
     expect(hostScroll.hasClients, isTrue);
     expect(hostScroll.positions, hasLength(1));
     expect(tester.takeException(), isNull);
@@ -954,32 +965,32 @@ void main() {
       ],
     );
 
+    Future<void> select() async {
+      for (final pin in [_folder, smart]) {
+        await tester.tap(
+          find.byKey(ValueKey<String>('space_edit_check_${pin.key}')),
+        );
+        await _settleEdit(tester);
+      }
+    }
+
     await _openHomeEdit(tester);
     expect(find.byType(SpaceEditCheck), findsNWidgets(2));
-    expect(
-      find.byKey(const ValueKey<String>('space_edit_done')),
-      findsOneWidget,
-    );
-    for (final pin in [_folder, smart]) {
-      await tester.tap(
-        find.byKey(ValueKey<String>('space_edit_check_${pin.key}')),
-      );
-      await _settleEdit(tester);
-    }
+    await select();
     expect(_selectedKeys(tester), {_folder.key, smart.key});
-    expect(find.text('Remove 2', findRichText: true), findsOneWidget);
     expect(find.byType(PlayerProfileScreen), findsNothing);
 
-    await tester.tap(find.byKey(const ValueKey<String>('space_edit_remove')));
-    await _settleEdit(tester);
+    // Saving asks first for a smart event; Cancel returns to Edit as it was.
+    await _saveHomeEdit(tester);
     expect(find.text('Remove Smart Event?'), findsOneWidget);
     expect(store.state.requireValue, seed);
     await tester.tap(find.text('Cancel'));
     await _settleEdit(tester);
     expect(store.state.requireValue, seed);
+    expect(_fabSave, findsOneWidget);
     expect(_selectedKeys(tester), {_folder.key, smart.key});
-    await tester.tap(find.byKey(const ValueKey<String>('space_edit_remove')));
-    await _settleEdit(tester);
+
+    await _saveHomeEdit(tester);
     await tester.tap(find.text('Remove'));
     await _settleEdit(tester);
     expect(store.state.requireValue.map((pin) => pin.key), [
@@ -987,25 +998,23 @@ void main() {
       opening.key,
     ]);
     expect(find.byType(SpaceEditCheck), findsNothing);
-    expect(_selectedKeys(tester), isEmpty);
+    expect(_fabSave, findsNothing);
     expect(find.text('Removed 2 from My Space'), findsOneWidget);
     expect(find.text('Undo'), findsOneWidget);
     expect(favorites.unfollows, 0);
-    // The page's own cards are still there to arrange: Edit stays open.
-    expect(
-      find.byKey(const ValueKey<String>('space_edit_done')).hitTestable(),
-      findsOneWidget,
-    );
 
     await tester.tap(find.text('Undo'));
     await _settleEdit(tester);
     expect(store.state.requireValue, seed);
-    expect(find.byType(SpaceEditCheck), findsNWidgets(2));
     expect(favorites.unfollows, 0);
 
-    await tester.tap(find.byKey(const ValueKey<String>('space_edit_done')));
+    // Back leaves Edit without removing what was selected.
+    await _openHomeEdit(tester);
+    await select();
+    await tester.state<NavigatorState>(find.byType(Navigator)).maybePop();
     await _settleEdit(tester);
     expect(find.byType(SpaceEditCheck), findsNothing);
+    expect(store.state.requireValue, seed);
     expect(find.text('Najdorf prep'), findsOneWidget);
     expect(find.text('Carlsen'), findsNothing);
     expect(tester.takeException(), isNull);
@@ -1087,15 +1096,13 @@ void main() {
     final expected = [first.title, opening.title, second.title, _folder.title];
     expect(shown(), expected);
 
-    await tester.tap(find.byKey(const ValueKey<String>('space_edit_done')));
-    await _settleEdit(tester);
+    await _saveHomeEdit(tester);
     expect(find.byType(SpaceEditCheck), findsNothing);
     expect(shown(), expected);
     // Entering and leaving again rebuilds both representations from storage.
     await _openHomeEdit(tester);
     expect(shown(), expected);
-    await tester.tap(find.byKey(const ValueKey<String>('space_edit_done')));
-    await _settleEdit(tester);
+    await _saveHomeEdit(tester);
     expect(shown(), expected);
     expect(tester.takeException(), isNull);
     await _drain(tester);
@@ -1210,8 +1217,7 @@ void main() {
     expect(_selectedKeys(tester), isEmpty);
     expect(find.byType(MySpaceView), findsOneWidget);
 
-    await tester.tap(find.byKey(const ValueKey<String>('space_edit_done')));
-    await _settleEdit(tester);
+    await _saveHomeEdit(tester);
     expect([for (final c in cards) tester.getRect(c)], before);
     expect(find.byType(SpaceEditCheck), findsNothing);
     expect(tester.takeException(), isNull);
@@ -1303,8 +1309,7 @@ void main() {
     // The pins kept their own order; nothing was removed.
     expect(store.state.requireValue.map((pin) => pin.key), [a.key, b.key]);
 
-    await tester.tap(find.byKey(const ValueKey<String>('space_edit_done')));
-    await _settleEdit(tester);
+    await _saveHomeEdit(tester);
     expect(find.byKey(const ValueKey('space_edit_empty_slot')), findsNothing);
     expect(tester.getRect(library).top, closeTo(tester.getRect(prep).top, 0.5));
     expect(tester.getRect(likes).top, greaterThan(tester.getRect(rowA).bottom));

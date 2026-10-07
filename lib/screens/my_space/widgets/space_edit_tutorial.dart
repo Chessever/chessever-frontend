@@ -127,13 +127,15 @@ List<SpaceEditTutorialStep> spaceEditTutorialStepsDue(
 void maybeShowSpaceEditTutorial(
   BuildContext context,
   WidgetRef ref,
-  SpaceSection section,
-) {
+  SpaceSection section, {
+  bool home = false,
+}) {
   final store = ref.read(spaceEditTutorialStoreProvider);
   if (spaceEditTutorialStepsDue(store, section).isEmpty) return;
   WidgetsBinding.instance.addPostFrameCallback((_) {
     if (!context.mounted) return;
-    final steps = spaceEditTutorialStepsDue(store, section);
+    final due = spaceEditTutorialStepsDue(store, section);
+    final steps = home ? spaceHomeEditTutorialSteps(due) : due;
     if (steps.isEmpty) return;
     if (section == SpaceSection.players) {
       store.markPlayersShown();
@@ -258,6 +260,27 @@ List<SpaceEditTutorialStep> spaceEditTutorialSteps(SpaceSection section) {
     ),
   ];
 }
+
+/// [steps] as the My Space home teaches them: it has no Remove or Done of
+/// its own (the add button's check saves, and removes what was selected),
+/// so selecting says so and those two steps are left out.
+List<SpaceEditTutorialStep> spaceHomeEditTutorialSteps(
+  List<SpaceEditTutorialStep> steps,
+) => [
+  for (final s in steps)
+    if (s.demo == SpaceEditTutorialDemo.tap)
+      SpaceEditTutorialStep(
+        demo: s.demo,
+        icon: s.icon,
+        title: s.title,
+        body:
+            'Tap a card to select it. Tap the check to save: the selected '
+            'leave My Space, and Undo puts them back.',
+        faces: s.faces,
+      )
+    else if (s.demo == SpaceEditTutorialDemo.hold)
+      s,
+];
 
 /// Edit's tips: the chess board's teaching card (white on the dim scrim,
 /// its timer border, the step dots, the floating badge, the hand under it),

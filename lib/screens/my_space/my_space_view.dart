@@ -5,8 +5,6 @@ import 'package:chessever2/screens/my_space/actions/space_remove_confirmation.da
 // import 'package:chessever2/providers/for_you_games_provider.dart';
 import 'package:chessever2/repository/liked_games/liked_games_provider.dart';
 // import 'package:chessever2/screens/for_you/open_for_you_event.dart';
-import 'package:chessever2/screens/for_you/discovery/widgets/discovery_common.dart'
-    show DiscoveryAction;
 import 'package:chessever2/screens/my_space/actions/space_edit_actions.dart';
 import 'package:chessever2/screens/my_likes/my_likes_screen.dart';
 import 'package:chessever2/screens/collections/collection_plate_row.dart';
@@ -36,7 +34,6 @@ import 'package:chessever2/widgets/hub_tile_captions.dart';
 import 'package:chessever2/widgets/skeleton_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
-import 'package:motor/motor.dart';
 
 /// Guidance for the two supported My Space products.
 const String kMyDatabaseEmptyText =
@@ -102,8 +99,11 @@ class _MySpaceViewState extends ConsumerState<MySpaceView> {
     );
   }
 
-  Future<void> _removeSelected(Set<String> all) async {
-    final keys = _selected.intersection(all);
+  /// Edit's save (the add button's check) removes what was selected, with
+  /// one Undo; the order was already saved as it was dropped. Cancelling a
+  /// smart event's confirmation puts the reader back in Edit, the selection
+  /// as it was.
+  Future<void> _removeSelected(Set<String> keys) async {
     if (keys.isEmpty) return;
     final pins =
         ref.read(spaceShortcutsProvider).valueOrNull ?? const <SpaceShortcut>[];
@@ -114,11 +114,12 @@ class _MySpaceViewState extends ConsumerState<MySpaceView> {
         .toList();
     if (smartEvents.isNotEmpty &&
         !await confirmSpaceSmartEventRemoval(context, smartEvents)) {
+      if (!mounted) return;
+      ref.read(spaceEditModeProvider.notifier).state = true;
+      setState(() => _selected.addAll(keys));
       return;
     }
     if (!mounted) return;
-    setState(_selected.clear);
-    // The page's own cards stay, and stay movable: Edit stays open.
     await spaceRemovePinsSelected(context: context, ref: ref, keys: keys);
   }
 
@@ -134,11 +135,18 @@ class _MySpaceViewState extends ConsumerState<MySpaceView> {
   Widget build(BuildContext context) {
     ref.listen(spaceEditModeProvider, (previous, next) {
       if (previous == next) return;
+      final picked = Set<String>.of(_selected);
       setState(_selected.clear);
+      if (previous == true && !next) unawaited(_removeSelected(picked));
       if (next &&
           (ref.read(spaceCompactDatabaseGroupsProvider)?.isNotEmpty ?? false)) {
         // Teach selection and reordering for the visible products.
-        maybeShowSpaceEditTutorial(context, ref, SpaceSection.library);
+        maybeShowSpaceEditTutorial(
+          context,
+          ref,
+          SpaceSection.library,
+          home: true,
+        );
       }
     });
     final editing = ref.watch(spaceEditModeProvider);
@@ -198,7 +206,12 @@ class _MySpaceViewState extends ConsumerState<MySpaceView> {
     return PopScope(
       canPop: !editing,
       onPopInvokedWithResult: (didPop, _) {
-        if (!didPop && editing) _setEditing(false);
+        // Back leaves Edit without removing anything; only the check saves
+        // a removal.
+        if (!didPop && editing) {
+          setState(_selected.clear);
+          _setEditing(false);
+        }
       },
       child: Stack(
         fit: StackFit.expand,
@@ -215,16 +228,6 @@ class _MySpaceViewState extends ConsumerState<MySpaceView> {
               backgroundColor: context.colors.surface,
               child: frame(grid),
             ),
-          ),
-          // Over the page, beside the add button, so Edit's controls take
-          // no room from the cards and nothing moves as Edit starts.
-          _SpaceEditBar(
-            shown: editing,
-            selected: _selected.length,
-            onRemove: _selected.isEmpty
-                ? null
-                : () => unawaited(_removeSelected(keys)),
-            onDone: () => _setEditing(false),
           ),
         ],
       ),
@@ -257,183 +260,6 @@ class _MySpaceViewState extends ConsumerState<MySpaceView> {
           const _MyLikesCard(key: ValueKey<String>('my_space_likes_card')),
     ),
   };
-}
-
-/// Edit's controls, floating on the add button's line at the page's left
-/// edge: Done, and Remove (live once something is selected). It rises in as
-/// Edit starts and is gone once Edit ends.
-class _SpaceEditBar extends StatefulWidget {
-  const _SpaceEditBar({
-    required this.shown,
-    required this.selected,
-    required this.onRemove,
-    required this.onDone,
-  });
-
-  final bool shown;
-  final int selected;
-  final VoidCallback? onRemove;
-  final VoidCallback onDone;
-
-  @override
-  State<_SpaceEditBar> createState() => _SpaceEditBarState();
-}
-
-class _SpaceEditBarState extends State<_SpaceEditBar>
-    with SingleTickerProviderStateMixin {
-  late final SingleMotionController _show = SingleMotionController(
-    motion: const CupertinoMotion.snappy(
-      duration: Duration(milliseconds: 300),
-      snapToEnd: true,
-    ),
-    vsync: this,
-    initialValue: 0,
-  );
-  late bool _built = widget.shown;
-  Timer? _goneSoon;
-
-  @override
-  void initState() {
-    super.initState();
-    if (widget.shown) _show.value = 1;
-  }
-
-  @override
-  void didUpdateWidget(_SpaceEditBar old) {
-    super.didUpdateWidget(old);
-    if (widget.shown == old.shown) return;
-    _goneSoon?.cancel();
-    final still = MediaQuery.disableAnimationsOf(context);
-    if (widget.shown) {
-      setState(() => _built = true);
-      if (still) {
-        _show.value = 1;
-        return;
-      }
-      unawaited(_show.animateTo(1));
-      // A held ticker never leaves Edit's controls unseen.
-      _goneSoon = Timer(const Duration(milliseconds: 420), () {
-        if (mounted && widget.shown) _show.value = 1;
-      });
-      return;
-    }
-    void gone() {
-      _goneSoon?.cancel();
-      if (mounted && !widget.shown) setState(() => _built = false);
-    }
-
-    if (still) {
-      _show.value = 0;
-      gone();
-      return;
-    }
-    _show.animateTo(0).whenCompleteOrCancel(gone);
-    // A held ticker never strands the bar on the page.
-    _goneSoon = Timer(const Duration(milliseconds: 360), gone);
-  }
-
-  @override
-  void dispose() {
-    _goneSoon?.cancel();
-    _show.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    if (!_built) return const SizedBox.shrink();
-    final colors = context.colors;
-    final light = context.isLightTheme;
-    // The add button's own side and margin, so the two share one line.
-    final side = 56.ic.clamp(52.0, 64.0);
-    final bottom =
-        kFloatingActionButtonMargin + MediaQuery.paddingOf(context).bottom;
-    final count = widget.selected;
-    final bar = DecoratedBox(
-      decoration: BoxDecoration(
-        color: light ? colors.popup : colors.surface,
-        borderRadius: BorderRadius.circular(side / 2),
-        border: Border.all(
-          color: colors.textPrimary.withValues(alpha: light ? 0.08 : 0.1),
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: light ? 0.1 : 0.32),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: ConstrainedBox(
-        constraints: BoxConstraints(minHeight: side),
-        child: Padding(
-          padding: EdgeInsets.symmetric(horizontal: 6.w),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // Done leads, so it never moves as Remove counts up.
-              DiscoveryAction(
-                key: const ValueKey<String>('space_edit_done'),
-                label: 'Done',
-                semanticsLabel: 'Done editing',
-                onTap: widget.shown ? widget.onDone : null,
-              ),
-              Container(
-                width: 1,
-                height: 18.sp,
-                margin: EdgeInsets.symmetric(horizontal: 4.w),
-                color: colors.textPrimary.withValues(alpha: 0.12),
-              ),
-              // At the largest text sizes Remove gives way, never Done.
-              Flexible(
-                child: DiscoveryAction(
-                  key: const ValueKey<String>('space_edit_remove'),
-                  label: count == 0 ? 'Remove' : 'Remove $count',
-                  semanticsLabel: count == 0
-                      ? 'Remove, select something first'
-                      : 'Remove $count from My Space',
-                  onTap: widget.onRemove,
-                  wraps: true,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-    return Positioned(
-      left: hubGutter,
-      right: hubGutter + side + 12.w,
-      bottom: bottom,
-      child: Align(
-        alignment: Alignment.bottomLeft,
-        child: IgnorePointer(
-          ignoring: !widget.shown,
-          child: AnimatedBuilder(
-            animation: _show,
-            builder: (context, child) {
-              // A spring's last hair counts as home, so the bar rests
-              // exactly in place rather than a fraction of a point short.
-              final v = _show.value.clamp(0.0, 1.0);
-              final t = v >= 0.995 ? 1.0 : v;
-              return Opacity(
-                opacity: t,
-                child: Transform.translate(
-                  offset: Offset(0, (1 - t) * 10),
-                  child: Transform.scale(
-                    scale: 0.96 + 0.04 * t,
-                    alignment: Alignment.bottomLeft,
-                    child: child,
-                  ),
-                ),
-              );
-            },
-            child: bar,
-          ),
-        ),
-      ),
-    );
-  }
 }
 
 // ------------------------------------------------------------------ tiles

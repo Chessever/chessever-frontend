@@ -99,13 +99,14 @@ void main() {
     },
   );
 
-  testWidgets('Edit and Done editing remain reachable on a short phone with '
-      'large text and share the page edit state', (tester) async {
+  testWidgets('Edit stays reachable on a short phone with large text, and in '
+      'Edit the button itself saves, showing a check', (tester) async {
     await _pumpFab(tester, size: const Size(320, 480), textScale: 1.8);
     final container = ProviderScope.containerOf(
       tester.element(find.byType(SpaceAddFab)),
     );
     expect(container.read(spaceEditModeProvider), isFalse);
+    final fabRect = tester.getRect(find.byType(SpaceAddFab));
 
     await tester.tap(find.byType(SpaceAddFab));
     await _settle(tester);
@@ -119,17 +120,16 @@ void main() {
     expect(container.read(spaceEditModeProvider), isTrue);
     expect(find.byType(SpaceAddSheet), findsNothing);
 
+    // Same button, same place, now a check that saves: no popover.
+    expect(tester.getRect(find.byType(SpaceAddFab)), fabRect);
+    expect(find.byKey(const ValueKey('space_fab_save')), findsOneWidget);
+    expect(find.bySemanticsLabel(SpaceAddFab.saveLabel), findsOneWidget);
     await tester.tap(find.byType(SpaceAddFab));
     await _settle(tester);
-    final done = find.bySemanticsLabel('Done editing');
-    await tester.ensureVisible(done);
-    await _settle(tester);
-    expect(done.hitTestable(), findsOneWidget);
-    expect(tester.getRect(done).bottom, lessThanOrEqualTo(480));
-    await tester.tap(done);
-    await _settle(tester);
     expect(container.read(spaceEditModeProvider), isFalse);
-    expect(find.text('Done editing'), findsNothing);
+    expect(find.text('Database'), findsNothing);
+    expect(find.byKey(const ValueKey('space_fab_save')), findsNothing);
+    expect(find.bySemanticsLabel(SpaceAddFab.label), findsOneWidget);
     expect(tester.takeException(), isNull);
     await tester.pumpWidget(const SizedBox());
     await tester.pump(const Duration(seconds: 1));
