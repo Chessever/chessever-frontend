@@ -3,12 +3,17 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:chessever2/repository/gamebase/gamebase_repository.dart';
+import 'package:chessever2/screens/my_prep/library/prep_cloud_sync.dart';
 import 'package:chessever2/screens/my_prep/models/prep_models.dart';
 import 'package:chessever2/screens/my_prep/services/prep_analysis.dart';
-import 'package:chessever2/screens/my_prep/services/prep_local_gamebase.dart';
+import 'package:chessever2/screens/my_prep/services/prep_index.dart';
 import 'package:chessever2/screens/my_prep/services/prep_repository.dart';
+import 'package:chessever2/services/game_tree/game_tree_registry.dart';
+import 'package:chessever2/services/game_tree/game_tree_service.dart';
+import 'package:chessever2/services/game_tree/game_tree_store.dart';
+import 'package:chessever2/services/rewarded_premium/rewarded_access_provider.dart';
 import 'package:dio/dio.dart';
-import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 /// How often the reader's own accounts are brought up to date: three times
@@ -156,7 +161,7 @@ class PrepProfilesNotifier extends StateNotifier<AsyncValue<List<PrepProfile>>> 
     final profile = byId(profileId);
     if (profile == null) return;
     _set([for (final p in _profiles) if (p.id != profileId) p]);
-    PrepLocalGamebase.forget(profileId);
+    await PrepIndex.forget(profileId, accounts: profile.accounts);
     final repo = _ref.read(prepRepositoryProvider);
     for (final account in profile.accounts) {
       await repo.deleteGames(account);
@@ -170,6 +175,8 @@ class PrepProfilesNotifier extends StateNotifier<AsyncValue<List<PrepProfile>>> 
         accounts: [for (final a in p.accounts) if (a.key != account.key) a],
       ),
     );
+    // The profile's own index notices the missing source and rebuilds.
+    await PrepIndex.forget(profileId, accounts: [account], profileToo: false);
     await _ref.read(prepRepositoryProvider).deleteGames(account);
   }
 }
@@ -240,6 +247,8 @@ class PrepSyncController extends StateNotifier<Map<String, PrepSyncStatus>> {
           ),
         );
       });
+      // A player saved to the cloud takes the new games there too.
+      _ref.read(prepCloudSyncProvider.notifier).syncAfterDownload(profileId);
       return null;
     } on DioException catch (error) {
       if (CancelToken.isCancel(error)) return null;
@@ -307,6 +316,40 @@ class PrepSyncController extends StateNotifier<Map<String, PrepSyncStatus>> {
   }
 }
 
+// ------------------------------------------------------------------ freshness
+
+/// Keeps prepared players' games current while the app runs, as desktop
+/// does: a little after launch, and whenever the app comes back to the
+/// foreground, stale accounts fetch only their new games (yours every
+/// [kPrepMineRefreshEvery], opponents every [kPrepOthersRefreshEvery]).
+/// Watch it from the home shell; it does nothing without Premium.
+final prepKeepFreshProvider = Provider<void>((ref) {
+  var launched = false;
+  void check() {
+    final profiles = ref.read(prepProfilesProvider).valueOrNull;
+    if (profiles == null || profiles.isEmpty) return;
+    if (!ref.read(premiumAccessProvider)) return;
+    ref
+        .read(prepSyncProvider.notifier)
+        .refreshStale(profiles.where((p) => p.kind != PrepKind.favorite));
+  }
+
+  // Not on the first frame: launch has enough to do already.
+  final timer = Timer(const Duration(seconds: 10), () {
+    launched = true;
+    check();
+  });
+  final lifecycle = AppLifecycleListener(
+    onResume: () {
+      if (launched) check();
+    },
+  );
+  ref.onDispose(() {
+    timer.cancel();
+    lifecycle.dispose();
+  });
+});
+
 // ------------------------------------------------------------------ analysis
 
 /// What a profile's analysis depends on: its accounts' stored games.
@@ -314,8 +357,13 @@ String _analysisKey(PrepProfile profile) => [
   for (final a in profile.accounts) '${a.key}@${a.lastSyncAtMs}#${a.gameCount}',
 ].join(',');
 
-/// The parsed games, stats and opening tree for one profile, recomputed
+/// The games list, stats and opening tree for one profile, refreshed
 /// whenever one of its accounts finishes a sync.
+///
+/// The heavy part lives in the profile's SQLite index: the first open of a
+/// large account indexes it once, in the background, and every later sync
+/// adds only its new games. The games list read from the index is light
+/// (no PGN, no moves); PGNs are read from their files when a card shows.
 final prepAnalysisProvider = FutureProvider.autoDispose
     .family<PrepAnalysis, String>((ref, profileId) async {
       final key = ref.watch(
@@ -325,21 +373,37 @@ final prepAnalysisProvider = FutureProvider.autoDispose
       );
       final profile = ref.read(prepProfileProvider(profileId));
       if (profile == null || key == null) return PrepAnalysis.empty(profileId);
+      final status = ref.read(gameTreeStatusProvider.notifier);
       final repo = ref.read(prepRepositoryProvider);
-      final sources = <(PrepSource, String)>[];
-      for (final account in profile.accounts) {
-        sources.add((account.source, await repo.readGames(account)));
+      GameTreeStore store;
+      try {
+        store = await PrepIndex.ensureProfile(
+          repo,
+          profile,
+          onProgress: (fraction) => status.set(
+            profileId,
+            GameTreeStatus(phase: GameTreePhase.indexing, fraction: fraction),
+          ),
+        );
+      } on GameTreeCanceled {
+        // Stopped from the tree button: show what is indexed so far; the
+        // next open picks up where it stopped.
+        final partial = GameTreeRegistry.storeFor(profileId);
+        if (partial == null) rethrow;
+        store = partial;
+      } finally {
+        status.clear(profileId);
       }
-      final analysis = await analyzePrepGames(
-        PrepAnalysisRequest(
-          profileId: profileId,
-          aliases: profile.aliases,
-          sources: sources,
-        ),
+      final rows = await store.loadGames();
+      final analysis = PrepAnalysis(
+        profileId: profileId,
+        store: store,
+        games: List.unmodifiable([
+          for (var i = 0; i < rows.length; i++) PrepGame.fromIndex(rows[i], i),
+        ]),
       );
-      PrepLocalGamebase.publish(analysis);
       // Kept while the profile is open and briefly after, so stepping into
-      // the explorer and back does not re-parse thousands of games.
+      // the explorer and back does not re-read the games list.
       final link = ref.keepAlive();
       final timer = Timer(const Duration(minutes: 3), link.close);
       ref.onDispose(timer.cancel);

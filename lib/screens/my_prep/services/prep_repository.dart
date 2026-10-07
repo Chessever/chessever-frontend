@@ -262,13 +262,15 @@ class PrepRepository {
     }
 
     onProgress?.call('Saving games…');
-    final isDelta = export.snapshotStatus?.toLowerCase() == 'delta';
+    // A delta, or a full snapshot of the same selection, only ever adds
+    // games: they are appended so every stored game keeps its place in the
+    // file, which is what lets the opening index read just the new tail.
     final count = await compute(
       _writeGames,
       _WriteRequest(
         path: file.path,
         incoming: export.pgn,
-        merge: isDelta && sameScope,
+        merge: sameScope,
       ),
     );
     return account.copyWith(
@@ -293,8 +295,13 @@ class PrepRepository {
 
   Future<File> gamesFile(PrepAccount account) async {
     final dir = await prepDirectory();
+    return File('${dir.path}/${gamesFileName(account)}');
+  }
+
+  /// The account's PGN file name inside [prepDirectory].
+  static String gamesFileName(PrepAccount account) {
     final id = sha1.convert(utf8.encode(account.key)).toString();
-    return File('${dir.path}/${account.source.name}_$id.pgn');
+    return '${account.source.name}_$id.pgn';
   }
 
   static Future<Directory> prepDirectory() async {
@@ -370,27 +377,59 @@ class _WriteRequest {
   final bool merge;
 }
 
-/// Writes (or merges into) one account's PGN file and returns its game
-/// count. Merging keys games by their provider URL so an overlapping delta
-/// replaces a game rather than duplicating it. Runs off the UI isolate.
-int _writeGames(_WriteRequest request) {
-  final file = File(request.path);
-  final incoming = splitPrepPgn(request.incoming);
-  if (!request.merge) {
-    _atomicWrite(file, incoming.join('\n\n'));
-    return incoming.length;
+/// Writes (or adds to) one account's PGN file and returns its game count.
+/// Adding appends only games whose provider URL the file does not hold yet,
+/// leaving every stored byte where it was. Runs off the UI isolate.
+int _writeGames(_WriteRequest request) => writePrepGames(
+  path: request.path,
+  incoming: request.incoming,
+  merge: request.merge,
+);
+
+@visibleForTesting
+int writePrepGames({
+  required String path,
+  required String incoming,
+  required bool merge,
+}) {
+  final file = File(path);
+  final games = splitPrepPgn(incoming);
+  if (!merge || !file.existsSync()) {
+    final seen = <String>{};
+    final unique = <String>[];
+    for (final game in games) {
+      final key = prepGameKey(game);
+      if (key == null || seen.add(key)) unique.add(game);
+    }
+    _atomicWrite(file, unique.join('\n\n'));
+    return unique.length;
   }
-  final existing = file.existsSync()
-      ? splitPrepPgn(file.readAsStringSync())
-      : const <String>[];
-  final byKey = <String, String>{};
-  for (final game in [...existing, ...incoming]) {
-    byKey[prepGameKey(game) ?? 'x${byKey.length}'] = game;
+  final existing = file.readAsStringSync();
+  final known = <String>{
+    for (final m in _siteTag.allMatches(existing))
+      if (_isProviderUrl(m.group(1)!)) m.group(1)!,
+  };
+  final stored = existing.trim().isEmpty
+      ? 0
+      : _eventStart.allMatches(existing).length.clamp(1, 1 << 30);
+  final fresh = <String>[];
+  for (final game in games) {
+    final key = prepGameKey(game);
+    if (key == null || known.add(key)) fresh.add(game);
   }
-  final merged = byKey.values.toList();
-  _atomicWrite(file, merged.join('\n\n'));
-  return merged.length;
+  if (fresh.isEmpty) return stored;
+  final raf = file.openSync(mode: FileMode.append);
+  try {
+    raf.writeStringSync('${stored == 0 ? '' : '\n\n'}${fresh.join('\n\n')}');
+    raf.flushSync();
+  } finally {
+    raf.closeSync();
+  }
+  return stored + fresh.length;
 }
+
+bool _isProviderUrl(String url) =>
+    url.contains('lichess.org/') || url.contains('chess.com/');
 
 void _atomicWrite(File file, String text) {
   final temp = File('${file.path}.tmp');

@@ -15,6 +15,7 @@ import 'package:chessever2/screens/library/twic_contents_screen.dart';
 import 'package:chessever2/screens/library/widgets/add_to_library_sheet.dart';
 import 'package:chessever2/screens/library/widgets/create_folder_dialog.dart';
 import 'package:chessever2/screens/library/widgets/folder_card.dart';
+import 'package:chessever2/screens/my_prep/library/prep_library.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
@@ -539,16 +540,39 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
     final rest = likedIdx == -1
         ? folders
         : (List<LibraryFolder>.from(folders)..removeAt(likedIdx));
+    // My Prep players are Library folders too, as on desktop: each holds a
+    // database per account. A player saved to the cloud is shown once, by
+    // their own card, rather than again as the cloud folder it syncs to.
+    final prepProfiles = ref.watch(prepLibraryProfilesProvider);
+    final linkedCloudIds = ref.watch(prepLinkedCloudFolderIdsProvider);
+    final prepById = {
+      for (final p in prepProfiles) prepLibraryFolder(p).id: p,
+    };
     final allFolders = <LibraryFolder>[
       if (likedIdx != -1) folders[likedIdx],
       kTwicFolder,
       if (!widget.databasesOnly) kMiniaturesFolder,
-      ...rest,
+      for (final p in prepProfiles) prepLibraryFolder(p),
+      ...rest.where((f) => !linkedCloudIds.contains(f.id)),
     ];
     final filteredFolders = _filterFolders(allFolders);
 
     if (filteredFolders.isEmpty) {
       return _buildSearchEmptyState('No results match your search');
+    }
+
+    Widget card(LibraryFolder folder) {
+      final prep = prepById[folder.id];
+      if (prep != null) return PrepLibraryFolderCard(profile: prep);
+      return FolderCard(
+        folder: folder,
+        isExpanded: true,
+        isFeatured:
+            folder.id == kTwicBookId ||
+            folder.id == kMiniaturesBookId ||
+            folder.isLikedGames,
+        onTap: () => _navigateToFolder(folder),
+      );
     }
 
     final horizontalPadding = ResponsiveHelper.adaptive(
@@ -572,15 +596,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
             childAspectRatio: ResponsiveHelper.isLandscape ? 2.5 : 2.0,
           ),
           delegate: SliverChildBuilderDelegate(
-            (context, index) => FolderCard(
-              folder: filteredFolders[index],
-              isExpanded: true,
-              isFeatured:
-                  filteredFolders[index].id == kTwicBookId ||
-                  filteredFolders[index].id == kMiniaturesBookId ||
-                  filteredFolders[index].isLikedGames,
-              onTap: () => _navigateToFolder(filteredFolders[index]),
-            ),
+            (context, index) => card(filteredFolders[index]),
             childCount: filteredFolders.length,
           ),
         ),
@@ -594,15 +610,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
         delegate: SliverChildBuilderDelegate(
           (context, index) => Padding(
             padding: EdgeInsets.only(bottom: 8.h),
-            child: FolderCard(
-              folder: filteredFolders[index],
-              isExpanded: true,
-              isFeatured:
-                  filteredFolders[index].id == kTwicBookId ||
-                  filteredFolders[index].id == kMiniaturesBookId ||
-                  filteredFolders[index].isLikedGames,
-              onTap: () => _navigateToFolder(filteredFolders[index]),
-            ),
+            child: card(filteredFolders[index]),
           ),
           childCount: filteredFolders.length,
         ),

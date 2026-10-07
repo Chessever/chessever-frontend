@@ -1,12 +1,11 @@
-import 'package:chessever2/screens/gamebase/gamebase_explorer_screen.dart';
 import 'package:chessever2/screens/gamebase/models/models.dart';
 import 'package:chessever2/screens/gamebase/providers/gamebase_explorer_state.dart';
 import 'package:chessever2/screens/gamebase/services/player_opening_tree.dart';
 import 'package:chessever2/screens/my_prep/models/prep_models.dart';
 import 'package:chessever2/screens/my_prep/services/prep_analysis.dart';
-import 'package:chessever2/screens/my_prep/services/prep_local_gamebase.dart';
 import 'package:chessever2/screens/my_prep/widgets/prep_common.dart';
 import 'package:chessever2/screens/my_prep/widgets/prep_filters.dart';
+import 'package:chessever2/services/game_tree/game_tree_service.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
@@ -56,16 +55,6 @@ class _PrepOpeningsTabState extends State<PrepOpeningsTab> {
 
   void _explore({List<String> moves = const []}) {
     HapticFeedbackService.cardTap();
-    PrepLocalGamebase.publish(widget.analysis);
-    final id = PrepLocalGamebase.playerIdFor(widget.profile.id);
-    final player = GamebasePlayer(
-      id: id,
-      fideId: '',
-      name: widget.profile.name,
-      gender: PlayerGender.male,
-      fed: widget.profile.country ?? '',
-      title: widget.profile.title,
-    );
     String? fen;
     if (moves.isNotEmpty) {
       Position position = Chess.initial;
@@ -76,25 +65,20 @@ class _PrepOpeningsTabState extends State<PrepOpeningsTab> {
       }
       fen = position.fen;
     }
-    final tc = _timeControl;
-    Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) => GamebaseExplorerScreen.scoped(
-          initialPlayer: player,
-          initialFilters: GamebaseFilters(
-            playerIds: [id],
-            selectedPlayers: [player],
-            timeControls: tc == null ? const [] : [tc],
-            playerColor: switch (_side) {
-              PrepSide.white => GamebasePlayerColor.white,
-              PrepSide.black => GamebasePlayerColor.black,
-              PrepSide.both => null,
-            },
-          ),
-          initialFen: fen,
-          initialMoves: moves.isEmpty ? null : moves,
-        ),
-      ),
+    openGameTreeExplorer(
+      context,
+      scopeId: widget.profile.id,
+      title: widget.profile.name,
+      country: widget.profile.country,
+      playerTitle: widget.profile.title,
+      timeControl: _timeControl,
+      color: switch (_side) {
+        PrepSide.white => GamebasePlayerColor.white,
+        PrepSide.black => GamebasePlayerColor.black,
+        PrepSide.both => null,
+      },
+      initialFen: fen,
+      initialMoves: moves.isEmpty ? null : moves,
     );
   }
 

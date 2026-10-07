@@ -9,6 +9,8 @@ import 'package:chessever2/repository/local_storage/local_storage_repository.dar
 import 'package:chessever2/screens/authentication/auth_screen_provider.dart';
 import 'package:chessever2/screens/collections/collections_screen.dart';
 import 'package:chessever2/screens/my_space/widgets/space_add_fab.dart';
+import 'package:chessever2/screens/my_prep/providers/prep_providers.dart'
+    show prepKeepFreshProvider;
 import 'package:chessever2/screens/favorites/favorites_tab_screen.dart';
 import 'package:chessever2/screens/favorites/provider/favorites_mode_provider.dart';
 import 'package:chessever2/screens/for_you/for_you_screen.dart';
@@ -232,6 +234,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   Widget build(BuildContext context) {
     // Listen for favorite signals (must be in build method)
     _listenForFavoriteSignals();
+    // My Prep players' new games arrive while the app is open.
+    ref.watch(prepKeepFreshProvider);
 
     // Tablet layout: NavigationRail on the side
     if (ResponsiveHelper.isTablet) {

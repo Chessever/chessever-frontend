@@ -5,6 +5,9 @@ import 'package:chessever2/services/rewarded_premium/rewarded_ads.dart';
 import 'dart:io';
 
 import 'package:chessever2/screens/library/utils/folder_pgn_exporter.dart';
+import 'package:chessever2/repository/library/library_repository.dart';
+import 'package:chessever2/screens/library/game_tree/library_game_tree_targets.dart';
+import 'package:chessever2/widgets/game_tree/build_tree_button.dart';
 import 'package:chessever2/utils/logger/logger.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
@@ -297,6 +300,12 @@ class _MyLikesGamesPageState extends ConsumerState<MyLikesGamesPage>
                         Icons.ios_share_rounded,
                         color: context.colors.textPrimary,
                         size: 20.sp,
+                      ),
+                    ),
+                  if ((data?.totalLiked ?? 0) > 0)
+                    BuildTreeButton(
+                      target: LikedGamesTreeTarget(
+                        repository: ref.read(libraryRepositoryProvider),
                       ),
                     ),
                 ],

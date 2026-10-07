@@ -1,10 +1,10 @@
-import 'package:chessever2/repository/gamebase/gamebase_repository.dart';
-import 'package:chessever2/screens/gamebase/services/player_opening_tree.dart';
+import 'dart:io';
+
 import 'package:chessever2/screens/my_prep/models/prep_models.dart';
 import 'package:chessever2/screens/my_prep/services/prep_analysis.dart';
-import 'package:chessever2/screens/my_prep/services/prep_local_gamebase.dart';
 import 'package:chessever2/screens/my_prep/services/prep_repository.dart';
-import 'package:dartchess/dartchess.dart';
+import 'package:chessever2/services/game_tree/game_tree_builder.dart';
+import 'package:chessever2/services/game_tree/game_tree_store.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 String _game({
@@ -40,25 +40,38 @@ void main() {
     _game(white: 'Me', black: 'A', result: '1-0', moves: '1. e4 e5', site: 'https://lichess.org/g1'),
   ].join('\n');
 
-  PrepAnalysis analyze() => buildPrepAnalysis(
-    PrepAnalysisRequest(
-      profileId: 'p1',
-      aliases: {'me'},
-      sources: [(PrepSource.lichess, pgn)],
-    ),
-  );
+  late Directory dir;
+  setUp(() => dir = Directory.systemTemp.createTempSync('my_prep_test'));
+  tearDown(() => dir.deleteSync(recursive: true));
 
-  test('parses games newest first, dedupes by URL and finds the player', () {
-    final a = analyze();
-    expect(a.games, hasLength(3));
-    expect(a.games.last.date, DateTime.utc(2025, 1, 2));
-    expect(a.games.first.playerIsWhite, isTrue);
-    expect(a.games.last.playerIsWhite, isFalse);
-    expect(a.games.first.speed, PrepTimeControl.blitz);
+  Future<List<PrepGame>> analyze() async {
+    final file = File('${dir.path}/lichess.pgn')..writeAsStringSync(pgn);
+    final db = '${dir.path}/p1.sqlite';
+    runGameTreeBuild(
+      GameTreeBuildRequest(
+        dbPath: db,
+        sources: [GameTreeSourceFile(path: file.path, kind: 'lichess')],
+        aliases: const ['me'],
+      ),
+    );
+    final store = GameTreeStore.open('p1', db, playerScope: true)!;
+    addTearDown(store.close);
+    final rows = await store.loadGames();
+    return [for (var i = 0; i < rows.length; i++) PrepGame.fromIndex(rows[i], i)];
+  }
+
+  test('reads games newest first, dedupes by URL and finds the player', () async {
+    final games = await analyze();
+    expect(games, hasLength(3));
+    expect(games.last.date, DateTime.utc(2025, 1, 2));
+    expect(games.firstWhere((g) => g.white == 'Me').playerIsWhite, isTrue);
+    expect(games.last.playerIsWhite, isFalse);
+    expect(games.first.speed, PrepTimeControl.blitz);
+    expect(games.first.source, PrepSource.lichess);
   });
 
-  test('stats score from the player chair', () {
-    final s = PrepStats.of(analyze().games);
+  test('stats score from the player chair', () async {
+    final s = PrepStats.of(await analyze());
     expect(s.overall.wins, 1);
     expect(s.overall.draws, 1);
     expect(s.overall.losses, 1);
@@ -67,33 +80,24 @@ void main() {
     expect(s.whiteOpenings.single.name, "King's Pawn Game");
   });
 
-  test('tree buckets by colour and serves the explorer', () {
-    final a = analyze();
-    final white = a.tree.movesForFen(
-      kInitialFEN,
-      filters: const PlayerOpeningTreeFilterCriteria(color: 'white'),
+  test('a sync of the same selection appends only new games', () {
+    final path = '${dir.path}/account.pgn';
+    expect(writePrepGames(path: path, incoming: pgn, merge: true), 3);
+    final before = File(path).readAsStringSync();
+    final more = _game(
+      white: 'Me',
+      black: 'D',
+      result: '0-1',
+      moves: '1. c4 e5',
+      site: 'https://lichess.org/g4',
     );
-    expect(white.single.uci, 'e2e4');
-    final all = a.tree.movesForFen(kInitialFEN);
-    expect(all.map((m) => m.uci), containsAll(['e2e4', 'd2d4']));
-    expect(all.firstWhere((m) => m.uci == 'e2e4').total, 2);
-  });
-
-  test('local gamebase answers position games and game lookups', () {
-    final a = analyze();
-    PrepLocalGamebase.publish(a);
-    final rows = GamebaseLocalGames.positionResolver!(
-      const GamebaseLocalPositionQuery(
-        playerId: 'prep:p1',
-        fen: kInitialFEN,
-        uci: 'e2e4',
-      ),
-    )!;
-    expect(rows.data, hasLength(2));
-    final game = GamebaseLocalGames.gameResolver!(rows.data.first['id'] as String);
-    expect(game?.pgn, contains('[Site'));
-    expect(LocalPlayerOpeningTrees.resolver!('prep:p1'), same(a.tree));
-    expect(GamebaseLocalGames.gameResolver!('prep:nope:0'), isNull);
+    expect(writePrepGames(path: path, incoming: '$pgn\n$more', merge: true), 4);
+    final after = File(path).readAsStringSync();
+    // Every stored byte stays where it was; the new game is the tail.
+    expect(after.startsWith(before), isTrue);
+    expect(after.substring(before.length), contains('lichess.org/g4'));
+    // A changed selection replaces the file.
+    expect(writePrepGames(path: path, incoming: more, merge: false), 1);
   });
 
   test('chess.com TimeClass is authoritative and Daily maps to correspondence', () {
@@ -107,6 +111,8 @@ void main() {
     );
     expect(prepSpeedOf(source: PrepSource.lichess, timeControl: '15+0'),
         PrepTimeControl.ultrabullet);
+    expect(prepExplorerTimeControl(PrepTimeControl.bullet), 'blitz');
+    expect(prepExplorerTimeControl(PrepTimeControl.correspondence), 'classical');
   });
 
   test('relative periods anchor to the month so the server scope is stable', () {

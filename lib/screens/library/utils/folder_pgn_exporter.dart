@@ -216,6 +216,50 @@ String _serializeAnalysis(
   return rebrandPgnLinks(exportGameToPgn(branded));
 }
 
+/// Hands every game of a folder to [onGame] as PGN, one page at a time,
+/// without holding the whole folder in memory. Stops early when [canceled]
+/// says so. Used to build a folder's opening tree.
+Future<void> forEachFolderGamePgn({
+  required LibraryRepository repo,
+  required LibraryFolder folder,
+  required void Function(String pgn) onGame,
+  void Function(int processed)? onProgress,
+  bool Function()? canceled,
+}) async {
+  const pageSize = 100;
+  var offset = 0;
+  var processed = 0;
+  final filter = GameFilter.defaultFilter();
+  while (canceled?.call() != true) {
+    final List<SavedAnalysis> page = folder.isSubscribed
+        ? await repo.getSharedFolderAnalysesPaginated(
+            folderId: folder.id,
+            filter: filter,
+            limit: pageSize,
+            offset: offset,
+          )
+        : await repo.getSavedAnalysesPaginated(
+            folderId: folder.id,
+            filter: filter,
+            limit: pageSize,
+            offset: offset,
+          );
+    if (page.isEmpty) break;
+    for (final analysis in page) {
+      final pgn = _serializeAnalysis(
+        analysis,
+        folderName: folder.displayName,
+        shareToken: folder.shareToken,
+      );
+      if (pgn.trim().isNotEmpty) onGame(pgn);
+      processed++;
+    }
+    onProgress?.call(processed);
+    if (page.length < pageSize) break;
+    offset += page.length;
+  }
+}
+
 /// Serializes an arbitrary in-memory list of [SavedAnalysis] into a single
 /// PGN string using the same per-game branding ([Site]/[Source]/[Database]/
 /// optional [SourceURL]) as the folder pipeline. Use when the caller already

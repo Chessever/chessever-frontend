@@ -56,12 +56,29 @@ class FolderCard extends ConsumerWidget {
   final bool isFeatured;
   final VoidCallback? onTap;
 
+  /// Replaces the node glyph tile (a My Prep player wears their picture).
+  final Widget? leading;
+
+  /// Replaces the game or item count line.
+  final String? subtitle;
+
+  /// A small badge on the glyph's corner, as a followed book wears its link.
+  final IconData? badge;
+
+  /// Replaces the folder menu, for cards that are not cloud folders (a My
+  /// Prep player and their databases live on this device).
+  final List<LibraryMenuAction> Function(BuildContext context)? menuActions;
+
   const FolderCard({
     super.key,
     required this.folder,
     this.isExpanded = false,
     this.isFeatured = false,
     this.onTap,
+    this.leading,
+    this.subtitle,
+    this.badge,
+    this.menuActions,
   });
 
   void _navigateToFolder(BuildContext context) {
@@ -182,7 +199,18 @@ class FolderCard extends ConsumerWidget {
     final svgSize = isFeatured ? 35.56.sp : 20.0.sp;
 
     final Widget countWidget;
-    if (isTwic) {
+    if (subtitle != null) {
+      countWidget = Text(
+        subtitle!,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: AppTypography.textXsRegular.copyWith(
+          color: context.colors.textSecondary,
+          height: 16 / 12,
+          fontFeatures: const [FontFeature.tabularFigures()],
+        ),
+      );
+    } else if (isTwic) {
       final twicTotalAsync = ref.watch(twicDatabaseTotalGamesProvider);
       final twicLabelStyle = AppTypography.textXsRegular.copyWith(
         color: context.colors.textSecondary,
@@ -281,7 +309,9 @@ class FolderCard extends ConsumerWidget {
             children: [
               // My Likes wears the app's animated heart, bare and filling
               // the slot the other cards give their glyph tile.
-              if (isLiked)
+              if (leading != null)
+                SizedBox.square(dimension: iconSize, child: leading)
+              else if (isLiked)
                 LikesHeartMark(size: iconSize)
               else
                 Container(
@@ -300,7 +330,7 @@ class FolderCard extends ConsumerWidget {
                   ),
                 ),
               // Shared link badge for subscribed books
-              if (folder.isSubscribed)
+              if (folder.isSubscribed || badge != null)
                 Positioned(
                   right: -4,
                   bottom: -4,
@@ -317,7 +347,7 @@ class FolderCard extends ConsumerWidget {
                     ),
                     child: Center(
                       child: Icon(
-                        Icons.link_rounded,
+                        badge ?? Icons.link_rounded,
                         size: 10.sp,
                         color: context.colors.textSecondary,
                       ),
@@ -428,7 +458,8 @@ class FolderCard extends ConsumerWidget {
     // theirs offers only the My Space shortcut.
     return CardContextMenu(
       onPreviewTap: open,
-      actions: (cardContext) => _menuActions(cardContext, ref),
+      actions: (cardContext) =>
+          menuActions?.call(cardContext) ?? _menuActions(cardContext, ref),
       child: card,
     );
   }

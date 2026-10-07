@@ -11,6 +11,10 @@ import 'package:chessever2/screens/my_prep/tabs/prep_openings_tab.dart';
 import 'package:chessever2/screens/my_prep/tabs/prep_overview_tab.dart';
 import 'package:chessever2/screens/my_prep/widgets/prep_common.dart';
 import 'package:chessever2/screens/my_prep/widgets/prep_filters.dart';
+import 'package:chessever2/screens/my_prep/library/prep_library.dart'
+    show PrepProfileTreeTarget;
+import 'package:chessever2/services/game_tree/game_tree_service.dart';
+import 'package:chessever2/widgets/game_tree/build_tree_button.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
@@ -45,6 +49,31 @@ class _PrepProfileScreenState extends ConsumerState<PrepProfileScreen> {
   late final PageController _pages = PageController();
   PrepFilter _filter = const PrepFilter();
   bool _checkedFreshness = false;
+
+  // A large account is tens of thousands of games: filter and score them
+  // once per change, not on every rebuild a sync's progress line causes.
+  List<PrepGame>? _filterInput;
+  PrepFilter? _filterUsed;
+  List<PrepGame> _filterOutput = const [];
+  List<PrepGame>? _statsInput;
+  PrepStats? _stats;
+
+  List<PrepGame> _filtered(List<PrepGame> games) {
+    if (!identical(games, _filterInput) || _filterUsed != _filter) {
+      _filterInput = games;
+      _filterUsed = _filter;
+      _filterOutput = _filter.apply(games);
+    }
+    return _filterOutput;
+  }
+
+  PrepStats _statsOf(List<PrepGame> games) {
+    if (!identical(games, _statsInput) || _stats == null) {
+      _statsInput = games;
+      _stats = PrepStats.of(games);
+    }
+    return _stats!;
+  }
 
   @override
   void dispose() {
@@ -86,8 +115,11 @@ class _PrepProfileScreenState extends ConsumerState<PrepProfileScreen> {
     }
     _checkFreshness(profile);
     final analysis = ref.watch(prepAnalysisProvider(profile.id));
+    final indexing = ref.watch(
+      gameTreeStatusProvider.select((s) => s[profile.id]?.percent),
+    );
     final games = analysis.valueOrNull?.games ?? const <PrepGame>[];
-    final filtered = _filter.apply(games);
+    final filtered = _filtered(games);
     final gutter = ResponsiveHelper.adaptive(phone: 16.w, tablet: 24.w);
 
     return Scaffold(
@@ -123,9 +155,14 @@ class _PrepProfileScreenState extends ConsumerState<PrepProfileScreen> {
                     title: 'Could not read these games',
                     body: '$error',
                   ),
-                  loading: () => const PrepMessage(
-                    title: 'Reading games…',
-                    body: 'Working out results and openings.',
+                  loading: () => PrepMessage(
+                    title: indexing == null
+                        ? 'Reading games…'
+                        : 'Indexing games · $indexing%',
+                    body: indexing == null
+                        ? 'Working out results and openings.'
+                        : 'Done once on this phone. Later updates only add '
+                              'new games.',
                     busy: true,
                   ),
                   data: (data) {
@@ -138,7 +175,7 @@ class _PrepProfileScreenState extends ConsumerState<PrepProfileScreen> {
                       children: [
                         PrepOverviewTab(
                           profile: profile,
-                          stats: PrepStats.of(filtered),
+                          stats: _statsOf(filtered),
                           filter: _filter,
                         ),
                         PrepGamesTab(
@@ -192,6 +229,14 @@ class _TopBar extends ConsumerWidget {
             ),
           ),
           const Spacer(),
+          if (profile.gameCount > 0)
+            BuildTreeButton(
+              compact: false,
+              target: PrepProfileTreeTarget(
+                profile: profile,
+                repository: ref.read(prepRepositoryProvider),
+              ),
+            ),
           IconButton(
             tooltip: 'Refresh games',
             onPressed: syncing

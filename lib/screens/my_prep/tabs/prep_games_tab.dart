@@ -55,20 +55,20 @@ class _PrepGamesTabState extends ConsumerState<PrepGamesTab>
   }
 
   GamesTourModel? _card(PrepGame game) {
-    if (_cards.containsKey(game.index)) return _cards[game.index];
+    if (_cards.containsKey(game.rowId)) return _cards[game.rowId];
     if (_cards.length > 600) _cards.remove(_cards.keys.first);
     GamesTourModel? model;
     try {
-      model = chessGameToImportedGamesTourModel(
-        ChessGame.fromPgn(
-          widget.analysis.gameId(game.index),
-          widget.analysis.pgns[game.index],
-        ),
-      );
+      final pgn = widget.analysis.pgnOf(game);
+      model = pgn == null
+          ? null
+          : chessGameToImportedGamesTourModel(
+              ChessGame.fromPgn(widget.analysis.gameId(game), pgn),
+            );
     } catch (_) {
       model = null;
     }
-    return _cards[game.index] = model;
+    return _cards[game.rowId] = model;
   }
 
   List<PrepGame> get _visible {
@@ -153,7 +153,7 @@ class _PrepGamesTabState extends ConsumerState<PrepGamesTab>
         final model = _card(game);
         if (model == null) return const SizedBox.shrink();
         return Padding(
-          key: ValueKey(game.index),
+          key: ValueKey(game.rowId),
           padding: EdgeInsets.only(bottom: 12.h),
           child: LibraryGameCard(
             game: model,

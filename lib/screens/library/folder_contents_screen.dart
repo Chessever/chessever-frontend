@@ -21,6 +21,10 @@ import 'package:chessever2/screens/library/widgets/add_to_library_sheet.dart';
 import 'package:chessever2/screens/library/widgets/book_saved_game_card.dart';
 import 'package:chessever2/screens/library/widgets/create_folder_dialog.dart';
 import 'package:chessever2/screens/library/widgets/folder_card.dart';
+import 'package:chessever2/screens/library/game_tree/library_game_tree_targets.dart';
+import 'package:chessever2/screens/library/widgets/library_context_menu.dart';
+import 'package:chessever2/widgets/card_context_menu.dart';
+import 'package:chessever2/widgets/game_tree/build_tree_button.dart';
 import 'package:chessever2/screens/library/widgets/swipe_action_card.dart';
 import 'package:chessever2/services/pgn_file_intake_service.dart';
 import 'package:chessever2/theme/app_colors.dart';
@@ -648,6 +652,29 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
         _isDatabase && (bookAsync.valueOrNull?.totalCount ?? 0) > 0;
     final bool showRename = !_isSubscribed;
     final bool showAdd = !_isSubscribed;
+    final bool showPublish = libraryFolderCanPublish(widget.folder);
+    // Board, Add and the tree stay in the bar; the rarer actions share one
+    // menu so the title keeps its room beside them on a phone.
+    final moreActions = <LibraryMenuAction>[
+      if (showExport)
+        LibraryMenuAction(
+          icon: Icons.ios_share_rounded,
+          label: 'Export as PGN',
+          onSelected: _handleExportPgn,
+        ),
+      if (showRename)
+        LibraryMenuAction(
+          icon: Icons.edit_rounded,
+          label: 'Rename',
+          onSelected: _handleRename,
+        ),
+      if (showPublish)
+        LibraryMenuAction(
+          icon: Icons.publish_rounded,
+          label: 'Publish / edit collection',
+          onSelected: () => openLibraryBookEditor(context, widget.folder),
+        ),
+    ];
 
     return Padding(
       padding: EdgeInsets.fromLTRB(
@@ -703,28 +730,6 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
                 semanticsLabel: 'Open Board',
               ),
             ),
-          if (showExport)
-            IconButton(
-              onPressed: _handleExportPgn,
-              tooltip: 'Export as PGN',
-              constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
-              icon: Icon(
-                Icons.ios_share_rounded,
-                color: context.colors.textPrimary,
-                size: 20.ic,
-              ),
-            ),
-          if (showRename)
-            IconButton(
-              onPressed: _handleRename,
-              tooltip: 'Rename',
-              constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
-              icon: Icon(
-                Icons.edit_rounded,
-                color: context.colors.textPrimary,
-                size: 20.ic,
-              ),
-            ),
           if (showAdd)
             IconButton(
               onPressed: _handlePlusButton,
@@ -736,18 +741,24 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
                 size: 26.ic,
               ),
             ),
-          if (libraryFolderCanPublish(widget.folder))
-            IconButton(
-              key: const ValueKey('folder_publish_book'),
-              tooltip: 'Publish / edit collection',
-              constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
-              onPressed: () => openLibraryBookEditor(context, widget.folder),
-              icon: Icon(
-                Icons.publish_rounded,
-                color: context.colors.textPrimary,
-                size: 22.ic,
+          if (moreActions.isNotEmpty)
+            CardMoreButton(
+              key: const ValueKey('folder_more_actions'),
+              tooltip: 'More actions',
+              vertical: true,
+              color: context.colors.textPrimary,
+              size: 22.ic,
+              actions: (_) => moreActions,
+            ),
+          if (_isDatabase && (bookAsync.valueOrNull?.totalCount ?? 0) > 0) ...[
+            SizedBox(width: 2.w),
+            BuildTreeButton(
+              target: LibraryFolderTreeTarget(
+                repository: ref.read(libraryRepositoryProvider),
+                folder: widget.folder,
               ),
             ),
+          ],
         ],
       ),
     );

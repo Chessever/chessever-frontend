@@ -544,6 +544,23 @@ class LibraryRepository extends BaseRepository {
         await supabase.from('user_saved_analyses').insert(rows);
       });
 
+  /// Inserts rows already shaped like [SavedAnalysis.toSupabaseInsert] for
+  /// [folderId], stamped with the signed-in user. For large copies whose
+  /// games were serialized off the UI isolate (a My Prep player saved to
+  /// the cloud), where building [SavedAnalysis] objects would only be
+  /// converted straight back.
+  Future<void> insertSavedAnalysisRows(
+    String folderId,
+    List<Map<String, dynamic>> rows,
+  ) => handleApiCall(() async {
+    if (rows.isEmpty) return;
+    final userId = supabase.auth.currentUser?.id;
+    if (userId == null) throw Exception('User not authenticated');
+    await supabase.from('user_saved_analyses').insert([
+      for (final row in rows) {...row, 'user_id': userId, 'folder_id': folderId},
+    ]);
+  });
+
   /// Resolve a saved game's canonical event from Supabase source tables.
   ///
   /// Gamebase imports can carry PGN Event headers like

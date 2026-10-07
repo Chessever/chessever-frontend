@@ -683,7 +683,7 @@ class ExplorerGamesCache {
           sortDirection: query.sortDirection,
         ),
       );
-      if (local != null) return Future.value(local);
+      if (local != null) return local;
     }
     final repository = _repositoryOf();
     if (query.useFenEndpoint) {

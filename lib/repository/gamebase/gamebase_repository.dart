@@ -2167,15 +2167,19 @@ enum GamebaseExternalPlayerSource {
 }
 
 /// Games that live on the device rather than the server (My Prep's
-/// downloaded Lichess and Chess.com games) and are reached through the same
-/// explorer and board paths as server games. Their ids carry a `prep:`
-/// prefix the server never issues, so a lookup that matches nothing here
-/// still goes to the server.
+/// downloaded Lichess and Chess.com games, and trees built from a Library
+/// database or a collection) and are reached through the same explorer and
+/// board paths as server games. Their ids carry a `prep:` prefix the server
+/// never issues, so a lookup that matches nothing here still goes to the
+/// server.
 abstract final class GamebaseLocalGames {
   static const String idPrefix = 'prep:';
 
   static GamebaseGameWithPgn? Function(String id)? gameResolver;
-  static GamebaseSearchQueryResponse? Function(
+
+  /// Answers a position's games page off the UI isolate, or null when the
+  /// id is not a device-local one this app knows.
+  static Future<GamebaseSearchQueryResponse>? Function(
     GamebaseLocalPositionQuery query,
   )?
   positionResolver;

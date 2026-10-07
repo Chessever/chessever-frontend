@@ -2,6 +2,8 @@ import 'dart:async';
 
 import 'package:chessever2/screens/library/widgets/library_context_menu.dart';
 import 'package:chessever2/screens/my_prep/data/prep_favorites.dart';
+import 'package:chessever2/screens/my_prep/library/prep_library.dart'
+    show PrepLibraryFolderScreen, prepCloudMenuAction;
 import 'package:chessever2/screens/my_prep/models/prep_models.dart';
 import 'package:chessever2/screens/my_prep/prep_access.dart';
 import 'package:chessever2/screens/my_prep/prep_profile_screen.dart';
@@ -206,12 +208,14 @@ Future<void> _refreshProfiles(WidgetRef ref, String profileId) async {
 Future<void> prepRefreshProfileDetails(WidgetRef ref, String profileId) =>
     _refreshProfiles(ref, profileId);
 
-/// The long-press and ••• menu for a profile card.
+/// The long-press and ••• menu for a profile card. [fromLibrary] leaves out
+/// "Show in Library" where the reader already is there.
 List<LibraryMenuAction> prepProfileMenu(
   BuildContext context,
   WidgetRef ref,
-  PrepProfile profile,
-) {
+  PrepProfile profile, {
+  bool fromLibrary = false,
+}) {
   final sync = ref.read(prepSyncProvider.notifier);
   final messenger = ScaffoldMessenger.maybeOf(context);
   return [
@@ -230,6 +234,13 @@ List<LibraryMenuAction> prepProfileMenu(
         );
       },
     ),
+    if (!fromLibrary)
+      LibraryMenuAction(
+        icon: Icons.folder_open_rounded,
+        label: 'Show in Library',
+        onSelected: () => PrepLibraryFolderScreen.open(context, profile.id),
+      ),
+    prepCloudMenuAction(context, ref, profile),
     if (profile.kind == PrepKind.favorite)
       LibraryMenuAction(
         icon: Icons.person_add_alt_1_rounded,
