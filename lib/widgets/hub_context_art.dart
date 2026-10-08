@@ -22,7 +22,7 @@ class HubSceneBackdrop extends StatelessWidget {
   Widget build(BuildContext context) => HubIllustration(
     asset: switch (scene) {
       HubScene.miniatures => 'assets/pngs/hub_miniatures_icon.webp',
-      HubScene.library => 'assets/pngs/hub_library_archive_v2.webp',
+      HubScene.library => 'assets/pngs/hub_library_database_v3.webp',
       HubScene.smartEvents => 'assets/pngs/hub_smart_events_icon.webp',
       HubScene.mostLiked => 'assets/pngs/hub_most_liked_icon.webp',
       HubScene.myPrep => 'assets/pngs/hub_my_prep_study_v2.webp',
