@@ -332,16 +332,9 @@ class _OpponentsTab extends ConsumerWidget {
       padding: EdgeInsets.only(
         bottom: MediaQuery.viewPaddingOf(context).bottom + 96.h,
       ),
-      itemCount: opponents.length + 1,
+      itemCount: opponents.length,
       itemBuilder: (context, index) {
-        if (index == 0) {
-          return _TabHeader(
-            text: opponents.length == 1
-                ? '1 opponent'
-                : '${opponents.length} opponents',
-          );
-        }
-        final profile = opponents[index - 1];
+        final profile = opponents[index];
         return Padding(
           key: ValueKey(profile.id),
           padding: EdgeInsets.symmetric(horizontal: 4.w),
