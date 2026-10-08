@@ -2,15 +2,15 @@
 
 Generated with the built-in imagegen tool on 2026-10-08. The approved neutral black, charcoal and silver mood is retained. The clipboard and magnifier are replaced by a flat chess preparation motif with one knight, two pawns and a branching route. This is decorative illustration, not a legal position or live analysis.
 
-Final asset: [hub_my_prep_icon.webp](../assets/pngs/hub_my_prep_icon.webp), 768 × 256 WebP, quality 90. It replaces the existing bundled asset. Only My Prep uses top-right alignment; the existing theme opacity and readability ramp are retained.
+Final asset: [hub_my_prep_study_v2.webp](../assets/pngs/hub_my_prep_study_v2.webp), 768 × 256 WebP, quality 90, 4,192 bytes. The approved artwork is unchanged from the original replacement; a fresh asset name prevents reuse of a previously cached image. The corrected fixed-scale study frame retains the existing theme opacity.
 
 ## Composition and validation
 
-- A compact card shows the right half of the wide source. A long card exposes more of the subdued left field. The essential motif stays above the label area in both crops.
-- Reviewed static crop studies at compact and full-row phone widths in both themes, with the existing light-theme opacity and label ramps. These are artwork previews, not app screenshots.
+- The wide source is drawn at 80.sp high, aligned top-right in both card formats. Compact cards clip only the quiet left field; full-row cards keep the same subject size. The image's own bottom and left edges fade into the card so neither theme exposes an image seam.
+- Captions now wrap completely without ellipses. My Prep and Library reserve equal two-line caption slots and space above the title for their study artwork; card height expands for accessibility text.
 - The refinement removes the raised knight base and moves every piece and route junction into the upper half, clearing the native title.
-- Design-law recheck: the approved grayscale palette overrides the default palette rules; the board is the actual subject, not a background grid. No new typeface, icon pack, containers around icons, badges, fake UI, copy baked into the art, shadows, glows, noisy overlays, entrance animations or dead controls are introduced. Existing native labels, spacing, interactions and routes remain the product controls. Essential silhouettes survive both card crops and labels retain the existing contrast ramps.
-- Scoped `flutter analyze --no-pub lib/widgets/hub_context_art.dart lib/widgets/hub_illustration.dart` passed with no issues; all five existing `test/hub_paired_hearts_test.dart` widget tests passed, including both themes at normal and doubled text scale. Final compressed-asset previews passed at 824px and 360px preview widths with no browser console errors. The 4,192-byte replacement is smaller than the previous 4,470-byte asset.
+- Design-law recheck: the approved grayscale palette overrides the default palette rules; the board is the actual subject, not a background grid. No new typeface, icon pack, badges, fake UI, copy baked into the art, shadows, glows, noisy overlays, entrance animations or dead controls are introduced. Native labels are crisp and complete, titles align, essential silhouettes clear every clipped edge, and artwork fades do not touch text. Existing interactions and routes remain the product controls.
+- All 21 study-card and existing paired-art tests passed across widths 160, 173, 358 and 720, both themes, and normal/doubled text size. The tests verify complete subject bounds and captions, title clearance and working taps. Native widget captures were also inspected at compact and full-row phone sizes. Scoped analysis of the changed production files and tests passed with no issues. The 4,192-byte artwork is smaller than the previous 4,470-byte clipboard asset.
 - The app is not built, launched or driven. Device check: open My Space, enter Edit, toggle My Prep between Small and Full row, and inspect both themes.
 
 ## Generation prompt

@@ -753,6 +753,7 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
           if (_isDatabase && (bookAsync.valueOrNull?.totalCount ?? 0) > 0) ...[
             SizedBox(width: 2.w),
             BuildTreeButton(
+              compact: true,
               target: LibraryFolderTreeTarget(
                 repository: ref.read(libraryRepositoryProvider),
                 folder: widget.folder,

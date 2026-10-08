@@ -1,6 +1,7 @@
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/widgets/hub_context_art.dart';
+import 'package:chessever2/widgets/hub_illustration.dart';
 import 'package:chessever2/widgets/hub_tile.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
@@ -78,12 +79,11 @@ void main() {
               findsNothing,
             );
             final widget = tester.widget<Image>(art);
-            expect(widget.fit, BoxFit.cover);
             final resized = widget.image as ResizeImage;
             assets.add((resized.imageProvider as AssetImage).assetName);
             // Artwork reaches every inner edge of the existing 1px tile border.
             expect(
-              tester.getRect(art),
+              tester.getRect(find.byType(HubIllustration)),
               tester.getRect(find.byType(HubTile)).deflate(1),
             );
             final tile = tester.getRect(find.byType(HubTile));

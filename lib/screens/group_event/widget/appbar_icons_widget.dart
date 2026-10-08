@@ -19,14 +19,8 @@ class AppBarIcons extends StatelessWidget {
   Widget build(BuildContext context) {
     return InkWell(
       onTap: onTap,
-      child: Container(
-        height: 32.h,
-        width: 32.w,
-        padding: padding ?? EdgeInsets.all(6.sp),
-        decoration: BoxDecoration(
-          color: context.colors.surface,
-          borderRadius: BorderRadius.circular(4.br),
-        ),
+      child: AppBarIconSurface(
+        padding: padding,
         // The bundled glyphs (three-dots etc.) ship with a white fill so
         // they read on the dark `surface`. In light theme that becomes
         // white-on-white and the button disappears, so we recolour to
@@ -34,13 +28,30 @@ class AppBarIcons extends StatelessWidget {
         child: SvgPicture.asset(
           image,
           colorFilter: context.isLightTheme
-              ? ColorFilter.mode(
-                  context.colors.iconPrimary,
-                  BlendMode.srcIn,
-                )
+              ? ColorFilter.mode(context.colors.iconPrimary, BlendMode.srcIn)
               : null,
         ),
       ),
     );
   }
+}
+
+/// The common surface of the header's view, menu and tree controls.
+class AppBarIconSurface extends StatelessWidget {
+  const AppBarIconSurface({super.key, required this.child, this.padding});
+
+  final Widget child;
+  final EdgeInsetsGeometry? padding;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    height: 32.h,
+    width: 32.w,
+    padding: padding ?? EdgeInsets.all(6.sp),
+    decoration: BoxDecoration(
+      color: context.colors.surface,
+      borderRadius: BorderRadius.circular(4.br),
+    ),
+    child: child,
+  );
 }

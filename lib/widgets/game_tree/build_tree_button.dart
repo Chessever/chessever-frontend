@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:chessever2/services/game_tree/game_tree_builder.dart';
+import 'package:chessever2/screens/group_event/widget/appbar_icons_widget.dart';
 import 'package:chessever2/screens/gamebase/models/models.dart';
 import 'package:chessever2/screens/gamebase/providers/gamebase_explorer_state.dart';
 import 'package:chessever2/services/game_tree/game_tree_service.dart';
@@ -274,27 +275,29 @@ class BuildTreeButton extends ConsumerWidget {
             child: SizedBox.square(
               dimension: 44,
               child: Center(
-                child: busy
-                    ? SizedBox.square(
-                        dimension: 20.sp,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          value: status?.fraction,
-                          color: colors.textPrimary,
-                          backgroundColor: colors.textPrimary.withValues(
-                            alpha: 0.15,
+                child: AppBarIconSurface(
+                  child: busy
+                      ? SizedBox.square(
+                          dimension: 20.sp,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            value: status?.fraction,
+                            color: colors.textPrimary,
+                            backgroundColor: colors.textPrimary.withValues(
+                              alpha: 0.15,
+                            ),
                           ),
+                        )
+                      : Icon(
+                          failed
+                              ? Icons.restart_alt_rounded
+                              : ready
+                              ? Icons.account_tree_rounded
+                              : Icons.account_tree_outlined,
+                          size: 20.sp,
+                          color: colors.textPrimary,
                         ),
-                      )
-                    : Icon(
-                        failed
-                            ? Icons.restart_alt_rounded
-                            : ready
-                            ? Icons.account_tree_rounded
-                            : Icons.account_tree_outlined,
-                        size: 22.sp,
-                        color: colors.textPrimary,
-                      ),
+                ),
               ),
             ),
           ),

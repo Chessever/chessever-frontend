@@ -290,6 +290,9 @@ class _MyPrepTile extends StatelessWidget {
     key: const ValueKey('my_space_my_prep_tile'),
     title: 'My Prep',
     caption: 'Your games and opponents',
+    ramp: false,
+    artworkHeadroom: 40.sp,
+    minCaptionLines: 2,
     artwork: const HubSceneBackdrop(scene: HubScene.myPrep),
     onTap: () => openMyPrep(context),
   );
@@ -334,6 +337,9 @@ class _LibraryTile extends StatelessWidget {
     key: const ValueKey('my_space_library_tile'),
     title: 'Library',
     caption: 'Your databases',
+    ramp: false,
+    artworkHeadroom: 40.sp,
+    minCaptionLines: 2,
     artwork: const HubLibraryBackdrop(),
     onTap: () {
       HapticFeedbackService.cardTap();
