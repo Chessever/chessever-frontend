@@ -191,10 +191,14 @@ class _PrepProfileScreenState extends ConsumerState<PrepProfileScreen> {
                   ),
                 ),
                 child: SegmentedSwitcher(
-                  height: prepSegmentHeight(context),
+                  height: prepSegmentHeight(context, wrapLabels: true),
                   backgroundColor: context.colors.popup,
                   selectedBackgroundColor: context.colors.popup,
                   options: _tabs,
+                  optionLabels: [
+                    for (final tab in _tabs)
+                      Text(tab, maxLines: 2, textAlign: TextAlign.center),
+                  ],
                   initialSelection: _tab,
                   currentSelection: _tab,
                   onSelectionChanged: _select,

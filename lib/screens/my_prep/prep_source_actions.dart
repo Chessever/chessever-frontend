@@ -1,4 +1,3 @@
-import 'dart:convert';
 import 'dart:io';
 
 import 'package:chessever2/screens/my_prep/models/prep_models.dart';
@@ -7,7 +6,8 @@ import 'package:chessever2/screens/my_prep/prep_actions.dart';
 import 'package:chessever2/screens/my_prep/library/prep_cloud_sync.dart';
 import 'package:chessever2/screens/my_prep/providers/prep_providers.dart';
 import 'package:chessever2/screens/my_prep/services/prep_repository.dart';
-import 'package:chessever2/screens/my_prep/widgets/prep_dialogs.dart';
+import 'package:chessever2/screens/my_prep/widgets/prep_import_dialog.dart';
+import 'package:chessever2/screens/my_prep/services/prep_pgn_intake.dart';
 import 'package:chessever2/screens/my_prep/widgets/prep_options_dialog.dart';
 import 'package:chessever2/screens/my_prep/widgets/prep_source_picker.dart';
 import 'package:chessever2/widgets/alert_dialog/alert_modal.dart';
@@ -57,12 +57,14 @@ Future<void> prepEditDownloadOptions(
   BuildContext context,
   WidgetRef ref,
   PrepProfile profile,
-  PrepAccount account,
-) async {
+  PrepAccount account, {
+  bool download = false,
+}) async {
   if (!await ensurePrepAccess(context) || !context.mounted) return;
   final options = await showPrepDownloadOptionsDialog(
     context,
     account: account,
+    download: download,
   );
   if (options == null || !context.mounted) return;
   await ref.read(prepSyncProvider.notifier).cancelAndWait(account);
@@ -78,8 +80,20 @@ Future<void> prepEditDownloadOptions(
       ?.accounts
       .where((a) => a.key == account.key)
       .firstOrNull;
-  if (live != null) await prepRefreshAccount(context, ref, profile.id, live);
+  if (live != null && (download || live.lastSyncAtMs != null)) {
+    await prepRefreshAccount(context, ref, profile.id, live);
+  }
 }
+
+/// Online downloads offer the saved scope before the reader starts them.
+Future<void> prepDownloadSource(
+  BuildContext context,
+  WidgetRef ref,
+  PrepProfile profile,
+  PrepAccount account,
+) => account.source.online
+    ? prepEditDownloadOptions(context, ref, profile, account, download: true)
+    : prepRefreshAccount(context, ref, profile.id, account);
 
 Future<void> prepChangeAccount(
   BuildContext context,
@@ -127,9 +141,6 @@ Future<void> prepChangeAccount(
       );
     }
     return;
-  }
-  if (context.mounted) {
-    await prepRefreshAccount(context, ref, profile.id, replacement);
   }
 }
 
@@ -240,77 +251,84 @@ Future<void> prepImportSource(
   PrepProfile profile,
 ) async {
   if (!await ensurePrepAccess(context) || !context.mounted) return;
-  final messenger = ScaffoldMessenger.maybeOf(context);
-  try {
-    final files = await FilePicker.platform.pickFiles(
-      type: FileType.custom,
-      allowedExtensions: ['pgn'],
-      allowMultiple: true,
-    );
-    if (files == null || files.files.isEmpty || !context.mounted) return;
-    final alias = await showPrepRenameDialog(
-      context,
-      profile.databaseAccount?.username ?? profile.name,
-      title: 'Player name in the PGN',
-    );
-    if (alias == null || !context.mounted) return;
-    final repo = ref.read(prepRepositoryProvider);
-    final profiles = ref.read(prepProfilesProvider.notifier);
-    final cloud = ref.read(prepCloudSyncProvider.notifier);
-    var attached = 0;
-    for (final (i, file) in files.files.indexed) {
-      final bytes =
-          file.bytes ??
-          (file.path == null ? null : await File(file.path!).readAsBytes());
-      if (bytes == null) continue;
-      final pgn = utf8.decode(bytes, allowMalformed: true);
-      var account = PrepAccount(
-        source: PrepSource.manual,
-        username: file.name,
-        externalId: '${DateTime.now().microsecondsSinceEpoch}-$i',
-        playerAliases: [alias],
-        preferences: const PrepDownloadPreferences(range: PrepDateRange.all),
-      );
-      final target = await repo.gamesFile(account);
-      final count = await compute(_saveManual, (target.path, pgn, alias));
-      account = account.copyWith(
-        gameCount: count,
-        lastSyncAtMs: DateTime.now().millisecondsSinceEpoch,
-      );
-      if (profiles.byId(profile.id) == null) {
-        await repo.deleteGames(account);
-        return;
+  final repo = ref.read(prepRepositoryProvider);
+  final profiles = ref.read(prepProfilesProvider.notifier);
+  final cloud = ref.read(prepCloudSyncProvider.notifier);
+  await showPrepImportDialog(
+    context,
+    playerName: profile.databaseAccount?.username ?? profile.name,
+    onImport: ({required alias, required label, pgn}) async {
+      final inputs = <(String, String)>[];
+      if (pgn != null) {
+        if (pgn.length > kPrepImportMaxBytes) {
+          throw const PrepException('Paste a PGN smaller than 64 MB.');
+        }
+        inputs.add((label, pgn));
+      } else {
+        final files = await FilePicker.platform.pickFiles(
+          type: FileType.custom,
+          allowedExtensions: ['pgn', 'bz2', 'zst'],
+          allowMultiple: true,
+          withData: false,
+        );
+        if (files == null || files.files.isEmpty) return false;
+        for (final file in files.files) {
+          if (file.size > kPrepImportMaxBytes) {
+            throw PrepException('${file.name} is larger than 64 MB.');
+          }
+          final bytes =
+              file.bytes ??
+              (file.path == null ? null : await File(file.path!).readAsBytes());
+          if (bytes == null) {
+            throw PrepException('Could not read ${file.name}.');
+          }
+          inputs.add((
+            file.name,
+            await compute(decodePrepPgn, (file.name, bytes)),
+          ));
+        }
       }
+      final accounts = <PrepAccount>[];
+      final prepared = <PrepAccount>[];
       try {
-        profiles.attach(profile.id, [account]);
-        attached++;
+        for (final (i, input) in inputs.indexed) {
+          var account = PrepAccount(
+            source: PrepSource.manual,
+            username: input.$1,
+            externalId: '${DateTime.now().microsecondsSinceEpoch}-$i',
+            playerAliases: [alias],
+            preferences: const PrepDownloadPreferences(
+              range: PrepDateRange.all,
+            ),
+          );
+          prepared.add(account);
+          final target = await repo.gamesFile(account);
+          final count = await compute(_saveManual, (
+            target.path,
+            input.$2,
+            alias,
+          ));
+          account = account.copyWith(
+            gameCount: count,
+            lastSyncAtMs: DateTime.now().millisecondsSinceEpoch,
+          );
+          accounts.add(account);
+        }
+        if (profiles.byId(profile.id) == null) {
+          throw const PrepException('This profile was removed.');
+        }
+        // Validate every selected database before attaching any of them.
+        profiles.attach(profile.id, accounts);
       } catch (_) {
-        await repo.deleteGames(account);
+        for (final account in prepared) {
+          await repo.deleteGames(account);
+        }
         rethrow;
       }
-    }
-    if (attached == 0) {
-      throw const PrepException('Could not read the selected PGN files.');
-    }
-    cloud.syncAfterDownload(profile.id);
-    if (messenger != null) {
-      showAppSnackOn(
-        messenger,
-        'PGN source attached',
-        tone: AppSnackTone.success,
-      );
-    }
-  } catch (error) {
-    if (messenger != null) {
-      showAppSnackOn(
-        messenger,
-        error is PrepException
-            ? error.message
-            : 'Could not import the PGN file.',
-        tone: AppSnackTone.danger,
-      );
-    }
-  }
+      cloud.syncAfterDownload(profile.id);
+      return true;
+    },
+  );
 }
 
 int _saveManual((String, String, String) input) =>

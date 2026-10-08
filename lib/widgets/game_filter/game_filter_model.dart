@@ -63,6 +63,18 @@ extension GameColorFilterX on GameColorFilter {
   }
 }
 
+/// Desktop's short-game thresholds, available in Prepare's filter dialog.
+enum GameFinishFilter {
+  all('Any length', null),
+  byMove25('By move 25', 25),
+  byMove20('By move 20', 20),
+  byMove15('By move 15', 15);
+
+  const GameFinishFilter(this.displayText, this.maxMoveNumber);
+  final String displayText;
+  final int? maxMoveNumber;
+}
+
 /// Live/completed filter — filters games by ongoing vs finished state.
 /// Mirrors the EventStatus filter from the event view, but applied to games.
 enum GameLiveFilter { all, live, completed }
@@ -226,10 +238,9 @@ class GameEcoFilter {
   String? get categoryLetter => code?.isNotEmpty == true ? code![0] : null;
 
   /// Display text for the filter
-  String get displayText =>
-      isUnknownEco
-          ? unknownEcoLabel
-          : (_familyDisplayText ?? code ?? 'All Openings');
+  String get displayText => isUnknownEco
+      ? unknownEcoLabel
+      : (_familyDisplayText ?? code ?? 'All Openings');
 
   String? get _familyDisplayText {
     final family = EcoOpenings.getFamily(code);
@@ -301,6 +312,7 @@ class GameFilter {
   GameFilter({
     GameResultFilter result = GameResultFilter.all,
     this.color = GameColorFilter.all,
+    this.finish = GameFinishFilter.all,
     this.timeControl = GameTimeControlFilter.all,
     this.online = GameOnlineFilter.all,
     GameLiveFilter live = GameLiveFilter.all,
@@ -313,18 +325,17 @@ class GameFilter {
   }) : result = live == GameLiveFilter.live ? GameResultFilter.all : result,
        live = live,
        eco = eco ?? GameEcoFilter.all,
-       minYear =
-           live == GameLiveFilter.live && minYear > DateTime.now().year
-               ? DateTime.now().year
-               : minYear,
-       maxYear =
-           live == GameLiveFilter.live
-               ? DateTime.now().year
-               : (maxYear ?? DateTime.now().year),
+       minYear = live == GameLiveFilter.live && minYear > DateTime.now().year
+           ? DateTime.now().year
+           : minYear,
+       maxYear = live == GameLiveFilter.live
+           ? DateTime.now().year
+           : (maxYear ?? DateTime.now().year),
        sorts = sorts ?? const [];
 
   final GameResultFilter result;
   final GameColorFilter color;
+  final GameFinishFilter finish;
   final GameTimeControlFilter timeControl;
   final GameOnlineFilter online;
   final GameLiveFilter live;
@@ -352,6 +363,7 @@ class GameFilter {
   bool get hasActiveFilters =>
       result != GameResultFilter.all ||
       color != GameColorFilter.all ||
+      finish != GameFinishFilter.all ||
       timeControl != GameTimeControlFilter.all ||
       online != GameOnlineFilter.all ||
       live != GameLiveFilter.all ||
@@ -366,6 +378,7 @@ class GameFilter {
     int count = 0;
     if (result != GameResultFilter.all) count++;
     if (color != GameColorFilter.all) count++;
+    if (finish != GameFinishFilter.all) count++;
     if (timeControl != GameTimeControlFilter.all) count++;
     if (online != GameOnlineFilter.all) count++;
     if (live != GameLiveFilter.all) count++;
@@ -381,6 +394,7 @@ class GameFilter {
   GameFilter copyWith({
     GameResultFilter? result,
     GameColorFilter? color,
+    GameFinishFilter? finish,
     GameTimeControlFilter? timeControl,
     GameOnlineFilter? online,
     GameLiveFilter? live,
@@ -394,6 +408,7 @@ class GameFilter {
     return GameFilter(
       result: result ?? this.result,
       color: color ?? this.color,
+      finish: finish ?? this.finish,
       timeControl: timeControl ?? this.timeControl,
       online: online ?? this.online,
       live: live ?? this.live,
@@ -414,6 +429,7 @@ class GameFilter {
     return other is GameFilter &&
         other.result == result &&
         other.color == color &&
+        other.finish == finish &&
         other.timeControl == timeControl &&
         other.online == online &&
         other.live == live &&
@@ -429,6 +445,7 @@ class GameFilter {
   int get hashCode => Object.hash(
     result,
     color,
+    finish,
     timeControl,
     online,
     live,

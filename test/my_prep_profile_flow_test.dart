@@ -12,6 +12,10 @@ import 'package:chessever2/screens/my_prep/services/prep_analysis.dart';
 import 'package:chessever2/screens/my_prep/services/prep_repository.dart';
 import 'package:chessever2/screens/my_prep/tabs/prep_overview_tab.dart';
 import 'package:chessever2/screens/my_prep/widgets/prep_dialogs.dart';
+import 'package:chessever2/screens/my_prep/widgets/prep_import_dialog.dart';
+import 'package:chessever2/screens/my_prep/tabs/prep_games_tab.dart';
+import 'package:chessever2/widgets/game_filter/game_filter_model.dart';
+import 'package:chessever2/widgets/game_filter/game_filter_dialog.dart';
 import 'package:chessever2/screens/my_prep/widgets/prep_filters.dart';
 import 'package:chessever2/screens/my_prep/widgets/prep_identity.dart';
 import 'package:chessever2/screens/my_prep/widgets/prep_source_picker.dart';
@@ -48,6 +52,7 @@ class _PickerRepository extends PrepRepository {
       );
 
   bool deferSync = false;
+  int syncCalls = 0;
   final syncStarted = Completer<void>();
   @override
   Future<PrepAccount> sync(
@@ -58,6 +63,7 @@ class _PickerRepository extends PrepRepository {
     CancelToken? cancelToken,
     bool reinstall = false,
   }) async {
+    syncCalls++;
     if (deferSync) {
       syncStarted.complete();
       throw await cancelToken!.whenCancel;
@@ -576,5 +582,148 @@ void main() {
     await tester.tap(find.text('Wins'));
     expect(selected?.outcome, PrepOutcome.win);
     expect(selected?.source, PrepSource.lichess);
+  });
+
+  test('freshness never starts the first game download', () async {
+    final container = ProviderContainer(
+      overrides: [prepRepositoryProvider.overrideWithValue(repo)],
+    );
+    addTearDown(container.dispose);
+    await _loaded(container);
+    final profiles = container.read(prepProfilesProvider.notifier);
+    final profile = profiles.create(
+      kind: PrepKind.opponent,
+      name: 'Club',
+      accounts: [
+        const PrepAccount(source: PrepSource.lichess, username: 'club'),
+      ],
+    );
+    final sync = container.read(prepSyncProvider.notifier);
+    sync.refreshStale([profile]);
+    await Future<void>.delayed(Duration.zero);
+    expect(repo.syncCalls, 0);
+    profiles.edit(
+      profile.id,
+      (p) => p.replaceAccount(
+        p.accounts.single.copyWith(lastSyncAtMs: 1, gameCount: 1),
+      ),
+    );
+    sync.refreshStale([profiles.byId(profile.id)!]);
+    await Future<void>.delayed(Duration.zero);
+    expect(repo.syncCalls, 1);
+    await profiles.debugDrainWrites();
+  });
+
+  testWidgets('game search and shared filters work with large text', (
+    tester,
+  ) async {
+    PrepFilter? selected;
+    await pump(
+      tester,
+      Scaffold(
+        body: PrepGamesTab(
+          analysis: PrepAnalysis.empty('p'),
+          games: const [],
+          filter: const PrepFilter(),
+          onFilterChanged: (filter) => selected = filter,
+        ),
+      ),
+      scale: 2,
+    );
+    final field = find.byType(TextField);
+    expect(tester.getSize(field).height, greaterThanOrEqualTo(48));
+    await tester.enterText(field, 'Sicilian');
+    await tester.pump();
+    await tester.tap(find.byTooltip('Clear search'));
+    await tester.pump();
+    expect(tester.widget<TextField>(field).controller!.text, isEmpty);
+    await tester.tap(find.byTooltip('Filter and sort games'));
+    await tester.pumpAndSettle();
+    final dialog = tester.widget<GameFilterDialog>(
+      find.byType(GameFilterDialog),
+    );
+    expect(dialog.showOpeningFilter, isTrue);
+    expect(dialog.showFinishFilter, isTrue);
+    expect(dialog.showRatingRange, isTrue);
+    expect(dialog.showSortSection, isTrue);
+    expect(dialog.showLiveFilter, isFalse);
+    expect(tester.takeException(), isNull);
+    await tester.tap(find.text('Apply Filters'));
+    await tester.pumpAndSettle();
+    expect(selected?.base, GameFilter.defaultFilter());
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('pasted PGN remains editable after an import error', (
+    tester,
+  ) async {
+    var calls = 0;
+    (String, String, String?)? received;
+    await pump(
+      tester,
+      PrepImportDialog(
+        playerName: 'ClubPlayer',
+        onImport: ({required alias, required label, pgn}) async {
+          calls++;
+          if (calls == 1) throw const PrepException('No matching player');
+          return false;
+        },
+      ),
+      scale: 1.8,
+    );
+    final labelField = find.byKey(const ValueKey('prep_import_label'));
+    final pgnField = find.byKey(const ValueKey('prep_import_pgn'));
+    await tester.scrollUntilVisible(
+      labelField,
+      160,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.enterText(labelField, 'Club games');
+    await tester.scrollUntilVisible(
+      pgnField,
+      160,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.enterText(pgnField, '[White "ClubPlayer"]');
+    await tester.pump();
+    await tester.ensureVisible(find.text('Attach pasted games'));
+    await tester.tap(find.text('Attach pasted games'));
+    await tester.pump();
+    expect(find.text('No matching player'), findsOneWidget);
+    expect(
+      tester.widget<TextField>(pgnField).controller!.text,
+      '[White "ClubPlayer"]',
+    );
+    expect(tester.takeException(), isNull);
+    await pump(
+      tester,
+      PrepImportDialog(
+        key: const ValueKey('second-import'),
+        playerName: 'ClubPlayer',
+        onImport: ({required alias, required label, pgn}) async {
+          received = (alias, label, pgn);
+          return false;
+        },
+      ),
+      scale: 1.8,
+    );
+    await tester.scrollUntilVisible(
+      labelField,
+      160,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.enterText(labelField, 'Club games');
+    await tester.scrollUntilVisible(
+      pgnField,
+      160,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.enterText(pgnField, '[White "ClubPlayer"]');
+    await tester.pump();
+    await tester.ensureVisible(find.text('Attach pasted games'));
+    await tester.tap(find.text('Attach pasted games'));
+    await tester.pump();
+    expect(received, ('ClubPlayer', 'Club games', '[White "ClubPlayer"]'));
+    expect(tester.takeException(), isNull);
   });
 }

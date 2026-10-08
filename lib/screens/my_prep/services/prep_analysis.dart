@@ -31,6 +31,7 @@ class PrepGame {
     this.eco,
     this.opening,
     this.url,
+    this.event,
     this.playerIsWhite,
   });
 
@@ -54,6 +55,7 @@ class PrepGame {
   final String? eco;
   final String? opening;
   final String? url;
+  final String? event;
 
   /// Which side the prepared player had; null when neither name matched.
   final bool? playerIsWhite;
@@ -84,6 +86,7 @@ class PrepGame {
     eco: g.eco,
     opening: g.opening,
     url: g.url,
+    event: g.event,
     playerIsWhite: switch (g.side) {
       1 => true,
       2 => false,
@@ -94,6 +97,20 @@ class PrepGame {
   String get opponent => playerIsWhite == false ? white : black;
   int? get opponentElo => playerIsWhite == false ? whiteElo : blackElo;
   int? get playerElo => playerIsWhite == false ? blackElo : whiteElo;
+
+  double? get averageElo {
+    final ratings = [whiteElo, blackElo].whereType<int>().where((r) => r > 0);
+    return ratings.isEmpty
+        ? null
+        : ratings.reduce((a, b) => a + b) / ratings.length;
+  }
+
+  bool get isOnline =>
+      source.online ||
+      RegExp(
+        r'lichess|chess\.com|chesscom|chess24',
+        caseSensitive: false,
+      ).hasMatch(url ?? '');
 
   PrepOutcome get outcome {
     final white = playerIsWhite;

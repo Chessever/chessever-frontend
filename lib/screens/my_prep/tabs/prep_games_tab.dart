@@ -1,7 +1,9 @@
+import 'dart:io';
 import 'package:chessever2/screens/chessboard/analysis/chess_game.dart';
 import 'package:chessever2/screens/chessboard/chess_board_screen_new.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
 import 'package:chessever2/screens/library/widgets/library_game_card.dart';
+import 'package:chessever2/screens/library/widgets/import_pgn_to_folder_sheet.dart';
 import 'package:chessever2/screens/my_prep/services/prep_analysis.dart';
 import 'package:chessever2/screens/my_prep/widgets/prep_filters.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
@@ -11,8 +13,13 @@ import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/widgets/app_snack.dart';
+import 'package:chessever2/widgets/game_filter/game_filter_dialog.dart';
+import 'package:chessever2/widgets/game_filter/game_filter_model.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:share_plus/share_plus.dart';
 
 /// Every downloaded game, newest first, on the Library's game cards. A card
 /// is built from its PGN only when it scrolls into view.
@@ -38,6 +45,10 @@ class _PrepGamesTabState extends ConsumerState<PrepGamesTab>
     with AutomaticKeepAliveClientMixin {
   final Map<int, GamesTourModel?> _cards = {};
   final _search = TextEditingController();
+  bool _working = false;
+  List<PrepGame>? _sortInput;
+  List<GameSortCriterion>? _sorts;
+  List<PrepGame> _sorted = const [];
 
   @override
   bool get wantKeepAlive => true;
@@ -72,16 +83,101 @@ class _PrepGamesTabState extends ConsumerState<PrepGamesTab>
   }
 
   List<PrepGame> get _visible {
+    final sorts = widget.filter.base?.sorts ?? const <GameSortCriterion>[];
+    if (!identical(_sortInput, widget.games) || !listEquals(_sorts, sorts)) {
+      _sortInput = widget.games;
+      _sorts = sorts;
+      _sorted = prepSortGames(widget.games, sorts);
+    }
     final query = _search.text.trim().toLowerCase();
-    if (query.isEmpty) return widget.games;
+    if (query.isEmpty) return _sorted;
     return [
-      for (final g in widget.games)
+      for (final g in _sorted)
         if (g.white.toLowerCase().contains(query) ||
             g.black.toLowerCase().contains(query) ||
             (g.opening?.toLowerCase().contains(query) ?? false) ||
-            (g.eco?.toLowerCase() == query))
+            (g.eco?.toLowerCase() == query) ||
+            (g.event?.toLowerCase().contains(query) ?? false))
           g,
     ];
+  }
+
+  Future<void> _showFilters() async {
+    final filter = await showGameFilterDialog(
+      context: context,
+      currentFilter: widget.filter.dialogFilter,
+      showLiveFilter: false,
+      showSortSection: true,
+      allowMultiSort: true,
+      showOpeningFilter: true,
+      showFinishFilter: true,
+      showLevelFilter: false,
+      showRatingRange: true,
+    );
+    if (filter != null && mounted) {
+      widget.onFilterChanged(widget.filter.withGameFilter(filter));
+    }
+  }
+
+  Future<void> _saveVisible({required bool export}) async {
+    if (_working) return;
+    final list = _visible;
+    if (list.isEmpty) return;
+    final analysis = widget.analysis;
+    final box = context.findRenderObject() as RenderBox?;
+    final origin = box == null
+        ? null
+        : box.localToGlobal(Offset.zero) & box.size;
+    setState(() => _working = true);
+    Directory? temporary;
+    try {
+      final entries = <(String, String)>[];
+      for (final (i, game) in list.indexed) {
+        final pgn = analysis.pgnOf(game);
+        if (pgn == null) throw const FormatException('Missing PGN');
+        entries.add((analysis.gameId(game), pgn));
+        // Reading a large local source yields so the busy state stays usable.
+        if (i % 100 == 99) {
+          await Future<void>.delayed(Duration.zero);
+          if (!mounted) return;
+        }
+      }
+      if (export) {
+        temporary = await Directory.systemTemp.createTemp(
+          'chessever-prep-selection-',
+        );
+        final file = File('${temporary.path}/filtered-games.pgn');
+        await file.writeAsString(
+          entries.map((entry) => entry.$2.trim()).join('\n\n'),
+        );
+        await Share.shareXFiles(
+          [XFile(file.path, mimeType: 'application/x-chess-pgn')],
+          subject: '${entries.length} prepared games',
+          sharePositionOrigin: origin,
+        );
+      } else {
+        final games = await compute(parsePreparedGames, entries);
+        if (!mounted) return;
+        await showImportPgnToFolderSheet(
+          context: context,
+          games: games,
+          sourceLabel: 'My Prep · ${games.length} filtered games',
+        );
+      }
+    } catch (_) {
+      if (mounted) {
+        showAppSnack(
+          context,
+          'Could not save these games. Try again.',
+          tone: AppSnackTone.danger,
+        );
+      }
+    } finally {
+      if (temporary != null && await temporary.exists()) {
+        await temporary.delete(recursive: true);
+      }
+      if (mounted) setState(() => _working = false);
+    }
   }
 
   void _open(List<PrepGame> list, int index) {
@@ -152,6 +248,12 @@ class _PrepGamesTabState extends ConsumerState<PrepGamesTab>
                               opening,
                             if (widget.filter.opponent case final opponent?)
                               opponent,
+                            if (widget.filter.base case final base?) ...[
+                              if (base.hasActiveFilters)
+                                '${base.activeFilterCount} game filters',
+                              if (base.hasActiveSorts)
+                                '${base.activeSortCount} sort keys',
+                            ],
                           ].join(' · '),
                           style: AppTypography.textXsRegular.copyWith(
                             color: colors.textSecondary,
@@ -166,6 +268,7 @@ class _PrepGamesTabState extends ConsumerState<PrepGamesTab>
                             eco: null,
                             opening: null,
                             opponent: null,
+                            base: null,
                           ),
                         ),
                         child: const Text('Clear filters'),
@@ -173,17 +276,67 @@ class _PrepGamesTabState extends ConsumerState<PrepGamesTab>
                     ],
                   ),
                 ],
-                _Search(controller: _search, onChanged: () => setState(() {})),
+                Row(
+                  children: [
+                    Expanded(
+                      child: _Search(
+                        controller: _search,
+                        onChanged: () => setState(() {}),
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+                    IconButton(
+                      tooltip: 'Filter and sort games',
+                      onPressed: _showFilters,
+                      constraints: const BoxConstraints(
+                        minWidth: 44,
+                        minHeight: 44,
+                      ),
+                      icon: Icon(Icons.tune_rounded, color: colors.iconPrimary),
+                    ),
+                  ],
+                ),
                 SizedBox(height: 10.h),
-                Text(
-                  list.isEmpty
-                      ? 'No games match these filters.'
-                      : list.length == 1
-                      ? '1 game'
-                      : '${list.length} games',
-                  style: AppTypography.textXsRegular.copyWith(
-                    color: colors.textSecondary,
-                  ),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        list.isEmpty
+                            ? 'No games match these filters.'
+                            : list.length == 1
+                            ? '1 game'
+                            : '${list.length} games',
+                        style: AppTypography.textXsRegular.copyWith(
+                          color: colors.textSecondary,
+                        ),
+                      ),
+                    ),
+                    if (_working)
+                      const SizedBox.square(
+                        dimension: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    else
+                      PopupMenuButton<bool>(
+                        tooltip: 'Save filtered games',
+                        enabled: list.isNotEmpty,
+                        onSelected: (export) => _saveVisible(export: export),
+                        itemBuilder: (_) => const [
+                          PopupMenuItem(
+                            value: false,
+                            child: Text('Save filtered games to Library'),
+                          ),
+                          PopupMenuItem(
+                            value: true,
+                            child: Text('Export filtered PGN'),
+                          ),
+                        ],
+                        icon: Icon(
+                          Icons.more_horiz,
+                          color: colors.iconSecondary,
+                        ),
+                      ),
+                  ],
                 ),
               ],
             ),
@@ -218,7 +371,7 @@ class _Search extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = context.colors;
     return Container(
-      height: 40.h,
+      constraints: const BoxConstraints(minHeight: 48),
       decoration: BoxDecoration(
         color: colors.textPrimary.withValues(alpha: 0.06),
         borderRadius: BorderRadius.circular(10.br),
@@ -243,7 +396,7 @@ class _Search extends StatelessWidget {
                 ),
                 border: InputBorder.none,
                 isDense: true,
-                contentPadding: EdgeInsets.zero,
+                contentPadding: const EdgeInsets.symmetric(vertical: 12),
               ),
             ),
           ),
@@ -263,3 +416,8 @@ class _Search extends StatelessWidget {
     );
   }
 }
+
+/// Shared folder saving receives exactly the selected games and original PGNs.
+List<ChessGame> parsePreparedGames(List<(String, String)> entries) => [
+  for (final entry in entries) ChessGame.fromPgn(entry.$1, entry.$2),
+];

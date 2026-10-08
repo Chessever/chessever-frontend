@@ -392,8 +392,10 @@ class PrepSyncController extends StateNotifier<Map<String, PrepSyncStatus>> {
       for (final account in profile.accounts) {
         if (account.source == PrepSource.manual) continue;
         final last = account.lastSyncAtMs;
+        // Connecting fetches metadata only. The first download is explicit,
+        // as on desktop; freshness applies once the reader has downloaded.
+        if (last == null) continue;
         final stale =
-            last == null ||
             now - last >= every.inMilliseconds ||
             (account.source.online &&
                 account.syncedScope !=

@@ -2,7 +2,7 @@ import 'package:chessever2/screens/gamebase/models/models.dart';
 import 'package:chessever2/screens/gamebase/providers/gamebase_explorer_state.dart';
 import 'package:chessever2/screens/my_prep/library/prep_library.dart';
 import 'package:chessever2/screens/my_prep/models/prep_models.dart';
-import 'package:chessever2/screens/my_prep/prep_actions.dart';
+import 'package:chessever2/screens/my_prep/prep_source_actions.dart';
 import 'package:chessever2/screens/my_prep/providers/prep_providers.dart';
 import 'package:chessever2/screens/my_prep/widgets/prep_common.dart';
 import 'package:chessever2/services/game_tree/game_tree_service.dart';
@@ -47,6 +47,10 @@ class _PrepTreesTabState extends ConsumerState<PrepTreesTab> {
       3 => TimeControl.classical,
       _ => null,
     };
+    final sides = profile.kind == PrepKind.mine
+        ? const ['Both', 'As White', 'As Black']
+        : const ['Both', 'Their White', 'Their Black'];
+    const clocks = ['All clocks', 'Blitz', 'Rapid', 'Classical'];
     return ListView(
       padding: EdgeInsets.fromLTRB(gutter, 12.h, gutter, 32.h),
       children: [
@@ -66,18 +70,24 @@ class _PrepTreesTabState extends ConsumerState<PrepTreesTab> {
         ),
         SizedBox(height: 16.h),
         SegmentedSwitcher(
-          height: prepSegmentHeight(context),
-          options: profile.kind == PrepKind.mine
-              ? const ['Both', 'As White', 'As Black']
-              : const ['Both', 'Their White', 'Their Black'],
+          height: prepSegmentHeight(context, wrapLabels: true),
+          options: sides,
+          optionLabels: [
+            for (final side in sides)
+              Text(side, maxLines: 2, textAlign: TextAlign.center),
+          ],
           initialSelection: _side,
           currentSelection: _side,
           onSelectionChanged: (side) => setState(() => _side = side),
         ),
         SizedBox(height: 20.h),
         SegmentedSwitcher(
-          height: prepSegmentHeight(context),
-          options: const ['All clocks', 'Blitz', 'Rapid', 'Classical'],
+          height: prepSegmentHeight(context, wrapLabels: true),
+          options: clocks,
+          optionLabels: [
+            for (final clock in clocks)
+              Text(clock, maxLines: 2, textAlign: TextAlign.center),
+          ],
           initialSelection: _clock,
           currentSelection: _clock,
           onSelectionChanged: (clock) => setState(() => _clock = clock),
@@ -110,8 +120,7 @@ class _PrepTreesTabState extends ConsumerState<PrepTreesTab> {
             gameCount: account.gameCount,
             color: color,
             clock: clock,
-            onSources: () =>
-                prepRefreshAccount(context, ref, profile.id, account),
+            onSources: () => prepDownloadSource(context, ref, profile, account),
           ),
           SizedBox(height: 12.h),
         ],

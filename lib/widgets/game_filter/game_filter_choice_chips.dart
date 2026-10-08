@@ -35,6 +35,7 @@ class GameFilterChoiceChips<T> extends StatelessWidget {
             onTap: enabled ? () => onTap(v) : null,
             child: AnimatedContainer(
               duration: const Duration(milliseconds: 150),
+              constraints: const BoxConstraints(minHeight: 44),
               padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 10.h),
               // Equal-width grid cells center their label; row chips
               // hug their content as before.
@@ -73,13 +74,16 @@ class GameFilterChoiceChips<T> extends StatelessWidget {
       builder: (context, constraints) {
         final textScaler = MediaQuery.textScalerOf(context);
         var total = 8.w * (measureLabels.length - 1);
+        double widest = 0;
         for (final label in measureLabels) {
           final painter = TextPainter(
             text: TextSpan(text: label, style: AppTypography.textXsMedium),
             textDirection: TextDirection.ltr,
             textScaler: textScaler,
           )..layout();
-          total += painter.width + 28.w + extraPerChip;
+          final width = painter.width + 28.w + extraPerChip;
+          total += width;
+          if (width > widest) widest = width;
         }
 
         if (total <= constraints.maxWidth) {
@@ -91,6 +95,17 @@ class GameFilterChoiceChips<T> extends StatelessWidget {
         }
 
         final chips = chipsBuilder(true);
+        if (widest > (constraints.maxWidth - 8.w) / 2) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              for (var i = 0; i < chips.length; i++) ...[
+                if (i > 0) SizedBox(height: 8.h),
+                chips[i],
+              ],
+            ],
+          );
+        }
         return Column(
           children: [
             for (var i = 0; i < chips.length; i += 2) ...[

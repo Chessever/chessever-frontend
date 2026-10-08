@@ -259,12 +259,8 @@ class _Account extends ConsumerWidget {
                   onPressed: busy
                       ? () =>
                             ref.read(prepSyncProvider.notifier).cancel(account)
-                      : () => prepRefreshAccount(
-                          context,
-                          ref,
-                          profile.id,
-                          account,
-                        ),
+                      : () =>
+                            prepDownloadSource(context, ref, profile, account),
                   child: Text(
                     busy
                         ? 'Stop download'

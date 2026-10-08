@@ -14,16 +14,18 @@ import 'package:flutter/material.dart';
 Future<PrepDownloadPreferences?> showPrepDownloadOptionsDialog(
   BuildContext context, {
   required PrepAccount account,
+  bool download = false,
 }) {
   return showAlertModal<PrepDownloadPreferences>(
     context: context,
-    child: _OptionsDialog(account: account),
+    child: _OptionsDialog(account: account, download: download),
   );
 }
 
 class _OptionsDialog extends StatefulWidget {
-  const _OptionsDialog({required this.account});
+  const _OptionsDialog({required this.account, required this.download});
   final PrepAccount account;
+  final bool download;
 
   @override
   State<_OptionsDialog> createState() => _OptionsDialogState();
@@ -70,7 +72,7 @@ class _OptionsDialogState extends State<_OptionsDialog> {
     final changed = next != widget.account.preferences;
     return PrepDialogCard(
       icon: PrepSourceMark(source: _source, size: 22.sp),
-      title: 'Download options',
+      title: widget.download ? 'Download games' : 'Download options',
       subtitle: '${widget.account.username} on ${_source.label}',
       children: [
         const PrepFieldLabel('Time controls'),
@@ -155,8 +157,9 @@ class _OptionsDialogState extends State<_OptionsDialog> {
         ),
         SizedBox(height: 24.h),
         PrepDialogActions(
-          confirmLabel: 'Save',
-          onConfirm: changed && next.validationError == null
+          confirmLabel: widget.download ? 'Download' : 'Save',
+          onConfirm:
+              (widget.download || changed) && next.validationError == null
               ? () {
                   HapticFeedbackService.medium();
                   Navigator.of(context).pop(next);

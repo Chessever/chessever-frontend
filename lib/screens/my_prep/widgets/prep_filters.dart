@@ -1,4 +1,5 @@
 import 'dart:math' as math;
+import 'package:chessever2/repository/gamebase/search/gamebase_search_models.dart';
 import 'package:chessever2/screens/my_prep/models/prep_models.dart';
 import 'package:chessever2/screens/my_prep/services/prep_analysis.dart';
 import 'package:chessever2/screens/my_prep/services/prep_repository.dart';
@@ -8,6 +9,7 @@ import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/app_button.dart' show TappableScale;
+import 'package:chessever2/widgets/game_filter/game_filter_model.dart';
 import 'package:flutter/material.dart';
 
 /// Which side the prepared player had.
@@ -42,6 +44,7 @@ class PrepFilter {
     this.opening,
     this.opponent,
     this.window = PrepStatsWindow.all,
+    this.base,
   });
 
   final PrepSource? source;
@@ -55,13 +58,56 @@ class PrepFilter {
   final String? opening;
   final String? opponent;
   final PrepStatsWindow window;
+  final GameFilter? base;
 
   bool get hasFacets =>
       outcome != null ||
       year != null ||
       eco != null ||
       opening != null ||
-      opponent != null;
+      opponent != null ||
+      (base?.hasActiveFilters ?? false) ||
+      (base?.hasActiveSorts ?? false);
+
+  GameFilter get dialogFilter => (base ?? GameFilter()).copyWith(
+    color: switch (side) {
+      PrepSide.both => GameColorFilter.all,
+      PrepSide.white => GameColorFilter.white,
+      PrepSide.black => GameColorFilter.black,
+    },
+    timeControl: speed == null
+        ? base?.timeControl
+        : switch (speed!) {
+            PrepTimeControl.ultrabullet ||
+            PrepTimeControl.bullet ||
+            PrepTimeControl.blitz => GameTimeControlFilter.blitz,
+            PrepTimeControl.rapid => GameTimeControlFilter.rapid,
+            _ => GameTimeControlFilter.classical,
+          },
+    eco: eco == null ? base?.eco : GameEcoFilter.forCode(eco!),
+    minYear: year ?? base?.minYear,
+    maxYear: year ?? base?.maxYear,
+  );
+
+  PrepFilter withGameFilter(GameFilter value) => copyWith(
+    base: value.copyWith(color: GameColorFilter.all),
+    side: switch (value.color) {
+      GameColorFilter.all => PrepSide.both,
+      GameColorFilter.white => PrepSide.white,
+      GameColorFilter.black => PrepSide.black,
+    },
+    speed: null,
+    outcome: null,
+    year: null,
+    eco: null,
+    opening: null,
+    opponent: null,
+  );
+
+  PrepFilter withSpeed(PrepTimeControl? value) => copyWith(
+    speed: value,
+    base: base?.copyWith(timeControl: GameTimeControlFilter.all),
+  );
 
   PrepFilter copyWith({
     Object? source = _keep,
@@ -75,6 +121,7 @@ class PrepFilter {
     Object? opening = _keep,
     Object? opponent = _keep,
     PrepStatsWindow? window,
+    Object? base = _keep,
   }) => PrepFilter(
     source: identical(source, _keep) ? this.source : source as PrepSource?,
     speed: identical(speed, _keep) ? this.speed : speed as PrepTimeControl?,
@@ -91,6 +138,7 @@ class PrepFilter {
     opening: identical(opening, _keep) ? this.opening : opening as String?,
     opponent: identical(opponent, _keep) ? this.opponent : opponent as String?,
     window: window ?? this.window,
+    base: identical(base, _keep) ? this.base : base as GameFilter?,
   );
 
   bool matches(PrepGame g, {DateTime? since}) =>
@@ -101,6 +149,7 @@ class PrepFilter {
       (year == null || g.date?.year == year) &&
       (eco == null || g.eco == eco) &&
       (opening == null || g.openingFamily == opening) &&
+      _matchesBase(g) &&
       (since == null || (g.date != null && !g.date!.isBefore(since))) &&
       (opponent == null ||
           g.opponent.toLowerCase() == opponent!.toLowerCase()) &&
@@ -109,6 +158,49 @@ class PrepFilter {
         PrepSide.white => g.playerIsWhite == true,
         PrepSide.black => g.playerIsWhite == false,
       };
+
+  bool _matchesBase(PrepGame game) {
+    final f = base;
+    if (f == null) return true;
+    if (f.result.statusValue != null && game.result != f.result.statusValue) {
+      return false;
+    }
+    if (f.color == GameColorFilter.white && game.playerIsWhite != true) {
+      return false;
+    }
+    if (f.color == GameColorFilter.black && game.playerIsWhite != false) {
+      return false;
+    }
+    final clockMatches = switch (f.timeControl) {
+      GameTimeControlFilter.all => true,
+      GameTimeControlFilter.blitz => const [
+        PrepTimeControl.ultrabullet,
+        PrepTimeControl.bullet,
+        PrepTimeControl.blitz,
+      ].contains(game.speed),
+      GameTimeControlFilter.rapid => game.speed == PrepTimeControl.rapid,
+      GameTimeControlFilter.classical =>
+        game.speed == PrepTimeControl.classical,
+    };
+    if (!clockMatches || !f.eco.matches(game.eco)) return false;
+    if (f.online == GameOnlineFilter.online && !game.isOnline) return false;
+    if (f.online == GameOnlineFilter.otb && game.isOnline) return false;
+    if (f.minYear != GameFilter.defaultMinYear ||
+        f.maxYear != DateTime.now().year) {
+      final year = game.date?.year;
+      if (year == null || year < f.minYear || year > f.maxYear) return false;
+    }
+    if (f.minRating != GameFilter.defaultMinRating ||
+        f.maxRating != GameFilter.absoluteMaxRating) {
+      final rating = game.averageElo?.floor();
+      if (rating == null || rating < f.minRating || rating > f.maxRating) {
+        return false;
+      }
+    }
+    final maxMoves = f.finish.maxMoveNumber;
+    return maxMoves == null ||
+        (game.plies > 0 && (game.plies + 1) ~/ 2 <= maxMoves);
+  }
 
   List<PrepGame> apply(List<PrepGame> games) {
     if (source == null &&
@@ -141,6 +233,37 @@ class PrepFilter {
 }
 
 const Object _keep = Object();
+
+/// Sort only the Games presentation; statistics retain chronological input.
+List<PrepGame> prepSortGames(
+  List<PrepGame> games,
+  List<GameSortCriterion> sorts,
+) {
+  if (sorts.isEmpty) return games;
+  num? value(PrepGame game, GamebaseSortField field) => switch (field) {
+    GamebaseSortField.date => game.date?.millisecondsSinceEpoch,
+    GamebaseSortField.whiteElo => game.whiteElo,
+    GamebaseSortField.blackElo => game.blackElo,
+    GamebaseSortField.avgElo => game.averageElo,
+  };
+  return List<PrepGame>.of(games)..sort((a, b) {
+    for (final sort in sorts) {
+      final av = value(a, sort.field);
+      final bv = value(b, sort.field);
+      // Unknown dates/ratings remain at the end in either direction.
+      if (av == null && bv != null) return 1;
+      if (bv == null && av != null) return -1;
+      if (av == null) continue;
+      final comparison = av.compareTo(bv!);
+      if (comparison != 0) {
+        return sort.direction == GamebaseSortDirection.asc
+            ? comparison
+            : -comparison;
+      }
+    }
+    return a.index.compareTo(b.index);
+  });
+}
 
 /// Source and clock chips, showing only what the downloaded games contain.
 class PrepFilterBar extends StatelessWidget {
@@ -188,8 +311,11 @@ class PrepFilterBar extends StatelessWidget {
           _WindowPicker(filter: filter, onChanged: onChanged),
           PrepChip(
             label: 'All games',
-            selected: filter.speed == null,
-            onTap: () => onChanged(filter.copyWith(speed: null)),
+            selected:
+                filter.speed == null &&
+                (filter.base?.timeControl ?? GameTimeControlFilter.all) ==
+                    GameTimeControlFilter.all,
+            onTap: () => onChanged(filter.withSpeed(null)),
           ),
           for (final speed in orderedSpeeds)
             PrepChip(
@@ -197,7 +323,7 @@ class PrepFilterBar extends StatelessWidget {
               count: speeds[speed],
               selected: filter.speed == speed,
               onTap: () => onChanged(
-                filter.copyWith(speed: filter.speed == speed ? null : speed),
+                filter.withSpeed(filter.speed == speed ? null : speed),
               ),
             ),
         ],
@@ -261,12 +387,13 @@ class _SourcePicker extends StatelessWidget {
       onSelected: (key) {
         final account = profile.accounts.where((a) => a.key == key).firstOrNull;
         onChanged(
-          filter.copyWith(
+          PrepFilter(
             source: account?.source,
             accountKey: account?.key,
             accountFile: account == null
                 ? null
                 : PrepRepository.gamesFileName(account),
+            window: filter.window,
           ),
         );
       },
@@ -353,8 +480,7 @@ class PrepChip extends StatelessWidget {
             duration: const Duration(milliseconds: 160),
             curve: Curves.easeOut,
             constraints: const BoxConstraints(minHeight: 44),
-            padding: EdgeInsets.symmetric(horizontal: 12.w),
-            alignment: Alignment.center,
+            padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 8),
             decoration: BoxDecoration(
               color: selected ? colors.textPrimary : colors.surface,
               borderRadius: BorderRadius.circular(10.br),
@@ -363,9 +489,12 @@ class PrepChip extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               children: [
                 if (leading != null) ...[leading!, SizedBox(width: 6.w)],
-                Text(
-                  label,
-                  style: AppTypography.textXsMedium.copyWith(color: ink),
+                Flexible(
+                  child: Text(
+                    label,
+                    textAlign: TextAlign.center,
+                    style: AppTypography.textXsMedium.copyWith(color: ink),
+                  ),
                 ),
                 if (count != null) ...[
                   SizedBox(width: 5.w),
@@ -406,7 +535,8 @@ class PrepSidePicker extends StatelessWidget {
       PrepSide.white => mine ? 'As White' : 'Their White',
       PrepSide.black => mine ? 'As Black' : 'Their Black',
     };
-    return Row(
+    return Wrap(
+      runSpacing: 6,
       children: [
         for (final s in [PrepSide.white, PrepSide.black, PrepSide.both])
           PrepChip(

@@ -13,13 +13,15 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 /// Chess.com's green, used only on its own mark and source chips.
 const Color kChessComGreen = Color(0xFF81B64C);
 
-double prepSegmentHeight(BuildContext context) =>
-    (MediaQuery.textScalerOf(
-                  context,
-                ).scale(AppTypography.textSmMedium.fontSize ?? 14) *
-                (AppTypography.textSmMedium.height ?? 1.4) +
-            16.h)
-        .clamp(44.0, double.infinity);
+double prepSegmentHeight(BuildContext context, {bool wrapLabels = false}) {
+  final scaler = MediaQuery.textScalerOf(context);
+  final lines = wrapLabels && scaler.scale(12) > 15 ? 2 : 1;
+  return (scaler.scale(AppTypography.textSmMedium.fontSize ?? 14) *
+              (AppTypography.textSmMedium.height ?? 1.4) *
+              lines +
+          16.h)
+      .clamp(44.0, double.infinity);
+}
 
 /// Real provider marks, directly on the app surface.
 class PrepSourceMark extends StatelessWidget {

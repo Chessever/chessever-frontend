@@ -48,7 +48,7 @@ Future<void> prepAddMine(BuildContext context, WidgetRef ref) async {
     profiles.attach(existing.id, result.accounts);
     profile = existing;
   }
-  _syncNew(context, ref, profile.id, result.accounts);
+  if (context.mounted) unawaited(PrepProfileScreen.open(context, profile.id));
 }
 
 /// Adds an opponent with the accounts the reader typed and opens them.
@@ -66,7 +66,6 @@ Future<void> prepAddOpponent(BuildContext context, WidgetRef ref) async {
         name: result.name,
         accounts: result.accounts,
       );
-  _syncNew(context, ref, profile.id, result.accounts);
   unawaited(PrepProfileScreen.open(context, profile.id));
 }
 
@@ -95,7 +94,6 @@ Future<void> prepAddAccountTo(
     showAppSnack(context, '$error', tone: AppSnackTone.danger);
     return;
   }
-  _syncNew(context, ref, profile.id, result.accounts);
 }
 
 /// A favorite opened before keeps its downloaded games; the first open
@@ -162,24 +160,6 @@ Future<void> _releaseFromFavorites(
       await profiles.removeAccount(owner.id, account);
     }
   }
-}
-
-void _syncNew(
-  BuildContext context,
-  WidgetRef ref,
-  String profileId,
-  List<PrepAccount> accounts,
-) {
-  final messenger = ScaffoldMessenger.maybeOf(context);
-  final sync = ref.read(prepSyncProvider.notifier);
-  unawaited(() async {
-    for (final account in accounts) {
-      final error = await sync.syncAccount(profileId, account);
-      if (error != null && messenger != null) {
-        showAppSnackOn(messenger, error, tone: AppSnackTone.danger);
-      }
-    }
-  }());
 }
 
 Future<String?> _refreshProfiles(

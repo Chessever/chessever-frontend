@@ -82,9 +82,10 @@ class _SmoothAlertWrapperState<T> extends State<_SmoothAlertWrapper<T>> {
       motion: const CupertinoMotion.bouncy(),
       value: _animationProgress,
       builder: (context, value, child) {
-        final scale = 0.85 + (0.15 * value);
-        final opacity = value.clamp(0.0, 1.0);
-        final blurAmount = widget.useBlur ? 8 * value : 0.0;
+        final progress = MediaQuery.disableAnimationsOf(context) ? 1.0 : value;
+        final scale = 0.85 + (0.15 * progress);
+        final opacity = progress.clamp(0.0, 1.0);
+        final blurAmount = widget.useBlur ? 8 * progress : 0.0;
 
         return Material(
           color: Colors.transparent,
@@ -122,7 +123,8 @@ class _SmoothAlertWrapperState<T> extends State<_SmoothAlertWrapper<T>> {
                       vertical: widget.verticalPadding.h,
                     ),
                     child: Opacity(
-                      opacity: opacity,
+                      // Live controls stay visible even if motion is paused.
+                      opacity: 1,
                       child: Transform.scale(
                         scale: scale,
                         child: GestureDetector(

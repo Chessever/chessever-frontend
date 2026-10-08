@@ -7,6 +7,7 @@ import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/alert_dialog/alert_modal.dart';
 import 'package:chessever2/widgets/game_filter/game_filter_model.dart';
+import 'package:chessever2/widgets/game_filter/eco_filter_dropdown.dart';
 import 'package:chessever2/widgets/game_filter/rating_tier_filter.dart';
 import 'package:chessever2/widgets/game_filter/wheel_range_filter.dart';
 import 'package:flutter/material.dart';
@@ -24,6 +25,10 @@ Future<GameFilter?> showGameFilterDialog({
   bool showSortDirection = true,
   bool showLevelFilter = true,
   bool showYearFilter = true,
+  bool showOpeningFilter = false,
+  bool showFinishFilter = false,
+  bool showRatingRange = false,
+  bool allowMultiSort = false,
 }) {
   return showAlertModal<GameFilter>(
     context: context,
@@ -38,6 +43,10 @@ Future<GameFilter?> showGameFilterDialog({
       showSortDirection: showSortDirection,
       showLevelFilter: showLevelFilter,
       showYearFilter: showYearFilter,
+      showOpeningFilter: showOpeningFilter,
+      showFinishFilter: showFinishFilter,
+      showRatingRange: showRatingRange,
+      allowMultiSort: allowMultiSort,
     ),
   );
 }
@@ -54,6 +63,10 @@ class GameFilterDialog extends StatefulWidget {
     this.showSortDirection = true,
     this.showLevelFilter = true,
     this.showYearFilter = true,
+    this.showOpeningFilter = false,
+    this.showFinishFilter = false,
+    this.showRatingRange = false,
+    this.allowMultiSort = false,
   });
 
   final GameFilter initialFilter;
@@ -71,6 +84,10 @@ class GameFilterDialog extends StatefulWidget {
   final bool showSortDirection;
   final bool showLevelFilter;
   final bool showYearFilter;
+  final bool showOpeningFilter;
+  final bool showFinishFilter;
+  final bool showRatingRange;
+  final bool allowMultiSort;
 
   @override
   State<GameFilterDialog> createState() => _GameFilterDialogState();
@@ -78,6 +95,9 @@ class GameFilterDialog extends StatefulWidget {
 
 class _GameFilterDialogState extends State<GameFilterDialog> {
   late GameResultFilter _result;
+  late GameEcoFilter _eco;
+  late GameFinishFilter _finish;
+  late RangeValues _ratingRange;
   late GameColorFilter _color;
   late GameTimeControlFilter _timeControl;
   late GameOnlineFilter _online;
@@ -92,6 +112,12 @@ class _GameFilterDialogState extends State<GameFilterDialog> {
   void initState() {
     super.initState();
     _result = widget.initialFilter.result;
+    _eco = widget.initialFilter.eco;
+    _finish = widget.initialFilter.finish;
+    _ratingRange = RangeValues(
+      widget.initialFilter.minRating.toDouble(),
+      widget.initialFilter.maxRating.toDouble(),
+    );
     _color = widget.initialFilter.color;
     _timeControl = widget.initialFilter.timeControl;
     _online = widget.initialFilter.online;
@@ -197,6 +223,39 @@ class _GameFilterDialogState extends State<GameFilterDialog> {
                       SizedBox(height: 20.h),
                     ],
 
+                    if (widget.showOpeningFilter) ...[
+                      _sectionLabel('Opening'),
+                      SizedBox(height: 8.h),
+                      EcoFilterDropdown(
+                        value: _eco,
+                        onChanged: (value) => setState(() => _eco = value),
+                      ),
+                      SizedBox(height: 20.h),
+                    ],
+                    if (widget.showFinishFilter) ...[
+                      _sectionLabel('Game length'),
+                      SizedBox(height: 8.h),
+                      _chipGrid<GameFinishFilter>(
+                        values: GameFinishFilter.values,
+                        selected: _finish,
+                        label: (value) => value.displayText,
+                        onTap: (value) => setState(() => _finish = value),
+                      ),
+                      SizedBox(height: 20.h),
+                    ],
+                    if (widget.showRatingRange) ...[
+                      _sectionLabel('Average rating'),
+                      SizedBox(height: 8.h),
+                      _rangeSliderCard(
+                        values: _ratingRange,
+                        min: 0,
+                        max: GameFilter.absoluteMaxRating.toDouble(),
+                        divisions: 70,
+                        onChanged: (value) =>
+                            setState(() => _ratingRange = value),
+                      ),
+                      SizedBox(height: 20.h),
+                    ],
                     // 3. Level
                     if (widget.showLevelFilter) ...[
                       _sectionLabel('Level'),
@@ -353,8 +412,8 @@ class _GameFilterDialogState extends State<GameFilterDialog> {
         children: [
           // Reset button
           Expanded(
-            child: SizedBox(
-              height: 48.h,
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(minHeight: 48),
               child: OutlinedButton(
                 onPressed: _resetFilters,
                 style: OutlinedButton.styleFrom(
@@ -377,8 +436,8 @@ class _GameFilterDialogState extends State<GameFilterDialog> {
           SizedBox(width: 12.w),
           // Apply button
           Expanded(
-            child: SizedBox(
-              height: 48.h,
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(minHeight: 48),
               child: ElevatedButton(
                 onPressed: _applyFilters,
                 style: ElevatedButton.styleFrom(
@@ -410,6 +469,8 @@ class _GameFilterDialogState extends State<GameFilterDialog> {
   GameFilter _currentLocalFilter() {
     return GameFilter(
       result: _result,
+      eco: widget.showOpeningFilter ? _eco : GameEcoFilter.all,
+      finish: widget.showFinishFilter ? _finish : GameFinishFilter.all,
       // Color hidden → never carry a stale color filter (no UI to clear it).
       color: widget.showColorFilter ? _color : GameColorFilter.all,
       // Same rule for a hidden Time Control section.
@@ -424,10 +485,14 @@ class _GameFilterDialogState extends State<GameFilterDialog> {
       maxYear: widget.showYearFilter
           ? _yearRange.end.round()
           : DateTime.now().year,
-      minRating: widget.showLevelFilter
+      minRating: widget.showRatingRange
+          ? _ratingRange.start.round()
+          : widget.showLevelFilter
           ? _selectedMinRating ?? GameFilter.defaultMinRating
           : GameFilter.defaultMinRating,
-      maxRating: GameFilter.absoluteMaxRating,
+      maxRating: widget.showRatingRange
+          ? _ratingRange.end.round()
+          : GameFilter.absoluteMaxRating,
       sorts: widget.showSortSection ? _sorts : const [],
     );
   }
@@ -454,6 +519,9 @@ class _GameFilterDialogState extends State<GameFilterDialog> {
     HapticFeedbackService.selection();
     setState(() {
       _result = GameResultFilter.all;
+      _eco = GameEcoFilter.all;
+      _finish = GameFinishFilter.all;
+      _ratingRange = const RangeValues(0, GameFilter.absoluteMaxRating * 1.0);
       _color = GameColorFilter.all;
       _timeControl = GameTimeControlFilter.all;
       _online = GameOnlineFilter.all;
@@ -499,16 +567,27 @@ class _GameFilterDialogState extends State<GameFilterDialog> {
       final index = _sorts.indexWhere((s) => s.field == field);
       if (index < 0) {
         // A new field replaces any existing sort — single-select.
-        _sorts = [GameSortCriterion(field: field)];
+        _sorts = [
+          if (widget.allowMultiSort) ..._sorts,
+          GameSortCriterion(field: field),
+        ];
         return;
       }
       final current = _sorts[index];
       if (widget.showSortDirection &&
           current.direction == GamebaseSortDirection.desc) {
-        _sorts = [current.copyWith(direction: GamebaseSortDirection.asc)];
+        _sorts = [
+          for (final sort in _sorts)
+            if (sort.field == field)
+              current.copyWith(direction: GamebaseSortDirection.asc)
+            else if (widget.allowMultiSort)
+              sort,
+        ];
         return;
       }
-      _sorts = const [];
+      _sorts = widget.allowMultiSort
+          ? _sorts.where((sort) => sort.field != field).toList()
+          : const [];
     });
   }
 
@@ -544,6 +623,15 @@ class _GameFilterDialogState extends State<GameFilterDialog> {
               .map((f) => _buildSortChip(f, expanded: expanded))
               .toList(),
         ),
+        if (widget.allowMultiSort) ...[
+          const SizedBox(height: 8),
+          Text(
+            'Choose keys in priority order. Tap again to change direction.',
+            style: AppTypography.textXsRegular.copyWith(
+              color: context.colors.textSecondary,
+            ),
+          ),
+        ],
       ],
     );
   }
@@ -557,6 +645,7 @@ class _GameFilterDialogState extends State<GameFilterDialog> {
       onTap: () => _cycleSort(field),
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 150),
+        constraints: const BoxConstraints(minHeight: 44),
         padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 10.h),
         alignment: expanded ? Alignment.center : null,
         decoration: BoxDecoration(
@@ -569,10 +658,14 @@ class _GameFilterDialogState extends State<GameFilterDialog> {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text(
-              _sortFieldLabel(field),
-              style: AppTypography.textXsMedium.copyWith(
-                color: isSelected ? kBlackColor : context.colors.textPrimary,
+            Flexible(
+              child: Text(
+                widget.allowMultiSort && isSelected
+                    ? '${index + 1}. ${_sortFieldLabel(field)}'
+                    : _sortFieldLabel(field),
+                style: AppTypography.textXsMedium.copyWith(
+                  color: isSelected ? kBlackColor : context.colors.textPrimary,
+                ),
               ),
             ),
             if (widget.showSortDirection) ...[
@@ -623,13 +716,16 @@ class _GameFilterDialogState extends State<GameFilterDialog> {
       builder: (context, constraints) {
         final textScaler = MediaQuery.textScalerOf(context);
         var total = 8.w * (measureLabels.length - 1);
+        double widest = 0;
         for (final label in measureLabels) {
           final painter = TextPainter(
             text: TextSpan(text: label, style: AppTypography.textXsMedium),
             textDirection: TextDirection.ltr,
             textScaler: textScaler,
           )..layout();
-          total += painter.width + 28.w + extraPerChip;
+          final width = painter.width + 28.w + extraPerChip;
+          total += width;
+          if (width > widest) widest = width;
         }
 
         if (total <= constraints.maxWidth) {
@@ -641,6 +737,17 @@ class _GameFilterDialogState extends State<GameFilterDialog> {
         }
 
         final chips = chipsBuilder(true);
+        if (widest > (constraints.maxWidth - 8.w) / 2) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              for (var i = 0; i < chips.length; i++) ...[
+                if (i > 0) SizedBox(height: 8.h),
+                chips[i],
+              ],
+            ],
+          );
+        }
         return Column(
           children: [
             for (var i = 0; i < chips.length; i += 2) ...[
