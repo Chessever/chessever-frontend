@@ -4,9 +4,14 @@ import 'package:flutter/material.dart';
 /// Local 768px artwork with no network dependency or animated loading swap.
 /// The parent HubTile supplies clipping and the theme-aware readability ramp.
 class HubIllustration extends StatelessWidget {
-  const HubIllustration({super.key, required this.asset});
+  const HubIllustration({
+    super.key,
+    required this.asset,
+    this.alignment = Alignment.topCenter,
+  });
 
   final String asset;
+  final Alignment alignment;
 
   @override
   Widget build(BuildContext context) => ExcludeSemantics(
@@ -16,7 +21,7 @@ class HubIllustration extends StatelessWidget {
         child: Image.asset(
           asset,
           fit: BoxFit.cover,
-          alignment: Alignment.topCenter,
+          alignment: alignment,
           cacheWidth: 768,
           filterQuality: FilterQuality.medium,
         ),

@@ -28,6 +28,11 @@ class HubSceneBackdrop extends StatelessWidget {
       HubScene.myPrep => 'assets/pngs/hub_my_prep_icon.webp',
       _ => 'assets/pngs/hub_${scene.name}_simple.webp',
     },
+    // Prep's wide illustration keeps its complete study motif in the upper
+    // right, so both the compact and full-row card preserve it.
+    alignment: scene == HubScene.myPrep
+        ? Alignment.topRight
+        : Alignment.topCenter,
   );
 }
 
