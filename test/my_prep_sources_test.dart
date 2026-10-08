@@ -198,6 +198,87 @@ void main() {
   });
 
   test(
+    'database PGN name variants retain results and colour filters',
+    () async {
+      final directory = Directory.systemTemp.createTempSync(
+        'prep_name_variants',
+      );
+      addTearDown(() => directory.deleteSync(recursive: true));
+      final profile = PrepProfile(
+        id: 'name-variants',
+        kind: PrepKind.opponent,
+        name: 'Vasif Durarbayli',
+        createdAtMs: 1,
+        accounts: [
+          PrepAccount.fromPlayer(
+            databasePlayer.copyWith(name: 'Durarbayli, Vasif'),
+          ),
+        ],
+      );
+      final names = [
+        'Durarbayli, Vasif',
+        'Durarbayli,Vasif',
+        'Durarbayli,V',
+        'Durarbayli, V.',
+      ];
+      final pgn = File('${directory.path}/database.pgn')
+        ..writeAsStringSync(
+          [
+            for (final (i, name) in names.indexed)
+              sourceGame(
+                i.isEven ? name : 'Opponent',
+                i.isEven ? 'Opponent' : name,
+                date: '2026.10.0${i + 1}',
+                result: i.isEven ? '1-0' : '0-1',
+              ),
+            sourceGame('Durarbayli,Vugar', 'Opponent', date: '2026.10.05'),
+          ].join('\n'),
+        );
+      final dbPath = '${directory.path}/tree.sqlite';
+      runGameTreeBuild(
+        GameTreeBuildRequest(
+          dbPath: dbPath,
+          sources: [GameTreeSourceFile(path: pgn.path, kind: 'chessever')],
+          aliases: profile.aliases.toList(),
+        ),
+      );
+      final store = GameTreeStore.open(profile.id, dbPath, playerScope: true)!;
+      addTearDown(store.close);
+      final rows = await store.loadGames();
+      final games = [
+        for (final (i, row) in rows.indexed) PrepGame.fromIndex(row, i),
+      ];
+      expect(PrepStats.of(games).overall.wins, 4);
+      expect(
+        games.singleWhere((g) => g.white == 'Durarbayli,Vugar').playerIsWhite,
+        isNull,
+      );
+      for (final side in [1, 2]) {
+        final matches = await store.positionGames(
+          GameTreePositionQuery(fen: kInitialFEN, side: side),
+        );
+        expect(matches.total, 2);
+      }
+    },
+  );
+
+  test(
+    'online handles stay exact instead of gaining database name variants',
+    () {
+      const profile = PrepProfile(
+        id: 'online',
+        kind: PrepKind.opponent,
+        name: 'Vasif Durarbayli',
+        createdAtMs: 1,
+        accounts: [
+          PrepAccount(source: PrepSource.lichess, username: 'Durarbayli,Vasif'),
+        ],
+      );
+      expect(profile.aliases, {'durarbayli,vasif'});
+    },
+  );
+
+  test(
     'non-FIDE database players keep UUID identity without a fake FIDE ID',
     () {
       final account = PrepAccount.fromPlayer(

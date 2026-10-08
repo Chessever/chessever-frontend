@@ -480,12 +480,31 @@ class PrepProfile {
     return latest;
   }
 
-  /// Usernames that identify this person in a game's White/Black tags.
-  Set<String> get aliases => {
-    for (final a in accounts) a.username.toLowerCase(),
-    for (final a in accounts)
-      for (final alias in a.playerAliases) alias.trim().toLowerCase(),
-  };
+  /// Names that identify this person in a game's White/Black tags.
+  Set<String> get aliases {
+    final aliases = <String>{};
+    for (final account in accounts) {
+      for (final raw in {account.username, ...account.playerAliases}) {
+        final clean = raw.trim().toLowerCase();
+        if (clean.isEmpty) continue;
+        aliases.add(clean);
+        // Database exports use both comma spacings and abbreviated given
+        // names. Online handles remain exact, even when they contain commas.
+        if (account.source != PrepSource.chessever) continue;
+        final parts = clean.split(',');
+        if (parts.length != 2) continue;
+        final family = parts.first.trim();
+        final given = parts.last.trim();
+        if (family.isEmpty || given.isEmpty) continue;
+        final initial = String.fromCharCode(given.runes.first);
+        for (final name in {given, initial, '$initial.'}) {
+          aliases.add('$family,$name');
+          aliases.add('$family, $name');
+        }
+      }
+    }
+    return aliases;
+  }
 
   PrepProfile copyWith({
     String? name,

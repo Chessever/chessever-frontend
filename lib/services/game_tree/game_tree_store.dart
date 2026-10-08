@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 import 'dart:isolate';
 
@@ -171,6 +172,19 @@ class GameTreeStore {
   int get gameCount => _games;
   String? get revision => _revision;
   bool get isClosed => _closed;
+
+  /// Older parsers may have indexed truncated PGNs. Rebuild them before
+  /// opening, even when their source files and revision are unchanged.
+  bool get isCurrentVersion {
+    final signature = readGameTreeMeta(_db, 'signature');
+    if (signature == null) return false;
+    try {
+      final decoded = jsonDecode(signature);
+      return decoded is Map && decoded['v'] == kGameTreeSchemaVersion;
+    } on FormatException {
+      return false;
+    }
+  }
 
   /// Re-reads what a build changed: counts, sources, the tree's size.
   void refresh() {

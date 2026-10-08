@@ -8,7 +8,7 @@ const int kGameTreeMaxPly = 24;
 
 /// Bumped whenever the on-disk layout or what is indexed changes; an index
 /// written by another version is rebuilt from its PGN sources.
-const int kGameTreeSchemaVersion = 1;
+const int kGameTreeSchemaVersion = 2;
 
 /// The first four FEN fields: what identifies a position in the tree.
 String gameTreeFenKey(String fen) =>
@@ -328,10 +328,14 @@ String? treeGameKey(Map<String, String> headers) {
 List<int> pgnGameStarts(Uint8List bytes, {int from = 0}) {
   const pattern = [0x5B, 0x45, 0x76, 0x65, 0x6E, 0x74]; // "[Event"
   final starts = <int>[];
-  final last = bytes.length - pattern.length;
+  final last = bytes.length - pattern.length - 1;
   for (var i = from; i <= last; i++) {
     if (bytes[i] != 0x5B) continue;
     if (i > 0 && bytes[i - 1] != 0x0A) continue;
+    // Match the whole tag name. EventDate/EventType belong to this game's
+    // headers; splitting there loses the player names and result above them.
+    final separator = bytes[i + pattern.length];
+    if (separator != 0x20 && separator != 0x09) continue;
     var match = true;
     for (var k = 1; k < pattern.length; k++) {
       if (bytes[i + k] != pattern[k]) {

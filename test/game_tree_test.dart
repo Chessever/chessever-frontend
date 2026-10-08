@@ -1,10 +1,13 @@
+import 'dart:convert';
 import 'dart:io';
 import 'dart:isolate';
+import 'dart:typed_data';
 
 import 'package:chessever2/repository/gamebase/gamebase_repository.dart';
 import 'package:chessever2/screens/gamebase/services/player_opening_tree.dart';
 import 'package:chessever2/services/game_tree/game_tree_builder.dart';
 import 'package:chessever2/services/game_tree/game_tree_codec.dart';
+import 'package:chessever2/services/game_tree/game_tree_db.dart';
 import 'package:chessever2/services/game_tree/game_tree_registry.dart';
 import 'package:chessever2/services/game_tree/game_tree_store.dart';
 import 'package:dartchess/dartchess.dart' hide File;
@@ -100,6 +103,38 @@ void main() {
     expect(scanPgnGame(games[2]).sans, ['e4', 'c5', 'Nf3', 'O-O']);
   });
 
+  test('only the Event tag starts a game, not EventDate or EventType', () {
+    final text =
+        '[Event "One"]\r\n[EventDate "2026.10.08"]\r\n'
+        '[EventType "swiss"]\r\n\r\n1. e4 e5 1-0\r\n\r\n'
+        '[Event\t"Two"]\r\n[EventCountry "AZE"]\r\n';
+    final bytes = Uint8List.fromList(utf8.encode(text));
+    expect(pgnGameStarts(bytes), [0, text.indexOf('[Event\t')]);
+    expect(pgnGameStarts(Uint8List.fromList(utf8.encode('[Event'))), isEmpty);
+  });
+
+  test(
+    'EventDate preserves the complete headers, results and player side',
+    () async {
+      final first = games.first.replaceFirst(
+        '[Result',
+        '[EventDate "2026.09.01"]\n[EventType "swiss"]\n[Result',
+      );
+      pgn.writeAsStringSync('$first\n\n${games[1]}');
+      final result = build();
+      expect(result.games, 2);
+      final store = GameTreeStore.open('p1', dbPath, playerScope: true)!;
+      addTearDown(store.close);
+      final rows = await store.loadGames();
+      expect(rows.map((g) => g.side), containsAll([1, 2]));
+      final win = rows.singleWhere((g) => g.side == 1);
+      expect(win.white, 'Me');
+      expect(treeResultText(win.result), '1-0');
+      expect(store.game(win.id)!.$2, contains('[EventDate'));
+      expect(store.game(win.id)!.$2, contains('[White "Me"]'));
+    },
+  );
+
   test('moves and positions encode compactly and round-trip', () {
     for (final uci in ['e2e4', 'e7e8q', 'a7a8n', 'h1h8']) {
       expect(decodeTreeMove(encodeTreeMove(uci)), uci);
@@ -110,6 +145,21 @@ void main() {
       gameTreeHashOfFen('$kInitialFEN '),
       gameTreeHashOfFen(kInitialFEN.replaceFirst(' 0 1', ' 5 9')),
     );
+  });
+
+  test('older parser versions rebuild even when PGN files are unchanged', () {
+    build();
+    final db = openGameTreeDatabase(dbPath);
+    final signature = jsonDecode(readGameTreeMeta(db, 'signature')!) as Map;
+    signature['v'] = kGameTreeSchemaVersion - 1;
+    writeGameTreeMeta(db, 'signature', jsonEncode(signature));
+    db.close();
+    final store = GameTreeStore.open('p1', dbPath, playerScope: true)!;
+    addTearDown(store.close);
+    expect(store.isCurrentVersion, isFalse);
+    expect(build().rebuilt, isTrue);
+    store.refresh();
+    expect(store.isCurrentVersion, isTrue);
   });
 
   test('indexes games, dedupes provider URLs and serves the tree', () {

@@ -165,6 +165,7 @@ Future<void> openOrBuildGameTree(
       playerScope: target.playerScope,
     );
     if (existing != null &&
+        existing.isCurrentVersion &&
         existing.gameCount > 0 &&
         await target.isCurrent(existing)) {
       open();
