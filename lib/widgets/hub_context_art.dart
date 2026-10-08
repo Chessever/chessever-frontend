@@ -1,4 +1,5 @@
 import 'package:chessever2/widgets/hub_illustration.dart';
+import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:flutter/material.dart';
 
 export 'hub_paired_hearts.dart' show HubLikesBackdrop;
@@ -36,6 +37,8 @@ class HubLibraryBackdrop extends StatelessWidget {
   const HubLibraryBackdrop({super.key});
 
   @override
-  Widget build(BuildContext context) =>
-      const HubSceneBackdrop(scene: HubScene.library);
+  Widget build(BuildContext context) => Transform.translate(
+    offset: Offset(12.w, 0),
+    child: const HubSceneBackdrop(scene: HubScene.library),
+  );
 }
