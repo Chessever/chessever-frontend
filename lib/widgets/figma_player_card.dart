@@ -29,6 +29,10 @@ class FigmaPlayerCard extends ConsumerWidget {
   /// results inside a ranked list do not: numbering them 1..n would assert a
   /// world rank the player does not hold.
   final bool showRank;
+
+  /// Keep the rank gutter for search results within ranked lists.
+  /// Unranked collections can remove it entirely.
+  final bool reserveRankSpace;
   final bool isFavorite;
   final bool showFavoriteButton;
   final bool isInactive;
@@ -73,6 +77,7 @@ class FigmaPlayerCard extends ConsumerWidget {
     required this.player,
     required this.rank,
     this.showRank = true,
+    this.reserveRankSpace = true,
     this.isFavorite = false,
     this.showFavoriteButton = true,
     this.isInactive = false,
@@ -231,36 +236,38 @@ class FigmaPlayerCard extends ConsumerWidget {
             // Rank number. Three distinct states: a number, a shimmer while
             // the overall standing rank is still resolving, and — when the
             // surrounding list has no meaningful ordinal to give — an empty
-            // slot. The slot keeps its width in every case so the name column
-            // lands on the same x.
-            SizedBox(
-              width: 24.w,
-              child: !showRank
-                  ? const SizedBox.shrink()
-                  : rank != null
-                  ? Text(
-                      rank.toString(),
-                      style: AppTypography.textSmMedium.copyWith(
-                        color: context.colors.textTertiary,
-                      ),
-                      textAlign: TextAlign.center,
-                    )
-                  : skel.Skeletonizer(
-                      enabled: true,
-                      effect: skel.ShimmerEffect(
-                        baseColor: context.colors.skeleton,
-                        highlightColor: context.colors.divider,
-                      ),
-                      child: Text(
-                        '00',
+            // slot. Ranked lists retain the gutter to align search results;
+            // unranked collections can remove it with reserveRankSpace.
+            if (showRank || reserveRankSpace) ...[
+              SizedBox(
+                width: 24.w,
+                child: !showRank
+                    ? const SizedBox.shrink()
+                    : rank != null
+                    ? Text(
+                        rank.toString(),
                         style: AppTypography.textSmMedium.copyWith(
                           color: context.colors.textTertiary,
                         ),
                         textAlign: TextAlign.center,
+                      )
+                    : skel.Skeletonizer(
+                        enabled: true,
+                        effect: skel.ShimmerEffect(
+                          baseColor: context.colors.skeleton,
+                          highlightColor: context.colors.divider,
+                        ),
+                        child: Text(
+                          '00',
+                          style: AppTypography.textSmMedium.copyWith(
+                            color: context.colors.textTertiary,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
                       ),
-                    ),
-            ),
-            SizedBox(width: 12.w),
+              ),
+              SizedBox(width: 12.w),
+            ],
             // Player photo with title badge overlay
             _buildAvatar(
               context: context,

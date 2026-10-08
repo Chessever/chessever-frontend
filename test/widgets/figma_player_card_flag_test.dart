@@ -16,6 +16,7 @@ Future<void> _pumpCard(
   String countryCode, {
   bool isInactive = false,
   bool showRank = true,
+  bool reserveRankSpace = true,
 }) async {
   await tester.binding.setSurfaceSize(const Size(393, 852));
   addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -42,6 +43,7 @@ Future<void> _pumpCard(
                 ),
                 rank: 1,
                 showRank: showRank,
+                reserveRankSpace: reserveRankSpace,
                 showFavoriteButton: false,
                 isInactive: isInactive,
                 onTap: () {},
@@ -267,6 +269,28 @@ void main() {
   // A search hit inside a ranked list holds no world rank, so the slot goes
   // empty rather than claiming one — and it must not fall back to the
   // "still resolving" shimmer either.
+  testWidgets('unranked collections remove the empty left rank gutter', (
+    tester,
+  ) async {
+    await _pumpCard(tester, 'NOR', showRank: false);
+    final reservedLeft = tester.getRect(find.byType(PlayerInitialsAvatar)).left;
+    final reservedName = tester.getRect(find.text('Test, Player')).left;
+    await _pumpCard(tester, 'NOR', showRank: false, reserveRankSpace: false);
+    expect(
+      tester.getRect(find.byType(PlayerInitialsAvatar)).left,
+      closeTo(12.w, 0.01),
+    );
+    expect(
+      reservedLeft - tester.getRect(find.byType(PlayerInitialsAvatar)).left,
+      closeTo(36.w, 0.01),
+    );
+    expect(
+      reservedName - tester.getRect(find.text('Test, Player')).left,
+      closeTo(36.w, 0.01),
+    );
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('an unranked row leaves the slot empty, not shimmering', (
     tester,
   ) async {

@@ -1,5 +1,3 @@
-import 'package:chessever2/screens/for_you/discovery/widgets/discovery_common.dart'
-    show DiscoveryAction, DiscoveryActionLead;
 import 'package:chessever2/screens/my_prep/data/prep_favorites.dart';
 import 'package:chessever2/screens/my_prep/models/prep_models.dart';
 import 'package:chessever2/screens/my_prep/prep_access.dart';
@@ -56,6 +54,23 @@ class _MyPrepHomeScreenState extends ConsumerState<MyPrepHomeScreen> {
     );
   }
 
+  String get _addLabel => switch (_tab) {
+    0 => 'Attach your username',
+    1 => 'Add opponent',
+    _ => 'Add favorite',
+  };
+
+  void _add() {
+    switch (_tab) {
+      case 0:
+        prepAddMine(context, ref);
+      case 1:
+        prepAddOpponent(context, ref);
+      default:
+        prepAddFavorite(context, ref);
+    }
+  }
+
   /// Opening My Prep is when stale games are brought up to date: the
   /// reader's own every eight hours, opponents daily.
   void _refreshOnce(List<PrepProfile> profiles) {
@@ -77,6 +92,15 @@ class _MyPrepHomeScreenState extends ConsumerState<MyPrepHomeScreen> {
 
     return Scaffold(
       backgroundColor: context.colors.background,
+      floatingActionButton: FloatingActionButton(
+        key: const ValueKey('prep_add_floating'),
+        tooltip: _addLabel,
+        onPressed: profiles == null ? null : _add,
+        backgroundColor: context.colors.textPrimary,
+        foregroundColor: context.colors.textInverse,
+        elevation: 0,
+        child: const Icon(Icons.add_rounded),
+      ),
       body: Center(
         child: ConstrainedBox(
           constraints: BoxConstraints(
@@ -85,7 +109,10 @@ class _MyPrepHomeScreenState extends ConsumerState<MyPrepHomeScreen> {
           child: Column(
             children: [
               SizedBox(height: MediaQuery.of(context).viewPadding.top + 4.h),
-              _AppBar(),
+              _AppBar(
+                addLabel: _addLabel,
+                onAdd: profiles == null ? null : _add,
+              ),
               SizedBox(height: 8.h),
               Padding(
                 padding: EdgeInsets.symmetric(horizontal: gutter),
@@ -120,6 +147,10 @@ class _MyPrepHomeScreenState extends ConsumerState<MyPrepHomeScreen> {
 }
 
 class _AppBar extends StatelessWidget {
+  const _AppBar({required this.addLabel, required this.onAdd});
+
+  final String addLabel;
+  final VoidCallback? onAdd;
   @override
   Widget build(BuildContext context) {
     return Padding(
@@ -147,7 +178,16 @@ class _AppBar extends StatelessWidget {
               ),
             ),
           ),
-          SizedBox(width: 48.w),
+          IconButton(
+            key: const ValueKey('prep_add_top'),
+            tooltip: addLabel,
+            onPressed: onAdd,
+            icon: Icon(
+              Icons.add_rounded,
+              size: 24.ic,
+              color: context.colors.textPrimary,
+            ),
+          ),
         ],
       ),
     );
@@ -156,12 +196,11 @@ class _AppBar extends StatelessWidget {
 
 double get _gutter => ResponsiveHelper.adaptive(phone: 16.w, tablet: 24.w);
 
-/// A tab's count line with its action at the end.
+/// A tab's count line.
 class _TabHeader extends StatelessWidget {
-  const _TabHeader({required this.text, this.action});
+  const _TabHeader({required this.text});
 
   final String text;
-  final Widget? action;
 
   @override
   Widget build(BuildContext context) {
@@ -180,7 +219,6 @@ class _TabHeader extends StatelessWidget {
               ),
             ),
           ),
-          ?action,
         ],
       ),
     );
@@ -202,8 +240,6 @@ class _MyGamesTab extends ConsumerWidget {
         title: 'Attach your own usernames',
         body:
             'Add your Lichess and Chess.com accounts here. Their games stay together. You can also attach your ChessEver player record.',
-        actionLabel: 'Attach my usernames',
-        onAction: () => prepAddMine(context, ref),
         sources: PrepSource.playerSources,
       );
     }
@@ -215,16 +251,11 @@ class _MyGamesTab extends ConsumerWidget {
         physics: const AlwaysScrollableScrollPhysics(
           parent: BouncingScrollPhysics(),
         ),
-        padding: EdgeInsets.only(bottom: 32.h),
+        padding: EdgeInsets.only(
+          bottom: MediaQuery.viewPaddingOf(context).bottom + 96.h,
+        ),
         children: [
-          _TabHeader(
-            text: 'Your accounts',
-            action: DiscoveryAction(
-              label: 'Attach username',
-              lead: DiscoveryActionLead.plus,
-              onTap: () => prepAddAccountTo(context, ref, profile),
-            ),
-          ),
+          _TabHeader(text: 'Your accounts'),
           for (final account in profile.accounts)
             Padding(
               padding: EdgeInsets.symmetric(horizontal: _gutter),
@@ -291,8 +322,6 @@ class _OpponentsTab extends ConsumerWidget {
         title: 'Prepare for your next opponent',
         body:
             'Find them in ChessEver or start with a Lichess or Chess.com username. Attach all their sources to one profile.',
-        actionLabel: 'Add an opponent',
-        onAction: () => prepAddOpponent(context, ref),
         sources: PrepSource.playerSources,
       );
     }
@@ -300,7 +329,9 @@ class _OpponentsTab extends ConsumerWidget {
       physics: const AlwaysScrollableScrollPhysics(
         parent: BouncingScrollPhysics(),
       ),
-      padding: EdgeInsets.only(bottom: 32.h),
+      padding: EdgeInsets.only(
+        bottom: MediaQuery.viewPaddingOf(context).bottom + 96.h,
+      ),
       itemCount: opponents.length + 1,
       itemBuilder: (context, index) {
         if (index == 0) {
@@ -308,11 +339,6 @@ class _OpponentsTab extends ConsumerWidget {
             text: opponents.length == 1
                 ? '1 opponent'
                 : '${opponents.length} opponents',
-            action: DiscoveryAction(
-              label: 'Add opponent',
-              lead: DiscoveryActionLead.plus,
-              onTap: () => prepAddOpponent(context, ref),
-            ),
           );
         }
         final profile = opponents[index - 1];
@@ -366,6 +392,17 @@ class _FavoritesTabState extends ConsumerState<_FavoritesTab> {
         if (p.favoriteId != null) p.favoriteId!: p,
     };
     final query = _search.text.trim().toLowerCase();
+    final custom = [
+      for (final profile in profiles)
+        if (profile.kind == PrepKind.favorite &&
+            profile.favoriteId == null &&
+            (query.isEmpty ||
+                profile.name.toLowerCase().contains(query) ||
+                profile.accounts.any(
+                  (a) => a.username.toLowerCase().contains(query),
+                )))
+          profile,
+    ];
     final list = [
       for (final f in kPrepFavorites)
         if (query.isEmpty ||
@@ -379,8 +416,10 @@ class _FavoritesTabState extends ConsumerState<_FavoritesTab> {
       physics: const AlwaysScrollableScrollPhysics(
         parent: BouncingScrollPhysics(),
       ),
-      padding: EdgeInsets.only(bottom: 32.h),
-      itemCount: list.length + 1,
+      padding: EdgeInsets.only(
+        bottom: MediaQuery.viewPaddingOf(context).bottom + 96.h,
+      ),
+      itemCount: custom.length + list.length + 1,
       itemBuilder: (context, index) {
         if (index == 0) {
           return Padding(
@@ -391,7 +430,18 @@ class _FavoritesTabState extends ConsumerState<_FavoritesTab> {
             ),
           );
         }
-        final favorite = list[index - 1];
+        if (index <= custom.length) {
+          final profile = custom[index - 1];
+          return Padding(
+            key: ValueKey(profile.id),
+            padding: EdgeInsets.symmetric(horizontal: 4.w),
+            child: PrepProfileCard(
+              profile: profile,
+              onTap: () => PrepProfileScreen.open(context, profile.id),
+            ),
+          );
+        }
+        final favorite = list[index - custom.length - 1];
         return Padding(
           key: ValueKey(favorite.id),
           padding: EdgeInsets.symmetric(horizontal: 4.w),
@@ -498,15 +548,11 @@ class _EmptyState extends StatelessWidget {
   const _EmptyState({
     required this.title,
     required this.body,
-    required this.actionLabel,
-    required this.onAction,
     required this.sources,
   });
 
   final String title;
   final String body;
-  final String actionLabel;
-  final VoidCallback onAction;
   final List<PrepSource> sources;
 
   @override
@@ -516,7 +562,12 @@ class _EmptyState extends StatelessWidget {
       physics: const AlwaysScrollableScrollPhysics(
         parent: BouncingScrollPhysics(),
       ),
-      padding: EdgeInsets.fromLTRB(_gutter, 48.h, _gutter, 32.h),
+      padding: EdgeInsets.fromLTRB(
+        _gutter,
+        48.h,
+        _gutter,
+        MediaQuery.viewPaddingOf(context).bottom + 96.h,
+      ),
       children: [
         Center(
           child: Row(
@@ -542,23 +593,6 @@ class _EmptyState extends StatelessWidget {
           style: AppTypography.textSmRegular.copyWith(
             color: colors.textSecondary,
             height: 20 / 14,
-          ),
-        ),
-        SizedBox(height: 24.h),
-        Center(
-          child: ElevatedButton.icon(
-            onPressed: onAction,
-            icon: Icon(Icons.add_rounded, size: 18.sp),
-            label: Text(actionLabel, style: AppTypography.textSmBold),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: colors.textPrimary,
-              foregroundColor: colors.textInverse,
-              elevation: 0,
-              padding: EdgeInsets.symmetric(horizontal: 20.w, vertical: 14.h),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12.br),
-              ),
-            ),
           ),
         ),
       ],

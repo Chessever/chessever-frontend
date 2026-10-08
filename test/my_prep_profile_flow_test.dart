@@ -4,6 +4,7 @@ import 'dart:io';
 
 import 'package:chessever2/repository/gamebase/gamebase_repository.dart';
 import 'package:chessever2/screens/my_prep/models/prep_models.dart';
+import 'package:chessever2/screens/my_prep/my_prep_home_screen.dart';
 import 'package:chessever2/screens/my_prep/prep_profile_screen.dart';
 import 'package:chessever2/screens/my_prep/prep_actions.dart';
 import 'package:chessever2/screens/my_prep/prep_source_actions.dart';
@@ -350,6 +351,60 @@ void main() {
       },
     );
   }
+
+  testWidgets('both plus buttons follow the selected My Prep tab', (
+    tester,
+  ) async {
+    final container = await pump(
+      tester,
+      const MyPrepHomeScreen(),
+      premium: true,
+    );
+    await tester.pumpAndSettle();
+    for (final (tab, label, title) in [
+      ('My games', 'Attach your username', 'Attach your usernames'),
+      ('Opponents', 'Add opponent', 'Add an opponent'),
+      ('Favorites', 'Add favorite', 'Add a favorite'),
+    ]) {
+      await tester.tap(find.text(tab));
+      await tester.pumpAndSettle();
+      expect(find.text('Add opponent'), findsNothing);
+      expect(find.text('Attach username'), findsNothing);
+      expect(
+        tester
+            .widget<IconButton>(find.byKey(const ValueKey('prep_add_top')))
+            .tooltip,
+        label,
+      );
+      expect(
+        tester
+            .widget<FloatingActionButton>(
+              find.byKey(const ValueKey('prep_add_floating')),
+            )
+            .tooltip,
+        label,
+      );
+      for (final key in ['prep_add_top', 'prep_add_floating']) {
+        await tester.tap(find.byKey(ValueKey(key)));
+        await tester.pumpAndSettle();
+        expect(find.text(title), findsOneWidget);
+        await tester.pageBack();
+        await tester.pumpAndSettle();
+      }
+    }
+    await tester.runAsync(() async {
+      final profiles = container.read(prepProfilesProvider.notifier);
+      profiles.create(
+        kind: PrepKind.favorite,
+        name: 'My study player',
+        accounts: [],
+      );
+      await profiles.debugDrainWrites();
+    });
+    await tester.pumpAndSettle();
+    expect(find.text('My study player'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
 
   testWidgets('My games attaches own usernames from both online sites', (
     tester,

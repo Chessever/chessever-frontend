@@ -225,6 +225,8 @@ class _SourcePickerState extends ConsumerState<_SourcePicker> {
               ? 'Add accounts'
               : widget.attaching
               ? 'Attach a source'
+              : widget.kind == PrepKind.favorite
+              ? 'Add a favorite'
               : 'Add an opponent',
           style: AppTypography.textMdBold,
         ),
@@ -392,6 +394,7 @@ class _SourcePickerState extends ConsumerState<_SourcePicker> {
                           ),
                           rank: null,
                           showRank: false,
+                          reserveRankSpace: false,
                           hideMissingRating: true,
                           detail:
                               _unavailable(account) ??

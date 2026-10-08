@@ -53,20 +53,27 @@ Future<void> prepAddMine(BuildContext context, WidgetRef ref) async {
 }
 
 /// Adds an opponent with the accounts the reader typed and opens them.
-Future<void> prepAddOpponent(BuildContext context, WidgetRef ref) async {
+Future<void> prepAddOpponent(BuildContext context, WidgetRef ref) =>
+    _prepAddPlayer(context, ref, PrepKind.opponent);
+
+/// Adds a player to study alongside the curated Favorites.
+Future<void> prepAddFavorite(BuildContext context, WidgetRef ref) =>
+    _prepAddPlayer(context, ref, PrepKind.favorite);
+
+Future<void> _prepAddPlayer(
+  BuildContext context,
+  WidgetRef ref,
+  PrepKind kind,
+) async {
   HapticFeedbackService.buttonPress();
   if (!await ensurePrepAccess(context) || !context.mounted) return;
-  final result = await showPrepSourcePicker(context, kind: PrepKind.opponent);
+  final result = await showPrepSourcePicker(context, kind: kind);
   if (result == null || !context.mounted) return;
   await _releaseFromFavorites(ref, result.accounts);
   if (!context.mounted) return;
   final profile = ref
       .read(prepProfilesProvider.notifier)
-      .create(
-        kind: PrepKind.opponent,
-        name: result.name,
-        accounts: result.accounts,
-      );
+      .create(kind: kind, name: result.name, accounts: result.accounts);
   unawaited(PrepProfileScreen.open(context, profile.id));
 }
 
@@ -285,7 +292,7 @@ List<LibraryMenuAction> prepProfileMenu(
       ),
     LibraryMenuAction(
       icon: Icons.delete_outline_rounded,
-      label: profile.kind == PrepKind.favorite
+      label: profile.kind == PrepKind.favorite && profile.favoriteId != null
           ? 'Clear downloaded games'
           : 'Remove',
       destructive: true,
@@ -300,7 +307,8 @@ Future<bool> prepConfirmRemove(
   WidgetRef ref,
   PrepProfile profile,
 ) async {
-  final favorite = profile.kind == PrepKind.favorite;
+  final favorite =
+      profile.kind == PrepKind.favorite && profile.favoriteId != null;
   final ok = await showSmoothConfirmDialog(
     context: context,
     title: favorite

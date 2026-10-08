@@ -61,6 +61,7 @@ class PrepProfileCard extends ConsumerWidget {
         ),
         rank: null,
         showRank: false,
+        reserveRankSpace: false,
         hideMissingRating: true,
         avatar: PrepAvatar(
           name: profile.name,
