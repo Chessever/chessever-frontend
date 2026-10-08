@@ -19,6 +19,7 @@ import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/card_context_menu.dart';
+import 'package:chessever2/widgets/generic_loading_widget.dart';
 import 'package:chessever2/widgets/segmented_switcher.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -160,7 +161,6 @@ class _PrepProfileScreenState extends ConsumerState<PrepProfileScreen> {
     );
     final games = analysis.valueOrNull?.games ?? const <PrepGame>[];
     final filtered = _filtered(games);
-    final gutter = ResponsiveHelper.adaptive(phone: 16.w, tablet: 24.w);
 
     return Scaffold(
       backgroundColor: context.colors.background,
@@ -208,14 +208,13 @@ class _PrepProfileScreenState extends ConsumerState<PrepProfileScreen> {
                         children: [
                           _identity(profile),
                           Padding(
-                            padding: EdgeInsets.all(gutter),
-                            child: Text(
-                              indexing == null
+                            padding: EdgeInsets.symmetric(vertical: 24.h),
+                            child: PrepMessage(
+                              title: indexing == null
                                   ? 'Reading games…'
                                   : 'Indexing games · $indexing%',
-                              style: AppTypography.textSmRegular.copyWith(
-                                color: context.colors.textSecondary,
-                              ),
+                              body: 'Your downloaded games are being indexed.',
+                              busy: true,
                             ),
                           ),
                         ],
@@ -256,8 +255,10 @@ class _PrepProfileScreenState extends ConsumerState<PrepProfileScreen> {
                     ),
                     analysis.when(
                       skipLoadingOnReload: true,
-                      loading: () => const PrepMessage(
-                        title: 'Reading games…',
+                      loading: () => PrepMessage(
+                        title: indexing == null
+                            ? 'Reading games…'
+                            : 'Indexing games · $indexing%',
                         body: 'Your downloaded games are being indexed.',
                         busy: true,
                       ),
@@ -426,13 +427,7 @@ class PrepMessage extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             if (busy) ...[
-              SizedBox.square(
-                dimension: 22.sp,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  color: colors.textSecondary,
-                ),
-              ),
+              GenericLoadingWidget(size: 32.w),
               SizedBox(height: 16.h),
             ],
             Text(
@@ -440,6 +435,9 @@ class PrepMessage extends StatelessWidget {
               textAlign: TextAlign.center,
               style: AppTypography.textMdBold.copyWith(
                 color: colors.textPrimary,
+                fontFeatures: busy
+                    ? const [FontFeature.tabularFigures()]
+                    : null,
               ),
             ),
             SizedBox(height: 6.h),
