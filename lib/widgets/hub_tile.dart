@@ -55,8 +55,6 @@ class HubTile extends StatelessWidget {
     this.caption = kHubTileCaption,
     this.titleIcon,
     this.ramp = true,
-    this.artworkHeadroom = 0,
-    this.minCaptionLines = 1,
     this.onLongPressStart,
   }) : assert(
          (artwork == null) != (mark == null),
@@ -82,12 +80,6 @@ class HubTile extends StatelessWidget {
   /// already keeps clear of the label, or a tile with no artwork, goes without.
   final bool ramp;
 
-  /// Extra space above the title for an illustration whose subject stays high.
-  final double artworkHeadroom;
-
-  /// Reserves equal caption space in a pair while allowing longer copy to grow.
-  final int minCaptionLines;
-
   /// Long-press, for tiles that lift into the focus menu.
   final GestureLongPressStartCallback? onLongPressStart;
 
@@ -102,8 +94,6 @@ class HubTile extends StatelessWidget {
         ramp: ramp,
         caption: caption,
         titleIcon: titleIcon,
-        artworkHeadroom: artworkHeadroom,
-        minCaptionLines: minCaptionLines,
       ),
     );
     final longPress = onLongPressStart;
@@ -159,8 +149,6 @@ class HubTileFace extends StatelessWidget {
     this.ramp = true,
     this.caption = kHubTileCaption,
     this.titleIcon,
-    this.artworkHeadroom = 0,
-    this.minCaptionLines = 1,
   }) : assert(
          (artwork == null) != (mark == null),
          'A hub tile has either full-bleed artwork or a mark.',
@@ -172,8 +160,6 @@ class HubTileFace extends StatelessWidget {
   final bool ramp;
   final String caption;
   final IconData? titleIcon;
-  final double artworkHeadroom;
-  final int minCaptionLines;
 
   /// Between the title and the mark beside it.
   static double get markGap => 12.sp;
@@ -182,9 +168,7 @@ class HubTileFace extends StatelessWidget {
   static double get markSide => 44.sp;
 
   @override
-  Widget build(BuildContext context) => LayoutBuilder(builder: _buildFace);
-
-  Widget _buildFace(BuildContext context, BoxConstraints constraints) {
+  Widget build(BuildContext context) {
     final isLight = context.isLightTheme;
     final onTile = hubTileOnTile(context);
     // On paper the tile sits a half step above the page, not on the cards'
@@ -226,18 +210,13 @@ class HubTileFace extends StatelessWidget {
       shadows: shadow(0.4, 3),
     );
     final scaler = MediaQuery.textScalerOf(context);
-    double measuredHeight(
-      String text,
-      TextStyle style, {
-      double maxWidth = double.infinity,
-      int? maxLines = 1,
-    }) {
+    double measuredHeight(String text, TextStyle style) {
       final painter = TextPainter(
         text: TextSpan(text: text, style: style),
         textDirection: Directionality.of(context),
         textScaler: scaler,
-        maxLines: maxLines,
-      )..layout(maxWidth: maxWidth);
+        maxLines: 1,
+      )..layout();
       final height = painter.height.ceilToDouble();
       painter.dispose();
       return height;
@@ -247,26 +226,12 @@ class HubTileFace extends StatelessWidget {
       measuredHeight(title, titleStyle),
       mark != null ? markSide : (titleIcon != null ? 18.sp : 0.0),
     );
-    final arrowSize = (captionSize * 0.8).roundToDouble();
-    final captionWidth = math.max(
-      1.0,
-      constraints.maxWidth - 28.sp - 2 - 4.w - arrowSize,
-    );
-    final captionHeight = math.max(
-      measuredHeight(caption, captionStyle) * minCaptionLines,
-      measuredHeight(
-        caption,
-        captionStyle,
-        maxWidth: captionWidth,
-        maxLines: null,
-      ),
-    );
-    // Measure the complete wrapped caption and keep the study illustrations
-    // above the text, including when accessibility sizing adds more lines.
+    final captionHeight = measuredHeight(caption, captionStyle);
+    // Grow both one-line tiles by the same type metrics at accessibility
+    // sizes. Keep the text clear of the padding and the two border pixels.
     final height = math.max(
       108.sp,
-      (30.sp + titleHeight + captionHeight + artworkHeadroom + 2)
-          .ceilToDouble(),
+      (30.sp + titleHeight + captionHeight + 2).ceilToDouble(),
     );
 
     final titleRow = Row(
@@ -291,34 +256,35 @@ class HubTileFace extends StatelessWidget {
         ),
       ],
     );
-    final captionRow = Row(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.end,
-      children: [
-        Flexible(
-          child: Text(
-            caption,
-            style: captionStyle,
-            softWrap: true,
-            overflow: TextOverflow.visible,
-            textWidthBasis: TextWidthBasis.longestLine,
+    // Keep the original one-line slot and baseline. Scale the whole caption
+    // row down only when needed, so every word and its arrow remain visible.
+    final captionRow = SizedBox(
+      height: captionHeight,
+      child: Align(
+        alignment: Alignment.centerLeft,
+        child: FittedBox(
+          fit: BoxFit.scaleDown,
+          alignment: Alignment.centerLeft,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                caption,
+                style: captionStyle,
+                maxLines: 1,
+                softWrap: false,
+                overflow: TextOverflow.visible,
+              ),
+              SizedBox(width: 4.w),
+              SpaceGlyph(
+                SpaceGlyphKind.arrowUpRight,
+                size: (captionSize * 0.8).roundToDouble(),
+                ink: Color.alphaBlend(quiet, isLight ? base : Colors.black),
+              ),
+            ],
           ),
         ),
-        SizedBox(width: 4.w),
-        // The page's one navigation arrow (See all's), sized from the
-        // caption it ends so the two grow together.
-        SpaceGlyph(
-          SpaceGlyphKind.arrowUpRight,
-          size: arrowSize,
-          // The glyph paints opaque ink, so the caption's veiled white is
-          // flattened onto the tile's dark foot first.
-          ink: Color.alphaBlend(quiet, isLight ? base : Colors.black),
-        ),
-      ],
-    );
-    final captionSlot = SizedBox(
-      height: captionHeight,
-      child: Align(alignment: Alignment.topLeft, child: captionRow),
+      ),
     );
 
     final markWidget = mark;
@@ -365,7 +331,7 @@ class HubTileFace extends StatelessWidget {
                   children: [
                     titleRow,
                     SizedBox(height: 2.sp),
-                    captionSlot,
+                    captionRow,
                   ],
                 ),
               ),
@@ -395,7 +361,7 @@ class HubTileFace extends StatelessWidget {
                   ],
                 ),
                 SizedBox(height: 2.sp),
-                captionSlot,
+                captionRow,
               ],
             ),
           );

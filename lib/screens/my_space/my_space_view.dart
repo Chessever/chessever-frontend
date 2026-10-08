@@ -291,8 +291,6 @@ class _MyPrepTile extends StatelessWidget {
     title: 'My Prep',
     caption: 'Your games and opponents',
     ramp: false,
-    artworkHeadroom: 40.sp,
-    minCaptionLines: 2,
     artwork: const HubSceneBackdrop(scene: HubScene.myPrep),
     onTap: () => openMyPrep(context),
   );
@@ -338,8 +336,6 @@ class _LibraryTile extends StatelessWidget {
     title: 'Library',
     caption: 'Your databases',
     ramp: false,
-    artworkHeadroom: 40.sp,
-    minCaptionLines: 2,
     artwork: const HubLibraryBackdrop(),
     onTap: () {
       HapticFeedbackService.cardTap();

@@ -2,16 +2,16 @@
 
 Generated with the built-in imagegen tool on 2026-10-08. The approved neutral black, charcoal and silver mood is retained. The clipboard and magnifier are replaced by a flat chess preparation motif with one knight, two pawns and a branching route. This is decorative illustration, not a legal position or live analysis.
 
-Final asset: [hub_my_prep_study_v2.webp](../assets/pngs/hub_my_prep_study_v2.webp), 768 × 256 WebP, quality 90, 4,192 bytes. The approved artwork is unchanged from the original replacement; a fresh asset name prevents reuse of a previously cached image. The corrected fixed-scale study frame retains the existing theme opacity.
+Final asset: [hub_my_prep_icon.webp](../assets/pngs/hub_my_prep_icon.webp), 768 × 256 WebP, quality 90, 4,192 bytes. The approved artwork is unchanged from the original replacement and uses its existing bundled filename. The duplicate versioned asset is removed; theme opacity is retained.
 
 ## Composition and validation
 
-- The wide source is drawn at 80.sp high, aligned top-right in both card formats. Compact cards clip only the quiet left field; full-row cards keep the same subject size. The image's own bottom and left edges fade into the card so neither theme exposes an image seam.
-- Captions now wrap completely without ellipses. My Prep and Library reserve equal two-line caption slots and space above the title for their study artwork; card height expands for accessibility text.
+- The original 108.sp default card height and bottom-left label alignment are restored. The original card layout code is retained. The wide source is drawn at 80.sp high and aligned top-right in both formats. Its own bottom and left edges fade into the card so neither theme exposes an image seam. Artwork adds no height to the card.
+- Captions remain exactly one line without ellipses. The original single-line slot and baselines are retained; the caption and arrow scale down together only when needed to fit. The original accessibility height calculation is retained.
 - The refinement removes the raised knight base and moves every piece and route junction into the upper half, clearing the native title.
 - Design-law recheck: the approved grayscale palette overrides the default palette rules; the board is the actual subject, not a background grid. No new typeface, icon pack, badges, fake UI, copy baked into the art, shadows, glows, noisy overlays, entrance animations or dead controls are introduced. Native labels are crisp and complete, titles align, essential silhouettes clear every clipped edge, and artwork fades do not touch text. Existing interactions and routes remain the product controls.
-- All 21 study-card and existing paired-art tests passed across widths 160, 173, 358 and 720, both themes, and normal/doubled text size. The tests verify complete subject bounds and captions, title clearance and working taps. Native widget captures were also inspected at compact and full-row phone sizes. Scoped analysis of the changed production files and tests passed with no issues. The 4,192-byte artwork is smaller than the previous 4,470-byte clipboard asset.
-- The app is not built, launched or driven. Device check: open My Space, enter Edit, toggle My Prep between Small and Full row, and inspect both themes.
+- All 22 study-card and existing paired-art tests passed across widths 160, 173, 358 and 720, both themes, and normal/doubled text size. They verify the original default height, aligned titles, large artwork frame, complete subject bounds, full single-line captions, working taps, and registration/loading of both artwork paths in the app bundle. Native widget captures were also inspected at compact and full-row phone sizes. Scoped analysis passed with no issues. The 4,192-byte artwork is smaller than the previous 4,470-byte clipboard asset.
+- The app is not built, launched or driven. Device check: stop and relaunch once to refresh the image bundle, open My Space, enter Edit, toggle My Prep between Small and Full row, and inspect both themes and the restored height.
 
 ## Generation prompt
 

@@ -26,6 +26,17 @@ void main() {
     await loader.load();
   });
 
+  test('study artwork is registered in the app asset bundle', () async {
+    final manifest = await AssetManifest.loadFromAssetBundle(rootBundle);
+    for (final asset in [
+      'assets/pngs/hub_my_prep_icon.webp',
+      'assets/pngs/hub_library_icon.webp',
+    ]) {
+      expect(manifest.listAssets(), contains(asset));
+      expect((await rootBundle.load(asset)).lengthInBytes, greaterThan(0));
+    }
+  });
+
   for (final light in [false, true]) {
     for (final width in [160.0, 173.0, 358.0, 720.0]) {
       for (final scale in [1.0, 2.0]) {
@@ -35,6 +46,7 @@ void main() {
           tester.view.devicePixelRatio = 1;
           addTearDown(tester.view.reset);
           var taps = 0;
+          double? titleOffset;
           for (final scene in [HubScene.myPrep, HubScene.library]) {
             final prep = scene == HubScene.myPrep;
             final title = prep ? 'My Prep' : 'Library';
@@ -68,8 +80,6 @@ void main() {
                                 caption: caption,
                                 artwork: HubSceneBackdrop(scene: scene),
                                 ramp: false,
-                                artworkHeadroom: 40.sp,
-                                minCaptionLines: 2,
                                 onTap: () => taps++,
                               ),
                             ),
@@ -95,7 +105,16 @@ void main() {
             expect(render.image, isNotNull);
             expect(render.image!.width / render.image!.height, 3);
             final tile = tester.getRect(find.byType(HubTile));
+            if (scale == 1) {
+              expect(tile.height, closeTo(108.sp, .01));
+            }
+            final offset = tester.getRect(find.text(title)).top - tile.top;
+            if (titleOffset != null) {
+              expect(offset, closeTo(titleOffset, .01));
+            }
+            titleOffset = offset;
             final picture = tester.getRect(find.byType(Image));
+            expect(picture.height, closeTo(80.sp, .01));
             final paintedSubject = Rect.fromLTRB(
               picture.left + subject.left * picture.width,
               picture.top + subject.top * picture.height,
@@ -107,13 +126,15 @@ void main() {
               tile.deflate(1).contains(paintedSubject.bottomRight),
               isTrue,
             );
-            expect(
-              paintedSubject.bottom,
-              lessThan(tester.getRect(find.text(title)).top - 4),
-            );
-
             final paragraph = tester.renderObject<RenderParagraph>(
               find.text(caption),
+            );
+            expect(tester.widget<Text>(find.text(caption)).maxLines, 1);
+            expect(
+              paragraph.getBoxesForSelection(
+                TextSelection(baseOffset: 0, extentOffset: caption.length),
+              ),
+              hasLength(1),
             );
             expect(paragraph.didExceedMaxLines, isFalse);
             final lastWord = caption.lastIndexOf(' ') + 1;

@@ -2,16 +2,16 @@
 
 Generated with the built-in imagegen tool on 2026-10-08. The user requested the original database concept with a stronger indication of stored chess games. The focal object is a complete tiered database cylinder, with a Staunton knight and a small checker fragment integrated into its front. The approved My Prep grayscale palette and quiet diagonal board field provide the shared visual language.
 
-Final asset: [hub_library_database_v3.webp](../assets/pngs/hub_library_database_v3.webp), 768 × 256 WebP, quality 90, 4,444 bytes. This replaces the rejected archive-sheet artwork. The original database image was a subject reference, and My Prep was a style reference.
+Final asset: [hub_library_icon.webp](../assets/pngs/hub_library_icon.webp), 768 × 256 WebP, quality 90, 4,444 bytes. This replaces the rejected archive-sheet artwork using the original bundled filename. The original database image was a subject reference, and My Prep was a style reference. Versioned duplicate assets are removed.
 
 ## Framing and design recheck
 
-- Both card formats draw the 3:1 source at 80.sp high, aligned top-right. The database silhouette remains fully inside the source and above the native title; only the quiet left field can be clipped in Small mode.
+- Both card formats retain the original 108.sp default height and bottom-left label alignment. The original card layout code is restored. The 3:1 artwork is drawn at 80.sp high, aligned top-right, with the essential database contour fully visible in both widths. Artwork adds no height to the container.
 - The complete cylinder, top ellipse, lower rim, knight and checker fragment occupy approximately x=67–85%, y=11–58%. Image pixels fade after y=60% and along the quiet left edge, so the subject remains intact and full-row cards have no hard image seam.
-- Native captions retain complete wrapping without ellipses. My Prep and Library keep their equal two-line caption slots and space above the title, expanding for accessibility text.
+- Captions remain exactly one line without ellipses. The original single-line slot and label baselines are retained; the caption and its arrow scale down together only when needed to fit the available width. The original accessibility height calculation is retained.
 - The database cue is the user's explicit direction. Its contained chess symbol describes the subject rather than adding a generic icon tile. Existing app typography, palette, card outlines, interactions and navigation remain. No new badges, fake UI, text baked into the artwork, saturation, glow, cast shadow, noisy overlay or entrance reveal.
-- Reviewed the native widget renders at Small and Full row phone widths in both themes. All 21 study-card and paired-art tests pass across widths 160, 173, 358 and 720, normal/doubled text size, and both themes, checking subject bounds, title clearance, complete captions and working taps. Scoped analysis of the changed Dart files passes with no issues.
-- Per project rules the live app is not launched or driven. On-device check: in My Space Edit, toggle Library between Small and Full row; confirm the complete database and chess knight are visible, with full caption text, in both themes and with larger text.
+- Reviewed the native widget renders at Small and Full row phone widths in both themes. All 22 study-card and paired-art tests pass across widths 160, 173, 358 and 720, normal/doubled text size, and both themes. They assert the original default height, aligned title positions, large artwork frame, complete subject bounds, single-line captions with all words visible, working taps, and registration/loading of both existing asset paths in the app bundle. Scoped analysis of the changed Dart files passes with no issues.
+- Per project rules the live app is not launched or driven. On-device check: stop and relaunch the app to refresh the image bundle. In My Space Edit, toggle Library between Small and Full row; confirm its original height and label alignment, complete database and chess knight, and single-line caption in both themes.
 
 ## Generation prompt
 
