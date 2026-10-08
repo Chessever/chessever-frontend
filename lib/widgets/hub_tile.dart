@@ -210,12 +210,23 @@ class HubTileFace extends StatelessWidget {
       shadows: shadow(0.4, 3),
     );
     final scaler = MediaQuery.textScalerOf(context);
+    double measuredHeight(String text, TextStyle style) {
+      final painter = TextPainter(
+        text: TextSpan(text: text, style: style),
+        textDirection: Directionality.of(context),
+        textScaler: scaler,
+        maxLines: 1,
+      )..layout();
+      final height = painter.height.ceilToDouble();
+      painter.dispose();
+      return height;
+    }
+
     final titleHeight = math.max(
-      scaler.scale(titleStyle.fontSize!) * titleStyle.height!,
+      measuredHeight(title, titleStyle),
       mark != null ? markSide : (titleIcon != null ? 18.sp : 0.0),
     );
-    final captionHeight =
-        scaler.scale(captionStyle.fontSize!) * captionStyle.height!;
+    final captionHeight = measuredHeight(caption, captionStyle);
     // Grow both one-line tiles by the same type metrics at accessibility
     // sizes. Keep the text clear of the padding and the two border pixels.
     final height = math.max(

@@ -18,6 +18,7 @@ import 'package:chessever2/widgets/event_card/smart_event_deck.dart';
 import 'package:chessever2/widgets/hub_tile.dart' show kHubTileInk;
 import 'package:chessever2/widgets/time_control_glyph.dart';
 import 'package:flutter/material.dart';
+import 'package:chessever2/widgets/card_plate_layout.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 /// The time controls a smart event can hold, slow to fast: the builder's
@@ -57,6 +58,7 @@ class SmartEventCard extends StatelessWidget {
     this.summary,
     this.live = false,
     this.disclosure = true,
+    this.stacked = false,
     super.key,
   });
 
@@ -108,6 +110,7 @@ class SmartEventCard extends StatelessWidget {
   /// The trailing "open" chevron. Off where a tap selects instead of opens
   /// (My Space's Edit mode).
   final bool disclosure;
+  final bool stacked;
 
   static double _imageWidth(BuildContext context) {
     double w = 108.w;
@@ -181,62 +184,65 @@ class SmartEventCard extends StatelessWidget {
       padding: EdgeInsets.all(6.sp),
       child: ConstrainedBox(
         constraints: BoxConstraints(minHeight: imageH),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            SmartEventPlate(
-              width: imageW,
-              height: imageH,
-              minElo: minElo,
-              formatsAndStates: formatsAndStates,
-              events: liveCount,
-              seed: smartDeckSeed([
-                tierLabel,
-                titleSuffix,
-                minElo,
-                ...formatsAndStates.toList()..sort(),
-              ]),
-            ),
-            SizedBox(width: 10.w),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    '$tierLabel $titleSuffix'.trim(),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: AppTypography.textSmMedium.copyWith(
-                      color: colors.textPrimary,
-                      fontSize: 14.f,
-                      height: 1.2,
-                    ),
+        child: CardPlateLayout(
+          stacked: stacked,
+          plate: SmartEventPlate(
+            width: imageW,
+            height: imageH,
+            minElo: minElo,
+            formatsAndStates: formatsAndStates,
+            events: liveCount,
+            seed: smartDeckSeed([
+              tierLabel,
+              titleSuffix,
+              minElo,
+              ...formatsAndStates.toList()..sort(),
+            ]),
+          ),
+          details: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              CardPlateTitle(
+                stacked: stacked,
+                child: Text(
+                  '$tierLabel $titleSuffix'.trim(),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppTypography.textSmMedium.copyWith(
+                    color: colors.textPrimary,
+                    fontSize: 14.f,
+                    height: 1.2,
                   ),
-                  SizedBox(height: 4.h),
-                  _MetaLine(
-                    count: liveCount,
-                    avgElo: avgElo,
-                    countSingular: countSingular,
-                    countPlural: countPlural,
-                  ),
-                  _ThirdLine(
-                    live: live,
-                    text: summary ?? caption ?? _fallbackCaption,
-                  ),
-                ],
+                ),
               ),
-            ),
-            if (disclosure) ...[
-              SizedBox(width: 4.w),
-              Icon(
-                Icons.chevron_right_rounded,
-                size: 20.ic,
-                color: colors.iconSecondary,
+              SizedBox(height: 4.h),
+              _MetaLine(
+                count: liveCount,
+                avgElo: avgElo,
+                countSingular: countSingular,
+                countPlural: countPlural,
               ),
-              SizedBox(width: 4.w),
+              _ThirdLine(
+                live: live,
+                text: summary ?? caption ?? _fallbackCaption,
+              ),
             ],
-          ],
+          ),
+          trailing: disclosure
+              ? Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    SizedBox(width: 4.w),
+                    Icon(
+                      Icons.chevron_right_rounded,
+                      size: 20.ic,
+                      color: colors.iconSecondary,
+                    ),
+                    SizedBox(width: 4.w),
+                  ],
+                )
+              : null,
         ),
       ),
     );

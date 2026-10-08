@@ -4,6 +4,7 @@ import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/app_button.dart' show TappableScale;
 import 'package:chessever2/widgets/card_context_menu.dart';
 import 'package:flutter/material.dart';
+import 'package:chessever2/widgets/card_plate_layout.dart';
 
 /// The row every collection list draws: the [plate] on the left
 /// ([plateSize]: an event's 5:4 picture or a book's 2:3 cover), the title
@@ -28,6 +29,7 @@ class CollectionPlateRow extends StatelessWidget {
     this.stats,
     this.compactDetails = false,
     this.detailItems = const [],
+    this.stacked = false,
   });
 
   /// An event's picture: landscape, 5:4.
@@ -38,6 +40,7 @@ class CollectionPlateRow extends StatelessWidget {
   static Size get bookPlate => Size(64.w, 96.w);
 
   final Widget plate;
+  final bool stacked;
 
   /// [eventPlate] when null.
   final Size? plateSize;
@@ -92,15 +95,18 @@ class CollectionPlateRow extends StatelessWidget {
           );
 
     final identity = <Widget>[
-      Text(
-        title,
-        maxLines: 2,
-        overflow: TextOverflow.ellipsis,
-        style: AppTypography.textSmMedium.copyWith(
-          color: colors.textPrimary,
-          fontSize: compactDetails ? 16.f : 14.f,
-          fontWeight: compactDetails ? FontWeight.w600 : FontWeight.w500,
-          height: 1.2,
+      CardPlateTitle(
+        stacked: stacked,
+        child: Text(
+          title,
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+          style: AppTypography.textSmMedium.copyWith(
+            color: colors.textPrimary,
+            fontSize: compactDetails ? 16.f : 14.f,
+            fontWeight: compactDetails ? FontWeight.w600 : FontWeight.w500,
+            height: 1.2,
+          ),
         ),
       ),
       if (metaText != null) ...[SizedBox(height: 4.h), metaText],
@@ -185,41 +191,38 @@ class CollectionPlateRow extends StatelessWidget {
             : null,
       ),
       padding: EdgeInsets.all(6.sp),
-      child: Row(
-        children: [
-          ExcludeSemantics(
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(6.br),
-              child: SizedBox(
-                width: size.width,
-                height: size.height,
-                child: plate,
+      child: CardPlateLayout(
+        stacked: stacked,
+        plate: ExcludeSemantics(
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(6.br),
+            child: SizedBox(
+              width: size.width,
+              height: size.height,
+              child: plate,
+            ),
+          ),
+        ),
+        details: Padding(
+          padding: EdgeInsetsDirectional.only(end: 6.sp),
+          child: compactDetails
+              ? Padding(
+                  padding: EdgeInsets.only(top: 4.sp),
+                  child: details,
+                )
+              : details,
+        ),
+        trailing: trailing == null
+            ? null
+            : Align(
+                alignment: Alignment.topCenter,
+                child: compactDetails
+                    ? Transform.translate(
+                        offset: Offset(0, -4.sp),
+                        child: trailing,
+                      )
+                    : trailing,
               ),
-            ),
-          ),
-          SizedBox(width: 10.w),
-          Expanded(
-            child: Padding(
-              padding: EdgeInsetsDirectional.only(end: 6.sp),
-              child: compactDetails
-                  ? Padding(
-                      padding: EdgeInsets.only(top: 4.sp),
-                      child: details,
-                    )
-                  : details,
-            ),
-          ),
-          if (trailing != null)
-            Align(
-              alignment: Alignment.topCenter,
-              child: compactDetails
-                  ? Transform.translate(
-                      offset: Offset(0, -4.sp),
-                      child: trailing,
-                    )
-                  : trailing,
-            ),
-        ],
       ),
     );
 

@@ -370,9 +370,11 @@ class CollectionCard extends ConsumerWidget {
     required this.collection,
     this.note,
     this.opening,
+    this.stacked = false,
   });
 
   final Collection collection;
+  final bool stacked;
   final String? note;
   final CollectionOpening? opening;
 
@@ -431,6 +433,7 @@ class CollectionCard extends ConsumerWidget {
     }
 
     return CollectionPlateRow(
+      stacked: stacked,
       plate: _Cover(collection: c),
       plateSize: CollectionPlateRow.eventPlate,
       compactDetails: isBook,

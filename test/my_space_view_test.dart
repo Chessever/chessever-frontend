@@ -22,6 +22,10 @@ import 'package:chessever2/screens/my_space/my_space_view.dart';
 import 'package:chessever2/screens/my_space/providers/space_auto_provider.dart';
 import 'package:chessever2/screens/my_space/my_prep_screen.dart';
 import 'package:chessever2/screens/my_space/providers/space_home_layout_provider.dart';
+import 'package:chessever2/screens/my_space/providers/space_home_card_size_provider.dart';
+import 'package:chessever2/screens/my_space/providers/space_edit_mode_provider.dart';
+import 'package:chessever2/screens/collections/collections_data.dart'
+    show collectionsProvider;
 import 'package:chessever2/screens/my_space/providers/space_hub_providers.dart';
 import 'package:chessever2/screens/my_space/providers/space_game_card_provider.dart'
     show spaceGameCardProvider;
@@ -146,6 +150,13 @@ class _FakeSpaceShortcuts extends SpaceShortcutsNotifier {
     for (final s in _list)
       if (s.section == section) s.key,
   ];
+}
+
+class _HomeSizes extends SpaceHomeCardSizes {
+  _HomeSizes(this.seed);
+  final Map<String, SpaceHomeCardSize> seed;
+  @override
+  Map<String, SpaceHomeCardSize> build() => seed;
 }
 
 /// A store whose server answers a removal only once [answer] is called:
@@ -915,8 +926,8 @@ void main() {
     await _drain(tester);
   });
 
-  testWidgets('legacy events and player games stay hidden because '
-      'the event card does not draw boards', (tester) async {
+  testWidgets('saved events show their card without boards; '
+      'legacy player games stay hidden', (tester) async {
     final liveGame = _game('saved-event-live-game', whiteFide: 1503014);
     await _pumpSpace(
       tester,
@@ -929,7 +940,7 @@ void main() {
       extra: [spacePlayerPhotosProvider.overrideWith((ref, ids) {})],
     );
     await _settleEdit(tester);
-    expect(find.byType(EventCard), findsNothing);
+    expect(find.byType(EventCard), findsOneWidget);
     expect(find.byType(SpacePlayerFace), findsNothing);
     expect(
       find.byKey(ValueKey<String>('space_player_board_${liveGame.gameId}')),
@@ -1261,15 +1272,25 @@ void main() {
       of: find.text(a.title),
       matching: find.byType(SpaceSavedRow),
     );
-    final half = tester.getSize(library).width;
+    final librarySize = tester.getSize(library);
+    final half = librarySize.width;
+    final homeGrid = tester.widget<SpaceEditGrid>(find.byType(SpaceEditGrid));
+    final halfSlot =
+        (tester.getSize(find.byType(SpaceEditGrid)).width -
+            2 * homeGrid.gutter -
+            homeGrid.gap!) /
+        2;
+    expect(half, closeTo(halfSlot, 0.01));
 
     Future<void> drag(Finder what, Offset to) async {
       final from = tester.getCenter(what);
       final gesture = await tester.startGesture(from);
       await tester.pump(kSpaceEditLiftDelay + const Duration(milliseconds: 60));
+      if (what == library) expect(tester.getSize(library), librarySize);
       for (var i = 0; i < 10; i++) {
         await gesture.moveBy((to - from) / 10);
         await tester.pump(const Duration(milliseconds: 16));
+        if (what == library) expect(tester.getSize(library), librarySize);
       }
       await gesture.up();
       await _settleEdit(tester);
@@ -1296,6 +1317,8 @@ void main() {
     // Onto the free half beside My Prep: it lands in that slot.
     await drag(library, tester.getCenter(prep) + Offset(half + 12, 0));
     expect(tester.getRect(library).top, closeTo(tester.getRect(prep).top, 0.5));
+    expect(tester.getSize(library), librarySize);
+    expect(tester.getSize(prep), librarySize);
 
     // My Likes down past the first database: a fixed card among the pins.
     await drag(likes, tester.getCenter(rowA));
@@ -1312,10 +1335,207 @@ void main() {
     await _saveHomeEdit(tester);
     expect(find.byKey(const ValueKey('space_edit_empty_slot')), findsNothing);
     expect(tester.getRect(library).top, closeTo(tester.getRect(prep).top, 0.5));
+    expect(tester.getSize(library), librarySize);
     expect(tester.getRect(likes).top, greaterThan(tester.getRect(rowA).bottom));
     expect(tester.takeException(), isNull);
     await _drain(tester);
   });
+
+  testWidgets('every home card switches between small and full row without '
+      'selecting or removing it', (tester) async {
+    final a = _pin(
+      SpaceShortcut.draft(
+        kind: SpaceShortcutKind.folder,
+        targetId: 'a',
+        title: 'Database A',
+      ),
+      'a',
+      30,
+    );
+    final b = _pin(
+      SpaceShortcut.draft(
+        kind: SpaceShortcutKind.folder,
+        targetId: 'b',
+        title: 'Database B\nGames',
+      ),
+      'b',
+      20,
+    );
+    final smart = _pin(_smartDraft(2600), 'smart', 10);
+    final tips = _Tips()..markSkipped();
+    final store = await _pumpSpace(
+      tester,
+      [a, b, smart],
+      height: 844,
+      withAddFab: true,
+      extra: [
+        spaceEditTutorialStoreProvider.overrideWithValue(tips),
+        _noSmartMembers,
+      ],
+    );
+    await _openHomeEdit(tester);
+    for (final key in [
+      kSpaceHomeMyPrep,
+      kSpaceHomeLibrary,
+      kSpaceHomeLikes,
+      a.key,
+      b.key,
+      smart.key,
+    ]) {
+      final resize = find.byKey(ValueKey('space_edit_resize_$key'));
+      expect(resize, findsOneWidget, reason: key);
+      final initial = tester
+          .widget<SpaceEditGrid>(find.byType(SpaceEditGrid))
+          .items
+          .singleWhere((item) => item.key == key)
+          .wide;
+      await tester.tap(resize);
+      await _settleEdit(tester);
+      expect(
+        tester
+            .widget<SpaceEditGrid>(find.byType(SpaceEditGrid))
+            .items
+            .singleWhere((item) => item.key == key)
+            .wide,
+        !initial,
+      );
+      expect(_selectedKeys(tester), isEmpty);
+      await tester.tap(resize);
+      await _settleEdit(tester);
+    }
+    // Two saved cards can occupy one row with readable, reflowed content.
+    for (final key in [a.key, b.key]) {
+      await tester.tap(find.byKey(ValueKey('space_edit_resize_$key')));
+      await _settleEdit(tester);
+    }
+    final rowA = find.ancestor(
+      of: find.text(a.title),
+      matching: find.byType(SpaceSavedRow),
+    );
+    final rowB = find.ancestor(
+      of: find.text(b.title),
+      matching: find.byType(SpaceSavedRow),
+    );
+    final smallA = tester.getRect(rowA);
+    final smallB = tester.getRect(rowB);
+    expect(smallA.top, smallB.top);
+    expect(smallA.width, closeTo(smallB.width, 0.01));
+    expect(smallA.right, lessThan(smallB.left));
+    expect(smallA.height, smallB.height);
+    final metaA = tester.getRect(
+      find.descendant(of: rowA, matching: find.text('Database')),
+    );
+    final metaB = tester.getRect(
+      find.descendant(of: rowB, matching: find.text('Database')),
+    );
+    expect(metaA.top, metaB.top);
+    await _saveHomeEdit(tester);
+    expect(tester.getRect(rowA), smallA);
+    expect(tester.getRect(rowB), smallB);
+    expect(store.state.requireValue.map((pin) => pin.key), [
+      a.key,
+      b.key,
+      smart.key,
+    ]);
+    expect(tester.takeException(), isNull);
+    await _drain(tester);
+  });
+
+  for (final scenario in [
+    (screen: const Size(320, 844), scale: 1.3, light: true),
+    (screen: const Size(390, 844), scale: 1.0, light: false),
+    (screen: const Size(390, 844), scale: 2.0, light: true),
+    (screen: const Size(768, 1024), scale: 1.3, light: false),
+  ]) {
+    testWidgets(
+      'events, collections and smart events reflow into small cards '
+      'at ${scenario.screen.width}, ${scenario.scale}x, light=${scenario.light}',
+      (tester) async {
+        final event = _pin(eventSpaceDraft(_feed[2]), 'e', 30);
+        final collection = _pin(
+          SpaceShortcut.draft(
+            kind: SpaceShortcutKind.collection,
+            targetId: 'c',
+            title: 'Annotated games',
+            params: {
+              'slug': 'annotated-games',
+              'collectionKind': 'book',
+              'gameCount': 12,
+            },
+          ),
+          'c',
+          20,
+        );
+        final smart = _pin(_smartDraft(2600), 'smart', 10);
+        final pins = [event, collection, smart];
+        await _pumpSpace(
+          tester,
+          pins,
+          screen: scenario.screen,
+          textScale: scenario.scale,
+          theme: scenario.light ? AppTheme.lightTheme : AppTheme.darkTheme,
+          extra: [
+            spaceEditModeProvider.overrideWith((ref) => true),
+            collectionsProvider.overrideWith((ref) async => []),
+            spaceHomeCardSizesProvider.overrideWith(
+              () => _HomeSizes({
+                for (final key in [
+                  ...kSpaceHomeFixed,
+                  ...pins.map((pin) => pin.key),
+                ])
+                  key: SpaceHomeCardSize.small,
+              }),
+            ),
+            _noSmartMembers,
+          ],
+        );
+        await _settleEdit(tester);
+        final grid = tester.widget<SpaceEditGrid>(find.byType(SpaceEditGrid));
+        expect(grid.items.every((item) => !item.wide), isTrue);
+        final half =
+            (tester.getSize(find.byType(SpaceEditGrid)).width -
+                2 * grid.gutter -
+                grid.gap!) /
+            2;
+        final savedEvent = find.byKey(
+          ValueKey<String>('space_event_${event.key}'),
+        );
+        final smartCard = find.byKey(
+          ValueKey<String>('space_smart_${smart.key}'),
+        );
+        expect(tester.getSize(savedEvent).width, closeTo(half, 0.01));
+        expect(tester.getSize(smartCard).width, closeTo(half, 0.01));
+        expect(find.text(event.title), findsOneWidget);
+        expect(find.text(collection.title), findsOneWidget);
+        for (final pin in pins) {
+          final resize = find.byKey(ValueKey('space_edit_resize_${pin.key}'));
+          await tester.ensureVisible(resize);
+          final label = tester.renderObject<RenderParagraph>(
+            find.descendant(of: resize, matching: find.byType(Text)).first,
+          );
+          expect(
+            label.size.height,
+            greaterThanOrEqualTo(
+              label.getMaxIntrinsicHeight(label.size.width) - 0.01,
+            ),
+            reason: 'The size label must remain whole',
+          );
+          await tester.tap(resize);
+          await _settleEdit(tester);
+          final changed = tester.widget<SpaceEditGrid>(
+            find.byType(SpaceEditGrid),
+          );
+          expect(
+            changed.items.singleWhere((item) => item.key == pin.key).wide,
+            isTrue,
+          );
+          expect(_selectedKeys(tester), isEmpty);
+        }
+        expect(tester.takeException(), isNull);
+        await _drain(tester);
+      },
+    );
+  }
 
   testWidgets('empty My Space shows only the supported products', (
     tester,
@@ -1345,10 +1565,8 @@ void main() {
     await _drain(tester);
   });
 
-  testWidgets('databases use compact cards without headings; '
-      'legacy players, openings and events remain stored but hidden', (
-    tester,
-  ) async {
+  testWidgets('events and databases use cards without headings; '
+      'legacy players and openings remain stored but hidden', (tester) async {
     final events = [
       for (final (i, e) in _feed.take(4).indexed)
         _pin(eventSpaceDraft(e), 'e$i', 20.0 - i),
@@ -1363,7 +1581,7 @@ void main() {
     expect(_groupTitles(tester), isEmpty);
     expect(find.textContaining('See all', findRichText: true), findsNothing);
     expect(find.byType(SpaceRail), findsNothing);
-    expect(find.byType(EventCard), findsNothing);
+    expect(find.byType(EventCard), findsNWidgets(events.length));
     expect(find.byType(SpaceSavedRow), findsOneWidget);
     expect(find.text('Najdorf prep'), findsOneWidget);
     expect(find.text('Carlsen'), findsNothing);

@@ -37,6 +37,7 @@ import 'package:chessever2/screens/my_space/providers/space_game_card_provider.d
 import 'package:chessever2/screens/my_space/providers/space_hub_providers.dart';
 import 'package:chessever2/screens/my_space/providers/space_players_provider.dart';
 import 'package:chessever2/screens/my_space/providers/space_shortcuts_provider.dart';
+import 'package:chessever2/screens/my_space/providers/space_home_card_size_provider.dart';
 import 'package:chessever2/screens/my_space/widgets/pixel_art.dart';
 import 'package:chessever2/screens/my_space/widgets/space_edit_grid.dart';
 import 'package:chessever2/utils/scroll_cache.dart';
@@ -56,6 +57,7 @@ import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/app_button.dart' show TappableScale;
 import 'package:chessever2/widgets/card_context_menu.dart';
+import 'package:chessever2/widgets/card_plate_layout.dart';
 import 'package:chessever2/widgets/event_card/event_card.dart';
 import 'package:chessever2/widgets/event_card/smart_event_card.dart';
 import 'package:chessever2/screens/group_event/smart_event/smart_event_builder_sheet.dart'
@@ -554,10 +556,12 @@ Widget _savedEventCard(
   SpaceShortcut s,
   _SavedEvents saved, {
   bool editing = false,
+  bool stacked = false,
 }) {
   if (s.kind == SpaceShortcutKind.round) {
     return SpaceSavedRow(
       shortcut: s,
+      stacked: stacked,
       meta: _RoundMeta(shortcut: s),
       disclosure: !editing,
     );
@@ -568,6 +572,7 @@ Widget _savedEventCard(
     spaceDraft: s,
     heroTagSuffix: '_myspace',
     forceCompactLayout: true,
+    stacked: stacked,
     trailingWidget: editing ? SizedBox(width: 4.w) : null,
     onTap: () => openSpaceShortcut(context, ref, s),
   );
@@ -1498,11 +1503,13 @@ Widget _savedRow(
   required bool library,
   required List<LibraryFolder> folders,
   bool editing = false,
+  bool stacked = false,
 }) {
   if (!library) {
     final host = Uri.tryParse(s.targetId)?.host;
     return SpaceSavedRow(
       shortcut: s,
+      stacked: stacked,
       meta: host == null || host.isEmpty ? null : Text(host),
       disclosure: !editing,
     );
@@ -1518,6 +1525,7 @@ Widget _savedRow(
   final found = folder;
   return SpaceSavedRow(
     shortcut: s,
+    stacked: stacked,
     meta: found == null ? null : SpaceLibraryCountText(folder: found),
     disclosure: !editing,
     menuActions: found == null
@@ -1641,9 +1649,14 @@ class _SmartEventsRailState extends ConsumerState<_SmartEventsRail>
 }
 
 class _SavedSmartEvent extends ConsumerWidget {
-  const _SavedSmartEvent({required this.shortcut, this.disclosure = true});
+  const _SavedSmartEvent({
+    required this.shortcut,
+    this.disclosure = true,
+    this.stacked = false,
+  });
 
   final SpaceShortcut shortcut;
+  final bool stacked;
 
   /// The card's open chevron; off in Edit, where a tap selects.
   final bool disclosure;
@@ -1651,7 +1664,9 @@ class _SavedSmartEvent extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final saved = smartEventRequestFromSpaceShortcut(shortcut);
-    if (saved == null) return SpaceSavedRow(shortcut: shortcut);
+    if (saved == null) {
+      return SpaceSavedRow(shortcut: shortcut, stacked: stacked);
+    }
     // Today's broadcasts, read once for every Smart Event card and filtered
     // per card in memory.
     final members = ref
@@ -1669,6 +1684,7 @@ class _SavedSmartEvent extends ConsumerWidget {
     return SmartEventCard(
       key: ValueKey<String>('space_smart_${shortcut.key}'),
       quiet: true,
+      stacked: stacked,
       tierLabel: request.tierLabel,
       minElo: request.minElo,
       liveCount: events.length,
@@ -1877,6 +1893,9 @@ class SpaceHomeGrid extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final sizes = ref.watch(spaceHomeCardSizesProvider);
+    bool small(String key) =>
+        spaceHomeCardSizeFor(key, sizes) == SpaceHomeCardSize.small;
     final events = _SavedEvents(ref, [
       for (final pin in pins)
         if (pin.section == SpaceSection.events) pin,
@@ -1890,11 +1909,17 @@ class SpaceHomeGrid extends ConsumerWidget {
     Widget card(SpaceShortcut pin) {
       switch (pin.section) {
         case SpaceSection.events:
-          return _savedEventCard(context, ref, pin, events);
+          return _savedEventCard(
+            context,
+            ref,
+            pin,
+            events,
+            stacked: small(pin.key),
+          );
         case SpaceSection.openings:
           return SpaceOpeningCard(shortcut: pin);
         case SpaceSection.smartEvents:
-          return _SavedSmartEvent(shortcut: pin);
+          return _SavedSmartEvent(shortcut: pin, stacked: small(pin.key));
         case SpaceSection.library:
         case SpaceSection.links:
         case SpaceSection.likes:
@@ -1903,10 +1928,11 @@ class SpaceHomeGrid extends ConsumerWidget {
             pin,
             library: pin.section == SpaceSection.library,
             folders: folders,
+            stacked: small(pin.key),
           );
         case SpaceSection.players:
         case SpaceSection.games:
-          return SpaceSavedRow(shortcut: pin);
+          return SpaceSavedRow(shortcut: pin, stacked: small(pin.key));
       }
     }
 
@@ -1917,7 +1943,11 @@ class SpaceHomeGrid extends ConsumerWidget {
         pin.key: SpaceEditItem(
           key: pin.key,
           label: pin.title,
-          wide: true,
+          wide: !small(pin.key),
+          onResize: () {
+            HapticFeedbackService.selection();
+            ref.read(spaceHomeCardSizesProvider.notifier).toggle(pin.key);
+          },
           builder: (_, _) => card(pin),
         ),
     };
@@ -2268,9 +2298,11 @@ class SpaceSavedRow extends ConsumerWidget {
     this.meta,
     this.menuActions,
     this.disclosure = true,
+    this.stacked = false,
   });
 
   final SpaceShortcut shortcut;
+  final bool stacked;
 
   /// The chevron that says a tap opens the thing. Off in Edit, where a tap
   /// selects.
@@ -2374,7 +2406,7 @@ class SpaceSavedRow extends ConsumerWidget {
         'title': shortcut.title,
         'kind': shortcut.params['collectionKind'],
       });
-      return CollectionCard(collection: collection);
+      return CollectionCard(collection: collection, stacked: stacked);
     }
     final colors = context.colors;
     final isLight = context.isLightTheme;
@@ -2394,57 +2426,61 @@ class SpaceSavedRow extends ConsumerWidget {
             : null,
       ),
       padding: EdgeInsets.all(6.sp),
-      child: Row(
-        children: [
-          ClipRRect(
-            borderRadius: BorderRadius.circular(6.br),
-            child: ColoredBox(
-              color: isLight ? colors.surfaceRecessed : kHubTileInk,
-              child: SizedBox(
-                width: plateWidth,
-                height: plateHeight,
-                child: _plate(context, plateWidth),
+      child: CardPlateLayout(
+        stacked: stacked,
+        plate: ClipRRect(
+          borderRadius: BorderRadius.circular(6.br),
+          child: ColoredBox(
+            color: isLight ? colors.surfaceRecessed : kHubTileInk,
+            child: SizedBox(
+              width: plateWidth,
+              height: plateHeight,
+              child: _plate(context, plateWidth),
+            ),
+          ),
+        ),
+        details: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            CardPlateTitle(
+              stacked: stacked,
+              child: Text(
+                shortcut.title,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: AppTypography.textSmMedium.copyWith(
+                  color: colors.textPrimary,
+                  fontSize: 14.f,
+                  height: 1.2,
+                ),
               ),
             ),
-          ),
-          SizedBox(width: 10.w),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  shortcut.title,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: AppTypography.textSmMedium.copyWith(
-                    color: colors.textPrimary,
-                    fontSize: 14.f,
-                    height: 1.2,
-                  ),
-                ),
-                SizedBox(height: 4.h),
-                DefaultTextStyle.merge(
-                  style: metaStyle,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  child:
-                      meta ??
-                      Text(saved, maxLines: 1, overflow: TextOverflow.ellipsis),
-                ),
-              ],
+            SizedBox(height: 4.h),
+            DefaultTextStyle.merge(
+              style: metaStyle,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              child:
+                  meta ??
+                  Text(saved, maxLines: 1, overflow: TextOverflow.ellipsis),
             ),
-          ),
-          SizedBox(width: 4.w),
-          if (disclosure) ...[
-            Icon(
-              Icons.chevron_right_rounded,
-              size: 20.ic,
-              color: colors.iconSecondary,
-            ),
-            SizedBox(width: 4.w),
           ],
-        ],
+        ),
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            SizedBox(width: 4.w),
+            if (disclosure) ...[
+              Icon(
+                Icons.chevron_right_rounded,
+                size: 20.ic,
+                color: colors.iconSecondary,
+              ),
+              SizedBox(width: 4.w),
+            ],
+          ],
+        ),
       ),
     );
 

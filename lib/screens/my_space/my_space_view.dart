@@ -15,6 +15,7 @@ import 'package:chessever2/widgets/hub_context_art.dart';
 // import 'package:chessever2/screens/my_space/providers/space_auto_provider.dart';
 import 'package:chessever2/screens/my_space/providers/space_edit_mode_provider.dart';
 import 'package:chessever2/screens/my_space/providers/space_home_layout_provider.dart';
+import 'package:chessever2/screens/my_space/providers/space_home_card_size_provider.dart';
 import 'package:chessever2/screens/my_space/providers/space_hub_providers.dart';
 import 'package:chessever2/screens/my_space/providers/space_shortcuts_provider.dart';
 import 'package:chessever2/screens/my_space/widgets/space_database.dart';
@@ -236,30 +237,47 @@ class _MySpaceViewState extends ConsumerState<MySpaceView> {
 
   /// My Prep, Library and My Likes: the page's own cards. Any of them moves
   /// anywhere; none is ever removed.
-  Map<String, SpaceEditItem> _fixedCards(BuildContext context) => {
-    kSpaceHomeMyPrep: SpaceEditItem(
-      key: kSpaceHomeMyPrep,
-      label: 'My Prep',
-      selectable: false,
-      radius: 14.br,
-      builder: (_, _) => const _MyPrepTile(),
-    ),
-    kSpaceHomeLibrary: SpaceEditItem(
-      key: kSpaceHomeLibrary,
-      label: 'Library',
-      selectable: false,
-      radius: 14.br,
-      builder: (_, _) => const _LibraryTile(),
-    ),
-    kSpaceHomeLikes: SpaceEditItem(
-      key: kSpaceHomeLikes,
-      label: 'My Likes',
-      selectable: false,
-      wide: true,
-      builder: (_, _) =>
-          const _MyLikesCard(key: ValueKey<String>('my_space_likes_card')),
-    ),
-  };
+  Map<String, SpaceEditItem> _fixedCards(BuildContext context) {
+    final sizes = ref.watch(spaceHomeCardSizesProvider);
+    bool small(String key) =>
+        spaceHomeCardSizeFor(key, sizes) == SpaceHomeCardSize.small;
+    void resize(String key) {
+      HapticFeedbackService.selection();
+      ref.read(spaceHomeCardSizesProvider.notifier).toggle(key);
+    }
+
+    return {
+      kSpaceHomeMyPrep: SpaceEditItem(
+        key: kSpaceHomeMyPrep,
+        label: 'My Prep',
+        selectable: false,
+        wide: !small(kSpaceHomeMyPrep),
+        onResize: () => resize(kSpaceHomeMyPrep),
+        radius: 14.br,
+        builder: (_, _) => const _MyPrepTile(),
+      ),
+      kSpaceHomeLibrary: SpaceEditItem(
+        key: kSpaceHomeLibrary,
+        label: 'Library',
+        selectable: false,
+        wide: !small(kSpaceHomeLibrary),
+        onResize: () => resize(kSpaceHomeLibrary),
+        radius: 14.br,
+        builder: (_, _) => const _LibraryTile(),
+      ),
+      kSpaceHomeLikes: SpaceEditItem(
+        key: kSpaceHomeLikes,
+        label: 'My Likes',
+        selectable: false,
+        wide: !small(kSpaceHomeLikes),
+        onResize: () => resize(kSpaceHomeLikes),
+        builder: (_, _) => _MyLikesCard(
+          key: const ValueKey<String>('my_space_likes_card'),
+          small: small(kSpaceHomeLikes),
+        ),
+      ),
+    };
+  }
 }
 
 // ------------------------------------------------------------------ tiles
@@ -279,7 +297,9 @@ class _MyPrepTile extends StatelessWidget {
 
 /// Permanent archive entry, sharing the saved cards' horizontal event frame.
 class _MyLikesCard extends ConsumerWidget {
-  const _MyLikesCard({super.key});
+  const _MyLikesCard({super.key, this.small = false});
+
+  final bool small;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -287,6 +307,7 @@ class _MyLikesCard extends ConsumerWidget {
       ref.watch(likedGamesProvider.select(likesSummary)),
     );
     return CollectionPlateRow(
+      stacked: small,
       // The heart the Library's My Likes card wears, at the size it wears
       // it there, so the destination has one mark on both pages.
       plate: Center(child: LikesHeartMark(size: 64.0.h)),

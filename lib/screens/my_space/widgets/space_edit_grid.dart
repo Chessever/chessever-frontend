@@ -35,6 +35,7 @@ class SpaceEditItem {
     this.wide = false,
     this.selectable = true,
     this.radius,
+    this.onResize,
   });
 
   final String key;
@@ -59,6 +60,9 @@ class SpaceEditItem {
   /// The card's corner radius, so its socket, its lifted shadow and an
   /// empty slot beside it share its shape. Null: the cards' usual 8.
   final double? radius;
+
+  /// Home cards offer an explicit size change; a reorder never changes size.
+  final VoidCallback? onResize;
 }
 
 /// Where a card's selection circle stands.
@@ -1181,11 +1185,14 @@ class _EditFace extends StatelessWidget {
     );
     // The same two wrappers in and out of Edit, so the card never remounts
     // (its photo never reloads) as Edit comes and goes.
-    Widget card(double width) => IgnorePointer(
-      ignoring: editing,
-      child: ExcludeSemantics(
-        excluding: editing,
-        child: item.builder(context, width),
+    Widget card(double width) => SizedBox(
+      width: width,
+      child: IgnorePointer(
+        ignoring: editing,
+        child: ExcludeSemantics(
+          excluding: editing,
+          child: item.builder(context, width),
+        ),
       ),
     );
 
@@ -1205,6 +1212,44 @@ class _EditFace extends StatelessWidget {
                   width: size,
                   height: size,
                   child: growing(),
+                ),
+              if (editing && item.onResize != null)
+                Positioned(
+                  // On a row the control stays on the artwork, clear of the
+                  // title and details. On a small card it owns the top right.
+                  left: item.wide ? 44.sp : null,
+                  right: item.wide ? null : inset,
+                  top: inset,
+                  width: 64,
+                  height: 44,
+                  child: TextButton(
+                    key: ValueKey<String>('space_edit_resize_${item.key}'),
+                    onPressed: item.onResize,
+                    style: TextButton.styleFrom(
+                      foregroundColor: context.colors.textPrimary,
+                      backgroundColor: context.colors.surface,
+                      padding: const EdgeInsets.symmetric(horizontal: 4),
+                      minimumSize: const Size(64, 44),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      textStyle: const TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    child: Semantics(
+                      label:
+                          'Make ${item.label} ${item.wide ? 'small' : 'full row'}',
+                      excludeSemantics: true,
+                      child: Text(
+                        item.wide ? 'Small' : 'Full row',
+                        textScaler: MediaQuery.textScalerOf(
+                          context,
+                        ).clamp(maxScaleFactor: 1.3),
+                      ),
+                    ),
+                  ),
                 ),
             ],
           ),

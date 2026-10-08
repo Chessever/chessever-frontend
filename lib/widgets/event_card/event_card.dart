@@ -27,6 +27,7 @@ import 'package:chessever2/widgets/time_control_glyph.dart';
 import 'package:country_flags/country_flags.dart';
 import 'package:flutter/gestures.dart' show LongPressDownDetails;
 import 'package:flutter/material.dart';
+import 'package:chessever2/widgets/card_plate_layout.dart';
 import 'package:heroine/heroine.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:skeletonizer/skeletonizer.dart';
@@ -57,6 +58,9 @@ class EventCard extends ConsumerWidget {
   /// embed the card inside a vertical list must set this to true.
   final bool forceCompactLayout;
 
+  /// Artwork above details for a half-row My Space card.
+  final bool stacked;
+
   const EventCard({
     required this.tourEventCardModel,
     this.onTap,
@@ -66,6 +70,7 @@ class EventCard extends ConsumerWidget {
     this.spaceDraft,
     this.heroTagSuffix,
     this.forceCompactLayout = false,
+    this.stacked = false,
     super.key,
   });
 
@@ -100,6 +105,7 @@ class EventCard extends ConsumerWidget {
                 trailingWidget: trailingWidget,
                 heroTagSuffix: '${heroTagSuffix ?? 'card'}-menu',
                 forceCompactLayout: forceCompactLayout,
+                stacked: stacked,
               ),
             ),
         child: _buildCard(context, ref),
@@ -130,7 +136,7 @@ class EventCard extends ConsumerWidget {
         !nextRoundAsync.hasValue;
 
     final body =
-        (ResponsiveHelper.isTablet && !forceCompactLayout)
+        (ResponsiveHelper.isTablet && !forceCompactLayout && !stacked)
             ? _buildTabletGridCard(context, ref)
             : _buildPhoneCard(context, ref);
 
@@ -256,98 +262,92 @@ class EventCard extends ConsumerWidget {
         // Light theme adds a faint border + subtle drop shadow so the white
         // card pops off the light-grey scaffold (matches the settings-page
         // _SettingCard look). Dark theme is unchanged.
-        border:
-            context.isLightTheme
-                ? Border.all(
-                  color: context.colors.divider.withValues(alpha: 0.4),
-                )
-                : null,
-        boxShadow:
-            context.isLightTheme
-                ? [
-                  BoxShadow(
-                    color: context.colors.shadow,
-                    blurRadius: 8,
-                    offset: const Offset(0, 1),
-                  ),
-                ]
-                : null,
+        border: context.isLightTheme
+            ? Border.all(color: context.colors.divider.withValues(alpha: 0.4))
+            : null,
+        boxShadow: context.isLightTheme
+            ? [
+                BoxShadow(
+                  color: context.colors.shadow,
+                  blurRadius: 8,
+                  offset: const Offset(0, 1),
+                ),
+              ]
+            : null,
       ),
       padding: EdgeInsets.all(6.sp),
       child: ConstrainedBox(
         constraints: BoxConstraints(minHeight: imageHeight),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            // Event Image on the left
-            _EventImage(
-              event: tourEventCardModel,
-              heroTagSuffix: heroTagSuffix,
-            ),
-            SizedBox(width: 10.w),
+        child: CardPlateLayout(
+          stacked: stacked,
+          plate: _EventImage(
+            event: tourEventCardModel,
+            heroTagSuffix: heroTagSuffix,
+          ),
 
-            // Content in the middle — hard-capped at 4 lines total:
-            // title (2) + meta (1) + countdown/LIVE (1). Longer values
-            // ellipsize so card height stays uniform across the list.
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    tourEventCardModel.title,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: AppTypography.textSmMedium.copyWith(
-                      color: context.colors.textPrimary,
-                      // The type scale, like the meta line under it: the
-                      // same 14 on a phone, and on a tablet the compact
-                      // card keeps the phone's title-to-meta proportion.
-                      fontSize: 14.f,
-                      height: 1.2,
-                    ),
+          // Content in the middle — hard-capped at 4 lines total:
+          // title (2) + meta (1) + countdown/LIVE (1). Longer values
+          // ellipsize so card height stays uniform across the list.
+          details: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              CardPlateTitle(
+                stacked: stacked,
+                child: Text(
+                  tourEventCardModel.title,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppTypography.textSmMedium.copyWith(
+                    color: context.colors.textPrimary,
+                    // The type scale, like the meta line under it: the
+                    // same 14 on a phone, and on a tablet the compact
+                    // card keeps the phone's title-to-meta proportion.
+                    fontSize: 14.f,
+                    height: 1.2,
                   ),
-
-                  SizedBox(height: 4.h),
-
-                  // Meta (dates · time-control · location/ELO) on a single line.
-                  _MetaLine(
-                    dates: _compactDates(tourEventCardModel),
-                    timeControlSpan: _timeControlSpan(
-                      AppTypography.textXsMedium.copyWith(
-                        color: context.colors.textPrimaryMuted,
-                      ),
-                    ),
-                    showLocation:
-                        tourEventCardModel.eventSource ==
-                            EventSource.communityEvent &&
-                        tourEventCardModel.location != null &&
-                        tourEventCardModel.location!.isNotEmpty,
-                    location: tourEventCardModel.location,
-                    showElo:
-                        tourEventCardModel.eventSource !=
-                            EventSource.communityEvent &&
-                        tourEventCardModel.maxAvgElo > 0,
-                    elo: tourEventCardModel.maxAvgElo,
-                  ),
-                  _NextRoundLine(
-                    eventId: tourEventCardModel.id,
-                    category: tourEventCardModel.tourEventCategory,
-                  ),
-                ],
-              ),
-            ),
-
-            // Right-side action (favorite star by default). The player Games
-            // tab overrides this with a smaller collapse affordance so the
-            // title/meta line keeps more breathing room.
-            trailingWidget ??
-                _StarWidget(
-                  tourEventCardModel: tourEventCardModel,
-                  showHeartIndicator: showHeartIndicator,
-                  favoritePlayersSource: favoritePlayersSource,
                 ),
-          ],
+              ),
+
+              SizedBox(height: 4.h),
+
+              // Meta (dates · time-control · location/ELO) on a single line.
+              _MetaLine(
+                dates: _compactDates(tourEventCardModel),
+                timeControlSpan: _timeControlSpan(
+                  AppTypography.textXsMedium.copyWith(
+                    color: context.colors.textPrimaryMuted,
+                  ),
+                ),
+                showLocation:
+                    tourEventCardModel.eventSource ==
+                        EventSource.communityEvent &&
+                    tourEventCardModel.location != null &&
+                    tourEventCardModel.location!.isNotEmpty,
+                location: tourEventCardModel.location,
+                showElo:
+                    tourEventCardModel.eventSource !=
+                        EventSource.communityEvent &&
+                    tourEventCardModel.maxAvgElo > 0,
+                elo: tourEventCardModel.maxAvgElo,
+              ),
+              _NextRoundLine(
+                eventId: tourEventCardModel.id,
+                category: tourEventCardModel.tourEventCategory,
+              ),
+            ],
+          ),
+
+          // Right-side action (favorite star by default). The player Games
+          // tab overrides this with a smaller collapse affordance so the
+          // title/meta line keeps more breathing room.
+          trailing:
+              trailingWidget ??
+              _StarWidget(
+                tourEventCardModel: tourEventCardModel,
+                showHeartIndicator: showHeartIndicator,
+                favoritePlayersSource: favoritePlayersSource,
+              ),
         ),
       ),
     );
