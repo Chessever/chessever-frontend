@@ -28,8 +28,8 @@ class HubIllustration extends StatelessWidget {
                 builder: (context, constraints) {
                   // Both study sources are 3:1. Only their quiet left field
                   // can extend beyond a compact card; the subjects keep the
-                  // same size and top-right position in either card format.
-                  final height = 80.sp.clamp(0.0, constraints.maxHeight);
+                  // closer crop and top-right position in either card format.
+                  final height = 100.sp.clamp(0.0, constraints.maxHeight);
                   final width = height * 3;
                   return ClipRect(
                     child: OverflowBox(
