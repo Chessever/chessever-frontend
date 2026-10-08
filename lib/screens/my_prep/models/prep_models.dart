@@ -1,23 +1,30 @@
 import 'package:chessever2/repository/gamebase/gamebase_repository.dart'
     show GamebaseExternalPlayerSource;
 import 'package:flutter/foundation.dart';
+import 'package:chessever2/screens/gamebase/models/gamebase_player.dart';
 
 /// Where a Prep account's games come from.
 enum PrepSource {
+  chessever('ChessEver'),
   lichess('Lichess'),
-  chesscom('Chess.com');
+  chesscom('Chess.com'),
+  manual('PGN');
 
   const PrepSource(this.label);
   final String label;
+  bool get online => this == lichess || this == chesscom;
+  static const playerSources = [chessever, lichess, chesscom];
 
   GamebaseExternalPlayerSource get gamebase => switch (this) {
     PrepSource.lichess => GamebaseExternalPlayerSource.lichess,
     PrepSource.chesscom => GamebaseExternalPlayerSource.chesscom,
+    _ => throw StateError('$label is not an online account'),
   };
 
   String profileUrl(String username) => switch (this) {
     PrepSource.lichess => 'https://lichess.org/@/$username',
     PrepSource.chesscom => 'https://www.chess.com/member/$username',
+    _ => '',
   };
 
   static PrepSource? tryParse(Object? raw) {
@@ -63,6 +70,7 @@ enum PrepTimeControl {
   static List<PrepTimeControl> offeredBy(PrepSource source) => switch (source) {
     PrepSource.lichess => values,
     PrepSource.chesscom => const [bullet, blitz, rapid, correspondence],
+    _ => const [],
   };
 }
 
@@ -73,7 +81,8 @@ enum PrepDateRange {
   months3('Last 3 months', 3),
   year('Last 12 months', 12),
   years3('Last 3 years', 36),
-  all('All time', null);
+  all('All time', null),
+  custom('Custom dates', null);
 
   const PrepDateRange(this.label, this.months);
   final String label;
@@ -100,14 +109,34 @@ class PrepDownloadPreferences {
   const PrepDownloadPreferences({
     this.timeControls = const {},
     this.range = PrepDateRange.year,
+    this.fromDate,
+    this.toDate,
   });
 
   final Set<PrepTimeControl> timeControls;
   final PrepDateRange range;
+  final DateTime? fromDate;
+  final DateTime? toDate;
 
   bool get isFiltered => timeControls.isNotEmpty || range != PrepDateRange.all;
 
-  int? fromMs(DateTime now) => range.fromDate(now)?.millisecondsSinceEpoch;
+  int? fromMs(DateTime now) =>
+      (range == PrepDateRange.custom
+              ? _calendarDate(fromDate)
+              : range.fromDate(now))
+          ?.millisecondsSinceEpoch;
+  int? get untilMs => range == PrepDateRange.custom && toDate != null
+      ? _calendarDate(
+          toDate,
+        )!.add(const Duration(days: 1)).millisecondsSinceEpoch
+      : null;
+  String? get validationError =>
+      range == PrepDateRange.custom &&
+          fromDate != null &&
+          toDate != null &&
+          _calendarDate(fromDate)!.isAfter(_calendarDate(toDate)!)
+      ? 'The end date must be on or after the starting date.'
+      : null;
 
   /// A stable key for the selection the server will see this month.
   String scopeKey(DateTime now) {
@@ -115,7 +144,8 @@ class PrepDownloadPreferences {
         .where(timeControls.contains)
         .map((t) => t.name)
         .join(',');
-    return '${clocks.isEmpty ? 'all' : clocks}|${fromMs(now) ?? 'all'}';
+    return '${clocks.isEmpty ? 'all' : clocks}|${fromMs(now) ?? 'all'}'
+        '${untilMs == null ? '' : '|$untilMs'}';
   }
 
   String describe(PrepSource? source) {
@@ -125,15 +155,19 @@ class PrepDownloadPreferences {
               .where(timeControls.contains)
               .map((t) => t.labelFor(source))
               .join(', ');
-    return '$clocks · ${range.label}';
+    return '$clocks · ${range == PrepDateRange.custom ? '${fromDate == null ? 'Any start' : prepDateText(fromDate!)} to ${toDate == null ? 'today' : prepDateText(toDate!)}' : range.label}';
   }
 
   PrepDownloadPreferences copyWith({
     Set<PrepTimeControl>? timeControls,
     PrepDateRange? range,
+    DateTime? fromDate,
+    DateTime? toDate,
   }) => PrepDownloadPreferences(
     timeControls: timeControls ?? this.timeControls,
     range: range ?? this.range,
+    fromDate: fromDate ?? this.fromDate,
+    toDate: toDate ?? this.toDate,
   );
 
   Map<String, Object?> toJson() => {
@@ -142,6 +176,8 @@ class PrepDownloadPreferences {
         .map((t) => t.name)
         .toList(),
     'range': range.name,
+    'fromDate': fromDate == null ? null : prepDateText(fromDate!),
+    'toDate': toDate == null ? null : prepDateText(toDate!),
   };
 
   static PrepDownloadPreferences fromJson(Object? raw) {
@@ -153,6 +189,8 @@ class PrepDownloadPreferences {
           if (clocks is List && clocks.contains(t.name)) t,
       },
       range: PrepDateRange.tryParse(raw['range']),
+      fromDate: _prepDate(raw['fromDate']),
+      toDate: _prepDate(raw['toDate']),
     );
   }
 
@@ -160,13 +198,20 @@ class PrepDownloadPreferences {
   bool operator ==(Object other) =>
       other is PrepDownloadPreferences &&
       setEquals(other.timeControls, timeControls) &&
-      other.range == range;
+      other.range == range &&
+      _calendarDate(other.fromDate) == _calendarDate(fromDate) &&
+      _calendarDate(other.toDate) == _calendarDate(toDate);
 
   @override
-  int get hashCode => Object.hash(Object.hashAllUnordered(timeControls), range);
+  int get hashCode => Object.hash(
+    Object.hashAllUnordered(timeControls),
+    range,
+    _calendarDate(fromDate),
+    _calendarDate(toDate),
+  );
 }
 
-/// One Lichess or Chess.com account inside a profile.
+/// A database player, online account or imported PGN inside a profile.
 @immutable
 class PrepAccount {
   const PrepAccount({
@@ -185,6 +230,9 @@ class PrepAccount {
     this.cloudDatabaseId,
     this.cloudSyncedTs,
     this.cloudSyncedCount = 0,
+    this.externalId,
+    this.fideId,
+    this.playerAliases = const [],
   });
 
   final PrepSource source;
@@ -193,6 +241,26 @@ class PrepAccount {
   final String? avatarUrl;
   final String? title;
   final String? country;
+  final String? externalId;
+  final String? fideId;
+  final List<String> playerAliases;
+
+  factory PrepAccount.fromPlayer(GamebasePlayer player) => PrepAccount(
+    source: PrepSource.chessever,
+    username: player.name,
+    externalId: player.id,
+    fideId: (int.tryParse(player.fideId) ?? 0) > 0 ? player.fideId : null,
+    displayName: player.displayName,
+    title: player.title,
+    country: player.fed,
+    playerAliases: [player.name, player.displayName],
+    ratings: {
+      if (player.ratingClassical case final r?) 'classical': r,
+      if (player.ratingRapid case final r?) 'rapid': r,
+      if (player.ratingBlitz case final r?) 'blitz': r,
+    },
+    preferences: const PrepDownloadPreferences(range: PrepDateRange.all),
+  );
 
   /// Rating per provider category name (`blitz`, `rapid`, `bullet`, ...).
   final Map<String, int> ratings;
@@ -215,12 +283,15 @@ class PrepAccount {
   final int cloudSyncedCount;
 
   /// Case-insensitive identity, since both providers treat names that way.
-  String get key => '${source.name}:${username.toLowerCase()}';
+  String get key => '${source.name}:${(externalId ?? username).toLowerCase()}';
 
   String get profileUrl => source.profileUrl(username);
 
   int? get bestRating {
-    for (final key in const ['blitz', 'rapid', 'bullet', 'classical']) {
+    for (final key
+        in source == PrepSource.chessever
+            ? const ['classical', 'rapid', 'blitz']
+            : const ['blitz', 'rapid', 'bullet', 'classical']) {
       final value = ratings[key];
       if (value != null && value > 0) return value;
     }
@@ -243,6 +314,7 @@ class PrepAccount {
     int? cloudSyncedTs,
     int? cloudSyncedCount,
     bool clearCloud = false,
+    List<String>? playerAliases,
   }) => PrepAccount(
     source: source,
     username: username,
@@ -250,6 +322,9 @@ class PrepAccount {
     avatarUrl: avatarUrl ?? this.avatarUrl,
     title: title ?? this.title,
     country: country ?? this.country,
+    externalId: externalId,
+    fideId: fideId,
+    playerAliases: playerAliases ?? this.playerAliases,
     ratings: ratings ?? this.ratings,
     preferences: preferences ?? this.preferences,
     lastSyncAtMs: lastSyncAtMs ?? this.lastSyncAtMs,
@@ -272,6 +347,9 @@ class PrepAccount {
     'avatarUrl': avatarUrl,
     'title': title,
     'country': country,
+    'externalId': externalId,
+    'fideId': fideId,
+    'playerAliases': playerAliases,
     'ratings': ratings,
     'preferences': preferences.toJson(),
     'lastSyncAtMs': lastSyncAtMs,
@@ -303,6 +381,11 @@ class PrepAccount {
       avatarUrl: _text(raw['avatarUrl']),
       title: _text(raw['title']),
       country: _text(raw['country']),
+      externalId: _text(raw['externalId']),
+      fideId: _text(raw['fideId']),
+      playerAliases: raw['playerAliases'] is List
+          ? (raw['playerAliases'] as List).whereType<String>().toList()
+          : const [],
       ratings: ratings,
       preferences: PrepDownloadPreferences.fromJson(raw['preferences']),
       lastSyncAtMs: raw['lastSyncAtMs'] is int
@@ -323,7 +406,7 @@ class PrepAccount {
 }
 
 /// A person being prepared: the user themself (My games) or an opponent,
-/// with one or more online accounts whose games are read together.
+/// with optional sources whose games are read together.
 @immutable
 class PrepProfile {
   const PrepProfile({
@@ -334,6 +417,7 @@ class PrepProfile {
     this.accounts = const [],
     this.favoriteId,
     this.cloudFolderId,
+    this.fideIdentity,
   });
 
   final String id;
@@ -341,6 +425,9 @@ class PrepProfile {
   final String name;
   final int createdAtMs;
   final List<PrepAccount> accounts;
+
+  /// Retained after detaching a database source, as on desktop Prepare.
+  final String? fideIdentity;
 
   /// Set when the profile was added from Favorites.
   final String? favoriteId;
@@ -350,8 +437,14 @@ class PrepProfile {
   final String? cloudFolderId;
 
   bool get savedToCloud => cloudFolderId != null;
+  String? get fideId =>
+      fideIdentity ??
+      accounts.map((a) => a.fideId).whereType<String>().firstOrNull;
+  PrepAccount? get databaseAccount =>
+      accounts.where((a) => a.source == PrepSource.chessever).firstOrNull;
 
   String? get title {
+    if (databaseAccount?.title != null) return databaseAccount!.title;
     for (final account in accounts) {
       final title = account.title;
       if (title != null && title.isNotEmpty) return title;
@@ -368,6 +461,7 @@ class PrepProfile {
   }
 
   String? get country {
+    if (databaseAccount?.country != null) return databaseAccount!.country;
     for (final account in accounts) {
       final country = account.country;
       if (country != null && country.isNotEmpty) return country;
@@ -389,6 +483,8 @@ class PrepProfile {
   /// Usernames that identify this person in a game's White/Black tags.
   Set<String> get aliases => {
     for (final a in accounts) a.username.toLowerCase(),
+    for (final a in accounts)
+      for (final alias in a.playerAliases) alias.trim().toLowerCase(),
   };
 
   PrepProfile copyWith({
@@ -403,14 +499,15 @@ class PrepProfile {
     name: name ?? this.name,
     createdAtMs: createdAtMs,
     accounts: accounts ?? this.accounts,
+    fideIdentity:
+        fideId ??
+        accounts?.map((a) => a.fideId).whereType<String>().firstOrNull,
     favoriteId: favoriteId,
     cloudFolderId: clearCloud ? null : (cloudFolderId ?? this.cloudFolderId),
   );
 
   PrepProfile replaceAccount(PrepAccount account) => copyWith(
-    accounts: [
-      for (final a in accounts) a.key == account.key ? account : a,
-    ],
+    accounts: [for (final a in accounts) a.key == account.key ? account : a],
   );
 
   Map<String, Object?> toJson() => {
@@ -419,6 +516,7 @@ class PrepProfile {
     'name': name,
     'createdAtMs': createdAtMs,
     'accounts': [for (final a in accounts) a.toJson()],
+    'fideIdentity': fideId,
     'favoriteId': favoriteId,
     'cloudFolderId': cloudFolderId,
   };
@@ -433,6 +531,7 @@ class PrepProfile {
       id: id,
       kind: PrepKind.tryParse(raw['kind']),
       name: name,
+      fideIdentity: _text(raw['fideIdentity']),
       createdAtMs: raw['createdAtMs'] is int ? raw['createdAtMs'] as int : 0,
       accounts: [
         if (rawAccounts is List)
@@ -448,3 +547,15 @@ String? _text(Object? raw) {
   final text = raw?.toString().trim();
   return text == null || text.isEmpty ? null : text;
 }
+
+String prepDateText(DateTime date) =>
+    '${date.year.toString().padLeft(4, '0')}-'
+    '${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+
+DateTime? _prepDate(Object? value) {
+  final parsed = DateTime.tryParse('${value}T00:00:00Z');
+  return parsed != null && prepDateText(parsed) == value ? parsed : null;
+}
+
+DateTime? _calendarDate(DateTime? value) =>
+    value == null ? null : DateTime.utc(value.year, value.month, value.day);

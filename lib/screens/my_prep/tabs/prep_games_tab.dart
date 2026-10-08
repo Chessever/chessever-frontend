@@ -133,14 +133,54 @@ class _PrepGamesTabState extends ConsumerState<PrepGamesTab>
               children: [
                 PrepSidePicker(
                   side: widget.filter.side,
-                  onChanged: (side) =>
-                      widget.onFilterChanged(widget.filter.copyWith(side: side)),
+                  onChanged: (side) => widget.onFilterChanged(
+                    widget.filter.copyWith(side: side),
+                  ),
                 ),
                 SizedBox(height: 10.h),
+                if (widget.filter.hasFacets) ...[
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          [
+                            if (widget.filter.outcome case final outcome?)
+                              outcome.name,
+                            if (widget.filter.year case final year?) '$year',
+                            if (widget.filter.eco case final eco?) eco,
+                            if (widget.filter.opening case final opening?)
+                              opening,
+                            if (widget.filter.opponent case final opponent?)
+                              opponent,
+                          ].join(' · '),
+                          style: AppTypography.textXsRegular.copyWith(
+                            color: colors.textSecondary,
+                          ),
+                        ),
+                      ),
+                      TextButton(
+                        onPressed: () => widget.onFilterChanged(
+                          widget.filter.copyWith(
+                            outcome: null,
+                            year: null,
+                            eco: null,
+                            opening: null,
+                            opponent: null,
+                          ),
+                        ),
+                        child: const Text('Clear filters'),
+                      ),
+                    ],
+                  ),
+                ],
                 _Search(controller: _search, onChanged: () => setState(() {})),
                 SizedBox(height: 10.h),
                 Text(
-                  list.length == 1 ? '1 game' : '${list.length} games',
+                  list.isEmpty
+                      ? 'No games match these filters.'
+                      : list.length == 1
+                      ? '1 game'
+                      : '${list.length} games',
                   style: AppTypography.textXsRegular.copyWith(
                     color: colors.textSecondary,
                   ),

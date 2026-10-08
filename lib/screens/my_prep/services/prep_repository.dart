@@ -4,13 +4,16 @@ import 'dart:io';
 
 import 'package:chessever2/repository/gamebase/gamebase_repository.dart';
 import 'package:chessever2/screens/my_prep/models/prep_models.dart';
+import 'package:chessever2/screens/gamebase/models/gamebase_player.dart';
+import 'package:chessever2/services/game_tree/game_tree_codec.dart';
 import 'package:crypto/crypto.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
 
-const _userAgent = 'ChessEverMobile/1.0 (https://chessever.com; support@chessever.com)';
+const _userAgent =
+    'ChessEverMobile/1.0 (https://chessever.com; support@chessever.com)';
 
 /// A lookup or download failure worth showing the reader as written.
 class PrepException implements Exception {
@@ -32,6 +35,29 @@ class PrepRepository {
 
   final GamebaseRepository _gamebase;
   final http.Client _client;
+  void dispose() => _client.close();
+
+  Future<List<GamebasePlayer>> searchPlayers(String query) {
+    final clean = query.trim();
+    if (clean.length < 2) return Future.value(const []);
+    return _gamebase.getPlayers(
+      name: RegExp(r'^\d+$').hasMatch(clean) ? null : clean,
+      fideId: RegExp(r'^\d+$').hasMatch(clean) ? clean : null,
+      pageSize: 20,
+    );
+  }
+
+  Future<PrepAccount> refreshDetails(PrepAccount account) async {
+    if (account.source.online) return lookup(account.source, account.username);
+    if (account.source == PrepSource.chessever) {
+      final player = await _gamebase.getPlayerById(account.externalId!);
+      if (player == null) {
+        throw const PrepException('This database player is unavailable.');
+      }
+      return PrepAccount.fromPlayer(player);
+    }
+    return account;
+  }
 
   /// How long a cold account may take to prepare before we give up. The
   /// server keeps preparing; a later sync picks the snapshot up.
@@ -43,6 +69,9 @@ class PrepRepository {
       switch (source) {
         PrepSource.lichess => _lookupLichess(username),
         PrepSource.chesscom => _lookupChessCom(username),
+        _ => throw const PrepException(
+          'Select a player from the database search.',
+        ),
       };
 
   Future<PrepAccount> _lookupLichess(String username) async {
@@ -96,7 +125,9 @@ class PrepRepository {
     }
     _check(response, 'Chess.com');
     final profile = jsonDecode(response.body);
-    if (profile is! Map) throw const PrepException('Chess.com sent no profile.');
+    if (profile is! Map) {
+      throw const PrepException('Chess.com sent no profile.');
+    }
     final status = profile['status']?.toString() ?? '';
     if (status.startsWith('closed')) {
       throw PrepException('The Chess.com account "$clean" is closed.');
@@ -156,7 +187,9 @@ class PrepRepository {
     } on TimeoutException {
       throw const PrepException('The lookup timed out. Check your connection.');
     } on SocketException {
-      throw const PrepException('No connection. Try again when you are online.');
+      throw const PrepException(
+        'No connection. Try again when you are online.',
+      );
     }
   }
 
@@ -180,12 +213,43 @@ class PrepRepository {
     bool frequent = false,
     PrepProgress? onProgress,
     CancelToken? cancelToken,
+    bool reinstall = false,
   }) async {
+    if (account.source == PrepSource.manual) return account;
+    if (account.source == PrepSource.chessever) {
+      onProgress?.call('Downloading ChessEver games…');
+      final export = await _gamebase.getPlayerGamesPgn(
+        playerId: account.externalId!,
+        fideId: account.fideId,
+        cancelToken: cancelToken,
+      );
+      if (export == null ||
+          (export.pgn.trim().isEmpty && export.gameCount > 0)) {
+        throw const PrepException(
+          'ChessEver game export is unavailable. Try again.',
+        );
+      }
+      if (cancelToken?.isCancelled ?? false) throw cancelToken!.cancelError!;
+      onProgress?.call('Saving games…');
+      final file = await gamesFile(account);
+      final count = await compute(
+        _writeGames,
+        _WriteRequest(path: file.path, incoming: export.pgn, merge: false),
+      );
+      return account.copyWith(
+        lastSyncAtMs: DateTime.now().millisecondsSinceEpoch,
+        syncedScope: 'chessever:all',
+        gameCount: count,
+        clearError: true,
+      );
+    }
     final now = DateTime.now();
     final prefs = account.preferences;
+    if (prefs.validationError case final error?) throw PrepException(error);
     final scope = prefs.scopeKey(now);
     final file = await gamesFile(account);
-    final sameScope = account.syncedScope == scope && await file.exists();
+    final sameScope =
+        !reinstall && account.syncedScope == scope && await file.exists();
     final since = sameScope ? account.lastSyncAtMs : null;
 
     onProgress?.call('Checking ${account.source.label}…');
@@ -200,8 +264,11 @@ class PrepRepository {
           refresh: refresh,
           // An overlapping cursor, so a game finishing during the last sync
           // still arrives; duplicates are dropped on merge.
-          sinceMs: since == null ? null : since - const Duration(hours: 1).inMilliseconds,
+          sinceMs: since == null
+              ? null
+              : since - const Duration(hours: 1).inMilliseconds,
           dateFromMs: prefs.fromMs(now),
+          untilMs: prefs.untilMs,
           timeControls: {for (final t in prefs.timeControls) t.name},
           cadence: frequent ? 'frequent' : null,
           cancelToken: cancelToken,
@@ -262,16 +329,13 @@ class PrepRepository {
     }
 
     onProgress?.call('Saving games…');
+    if (cancelToken?.isCancelled ?? false) throw cancelToken!.cancelError!;
     // A delta, or a full snapshot of the same selection, only ever adds
     // games: they are appended so every stored game keeps its place in the
     // file, which is what lets the opening index read just the new tail.
     final count = await compute(
       _writeGames,
-      _WriteRequest(
-        path: file.path,
-        incoming: export.pgn,
-        merge: sameScope,
-      ),
+      _WriteRequest(path: file.path, incoming: export.pgn, merge: sameScope),
     );
     return account.copyWith(
       lastSyncAtMs: now.millisecondsSinceEpoch,
@@ -342,9 +406,7 @@ String _cleanUsername(String raw) {
   if (link != null) clean = link.group(1)!;
   clean = clean.replaceFirst(RegExp(r'^@'), '');
   if (!RegExp(r'^[A-Za-z0-9_-]{2,30}$').hasMatch(clean)) {
-    throw const PrepException(
-      'Usernames use letters, numbers, - and _ only.',
-    );
+    throw const PrepException('Usernames use letters, numbers, - and _ only.');
   }
   return clean;
 }
@@ -386,7 +448,6 @@ int _writeGames(_WriteRequest request) => writePrepGames(
   merge: request.merge,
 );
 
-@visibleForTesting
 int writePrepGames({
   required String path,
   required String incoming,
@@ -398,8 +459,8 @@ int writePrepGames({
     final seen = <String>{};
     final unique = <String>[];
     for (final game in games) {
-      final key = prepGameKey(game);
-      if (key == null || seen.add(key)) unique.add(game);
+      final key = _snapshotGameKey(game);
+      if (seen.add(key)) unique.add(game);
     }
     _atomicWrite(file, unique.join('\n\n'));
     return unique.length;
@@ -431,6 +492,64 @@ int writePrepGames({
 bool _isProviderUrl(String url) =>
     url.contains('lichess.org/') || url.contains('chess.com/');
 
+/// Exports Combined one source at a time. Run off the UI isolate.
+int writeCombinedPrepGames({
+  required String path,
+  required List<String> sources,
+}) {
+  final temporary = File('$path.tmp');
+  final output = temporary.openSync(mode: FileMode.write);
+  final seen = <String>{};
+  try {
+    for (final sourcePath in sources) {
+      final source = File(sourcePath);
+      if (!source.existsSync()) continue;
+      for (final pgn in splitPrepPgn(source.readAsStringSync())) {
+        if (!seen.add(_snapshotGameKey(pgn))) continue;
+        output.writeStringSync('${seen.length == 1 ? '' : '\n\n'}$pgn');
+      }
+    }
+    output.flushSync();
+  } finally {
+    output.closeSync();
+  }
+  temporary.renameSync(path);
+  return seen.length;
+}
+
+String _snapshotGameKey(String game) =>
+    prepGameKey(game) ??
+    sha1
+        .convert(utf8.encode(game.replaceAll(RegExp(r'\s+'), ' ').trim()))
+        .toString();
+
+/// An imported player source contains playable games for the stated PGN name.
+int writeImportedPrepGames({
+  required String path,
+  required String pgn,
+  required String playerName,
+}) {
+  final alias = playerName.trim().toLowerCase();
+  final matching = splitPrepPgn(pgn).where((game) {
+    final scan = scanPgnGame(game);
+    return scan.sans.isNotEmpty &&
+        [
+          scan.tag('White'),
+          scan.tag('Black'),
+        ].any((name) => name?.trim().toLowerCase() == alias);
+  }).toList();
+  if (matching.isEmpty) {
+    throw PrepException(
+      'No playable games match "$playerName". Use the player name from the PGN.',
+    );
+  }
+  return writePrepGames(
+    path: path,
+    incoming: matching.join('\n\n'),
+    merge: false,
+  );
+}
+
 void _atomicWrite(File file, String text) {
   final temp = File('${file.path}.tmp');
   temp.writeAsStringSync(text, flush: true);
@@ -443,7 +562,10 @@ final RegExp _eventStart = RegExp(r'^\[Event\s', multiLine: true);
 List<String> splitPrepPgn(String text) {
   final normalized = text.replaceAll('\r\n', '\n').trim();
   if (normalized.isEmpty) return const [];
-  final starts = _eventStart.allMatches(normalized).map((m) => m.start).toList();
+  final starts = _eventStart
+      .allMatches(normalized)
+      .map((m) => m.start)
+      .toList();
   if (starts.isEmpty) return [normalized];
   return [
     for (var i = 0; i < starts.length; i++)
@@ -453,12 +575,18 @@ List<String> splitPrepPgn(String text) {
   ];
 }
 
-final RegExp _siteTag = RegExp(r'^\[(?:Site|Link)\s+"([^"]+)"\]', multiLine: true);
+final RegExp _siteTag = RegExp(
+  r'^\[(?:Site|Link)\s+"([^"]+)"\]',
+  multiLine: true,
+);
 
 /// A provider game's stable identity: its URL.
 String? prepGameKey(String pgn) {
-  final match = _siteTag.allMatches(pgn).map((m) => m.group(1)!).where(
-    (url) => url.contains('lichess.org/') || url.contains('chess.com/'),
-  );
+  final match = _siteTag
+      .allMatches(pgn)
+      .map((m) => m.group(1)!)
+      .where(
+        (url) => url.contains('lichess.org/') || url.contains('chess.com/'),
+      );
   return match.isEmpty ? null : match.last;
 }

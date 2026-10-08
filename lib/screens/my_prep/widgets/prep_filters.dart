@@ -1,5 +1,7 @@
+import 'dart:math' as math;
 import 'package:chessever2/screens/my_prep/models/prep_models.dart';
 import 'package:chessever2/screens/my_prep/services/prep_analysis.dart';
+import 'package:chessever2/screens/my_prep/services/prep_repository.dart';
 import 'package:chessever2/screens/my_prep/widgets/prep_common.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/app_typography.dart';
@@ -11,38 +13,131 @@ import 'package:flutter/material.dart';
 /// Which side the prepared player had.
 enum PrepSide { both, white, black }
 
+/// Desktop's date windows anchor to the latest downloaded game, so historical
+/// players can be studied without an empty window relative to today's date.
+enum PrepStatsWindow {
+  all('All dates', null),
+  year('1 year', 365),
+  sixMonths('6 months', 180),
+  ninetyDays('90 days', 90),
+  thirtyDays('30 days', 30);
+
+  const PrepStatsWindow(this.label, this.days);
+  final String label;
+  final int? days;
+}
+
 /// The slice of games every tab of a profile shows.
 @immutable
 class PrepFilter {
-  const PrepFilter({this.source, this.speed, this.side = PrepSide.both});
+  const PrepFilter({
+    this.source,
+    this.speed,
+    this.side = PrepSide.both,
+    this.accountKey,
+    this.accountFile,
+    this.outcome,
+    this.year,
+    this.eco,
+    this.opening,
+    this.opponent,
+    this.window = PrepStatsWindow.all,
+  });
 
   final PrepSource? source;
   final PrepTimeControl? speed;
   final PrepSide side;
+  final String? accountKey;
+  final String? accountFile;
+  final PrepOutcome? outcome;
+  final int? year;
+  final String? eco;
+  final String? opening;
+  final String? opponent;
+  final PrepStatsWindow window;
+
+  bool get hasFacets =>
+      outcome != null ||
+      year != null ||
+      eco != null ||
+      opening != null ||
+      opponent != null;
 
   PrepFilter copyWith({
     Object? source = _keep,
     Object? speed = _keep,
     PrepSide? side,
+    Object? accountKey = _keep,
+    Object? accountFile = _keep,
+    Object? outcome = _keep,
+    Object? year = _keep,
+    Object? eco = _keep,
+    Object? opening = _keep,
+    Object? opponent = _keep,
+    PrepStatsWindow? window,
   }) => PrepFilter(
     source: identical(source, _keep) ? this.source : source as PrepSource?,
     speed: identical(speed, _keep) ? this.speed : speed as PrepTimeControl?,
     side: side ?? this.side,
+    accountKey: identical(accountKey, _keep)
+        ? this.accountKey
+        : accountKey as String?,
+    accountFile: identical(accountFile, _keep)
+        ? this.accountFile
+        : accountFile as String?,
+    outcome: identical(outcome, _keep) ? this.outcome : outcome as PrepOutcome?,
+    year: identical(year, _keep) ? this.year : year as int?,
+    eco: identical(eco, _keep) ? this.eco : eco as String?,
+    opening: identical(opening, _keep) ? this.opening : opening as String?,
+    opponent: identical(opponent, _keep) ? this.opponent : opponent as String?,
+    window: window ?? this.window,
   );
 
-  bool matches(PrepGame g) =>
+  bool matches(PrepGame g, {DateTime? since}) =>
       (source == null || g.source == source) &&
       (speed == null || g.speed == speed) &&
+      (accountFile == null || g.sourcePath.endsWith(accountFile!)) &&
+      (outcome == null || g.outcome == outcome) &&
+      (year == null || g.date?.year == year) &&
+      (eco == null || g.eco == eco) &&
+      (opening == null || g.openingFamily == opening) &&
+      (since == null || (g.date != null && !g.date!.isBefore(since))) &&
+      (opponent == null ||
+          g.opponent.toLowerCase() == opponent!.toLowerCase()) &&
       switch (side) {
         PrepSide.both => true,
         PrepSide.white => g.playerIsWhite == true,
         PrepSide.black => g.playerIsWhite == false,
       };
 
-  List<PrepGame> apply(List<PrepGame> games) =>
-      source == null && speed == null && side == PrepSide.both
-      ? games
-      : [for (final g in games) if (matches(g)) g];
+  List<PrepGame> apply(List<PrepGame> games) {
+    if (source == null &&
+        accountFile == null &&
+        speed == null &&
+        side == PrepSide.both &&
+        !hasFacets &&
+        window == PrepStatsWindow.all) {
+      return games;
+    }
+    DateTime? latest;
+    if (window.days != null) {
+      for (final game in games) {
+        if (source != null && game.source != source) continue;
+        if (accountFile != null && !game.sourcePath.endsWith(accountFile!)) {
+          continue;
+        }
+        final date = game.date;
+        if (date != null && (latest == null || date.isAfter(latest))) {
+          latest = date;
+        }
+      }
+    }
+    final since = latest?.subtract(Duration(days: window.days!));
+    return [
+      for (final game in games)
+        if (matches(game, since: since)) game,
+    ];
+  }
 }
 
 const Object _keep = Object();
@@ -72,26 +167,25 @@ class PrepFilterBar extends StatelessWidget {
     }
     final orderedSpeeds = PrepTimeControl.values.where(speeds.containsKey);
     final single = sources.length == 1 ? sources.first : null;
-    if (games.isEmpty) return SizedBox(height: 8.h);
+    if (games.isEmpty && profile.accounts.length < 2) {
+      return SizedBox(height: 8.h);
+    }
     final gutter = ResponsiveHelper.adaptive(phone: 16.w, tablet: 24.w);
     return SizedBox(
-      height: 52.h,
+      height:
+          math.max(44, MediaQuery.textScalerOf(context).scale(14) * 1.3 + 20) +
+          16,
       child: ListView(
         scrollDirection: Axis.horizontal,
-        padding: EdgeInsets.fromLTRB(gutter, 10.h, gutter, 6.h),
+        padding: EdgeInsets.fromLTRB(gutter, 8, gutter, 8),
         children: [
-          if (sources.length > 1) ...[
-            for (final source in PrepSource.values.where(sources.contains))
-              PrepChip(
-                leading: PrepSourceMark(source: source, size: 14.sp),
-                label: source.label,
-                selected: filter.source == source,
-                onTap: () => onChanged(
-                  filter.copyWith(source: filter.source == source ? null : source),
-                ),
-              ),
-            _Divider(),
-          ],
+          if (profile.accounts.length > 1)
+            _SourcePicker(
+              profile: profile,
+              filter: filter,
+              onChanged: onChanged,
+            ),
+          _WindowPicker(filter: filter, onChanged: onChanged),
           PrepChip(
             label: 'All games',
             selected: filter.speed == null,
@@ -112,12 +206,115 @@ class PrepFilterBar extends StatelessWidget {
   }
 }
 
-class _Divider extends StatelessWidget {
+class _WindowPicker extends StatelessWidget {
+  const _WindowPicker({required this.filter, required this.onChanged});
+  final PrepFilter filter;
+  final ValueChanged<PrepFilter> onChanged;
+
   @override
-  Widget build(BuildContext context) => Padding(
-    padding: EdgeInsets.symmetric(horizontal: 6.w, vertical: 6.h),
-    child: VerticalDivider(width: 1, color: context.colors.divider),
+  Widget build(BuildContext context) => PopupMenuButton<PrepStatsWindow>(
+    tooltip: 'Choose dates relative to the latest game',
+    initialValue: filter.window,
+    onSelected: (window) => onChanged(filter.copyWith(window: window)),
+    itemBuilder: (_) => [
+      for (final window in PrepStatsWindow.values)
+        PopupMenuItem(value: window, child: Text(window.label)),
+    ],
+    child: Padding(
+      padding: EdgeInsets.symmetric(horizontal: 8.w),
+      child: Row(
+        children: [
+          Text(
+            filter.window.label,
+            style: AppTypography.textSmMedium.copyWith(
+              color: context.colors.textPrimary,
+            ),
+          ),
+          Icon(
+            Icons.expand_more_rounded,
+            color: context.colors.textSecondary,
+            size: 18,
+          ),
+        ],
+      ),
+    ),
   );
+}
+
+class _SourcePicker extends StatelessWidget {
+  const _SourcePicker({
+    required this.profile,
+    required this.filter,
+    required this.onChanged,
+  });
+  final PrepProfile profile;
+  final PrepFilter filter;
+  final ValueChanged<PrepFilter> onChanged;
+  @override
+  Widget build(BuildContext context) {
+    final selected = profile.accounts
+        .where((a) => a.key == filter.accountKey)
+        .firstOrNull;
+    return PopupMenuButton<String>(
+      tooltip: 'Choose source database',
+      initialValue: selected?.key ?? 'combined',
+      onSelected: (key) {
+        final account = profile.accounts.where((a) => a.key == key).firstOrNull;
+        onChanged(
+          filter.copyWith(
+            source: account?.source,
+            accountKey: account?.key,
+            accountFile: account == null
+                ? null
+                : PrepRepository.gamesFileName(account),
+          ),
+        );
+      },
+      itemBuilder: (_) => [
+        const PopupMenuItem(value: 'combined', child: Text('Combined')),
+        for (final account in profile.accounts)
+          PopupMenuItem(
+            value: account.key,
+            child: Row(
+              children: [
+                PrepSourceMark(source: account.source, size: 18),
+                const SizedBox(width: 8),
+                Flexible(
+                  child: Text(
+                    '${account.source.label} · ${account.displayName ?? account.username}',
+                  ),
+                ),
+              ],
+            ),
+          ),
+      ],
+      child: Padding(
+        padding: EdgeInsets.symmetric(horizontal: 8.w),
+        child: Row(
+          children: [
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 210),
+              child: Text(
+                selected == null
+                    ? filter.source?.label ?? 'Combined'
+                    : '${selected.source.label} · ${selected.displayName ?? selected.username}',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: AppTypography.textSmMedium.copyWith(
+                  color: context.colors.textPrimary,
+                ),
+              ),
+            ),
+            Icon(
+              Icons.expand_more_rounded,
+              color: context.colors.textSecondary,
+              size: 18,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 /// A compact toggle chip; filled ink when on.
@@ -155,7 +352,7 @@ class PrepChip extends StatelessWidget {
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 160),
             curve: Curves.easeOut,
-            constraints: BoxConstraints(minHeight: 36.h),
+            constraints: const BoxConstraints(minHeight: 44),
             padding: EdgeInsets.symmetric(horizontal: 12.w),
             alignment: Alignment.center,
             decoration: BoxDecoration(

@@ -24,9 +24,11 @@ const Duration kPrepMineRefreshEvery = Duration(hours: 8);
 /// checks for new ones.
 const Duration kPrepOthersRefreshEvery = Duration(hours: 24);
 
-final prepRepositoryProvider = Provider<PrepRepository>(
-  (ref) => PrepRepository(ref.read(gamebaseRepositoryProvider)),
-);
+final prepRepositoryProvider = Provider<PrepRepository>((ref) {
+  final repo = PrepRepository(ref.read(gamebaseRepositoryProvider));
+  ref.onDispose(repo.dispose);
+  return repo;
+});
 
 // ------------------------------------------------------------------ store
 
@@ -58,13 +60,17 @@ final prepProfilesOfKindProvider = Provider.autoDispose
       ];
     });
 
-class PrepProfilesNotifier extends StateNotifier<AsyncValue<List<PrepProfile>>> {
+class PrepProfilesNotifier
+    extends StateNotifier<AsyncValue<List<PrepProfile>>> {
   PrepProfilesNotifier(this._ref) : super(const AsyncValue.loading()) {
     unawaited(_load());
   }
 
   final Ref _ref;
   Future<void> _writing = Future.value();
+
+  @visibleForTesting
+  Future<void> debugDrainWrites() => _writing;
 
   List<PrepProfile> get _profiles => state.valueOrNull ?? const [];
 
@@ -81,7 +87,8 @@ class PrepProfilesNotifier extends StateNotifier<AsyncValue<List<PrepProfile>>> 
       final json = jsonDecode(await file.readAsString());
       state = AsyncValue.data([
         if (json is Map && json['profiles'] is List)
-          for (final raw in json['profiles'] as List) ?PrepProfile.fromJson(raw),
+          for (final raw in json['profiles'] as List)
+            ?PrepProfile.fromJson(raw),
       ]);
     } catch (error, stack) {
       debugPrint('[MyPrep] profiles failed to load: $error');
@@ -120,7 +127,7 @@ class PrepProfilesNotifier extends StateNotifier<AsyncValue<List<PrepProfile>>> 
   /// The profile already holding [account], if any (one account belongs to
   /// one profile, so its stored games are never shared).
   PrepProfile? owning(PrepSource source, String username) {
-    final key = '${source.name}:${username.toLowerCase()}';
+    final key = '${source.name}:${username.trim().toLowerCase()}';
     for (final p in _profiles) {
       if (p.accounts.any((a) => a.key == key)) return p;
     }
@@ -133,6 +140,17 @@ class PrepProfilesNotifier extends StateNotifier<AsyncValue<List<PrepProfile>>> 
     required List<PrepAccount> accounts,
     String? favoriteId,
   }) {
+    if (!state.hasValue) {
+      throw const PrepException('Wait for your saved profiles to load.');
+    }
+    for (final account in accounts) {
+      if (owning(account.source, account.externalId ?? account.username) !=
+          null) {
+        throw const PrepException(
+          'This source is already attached to another profile.',
+        );
+      }
+    }
     final now = DateTime.now().millisecondsSinceEpoch;
     final profile = PrepProfile(
       id: '${kind.name}-$now-${_profiles.length}',
@@ -150,6 +168,42 @@ class PrepProfilesNotifier extends StateNotifier<AsyncValue<List<PrepProfile>>> 
     _set([for (final p in _profiles) p.id == profile.id ? profile : p]);
   }
 
+  /// Attachment invariants live here as well as in the picker: async lookups
+  /// and multiple routes must never share one source file between profiles.
+  void attach(String profileId, Iterable<PrepAccount> accounts) {
+    final current = byId(profileId);
+    if (current == null) throw const PrepException('This profile was removed.');
+    final incoming = accounts.toList();
+    final known = {for (final account in current.accounts) account.key};
+    var hasDatabase = current.databaseAccount != null;
+    for (final account in incoming) {
+      if (!known.add(account.key)) {
+        throw const PrepException('This source is already attached.');
+      }
+      final owner = owning(
+        account.source,
+        account.externalId ?? account.username,
+      );
+      if (owner != null && owner.id != profileId) {
+        throw PrepException('This source is already in ${owner.name}.');
+      }
+      if (account.source == PrepSource.chessever) {
+        if (hasDatabase) {
+          throw const PrepException(
+            'Detach the current ChessEver source first.',
+          );
+        }
+        if (current.fideId != null && current.fideId != account.fideId) {
+          throw PrepException(
+            'This profile belongs to FIDE ${current.fideId}. Choose that player.',
+          );
+        }
+        hasDatabase = true;
+      }
+    }
+    update(current.copyWith(accounts: [...current.accounts, ...incoming]));
+  }
+
   /// Applies [change] to the newest stored copy of [profileId], so a sync
   /// finishing late cannot undo an edit made while it ran.
   void edit(String profileId, PrepProfile Function(PrepProfile) change) {
@@ -160,7 +214,16 @@ class PrepProfilesNotifier extends StateNotifier<AsyncValue<List<PrepProfile>>> 
   Future<void> delete(String profileId) async {
     final profile = byId(profileId);
     if (profile == null) return;
-    _set([for (final p in _profiles) if (p.id != profileId) p]);
+    _ref.read(prepCloudSyncProvider.notifier).cancel(profileId);
+    _set([
+      for (final p in _profiles)
+        if (p.id != profileId) p,
+    ]);
+    for (final account in profile.accounts) {
+      await _ref.read(prepSyncProvider.notifier).cancelAndWait(account);
+      await GameTreeService.cancel(PrepIndex.accountScope(account));
+    }
+    await GameTreeService.cancel(profileId);
     await PrepIndex.forget(profileId, accounts: profile.accounts);
     final repo = _ref.read(prepRepositoryProvider);
     for (final account in profile.accounts) {
@@ -169,10 +232,17 @@ class PrepProfilesNotifier extends StateNotifier<AsyncValue<List<PrepProfile>>> 
   }
 
   Future<void> removeAccount(String profileId, PrepAccount account) async {
+    _ref.read(prepCloudSyncProvider.notifier).cancel(profileId);
+    await _ref.read(prepSyncProvider.notifier).cancelAndWait(account);
+    await GameTreeService.cancel(PrepIndex.accountScope(account));
+    await GameTreeService.cancel(profileId);
     edit(
       profileId,
       (p) => p.copyWith(
-        accounts: [for (final a in p.accounts) if (a.key != account.key) a],
+        accounts: [
+          for (final a in p.accounts)
+            if (a.key != account.key) a,
+        ],
       ),
     );
     // The profile's own index notices the missing source and rebuilds.
@@ -202,6 +272,13 @@ class PrepSyncController extends StateNotifier<Map<String, PrepSyncStatus>> {
 
   final Ref _ref;
 
+  final Map<String, Completer<void>> _running = {};
+
+  Future<void> cancelAndWait(PrepAccount account) async {
+    cancel(account);
+    await _running[account.key]?.future;
+  }
+
   bool isSyncing(PrepAccount account) => state.containsKey(account.key);
 
   /// Downloads new games for one account. Returns the error text, or null.
@@ -209,15 +286,24 @@ class PrepSyncController extends StateNotifier<Map<String, PrepSyncStatus>> {
     String profileId,
     PrepAccount account, {
     bool force = false,
+    bool reinstall = false,
   }) async {
     if (isSyncing(account)) return null;
     final profiles = _ref.read(prepProfilesProvider.notifier);
     final profile = profiles.byId(profileId);
-    if (profile == null) return null;
+    if (profile == null || !profile.accounts.any((a) => a.key == account.key)) {
+      return null;
+    }
+    if (account.source == PrepSource.manual) return null;
+    final done = Completer<void>();
+    _running[account.key] = done;
     final cancel = CancelToken();
     void report(String message) {
       if (!mounted) return;
-      state = {...state, account.key: PrepSyncStatus(message: message, cancel: cancel)};
+      state = {
+        ...state,
+        account.key: PrepSyncStatus(message: message, cancel: cancel),
+      };
     }
 
     report('Checking ${account.source.label}…');
@@ -230,6 +316,7 @@ class PrepSyncController extends StateNotifier<Map<String, PrepSyncStatus>> {
             frequent: profile.kind == PrepKind.mine,
             onProgress: report,
             cancelToken: cancel,
+            reinstall: reinstall,
           );
       profiles.edit(profileId, (p) {
         final live = p.accounts.where((a) => a.key == account.key).firstOrNull;
@@ -239,7 +326,9 @@ class PrepSyncController extends StateNotifier<Map<String, PrepSyncStatus>> {
         return p.replaceAccount(
           live.copyWith(
             lastSyncAtMs: synced.lastSyncAtMs,
-            syncedScope: live.preferences == account.preferences
+            syncedScope:
+                account.source == PrepSource.chessever ||
+                    live.preferences == account.preferences
                 ? synced.syncedScope
                 : 'stale',
             gameCount: synced.gameCount,
@@ -260,6 +349,8 @@ class PrepSyncController extends StateNotifier<Map<String, PrepSyncStatus>> {
       return _fail(profileId, account, 'Could not download games. Try again.');
     } finally {
       if (mounted) state = {...state}..remove(account.key);
+      _running.remove(account.key);
+      done.complete();
     }
   }
 
@@ -299,11 +390,14 @@ class PrepSyncController extends StateNotifier<Map<String, PrepSyncStatus>> {
           ? kPrepMineRefreshEvery
           : kPrepOthersRefreshEvery;
       for (final account in profile.accounts) {
+        if (account.source == PrepSource.manual) continue;
         final last = account.lastSyncAtMs;
         final stale =
             last == null ||
             now - last >= every.inMilliseconds ||
-            account.syncedScope != account.preferences.scopeKey(DateTime.now());
+            (account.source.online &&
+                account.syncedScope !=
+                    account.preferences.scopeKey(DateTime.now()));
         if (stale && account.error == null) {
           unawaited(syncAccount(profile.id, account));
         }
@@ -354,6 +448,7 @@ final prepKeepFreshProvider = Provider<void>((ref) {
 
 /// What a profile's analysis depends on: its accounts' stored games.
 String _analysisKey(PrepProfile profile) => [
+  profile.aliases.toList()..sort(),
   for (final a in profile.accounts) '${a.key}@${a.lastSyncAtMs}#${a.gameCount}',
 ].join(',');
 
@@ -366,46 +461,93 @@ String _analysisKey(PrepProfile profile) => [
 /// (no PGN, no moves); PGNs are read from their files when a card shows.
 final prepAnalysisProvider = FutureProvider.autoDispose
     .family<PrepAnalysis, String>((ref, profileId) async {
+      return ref.watch(
+        prepSourceAnalysisProvider((
+          profileId: profileId,
+          accountKey: null,
+        )).future,
+      );
+    });
+
+/// A source selection reads its own index, rather than filtering Combined.
+/// Combined may deduplicate a game also present in an imported PGN; that game
+/// must still appear when the reader selects the original source itself.
+final prepSourceAnalysisProvider = FutureProvider.autoDispose
+    .family<PrepAnalysis, ({String profileId, String? accountKey})>((
+      ref,
+      selection,
+    ) async {
+      final profileId = selection.profileId;
       final key = ref.watch(
-        prepProfileProvider(profileId).select(
-          (p) => p == null ? null : _analysisKey(p),
-        ),
+        prepProfileProvider(
+          profileId,
+        ).select((p) => p == null ? null : _analysisKey(p)),
       );
       final profile = ref.read(prepProfileProvider(profileId));
       if (profile == null || key == null) return PrepAnalysis.empty(profileId);
+      final account = profile.accounts
+          .where((a) => a.key == selection.accountKey)
+          .firstOrNull;
+      if (selection.accountKey != null && account == null) {
+        return PrepAnalysis.empty(profileId);
+      }
+      final scope = account == null
+          ? profileId
+          : PrepIndex.accountScope(account);
       final status = ref.read(gameTreeStatusProvider.notifier);
       final repo = ref.read(prepRepositoryProvider);
-      GameTreeStore store;
-      try {
-        store = await PrepIndex.ensureProfile(
-          repo,
-          profile,
-          onProgress: (fraction) => status.set(
-            profileId,
-            GameTreeStatus(phase: GameTreePhase.indexing, fraction: fraction),
-          ),
-        );
-      } on GameTreeCanceled {
-        // Stopped from the tree button: show what is indexed so far; the
-        // next open picks up where it stopped.
-        final partial = GameTreeRegistry.storeFor(profileId);
-        if (partial == null) rethrow;
-        store = partial;
-      } finally {
-        status.clear(profileId);
-      }
-      final rows = await store.loadGames();
-      final analysis = PrepAnalysis(
-        profileId: profileId,
-        store: store,
-        games: List.unmodifiable([
-          for (var i = 0; i < rows.length; i++) PrepGame.fromIndex(rows[i], i),
-        ]),
-      );
-      // Kept while the profile is open and briefly after, so stepping into
-      // the explorer and back does not re-read the games list.
+      // Register lifecycle callbacks before the first await. A reader can
+      // leave during indexing; that must not register callbacks on a dead Ref.
       final link = ref.keepAlive();
-      final timer = Timer(const Duration(minutes: 3), link.close);
-      ref.onDispose(timer.cancel);
-      return analysis;
+      Timer? cacheTimer;
+      var disposed = false;
+      ref.onDispose(() {
+        disposed = true;
+        cacheTimer?.cancel();
+      });
+      try {
+        GameTreeStore store;
+        try {
+          void progress(double fraction) => status.set(
+            scope,
+            GameTreeStatus(phase: GameTreePhase.indexing, fraction: fraction),
+          );
+          store = account == null
+              ? await PrepIndex.ensureProfile(
+                  repo,
+                  profile,
+                  onProgress: progress,
+                )
+              : await PrepIndex.ensureAccount(
+                  repo,
+                  profile,
+                  account,
+                  onProgress: progress,
+                );
+        } on GameTreeCanceled {
+          // Stopped from the tree button: show what is indexed so far; the
+          // next open picks up where it stopped.
+          final partial = GameTreeRegistry.storeFor(scope);
+          if (partial == null) rethrow;
+          store = partial;
+        } finally {
+          status.clear(scope);
+        }
+        final rows = await store.loadGames();
+        final analysis = PrepAnalysis(
+          profileId: scope,
+          store: store,
+          games: List.unmodifiable([
+            for (var i = 0; i < rows.length; i++)
+              PrepGame.fromIndex(rows[i], i),
+          ]),
+        );
+        if (!disposed) {
+          cacheTimer = Timer(const Duration(minutes: 3), link.close);
+        }
+        return analysis;
+      } catch (_) {
+        link.close();
+        rethrow;
+      }
     });

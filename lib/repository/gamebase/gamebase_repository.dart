@@ -148,7 +148,9 @@ class GamebaseRepository {
       );
     }
     if (!hasApiKey) throw const MissingGamebaseApiKeyException();
-    return {'X-API-Key': _apiKey, 'Accept': 'application/json',
+    return {
+      'X-API-Key': _apiKey,
+      'Accept': 'application/json',
       ...RewardedSession.instance.headers,
       if (RewardedSession.instance.active &&
           Supabase.instance.client.auth.currentSession != null)
@@ -2011,6 +2013,44 @@ class GamebaseRepository {
       throw Exception('Failed to load FEN position games: $e');
     } catch (e) {
       throw Exception('Failed to load FEN position games: $e');
+    }
+  }
+
+  /// The same ChessEver player export used by desktop Prepare. An unavailable
+  /// export stays an error rather than falling back to costly paged game JSON.
+  Future<GamebasePlayerPgnExport?> getPlayerGamesPgn({
+    required String playerId,
+    String? fideId,
+    CancelToken? cancelToken,
+  }) async {
+    final fide = fideId?.trim();
+    final path = fide != null && fide.isNotEmpty
+        ? '/api/player/fide/${Uri.encodeComponent(fide)}/games.pgn'
+        : '/api/player/${Uri.encodeComponent(playerId)}/games.pgn';
+    try {
+      final response = await _dio.get<String>(
+        '$_baseUrl$path',
+        cancelToken: cancelToken,
+        options: Options(
+          headers: {
+            ..._headers,
+            'Accept': 'application/x-chess-pgn, text/plain, */*',
+          },
+          receiveTimeout: const Duration(minutes: 5),
+          responseType: ResponseType.plain,
+        ),
+      );
+      return GamebasePlayerPgnExport(
+        pgn: response.data ?? '',
+        gameCount:
+            int.tryParse(response.headers.value('x-game-count') ?? '') ?? 0,
+        cacheStatus: response.headers.value('x-pgn-cache'),
+      );
+    } on DioException catch (error) {
+      if (const [403, 404, 405, 501].contains(error.response?.statusCode)) {
+        return null;
+      }
+      rethrow;
     }
   }
 

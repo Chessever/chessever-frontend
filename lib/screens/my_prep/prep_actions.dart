@@ -7,8 +7,12 @@ import 'package:chessever2/screens/my_prep/library/prep_library.dart'
 import 'package:chessever2/screens/my_prep/models/prep_models.dart';
 import 'package:chessever2/screens/my_prep/prep_access.dart';
 import 'package:chessever2/screens/my_prep/prep_profile_screen.dart';
+import 'package:chessever2/screens/my_prep/prep_source_actions.dart'
+    show prepExportProfile;
 import 'package:chessever2/screens/my_prep/providers/prep_providers.dart';
+import 'package:chessever2/screens/my_prep/services/prep_repository.dart';
 import 'package:chessever2/screens/my_prep/widgets/prep_dialogs.dart';
+import 'package:chessever2/screens/my_prep/widgets/prep_source_picker.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/widgets/alert_dialog/alert_modal.dart';
 import 'package:chessever2/widgets/app_snack.dart';
@@ -23,10 +27,12 @@ Future<void> prepAddMine(BuildContext context, WidgetRef ref) async {
   final profiles = ref.read(prepProfilesProvider.notifier);
   final mine = ref.read(prepProfilesOfKindProvider(PrepKind.mine)) ?? const [];
   final existing = mine.isEmpty ? null : mine.first;
-  final result = await showPrepAddAccountsDialog(
+  final result = await showPrepSourcePicker(
     context,
     kind: PrepKind.mine,
     existingKeys: {for (final a in existing?.accounts ?? const []) a.key},
+    attaching: existing != null,
+    lockedFideId: existing?.fideId,
   );
   if (result == null || !context.mounted) return;
   await _releaseFromFavorites(ref, result.accounts);
@@ -35,14 +41,11 @@ Future<void> prepAddMine(BuildContext context, WidgetRef ref) async {
   if (existing == null) {
     profile = profiles.create(
       kind: PrepKind.mine,
-      name: 'My games',
+      name: result.name,
       accounts: result.accounts,
     );
   } else {
-    profiles.edit(
-      existing.id,
-      (p) => p.copyWith(accounts: [...p.accounts, ...result.accounts]),
-    );
+    profiles.attach(existing.id, result.accounts);
     profile = existing;
   }
   _syncNew(context, ref, profile.id, result.accounts);
@@ -52,10 +55,7 @@ Future<void> prepAddMine(BuildContext context, WidgetRef ref) async {
 Future<void> prepAddOpponent(BuildContext context, WidgetRef ref) async {
   HapticFeedbackService.buttonPress();
   if (!await ensurePrepAccess(context) || !context.mounted) return;
-  final result = await showPrepAddAccountsDialog(
-    context,
-    kind: PrepKind.opponent,
-  );
+  final result = await showPrepSourcePicker(context, kind: PrepKind.opponent);
   if (result == null || !context.mounted) return;
   await _releaseFromFavorites(ref, result.accounts);
   if (!context.mounted) return;
@@ -70,30 +70,31 @@ Future<void> prepAddOpponent(BuildContext context, WidgetRef ref) async {
   unawaited(PrepProfileScreen.open(context, profile.id));
 }
 
-/// Adds another Lichess or Chess.com account to an existing profile.
+/// Attaches a database player or online account to an existing profile.
 Future<void> prepAddAccountTo(
   BuildContext context,
   WidgetRef ref,
-  PrepProfile profile,
-) async {
+  PrepProfile profile, {
+  PrepSource? source,
+}) async {
   if (!await ensurePrepAccess(context) || !context.mounted) return;
-  final have = {for (final a in profile.accounts) a.source};
-  final missing = PrepSource.values.where((s) => !have.contains(s)).toList();
-  final result = await showPrepAddAccountsDialog(
+  final result = await showPrepSourcePicker(
     context,
     kind: profile.kind,
-    only: missing.length == 1 ? missing.first : null,
+    only: source,
+    attaching: true,
+    lockedFideId: profile.fideId,
     existingKeys: {for (final a in profile.accounts) a.key},
   );
   if (result == null || !context.mounted) return;
   await _releaseFromFavorites(ref, result.accounts);
   if (!context.mounted) return;
-  ref
-      .read(prepProfilesProvider.notifier)
-      .edit(
-        profile.id,
-        (p) => p.copyWith(accounts: [...p.accounts, ...result.accounts]),
-      );
+  try {
+    ref.read(prepProfilesProvider.notifier).attach(profile.id, result.accounts);
+  } catch (error) {
+    showAppSnack(context, '$error', tone: AppSnackTone.danger);
+    return;
+  }
   _syncNew(context, ref, profile.id, result.accounts);
 }
 
@@ -150,7 +151,10 @@ Future<void> _releaseFromFavorites(
 ) async {
   final profiles = ref.read(prepProfilesProvider.notifier);
   for (final account in accounts) {
-    final owner = profiles.owning(account.source, account.username);
+    final owner = profiles.owning(
+      account.source,
+      account.externalId ?? account.username,
+    );
     if (owner == null || owner.kind != PrepKind.favorite) continue;
     if (owner.accounts.length <= 1) {
       await profiles.delete(owner.id);
@@ -178,35 +182,54 @@ void _syncNew(
   }());
 }
 
-Future<void> _refreshProfiles(WidgetRef ref, String profileId) async {
+Future<String?> _refreshProfiles(
+  WidgetRef ref,
+  String profileId, {
+  PrepAccount? only,
+}) async {
   final profiles = ref.read(prepProfilesProvider.notifier);
   final repo = ref.read(prepRepositoryProvider);
   final profile = profiles.byId(profileId);
-  if (profile == null) return;
-  for (final account in profile.accounts) {
+  if (profile == null) return 'This profile was removed.';
+  String? firstError;
+  for (final account in profile.accounts.where(
+    (a) => only == null || a.key == only.key,
+  )) {
     try {
-      final fresh = await repo.lookup(account.source, account.username);
+      final fresh = await repo.refreshDetails(account);
       profiles.edit(profileId, (p) {
         final live = p.accounts.where((a) => a.key == account.key).firstOrNull;
         if (live == null) return p;
         return p.replaceAccount(
           live.copyWith(
+            displayName: fresh.displayName,
             avatarUrl: fresh.avatarUrl,
             title: fresh.title,
             country: fresh.country,
             ratings: fresh.ratings,
+            playerAliases: {
+              ...live.playerAliases,
+              ...fresh.playerAliases,
+            }.toList(),
           ),
         );
       });
-    } catch (_) {
-      // Keep the curated details.
+    } catch (error) {
+      // Keep the last known details, and report explicit refresh failures.
+      firstError ??= error is PrepException
+          ? error.message
+          : 'Could not refresh profile details. Try again.';
     }
   }
+  return firstError;
 }
 
 /// Re-reads every account's profile (ratings, title, avatar).
-Future<void> prepRefreshProfileDetails(WidgetRef ref, String profileId) =>
-    _refreshProfiles(ref, profileId);
+Future<String?> prepRefreshProfileDetails(
+  WidgetRef ref,
+  String profileId, {
+  PrepAccount? account,
+}) => _refreshProfiles(ref, profileId, only: account);
 
 /// The long-press and ••• menu for a profile card. [fromLibrary] leaves out
 /// "Show in Library" where the reader already is there.
@@ -241,6 +264,12 @@ List<LibraryMenuAction> prepProfileMenu(
         onSelected: () => PrepLibraryFolderScreen.open(context, profile.id),
       ),
     prepCloudMenuAction(context, ref, profile),
+    LibraryMenuAction(
+      icon: Icons.ios_share_rounded,
+      label: 'Export combined PGN',
+      enabled: profile.gameCount > 0 && !profile.accounts.any(sync.isSyncing),
+      onSelected: () => prepExportProfile(context, ref, profile),
+    ),
     if (profile.kind == PrepKind.favorite)
       LibraryMenuAction(
         icon: Icons.person_add_alt_1_rounded,
@@ -255,15 +284,12 @@ List<LibraryMenuAction> prepProfileMenu(
           }
         },
       ),
+    LibraryMenuAction(
+      icon: Icons.add_link_rounded,
+      label: 'Attach source',
+      onSelected: () => prepAddAccountTo(context, ref, profile),
+    ),
     if (profile.kind != PrepKind.favorite)
-      LibraryMenuAction(
-        icon: Icons.add_link_rounded,
-        label: 'Add account',
-        visible: profile.accounts.length < PrepSource.values.length ||
-            profile.kind == PrepKind.mine,
-        onSelected: () => prepAddAccountTo(context, ref, profile),
-      ),
-    if (profile.kind == PrepKind.opponent)
       LibraryMenuAction(
         icon: Icons.edit_rounded,
         label: 'Rename',

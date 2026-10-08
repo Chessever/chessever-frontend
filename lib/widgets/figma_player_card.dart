@@ -41,6 +41,9 @@ class FigmaPlayerCard extends ConsumerWidget {
   /// the favorite heart from the shared trailing column.
   final String? detail;
 
+  /// Collection-specific secondary content using the same player row layout.
+  final Widget? detailWidget;
+
   /// Uses the account photo for authors without inferring a FIDE identity.
   final Widget? avatar;
   final VoidCallback onTap;
@@ -61,6 +64,7 @@ class FigmaPlayerCard extends ConsumerWidget {
   /// column ends on the same x in every row, and so a record arriving after
   /// first paint does not shove that row's name sideways.
   final bool reserveMatchScoreSlot;
+
   /// Allows long collection counts to wrap without consuming the name column.
   final double? matchScoreMaxWidth;
 
@@ -75,6 +79,7 @@ class FigmaPlayerCard extends ConsumerWidget {
     this.hideMissingRating = false,
     this.trailing,
     this.detail,
+    this.detailWidget,
     this.avatar,
     required this.onTap,
     this.onToggleFavorite,
@@ -281,48 +286,56 @@ class FigmaPlayerCard extends ConsumerWidget {
                   ),
                   SizedBox(height: 4.h),
                   // Flag + Rating (+ optional change)
-                  Row(
-                    children: [
-                      // Country flag
-                      if (showFlag)
-                        Padding(
-                          padding: EdgeInsets.only(right: 6.w),
-                          child: SizedBox(
-                            width: 18.w,
-                            height: 12.h,
-                            child: FederationFlag(
-                              federation: federationForFlag,
-                              height: 12.h,
+                  FittedBox(
+                    fit: BoxFit.scaleDown,
+                    alignment: Alignment.centerLeft,
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        // Country flag
+                        if (showFlag)
+                          Padding(
+                            padding: EdgeInsets.only(right: 6.w),
+                            child: SizedBox(
                               width: 18.w,
-                              borderRadius: BorderRadius.circular(2.br),
+                              height: 12.h,
+                              child: FederationFlag(
+                                federation: federationForFlag,
+                                height: 12.h,
+                                width: 18.w,
+                                borderRadius: BorderRadius.circular(2.br),
+                              ),
                             ),
                           ),
-                        ),
-                      // Rating
-                      if (!hideMissingRating || player.score > 0)
-                        Text(
-                          player.score.toString(),
-                          style: AppTypography.textSmRegular.copyWith(
-                            color: context.colors.textSecondary,
+                        // Rating
+                        if (!hideMissingRating || player.score > 0)
+                          Text(
+                            player.score.toString(),
+                            style: AppTypography.textSmRegular.copyWith(
+                              color: context.colors.textSecondary,
+                            ),
                           ),
-                        ),
-                      // Rating change (if any), set flush against the rating
-                      // exactly as shipped. The tokens are kGreenColor /
-                      // kRedColor in dark and the deeper paper inks in light.
-                      if (player.scoreChange != 0)
-                        Text(
-                          player.scoreChange > 0
-                              ? '+${player.scoreChange}'
-                              : '${player.scoreChange}',
-                          style: AppTypography.textSmMedium.copyWith(
-                            color: player.scoreChange > 0
-                                ? context.colors.successStrong
-                                : context.colors.danger,
+                        // Rating change (if any), set flush against the rating
+                        // exactly as shipped. The tokens are kGreenColor /
+                        // kRedColor in dark and the deeper paper inks in light.
+                        if (player.scoreChange != 0)
+                          Text(
+                            player.scoreChange > 0
+                                ? '+${player.scoreChange}'
+                                : '${player.scoreChange}',
+                            style: AppTypography.textSmMedium.copyWith(
+                              color: player.scoreChange > 0
+                                  ? context.colors.successStrong
+                                  : context.colors.danger,
+                            ),
                           ),
-                        ),
-                    ],
+                      ],
+                    ),
                   ),
-                  if (detail != null) ...[
+                  if (detailWidget != null) ...[
+                    SizedBox(height: 3.h),
+                    detailWidget!,
+                  ] else if (detail != null) ...[
                     SizedBox(height: 3.h),
                     Text(
                       detail!,
@@ -375,7 +388,9 @@ class FigmaPlayerCard extends ConsumerWidget {
                 child: matchScoreMaxWidth == null
                     ? _buildMatchScore(context)
                     : ConstrainedBox(
-                        constraints: BoxConstraints(maxWidth: matchScoreMaxWidth!),
+                        constraints: BoxConstraints(
+                          maxWidth: matchScoreMaxWidth!,
+                        ),
                         child: _buildMatchScore(context),
                       ),
               ),

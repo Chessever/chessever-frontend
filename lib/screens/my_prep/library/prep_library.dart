@@ -56,41 +56,46 @@ LibraryFolder prepLibraryFolder(PrepProfile profile) => LibraryFolder(
   nodeType: LibraryFolder.nodeTypeFolder,
 );
 
-LibraryFolder _databaseNode(PrepProfile profile, PrepAccount? account) =>
-    LibraryFolder(
-      id: '$kPrepLibraryFolderPrefix${profile.id}:${account?.key ?? 'combined'}',
-      userId: '',
-      name: account == null ? 'Combined' : _accountLabel(account),
-      color: '#0FB4E5',
-      icon: 'database',
-      orderIndex: 0,
-      createdAt: DateTime.fromMillisecondsSinceEpoch(profile.createdAtMs),
-      updatedAt: DateTime.fromMillisecondsSinceEpoch(profile.createdAtMs),
-      parentId: '$kPrepLibraryFolderPrefix${profile.id}',
-    );
+LibraryFolder _databaseNode(
+  PrepProfile profile,
+  PrepAccount? account,
+) => LibraryFolder(
+  id: '$kPrepLibraryFolderPrefix${profile.id}:${account?.key ?? 'combined'}',
+  userId: '',
+  name: account == null ? 'Combined' : _accountLabel(account),
+  color: '#0FB4E5',
+  icon: 'database',
+  orderIndex: 0,
+  createdAt: DateTime.fromMillisecondsSinceEpoch(profile.createdAtMs),
+  updatedAt: DateTime.fromMillisecondsSinceEpoch(profile.createdAtMs),
+  parentId: '$kPrepLibraryFolderPrefix${profile.id}',
+);
 
 String _accountLabel(PrepAccount account) =>
     '${account.source.label} · ${account.username}';
 
-/// The players the Library lists, yours first: every My Prep profile that
-/// has an account.
+/// The players the Library lists, yours first, including profiles waiting
+/// for their first source.
 final prepLibraryProfilesProvider = Provider<List<PrepProfile>>((ref) {
   final all = ref.watch(prepProfilesProvider).valueOrNull ?? const [];
   return [
     for (final kind in PrepKind.values)
       for (final p in all)
-        if (p.kind == kind && p.accounts.isNotEmpty) p,
+        if (p.kind == kind) p,
   ];
 });
 
 /// Cloud folders a player was saved to. The Library shows the player's own
 /// card for them, so they are not listed twice.
-final prepLinkedCloudFolderIdsProvider = Provider<Set<String>>((ref) => {
-  for (final p in ref.watch(prepLibraryProfilesProvider))
-    if (p.cloudFolderId case final id?) id,
-});
+final prepLinkedCloudFolderIdsProvider = Provider<Set<String>>(
+  (ref) => {
+    for (final p in ref.watch(prepLibraryProfilesProvider))
+      if (p.cloudFolderId case final id?) id,
+  },
+);
 
 String? _fideIdOf(PrepProfile profile) =>
+    profile.fideId ??
     kPrepFavorites.where((f) => f.id == profile.favoriteId).firstOrNull?.fideId;
 
 /// One player's folder card in the Library list.
@@ -185,7 +190,10 @@ Future<void> prepSaveToCloud(
 /// A player's Combined database as a tree: the profile's own index, the
 /// one My Prep's Openings tab explores.
 class PrepProfileTreeTarget extends GameTreeTarget {
-  const PrepProfileTreeTarget({required this.profile, required this.repository});
+  const PrepProfileTreeTarget({
+    required this.profile,
+    required this.repository,
+  });
 
   final PrepProfile profile;
   final PrepRepository repository;
@@ -212,9 +220,8 @@ class PrepProfileTreeTarget extends GameTreeTarget {
       PrepIndex.ensureProfile(
         repository,
         profile,
-        onProgress: (f) => report(
-          GameTreeStatus(phase: GameTreePhase.indexing, fraction: f),
-        ),
+        onProgress: (f) =>
+            report(GameTreeStatus(phase: GameTreePhase.indexing, fraction: f)),
       );
 }
 
@@ -252,9 +259,8 @@ class PrepAccountTreeTarget extends GameTreeTarget {
         repository,
         profile,
         account,
-        onProgress: (f) => report(
-          GameTreeStatus(phase: GameTreePhase.indexing, fraction: f),
-        ),
+        onProgress: (f) =>
+            report(GameTreeStatus(phase: GameTreePhase.indexing, fraction: f)),
       );
 }
 
@@ -361,9 +367,9 @@ class PrepLibraryFolderScreen extends ConsumerWidget {
     final sync = ref.watch(prepSyncProvider);
     final accounts = [...profile.accounts]
       ..sort(
-        (a, b) => _accountLabel(a).toLowerCase().compareTo(
-          _accountLabel(b).toLowerCase(),
-        ),
+        (a, b) => _accountLabel(
+          a,
+        ).toLowerCase().compareTo(_accountLabel(b).toLowerCase()),
       );
     final databases = accounts.length + 1;
 
@@ -541,10 +547,12 @@ class _CloudLine extends ConsumerWidget {
           ? status.message
           : '${status.message} ${prepCount(status.done)} of ${prepCount(total)}';
     } else if (saved) {
-      text = 'In your cloud Library · ${prepGamesLabel(uploaded)}. '
+      text =
+          'In your cloud Library · ${prepGamesLabel(uploaded)}. '
           'New games follow after each download.';
     } else {
-      text = 'Save this player to your cloud Library to open them on '
+      text =
+          'Save this player to your cloud Library to open them on '
           'desktop and the web.';
     }
     return Container(
@@ -729,14 +737,17 @@ class _PrepLibraryDatabaseScreenState
                       title: indexing == null
                           ? 'Reading games…'
                           : 'Indexing games · $indexing%',
-                      body: 'Done once on this phone. Later updates only '
+                      body:
+                          'Done once on this phone. Later updates only '
                           'add new games.',
                       busy: true,
                     ),
-                    data: (data) => games.isEmpty && _filter == const PrepFilter()
+                    data: (data) =>
+                        games.isEmpty && _filter == const PrepFilter()
                         ? PrepMessage(
                             title: 'No games yet',
-                            body: account?.error ??
+                            body:
+                                account?.error ??
                                 'Download games for this player in My Prep.',
                             actionLabel: 'Refresh games',
                             onAction: () => account == null
@@ -768,5 +779,7 @@ class _PrepLibraryDatabaseScreenState
 /// Opens the Library node a My Prep folder id names.
 void openPrepLibraryFolder(BuildContext context, String folderId) {
   final profileId = prepProfileIdOfLibraryFolder(folderId);
-  if (profileId != null) unawaited(PrepLibraryFolderScreen.open(context, profileId));
+  if (profileId != null) {
+    unawaited(PrepLibraryFolderScreen.open(context, profileId));
+  }
 }

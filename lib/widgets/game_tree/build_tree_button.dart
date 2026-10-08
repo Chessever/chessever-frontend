@@ -2,6 +2,8 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:chessever2/services/game_tree/game_tree_builder.dart';
+import 'package:chessever2/screens/gamebase/models/models.dart';
+import 'package:chessever2/screens/gamebase/providers/gamebase_explorer_state.dart';
 import 'package:chessever2/services/game_tree/game_tree_service.dart';
 import 'package:chessever2/services/game_tree/game_tree_store.dart';
 import 'package:chessever2/theme/app_colors.dart';
@@ -124,8 +126,10 @@ final gameTreeBuiltProvider = FutureProvider.autoDispose.family<bool, String>(
 Future<void> openOrBuildGameTree(
   BuildContext context,
   WidgetRef ref,
-  GameTreeTarget target,
-) async {
+  GameTreeTarget target, {
+  GamebasePlayerColor? color,
+  TimeControl? timeControl,
+}) async {
   final scope = target.scopeId;
   final statusNotifier = ref.read(gameTreeStatusProvider.notifier);
   final current = ref.read(gameTreeStatusProvider)[scope];
@@ -149,6 +153,8 @@ Future<void> openOrBuildGameTree(
         title: target.title,
         country: target.country,
         playerTitle: target.playerTitle,
+        color: color,
+        timeControl: timeControl,
       ),
     );
   }
@@ -168,7 +174,9 @@ Future<void> openOrBuildGameTree(
       scope,
       const GameTreeStatus(phase: GameTreePhase.fetching, fraction: 0),
     );
-    final store = await target.build((status) => statusNotifier.set(scope, status));
+    final store = await target.build(
+      (status) => statusNotifier.set(scope, status),
+    );
     statusNotifier.clear(scope);
     container.invalidate(gameTreeBuiltProvider(scope));
     if (store.gameCount == 0) {
@@ -203,9 +211,17 @@ Future<void> openOrBuildGameTree(
 /// Tree" until a tree exists, "Tree" after, and its progress while it
 /// builds. The labels are desktop's, so the two apps read the same.
 class BuildTreeButton extends ConsumerWidget {
-  const BuildTreeButton({super.key, required this.target, this.compact});
+  const BuildTreeButton({
+    super.key,
+    required this.target,
+    this.compact,
+    this.color,
+    this.timeControl,
+  });
 
   final GameTreeTarget target;
+  final GamebasePlayerColor? color;
+  final TimeControl? timeControl;
 
   /// The glyph alone, for headers whose actions are already a row of
   /// icons. The label moves to the tooltip and the screen reader. Null
@@ -247,7 +263,13 @@ class BuildTreeButton extends ConsumerWidget {
           message: label,
           child: TappableScale(
             scaleDown: 0.95,
-            onTap: () => openOrBuildGameTree(context, ref, target),
+            onTap: () => openOrBuildGameTree(
+              context,
+              ref,
+              target,
+              color: color,
+              timeControl: timeControl,
+            ),
             child: SizedBox.square(
               dimension: 44,
               child: Center(
@@ -280,7 +302,9 @@ class BuildTreeButton extends ConsumerWidget {
     }
 
     final fg = ready ? colors.textInverse : colors.textPrimary;
-    final bg = ready ? colors.textPrimary : colors.textPrimary.withValues(alpha: 0.08);
+    final bg = ready
+        ? colors.textPrimary
+        : colors.textPrimary.withValues(alpha: 0.08);
 
     return Semantics(
       button: true,
@@ -288,7 +312,13 @@ class BuildTreeButton extends ConsumerWidget {
       excludeSemantics: true,
       child: TappableScale(
         scaleDown: 0.95,
-        onTap: () => openOrBuildGameTree(context, ref, target),
+        onTap: () => openOrBuildGameTree(
+          context,
+          ref,
+          target,
+          color: color,
+          timeControl: timeControl,
+        ),
         child: ConstrainedBox(
           // A 44dp target around a 32dp pill.
           constraints: const BoxConstraints(minHeight: 44, minWidth: 44),

@@ -4,6 +4,7 @@ import 'package:chessever2/screens/my_prep/models/prep_models.dart';
 import 'package:chessever2/screens/my_prep/services/prep_analysis.dart';
 import 'package:chessever2/screens/my_prep/widgets/prep_common.dart';
 import 'package:chessever2/screens/my_prep/widgets/prep_filters.dart';
+import 'package:chessever2/screens/my_prep/widgets/prep_rating_history.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
@@ -18,11 +19,15 @@ class PrepOverviewTab extends StatelessWidget {
     required this.profile,
     required this.stats,
     required this.filter,
+    this.header,
+    this.onOpenGames,
   });
 
   final PrepProfile profile;
   final PrepStats stats;
   final PrepFilter filter;
+  final Widget? header;
+  final ValueChanged<PrepFilter>? onOpenGames;
 
   @override
   Widget build(BuildContext context) {
@@ -33,6 +38,7 @@ class PrepOverviewTab extends StatelessWidget {
     return ListView(
       padding: EdgeInsets.fromLTRB(gutter, 6.h, gutter, 40.h),
       children: [
+        if (header != null) header!,
         PrepStatStrip(
           items: [
             ('Games', prepCount(s.games)),
@@ -54,9 +60,30 @@ class PrepOverviewTab extends StatelessWidget {
               SizedBox(height: 10.h),
               Row(
                 children: [
-                  _Figure('Wins', s.overall.wins, context.colors.successStrong),
-                  _Figure('Draws', s.overall.draws, context.colors.textSecondary),
-                  _Figure('Losses', s.overall.losses, context.colors.danger),
+                  _Figure(
+                    'Wins',
+                    s.overall.wins,
+                    context.colors.successStrong,
+                    onTap: () => onOpenGames?.call(
+                      filter.copyWith(outcome: PrepOutcome.win),
+                    ),
+                  ),
+                  _Figure(
+                    'Draws',
+                    s.overall.draws,
+                    context.colors.textSecondary,
+                    onTap: () => onOpenGames?.call(
+                      filter.copyWith(outcome: PrepOutcome.draw),
+                    ),
+                  ),
+                  _Figure(
+                    'Losses',
+                    s.overall.losses,
+                    context.colors.danger,
+                    onTap: () => onOpenGames?.call(
+                      filter.copyWith(outcome: PrepOutcome.loss),
+                    ),
+                  ),
                 ],
               ),
             ],
@@ -71,6 +98,8 @@ class PrepOverviewTab extends StatelessWidget {
                 label: mine ? 'As White' : 'Their White',
                 tally: s.asWhite,
                 white: true,
+                onTap: () =>
+                    onOpenGames?.call(filter.copyWith(side: PrepSide.white)),
               ),
             ),
             SizedBox(width: 12.w),
@@ -79,22 +108,49 @@ class PrepOverviewTab extends StatelessWidget {
                 label: mine ? 'As Black' : 'Their Black',
                 tally: s.asBlack,
                 white: false,
+                onTap: () =>
+                    onOpenGames?.call(filter.copyWith(side: PrepSide.black)),
               ),
             ),
           ],
         ),
+        if (s.ratingHistory.length >= 2) ...[
+          SizedBox(height: 12.h),
+          _Panel(
+            title: 'Rating history',
+            child: PrepRatingHistory(points: s.ratingHistory),
+          ),
+        ],
         if (s.whiteOpenings.isNotEmpty) ...[
           SizedBox(height: 12.h),
           _Panel(
             title: mine ? 'Openings as White' : 'Their openings as White',
-            child: _OpeningList(lines: s.whiteOpenings),
+            child: _OpeningList(
+              lines: s.whiteOpenings,
+              onTap: (line) => onOpenGames?.call(
+                filter.copyWith(
+                  side: PrepSide.white,
+                  eco: null,
+                  opening: line.name,
+                ),
+              ),
+            ),
           ),
         ],
         if (s.blackOpenings.isNotEmpty) ...[
           SizedBox(height: 12.h),
           _Panel(
             title: mine ? 'Openings as Black' : 'Their openings as Black',
-            child: _OpeningList(lines: s.blackOpenings),
+            child: _OpeningList(
+              lines: s.blackOpenings,
+              onTap: (line) => onOpenGames?.call(
+                filter.copyWith(
+                  side: PrepSide.black,
+                  eco: null,
+                  opening: line.name,
+                ),
+              ),
+            ),
           ),
         ],
         if (s.opponents.isNotEmpty) ...[
@@ -106,6 +162,8 @@ class PrepOverviewTab extends StatelessWidget {
                 for (final o in s.opponents)
                   _LineRow(
                     title: o.name,
+                    onTap: () =>
+                        onOpenGames?.call(filter.copyWith(opponent: o.name)),
                     meta: o.rating == null ? null : '${o.rating}',
                     tally: o.tally,
                   ),
@@ -115,10 +173,19 @@ class PrepOverviewTab extends StatelessWidget {
         ],
         if (s.byYear.length > 1) ...[
           SizedBox(height: 12.h),
-          _Panel(title: 'Games by year', child: _YearBars(years: s.byYear)),
+          _Panel(
+            title: 'Games by year',
+            child: _YearBars(
+              years: s.byYear,
+              onYear: (year) => onOpenGames?.call(filter.copyWith(year: year)),
+            ),
+          ),
         ],
         SizedBox(height: 12.h),
-        _Panel(title: 'Game length', child: _LengthBars(lengths: s.lengths)),
+        _Panel(
+          title: 'Game length',
+          child: _LengthBars(lengths: s.lengths),
+        ),
         if (s.overall.total < s.games) ...[
           SizedBox(height: 12.h),
           Text(
@@ -153,26 +220,20 @@ class _Panel extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  title,
-                  style: AppTypography.textSmBold.copyWith(
-                    color: colors.textPrimary,
-                  ),
-                ),
-              ),
-              if (trailing != null)
-                Text(
-                  trailing!,
-                  style: AppTypography.textXsRegular.copyWith(
-                    color: colors.textSecondary,
-                    fontFeatures: const [FontFeature.tabularFigures()],
-                  ),
-                ),
-            ],
+          Text(
+            title,
+            style: AppTypography.textSmBold.copyWith(color: colors.textPrimary),
           ),
+          if (trailing != null) ...[
+            SizedBox(height: 4.h),
+            Text(
+              trailing!,
+              style: AppTypography.textXsRegular.copyWith(
+                color: colors.textSecondary,
+                fontFeatures: const [FontFeature.tabularFigures()],
+              ),
+            ),
+          ],
           SizedBox(height: 12.h),
           child,
         ],
@@ -182,170 +243,205 @@ class _Panel extends StatelessWidget {
 }
 
 class _Figure extends StatelessWidget {
-  const _Figure(this.label, this.value, this.color);
+  const _Figure(this.label, this.value, this.color, {this.onTap});
   final String label;
   final int value;
   final Color color;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) => Expanded(
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          prepCount(value),
-          style: AppTypography.textLgBold.copyWith(
-            color: color,
-            fontFeatures: const [FontFeature.tabularFigures()],
-          ),
+    child: InkWell(
+      onTap: onTap,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(minHeight: 44),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              prepCount(value),
+              style: AppTypography.textLgBold.copyWith(
+                color: color,
+                fontFeatures: const [FontFeature.tabularFigures()],
+              ),
+            ),
+            Text(
+              label,
+              style: AppTypography.textXsRegular.copyWith(
+                color: context.colors.textSecondary,
+              ),
+            ),
+          ],
         ),
-        Text(
-          label,
-          style: AppTypography.textXsRegular.copyWith(
-            color: context.colors.textSecondary,
-          ),
-        ),
-      ],
+      ),
     ),
   );
 }
 
 class _ColorCard extends StatelessWidget {
-  const _ColorCard({required this.label, required this.tally, required this.white});
+  const _ColorCard({
+    required this.label,
+    required this.tally,
+    required this.white,
+    this.onTap,
+  });
 
   final String label;
   final PrepTally tally;
   final bool white;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
     final colors = context.colors;
     final score = tally.score;
-    return Container(
-      padding: EdgeInsets.all(14.sp),
-      decoration: BoxDecoration(
-        color: colors.surface,
-        borderRadius: BorderRadius.circular(12.br),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                width: 12.sp,
-                height: 12.sp,
-                decoration: BoxDecoration(
-                  color: white ? Colors.white : Colors.black,
-                  borderRadius: BorderRadius.circular(3.br),
-                  border: Border.all(color: colors.dividerStrong),
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12.br),
+      child: Container(
+        padding: EdgeInsets.all(14.sp),
+        decoration: BoxDecoration(
+          color: colors.surface,
+          borderRadius: BorderRadius.circular(12.br),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  width: 12.sp,
+                  height: 12.sp,
+                  decoration: BoxDecoration(
+                    color: white ? Colors.white : Colors.black,
+                    borderRadius: BorderRadius.circular(3.br),
+                    border: Border.all(color: colors.dividerStrong),
+                  ),
                 ),
-              ),
-              SizedBox(width: 8.w),
-              Text(
-                label,
-                style: AppTypography.textXsMedium.copyWith(
-                  color: colors.textSecondary,
+                SizedBox(width: 8.w),
+                Expanded(
+                  child: Text(
+                    label,
+                    style: AppTypography.textXsMedium.copyWith(
+                      color: colors.textSecondary,
+                    ),
+                  ),
                 ),
+              ],
+            ),
+            SizedBox(height: 8.h),
+            Text(
+              score == null ? '–' : '${(score * 100).round()}%',
+              style: AppTypography.textXlBold.copyWith(
+                color: colors.textPrimary,
+                fontFeatures: const [FontFeature.tabularFigures()],
               ),
-            ],
-          ),
-          SizedBox(height: 8.h),
-          Text(
-            score == null ? '–' : '${(score * 100).round()}%',
-            style: AppTypography.textXlBold.copyWith(
-              color: colors.textPrimary,
-              fontFeatures: const [FontFeature.tabularFigures()],
             ),
-          ),
-          Text(
-            prepGamesLabel(tally.total),
-            style: AppTypography.textXsRegular.copyWith(
-              color: colors.textTertiary,
+            Text(
+              prepGamesLabel(tally.total),
+              style: AppTypography.textXsRegular.copyWith(
+                color: colors.textTertiary,
+              ),
             ),
-          ),
-          SizedBox(height: 10.h),
-          PrepResultBar(tally: tally),
-          SizedBox(height: 6.h),
-          PrepTallyText(tally: tally),
-        ],
+            SizedBox(height: 10.h),
+            PrepResultBar(tally: tally),
+            SizedBox(height: 6.h),
+            PrepTallyText(tally: tally),
+          ],
+        ),
       ),
     );
   }
 }
 
 class _OpeningList extends StatelessWidget {
-  const _OpeningList({required this.lines});
+  const _OpeningList({required this.lines, this.onTap});
   final List<PrepOpeningLine> lines;
+  final ValueChanged<PrepOpeningLine>? onTap;
 
   @override
   Widget build(BuildContext context) => Column(
     children: [
       for (final line in lines)
-        _LineRow(title: line.name, meta: line.eco, tally: line.tally),
+        _LineRow(
+          title: line.name,
+          meta: line.eco,
+          tally: line.tally,
+          onTap: onTap == null ? null : () => onTap!(line),
+        ),
     ],
   );
 }
 
 /// A named row with its game count, score and result bar.
 class _LineRow extends StatelessWidget {
-  const _LineRow({required this.title, required this.tally, this.meta});
+  const _LineRow({
+    required this.title,
+    required this.tally,
+    this.meta,
+    this.onTap,
+  });
 
   final String title;
   final String? meta;
   final PrepTally tally;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
     final colors = context.colors;
     final score = tally.score;
-    return Padding(
-      padding: EdgeInsets.only(bottom: 12.h),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Row(
-            children: [
-              Expanded(
-                child: Text.rich(
-                  TextSpan(
-                    children: [
-                      TextSpan(text: title),
-                      if (meta != null)
-                        TextSpan(
-                          text: '  $meta',
-                          style: TextStyle(color: colors.textTertiary),
-                        ),
-                    ],
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: AppTypography.textSmMedium.copyWith(
-                    color: colors.textPrimary,
+    return InkWell(
+      onTap: onTap,
+      child: Padding(
+        padding: EdgeInsets.only(bottom: 12.h),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text.rich(
+                    TextSpan(
+                      children: [
+                        TextSpan(text: title),
+                        if (meta != null)
+                          TextSpan(
+                            text: '  $meta',
+                            style: TextStyle(color: colors.textTertiary),
+                          ),
+                      ],
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: AppTypography.textSmMedium.copyWith(
+                      color: colors.textPrimary,
+                    ),
                   ),
                 ),
-              ),
-              SizedBox(width: 8.w),
-              Text(
-                '${prepCount(tally.total)} · ${score == null ? '–' : '${(score * 100).round()}%'}',
-                style: AppTypography.textXsMedium.copyWith(
-                  color: colors.textSecondary,
-                  fontFeatures: const [FontFeature.tabularFigures()],
+                SizedBox(width: 8.w),
+                Text(
+                  '${prepCount(tally.total)} · ${score == null ? '–' : '${(score * 100).round()}%'}',
+                  style: AppTypography.textXsMedium.copyWith(
+                    color: colors.textSecondary,
+                    fontFeatures: const [FontFeature.tabularFigures()],
+                  ),
                 ),
-              ),
-            ],
-          ),
-          SizedBox(height: 6.h),
-          PrepResultBar(tally: tally, height: 4),
-        ],
+              ],
+            ),
+            SizedBox(height: 6.h),
+            PrepResultBar(tally: tally, height: 4),
+          ],
+        ),
       ),
     );
   }
 }
 
 class _YearBars extends StatelessWidget {
-  const _YearBars({required this.years});
+  const _YearBars({required this.years, this.onYear});
   final List<(int, PrepTally)> years;
+  final ValueChanged<int>? onYear;
 
   @override
   Widget build(BuildContext context) {
@@ -358,11 +454,14 @@ class _YearBars extends StatelessWidget {
         children: [
           for (final (year, tally) in shown)
             Expanded(
-              child: _Bar(
-                fraction: tally.total / most,
-                tally: tally,
-                label: "'${(year % 100).toString().padLeft(2, '0')}",
-                value: prepCount(tally.total),
+              child: InkWell(
+                onTap: () => onYear?.call(year),
+                child: _Bar(
+                  fraction: tally.total / most,
+                  tally: tally,
+                  label: "'${(year % 100).toString().padLeft(2, '0')}",
+                  value: prepCount(tally.total),
+                ),
               ),
             ),
         ],

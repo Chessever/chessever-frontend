@@ -30,8 +30,31 @@ class _OptionsDialog extends StatefulWidget {
 }
 
 class _OptionsDialogState extends State<_OptionsDialog> {
-  late Set<PrepTimeControl> _clocks = {...widget.account.preferences.timeControls};
+  late Set<PrepTimeControl> _clocks = {
+    ...widget.account.preferences.timeControls,
+  };
   late PrepDateRange _range = widget.account.preferences.range;
+  late DateTime? _from = widget.account.preferences.fromDate;
+  late DateTime? _to = widget.account.preferences.toDate;
+
+  Future<void> _pickDate(bool start) async {
+    final value = await showDatePicker(
+      context: context,
+      initialDate: (start ? _from : _to) ?? DateTime.now(),
+      firstDate: DateTime(1800),
+      lastDate: DateTime.now(),
+      helpText: start ? 'First game date' : 'Last game date',
+    );
+    if (value == null || !mounted) return;
+    setState(() {
+      final date = DateTime.utc(value.year, value.month, value.day);
+      if (start) {
+        _from = date;
+      } else {
+        _to = date;
+      }
+    });
+  }
 
   PrepSource get _source => widget.account.source;
 
@@ -41,6 +64,8 @@ class _OptionsDialogState extends State<_OptionsDialog> {
     final next = PrepDownloadPreferences(
       timeControls: _clocks.intersection(offered.toSet()),
       range: _range,
+      fromDate: _from,
+      toDate: _to,
     );
     final changed = next != widget.account.preferences;
     return PrepDialogCard(
@@ -84,6 +109,40 @@ class _OptionsDialogState extends State<_OptionsDialog> {
           ],
         ),
         SizedBox(height: 14.h),
+        if (_range == PrepDateRange.custom) ...[
+          Row(
+            children: [
+              Expanded(
+                child: TextButton(
+                  onPressed: () => _pickDate(true),
+                  child: Text(
+                    _from == null ? 'Start date' : prepDateText(_from!),
+                  ),
+                ),
+              ),
+              Expanded(
+                child: TextButton(
+                  onPressed: () => _pickDate(false),
+                  child: Text(_to == null ? 'End date' : prepDateText(_to!)),
+                ),
+              ),
+            ],
+          ),
+          TextButton(
+            onPressed: () => setState(() {
+              _from = null;
+              _to = null;
+            }),
+            child: const Text('Clear dates'),
+          ),
+          if (next.validationError case final error?)
+            Text(
+              error,
+              style: AppTypography.textXsRegular.copyWith(
+                color: context.colors.danger,
+              ),
+            ),
+        ],
         Text(
           _range == PrepDateRange.all
               ? 'Large accounts can hold tens of thousands of games. A '
@@ -97,7 +156,7 @@ class _OptionsDialogState extends State<_OptionsDialog> {
         SizedBox(height: 24.h),
         PrepDialogActions(
           confirmLabel: 'Save',
-          onConfirm: changed
+          onConfirm: changed && next.validationError == null
               ? () {
                   HapticFeedbackService.medium();
                   Navigator.of(context).pop(next);
@@ -110,7 +169,11 @@ class _OptionsDialogState extends State<_OptionsDialog> {
 }
 
 class _Chip extends StatelessWidget {
-  const _Chip({required this.label, required this.selected, required this.onTap});
+  const _Chip({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
 
   final String label;
   final bool selected;
@@ -131,7 +194,7 @@ class _Chip extends StatelessWidget {
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 160),
           curve: Curves.easeOut,
-          constraints: BoxConstraints(minHeight: 36.h),
+          constraints: const BoxConstraints(minHeight: 44),
           padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 8.h),
           decoration: BoxDecoration(
             color: selected

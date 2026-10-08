@@ -13,8 +13,15 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 /// Chess.com's green, used only on its own mark and source chips.
 const Color kChessComGreen = Color(0xFF81B64C);
 
-/// A provider's logo on the white tile both brands are designed for, the
-/// way desktop Prep shows them.
+double prepSegmentHeight(BuildContext context) =>
+    (MediaQuery.textScalerOf(
+                  context,
+                ).scale(AppTypography.textSmMedium.fontSize ?? 14) *
+                (AppTypography.textSmMedium.height ?? 1.4) +
+            16.h)
+        .clamp(44.0, double.infinity);
+
+/// Real provider marks, directly on the app surface.
 class PrepSourceMark extends StatelessWidget {
   const PrepSourceMark({super.key, required this.source, this.size = 20});
 
@@ -23,29 +30,51 @@ class PrepSourceMark extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final inner = size * 0.68;
     return ExcludeSemantics(
-      child: Container(
+      child: SizedBox(
         width: size,
         height: size,
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(size * 0.28),
-          border: Border.all(color: context.colors.divider, width: 0.5),
-        ),
         child: switch (source) {
           PrepSource.lichess => SvgPicture.asset(
             'assets/svgs/lichess_logo.svg',
-            width: inner,
-            height: inner,
+            width: size,
+            height: size,
+            colorFilter: ColorFilter.mode(
+              context.colors.textPrimary,
+              BlendMode.srcIn,
+            ),
           ),
           PrepSource.chesscom => Image.asset(
             'assets/pngs/chesscom_pawn.png',
-            width: inner,
-            height: inner,
+            width: size,
+            height: size,
             fit: BoxFit.contain,
             filterQuality: FilterQuality.medium,
+          ),
+          // Isolate the mark from the existing transparent logo lockup.
+          // Its 504 x 480 bounds sit centered in a 528 x 528 source viewport;
+          // the wordmark below it stays outside that viewport.
+          PrepSource.chessever => ClipRect(
+            child: Stack(
+              children: [
+                Positioned(
+                  left: -size * 326 / 528,
+                  top: size * 24 / 528,
+                  width: size * 1180 / 528,
+                  height: size * 624 / 528,
+                  child: Image.asset(
+                    'assets/pngs/chessever.png',
+                    fit: BoxFit.contain,
+                    filterQuality: FilterQuality.medium,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          PrepSource.manual => Icon(
+            Icons.description_outlined,
+            size: size,
+            color: context.colors.textPrimary,
           ),
         },
       ),
@@ -53,7 +82,7 @@ class PrepSourceMark extends StatelessWidget {
   }
 }
 
-/// The marks of every source a profile reads, overlapping like a stack.
+/// Evenly spaced source marks. No brand is covered by its neighbour.
 class PrepSourceMarks extends StatelessWidget {
   const PrepSourceMarks({super.key, required this.sources, this.size = 18});
 
@@ -65,7 +94,7 @@ class PrepSourceMarks extends StatelessWidget {
     final list = sources.toSet().toList()
       ..sort((a, b) => a.index.compareTo(b.index));
     if (list.isEmpty) return const SizedBox.shrink();
-    final step = size * 0.72;
+    final step = size + 6;
     return SizedBox(
       width: size + step * (list.length - 1),
       height: size,
@@ -97,6 +126,7 @@ class PrepAvatar extends ConsumerWidget {
     this.photoUrl,
     this.fideId,
     this.title,
+    this.borderRadius,
   });
 
   final String name;
@@ -104,6 +134,7 @@ class PrepAvatar extends ConsumerWidget {
   final String? photoUrl;
   final String? fideId;
   final String? title;
+  final double? borderRadius;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -114,6 +145,7 @@ class PrepAvatar extends ConsumerWidget {
       photoUrl: fidePhoto ?? photoUrl,
       initials: prepInitials(name),
       size: size,
+      borderRadius: borderRadius ?? 8.br,
       title: title,
     );
   }
@@ -126,7 +158,9 @@ String prepInitials(String name) {
       .toList();
   if (words.isEmpty) return '?';
   if (words.length == 1) {
-    return words.first.substring(0, words.first.length.clamp(0, 2)).toUpperCase();
+    return words.first
+        .substring(0, words.first.length.clamp(0, 2))
+        .toUpperCase();
   }
   return (words.first[0] + words.last[0]).toUpperCase();
 }
@@ -278,7 +312,9 @@ class PrepStatStrip extends StatelessWidget {
 /// "Synced 3 h ago" style wording.
 String prepSyncedAgo(int? ms) {
   if (ms == null) return 'Not downloaded yet';
-  final diff = DateTime.now().difference(DateTime.fromMillisecondsSinceEpoch(ms));
+  final diff = DateTime.now().difference(
+    DateTime.fromMillisecondsSinceEpoch(ms),
+  );
   if (diff.inMinutes < 1) return 'Updated just now';
   if (diff.inMinutes < 60) return 'Updated ${diff.inMinutes} min ago';
   if (diff.inHours < 24) return 'Updated ${diff.inHours} h ago';

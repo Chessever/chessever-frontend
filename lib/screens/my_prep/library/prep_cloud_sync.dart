@@ -8,6 +8,7 @@ import 'package:chessever2/screens/library/providers/library_folders_provider.da
 import 'package:chessever2/screens/my_prep/models/prep_models.dart';
 import 'package:chessever2/screens/my_prep/providers/prep_providers.dart';
 import 'package:chessever2/screens/my_prep/services/prep_index.dart';
+import 'package:chessever2/services/game_tree/game_tree_store.dart';
 import 'package:chessever2/services/rewarded_premium/rewarded_access_provider.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -23,9 +24,10 @@ class PrepCloudStatus {
 
 /// Running cloud saves by profile id.
 final prepCloudSyncProvider =
-    StateNotifierProvider<PrepCloudSyncController, Map<String, PrepCloudStatus>>(
-      (ref) => PrepCloudSyncController(ref),
-    );
+    StateNotifierProvider<
+      PrepCloudSyncController,
+      Map<String, PrepCloudStatus>
+    >((ref) => PrepCloudSyncController(ref));
 
 /// Saves a My Prep player to the cloud Library as desktop does: a folder
 /// named after them holding one database per account, and from then on
@@ -46,7 +48,10 @@ class PrepCloudSyncController
 
   bool isSaving(String profileId) => state.containsKey(profileId);
 
-  void cancel(String profileId) => _cancel.add(profileId);
+  void cancel(String profileId) {
+    _cancel.add(profileId);
+    _again.remove(profileId);
+  }
 
   /// Follows a download: uploads the new games of a saved player while the
   /// reader has Premium. Never asks for anything.
@@ -95,14 +100,15 @@ class PrepCloudSyncController
           profileId,
           (p) => p.copyWith(
             cloudFolderId: folder.id,
-            accounts: [for (final a in p.accounts) a.copyWith(clearCloud: true)],
+            accounts: [
+              for (final a in p.accounts) a.copyWith(clearCloud: true),
+            ],
           ),
         );
       }
       profile = profiles.byId(profileId)!;
 
       final repo = _ref.read(prepRepositoryProvider);
-      final store = await PrepIndex.ensureProfile(repo, profile);
       // Each account's database, created again when it was deleted (and
       // then filled from its first game).
       final accounts = <PrepAccount>[];
@@ -123,17 +129,21 @@ class PrepCloudSyncController
         }
         accounts.add(account);
       }
-      final pending = <(PrepAccount, List<(int, int)>)>[];
+      final pending = <(PrepAccount, GameTreeStore, List<(int, int)>)>[];
       var total = 0;
       for (final account in accounts) {
+        if (_cancel.contains(profileId)) return null;
+        // Combined deduplicates across sources. Each cloud database must
+        // preserve its own games, including duplicates in another account.
+        final store = await PrepIndex.ensureAccount(repo, profile, account);
         final path = (await repo.gamesFile(account)).path;
         final rows = store.rowsAfter(path, account.cloudSyncedTs ?? -1);
-        pending.add((account, rows));
+        pending.add((account, store, rows));
         total += rows.length;
       }
       var done = 0;
       report('Saving games to the cloud…', total: total);
-      for (var (account, rows) in pending) {
+      for (var (account, store, rows) in pending) {
         final databaseId = account.cloudDatabaseId!;
         for (var i = 0; i < rows.length; i += _chunk) {
           if (_cancel.contains(profileId)) return null;
@@ -186,7 +196,9 @@ class PrepCloudSyncController
           profileId,
           (p) => p.copyWith(
             clearCloud: true,
-            accounts: [for (final a in p.accounts) a.copyWith(clearCloud: true)],
+            accounts: [
+              for (final a in p.accounts) a.copyWith(clearCloud: true),
+            ],
           ),
         );
   }
@@ -211,7 +223,8 @@ List<Map<String, dynamic>> _savedAnalysisRows(List<(String, String)> games) {
     final white = (game.metadata['White']?.toString().trim() ?? '');
     final black = (game.metadata['Black']?.toString().trim() ?? '');
     rows.add({
-      'title': '${white.isEmpty ? 'White' : white} vs '
+      'title':
+          '${white.isEmpty ? 'White' : white} vs '
           '${black.isEmpty ? 'Black' : black}',
       'source_game_id': null,
       'source_tournament_id': null,

@@ -28,6 +28,8 @@ class SegmentedSwitcher extends StatefulWidget {
   /// When true, segments size to their content and scroll horizontally instead
   /// of splitting the width into equal thirds. Used for the 4-tab team layout.
   final bool isScrollable;
+  /// Lets compact screens keep scaled labels and 44dp tap targets clear.
+  final double? height;
 
   const SegmentedSwitcher({
     super.key,
@@ -45,6 +47,7 @@ class SegmentedSwitcher extends StatefulWidget {
     this.optionLabels,
     this.notifyOnReselect = false,
     this.isScrollable = false,
+    this.height,
     this.longPressFor,
     this.longPressHint,
   }) : assert(
@@ -175,7 +178,7 @@ class _SegmentedSwitcherState extends State<SegmentedSwitcher> {
             (_) => _centerSelectedSegment(),
           );
           return Container(
-            height: 40.h,
+            height: widget.height ?? 40.h,
             decoration: BoxDecoration(
               color: backgroundColor,
               borderRadius: BorderRadius.circular(borderRadius),
@@ -194,7 +197,7 @@ class _SegmentedSwitcherState extends State<SegmentedSwitcher> {
                           : defaultTextStyle)
                       .copyWith(
                         color: (isSelected ? selectedTextColor : textColor)
-                            .withOpacity(textOpacity),
+                            .withValues(alpha: textOpacity),
                       );
 
                   return _segmentTarget(
@@ -235,7 +238,7 @@ class _SegmentedSwitcherState extends State<SegmentedSwitcher> {
     }
 
     return Container(
-      height: 40.h,
+      height: widget.height ?? 40.h,
       decoration: BoxDecoration(
         color: backgroundColor,
         borderRadius: BorderRadius.circular(borderRadius),
@@ -279,7 +282,7 @@ class _SegmentedSwitcherState extends State<SegmentedSwitcher> {
                       : defaultTextStyle)
                   .copyWith(
                     color: (isSelected ? selectedTextColor : textColor)
-                        .withOpacity(textOpacity),
+                        .withValues(alpha: textOpacity),
                   );
 
               return Expanded(

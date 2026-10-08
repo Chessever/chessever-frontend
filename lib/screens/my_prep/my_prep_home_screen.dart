@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:chessever2/screens/for_you/discovery/widgets/discovery_common.dart'
     show DiscoveryAction, DiscoveryActionLead;
 import 'package:chessever2/screens/my_prep/data/prep_favorites.dart';
@@ -7,6 +5,7 @@ import 'package:chessever2/screens/my_prep/models/prep_models.dart';
 import 'package:chessever2/screens/my_prep/prep_access.dart';
 import 'package:chessever2/screens/my_prep/prep_actions.dart';
 import 'package:chessever2/screens/my_prep/prep_profile_screen.dart';
+import 'package:chessever2/screens/my_prep/prep_sources_screen.dart';
 import 'package:chessever2/screens/my_prep/providers/prep_providers.dart';
 import 'package:chessever2/screens/my_prep/widgets/prep_common.dart';
 import 'package:chessever2/screens/my_prep/widgets/prep_profile_card.dart';
@@ -14,14 +13,13 @@ import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
-import 'package:chessever2/widgets/app_button.dart' show TappableScale;
 import 'package:chessever2/widgets/segmented_switcher.dart';
 import 'package:chessever2/widgets/skeleton_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 /// My Prep: the reader's own games, the opponents they prepare for, and
-/// famous players to study, each read from Lichess and Chess.com.
+/// players to study, with database, online and PGN sources.
 class MyPrepHomeScreen extends ConsumerStatefulWidget {
   const MyPrepHomeScreen({super.key, this.initialTab = 0});
 
@@ -47,6 +45,10 @@ class _MyPrepHomeScreenState extends ConsumerState<MyPrepHomeScreen> {
   void _select(int index) {
     if (index == _tab) return;
     setState(() => _tab = index);
+    if (MediaQuery.disableAnimationsOf(context)) {
+      _pages.jumpToPage(index);
+      return;
+    }
     _pages.animateToPage(
       index,
       duration: const Duration(milliseconds: 280),
@@ -88,6 +90,7 @@ class _MyPrepHomeScreenState extends ConsumerState<MyPrepHomeScreen> {
               Padding(
                 padding: EdgeInsets.symmetric(horizontal: gutter),
                 child: SegmentedSwitcher(
+                  height: prepSegmentHeight(context),
                   options: MyPrepHomeScreen.tabs,
                   initialSelection: _tab,
                   currentSelection: _tab,
@@ -97,16 +100,16 @@ class _MyPrepHomeScreenState extends ConsumerState<MyPrepHomeScreen> {
               ),
               Expanded(
                 child: PageView(
-                    controller: _pages,
-                    onPageChanged: (index) {
-                      if (index != _tab) setState(() => _tab = index);
-                    },
-                    children: const [
-                      _MyGamesTab(),
-                      _OpponentsTab(),
-                      _FavoritesTab(),
-                    ],
-                  ),
+                  controller: _pages,
+                  onPageChanged: (index) {
+                    if (index != _tab) setState(() => _tab = index);
+                  },
+                  children: const [
+                    _MyGamesTab(),
+                    _OpponentsTab(),
+                    _FavoritesTab(),
+                  ],
+                ),
               ),
             ],
           ),
@@ -194,16 +197,14 @@ class _MyGamesTab extends ConsumerWidget {
     final mine = ref.watch(prepProfilesOfKindProvider(PrepKind.mine));
     if (mine == null) return const _ListSkeleton();
     final profile = mine.firstOrNull;
-    if (profile == null || profile.accounts.isEmpty) {
+    if (profile == null) {
       return _EmptyState(
         title: 'Bring in your own games',
         body:
-            'Add your Lichess and Chess.com usernames to see your results, '
-            'your openings and every game you played. They stay up to date '
-            'three times a day.',
-        actionLabel: 'Add your accounts',
+            'Start with ChessEver, Lichess or Chess.com. Your results, openings and games stay together in one profile.',
+        actionLabel: 'Add your profile',
         onAction: () => prepAddMine(context, ref),
-        sources: PrepSource.values,
+        sources: PrepSource.playerSources,
       );
     }
     return RefreshIndicator(
@@ -219,200 +220,35 @@ class _MyGamesTab extends ConsumerWidget {
           _TabHeader(
             text: prepGamesLabel(profile.gameCount),
             action: DiscoveryAction(
-              label: 'Add account',
+              label: 'Attach source',
               lead: DiscoveryActionLead.plus,
               onTap: () => prepAddAccountTo(context, ref, profile),
             ),
           ),
           Padding(
-            padding: EdgeInsets.symmetric(horizontal: _gutter),
-            child: _OpenPrepCard(profile: profile),
+            padding: EdgeInsets.symmetric(horizontal: 4.w),
+            child: PrepProfileCard(
+              profile: profile,
+              onTap: () {
+                HapticFeedbackService.cardTap();
+                PrepProfileScreen.open(context, profile.id);
+              },
+            ),
           ),
-          SizedBox(height: 20.h),
           Padding(
-            padding: EdgeInsets.fromLTRB(_gutter, 0, _gutter, 10.h),
-            child: Text(
-              'Accounts',
-              style: AppTypography.textMdBold.copyWith(
-                color: context.colors.textPrimary,
+            padding: EdgeInsets.symmetric(horizontal: _gutter),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton(
+                onPressed: () => PrepSourcesScreen.open(context, profile.id),
+                child: Text(
+                  'Manage sources',
+                  style: AppTypography.textSmMedium.copyWith(
+                    color: context.colors.textPrimary,
+                  ),
+                ),
               ),
             ),
-          ),
-          for (final account in profile.accounts)
-            Padding(
-              padding: EdgeInsets.fromLTRB(_gutter, 0, _gutter, 10.h),
-              child: PrepAccountRow(profile: profile, account: account),
-            ),
-        ],
-      ),
-    );
-  }
-}
-
-/// The way into the reader's own Overview, Games and Openings.
-class _OpenPrepCard extends StatelessWidget {
-  const _OpenPrepCard({required this.profile});
-  final PrepProfile profile;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = context.colors;
-    return TappableScale(
-      scaleDown: 0.98,
-      onTap: () {
-        HapticFeedbackService.cardTap();
-        PrepProfileScreen.open(context, profile.id);
-      },
-      child: Container(
-        padding: EdgeInsets.all(16.sp),
-        decoration: BoxDecoration(
-          color: colors.surface,
-          borderRadius: BorderRadius.circular(12.br),
-        ),
-        child: Row(
-          children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Study your games',
-                    style: AppTypography.textMdBold.copyWith(
-                      color: colors.textPrimary,
-                    ),
-                  ),
-                  SizedBox(height: 4.h),
-                  Text(
-                    'Results, openings and the full game list, '
-                    'from every account together.',
-                    style: AppTypography.textXsRegular.copyWith(
-                      color: colors.textSecondary,
-                      height: 16 / 12,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            SizedBox(width: 12.w),
-            Icon(
-              Icons.arrow_forward_ios_rounded,
-              size: 16.sp,
-              color: colors.iconSecondary,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-/// One account: its provider, rating, game count and freshness, with its
-/// own refresh.
-class PrepAccountRow extends ConsumerWidget {
-  const PrepAccountRow({super.key, required this.profile, required this.account});
-
-  final PrepProfile profile;
-  final PrepAccount account;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final colors = context.colors;
-    final status = ref.watch(
-      prepSyncProvider.select((s) => s[account.key]?.message),
-    );
-    final syncing = status != null;
-    final rating = account.bestRating;
-    final line = syncing
-        ? status
-        : account.error ??
-              '${prepGamesLabel(account.gameCount)} · ${prepSyncedAgo(account.lastSyncAtMs)}';
-    return Container(
-      padding: EdgeInsets.fromLTRB(12.sp, 10.sp, 4.sp, 10.sp),
-      decoration: BoxDecoration(
-        color: colors.surface,
-        borderRadius: BorderRadius.circular(12.br),
-      ),
-      child: Row(
-        children: [
-          PrepSourceMark(source: account.source, size: 32.sp),
-          SizedBox(width: 12.w),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Flexible(
-                      child: Text(
-                        account.username,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: AppTypography.textSmBold.copyWith(
-                          color: colors.textPrimary,
-                        ),
-                      ),
-                    ),
-                    if (rating != null) ...[
-                      SizedBox(width: 6.w),
-                      Text(
-                        '$rating',
-                        style: AppTypography.textXsMedium.copyWith(
-                          color: colors.textSecondary,
-                          fontFeatures: const [FontFeature.tabularFigures()],
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
-                SizedBox(height: 2.h),
-                Text(
-                  line,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: AppTypography.textXsRegular.copyWith(
-                    color: account.error != null && !syncing
-                        ? colors.danger
-                        : colors.textTertiary,
-                  ),
-                ),
-                Text(
-                  account.preferences.describe(account.source),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: AppTypography.textXxsRegular.copyWith(
-                    color: colors.textTertiary,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          SizedBox(
-            width: 44,
-            height: 44,
-            child: syncing
-                ? IconButton(
-                    tooltip: 'Stop download',
-                    onPressed: () =>
-                        ref.read(prepSyncProvider.notifier).cancel(account),
-                    icon: SizedBox.square(
-                      dimension: 18.sp,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: colors.textSecondary,
-                      ),
-                    ),
-                  )
-                : IconButton(
-                    tooltip: 'Refresh ${account.username}',
-                    onPressed: () => unawaited(
-                      prepRefreshAccount(context, ref, profile.id, account),
-                    ),
-                    icon: Icon(
-                      Icons.refresh_rounded,
-                      size: 20.sp,
-                      color: colors.iconPrimary,
-                    ),
-                  ),
           ),
         ],
       ),
@@ -433,11 +269,10 @@ class _OpponentsTab extends ConsumerWidget {
       return _EmptyState(
         title: 'Prepare for your next opponent',
         body:
-            'Add their Lichess or Chess.com username to see what they play, '
-            'how they score with each opening and how their games go.',
+            'Find them in ChessEver or start with a Lichess or Chess.com username. Attach all their sources to one profile.',
         actionLabel: 'Add an opponent',
         onAction: () => prepAddOpponent(context, ref),
-        sources: PrepSource.values,
+        sources: PrepSource.playerSources,
       );
     }
     return ListView.builder(
@@ -462,7 +297,7 @@ class _OpponentsTab extends ConsumerWidget {
         final profile = opponents[index - 1];
         return Padding(
           key: ValueKey(profile.id),
-          padding: EdgeInsets.fromLTRB(_gutter, 0, _gutter, 10.h),
+          padding: EdgeInsets.symmetric(horizontal: 4.w),
           child: PrepProfileCard(
             profile: profile,
             fideId: _favoriteFide(profile),
@@ -479,6 +314,7 @@ class _OpponentsTab extends ConsumerWidget {
 
 String? _favoriteFide(PrepProfile profile) {
   final id = profile.favoriteId;
+  if (profile.fideId != null) return profile.fideId;
   if (id == null) return null;
   return kPrepFavorites.where((f) => f.id == id).firstOrNull?.fideId;
 }
@@ -537,7 +373,7 @@ class _FavoritesTabState extends ConsumerState<_FavoritesTab> {
         final favorite = list[index - 1];
         return Padding(
           key: ValueKey(favorite.id),
-          padding: EdgeInsets.fromLTRB(_gutter, 0, _gutter, 10.h),
+          padding: EdgeInsets.symmetric(horizontal: 4.w),
           child: _FavoriteCard(
             favorite: favorite,
             profile: byFavorite[favorite.id],
@@ -550,114 +386,33 @@ class _FavoritesTabState extends ConsumerState<_FavoritesTab> {
 
 class _FavoriteCard extends ConsumerWidget {
   const _FavoriteCard({required this.favorite, this.profile});
-
   final PrepFavorite favorite;
   final PrepProfile? profile;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final colors = context.colors;
-    final kept = profile;
-    final syncing = ref.watch(
-      prepSyncProvider.select(
-        (s) => kept?.accounts.any((a) => s.containsKey(a.key)) ?? false,
-      ),
-    );
-    final downloaded = kept != null && kept.lastSyncAtMs != null;
-    return Semantics(
-      button: true,
-      label: '${favorite.title} ${favorite.name}',
-      child: TappableScale(
-        scaleDown: 0.98,
-        onTap: () => prepOpenFavorite(context, ref, favorite),
-        child: Container(
-          padding: EdgeInsets.all(12.sp),
-          decoration: BoxDecoration(
-            color: colors.surface,
-            borderRadius: BorderRadius.circular(12.br),
-          ),
-          child: Row(
-            children: [
-              PrepAvatar(
-                name: favorite.name,
-                size: 48.sp,
-                fideId: favorite.fideId,
+  Widget build(BuildContext context, WidgetRef ref) => PrepProfileCard(
+    profile:
+        profile ??
+        PrepProfile(
+          id: 'preview-${favorite.id}',
+          kind: PrepKind.favorite,
+          name: favorite.name,
+          createdAtMs: 0,
+          favoriteId: favorite.id,
+          accounts: [
+            for (final (source, username) in favorite.accounts)
+              PrepAccount(
+                source: source,
+                username: username,
                 title: favorite.title,
+                country: favorite.country,
               ),
-              SizedBox(width: 12.w),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        PrepFlag(country: favorite.country),
-                        Flexible(
-                          child: Text(
-                            favorite.name,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: AppTypography.textMdBold.copyWith(
-                              color: colors.textPrimary,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    SizedBox(height: 6.h),
-                    Wrap(
-                      spacing: 10.w,
-                      runSpacing: 4.h,
-                      children: [
-                        for (final (source, username) in favorite.accounts)
-                          Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              PrepSourceMark(source: source, size: 16.sp),
-                              SizedBox(width: 5.w),
-                              Text(
-                                username,
-                                style: AppTypography.textXsRegular.copyWith(
-                                  color: colors.textSecondary,
-                                ),
-                              ),
-                            ],
-                          ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-              SizedBox(width: 8.w),
-              if (syncing)
-                SizedBox.square(
-                  dimension: 14.sp,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 1.5,
-                    color: colors.textSecondary,
-                  ),
-                )
-              else if (downloaded)
-                Tooltip(
-                  message: '${prepGamesLabel(kept.gameCount)} downloaded',
-                  child: Icon(
-                    Icons.download_done_rounded,
-                    size: 18.sp,
-                    color: colors.textSecondary,
-                  ),
-                )
-              else
-                Icon(
-                  Icons.arrow_forward_ios_rounded,
-                  size: 14.sp,
-                  color: colors.iconSecondary,
-                ),
-            ],
-          ),
+          ],
         ),
-      ),
-    );
-  }
+    fideId: favorite.fideId,
+    preview: profile == null,
+    onTap: () => prepOpenFavorite(context, ref, favorite),
+  );
 }
 
 class _SearchField extends StatelessWidget {

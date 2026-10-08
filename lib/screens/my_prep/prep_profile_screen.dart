@@ -6,18 +6,18 @@ import 'package:chessever2/screens/my_prep/prep_access.dart';
 import 'package:chessever2/screens/my_prep/prep_actions.dart';
 import 'package:chessever2/screens/my_prep/providers/prep_providers.dart';
 import 'package:chessever2/screens/my_prep/services/prep_analysis.dart';
+import 'package:chessever2/screens/my_prep/services/prep_index.dart';
+import 'package:chessever2/screens/my_prep/services/prep_repository.dart';
 import 'package:chessever2/screens/my_prep/tabs/prep_games_tab.dart';
-import 'package:chessever2/screens/my_prep/tabs/prep_openings_tab.dart';
+import 'package:chessever2/screens/my_prep/tabs/prep_trees_tab.dart';
+import 'package:chessever2/screens/my_prep/prep_sources_screen.dart';
+import 'package:chessever2/screens/my_prep/widgets/prep_identity.dart';
 import 'package:chessever2/screens/my_prep/tabs/prep_overview_tab.dart';
 import 'package:chessever2/screens/my_prep/widgets/prep_common.dart';
 import 'package:chessever2/screens/my_prep/widgets/prep_filters.dart';
-import 'package:chessever2/screens/my_prep/library/prep_library.dart'
-    show PrepProfileTreeTarget;
 import 'package:chessever2/services/game_tree/game_tree_service.dart';
-import 'package:chessever2/widgets/game_tree/build_tree_button.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/app_typography.dart';
-import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/card_context_menu.dart';
 import 'package:chessever2/widgets/segmented_switcher.dart';
@@ -44,7 +44,7 @@ class PrepProfileScreen extends ConsumerStatefulWidget {
 }
 
 class _PrepProfileScreenState extends ConsumerState<PrepProfileScreen> {
-  static const _tabs = ['Overview', 'Games', 'Openings'];
+  static const _tabs = ['About', 'Games', 'Build Tree'];
   int _tab = 0;
   late final PageController _pages = PageController();
   PrepFilter _filter = const PrepFilter();
@@ -84,6 +84,10 @@ class _PrepProfileScreenState extends ConsumerState<PrepProfileScreen> {
   void _select(int index) {
     if (index == _tab) return;
     setState(() => _tab = index);
+    if (MediaQuery.disableAnimationsOf(context)) {
+      _pages.jumpToPage(index);
+      return;
+    }
     _pages.animateToPage(
       index,
       duration: const Duration(milliseconds: 280),
@@ -101,6 +105,28 @@ class _PrepProfileScreenState extends ConsumerState<PrepProfileScreen> {
     });
   }
 
+  Widget _identity(PrepProfile profile, {bool inset = true}) => PrepIdentity(
+    profile: profile,
+    source: _filter.source,
+    accountKey: _filter.accountKey,
+    inset: inset,
+    fideId: kPrepFavorites
+        .where((f) => f.id == profile.favoriteId)
+        .firstOrNull
+        ?.fideId,
+    onRating: (account, speed) {
+      setState(
+        () => _filter = PrepFilter(
+          source: account.source,
+          speed: speed,
+          accountKey: account.key,
+          accountFile: PrepRepository.gamesFileName(account),
+        ),
+      );
+      _select(1);
+    },
+  );
+
   @override
   Widget build(BuildContext context) {
     final profile = ref.watch(prepProfileProvider(widget.profileId));
@@ -114,9 +140,32 @@ class _PrepProfileScreenState extends ConsumerState<PrepProfileScreen> {
       return Scaffold(backgroundColor: context.colors.background);
     }
     _checkFreshness(profile);
-    final analysis = ref.watch(prepAnalysisProvider(profile.id));
+    if (_filter.accountKey != null &&
+        !profile.accounts.any((a) => a.key == _filter.accountKey)) {
+      _filter = _filter.copyWith(
+        accountKey: null,
+        accountFile: null,
+        source: null,
+      );
+    } else if (_filter.source != null &&
+        !profile.accounts.any((a) => a.source == _filter.source)) {
+      _filter = _filter.copyWith(source: null);
+    }
+    final analysisProvider = _filter.accountKey == null
+        ? prepAnalysisProvider(profile.id)
+        : prepSourceAnalysisProvider((
+            profileId: profile.id,
+            accountKey: _filter.accountKey,
+          ));
+    final analysis = ref.watch(analysisProvider);
+    final selectedAccount = profile.accounts
+        .where((a) => a.key == _filter.accountKey)
+        .firstOrNull;
+    final scope = selectedAccount == null
+        ? profile.id
+        : PrepIndex.accountScope(selectedAccount);
     final indexing = ref.watch(
-      gameTreeStatusProvider.select((s) => s[profile.id]?.percent),
+      gameTreeStatusProvider.select((s) => s[scope]?.percent),
     );
     final games = analysis.valueOrNull?.games ?? const <PrepGame>[];
     final filtered = _filtered(games);
@@ -126,73 +175,123 @@ class _PrepProfileScreenState extends ConsumerState<PrepProfileScreen> {
       backgroundColor: context.colors.background,
       body: Center(
         child: ConstrainedBox(
-          constraints: BoxConstraints(maxWidth: ResponsiveHelper.contentMaxWidth),
+          constraints: BoxConstraints(
+            maxWidth: ResponsiveHelper.contentMaxWidth,
+          ),
           child: Column(
             children: [
               SizedBox(height: MediaQuery.of(context).viewPadding.top + 4.h),
               _TopBar(profile: profile),
-              _Hero(profile: profile),
-              SizedBox(height: 12.h),
+              SizedBox(height: 8.h),
               Padding(
-                padding: EdgeInsets.symmetric(horizontal: gutter),
+                padding: EdgeInsets.symmetric(
+                  horizontal: ResponsiveHelper.adaptive(
+                    phone: 20.sp,
+                    tablet: 32.sp,
+                  ),
+                ),
                 child: SegmentedSwitcher(
+                  height: prepSegmentHeight(context),
+                  backgroundColor: context.colors.popup,
+                  selectedBackgroundColor: context.colors.popup,
                   options: _tabs,
                   initialSelection: _tab,
                   currentSelection: _tab,
                   onSelectionChanged: _select,
                 ),
               ),
-              PrepFilterBar(
-                games: games,
-                profile: profile,
-                filter: _filter,
-                onChanged: (f) => setState(() => _filter = f),
-              ),
+              _SourcesRow(profile: profile),
+              if (_tab != 2)
+                PrepFilterBar(
+                  games: games,
+                  profile: profile,
+                  filter: _filter,
+                  onChanged: (f) => setState(() => _filter = f),
+                ),
               Expanded(
-                child: analysis.when(
-                  skipLoadingOnReload: true,
-                  error: (error, _) => PrepMessage(
-                    title: 'Could not read these games',
-                    body: '$error',
-                  ),
-                  loading: () => PrepMessage(
-                    title: indexing == null
-                        ? 'Reading games…'
-                        : 'Indexing games · $indexing%',
-                    body: indexing == null
-                        ? 'Working out results and openings.'
-                        : 'Done once on this phone. Later updates only add '
-                              'new games.',
-                    busy: true,
-                  ),
-                  data: (data) {
-                    if (data.games.isEmpty) return _NoGames(profile: profile);
-                    return PageView(
-                      controller: _pages,
-                      onPageChanged: (i) {
-                        if (i != _tab) setState(() => _tab = i);
-                      },
-                      children: [
-                        PrepOverviewTab(
-                          profile: profile,
-                          stats: _statsOf(filtered),
-                          filter: _filter,
-                        ),
-                        PrepGamesTab(
-                          analysis: data,
-                          games: filtered,
-                          filter: _filter,
-                          onFilterChanged: (f) => setState(() => _filter = f),
-                        ),
-                        PrepOpeningsTab(
-                          profile: profile,
-                          analysis: data,
-                          games: filtered,
-                          filter: _filter,
-                        ),
-                      ],
-                    );
+                child: PageView(
+                  controller: _pages,
+                  onPageChanged: (i) {
+                    if (i != _tab) setState(() => _tab = i);
                   },
+                  children: [
+                    analysis.when(
+                      skipLoadingOnReload: true,
+                      loading: () => ListView(
+                        children: [
+                          _identity(profile),
+                          Padding(
+                            padding: EdgeInsets.all(gutter),
+                            child: Text(
+                              indexing == null
+                                  ? 'Reading games…'
+                                  : 'Indexing games · $indexing%',
+                              style: AppTypography.textSmRegular.copyWith(
+                                color: context.colors.textSecondary,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      error: (error, _) => ListView(
+                        children: [
+                          _identity(profile),
+                          PrepMessage(
+                            title: 'Could not read these games',
+                            body: 'Try reading the downloaded games again.',
+                            actionLabel: 'Retry',
+                            onAction: () => ref.invalidate(analysisProvider),
+                          ),
+                        ],
+                      ),
+                      data: (data) => data.games.isEmpty
+                          ? ListView(
+                              children: [
+                                _identity(profile),
+                                SizedBox(height: 24.h),
+                                _NoGames(profile: profile),
+                              ],
+                            )
+                          : PrepOverviewTab(
+                              profile: profile,
+                              stats: _statsOf(filtered),
+                              filter: _filter,
+                              header: _identity(profile, inset: false),
+                              onOpenGames: (filter) {
+                                setState(() => _filter = filter);
+                                _select(1);
+                              },
+                            ),
+                    ),
+                    analysis.when(
+                      skipLoadingOnReload: true,
+                      loading: () => const PrepMessage(
+                        title: 'Reading games…',
+                        body: 'Your downloaded games are being indexed.',
+                        busy: true,
+                      ),
+                      error: (_, _) => PrepMessage(
+                        title: 'Could not read games',
+                        body: 'Try reading the downloaded games again.',
+                        actionLabel: 'Retry',
+                        onAction: () => ref.invalidate(analysisProvider),
+                      ),
+                      data: (data) => data.games.isEmpty
+                          ? _NoGames(profile: profile)
+                          : PrepGamesTab(
+                              analysis: data,
+                              games: filtered,
+                              filter: _filter,
+                              onFilterChanged: (f) =>
+                                  setState(() => _filter = f),
+                            ),
+                    ),
+                    PrepTreesTab(
+                      profile: profile,
+                      onSources: () =>
+                          PrepSourcesScreen.open(context, profile.id),
+                    ),
+                  ],
                 ),
               ),
             ],
@@ -210,50 +309,55 @@ class _TopBar extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final colors = context.colors;
-    final syncing = ref.watch(
-      prepSyncProvider.select(
-        (s) => profile.accounts.any((a) => s.containsKey(a.key)),
-      ),
-    );
     return Padding(
-      padding: EdgeInsets.symmetric(horizontal: 8.w),
+      padding: EdgeInsets.symmetric(
+        horizontal: ResponsiveHelper.adaptive(phone: 16.w, tablet: 24.w),
+      ),
       child: Row(
         children: [
           IconButton(
             tooltip: 'Back',
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints.tightFor(width: 44, height: 44),
             onPressed: () => Navigator.of(context).pop(),
             icon: Icon(
               Icons.arrow_back_ios_new_outlined,
-              size: 22.ic,
+              size: 24.ic,
               color: colors.textPrimary,
             ),
           ),
-          const Spacer(),
-          if (profile.gameCount > 0)
-            BuildTreeButton(
-              compact: false,
-              target: PrepProfileTreeTarget(
-                profile: profile,
-                repository: ref.read(prepRepositoryProvider),
+          Expanded(
+            child: Center(
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  PrepFlag(country: profile.country),
+                  Flexible(
+                    child: Text.rich(
+                      TextSpan(
+                        children: [
+                          if (profile.title case final title?)
+                            TextSpan(
+                              text: '$title ',
+                              style: AppTypography.textMdBold.copyWith(
+                                color: colors.titleAccent,
+                              ),
+                            ),
+                          TextSpan(
+                            text: profile.name,
+                            style: AppTypography.textMdBold.copyWith(
+                              color: colors.textPrimary,
+                            ),
+                          ),
+                        ],
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
               ),
             ),
-          IconButton(
-            tooltip: 'Refresh games',
-            onPressed: syncing
-                ? null
-                : () {
-                    HapticFeedbackService.buttonPress();
-                    unawaited(prepRefreshProfile(context, ref, profile.id));
-                  },
-            icon: syncing
-                ? SizedBox.square(
-                    dimension: 18.sp,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      color: colors.textSecondary,
-                    ),
-                  )
-                : Icon(Icons.refresh_rounded, size: 22.ic, color: colors.iconPrimary),
           ),
           CardMoreButton(
             vertical: true,
@@ -266,95 +370,47 @@ class _TopBar extends ConsumerWidget {
   }
 }
 
-class _Hero extends ConsumerWidget {
-  const _Hero({required this.profile});
+class _SourcesRow extends ConsumerWidget {
+  const _SourcesRow({required this.profile});
   final PrepProfile profile;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final colors = context.colors;
-    final fideId = kPrepFavorites
-        .where((f) => f.id == profile.favoriteId)
-        .firstOrNull
-        ?.fideId;
-    final progress = ref.watch(
-      prepSyncProvider.select((s) {
-        for (final a in profile.accounts) {
-          final status = s[a.key];
-          if (status != null) return '${a.source.label}: ${status.message}';
-        }
-        return null;
-      }),
+    final statuses = ref.watch(prepSyncProvider);
+    final downloading = profile.accounts.any(
+      (a) => statuses.containsKey(a.key),
     );
-    final gutter = ResponsiveHelper.adaptive(phone: 16.w, tablet: 24.w);
+    final sources = profile.accounts.map((a) => a.source).toSet();
     return Padding(
-      padding: EdgeInsets.symmetric(horizontal: gutter),
+      padding: EdgeInsets.symmetric(
+        horizontal: ResponsiveHelper.adaptive(phone: 20.sp, tablet: 32.sp),
+      ),
       child: Row(
         children: [
-          PrepAvatar(
-            name: profile.name,
-            size: 64.sp,
-            photoUrl: profile.avatarUrl,
-            fideId: fideId,
-            title: profile.title,
-          ),
-          SizedBox(width: 14.w),
+          PrepSourceMarks(sources: sources, size: 16.sp),
+          if (sources.isNotEmpty) SizedBox(width: 8.w),
           Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    PrepFlag(country: profile.country),
-                    Flexible(
-                      child: Text(
-                        profile.name,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: AppTypography.textXlBold.copyWith(
-                          color: colors.textPrimary,
-                          letterSpacing: -0.4,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                SizedBox(height: 6.h),
-                Wrap(
-                  spacing: 10.w,
-                  runSpacing: 4.h,
-                  children: [
-                    for (final a in profile.accounts)
-                      Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          PrepSourceMark(source: a.source, size: 16.sp),
-                          SizedBox(width: 5.w),
-                          Text(
-                            a.bestRating == null
-                                ? a.username
-                                : '${a.username} ${a.bestRating}',
-                            style: AppTypography.textXsMedium.copyWith(
-                              color: colors.textSecondary,
-                              fontFeatures: const [FontFeature.tabularFigures()],
-                            ),
-                          ),
-                        ],
-                      ),
-                  ],
-                ),
-                SizedBox(height: 4.h),
-                Text(
-                  progress ??
-                      '${prepGamesLabel(profile.gameCount)} · '
-                          '${prepSyncedAgo(profile.lastSyncAtMs)}',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: AppTypography.textXsRegular.copyWith(
-                    color: colors.textTertiary,
-                  ),
-                ),
-              ],
+            child: Text(
+              downloading
+                  ? 'Downloading games…'
+                  : sources.isEmpty
+                  ? 'No sources attached'
+                  : '${sources.length} ${sources.length == 1 ? 'source' : 'sources'}',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: AppTypography.textXsRegular.copyWith(
+                color: context.colors.textSecondary,
+              ),
+            ),
+          ),
+          TextButton(
+            key: const ValueKey('prep_manage_sources'),
+            onPressed: () => PrepSourcesScreen.open(context, profile.id),
+            child: Text(
+              'Sources',
+              style: AppTypography.textSmMedium.copyWith(
+                color: context.colors.textPrimary,
+              ),
             ),
           ),
         ],
@@ -374,22 +430,28 @@ class _NoGames extends ConsumerWidget {
         (s) => profile.accounts.any((a) => s.containsKey(a.key)),
       ),
     );
-    final error = profile.accounts.map((a) => a.error).whereType<String>().firstOrNull;
+    final error = profile.accounts
+        .map((a) => a.error)
+        .whereType<String>()
+        .firstOrNull;
     if (syncing) {
       return const PrepMessage(
         title: 'Downloading games',
-        body: 'The first download of a large account can take a few minutes. '
+        body:
+            'The first download of a large account can take a few minutes. '
             'You can leave this screen; it keeps going.',
         busy: true,
       );
     }
     return PrepMessage(
       title: error == null ? 'No games yet' : 'Download failed',
-      body: error ??
-          'Nothing matched this account’s download options. Try a longer '
-              'period or more time controls.',
-      actionLabel: 'Try again',
-      onAction: () => prepRefreshProfile(context, ref, profile.id),
+      body:
+          error ??
+          (profile.accounts.isEmpty
+              ? 'Start with ChessEver, Lichess or Chess.com. Attach the other sources whenever you like.'
+              : 'Download games from your sources, or choose a longer period in download options.'),
+      actionLabel: 'Manage sources',
+      onAction: () => PrepSourcesScreen.open(context, profile.id),
     );
   }
 }
@@ -433,7 +495,9 @@ class PrepMessage extends StatelessWidget {
             Text(
               title,
               textAlign: TextAlign.center,
-              style: AppTypography.textMdBold.copyWith(color: colors.textPrimary),
+              style: AppTypography.textMdBold.copyWith(
+                color: colors.textPrimary,
+              ),
             ),
             SizedBox(height: 6.h),
             Text(

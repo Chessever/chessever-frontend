@@ -74,7 +74,10 @@ class PrepGame {
     whiteElo: g.whiteElo,
     blackElo: g.blackElo,
     date: treeDateTime(g.date),
-    speed: g.speed == null || g.speed! < 0 || g.speed! >= PrepTimeControl.values.length
+    speed:
+        g.speed == null ||
+            g.speed! < 0 ||
+            g.speed! >= PrepTimeControl.values.length
         ? null
         : PrepTimeControl.values[g.speed!],
     timeControlText: g.timeControl,
@@ -223,6 +226,7 @@ class PrepStats {
     this.currentRating,
     this.performance,
     this.averageOpponent,
+    this.ratingHistory = const [],
   });
 
   final int games;
@@ -240,6 +244,7 @@ class PrepStats {
   final int? currentRating;
   final int? performance;
   final int? averageOpponent;
+  final List<(DateTime, int)> ratingHistory;
 
   static PrepStats of(Iterable<PrepGame> games) {
     var overall = const PrepTally();
@@ -250,6 +255,8 @@ class PrepStats {
     final opponents = <String, (String, int?, PrepTally)>{};
     final years = <int, PrepTally>{};
     final lengths = List<int>.filled(5, 0);
+    final ratingsByMonth = <int, (DateTime, int)>{};
+    final ratingTracks = <String>{};
     int? peak;
     int? current;
     var opponentSum = 0;
@@ -265,7 +272,10 @@ class PrepStats {
       if (g.playerIsWhite != null) {
         final name = g.openingFamily;
         final prior = table[name];
-        table[name] = (prior?.$1 ?? g.eco, (prior?.$2 ?? const PrepTally()) + outcome);
+        table[name] = (
+          prior?.$1 ?? g.eco,
+          (prior?.$2 ?? const PrepTally()) + outcome,
+        );
         final opp = g.opponent;
         final key = opp.toLowerCase();
         final seen = opponents[key];
@@ -276,6 +286,13 @@ class PrepStats {
         );
         final mine = g.playerElo;
         if (mine != null && mine > 0) {
+          ratingTracks.add('${g.source.name}|${g.sourcePath}|${g.speed?.name}');
+          if (g.date case final date?) {
+            ratingsByMonth.putIfAbsent(
+              date.year * 12 + date.month,
+              () => (date, mine),
+            );
+          }
           current ??= mine; // games are newest first
           if (peak == null || mine > peak) peak = mine;
         }
@@ -286,7 +303,9 @@ class PrepStats {
         }
       }
       final year = g.date?.year;
-      if (year != null) years[year] = (years[year] ?? const PrepTally()) + outcome;
+      if (year != null) {
+        years[year] = (years[year] ?? const PrepTally()) + outcome;
+      }
       final moves = (g.plies + 1) ~/ 2;
       lengths[moves <= 20
           ? 0
@@ -301,7 +320,8 @@ class PrepStats {
 
     List<PrepOpeningLine> top(Map<String, (String?, PrepTally)> table) {
       final lines = [
-        for (final e in table.entries) PrepOpeningLine(e.key, e.value.$1, e.value.$2),
+        for (final e in table.entries)
+          PrepOpeningLine(e.key, e.value.$1, e.value.$2),
       ]..sort((a, b) => b.tally.total.compareTo(a.tally.total));
       return lines.take(8).toList();
     }
@@ -323,14 +343,17 @@ class PrepStats {
       whiteOpenings: top(whiteOpenings),
       blackOpenings: top(blackOpenings),
       opponents: opponentLines.take(8).toList(),
-      byYear: [
-        for (final y in years.keys.toList()..sort()) (y, years[y]!),
-      ],
+      byYear: [for (final y in years.keys.toList()..sort()) (y, years[y]!)],
       lengths: lengths,
       peakRating: peak,
       currentRating: current,
       performance: performance,
       averageOpponent: average?.round(),
+      // Separate accounts, providers and clock ratings use separate scales.
+      ratingHistory: ratingTracks.length == 1
+          ? (ratingsByMonth.values.toList()
+              ..sort((a, b) => a.$1.compareTo(b.$1)))
+          : const [],
     );
   }
 }

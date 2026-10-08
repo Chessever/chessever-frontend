@@ -478,11 +478,13 @@ class _GameTreeBuilder {
     final site = scan.tag('Site');
     final lichess =
         source.kind == 'lichess' || (site?.contains('lichess.org') ?? false);
-    final speed = classifyTreeSpeed(
-      lichess: lichess,
-      timeControl: scan.tag('TimeControl'),
-      timeClass: scan.tag('TimeClass'),
-    );
+    final speed =
+        classifyTreeSpeed(
+          lichess: lichess,
+          timeControl: scan.tag('TimeControl'),
+          timeClass: scan.tag('TimeClass'),
+        ) ??
+        (source.kind == 'chessever' && !lichess ? TreeSpeed.classical : null);
     final clock = TreeSpeed.explorerClock(speed);
     final date = treeDateOf(
       scan.tag('UTCDate') ?? scan.tag('Date') ?? scan.tag('EndDate'),
@@ -573,7 +575,9 @@ class _GameTreeBuilder {
     if (known != null) return known;
     if (!_fresh) {
       final rows = _findNode.select([hash]);
-      if (rows.isNotEmpty) return _nodeIds[hash] = rows.first.columnAt(0) as int;
+      if (rows.isNotEmpty) {
+        return _nodeIds[hash] = rows.first.columnAt(0) as int;
+      }
     }
     final id = _nextNode++;
     _insertNode.execute([hash, id]);

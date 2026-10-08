@@ -12,6 +12,8 @@ import 'package:chessever2/services/game_tree/game_tree_store.dart';
 /// files, so bringing an index up to date reads only the new games.
 abstract final class PrepIndex {
   static const Map<String, String> sourceLabels = {
+    'chessever': 'ChessEver',
+    'manual': 'PGN',
     'lichess': 'Lichess',
     'chesscom': 'Chess.com',
   };
