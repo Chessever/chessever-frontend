@@ -20,6 +20,7 @@ Future<PrepAddResult?> showPrepSourcePicker(
   PrepSource? only,
   Set<String> existingKeys = const {},
   bool attaching = false,
+  bool multiple = false,
   String? lockedFideId,
 }) => Navigator.of(context).push<PrepAddResult>(
   MaterialPageRoute(
@@ -28,6 +29,7 @@ Future<PrepAddResult?> showPrepSourcePicker(
       only: only,
       existingKeys: existingKeys,
       attaching: attaching,
+      multiple: multiple,
       lockedFideId: lockedFideId,
     ),
   ),
@@ -39,6 +41,7 @@ class _SourcePicker extends ConsumerStatefulWidget {
     required this.kind,
     required this.existingKeys,
     required this.attaching,
+    required this.multiple,
     this.only,
     this.lockedFideId,
   });
@@ -46,6 +49,7 @@ class _SourcePicker extends ConsumerStatefulWidget {
   final PrepSource? only;
   final Set<String> existingKeys;
   final bool attaching;
+  final bool multiple;
   final String? lockedFideId;
 
   @override
@@ -56,6 +60,7 @@ class _SourcePickerState extends ConsumerState<_SourcePicker> {
   late PrepSource _source = widget.only ?? PrepSource.chessever;
   final _query = TextEditingController();
   final _name = TextEditingController();
+  final _pending = <PrepAccount>[];
   Timer? _debounce;
   int _generation = 0;
   bool _busy = false;
@@ -132,9 +137,14 @@ class _SourcePickerState extends ConsumerState<_SourcePicker> {
       return 'Choose FIDE ${widget.lockedFideId} for this profile';
     }
     if (widget.existingKeys.contains(account.key)) return 'Already attached';
+    if (_pending.any((a) => a.key == account.key)) return 'Already added';
     if (account.source == PrepSource.chessever &&
         widget.existingKeys.any((key) => key.startsWith('chessever:'))) {
       return 'Detach the current ChessEver player first';
+    }
+    if (account.source == PrepSource.chessever &&
+        _pending.any((a) => a.source == PrepSource.chessever)) {
+      return 'A ChessEver player is already added';
     }
     final owner = ref
         .read(prepProfilesProvider.notifier)
@@ -143,6 +153,38 @@ class _SourcePickerState extends ConsumerState<_SourcePicker> {
       return 'Already in ${owner.kind == PrepKind.mine ? 'My games' : owner.name}';
     }
     return null;
+  }
+
+  void _select(PrepAccount account) {
+    if (_unavailable(account) != null) return;
+    FocusScope.of(context).unfocus();
+    if (widget.multiple) {
+      _debounce?.cancel();
+      _generation++;
+      _query.clear();
+      setState(() {
+        _pending.add(account);
+        _results = const [];
+        _error = null;
+        _busy = false;
+      });
+    } else {
+      setState(() {
+        _selected = account;
+        _name.text = account.displayName ?? account.username;
+      });
+    }
+  }
+
+  void _confirmPending() {
+    if (_pending.isEmpty) return;
+    FocusScope.of(context).unfocus();
+    Navigator.of(context).pop(
+      PrepAddResult(
+        _pending.first.displayName ?? _pending.first.username,
+        List.unmodifiable(_pending),
+      ),
+    );
   }
 
   void _confirm() {
@@ -173,7 +215,9 @@ class _SourcePickerState extends ConsumerState<_SourcePicker> {
         foregroundColor: colors.textPrimary,
         centerTitle: true,
         title: Text(
-          widget.attaching
+          widget.multiple
+              ? 'Add accounts'
+              : widget.attaching
               ? 'Attach a source'
               : widget.kind == PrepKind.mine
               ? 'Add your profile'
@@ -236,7 +280,7 @@ class _SourcePickerState extends ConsumerState<_SourcePicker> {
                       context,
                       hint: database
                           ? 'Player name or FIDE ID'
-                          : '${_source.label} username or profile URL',
+                          : 'Username or profile URL',
                       prefix: Padding(
                         padding: EdgeInsets.symmetric(horizontal: 12.w),
                         child: PrepSourceMark(source: _source, size: 22.sp),
@@ -277,7 +321,9 @@ class _SourcePickerState extends ConsumerState<_SourcePicker> {
                           vertical: 4.h,
                         ),
                         child: Text(
-                          database
+                          widget.multiple
+                              ? 'Add the usernames this player uses.'
+                              : database
                               ? 'Search ChessEver, or start with an online account. You can attach the other sources later.'
                               : 'Anyone with an account can have a profile. A ChessEver database match is optional.',
                           style: AppTypography.textXsRegular.copyWith(
@@ -359,15 +405,57 @@ class _SourcePickerState extends ConsumerState<_SourcePicker> {
                                   color: colors.textPrimary,
                                   size: 22.ic,
                                 ),
-                          onTap: () {
-                            if (_unavailable(account) != null) return;
-                            FocusScope.of(context).unfocus();
-                            setState(() {
-                              _selected = account;
-                              _name.text =
-                                  account.displayName ?? account.username;
-                            });
-                          },
+                          onTap: () => _select(account),
+                        ),
+                      if (_pending.isNotEmpty)
+                        Padding(
+                          padding: EdgeInsets.symmetric(horizontal: gutter),
+                          child: Column(
+                            children: [
+                              for (final account in _pending)
+                                Padding(
+                                  key: ValueKey('prep_pending_${account.key}'),
+                                  padding: EdgeInsets.symmetric(vertical: 8.h),
+                                  child: Row(
+                                    children: [
+                                      PrepSourceMark(
+                                        source: account.source,
+                                        size: 22.sp,
+                                      ),
+                                      SizedBox(width: 12.w),
+                                      Expanded(
+                                        child: Text(
+                                          account.source.online
+                                              ? account.username
+                                              : account.displayName ??
+                                                    account.username,
+                                          semanticsLabel:
+                                              '${account.source.online ? account.username : account.displayName ?? account.username} on ${account.source.label}',
+                                          style: AppTypography.textSmMedium
+                                              .copyWith(
+                                                color: colors.textPrimary,
+                                              ),
+                                        ),
+                                      ),
+                                      IconButton(
+                                        tooltip: 'Remove ${account.username}',
+                                        constraints: const BoxConstraints(
+                                          minWidth: 44,
+                                          minHeight: 44,
+                                        ),
+                                        onPressed: () => setState(
+                                          () => _pending.remove(account),
+                                        ),
+                                        icon: Icon(
+                                          Icons.close_rounded,
+                                          color: colors.iconSecondary,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                            ],
+                          ),
                         ),
                       if (selected != null)
                         Padding(
@@ -433,6 +521,28 @@ class _SourcePickerState extends ConsumerState<_SourcePicker> {
                     ],
                   ),
                 ),
+                if (widget.multiple && _pending.isNotEmpty)
+                  Padding(
+                    padding: EdgeInsets.fromLTRB(gutter, 8.h, gutter, 16.h),
+                    child: FilledButton(
+                      key: const ValueKey('prep_attach_accounts'),
+                      onPressed: saved.hasValue ? _confirmPending : null,
+                      style: FilledButton.styleFrom(
+                        minimumSize: const Size.fromHeight(48),
+                        backgroundColor: colors.textPrimary,
+                        foregroundColor: colors.textInverse,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12.br),
+                        ),
+                      ),
+                      child: Text(
+                        _pending.length == 1
+                            ? 'Attach account'
+                            : 'Attach ${_pending.length} accounts',
+                        style: AppTypography.textSmBold,
+                      ),
+                    ),
+                  ),
               ],
             ),
           ),

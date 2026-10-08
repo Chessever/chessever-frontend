@@ -565,6 +565,56 @@ void main() {
       },
     );
     test(
+      'games from two usernames on each platform merge and remain independently filterable',
+      () async {
+        const extra = [
+          PrepAccount(source: PrepSource.lichess, username: 'SecondLichess'),
+          PrepAccount(source: PrepSource.chesscom, username: 'SecondChesscom'),
+        ];
+        profile = profile.copyWith(accounts: [...profile.accounts, ...extra]);
+        for (final account in extra) {
+          final file = File(
+            '${directory.path}/${PrepRepository.gamesFileName(account)}',
+          );
+          file.writeAsStringSync(
+            sourceGame(
+              account.username,
+              'Another opponent',
+              site: account.source == PrepSource.lichess
+                  ? 'https://lichess.org/secondAccountFixture'
+                  : 'https://chess.com/game/live/second-account-fixture',
+              date: '2025.10.01',
+            ),
+          );
+          sources.add(
+            GameTreeSourceFile(kind: account.source.name, path: file.path),
+          );
+        }
+        final games = await indexed(sources);
+        expect(games, hasLength(6));
+        expect(games.every((g) => g.playerIsWhite != null), isTrue);
+        for (final source in [PrepSource.lichess, PrepSource.chesscom]) {
+          expect(games.where((g) => g.source == source), hasLength(2));
+        }
+        for (final account in extra) {
+          final scoped = PrepFilter(
+            source: account.source,
+            accountKey: account.key,
+            accountFile: PrepRepository.gamesFileName(account),
+          ).apply(games);
+          expect(scoped, hasLength(1));
+          expect(scoped.single.white, account.username);
+          final file = sources.firstWhere(
+            (s) => s.path.endsWith(PrepRepository.gamesFileName(account)),
+          );
+          final tree = await indexed([
+            file,
+          ], scope: account.key.replaceAll(':', '-'));
+          expect(tree.single.white, account.username);
+        }
+      },
+    );
+    test(
       'per-source trees contain only that source and removal rebuilds Combined',
       () async {
         await indexed(sources);

@@ -28,7 +28,7 @@ Future<void> prepDetachSource(
     context: context,
     title: 'Detach ${account.source.label}?',
     message:
-        '${account.displayName ?? account.username} and its downloaded games '
+        '${account.source.online ? account.username : account.displayName ?? account.username} and its downloaded games '
         'will be removed from this profile on this device. Other sources stay attached.',
     confirmText: 'Detach',
     isDangerous: true,
@@ -40,7 +40,7 @@ Future<void> prepDetachSource(
         .read(prepProfilesProvider.notifier)
         .removeAccount(profile.id, account);
     if (messenger != null) {
-      showAppSnackOn(messenger, '${account.source.label} detached');
+      showAppSnackOn(messenger, '${account.username} detached');
     }
   } catch (_) {
     if (messenger != null) {

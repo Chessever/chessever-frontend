@@ -32,6 +32,7 @@ Future<void> prepAddMine(BuildContext context, WidgetRef ref) async {
     kind: PrepKind.mine,
     existingKeys: {for (final a in existing?.accounts ?? const []) a.key},
     attaching: existing != null,
+    multiple: existing != null,
     lockedFideId: existing?.fideId,
   );
   if (result == null || !context.mounted) return;
@@ -82,6 +83,7 @@ Future<void> prepAddAccountTo(
     kind: profile.kind,
     only: source,
     attaching: true,
+    multiple: true,
     lockedFideId: profile.fideId,
     existingKeys: {for (final a in profile.accounts) a.key},
   );

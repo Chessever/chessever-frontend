@@ -5,6 +5,8 @@ import 'dart:io';
 import 'package:chessever2/repository/gamebase/gamebase_repository.dart';
 import 'package:chessever2/screens/my_prep/models/prep_models.dart';
 import 'package:chessever2/screens/my_prep/prep_profile_screen.dart';
+import 'package:chessever2/screens/my_prep/prep_actions.dart';
+import 'package:chessever2/screens/my_prep/prep_source_actions.dart';
 import 'package:chessever2/screens/my_prep/prep_sources_screen.dart';
 import 'package:chessever2/screens/my_prep/providers/prep_providers.dart';
 import 'package:chessever2/screens/my_prep/services/prep_analysis.dart';
@@ -264,6 +266,7 @@ void main() {
     WidgetTester tester,
     Widget child, {
     bool light = false,
+    bool premium = false,
     double scale = 1,
     List<Override> overrides = const [],
   }) async {
@@ -272,7 +275,7 @@ void main() {
     final container = ProviderContainer(
       overrides: [
         prepRepositoryProvider.overrideWithValue(repo),
-        premiumAccessProvider.overrideWithValue(false),
+        premiumAccessProvider.overrideWithValue(premium),
         ...overrides,
       ],
     );
@@ -436,6 +439,232 @@ void main() {
   });
 
   testWidgets(
+    'several usernames from both platforms attach together and persist',
+    (tester) async {
+      late PrepProfile profile;
+      Future<void>? action;
+      final container = await pump(
+        tester,
+        Scaffold(
+          body: Consumer(
+            builder: (context, ref, _) => TextButton(
+              onPressed: () => action = prepAddAccountTo(context, ref, profile),
+              child: const Text('Start'),
+            ),
+          ),
+        ),
+        premium: true,
+      );
+      final profiles = container.read(prepProfilesProvider.notifier);
+      profile = (await tester.runAsync(() async {
+        final created = profiles.create(
+          kind: PrepKind.opponent,
+          name: 'Club Player',
+          accounts: [PrepAccount.fromPlayer(databasePlayer)],
+        );
+        await profiles.debugDrainWrites();
+        return created;
+      }))!;
+      await tester.runAsync(() => tester.tap(find.text('Start')));
+      await tester.pumpAndSettle();
+      for (final source in [PrepSource.lichess, PrepSource.chesscom]) {
+        await tester.tap(find.text(source.label));
+        await tester.pumpAndSettle();
+        for (final name in ['FirstHandle', 'SecondHandle']) {
+          await tester.enterText(
+            find.byKey(ValueKey('prep_source_query_${source.name}')),
+            name,
+          );
+          await tester.pump(const Duration(milliseconds: 450));
+          await tester.pump();
+          await tester.tap(
+            find.byKey(ValueKey('${source.name}:${name.toLowerCase()}')),
+          );
+          await tester.pumpAndSettle();
+        }
+      }
+      // Staging never mutates the existing profile before confirmation.
+      expect(profiles.byId(profile.id)!.accounts, hasLength(1));
+      expect(find.text('Attach 4 accounts'), findsOneWidget);
+      // Case-insensitive duplicates cannot be queued twice.
+      await tester.enterText(
+        find.byKey(const ValueKey('prep_source_query_chesscom')),
+        'FIRSTHANDLE',
+      );
+      await tester.pump(const Duration(milliseconds: 450));
+      await tester.pump();
+      expect(find.text('Already added'), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('chesscom:firsthandle')));
+      await tester.pumpAndSettle();
+      expect(find.text('Attach 4 accounts'), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('prep_attach_accounts')));
+      await tester.pumpAndSettle();
+      await tester.runAsync(() => action!);
+      final attached = profiles.byId(profile.id)!;
+      expect(
+        attached.accounts.where((a) => a.source == PrepSource.lichess),
+        hasLength(2),
+      );
+      expect(
+        attached.accounts.where((a) => a.source == PrepSource.chesscom),
+        hasLength(2),
+      );
+      expect(attached.databaseAccount, isNotNull);
+      expect(repo.syncCalls, 0);
+      await tester.runAsync(() => profiles.debugDrainWrites());
+      final persisted = jsonDecode(
+        File('${directory.path}/prep/profiles.json').readAsStringSync(),
+      );
+      final restored = (persisted['profiles'] as List)
+          .map(PrepProfile.fromJson)
+          .whereType<PrepProfile>()
+          .single;
+      expect(
+        restored.accounts.map((a) => a.key),
+        attached.accounts.map((a) => a.key),
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'staged accounts can be removed and cancelled without changing the profile',
+    (tester) async {
+      late PrepProfile profile;
+      Future<void>? action;
+      final container = await pump(
+        tester,
+        Scaffold(
+          body: Consumer(
+            builder: (context, ref, _) => TextButton(
+              onPressed: () => action = prepAddAccountTo(
+                context,
+                ref,
+                profile,
+                source: PrepSource.lichess,
+              ),
+              child: const Text('Start'),
+            ),
+          ),
+        ),
+        premium: true,
+        scale: 2,
+      );
+      final profiles = container.read(prepProfilesProvider.notifier);
+      profile = (await tester.runAsync(() async {
+        final created = profiles.create(
+          kind: PrepKind.opponent,
+          name: 'Club Player',
+          accounts: [
+            const PrepAccount(
+              source: PrepSource.lichess,
+              username: 'ExistingHandle',
+            ),
+          ],
+        );
+        await profiles.debugDrainWrites();
+        return created;
+      }))!;
+      await tester.runAsync(() => tester.tap(find.text('Start')));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const ValueKey('prep_source_query_lichess')),
+        'ExistingHandle',
+      );
+      await tester.pump(const Duration(milliseconds: 450));
+      await tester.pump();
+      expect(find.text('Already attached'), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('lichess:existinghandle')));
+      await tester.pump();
+      expect(find.byKey(const ValueKey('prep_attach_accounts')), findsNothing);
+      for (final name in ['RemoveMe', 'KeepStaged']) {
+        await tester.enterText(
+          find.byKey(const ValueKey('prep_source_query_lichess')),
+          name,
+        );
+        await tester.pump(const Duration(milliseconds: 450));
+        await tester.pump();
+        await tester.tap(find.byKey(ValueKey('lichess:${name.toLowerCase()}')));
+        await tester.pumpAndSettle();
+      }
+      await tester.ensureVisible(find.byTooltip('Remove RemoveMe'));
+      await tester.tap(find.byTooltip('Remove RemoveMe'));
+      await tester.pumpAndSettle();
+      expect(find.text('Attach account'), findsOneWidget);
+      await tester.pageBack();
+      await tester.pumpAndSettle();
+      await tester.runAsync(() => action!);
+      expect(
+        profiles.byId(profile.id)!.accounts.single.username,
+        'ExistingHandle',
+      );
+      expect(tester.takeException(), isNull);
+      await tester.runAsync(() => profiles.debugDrainWrites());
+    },
+  );
+
+  testWidgets('changing one username still replaces only that account', (
+    tester,
+  ) async {
+    const account = PrepAccount(
+      source: PrepSource.chesscom,
+      username: 'OldHandle',
+    );
+    late PrepProfile profile;
+    Future<void>? action;
+    final container = await pump(
+      tester,
+      Scaffold(
+        body: Consumer(
+          builder: (context, ref, _) => TextButton(
+            onPressed: () =>
+                action = prepChangeAccount(context, ref, profile, account),
+            child: const Text('Start'),
+          ),
+        ),
+      ),
+      premium: true,
+    );
+    final profiles = container.read(prepProfilesProvider.notifier);
+    profile = (await tester.runAsync(() async {
+      final created = profiles.create(
+        kind: PrepKind.opponent,
+        name: 'Club Player',
+        accounts: [
+          account,
+          const PrepAccount(
+            source: PrepSource.chesscom,
+            username: 'OtherHandle',
+          ),
+        ],
+      );
+      await profiles.debugDrainWrites();
+      return created;
+    }))!;
+    await tester.runAsync(() => tester.tap(find.text('Start')));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const ValueKey('prep_source_query_chesscom')),
+      'NewHandle',
+    );
+    await tester.pump(const Duration(milliseconds: 450));
+    await tester.pump();
+    await tester.tap(find.byKey(const ValueKey('chesscom:newhandle')));
+    await tester.pumpAndSettle();
+    expect(find.text('Attach source'), findsOneWidget);
+    await tester.tap(find.text('Attach source'));
+    await tester.pumpAndSettle();
+    await tester.runAsync(() => action!);
+    await tester.runAsync(() => profiles.debugDrainWrites());
+    await tester.pumpAndSettle();
+    expect(profiles.byId(profile.id)!.accounts.map((a) => a.username), [
+      'OtherHandle',
+      'NewHandle',
+    ]);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
     'source actions and profile rating columns fit narrow phones with large text',
     (tester) async {
       const profile = PrepProfile(
@@ -458,16 +687,34 @@ void main() {
         scale: 2,
         overrides: [prepProfileProvider.overrideWith((ref, id) => profile)],
       );
+      expect(find.text('ClubPlayer'), findsOneWidget);
+      expect(find.text('Ratings'), findsNothing);
+      expect(find.text('Download options'), findsNothing);
+      await tester.tap(find.byKey(const ValueKey('prep_add_source')));
+      await tester.pumpAndSettle();
       expect(
         find.byKey(const ValueKey('prep_attach_chessever')),
         findsOneWidget,
       );
-      await tester.scrollUntilVisible(
-        find.byKey(const ValueKey('prep_attach_lichess')),
-        120,
-      );
       expect(find.byKey(const ValueKey('prep_attach_lichess')), findsOneWidget);
       expect(tester.takeException(), isNull);
+      await tester.tapAt(const Offset(10, 600));
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(const ValueKey('prep_account_lichess:clubplayer')),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('Ratings'), findsOneWidget);
+      expect(find.text('1900'), findsNothing);
+      await tester.ensureVisible(find.text('Ratings'));
+      await tester.tap(find.text('Ratings'));
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(find.text('1900'));
+      expect(find.text('1900'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+      await tester.ensureVisible(find.text('Close'));
+      await tester.tap(find.text('Close'));
+      await tester.pumpAndSettle();
       await pump(
         tester,
         Scaffold(
@@ -476,6 +723,55 @@ void main() {
         scale: 2,
       );
       expect(find.text('1900'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'account details open the correct download options without starting a download',
+    (tester) async {
+      const account = PrepAccount(
+        source: PrepSource.chesscom,
+        username: 'SecondAccount',
+      );
+      const profile = PrepProfile(
+        id: 'p',
+        kind: PrepKind.opponent,
+        name: 'Club Player',
+        createdAtMs: 1,
+        accounts: [account],
+      );
+      await pump(
+        tester,
+        const PrepSourcesScreen(profileId: 'p'),
+        premium: true,
+        overrides: [prepProfileProvider.overrideWith((ref, id) => profile)],
+      );
+      await tester.tap(
+        find.byKey(const ValueKey('prep_account_chesscom:secondaccount')),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Download games'));
+      await tester.pumpAndSettle();
+      expect(find.text('SecondAccount on Chess.com'), findsOneWidget);
+      expect(find.text('Time controls'), findsOneWidget);
+      expect(repo.syncCalls, 0);
+      await tester.ensureVisible(find.text('Cancel'));
+      await tester.tap(find.text('Cancel'));
+      await tester.pumpAndSettle();
+      expect(find.text('Sources'), findsOneWidget);
+      await tester.tap(
+        find.byKey(const ValueKey('prep_account_chesscom:secondaccount')),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Download options'));
+      await tester.pumpAndSettle();
+      expect(find.text('SecondAccount on Chess.com'), findsOneWidget);
+      expect(find.text('Save'), findsOneWidget);
+      expect(repo.syncCalls, 0);
+      await tester.ensureVisible(find.text('Cancel'));
+      await tester.tap(find.text('Cancel'));
+      await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
     },
   );
