@@ -1,8 +1,6 @@
 import 'dart:async';
 
 import 'package:chessever2/repository/library/models/library_folder.dart';
-import 'package:chessever2/screens/for_you/discovery/widgets/discovery_common.dart'
-    show DiscoveryAction;
 import 'package:chessever2/screens/library/widgets/folder_card.dart';
 import 'package:chessever2/screens/library/widgets/library_context_menu.dart';
 import 'package:chessever2/screens/my_prep/data/prep_favorites.dart';
@@ -390,6 +388,7 @@ class PrepLibraryFolderScreen extends ConsumerWidget {
                   subtitle:
                       '$databases databases · ${prepGamesLabel(profile.gameCount)}',
                   actions: [
+                    _CloudButton(profile: profile),
                     CardMoreButton(
                       vertical: true,
                       color: context.colors.textPrimary,
@@ -416,8 +415,6 @@ class PrepLibraryFolderScreen extends ConsumerWidget {
                   child: ListView(
                     padding: EdgeInsets.fromLTRB(16.w, 4.h, 16.w, 32.h),
                     children: [
-                      _CloudLine(profile: profile),
-                      SizedBox(height: 12.h),
                       _DatabaseCard(
                         profile: profile,
                         account: null,
@@ -523,93 +520,49 @@ GameTreeTarget _treeTarget(
         );
 }
 
-/// Where the player's cloud copy stands, with the one action that moves it.
-class _CloudLine extends ConsumerWidget {
-  const _CloudLine({required this.profile});
+/// The player's cloud action, kept in the folder header.
+class _CloudButton extends ConsumerWidget {
+  const _CloudButton({required this.profile});
 
   final PrepProfile profile;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final colors = context.colors;
     final status = ref.watch(
       prepCloudSyncProvider.select((s) => s[profile.id]),
     );
     final saved = profile.savedToCloud;
-    final uploaded = profile.accounts.fold<int>(
-      0,
-      (sum, a) => sum + a.cloudSyncedCount,
-    );
-    final String text;
-    if (status != null) {
-      final total = status.total;
-      text = total == null || total == 0
-          ? status.message
-          : '${status.message} ${prepCount(status.done)} of ${prepCount(total)}';
-    } else if (saved) {
-      text =
-          'In your cloud Library · ${prepGamesLabel(uploaded)}. '
-          'New games follow after each download.';
-    } else {
-      text =
-          'Save this player to your cloud Library to open them on '
-          'desktop and the web.';
-    }
-    return Container(
-      padding: EdgeInsets.fromLTRB(14.w, 4.h, 4.w, 4.h),
-      decoration: BoxDecoration(
-        color: colors.surface,
-        borderRadius: BorderRadius.circular(12.br),
-      ),
-      child: Row(
-        children: [
-          SizedBox.square(
-            dimension: 18.sp,
-            child: status != null
-                ? CircularProgressIndicator(
-                    strokeWidth: 2,
-                    value: status.total == null || status.total == 0
-                        ? null
-                        : status.done / status.total!,
-                    color: colors.textSecondary,
-                  )
-                : Icon(
-                    saved
-                        ? Icons.cloud_done_rounded
-                        : Icons.cloud_upload_outlined,
-                    size: 18.sp,
-                    color: colors.iconSecondary,
-                  ),
-          ),
-          SizedBox(width: 10.w),
-          Expanded(
-            child: Padding(
-              padding: EdgeInsets.symmetric(vertical: 8.h),
-              child: Text(
-                text,
-                style: AppTypography.textXsRegular.copyWith(
-                  color: colors.textSecondary,
-                  height: 16 / 12,
-                  fontFeatures: const [FontFeature.tabularFigures()],
-                ),
+    final progress = status == null
+        ? null
+        : status.total == null || status.total == 0
+        ? status.message
+        : '${status.message} ${prepCount(status.done)} of ${prepCount(status.total!)}';
+    return IconButton(
+      tooltip: status != null
+          ? '$progress · Stop syncing'
+          : saved
+          ? 'Sync to cloud now'
+          : 'Save to cloud',
+      constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
+      onPressed: status != null
+          ? () => ref.read(prepCloudSyncProvider.notifier).cancel(profile.id)
+          : () => prepSaveToCloud(context, ref, profile.id),
+      icon: status != null
+          ? SizedBox.square(
+              dimension: 20.ic,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                value: status.total == null || status.total == 0
+                    ? null
+                    : status.done / status.total!,
+                color: context.colors.textSecondary,
               ),
+            )
+          : Icon(
+              saved ? Icons.cloud_done_rounded : Icons.cloud_upload_outlined,
+              size: 22.ic,
+              color: context.colors.textPrimary,
             ),
-          ),
-          SizedBox(width: 4.w),
-          DiscoveryAction(
-            label: status != null
-                ? 'Stop'
-                : saved
-                ? 'Sync now'
-                : 'Save to cloud',
-            onTap: status != null
-                ? () => ref
-                      .read(prepCloudSyncProvider.notifier)
-                      .cancel(profile.id)
-                : () => prepSaveToCloud(context, ref, profile.id),
-          ),
-        ],
-      ),
     );
   }
 }
