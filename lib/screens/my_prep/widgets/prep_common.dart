@@ -205,11 +205,12 @@ class PrepResultBar extends StatelessWidget {
         child: total == 0
             ? ColoredBox(color: colors.surfaceRecessed)
             : Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   if (tally.wins > 0)
                     Expanded(
                       flex: tally.wins,
-                      child: ColoredBox(color: colors.successStrong),
+                      child: ColoredBox(color: colors.brand),
                     ),
                   if (tally.draws > 0)
                     Expanded(
@@ -246,7 +247,7 @@ class PrepTallyText extends StatelessWidget {
         children: [
           TextSpan(
             text: '+${tally.wins}',
-            style: base.copyWith(color: colors.successStrong),
+            style: base.copyWith(color: colors.accentText),
           ),
           TextSpan(
             text: '  =${tally.draws}',

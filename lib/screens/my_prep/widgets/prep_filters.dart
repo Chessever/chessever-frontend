@@ -1,8 +1,6 @@
-import 'dart:math' as math;
 import 'package:chessever2/repository/gamebase/search/gamebase_search_models.dart';
 import 'package:chessever2/screens/my_prep/models/prep_models.dart';
 import 'package:chessever2/screens/my_prep/services/prep_analysis.dart';
-import 'package:chessever2/screens/my_prep/services/prep_repository.dart';
 import 'package:chessever2/screens/my_prep/widgets/prep_common.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/app_typography.dart';
@@ -59,6 +57,36 @@ class PrepFilter {
   final String? opponent;
   final PrepStatsWindow window;
   final GameFilter? base;
+
+  bool get isActive =>
+      source != null ||
+      accountKey != null ||
+      speed != null ||
+      side != PrepSide.both ||
+      window != PrepStatsWindow.all ||
+      hasFacets;
+
+  /// Context for the current slice, without keeping its controls on screen.
+  String get summary => [
+    if (source != null) source!.label,
+    if (speed != null) speed!.label,
+    if (side != PrepSide.both) side == PrepSide.white ? 'White' : 'Black',
+    if (window != PrepStatsWindow.all) window.label,
+    if (outcome != null)
+      switch (outcome!) {
+        PrepOutcome.win => 'Wins',
+        PrepOutcome.draw => 'Draws',
+        PrepOutcome.loss => 'Losses',
+        PrepOutcome.unknown => 'Unfinished',
+      },
+    if (year != null) '$year',
+    if (eco != null) eco!,
+    if (opening != null) opening!,
+    if (opponent != null) opponent!,
+    if (base?.hasActiveFilters ?? false)
+      '${base!.activeFilterCount} game filters',
+    if (base?.hasActiveSorts ?? false) '${base!.activeSortCount} sort keys',
+  ].join(' · ');
 
   bool get hasFacets =>
       outcome != null ||
@@ -263,185 +291,6 @@ List<PrepGame> prepSortGames(
     }
     return a.index.compareTo(b.index);
   });
-}
-
-/// Source and clock chips, showing only what the downloaded games contain.
-class PrepFilterBar extends StatelessWidget {
-  const PrepFilterBar({
-    super.key,
-    required this.games,
-    required this.profile,
-    required this.filter,
-    required this.onChanged,
-  });
-
-  final List<PrepGame> games;
-  final PrepProfile profile;
-  final PrepFilter filter;
-  final ValueChanged<PrepFilter> onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    final speeds = <PrepTimeControl, int>{};
-    final sources = <PrepSource>{};
-    for (final g in games) {
-      if (g.speed != null) speeds[g.speed!] = (speeds[g.speed!] ?? 0) + 1;
-      sources.add(g.source);
-    }
-    final orderedSpeeds = PrepTimeControl.values.where(speeds.containsKey);
-    final single = sources.length == 1 ? sources.first : null;
-    if (games.isEmpty && profile.accounts.length < 2) {
-      return SizedBox(height: 8.h);
-    }
-    final gutter = ResponsiveHelper.adaptive(phone: 16.w, tablet: 24.w);
-    return SizedBox(
-      height:
-          math.max(44, MediaQuery.textScalerOf(context).scale(14) * 1.3 + 20) +
-          16,
-      child: ListView(
-        scrollDirection: Axis.horizontal,
-        padding: EdgeInsets.fromLTRB(gutter, 8, gutter, 8),
-        children: [
-          if (profile.accounts.length > 1)
-            _SourcePicker(
-              profile: profile,
-              filter: filter,
-              onChanged: onChanged,
-            ),
-          _WindowPicker(filter: filter, onChanged: onChanged),
-          PrepChip(
-            label: 'All games',
-            selected:
-                filter.speed == null &&
-                (filter.base?.timeControl ?? GameTimeControlFilter.all) ==
-                    GameTimeControlFilter.all,
-            onTap: () => onChanged(filter.withSpeed(null)),
-          ),
-          for (final speed in orderedSpeeds)
-            PrepChip(
-              label: speed.labelFor(filter.source ?? single),
-              count: speeds[speed],
-              selected: filter.speed == speed,
-              onTap: () => onChanged(
-                filter.withSpeed(filter.speed == speed ? null : speed),
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-}
-
-class _WindowPicker extends StatelessWidget {
-  const _WindowPicker({required this.filter, required this.onChanged});
-  final PrepFilter filter;
-  final ValueChanged<PrepFilter> onChanged;
-
-  @override
-  Widget build(BuildContext context) => PopupMenuButton<PrepStatsWindow>(
-    tooltip: 'Choose dates relative to the latest game',
-    initialValue: filter.window,
-    onSelected: (window) => onChanged(filter.copyWith(window: window)),
-    itemBuilder: (_) => [
-      for (final window in PrepStatsWindow.values)
-        PopupMenuItem(value: window, child: Text(window.label)),
-    ],
-    child: Padding(
-      padding: EdgeInsets.symmetric(horizontal: 8.w),
-      child: Row(
-        children: [
-          Text(
-            filter.window.label,
-            style: AppTypography.textSmMedium.copyWith(
-              color: context.colors.textPrimary,
-            ),
-          ),
-          Icon(
-            Icons.expand_more_rounded,
-            color: context.colors.textSecondary,
-            size: 18,
-          ),
-        ],
-      ),
-    ),
-  );
-}
-
-class _SourcePicker extends StatelessWidget {
-  const _SourcePicker({
-    required this.profile,
-    required this.filter,
-    required this.onChanged,
-  });
-  final PrepProfile profile;
-  final PrepFilter filter;
-  final ValueChanged<PrepFilter> onChanged;
-  @override
-  Widget build(BuildContext context) {
-    final selected = profile.accounts
-        .where((a) => a.key == filter.accountKey)
-        .firstOrNull;
-    return PopupMenuButton<String>(
-      tooltip: 'Choose source database',
-      initialValue: selected?.key ?? 'combined',
-      onSelected: (key) {
-        final account = profile.accounts.where((a) => a.key == key).firstOrNull;
-        onChanged(
-          PrepFilter(
-            source: account?.source,
-            accountKey: account?.key,
-            accountFile: account == null
-                ? null
-                : PrepRepository.gamesFileName(account),
-            window: filter.window,
-          ),
-        );
-      },
-      itemBuilder: (_) => [
-        const PopupMenuItem(value: 'combined', child: Text('Combined')),
-        for (final account in profile.accounts)
-          PopupMenuItem(
-            value: account.key,
-            child: Row(
-              children: [
-                PrepSourceMark(source: account.source, size: 18),
-                const SizedBox(width: 8),
-                Flexible(
-                  child: Text(
-                    '${account.source.label} · ${account.displayName ?? account.username}',
-                  ),
-                ),
-              ],
-            ),
-          ),
-      ],
-      child: Padding(
-        padding: EdgeInsets.symmetric(horizontal: 8.w),
-        child: Row(
-          children: [
-            ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 210),
-              child: Text(
-                selected == null
-                    ? filter.source?.label ?? 'Combined'
-                    : '${selected.source.label} · ${selected.displayName ?? selected.username}',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: AppTypography.textSmMedium.copyWith(
-                  color: context.colors.textPrimary,
-                ),
-              ),
-            ),
-            Icon(
-              Icons.expand_more_rounded,
-              color: context.colors.textSecondary,
-              size: 18,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
 }
 
 /// A compact toggle chip; filled ink when on.

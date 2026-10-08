@@ -89,32 +89,6 @@ class PrepIdentity extends StatelessWidget {
               ),
             ],
           ),
-          SizedBox(height: 12.h),
-          Row(
-            children: [
-              if (account != null) ...[
-                PrepSourceMark(source: account.source, size: 16.sp),
-                SizedBox(width: 6.w),
-              ],
-              Expanded(
-                child: Text(
-                  account == null
-                      ? 'No source attached'
-                      : 'Ratings from ${account.source.label}',
-                  style: AppTypography.textXsRegular.copyWith(
-                    color: context.colors.textSecondary,
-                  ),
-                ),
-              ),
-              if (profile.fideId ?? fideId case final id?)
-                Text(
-                  'FIDE $id',
-                  style: AppTypography.textXsMedium.copyWith(
-                    color: context.colors.textSecondary,
-                  ),
-                ),
-            ],
-          ),
         ],
       ),
     );

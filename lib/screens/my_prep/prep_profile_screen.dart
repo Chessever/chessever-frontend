@@ -6,7 +6,6 @@ import 'package:chessever2/screens/my_prep/prep_access.dart';
 import 'package:chessever2/screens/my_prep/prep_actions.dart';
 import 'package:chessever2/screens/my_prep/providers/prep_providers.dart';
 import 'package:chessever2/screens/my_prep/services/prep_analysis.dart';
-import 'package:chessever2/screens/my_prep/services/prep_index.dart';
 import 'package:chessever2/screens/my_prep/services/prep_repository.dart';
 import 'package:chessever2/screens/my_prep/tabs/prep_games_tab.dart';
 import 'package:chessever2/screens/my_prep/tabs/prep_trees_tab.dart';
@@ -24,8 +23,7 @@ import 'package:chessever2/widgets/segmented_switcher.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
-/// One prepared person: Overview, Games and Openings, read from every
-/// account they have, with the filters shared across the three tabs.
+/// One prepared person: combined About, filterable Games and source trees.
 class PrepProfileScreen extends ConsumerStatefulWidget {
   const PrepProfileScreen({super.key, required this.profileId});
 
@@ -107,8 +105,6 @@ class _PrepProfileScreenState extends ConsumerState<PrepProfileScreen> {
 
   Widget _identity(PrepProfile profile, {bool inset = true}) => PrepIdentity(
     profile: profile,
-    source: _filter.source,
-    accountKey: _filter.accountKey,
     inset: inset,
     fideId: kPrepFavorites
         .where((f) => f.id == profile.favoriteId)
@@ -158,14 +154,9 @@ class _PrepProfileScreenState extends ConsumerState<PrepProfileScreen> {
             accountKey: _filter.accountKey,
           ));
     final analysis = ref.watch(analysisProvider);
-    final selectedAccount = profile.accounts
-        .where((a) => a.key == _filter.accountKey)
-        .firstOrNull;
-    final scope = selectedAccount == null
-        ? profile.id
-        : PrepIndex.accountScope(selectedAccount);
+    final overviewAnalysis = ref.watch(prepAnalysisProvider(profile.id));
     final indexing = ref.watch(
-      gameTreeStatusProvider.select((s) => s[scope]?.percent),
+      gameTreeStatusProvider.select((s) => s[profile.id]?.percent),
     );
     final games = analysis.valueOrNull?.games ?? const <PrepGame>[];
     final filtered = _filtered(games);
@@ -204,14 +195,6 @@ class _PrepProfileScreenState extends ConsumerState<PrepProfileScreen> {
                   onSelectionChanged: _select,
                 ),
               ),
-              _SourcesRow(profile: profile),
-              if (_tab != 2)
-                PrepFilterBar(
-                  games: games,
-                  profile: profile,
-                  filter: _filter,
-                  onChanged: (f) => setState(() => _filter = f),
-                ),
               Expanded(
                 child: PageView(
                   controller: _pages,
@@ -219,7 +202,7 @@ class _PrepProfileScreenState extends ConsumerState<PrepProfileScreen> {
                     if (i != _tab) setState(() => _tab = i);
                   },
                   children: [
-                    analysis.when(
+                    overviewAnalysis.when(
                       skipLoadingOnReload: true,
                       loading: () => ListView(
                         children: [
@@ -244,7 +227,9 @@ class _PrepProfileScreenState extends ConsumerState<PrepProfileScreen> {
                             title: 'Could not read these games',
                             body: 'Try reading the downloaded games again.',
                             actionLabel: 'Retry',
-                            onAction: () => ref.invalidate(analysisProvider),
+                            onAction: () => ref.invalidate(
+                              prepAnalysisProvider(profile.id),
+                            ),
                           ),
                         ],
                       ),
@@ -258,9 +243,11 @@ class _PrepProfileScreenState extends ConsumerState<PrepProfileScreen> {
                             )
                           : PrepOverviewTab(
                               profile: profile,
-                              stats: _statsOf(filtered),
-                              filter: _filter,
+                              stats: _statsOf(data.games),
+                              filter: const PrepFilter(),
                               header: _identity(profile, inset: false),
+                              onSources: () =>
+                                  PrepSourcesScreen.open(context, profile.id),
                               onOpenGames: (filter) {
                                 setState(() => _filter = filter);
                                 _select(1);
@@ -280,9 +267,10 @@ class _PrepProfileScreenState extends ConsumerState<PrepProfileScreen> {
                         actionLabel: 'Retry',
                         onAction: () => ref.invalidate(analysisProvider),
                       ),
-                      data: (data) => data.games.isEmpty
+                      data: (data) => data.games.isEmpty && !_filter.isActive
                           ? _NoGames(profile: profile)
                           : PrepGamesTab(
+                              profile: profile,
                               analysis: data,
                               games: filtered,
                               filter: _filter,
@@ -367,55 +355,6 @@ class _TopBar extends ConsumerWidget {
             vertical: true,
             color: colors.iconPrimary,
             actions: (_) => prepProfileMenu(context, ref, profile),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _SourcesRow extends ConsumerWidget {
-  const _SourcesRow({required this.profile});
-  final PrepProfile profile;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final statuses = ref.watch(prepSyncProvider);
-    final downloading = profile.accounts.any(
-      (a) => statuses.containsKey(a.key),
-    );
-    final sources = profile.accounts.map((a) => a.source).toSet();
-    return Padding(
-      padding: EdgeInsets.symmetric(
-        horizontal: ResponsiveHelper.adaptive(phone: 20.sp, tablet: 32.sp),
-      ),
-      child: Row(
-        children: [
-          PrepSourceMarks(sources: sources, size: 16.sp),
-          if (sources.isNotEmpty) SizedBox(width: 8.w),
-          Expanded(
-            child: Text(
-              downloading
-                  ? 'Downloading games…'
-                  : sources.isEmpty
-                  ? 'No sources attached'
-                  : '${sources.length} ${sources.length == 1 ? 'source' : 'sources'}',
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: AppTypography.textXsRegular.copyWith(
-                color: context.colors.textSecondary,
-              ),
-            ),
-          ),
-          TextButton(
-            key: const ValueKey('prep_manage_sources'),
-            onPressed: () => PrepSourcesScreen.open(context, profile.id),
-            child: Text(
-              'Sources',
-              style: AppTypography.textSmMedium.copyWith(
-                color: context.colors.textPrimary,
-              ),
-            ),
           ),
         ],
       ),

@@ -10,9 +10,7 @@ import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:flutter/material.dart';
 
-/// Desktop Prep's statistics dashboard, laid out for a phone: headline
-/// numbers, the result split, each colour, openings, opponents, activity
-/// by year and game length.
+/// The player profile's quiet summary, with secondary analysis on demand.
 class PrepOverviewTab extends StatelessWidget {
   const PrepOverviewTab({
     super.key,
@@ -21,6 +19,7 @@ class PrepOverviewTab extends StatelessWidget {
     required this.filter,
     this.header,
     this.onOpenGames,
+    this.onSources,
   });
 
   final PrepProfile profile;
@@ -28,330 +27,370 @@ class PrepOverviewTab extends StatelessWidget {
   final PrepFilter filter;
   final Widget? header;
   final ValueChanged<PrepFilter>? onOpenGames;
+  final VoidCallback? onSources;
 
   @override
   Widget build(BuildContext context) {
     final gutter = ResponsiveHelper.adaptive(phone: 16.w, tablet: 24.w);
     final s = stats;
     final mine = profile.kind == PrepKind.mine;
-    String pct(double? v) => v == null ? '–' : '${(v * 100).round()}%';
     return ListView(
       padding: EdgeInsets.fromLTRB(gutter, 6.h, gutter, 40.h),
       children: [
         if (header != null) header!,
-        PrepStatStrip(
-          items: [
-            ('Games', prepCount(s.games)),
-            ('Score', pct(s.overall.score)),
-            ('Peak', s.peakRating?.toString() ?? '–'),
-            ('Performance', s.performance?.toString() ?? '–'),
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                'Overall Performance',
+                style: AppTypography.textSmBold,
+              ),
+            ),
+            if (profile.accounts.isNotEmpty)
+              IconButton(
+                tooltip: 'Manage sources',
+                onPressed: onSources,
+                constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
+                padding: const EdgeInsets.symmetric(horizontal: 4),
+                icon: PrepSourceMarks(
+                  sources: profile.accounts.map((a) => a.source),
+                  size: 16.sp,
+                ),
+              ),
           ],
         ),
         SizedBox(height: 12.h),
-        _Panel(
-          title: 'Results',
-          trailing: s.averageOpponent == null
-              ? null
-              : 'Avg. opponent ${s.averageOpponent}',
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+        _OverallSummary(stats: s, filter: filter, onOpenGames: onOpenGames),
+        SizedBox(height: 20.h),
+        _DetailsPanel(
+          title: 'Performance by colour',
+          children: [
+            for (final white in [true, false]) ...[
+              if (!white) SizedBox(height: 20.h),
+              _ColourRow(
+                label: mine
+                    ? (white ? 'As White' : 'As Black')
+                    : (white ? 'Their White' : 'Their Black'),
+                tally: white ? s.asWhite : s.asBlack,
+                onTap: () => onOpenGames?.call(
+                  filter.copyWith(
+                    side: white ? PrepSide.white : PrepSide.black,
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ),
+        if (s.whiteOpenings.isNotEmpty || s.blackOpenings.isNotEmpty) ...[
+          SizedBox(height: 12.h),
+          _DetailsPanel(
+            title: 'Opening repertoire',
             children: [
-              PrepResultBar(tally: s.overall, height: 8),
-              SizedBox(height: 10.h),
-              Row(
-                children: [
-                  _Figure(
-                    'Wins',
-                    s.overall.wins,
-                    context.colors.successStrong,
-                    onTap: () => onOpenGames?.call(
-                      filter.copyWith(outcome: PrepOutcome.win),
+              for (final white in [true, false])
+                if ((white ? s.whiteOpenings : s.blackOpenings).isNotEmpty) ...[
+                  Text(
+                    white ? 'As White' : 'As Black',
+                    style: AppTypography.textXsMedium.copyWith(
+                      color: context.colors.textSecondary,
                     ),
                   ),
-                  _Figure(
-                    'Draws',
-                    s.overall.draws,
-                    context.colors.textSecondary,
-                    onTap: () => onOpenGames?.call(
-                      filter.copyWith(outcome: PrepOutcome.draw),
-                    ),
-                  ),
-                  _Figure(
-                    'Losses',
-                    s.overall.losses,
-                    context.colors.danger,
-                    onTap: () => onOpenGames?.call(
-                      filter.copyWith(outcome: PrepOutcome.loss),
+                  SizedBox(height: 12.h),
+                  _OpeningList(
+                    lines: white ? s.whiteOpenings : s.blackOpenings,
+                    onTap: (line) => onOpenGames?.call(
+                      filter.copyWith(
+                        side: white ? PrepSide.white : PrepSide.black,
+                        eco: null,
+                        opening: line.name,
+                      ),
                     ),
                   ),
                 ],
-              ),
             ],
           ),
-        ),
-        SizedBox(height: 12.h),
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(
-              child: _ColorCard(
-                label: mine ? 'As White' : 'Their White',
-                tally: s.asWhite,
-                white: true,
-                onTap: () =>
-                    onOpenGames?.call(filter.copyWith(side: PrepSide.white)),
-              ),
-            ),
-            SizedBox(width: 12.w),
-            Expanded(
-              child: _ColorCard(
-                label: mine ? 'As Black' : 'Their Black',
-                tally: s.asBlack,
-                white: false,
-                onTap: () =>
-                    onOpenGames?.call(filter.copyWith(side: PrepSide.black)),
-              ),
-            ),
-          ],
-        ),
+        ],
         if (s.ratingHistory.length >= 2) ...[
           SizedBox(height: 12.h),
-          _Panel(
+          _DetailsPanel(
             title: 'Rating history',
-            child: PrepRatingHistory(points: s.ratingHistory),
-          ),
-        ],
-        if (s.whiteOpenings.isNotEmpty) ...[
-          SizedBox(height: 12.h),
-          _Panel(
-            title: mine ? 'Openings as White' : 'Their openings as White',
-            child: _OpeningList(
-              lines: s.whiteOpenings,
-              onTap: (line) => onOpenGames?.call(
-                filter.copyWith(
-                  side: PrepSide.white,
-                  eco: null,
-                  opening: line.name,
-                ),
-              ),
-            ),
-          ),
-        ],
-        if (s.blackOpenings.isNotEmpty) ...[
-          SizedBox(height: 12.h),
-          _Panel(
-            title: mine ? 'Openings as Black' : 'Their openings as Black',
-            child: _OpeningList(
-              lines: s.blackOpenings,
-              onTap: (line) => onOpenGames?.call(
-                filter.copyWith(
-                  side: PrepSide.black,
-                  eco: null,
-                  opening: line.name,
-                ),
-              ),
-            ),
-          ),
-        ],
-        if (s.opponents.isNotEmpty) ...[
-          SizedBox(height: 12.h),
-          _Panel(
-            title: 'Most played opponents',
-            child: Column(
-              children: [
-                for (final o in s.opponents)
-                  _LineRow(
-                    title: o.name,
-                    onTap: () =>
-                        onOpenGames?.call(filter.copyWith(opponent: o.name)),
-                    meta: o.rating == null ? null : '${o.rating}',
-                    tally: o.tally,
-                  ),
-              ],
-            ),
-          ),
-        ],
-        if (s.byYear.length > 1) ...[
-          SizedBox(height: 12.h),
-          _Panel(
-            title: 'Games by year',
-            child: _YearBars(
-              years: s.byYear,
-              onYear: (year) => onOpenGames?.call(filter.copyWith(year: year)),
-            ),
+            children: [PrepRatingHistory(points: s.ratingHistory)],
           ),
         ],
         SizedBox(height: 12.h),
-        _Panel(
-          title: 'Game length',
-          child: _LengthBars(lengths: s.lengths),
-        ),
-        if (s.overall.total < s.games) ...[
-          SizedBox(height: 12.h),
-          Text(
-            '${prepCount(s.games - s.overall.total)} games are not counted in '
-            'results: unfinished, or the player’s name did not match.',
-            style: AppTypography.textXsRegular.copyWith(
-              color: context.colors.textTertiary,
+        _DetailsPanel(
+          title: 'More statistics',
+          children: [
+            PrepStatStrip(
+              items: [
+                ('Peak rating', s.peakRating?.toString() ?? '–'),
+                ('Performance', s.performance?.toString() ?? '–'),
+              ],
             ),
-          ),
-        ],
+            if (s.averageOpponent != null) ...[
+              SizedBox(height: 12.h),
+              Text(
+                'Average opponent rating ${s.averageOpponent}',
+                style: AppTypography.textXsRegular.copyWith(
+                  color: context.colors.textSecondary,
+                ),
+              ),
+            ],
+            if (s.opponents.isNotEmpty) ...[
+              SizedBox(height: 24.h),
+              Text('Most played opponents', style: AppTypography.textSmBold),
+              SizedBox(height: 12.h),
+              for (final o in s.opponents)
+                _LineRow(
+                  title: o.name,
+                  meta: o.rating?.toString(),
+                  tally: o.tally,
+                  onTap: () =>
+                      onOpenGames?.call(filter.copyWith(opponent: o.name)),
+                ),
+            ],
+            if (s.byYear.length > 1) ...[
+              SizedBox(height: 24.h),
+              Text('Games by year', style: AppTypography.textSmBold),
+              SizedBox(height: 12.h),
+              _YearBars(
+                years: s.byYear,
+                onYear: (year) =>
+                    onOpenGames?.call(filter.copyWith(year: year)),
+              ),
+            ],
+            SizedBox(height: 24.h),
+            Text('Game length', style: AppTypography.textSmBold),
+            SizedBox(height: 12.h),
+            _LengthBars(lengths: s.lengths),
+            if (s.overall.total < s.games) ...[
+              SizedBox(height: 16.h),
+              Text(
+                '${prepCount(s.games - s.overall.total)} games are excluded from results because they are unfinished or the player name did not match.',
+                style: AppTypography.textXsRegular.copyWith(
+                  color: context.colors.textSecondary,
+                ),
+              ),
+            ],
+          ],
+        ),
       ],
     );
   }
 }
 
-class _Panel extends StatelessWidget {
-  const _Panel({required this.title, required this.child, this.trailing});
-
-  final String title;
-  final String? trailing;
-  final Widget child;
+/// A single surface replaces the headline strip and three result cards.
+class _OverallSummary extends StatelessWidget {
+  const _OverallSummary({
+    required this.stats,
+    required this.filter,
+    this.onOpenGames,
+  });
+  final PrepStats stats;
+  final PrepFilter filter;
+  final ValueChanged<PrepFilter>? onOpenGames;
 
   @override
   Widget build(BuildContext context) {
     final colors = context.colors;
+    final score = stats.overall.score;
     return Container(
-      padding: EdgeInsets.all(14.sp),
+      padding: EdgeInsets.all(16.sp),
       decoration: BoxDecoration(
         color: colors.surface,
         borderRadius: BorderRadius.circular(12.br),
       ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text(
-            title,
-            style: AppTypography.textSmBold.copyWith(color: colors.textPrimary),
-          ),
-          if (trailing != null) ...[
-            SizedBox(height: 4.h),
-            Text(
-              trailing!,
-              style: AppTypography.textXsRegular.copyWith(
-                color: colors.textSecondary,
-                fontFeatures: const [FontFeature.tabularFigures()],
+          Row(
+            children: [
+              Expanded(
+                child: _SummaryValue(
+                  label: 'Games',
+                  value: prepCount(stats.games),
+                ),
               ),
-            ),
-          ],
-          SizedBox(height: 12.h),
-          child,
+              Expanded(
+                child: _SummaryValue(
+                  label: 'Score',
+                  value: score == null ? '–' : '${(score * 100).round()}%',
+                  end: true,
+                ),
+              ),
+            ],
+          ),
+          SizedBox(height: 20.h),
+          PrepResultBar(tally: stats.overall, height: 8),
+          SizedBox(height: 16.h),
+          Row(
+            children: [
+              for (final outcome in [
+                PrepOutcome.win,
+                PrepOutcome.draw,
+                PrepOutcome.loss,
+              ])
+                Expanded(
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(8.br),
+                    onTap: () => onOpenGames?.call(
+                      filter.copyWith(
+                        outcome: filter.outcome == outcome ? null : outcome,
+                      ),
+                    ),
+                    child: Padding(
+                      padding: EdgeInsets.symmetric(vertical: 4.h),
+                      child: Column(
+                        children: [
+                          Text(
+                            prepCount(switch (outcome) {
+                              PrepOutcome.win => stats.overall.wins,
+                              PrepOutcome.draw => stats.overall.draws,
+                              _ => stats.overall.losses,
+                            }),
+                            style: AppTypography.textLgBold.copyWith(
+                              color: switch (outcome) {
+                                PrepOutcome.win => colors.accentText,
+                                PrepOutcome.draw => colors.textSecondary,
+                                _ => colors.danger,
+                              },
+                              fontFeatures: const [
+                                FontFeature.tabularFigures(),
+                              ],
+                            ),
+                          ),
+                          SizedBox(height: 4.h),
+                          Text(
+                            switch (outcome) {
+                              PrepOutcome.win => 'Wins',
+                              PrepOutcome.draw => 'Draws',
+                              _ => 'Losses',
+                            },
+                            style: AppTypography.textXsRegular.copyWith(
+                              color: colors.textSecondary,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
         ],
       ),
     );
   }
 }
 
-class _Figure extends StatelessWidget {
-  const _Figure(this.label, this.value, this.color, {this.onTap});
+class _SummaryValue extends StatelessWidget {
+  const _SummaryValue({
+    required this.label,
+    required this.value,
+    this.end = false,
+  });
   final String label;
-  final int value;
-  final Color color;
-  final VoidCallback? onTap;
-
+  final String value;
+  final bool end;
   @override
-  Widget build(BuildContext context) => Expanded(
-    child: InkWell(
-      onTap: onTap,
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(minHeight: 44),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+  Widget build(BuildContext context) => Column(
+    crossAxisAlignment: end ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+    children: [
+      Text(
+        label,
+        style: AppTypography.textXsRegular.copyWith(
+          color: context.colors.textSecondary,
+        ),
+      ),
+      SizedBox(height: 4.h),
+      Text(
+        value,
+        style: AppTypography.textXlBold.copyWith(
+          color: context.colors.textPrimary,
+          fontFeatures: const [FontFeature.tabularFigures()],
+        ),
+      ),
+    ],
+  );
+}
+
+/// Uses the platform expansion control; details never crowd the first view.
+class _DetailsPanel extends StatelessWidget {
+  const _DetailsPanel({required this.title, required this.children});
+  final String title;
+  final List<Widget> children;
+  @override
+  Widget build(BuildContext context) => ExpansionTile(
+    key: PageStorageKey(title),
+    title: Text(title, style: AppTypography.textSmMedium),
+    backgroundColor: context.colors.surface,
+    collapsedBackgroundColor: context.colors.surface,
+    textColor: context.colors.textPrimary,
+    collapsedTextColor: context.colors.textPrimary,
+    iconColor: context.colors.iconSecondary,
+    collapsedIconColor: context.colors.iconSecondary,
+    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12.br)),
+    collapsedShape: RoundedRectangleBorder(
+      borderRadius: BorderRadius.circular(12.br),
+    ),
+    tilePadding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 2.h),
+    childrenPadding: EdgeInsets.fromLTRB(16.w, 4.h, 16.w, 16.h),
+    children: [
+      Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: children,
+      ),
+    ],
+  );
+}
+
+class _ColourRow extends StatelessWidget {
+  const _ColourRow({
+    required this.label,
+    required this.tally,
+    required this.onTap,
+  });
+  final String label;
+  final PrepTally tally;
+  final VoidCallback onTap;
+  @override
+  Widget build(BuildContext context) => InkWell(
+    onTap: onTap,
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          children: [
+            Expanded(child: Text(label, style: AppTypography.textSmMedium)),
+            Text(
+              tally.score == null ? '–' : '${(tally.score! * 100).round()}%',
+              style: AppTypography.textLgBold,
+            ),
+            SizedBox(width: 8.w),
+            Icon(
+              Icons.chevron_right_rounded,
+              size: 18,
+              color: context.colors.iconSecondary,
+            ),
+          ],
+        ),
+        SizedBox(height: 8.h),
+        PrepResultBar(tally: tally, height: 4),
+        SizedBox(height: 8.h),
+        Wrap(
+          spacing: 12.w,
+          runSpacing: 4.h,
           children: [
             Text(
-              prepCount(value),
-              style: AppTypography.textLgBold.copyWith(
-                color: color,
-                fontFeatures: const [FontFeature.tabularFigures()],
-              ),
-            ),
-            Text(
-              label,
+              prepGamesLabel(tally.total),
               style: AppTypography.textXsRegular.copyWith(
                 color: context.colors.textSecondary,
               ),
             ),
-          ],
-        ),
-      ),
-    ),
-  );
-}
-
-class _ColorCard extends StatelessWidget {
-  const _ColorCard({
-    required this.label,
-    required this.tally,
-    required this.white,
-    this.onTap,
-  });
-
-  final String label;
-  final PrepTally tally;
-  final bool white;
-  final VoidCallback? onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = context.colors;
-    final score = tally.score;
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(12.br),
-      child: Container(
-        padding: EdgeInsets.all(14.sp),
-        decoration: BoxDecoration(
-          color: colors.surface,
-          borderRadius: BorderRadius.circular(12.br),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Container(
-                  width: 12.sp,
-                  height: 12.sp,
-                  decoration: BoxDecoration(
-                    color: white ? Colors.white : Colors.black,
-                    borderRadius: BorderRadius.circular(3.br),
-                    border: Border.all(color: colors.dividerStrong),
-                  ),
-                ),
-                SizedBox(width: 8.w),
-                Expanded(
-                  child: Text(
-                    label,
-                    style: AppTypography.textXsMedium.copyWith(
-                      color: colors.textSecondary,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            SizedBox(height: 8.h),
-            Text(
-              score == null ? '–' : '${(score * 100).round()}%',
-              style: AppTypography.textXlBold.copyWith(
-                color: colors.textPrimary,
-                fontFeatures: const [FontFeature.tabularFigures()],
-              ),
-            ),
-            Text(
-              prepGamesLabel(tally.total),
-              style: AppTypography.textXsRegular.copyWith(
-                color: colors.textTertiary,
-              ),
-            ),
-            SizedBox(height: 10.h),
-            PrepResultBar(tally: tally),
-            SizedBox(height: 6.h),
             PrepTallyText(tally: tally),
           ],
         ),
-      ),
-    );
-  }
+      ],
+    ),
+  );
 }
 
 class _OpeningList extends StatelessWidget {
@@ -574,7 +613,7 @@ class _Bar extends StatelessWidget {
                             Expanded(
                               flex: t.wins,
                               child: ColoredBox(
-                                color: colors.successStrong,
+                                color: colors.brand,
                                 child: const SizedBox.expand(),
                               ),
                             ),

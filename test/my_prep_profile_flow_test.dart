@@ -3,7 +3,6 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:chessever2/repository/gamebase/gamebase_repository.dart';
-import 'package:chessever2/screens/gamebase/models/gamebase_player.dart';
 import 'package:chessever2/screens/my_prep/models/prep_models.dart';
 import 'package:chessever2/screens/my_prep/prep_profile_screen.dart';
 import 'package:chessever2/screens/my_prep/prep_sources_screen.dart';
@@ -11,12 +10,18 @@ import 'package:chessever2/screens/my_prep/providers/prep_providers.dart';
 import 'package:chessever2/screens/my_prep/services/prep_analysis.dart';
 import 'package:chessever2/screens/my_prep/services/prep_repository.dart';
 import 'package:chessever2/screens/my_prep/tabs/prep_overview_tab.dart';
+import 'package:chessever2/screens/my_prep/tabs/prep_trees_tab.dart';
 import 'package:chessever2/screens/my_prep/widgets/prep_dialogs.dart';
 import 'package:chessever2/screens/my_prep/widgets/prep_import_dialog.dart';
 import 'package:chessever2/screens/my_prep/tabs/prep_games_tab.dart';
 import 'package:chessever2/widgets/game_filter/game_filter_model.dart';
 import 'package:chessever2/widgets/game_filter/game_filter_dialog.dart';
+import 'package:chessever2/screens/gamebase/models/models.dart';
+import 'package:chessever2/screens/gamebase/providers/gamebase_explorer_state.dart';
+import 'package:chessever2/widgets/game_tree/build_tree_button.dart';
 import 'package:chessever2/screens/my_prep/widgets/prep_filters.dart';
+import 'package:chessever2/screens/my_prep/widgets/prep_filter_dialog.dart';
+import 'package:chessever2/screens/my_prep/widgets/prep_filter_popup.dart';
 import 'package:chessever2/screens/my_prep/widgets/prep_identity.dart';
 import 'package:chessever2/screens/my_prep/widgets/prep_source_picker.dart';
 import 'package:chessever2/services/rewarded_premium/rewarded_access_provider.dart';
@@ -497,52 +502,329 @@ void main() {
     await tester.pump();
     await tester.tap(find.text('Build Tree'));
     await tester.pumpAndSettle();
+    expect(find.text('Opening trees'), findsOneWidget);
     expect(find.text('Combined'), findsOneWidget);
     expect(find.text('Attach a source'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('date windows can be selected from the profile filter bar', (
-    tester,
-  ) async {
-    const profile = PrepProfile(
-      id: 'p',
-      kind: PrepKind.opponent,
-      name: 'ClubPlayer',
-      createdAtMs: 1,
+  for (final light in [false, true]) {
+    testWidgets(
+      'tree filters apply to every tree and cancel or reset in ${light ? 'light' : 'dark'} theme',
+      (tester) async {
+        const profile = PrepProfile(
+          id: 'p',
+          kind: PrepKind.opponent,
+          name: 'ClubPlayer',
+          createdAtMs: 1,
+          accounts: [
+            PrepAccount(
+              source: PrepSource.lichess,
+              username: 'ClubPlayer',
+              gameCount: 12,
+            ),
+          ],
+        );
+        await pump(
+          tester,
+          Scaffold(
+            body: PrepTreesTab(profile: profile, onSources: () {}),
+          ),
+          light: light,
+          scale: 2,
+          overrides: [
+            gameTreeBuiltProvider.overrideWith((ref, scope) async => false),
+          ],
+        );
+        await tester.pumpAndSettle();
+        Iterable<BuildTreeButton> buttons() =>
+            tester.widgetList<BuildTreeButton>(find.byType(BuildTreeButton));
+        expect(buttons(), hasLength(2));
+        expect(find.text('Both colours'), findsNothing);
+        expect(find.text('All clocks'), findsNothing);
+        expect(find.text('Sources'), findsNothing);
+
+        await tester.tap(find.byTooltip('Filter opening trees'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Both colours'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Their Black').last);
+        await tester.pumpAndSettle();
+        await Scrollable.ensureVisible(
+          tester.element(find.text('All clocks')),
+          alignment: 0.5,
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('All clocks'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Blitz').last);
+        await tester.pumpAndSettle();
+        expect(buttons().every((b) => b.color == null), isTrue);
+        expect(buttons().every((b) => b.timeControl == null), isTrue);
+        await tester.tap(find.text('Apply'));
+        await tester.pumpAndSettle();
+        expect(
+          buttons().every((b) => b.color == GamebasePlayerColor.black),
+          isTrue,
+        );
+        expect(
+          buttons().every((b) => b.timeControl == TimeControl.blitz),
+          isTrue,
+        );
+        expect(find.text('Their Black · Blitz'), findsOneWidget);
+
+        await tester.tap(find.byTooltip('Filter opening trees'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Their Black'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Their White').last);
+        await tester.pumpAndSettle();
+        await tester.tap(find.byTooltip('Close filters'));
+        await tester.pumpAndSettle();
+        expect(
+          buttons().every((b) => b.color == GamebasePlayerColor.black),
+          isTrue,
+        );
+
+        await tester.tap(find.byTooltip('Filter opening trees'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Reset'));
+        await tester.pumpAndSettle();
+        expect(buttons().every((b) => b.color == null), isTrue);
+        expect(buttons().every((b) => b.timeControl == null), isTrue);
+        expect(find.text('Their Black · Blitz'), findsNothing);
+        expect(tester.takeException(), isNull);
+      },
     );
-    const games = [
-      PrepGame(
-        index: 0,
+
+    testWidgets(
+      'About keeps combined results after a source filter in ${light ? 'light' : 'dark'} theme',
+      (tester) async {
+        const online = PrepAccount(
+          source: PrepSource.lichess,
+          username: 'ClubPlayer',
+          ratings: {'rapid': 1900},
+        );
+        const other = PrepAccount(
+          source: PrepSource.chesscom,
+          username: 'ClubPlayer',
+        );
+        const empty = PrepAccount(
+          source: PrepSource.chesscom,
+          username: 'NoGames',
+        );
+        const profile = PrepProfile(
+          id: 'p',
+          kind: PrepKind.opponent,
+          name: 'Club Player',
+          createdAtMs: 1,
+          accounts: [online, other, empty],
+        );
+        final games = [
+          PrepGame(
+            index: 0,
+            source: online.source,
+            sourcePath: PrepRepository.gamesFileName(online),
+            white: 'ClubPlayer',
+            black: 'Opponent',
+            result: '1-0',
+            plies: 4,
+            speed: PrepTimeControl.rapid,
+            playerIsWhite: true,
+          ),
+          for (final i in [1, 2])
+            PrepGame(
+              index: i,
+              source: other.source,
+              sourcePath: PrepRepository.gamesFileName(other),
+              white: 'ClubPlayer',
+              black: 'Opponent $i',
+              result: '0-1',
+              plies: 4,
+              speed: PrepTimeControl.blitz,
+              playerIsWhite: true,
+            ),
+        ];
+        await pump(
+          tester,
+          const PrepProfileScreen(profileId: 'p'),
+          light: light,
+          scale: 2,
+          overrides: [
+            prepProfileProvider.overrideWith((ref, id) => profile),
+            prepAnalysisProvider.overrideWith(
+              (ref, id) async => PrepAnalysis(profileId: id, games: games),
+            ),
+            prepSourceAnalysisProvider.overrideWith(
+              (ref, scope) async => PrepAnalysis(
+                profileId: scope.profileId,
+                games: scope.accountKey == empty.key ? [] : [games.first],
+              ),
+            ),
+          ],
+        );
+        await tester.pumpAndSettle();
+        expect(find.text('Overall Performance'), findsOneWidget);
+        expect(find.text('3'), findsOneWidget);
+        expect(find.textContaining('Ratings from'), findsNothing);
+        expect(find.text('Sources'), findsNothing);
+        expect(find.byType(PrepFilterButton).hitTestable(), findsNothing);
+
+        await tester.tap(find.text('1900'));
+        await tester.pumpAndSettle();
+        final tab = tester.widget<PrepGamesTab>(find.byType(PrepGamesTab));
+        expect(tab.games, hasLength(1));
+        expect(tab.filter.accountKey, online.key);
+        expect(tab.filter.speed, PrepTimeControl.rapid);
+        expect(find.byType(PrepFilterButton).hitTestable(), findsOneWidget);
+
+        await tester.tap(find.byTooltip('Filter and sort games'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Lichess · ClubPlayer').last);
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Chess.com · NoGames').last);
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Apply'));
+        await tester.pumpAndSettle();
+        expect(find.text('No games match these filters.'), findsOneWidget);
+        expect(find.byType(PrepFilterButton).hitTestable(), findsOneWidget);
+        await tester.tap(find.byTooltip('Filter and sort games'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Reset'));
+        await tester.pumpAndSettle();
+        expect(
+          tester.widget<PrepGamesTab>(find.byType(PrepGamesTab)).games,
+          hasLength(3),
+        );
+
+        await tester.tap(find.text('About'));
+        await tester.pumpAndSettle();
+        expect(find.text('3'), findsOneWidget);
+        expect(find.byType(PrepFilterButton).hitTestable(), findsNothing);
+        await tester.tap(find.byTooltip('Manage sources'));
+        await tester.pumpAndSettle();
+        expect(find.byType(PrepSourcesScreen), findsOneWidget);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+
+  testWidgets(
+    'profile filters stay in a popup and apply only on confirmation',
+    (tester) async {
+      const account = PrepAccount(
         source: PrepSource.lichess,
-        white: 'ClubPlayer',
-        black: 'Opponent',
-        result: '1-0',
-        plies: 4,
-      ),
-    ];
-    var filter = const PrepFilter();
-    await pump(
-      tester,
-      Scaffold(
-        body: StatefulBuilder(
-          builder: (context, setState) => PrepFilterBar(
-            games: games,
-            profile: profile,
-            filter: filter,
-            onChanged: (next) => setState(() => filter = next),
+        username: 'ClubPlayer',
+      );
+      const profile = PrepProfile(
+        id: 'p',
+        kind: PrepKind.opponent,
+        name: 'ClubPlayer',
+        createdAtMs: 1,
+        accounts: [account],
+      );
+      var filter = const PrepFilter();
+      await pump(
+        tester,
+        Scaffold(
+          body: StatefulBuilder(
+            builder: (context, setState) => PrepFilterButton(
+              active: filter.isActive,
+              onPressed: () async {
+                final next = await showPrepFilterDialog(
+                  context: context,
+                  profile: profile,
+                  currentFilter: filter,
+                );
+                if (next != null) setState(() => filter = next);
+              },
+            ),
           ),
         ),
-      ),
-    );
-    await tester.tap(find.text('All dates'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('30 days'));
-    await tester.pumpAndSettle();
-    expect(filter.window, PrepStatsWindow.thirtyDays);
-    expect(find.text('30 days'), findsOneWidget);
-    expect(tester.takeException(), isNull);
-  });
+      );
+      expect(find.text('All dates'), findsNothing);
+      expect(find.text('Both'), findsNothing);
+      await tester.tap(find.byTooltip('Filter and sort games'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('All dates'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('30 days').last);
+      await tester.pumpAndSettle();
+      expect(filter.window, PrepStatsWindow.all);
+      await tester.tap(find.text('Apply'));
+      await tester.pumpAndSettle();
+      expect(filter.window, PrepStatsWindow.thirtyDays);
+      await tester.tap(find.byTooltip('Filter and sort games'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('30 days'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('1 year').last);
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('Close filters'));
+      await tester.pumpAndSettle();
+      expect(filter.window, PrepStatsWindow.thirtyDays);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'advanced filters preserve the source, exact clock, colour and player result',
+    (tester) async {
+      const account = PrepAccount(
+        source: PrepSource.lichess,
+        username: 'ClubPlayer',
+      );
+      const profile = PrepProfile(
+        id: 'p',
+        kind: PrepKind.opponent,
+        name: 'ClubPlayer',
+        createdAtMs: 1,
+        accounts: [account],
+      );
+      final initial = PrepFilter(
+        source: account.source,
+        accountKey: account.key,
+        speed: PrepTimeControl.bullet,
+        side: PrepSide.black,
+        outcome: PrepOutcome.win,
+      );
+      PrepFilter? selected;
+      await pump(
+        tester,
+        Scaffold(
+          body: Builder(
+            builder: (context) => TextButton(
+              onPressed: () async => selected = await showPrepFilterDialog(
+                context: context,
+                profile: profile,
+                currentFilter: initial,
+              ),
+              child: const Text('Open'),
+            ),
+          ),
+        ),
+        scale: 2,
+      );
+      await tester.tap(find.text('Open'));
+      await tester.pumpAndSettle();
+      await Scrollable.ensureVisible(
+        tester.element(find.text('More game filters')),
+        alignment: 0.5,
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('More game filters'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Apply Filters').last);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Apply'));
+      await tester.pumpAndSettle();
+      expect(selected?.accountKey, account.key);
+      expect(selected?.speed, PrepTimeControl.bullet);
+      expect(selected?.side, PrepSide.black);
+      expect(selected?.outcome, PrepOutcome.win);
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   testWidgets('result statistics open a correctly scoped games filter', (
     tester,
@@ -579,6 +861,7 @@ void main() {
       scale: 2,
     );
     expect(tester.takeException(), isNull);
+    expect(find.text('Their White'), findsNothing);
     await tester.tap(find.text('Wins'));
     expect(selected?.outcome, PrepOutcome.win);
     expect(selected?.source, PrepSource.lichess);

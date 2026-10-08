@@ -5,12 +5,13 @@ import 'package:chessever2/screens/my_prep/models/prep_models.dart';
 import 'package:chessever2/screens/my_prep/prep_source_actions.dart';
 import 'package:chessever2/screens/my_prep/providers/prep_providers.dart';
 import 'package:chessever2/screens/my_prep/widgets/prep_common.dart';
+import 'package:chessever2/screens/my_prep/widgets/prep_filter_popup.dart';
 import 'package:chessever2/services/game_tree/game_tree_service.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/game_tree/build_tree_button.dart';
-import 'package:chessever2/widgets/segmented_switcher.dart';
+import 'package:chessever2/widgets/alert_dialog/alert_modal.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -30,6 +31,22 @@ class _PrepTreesTabState extends ConsumerState<PrepTreesTab> {
   int _side = 0;
   int _clock = 0;
 
+  Future<void> _showFilters() async {
+    final result = await showAlertModal<(int, int)>(
+      context: context,
+      child: _TreeFilterDialog(
+        mine: widget.profile.kind == PrepKind.mine,
+        side: _side,
+        clock: _clock,
+      ),
+    );
+    if (result == null || !mounted) return;
+    setState(() {
+      _side = result.$1;
+      _clock = result.$2;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final profile = widget.profile;
@@ -47,56 +64,44 @@ class _PrepTreesTabState extends ConsumerState<PrepTreesTab> {
       3 => TimeControl.classical,
       _ => null,
     };
-    final sides = profile.kind == PrepKind.mine
-        ? const ['Both', 'As White', 'As Black']
-        : const ['Both', 'Their White', 'Their Black'];
-    const clocks = ['All clocks', 'Blitz', 'Rapid', 'Classical'];
+    final sides = _sideLabels(profile.kind == PrepKind.mine);
+    final activeFilters = [
+      if (_side > 0) sides[_side],
+      if (_clock > 0) _clockLabels[_clock],
+    ];
     return ListView(
       padding: EdgeInsets.fromLTRB(gutter, 12.h, gutter, 32.h),
       children: [
-        Text(
-          profile.kind == PrepKind.mine
-              ? 'Study your games'
-              : 'Prepare against this player',
-          style: AppTypography.textMdBold.copyWith(color: colors.textPrimary),
-        ),
-        SizedBox(height: 6.h),
-        Text(
-          'Choose the player’s colour. Each tree opens with that side selected.',
-          style: AppTypography.textSmRegular.copyWith(
-            color: colors.textSecondary,
-            height: 1.5,
-          ),
-        ),
-        SizedBox(height: 16.h),
-        SegmentedSwitcher(
-          height: prepSegmentHeight(context, wrapLabels: true),
-          options: sides,
-          optionLabels: [
-            for (final side in sides)
-              Text(side, maxLines: 2, textAlign: TextAlign.center),
+        Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Opening trees', style: AppTypography.textSmBold),
+                  if (activeFilters.isNotEmpty) ...[
+                    SizedBox(height: 4.h),
+                    Text(
+                      activeFilters.join(' · '),
+                      style: AppTypography.textXsRegular.copyWith(
+                        color: colors.textSecondary,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            PrepFilterButton(
+              active: activeFilters.isNotEmpty,
+              tooltip: 'Filter opening trees',
+              onPressed: _showFilters,
+            ),
           ],
-          initialSelection: _side,
-          currentSelection: _side,
-          onSelectionChanged: (side) => setState(() => _side = side),
         ),
-        SizedBox(height: 20.h),
-        SegmentedSwitcher(
-          height: prepSegmentHeight(context, wrapLabels: true),
-          options: clocks,
-          optionLabels: [
-            for (final clock in clocks)
-              Text(clock, maxLines: 2, textAlign: TextAlign.center),
-          ],
-          initialSelection: _clock,
-          currentSelection: _clock,
-          onSelectionChanged: (clock) => setState(() => _clock = clock),
-        ),
-        SizedBox(height: 16.h),
+        SizedBox(height: 12.h),
         _TreeRow(
           title: 'Combined',
-          subtitle:
-              '${prepGamesLabel(profile.gameCount)} from all attached sources',
+          subtitle: 'All attached sources',
           marks: PrepSourceMarks(
             sources: profile.accounts.map((a) => a.source),
           ),
@@ -110,7 +115,9 @@ class _PrepTreesTabState extends ConsumerState<PrepTreesTab> {
         for (final account in profile.accounts) ...[
           _TreeRow(
             title: account.source.label,
-            subtitle: account.displayName ?? account.username,
+            subtitle: account.source.online
+                ? account.username
+                : account.displayName ?? account.username,
             marks: PrepSourceMark(source: account.source),
             target: PrepAccountTreeTarget(
               profile: profile,
@@ -129,6 +136,65 @@ class _PrepTreesTabState extends ConsumerState<PrepTreesTab> {
             onPressed: widget.onSources,
             child: const Text('Attach a source'),
           ),
+      ],
+    );
+  }
+}
+
+List<String> _sideLabels(bool mine) => mine
+    ? const ['Both colours', 'As White', 'As Black']
+    : const ['Both colours', 'Their White', 'Their Black'];
+
+const _clockLabels = ['All clocks', 'Blitz', 'Rapid', 'Classical'];
+
+class _TreeFilterDialog extends StatefulWidget {
+  const _TreeFilterDialog({
+    required this.mine,
+    required this.side,
+    required this.clock,
+  });
+  final bool mine;
+  final int side;
+  final int clock;
+
+  @override
+  State<_TreeFilterDialog> createState() => _TreeFilterDialogState();
+}
+
+class _TreeFilterDialogState extends State<_TreeFilterDialog> {
+  late int _side = widget.side;
+  late int _clock = widget.clock;
+
+  @override
+  Widget build(BuildContext context) {
+    final sides = _sideLabels(widget.mine);
+    return PrepFilterPopup(
+      title: 'Tree filters',
+      onReset: () => Navigator.of(context).pop((0, 0)),
+      onApply: () => Navigator.of(context).pop((_side, _clock)),
+      children: [
+        Text('Player colour', style: AppTypography.textSmMedium),
+        SizedBox(height: 8.h),
+        PrepFilterSelect<int>(
+          label: 'Player colour',
+          value: _side,
+          items: [
+            for (final (i, label) in sides.indexed)
+              DropdownMenuItem(value: i, child: Text(label)),
+          ],
+          onChanged: (value) => setState(() => _side = value),
+        ),
+        Text('Time control', style: AppTypography.textSmMedium),
+        SizedBox(height: 8.h),
+        PrepFilterSelect<int>(
+          label: 'Time control',
+          value: _clock,
+          items: [
+            for (final (i, label) in _clockLabels.indexed)
+              DropdownMenuItem(value: i, child: Text(label)),
+          ],
+          onChanged: (value) => setState(() => _clock = value),
+        ),
       ],
     );
   }
@@ -208,7 +274,9 @@ class _TreeRow extends ConsumerWidget {
                   target: target,
                   color: color,
                   timeControl: clock,
-                  compact: false,
+                  compact: MediaQuery.textScalerOf(context).scale(14) > 20
+                      ? true
+                      : null,
                 )
               else
                 TextButton(onPressed: onSources, child: const Text('Download')),

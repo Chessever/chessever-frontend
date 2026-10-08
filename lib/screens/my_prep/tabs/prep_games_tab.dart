@@ -14,8 +14,11 @@ import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/app_snack.dart';
-import 'package:chessever2/widgets/game_filter/game_filter_dialog.dart';
+import 'package:chessever2/screens/my_prep/models/prep_models.dart';
+import 'package:chessever2/screens/my_prep/widgets/prep_filter_dialog.dart';
+import 'package:chessever2/screens/my_prep/widgets/prep_filter_popup.dart';
 import 'package:chessever2/widgets/game_filter/game_filter_model.dart';
+import 'package:chessever2/widgets/game_filter/game_filter_dialog.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -27,12 +30,14 @@ class PrepGamesTab extends ConsumerStatefulWidget {
   const PrepGamesTab({
     super.key,
     required this.analysis,
+    this.profile,
     required this.games,
     required this.filter,
     required this.onFilterChanged,
   });
 
   final PrepAnalysis analysis;
+  final PrepProfile? profile;
   final List<PrepGame> games;
   final PrepFilter filter;
   final ValueChanged<PrepFilter> onFilterChanged;
@@ -103,6 +108,17 @@ class _PrepGamesTabState extends ConsumerState<PrepGamesTab>
   }
 
   Future<void> _showFilters() async {
+    final profile = widget.profile;
+    if (profile != null) {
+      final filter = await showPrepFilterDialog(
+        context: context,
+        profile: profile,
+        currentFilter: widget.filter,
+      );
+      if (filter != null && mounted) widget.onFilterChanged(filter);
+      return;
+    }
+    // Library source nodes already pin the source.
     final filter = await showGameFilterDialog(
       context: context,
       currentFilter: widget.filter.dialogFilter,
@@ -227,55 +243,6 @@ class _PrepGamesTabState extends ConsumerState<PrepGamesTab>
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                PrepSidePicker(
-                  side: widget.filter.side,
-                  onChanged: (side) => widget.onFilterChanged(
-                    widget.filter.copyWith(side: side),
-                  ),
-                ),
-                SizedBox(height: 10.h),
-                if (widget.filter.hasFacets) ...[
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          [
-                            if (widget.filter.outcome case final outcome?)
-                              outcome.name,
-                            if (widget.filter.year case final year?) '$year',
-                            if (widget.filter.eco case final eco?) eco,
-                            if (widget.filter.opening case final opening?)
-                              opening,
-                            if (widget.filter.opponent case final opponent?)
-                              opponent,
-                            if (widget.filter.base case final base?) ...[
-                              if (base.hasActiveFilters)
-                                '${base.activeFilterCount} game filters',
-                              if (base.hasActiveSorts)
-                                '${base.activeSortCount} sort keys',
-                            ],
-                          ].join(' · '),
-                          style: AppTypography.textXsRegular.copyWith(
-                            color: colors.textSecondary,
-                          ),
-                        ),
-                      ),
-                      TextButton(
-                        onPressed: () => widget.onFilterChanged(
-                          widget.filter.copyWith(
-                            outcome: null,
-                            year: null,
-                            eco: null,
-                            opening: null,
-                            opponent: null,
-                            base: null,
-                          ),
-                        ),
-                        child: const Text('Clear filters'),
-                      ),
-                    ],
-                  ),
-                ],
                 Row(
                   children: [
                     Expanded(
@@ -285,14 +252,9 @@ class _PrepGamesTabState extends ConsumerState<PrepGamesTab>
                       ),
                     ),
                     const SizedBox(width: 4),
-                    IconButton(
-                      tooltip: 'Filter and sort games',
+                    PrepFilterButton(
+                      active: widget.filter.isActive,
                       onPressed: _showFilters,
-                      constraints: const BoxConstraints(
-                        minWidth: 44,
-                        minHeight: 44,
-                      ),
-                      icon: Icon(Icons.tune_rounded, color: colors.iconPrimary),
                     ),
                   ],
                 ),
@@ -305,7 +267,10 @@ class _PrepGamesTabState extends ConsumerState<PrepGamesTab>
                             ? 'No games match these filters.'
                             : list.length == 1
                             ? '1 game'
-                            : '${list.length} games',
+                            : '${list.length} games'
+                                  '${widget.filter.isActive ? ' · ${widget.filter.summary}' : ''}',
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
                         style: AppTypography.textXsRegular.copyWith(
                           color: colors.textSecondary,
                         ),
