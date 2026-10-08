@@ -57,7 +57,11 @@ class _SourcePicker extends ConsumerStatefulWidget {
 }
 
 class _SourcePickerState extends ConsumerState<_SourcePicker> {
-  late PrepSource _source = widget.only ?? PrepSource.chessever;
+  late PrepSource _source =
+      widget.only ??
+      (widget.kind == PrepKind.mine
+          ? PrepSource.lichess
+          : PrepSource.chessever);
   final _query = TextEditingController();
   final _name = TextEditingController();
   final _pending = <PrepAccount>[];
@@ -215,12 +219,12 @@ class _SourcePickerState extends ConsumerState<_SourcePicker> {
         foregroundColor: colors.textPrimary,
         centerTitle: true,
         title: Text(
-          widget.multiple
+          widget.kind == PrepKind.mine
+              ? 'Attach your usernames'
+              : widget.multiple
               ? 'Add accounts'
               : widget.attaching
               ? 'Attach a source'
-              : widget.kind == PrepKind.mine
-              ? 'Add your profile'
               : 'Add an opponent',
           style: AppTypography.textMdBold,
         ),
@@ -321,7 +325,9 @@ class _SourcePickerState extends ConsumerState<_SourcePicker> {
                           vertical: 4.h,
                         ),
                         child: Text(
-                          widget.multiple
+                          widget.kind == PrepKind.mine
+                              ? 'Choose a site, enter your username, then tap your account to add it. You can add more accounts before attaching them.'
+                              : widget.multiple
                               ? 'Add the usernames this player uses.'
                               : database
                               ? 'Search ChessEver, or start with an online account. You can attach the other sources later.'
@@ -342,7 +348,9 @@ class _SourcePickerState extends ConsumerState<_SourcePicker> {
                             children: [
                               Text(
                                 _error ??
-                                    'No database match. Try their Lichess or Chess.com username.',
+                                    (widget.kind == PrepKind.mine
+                                        ? 'No database match. Try your Lichess or Chess.com username.'
+                                        : 'No database match. Try their Lichess or Chess.com username.'),
                                 textAlign: TextAlign.center,
                                 style: AppTypography.textSmRegular.copyWith(
                                   color: colors.textSecondary,
@@ -350,6 +358,7 @@ class _SourcePickerState extends ConsumerState<_SourcePicker> {
                               ),
                               if (_error == null &&
                                   !widget.attaching &&
+                                  widget.kind != PrepKind.mine &&
                                   database)
                                 TextButton(
                                   onPressed: () => Navigator.of(context).pop(

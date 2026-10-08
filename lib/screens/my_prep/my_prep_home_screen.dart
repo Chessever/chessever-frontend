@@ -199,10 +199,10 @@ class _MyGamesTab extends ConsumerWidget {
     final profile = mine.firstOrNull;
     if (profile == null) {
       return _EmptyState(
-        title: 'Bring in your own games',
+        title: 'Attach your own usernames',
         body:
-            'Start with ChessEver, Lichess or Chess.com. Your results, openings and games stay together in one profile.',
-        actionLabel: 'Add your profile',
+            'Add your Lichess and Chess.com accounts here. Their games stay together. You can also attach your ChessEver player record.',
+        actionLabel: 'Attach my usernames',
         onAction: () => prepAddMine(context, ref),
         sources: PrepSource.playerSources,
       );
@@ -218,21 +218,42 @@ class _MyGamesTab extends ConsumerWidget {
         padding: EdgeInsets.only(bottom: 32.h),
         children: [
           _TabHeader(
-            text: prepGamesLabel(profile.gameCount),
+            text: 'Your accounts',
             action: DiscoveryAction(
-              label: 'Attach source',
+              label: 'Attach username',
               lead: DiscoveryActionLead.plus,
               onTap: () => prepAddAccountTo(context, ref, profile),
             ),
           ),
+          for (final account in profile.accounts)
+            Padding(
+              padding: EdgeInsets.symmetric(horizontal: _gutter),
+              child: ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: PrepSourceMark(source: account.source, size: 24.sp),
+                title: Text(
+                  account.source.online
+                      ? account.username
+                      : account.displayName ?? account.username,
+                  style: AppTypography.textMdMedium,
+                ),
+                subtitle: Text(account.source.label),
+                onTap: () => PrepSourcesScreen.open(context, profile.id),
+              ),
+            ),
           Padding(
-            padding: EdgeInsets.symmetric(horizontal: 4.w),
-            child: PrepProfileCard(
-              profile: profile,
-              onTap: () {
-                HapticFeedbackService.cardTap();
-                PrepProfileScreen.open(context, profile.id);
-              },
+            padding: EdgeInsets.symmetric(horizontal: _gutter),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton(
+                onPressed: () {
+                  HapticFeedbackService.cardTap();
+                  PrepProfileScreen.open(context, profile.id);
+                },
+                child: Text(
+                  'View games · ${prepGamesLabel(profile.gameCount)}',
+                ),
+              ),
             ),
           ),
           Padding(
@@ -242,7 +263,7 @@ class _MyGamesTab extends ConsumerWidget {
               child: TextButton(
                 onPressed: () => PrepSourcesScreen.open(context, profile.id),
                 child: Text(
-                  'Manage sources',
+                  'Manage my accounts',
                   style: AppTypography.textSmMedium.copyWith(
                     color: context.colors.textPrimary,
                   ),

@@ -32,24 +32,24 @@ Future<void> prepAddMine(BuildContext context, WidgetRef ref) async {
     kind: PrepKind.mine,
     existingKeys: {for (final a in existing?.accounts ?? const []) a.key},
     attaching: existing != null,
-    multiple: existing != null,
+    multiple: true,
     lockedFideId: existing?.fideId,
   );
   if (result == null || !context.mounted) return;
   await _releaseFromFavorites(ref, result.accounts);
   if (!context.mounted) return;
-  final PrepProfile profile;
   if (existing == null) {
-    profile = profiles.create(
+    profiles.create(
       kind: PrepKind.mine,
       name: result.name,
       accounts: result.accounts,
     );
   } else {
     profiles.attach(existing.id, result.accounts);
-    profile = existing;
   }
-  if (context.mounted) unawaited(PrepProfileScreen.open(context, profile.id));
+  if (context.mounted) {
+    showAppSnack(context, 'Your accounts are attached to My games.');
+  }
 }
 
 /// Adds an opponent with the accounts the reader typed and opens them.

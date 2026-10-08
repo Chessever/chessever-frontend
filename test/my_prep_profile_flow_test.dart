@@ -351,6 +351,59 @@ void main() {
     );
   }
 
+  testWidgets('My games attaches own usernames from both online sites', (
+    tester,
+  ) async {
+    PrepAddResult? result;
+    await pump(
+      tester,
+      Scaffold(
+        body: Builder(
+          builder: (context) => TextButton(
+            onPressed: () async {
+              result = await showPrepSourcePicker(
+                context,
+                kind: PrepKind.mine,
+                multiple: true,
+              );
+            },
+            child: const Text('Start'),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.text('Start'));
+    await tester.pumpAndSettle();
+    expect(find.text('Attach your usernames'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('prep_source_query_lichess')),
+      findsOneWidget,
+    );
+    for (final source in [PrepSource.lichess, PrepSource.chesscom]) {
+      if (source == PrepSource.chesscom) {
+        await tester.tap(find.text('Chess.com'));
+        await tester.pumpAndSettle();
+      }
+      await tester.enterText(
+        find.byKey(ValueKey('prep_source_query_${source.name}')),
+        'ClubPlayer',
+      );
+      await tester.pump(const Duration(milliseconds: 450));
+      await tester.pump();
+      await tester.tap(find.text('Club Player'));
+      await tester.pump();
+    }
+    expect(find.text('Create profile'), findsNothing);
+    expect(find.text('Attach 2 accounts'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('prep_attach_accounts')));
+    await tester.pumpAndSettle();
+    expect(result?.accounts.map((a) => a.source), [
+      PrepSource.lichess,
+      PrepSource.chesscom,
+    ]);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('database no-match still allows a named profile', (tester) async {
     PrepAddResult? result;
     await pump(
