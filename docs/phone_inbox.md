@@ -200,7 +200,29 @@ passed** (eight simultaneous first marks and eight same-UUID publications).
    available, so PostgreSQL 17 packages were downloaded/unpacked **under
    `scripts/inbox/.local-postgres/` only**; no global installation/config change.
 
-## Approval-gated future rollout (not executed)
+## Rollout status (2026-10-10)
+
+- **Backend is live.** `20261010120000_editorial_inbox.sql` was applied to the
+  production project (`oelbsuggrzyqwzmvidju`) on 2026-10-10 and recorded in
+  `supabase_migrations.schema_migrations`. Do not re-run it: every statement is
+  a plain `create`, so a second run fails and rolls back. Before applying, the
+  SQL contract suite passed locally (`python3 scripts/inbox/run_sql_tests.py`:
+  82 checks plus 4 concurrency checks).
+- **Publishing is done from the admin console**, not the local script:
+  `chessever.com/admin/dashboard/inbox` (web repo). It calls the two
+  service-role RPCs, shows the message as the app renders it, and requires a
+  confirm. The script below still refuses any non-loopback target.
+- **Push is optional and off by default.** When the admin ticks it, the console
+  queues one `notification_outbox` row (`event_type = 'call_to_action'`,
+  `dedupe_key = 'editorial_inbox:<id>'`, `payload.data.inbox_message_id`), which
+  the existing dispatcher sends to users with `push_enabled` and
+  `call_to_action_alerts`. Tapping it opens the Inbox (app 36.0.2 and later).
+- **The app side ships in 36.0.2.** Its drawer row stays hidden until the
+  backend answers, so older and newer builds are both safe.
+- No message has been published yet. The sections below are kept as the
+  original pre-rollout record.
+
+## Approval-gated future rollout (historical; see status above)
 
 ### Implemented phone integration
 
