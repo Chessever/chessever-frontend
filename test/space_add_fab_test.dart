@@ -122,13 +122,13 @@ void main() {
 
     // Same button, same place, now a check that saves: no popover.
     expect(tester.getRect(find.byType(SpaceAddFab)), fabRect);
-    expect(find.byKey(const ValueKey('space_fab_save')), findsOneWidget);
+    expect(find.byKey(const ValueKey('popover_fab_save')), findsOneWidget);
     expect(find.bySemanticsLabel(SpaceAddFab.saveLabel), findsOneWidget);
     await tester.tap(find.byType(SpaceAddFab));
     await _settle(tester);
     expect(container.read(spaceEditModeProvider), isFalse);
     expect(find.text('Database'), findsNothing);
-    expect(find.byKey(const ValueKey('space_fab_save')), findsNothing);
+    expect(find.byKey(const ValueKey('popover_fab_save')), findsNothing);
     expect(find.bySemanticsLabel(SpaceAddFab.label), findsOneWidget);
     expect(tester.takeException(), isNull);
     await tester.pumpWidget(const SizedBox());

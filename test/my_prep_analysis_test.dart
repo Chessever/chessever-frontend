@@ -4,7 +4,10 @@ import 'package:chessever2/screens/my_prep/models/prep_models.dart';
 import 'package:chessever2/screens/my_prep/services/prep_analysis.dart';
 import 'package:chessever2/screens/my_prep/services/prep_repository.dart';
 import 'package:chessever2/services/game_tree/game_tree_builder.dart';
+import 'package:chessever2/services/game_tree/game_tree_codec.dart';
+import 'package:chessever2/screens/my_prep/widgets/prep_filters.dart';
 import 'package:chessever2/services/game_tree/game_tree_store.dart';
+import 'package:chessever2/widgets/game_filter/game_filter_model.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 String _game({
@@ -77,7 +80,156 @@ void main() {
     expect(s.overall.losses, 1);
     expect(s.asWhite.wins, 1);
     expect(s.asBlack.total, 2);
-    expect(s.whiteOpenings.single.name, "King's Pawn Game");
+    expect(s.whiteOpenings.single.name, "King's Pawn Game: Napoleon Attack");
+    expect(s.whiteOpenings.single.eco, 'C20');
+    // Desktop's definitions: FIDE dp on the score, every rated opponent.
+    expect(s.averageOpponent, 2467);
+    expect(s.performance, 2467); // 50% scores the opposition's average
+    expect(s.decisive, 2);
+    expect(s.decisiveRate, closeTo(2 / 3, 1e-9));
+    expect(s.clocks, [(PrepTimeControl.blitz, 3)]);
+    // 4, 4 and 7 plies all fall in the first length band (0–20 moves).
+    expect(s.lengths, [3, 0, 0, 0, 0]);
+    expect(s.byYear.map((y) => (y.year, y.total)), [(2025, 1), (2026, 2)]);
+  });
+
+  test('performance uses FIDE dp, not a linear spread', () {
+    PrepGame g(int i, String result) => PrepGame(
+      index: i,
+      source: PrepSource.lichess,
+      white: 'Me',
+      black: 'Opp$i',
+      result: result,
+      plies: 60,
+      whiteElo: 2000,
+      blackElo: 2000,
+      playerIsWhite: true,
+    );
+    // 3 of 4 is 75%: +193 on the FIDE table.
+    final s = PrepStats.of([g(0, '1-0'), g(1, '1-0'), g(2, '1-0'), g(3, '0-1')]);
+    expect(s.performance, 2193);
+    // 21–30 moves is the second band, as desktop draws it.
+    expect(s.lengths, [0, 4, 0, 0, 0]);
+  });
+
+  test('clocks, results and names index as the desktop app indexes them', () {
+    int? speed(String? tc, {String kind = 'manual', String? event}) =>
+        classifyTreeSpeed(
+          lichess: kind == 'lichess',
+          timeControl: tc,
+          event: event,
+          source: kind,
+        );
+    // Over-the-board PGNs use the FIDE-style bands, with no bullet.
+    expect(speed('600'), TreeSpeed.blitz);
+    expect(speed('120+1'), TreeSpeed.blitz);
+    expect(speed('1500'), TreeSpeed.rapid);
+    expect(speed('40/7200:3600'), TreeSpeed.classical);
+    // Each provider keeps its own bands.
+    expect(speed('300+5', kind: 'chesscom'), TreeSpeed.blitz);
+    expect(speed('300+5', kind: 'lichess'), TreeSpeed.rapid);
+    expect(speed('-', kind: 'lichess'), TreeSpeed.correspondence);
+    // A database game without a clock is read from its event.
+    expect(
+      speed(null, kind: 'chessever', event: 'World Blitz Championship 2024'),
+      TreeSpeed.blitz,
+    );
+    expect(
+      speed(null, kind: 'chessever', event: 'Tata Steel Masters'),
+      TreeSpeed.classical,
+    );
+    expect(speed(null), isNull);
+
+    for (final draw in ['1/2-1/2', '1/2', '0.5-0.5', '½-½']) {
+      expect(treeResultCode(draw), 2);
+    }
+    expect(treePlayerKey('Carlsen,M.'), treePlayerKey('carlsen, m'));
+  });
+
+  test('a FIDE id finds the player whatever the name is spelt like', () async {
+    String game(String white, String black, String ids, String site) => '''
+[Event "Open"]
+[Site "$site"]
+[Date "2024.01.01"]
+[White "$white"]
+[Black "$black"]
+$ids
+[Result "1-0"]
+
+1. e4 e5 1-0
+''';
+    final file = File('${dir.path}/chessever.pgn')
+      ..writeAsStringSync(
+        [
+          // Spelt unlike any alias, but carrying the id.
+          game('Pragg R', 'A', '[WhiteFideId "25059530"]', 's1'),
+          // Punctuation aside, the alias itself.
+          game('B', 'Praggnanandhaa,R.', '', 's2'),
+          // A namesake with someone else's id is not the player.
+          game('Praggnanandhaa R', 'C', '[WhiteFideId "111"]', 's3'),
+        ].join('\n'),
+      );
+    final db = '${dir.path}/fide.sqlite';
+    runGameTreeBuild(
+      GameTreeBuildRequest(
+        dbPath: db,
+        sources: [GameTreeSourceFile(path: file.path, kind: 'chessever')],
+        aliases: const ['praggnanandhaa r'],
+        fideId: '25059530',
+      ),
+    );
+    final store = GameTreeStore.open('fide', db, playerScope: true)!;
+    addTearDown(store.close);
+    final rows = await store.loadGames();
+    final sides = {for (final r in rows) r.white: r.side};
+    expect(sides, {'Pragg R': 1, 'B': 2, 'Praggnanandhaa R': 0});
+  });
+
+  test('Format reads a database game\'s Site, as desktop does', () async {
+    String game(String site, String black) => '''
+[Event "Open"]
+[Site "$site"]
+[Date "2024.01.01"]
+[White "Me"]
+[Black "$black"]
+[Result "1-0"]
+
+1. e4 e5 1-0
+''';
+    final file = File('${dir.path}/chessever.pgn')
+      ..writeAsStringSync(
+        [
+          game('chess.com INT', 'A'),
+          game('Lichess.org INT', 'B'),
+          game('Wijk aan Zee NED', 'C'),
+        ].join('\n'),
+      );
+    final db = '${dir.path}/format.sqlite';
+    runGameTreeBuild(
+      GameTreeBuildRequest(
+        dbPath: db,
+        sources: [GameTreeSourceFile(path: file.path, kind: 'chessever')],
+        aliases: const ['me'],
+      ),
+    );
+    final store = GameTreeStore.open('format', db, playerScope: true)!;
+    addTearDown(store.close);
+    final rows = await store.loadGames();
+    final games = [
+      for (var i = 0; i < rows.length; i++) PrepGame.fromIndex(rows[i], i),
+    ];
+    expect({for (final g in games) g.black: g.isOnline}, {
+      'A': true,
+      'B': true,
+      'C': false,
+    });
+    PrepFilter format(GameOnlineFilter value) =>
+        PrepFilter(base: GameFilter().copyWith(online: value));
+    expect(
+      format(GameOnlineFilter.online).apply(games).map((g) => g.black).toSet(),
+      {'A', 'B'},
+    );
+    expect(format(GameOnlineFilter.otb).apply(games).single.black, 'C');
   });
 
   test('a sync of the same selection appends only new games', () {

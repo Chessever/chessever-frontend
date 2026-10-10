@@ -605,6 +605,7 @@ class PrepLibraryDatabaseScreen extends ConsumerStatefulWidget {
 class _PrepLibraryDatabaseScreenState
     extends ConsumerState<PrepLibraryDatabaseScreen> {
   PrepFilter _filter = const PrepFilter();
+  final _gamesController = PrepGamesController();
   List<PrepGame>? _input;
   PrepFilter? _used;
   List<PrepGame> _output = const [];
@@ -677,6 +678,13 @@ class _PrepLibraryDatabaseScreenState
                         compact: false,
                         target: _treeTarget(ref, profile, account),
                       ),
+                    if (games.isNotEmpty)
+                      CardMoreButton(
+                        vertical: true,
+                        color: context.colors.textPrimary,
+                        size: 22.ic,
+                        actions: (_) => prepGamesMenu(_gamesController),
+                      ),
                   ],
                 ),
                 Expanded(
@@ -716,6 +724,7 @@ class _PrepLibraryDatabaseScreenState
                             analysis: data,
                             games: games,
                             filter: _filter,
+                            controller: _gamesController,
                             onFilterChanged: (f) => setState(() => _filter = f),
                           ),
                   ),

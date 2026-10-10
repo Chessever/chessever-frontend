@@ -11,11 +11,21 @@ import 'package:flutter_test/flutter_test.dart';
 void main() {
   late String source;
 
+  /// The selection wrapper itself, shared by every list of a player's games
+  /// (the profile's Games tab and My Prep).
+  late String wrapper;
+
   setUpAll(() {
-    source =
-        File(
-          'lib/screens/player_profile/tabs/player_games_tab.dart',
-        ).readAsStringSync();
+    source = File(
+      'lib/screens/player_profile/tabs/player_games_tab.dart',
+    ).readAsStringSync();
+    wrapper = _between(
+      File(
+        'lib/screens/player_profile/widgets/player_games_selection.dart',
+      ).readAsStringSync(),
+      'class PlayerGamesSelectableCard extends StatelessWidget {',
+      'class _SelectionActionButton extends StatelessWidget {',
+    );
   });
 
   test('every view mode wraps its card in the selection wrapper', () {
@@ -58,6 +68,25 @@ void main() {
     }
   });
 
+  test('My Prep picks games through the same wrapper in every view', () {
+    final prep = File(
+      'lib/screens/my_prep/tabs/prep_games_tab.dart',
+    ).readAsStringSync();
+    final cards = _between(
+      prep,
+      'class _PrepGameCard extends ConsumerWidget {',
+      'class _RunHeader extends StatelessWidget {',
+    );
+    expect(
+      'PlayerGamesSelectableCard('.allMatches(cards),
+      hasLength(1),
+      reason: 'one wrapper around whichever card the layout draws',
+    );
+    for (final kind in ['GamebaseSearchGameCard(', 'Board', 'Grid']) {
+      expect(cards, contains(kind), reason: '$kind cards must be pickable');
+    }
+  });
+
   test('grid cells receive the selection flag from the list builder', () {
     expect(
       _between(source, 'Widget _buildGridGame(', ') {'),
@@ -74,12 +103,6 @@ void main() {
   });
 
   test('the wrapper intercepts card gestures while selecting', () {
-    final wrapper = _between(
-      source,
-      'Widget _buildSelectableCardWrapper(',
-      'Widget _buildPaginationFooter(',
-    );
-
     expect(
       wrapper,
       contains('VoidCallback? onTap'),
@@ -97,15 +120,9 @@ void main() {
   });
 
   test('selection chrome is painted over the card, never around it', () {
-    final wrapper = _between(
-      source,
-      'Widget _buildSelectableCardWrapper(',
-      'Widget _buildPaginationFooter(',
-    );
-
     expect(
       wrapper,
-      isNot(contains('child: child')),
+      isNot(contains('child: card')),
       reason:
           'a decorated parent with a Border inflates the card by the border '
           'width and re-lays it out; grid cells have a fixed-width board row, '

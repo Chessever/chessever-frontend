@@ -31,7 +31,17 @@ class GameTreeGame {
     this.event,
     this.url,
     this.sourcePath = '',
+    this.online = false,
+    this.site,
+    this.round,
+    this.eventName,
+    this.eventId,
+    this.eventSlug,
+    this.eventDate,
   });
+
+  /// Played on a server rather than over the board.
+  final bool online;
 
   /// The PGN file the game is read from.
   final String sourcePath;
@@ -64,9 +74,26 @@ class GameTreeGame {
   final String? event;
   final String? url;
 
+  /// The `Site` tag as written: a venue, or a server's game link.
+  final String? site;
+  final String? round;
+
+  /// A ChessEver broadcast's own event name, id (its group, else its tour)
+  /// and slug; null for a game that is not from a broadcast.
+  final String? eventName;
+  final String? eventId;
+  final String? eventSlug;
+
+  /// The event's first day, yyyymmdd.
+  final int? eventDate;
+
   static const String _columns =
       'g.id, s.kind, g.white, g.black, g.result, g.plies, g.side, g.welo, '
-      'g.belo, g.date, g.speed, g.tc, g.eco, g.opening, g.event, g.url, s.path';
+      'g.belo, g.date, g.speed, g.tc, g.eco, g.opening, g.event, g.url, s.path, '
+      'g.online, g.site, g.round, g.ev, g.evid, g.evslug, g.evdate';
+
+  /// How many columns [_columns] selects; a query's own columns follow.
+  static const int _width = 24;
 
   static GameTreeGame _fromRow(List<Object?> r) => GameTreeGame(
     id: r[0] as int,
@@ -86,6 +113,13 @@ class GameTreeGame {
     event: r[14] as String?,
     url: r[15] as String?,
     sourcePath: (r[16] as String?) ?? '',
+    online: r[17] == 1,
+    site: r[18] as String?,
+    round: r[19] as String?,
+    eventName: r[20] as String?,
+    eventId: r[21] as String?,
+    eventSlug: r[22] as String?,
+    eventDate: r[23] as int?,
   );
 }
 
@@ -143,10 +177,14 @@ class GameTreeStore {
     required bool playerScope,
   }) {
     if (!File(dbPath).existsSync()) return null;
+    Database? db;
     try {
-      final db = openGameTreeDatabase(dbPath);
+      db = openGameTreeDatabase(dbPath);
       return GameTreeStore._(scopeId, dbPath, db, playerScope: playerScope);
     } catch (error) {
+      // An index from an older layout lacks columns this one reads. Let go
+      // of it; the build that follows writes it again from its sources.
+      db?.close();
       debugPrint('[GameTree] could not open $dbPath: $error');
       return null;
     }
@@ -251,7 +289,8 @@ class GameTreeStore {
     if (rows.isEmpty) return null;
     final r = rows.rows.first;
     final game = GameTreeGame._fromRow(r);
-    final pgn = _read(r[17] as int, r[18] as int, r[19] as int);
+    const at = GameTreeGame._width;
+    final pgn = _read(r[at] as int, r[at + 1] as int, r[at + 2] as int);
     return pgn == null ? null : (game, pgn);
   }
 
@@ -383,13 +422,16 @@ GameTreePositionPage _positionGames(
       final game = GameTreeGame._fromRow(r);
       String? fen;
       String? last;
-      final src = r[17] as int;
+      const at = GameTreeGame._width;
+      final src = r[at] as int;
       final filePath = sources[src];
       if (filePath != null) {
         try {
           final file = files[src] ??= File(filePath).openSync();
-          file.setPositionSync(r[18] as int);
-          (fen, last) = gameTreeEnding(decodePgnBytes(file.readSync(r[19] as int)));
+          file.setPositionSync(r[at + 1] as int);
+          (fen, last) = gameTreeEnding(
+            decodePgnBytes(file.readSync(r[at + 2] as int)),
+          );
         } catch (_) {}
       }
       games.add((game, fen, last));

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:chessever2/screens/my_prep/models/prep_models.dart';
@@ -85,6 +86,70 @@ Future<void> prepEditDownloadOptions(
   }
 }
 
+/// Starts the first download of accounts the reader just attached, so a new
+/// source never sits idle. Accounts from the add dialog are [scoped]: each
+/// already carries the clocks and period chosen there. Otherwise ChessEver
+/// starts at once with its saved scope and the online accounts ask once
+/// which clocks and period to take, as desktop does. Declining leaves them
+/// ready to download later.
+Future<void> prepStartDownloads(
+  BuildContext context,
+  WidgetRef ref,
+  String profileId,
+  Iterable<PrepAccount> attached, {
+  bool scoped = false,
+}) async {
+  final sync = ref.read(prepSyncProvider.notifier);
+  final profiles = ref.read(prepProfilesProvider.notifier);
+  PrepAccount? live(PrepAccount account) => profiles
+      .byId(profileId)
+      ?.accounts
+      .where((a) => a.key == account.key)
+      .firstOrNull;
+  final fresh = [
+    for (final account in attached)
+      if (live(account) case final a? when a.lastSyncAtMs == null) a,
+  ];
+  for (final account in fresh) {
+    if (scoped || account.source == PrepSource.chessever) {
+      unawaited(sync.syncAccount(profileId, account));
+    }
+  }
+  if (scoped) return;
+  final online = fresh.where((a) => a.source.online).toList();
+  if (online.isEmpty || !context.mounted) return;
+  final options = await showPrepDownloadOptionsDialog(
+    context,
+    account: online.first,
+    others: online.sublist(1),
+    download: true,
+    initial: PrepDownloadPreferences.initialFor(online.first.source),
+  );
+  if (options == null) return;
+  for (final account in online) {
+    final clocks = options.timeControls.intersection(
+      PrepTimeControl.offeredBy(account.source).toSet(),
+    );
+    // None of the chosen clocks exist on this site: nothing to take from it.
+    if (options.timeControls.isNotEmpty && clocks.isEmpty) continue;
+    final chosen = PrepDownloadPreferences(
+      timeControls: clocks,
+      range: options.range,
+      fromDate: options.fromDate,
+      toDate: options.toDate,
+    );
+    profiles.edit(profileId, (p) {
+      final current = p.accounts.where((a) => a.key == account.key).firstOrNull;
+      return current == null
+          ? p
+          : p.replaceAccount(current.copyWith(preferences: chosen));
+    });
+    if (live(account) case final ready?) {
+      unawaited(sync.syncAccount(profileId, ready));
+    }
+  }
+}
+
 /// Online downloads offer the saved scope before the reader starts them.
 Future<void> prepDownloadSource(
   BuildContext context,
@@ -107,13 +172,17 @@ Future<void> prepChangeAccount(
     kind: profile.kind,
     only: account.source,
     attaching: true,
+    // A downloaded account's scope is already chosen; its replacement
+    // takes the same games without asking again.
+    askScope: account.lastSyncAtMs == null,
     existingKeys: {for (final a in profile.accounts) a.key},
   );
   if (result == null || !context.mounted) return;
   final profiles = ref.read(prepProfilesProvider.notifier);
-  final replacement = result.accounts.single.copyWith(
-    preferences: account.preferences,
-  );
+  final picked = result.accounts.single;
+  final replacement = account.lastSyncAtMs == null
+      ? picked
+      : picked.copyWith(preferences: account.preferences);
   try {
     // The picker does not offer accounts owned by another non-favorite profile.
     final owner = profiles.owning(
@@ -130,6 +199,9 @@ Future<void> prepChangeAccount(
     // Attach first so a failed validation cannot discard the current account.
     profiles.attach(profile.id, [replacement]);
     await profiles.removeAccount(profile.id, account);
+    unawaited(
+      ref.read(prepSyncProvider.notifier).syncAccount(profile.id, replacement),
+    );
   } catch (error) {
     if (context.mounted) {
       showAppSnack(

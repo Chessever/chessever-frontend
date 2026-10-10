@@ -6,6 +6,7 @@ import 'package:chessever2/repository/gamebase/gamebase_repository.dart';
 import 'package:chessever2/screens/my_prep/models/prep_models.dart';
 import 'package:chessever2/screens/gamebase/models/gamebase_player.dart';
 import 'package:chessever2/services/game_tree/game_tree_codec.dart';
+import 'package:chessever2/services/game_tree/time_control_classifier.dart';
 import 'package:crypto/crypto.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
@@ -217,6 +218,9 @@ class PrepRepository {
   }) async {
     if (account.source == PrepSource.manual) return account;
     if (account.source == PrepSource.chessever) {
+      final now = DateTime.now();
+      final prefs = account.preferences;
+      if (prefs.validationError case final error?) throw PrepException(error);
       onProgress?.call('Downloading ChessEver games…');
       final export = await _gamebase.getPlayerGamesPgn(
         playerId: account.externalId!,
@@ -234,11 +238,20 @@ class PrepRepository {
       final file = await gamesFile(account);
       final count = await compute(
         _writeGames,
-        _WriteRequest(path: file.path, incoming: export.pgn, merge: false),
+        // The player export has no selection of its own, so the chosen
+        // clocks and period are applied to it here.
+        _WriteRequest(
+          path: file.path,
+          incoming: export.pgn,
+          merge: false,
+          fromMs: prefs.fromMs(now),
+          untilMs: prefs.untilMs,
+          clocks: {for (final t in prefs.timeControls) t.name},
+        ),
       );
       return account.copyWith(
-        lastSyncAtMs: DateTime.now().millisecondsSinceEpoch,
-        syncedScope: 'chessever:all',
+        lastSyncAtMs: now.millisecondsSinceEpoch,
+        syncedScope: account.downloadScope(now),
         gameCount: count,
         clearError: true,
       );
@@ -433,10 +446,16 @@ class _WriteRequest {
     required this.path,
     required this.incoming,
     required this.merge,
+    this.fromMs,
+    this.untilMs,
+    this.clocks = const {},
   });
   final String path;
   final String incoming;
   final bool merge;
+  final int? fromMs;
+  final int? untilMs;
+  final Set<String> clocks;
 }
 
 /// Writes (or adds to) one account's PGN file and returns its game count.
@@ -446,15 +465,26 @@ int _writeGames(_WriteRequest request) => writePrepGames(
   path: request.path,
   incoming: request.incoming,
   merge: request.merge,
+  fromMs: request.fromMs,
+  untilMs: request.untilMs,
+  clocks: request.clocks,
 );
 
+/// [fromMs], [untilMs] and [clocks] keep only the games inside a selection
+/// the provider could not apply itself.
 int writePrepGames({
   required String path,
   required String incoming,
   required bool merge,
+  int? fromMs,
+  int? untilMs,
+  Set<String> clocks = const {},
 }) {
   final file = File(path);
-  final games = splitPrepPgn(incoming);
+  final games = [
+    for (final game in splitPrepPgn(incoming))
+      if (_inSelection(game, fromMs, untilMs, clocks)) game,
+  ];
   if (!merge || !file.existsSync()) {
     final seen = <String>{};
     final unique = <String>[];
@@ -529,14 +559,15 @@ int writeImportedPrepGames({
   required String pgn,
   required String playerName,
 }) {
-  final alias = playerName.trim().toLowerCase();
+  // Compared as the index compares names: `Carlsen,M.` is `Carlsen, M`.
+  final alias = treePlayerKey(playerName);
   final matching = splitPrepPgn(pgn).where((game) {
     final scan = scanPgnGame(game);
     return scan.sans.isNotEmpty &&
         [
           scan.tag('White'),
           scan.tag('Black'),
-        ].any((name) => name?.trim().toLowerCase() == alias);
+        ].any((name) => name != null && treePlayerKey(name) == alias);
   }).toList();
   if (matching.isEmpty) {
     throw PrepException(
@@ -547,6 +578,48 @@ int writeImportedPrepGames({
     path: path,
     incoming: matching.join('\n\n'),
     merge: false,
+  );
+}
+
+final RegExp _dateTag = RegExp(
+  r'^\[Date\s+"(\d{4})(?:\.(\d{2}|\?\?))?(?:\.(\d{2}|\?\?))?"\]',
+  multiLine: true,
+);
+final RegExp _clockTags = RegExp(
+  r'^\[(TimeControl|Event|Site)\s+"([^"]*)"\]',
+  multiLine: true,
+);
+
+/// Whether a game falls inside the chosen period and clocks. A partial date
+/// counts for every day it could be; a game with no date or no recognisable
+/// clock is left out of a selection that asks for one.
+bool _inSelection(String game, int? fromMs, int? untilMs, Set<String> clocks) {
+  if (fromMs != null || untilMs != null) {
+    final date = _dateTag.firstMatch(game);
+    if (date == null) return false;
+    final year = int.parse(date.group(1)!);
+    final month = int.tryParse(date.group(2) ?? '');
+    final day = int.tryParse(date.group(3) ?? '');
+    final earliest = DateTime.utc(year, month ?? 1, day ?? 1);
+    final latest = month != null && day != null
+        ? earliest
+        // Day zero of the following month is the last day of this one.
+        : DateTime.utc(year, (month ?? 12) + 1, 0);
+    if (fromMs != null && latest.millisecondsSinceEpoch < fromMs) return false;
+    if (untilMs != null && earliest.millisecondsSinceEpoch >= untilMs) {
+      return false;
+    }
+  }
+  if (clocks.isEmpty) return true;
+  final tags = {
+    for (final m in _clockTags.allMatches(game)) m.group(1)!: m.group(2)!,
+  };
+  return clocks.contains(
+    classifyTimeControlCategory(
+      tags['TimeControl'],
+      event: tags['Event'],
+      site: tags['Site'],
+    ),
   );
 }
 

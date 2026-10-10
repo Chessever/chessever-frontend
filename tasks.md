@@ -112,3 +112,10 @@ Contract (gamebase, no SQL migration, everything in collection.metadata jsonb):
 
 - Done: profile games indexed once into a slim sqlite3 index over the PGN files (append-only syncs, tail indexing), My Prep players as Library folders (Combined + one database per account), Premium "Save to cloud" with follow-up sync after downloads, launch/resume freshness refresh, and Build Tree on cloud databases, My Likes, collections and My Prep databases.
 - Needs Berkay on device: first open of a large account (indexing progress), Library folder cards, Save to cloud on a test account, Build Tree on a cloud database and a collection.
+
+## Auto-nudge 2026-10-08 02:13 (chat-80, re-armed)
+
+- North star still DONE; no open task. Loop halted.
+- Since the last cycle: the two My Space commits and My Prep 35.46.0 are pushed (stable is level with origin). Desktop PR #282 merged to main (`48d064ba`, 22.9.0+450).
+- Still uncommitted and left alone: `dart format` edits in 3 My Space files, the `.env` asset line in pubspec.yaml, `.kiro/settings/`.
+- My Prep 35.46.0 awaits Berkay's on-device check (see the section above). Not a north-star item.

@@ -4,14 +4,14 @@ import 'package:chessever2/e2e/e2e_ids.dart';
 import 'package:chessever2/main.dart' show routeObserver;
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
 import 'package:chessever2/screens/chessboard/provider/game_pgn_stream_provider.dart';
-import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart';
 import 'package:chessever2/screens/library/widgets/add_to_folder_sheet.dart';
 import 'package:chessever2/screens/library/widgets/bulk_add_to_folder_sheet.dart';
 import 'package:chessever2/screens/library/widgets/live_gamebase_search_game_card.dart';
 import 'package:chessever2/screens/player_profile/player_profile_data_source.dart';
 import 'package:chessever2/screens/player_profile/utils/twic_event_identity.dart';
-import 'package:chessever2/screens/player_profile/utils/twic_event_navigation.dart';
-import 'package:chessever2/screens/player_profile/widgets/player_profile_resolved_event_card.dart';
+import 'package:chessever2/screens/player_profile/widgets/player_games_event_section.dart';
+import 'package:chessever2/screens/player_profile/widgets/player_games_selection.dart';
+import 'package:chessever2/screens/player_profile/widgets/player_games_toolbar.dart';
 import 'package:chessever2/screens/player_profile/player_profile_screen.dart'
     show PlayerProfileTab, selectedPlayerProfileTabProvider;
 import 'package:chessever2/screens/player_profile/provider/player_profile_provider.dart';
@@ -22,7 +22,6 @@ import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrap
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/board_game_card_wrapper_widget.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/grid_game_card_wrapper_widget.dart';
 import 'package:chessever2/theme/app_colors.dart';
-import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/widgets/app_snack.dart';
 import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
 import 'package:chessever2/utils/app_typography.dart';
@@ -33,19 +32,13 @@ import 'package:chessever2/utils/logger/logger.dart';
 import 'package:chessever2/utils/number_format_utils.dart';
 import 'package:chessever2/utils/user_error_message.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
-import 'package:chessever2/utils/svg_asset.dart';
-import 'package:chessever2/utils/time_utils.dart';
 import 'package:chessever2/widgets/game_filter/game_filter.dart';
 import 'package:chessever2/widgets/scroll_to_top_bus.dart';
 import 'package:chessever2/widgets/scroll_to_top_button.dart';
-import 'package:chessever2/widgets/simple_search_bar.dart' show SpringHintWord;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
-import 'package:flutter_svg/flutter_svg.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
-import 'package:motor/motor.dart';
-import 'package:chessever2/screens/chessboard/utils/legible_ink.dart';
 
 /// Games tab showing all games of a player with comprehensive filters
 class PlayerGamesTab extends ConsumerStatefulWidget {
@@ -105,27 +98,6 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
     });
   }
 
-  // Rotating "Search <word>" hint — mirrors the home and TWIC search bars so
-  // the animated second word is consistent across the app.
-  static const List<String> _rotatingHints = <String>[
-    'event',
-    'opponent',
-    'opening',
-  ];
-  static const Duration _hintRotationInterval = Duration(seconds: 2);
-  // Must comfortably cover SpringHintWord's 420ms spring so the last word
-  // finishes animating out before we collapse back to plain "Search".
-  static const Duration _hintCycleFadeOutDuration = Duration(milliseconds: 460);
-  Timer? _hintRotationTimer;
-  Timer? _hintFadeOutTimer;
-  int _hintIndex = 0;
-  // Rotation runs a single full pass, then collapses back to plain "Search".
-  bool _hintCycleDone = false;
-  // Transient: after the final tick we pass '' to SpringHintWord so it
-  // spring-fades the last word out before the overlay disappears — fixes
-  // the abrupt "snap" at cycle end.
-  bool _hintCycleFadingOut = false;
-
   String get _scrollStorageKey =>
       'player_games:${widget.dataSource.name}:${widget.fideId ?? ''}:'
       '${widget.gamebasePlayerId ?? ''}:'
@@ -143,52 +115,11 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
     WidgetsBinding.instance.addObserver(this);
     _scrollController.addListener(_onScroll);
     _searchFocusNode.addListener(_onSearchFocusChange);
-    _searchController.addListener(_onSearchTextChange);
-    _restartHintRotation();
   }
 
   void _onSearchFocusChange() {
     if (!mounted) return;
     setState(() {});
-    if (_searchFocusNode.hasFocus) {
-      _hintRotationTimer?.cancel();
-    } else {
-      _restartHintRotation();
-    }
-  }
-
-  void _onSearchTextChange() {
-    if (!mounted) return;
-    final hasText = _searchController.text.isNotEmpty;
-    final running = _hintRotationTimer?.isActive ?? false;
-    if (hasText && running) {
-      _hintRotationTimer?.cancel();
-    } else if (!hasText && !running && !_searchFocusNode.hasFocus) {
-      _restartHintRotation();
-    }
-  }
-
-  void _restartHintRotation() {
-    _hintRotationTimer?.cancel();
-    if (_hintCycleDone || _hintCycleFadingOut || _rotatingHints.length <= 1) {
-      return;
-    }
-    if (_searchController.text.isNotEmpty || _searchFocusNode.hasFocus) return;
-    _hintRotationTimer = Timer.periodic(_hintRotationInterval, (_) {
-      if (!mounted) return;
-      final next = _hintIndex + 1;
-      if (next >= _rotatingHints.length) {
-        _hintRotationTimer?.cancel();
-        setState(() => _hintCycleFadingOut = true);
-        _hintFadeOutTimer?.cancel();
-        _hintFadeOutTimer = Timer(_hintCycleFadeOutDuration, () {
-          if (!mounted) return;
-          setState(() => _hintCycleDone = true);
-        });
-      } else {
-        setState(() => _hintIndex = next);
-      }
-    });
   }
 
   /// Get the player profile key for provider lookups
@@ -220,12 +151,9 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
     _debounceTimer?.cancel();
     _scrollIdleTimer?.cancel();
     _setLiveCardsPausedForScroll(false);
-    _hintRotationTimer?.cancel();
-    _hintFadeOutTimer?.cancel();
     _scrollController.removeListener(_onScroll);
     _scrollController.dispose();
     _searchFocusNode.removeListener(_onSearchFocusChange);
-    _searchController.removeListener(_onSearchTextChange);
     _searchController.dispose();
     _searchFocusNode.dispose();
     super.dispose();
@@ -596,9 +524,14 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
       tablet: 24.w,
     );
     final headerHeight =
-        58.h +
-        (state.hasActiveFilters ? 42.h : 0) +
-        (isSelectionMode ? 136.h : 0);
+        PlayerGamesSearchBar.heightOf(context) +
+        10.h +
+        (state.hasActiveFilters
+            ? PlayerGamesActiveFiltersChip.heightOf(context)
+            : 0) +
+        (isSelectionMode
+            ? PlayerGamesSelectionToolbar.heightOf(context)
+            : 0);
 
     final eventsAsync = ref.watch(playerEventsKeyProvider(_playerKey));
 
@@ -718,207 +651,19 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
     );
   }
 
-  Widget _buildRotatingSearchHint() {
-    // Pass an empty word during the fade-out phase so SpringHintWord animates
-    // the final entry out instead of disappearing in a single frame.
-    final word =
-        _hintCycleFadingOut
-            ? ''
-            : _rotatingHints[_hintIndex % _rotatingHints.length];
-    final style = AppTypography.textSmRegular.copyWith(
-      color: context.colors.textSecondary,
-    );
-    return IgnorePointer(
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text('Search ', style: style),
-          Flexible(child: SpringHintWord(word: word, style: style)),
-        ],
-      ),
-    );
-  }
-
   Widget _buildSearchBar(PlayerProfileGamesState state) {
-    final hasActiveFilters = state.hasActiveFilters;
-    final activeFilterCount = state.activeFilterCount;
-    final searchBarHeight = 48.h;
-
-    return SizedBox(
-      height: searchBarHeight,
-      child: Row(
-        children: [
-          // Search field
-          Expanded(
-            child: Container(
-              decoration: BoxDecoration(
-                color: context.colors.background,
-                borderRadius: BorderRadius.circular(12.br),
-                border: Border.all(color: context.colors.surfaceRecessed),
-              ),
-              child: Row(
-                children: [
-                  SizedBox(width: 12.w),
-                  Icon(
-                    Icons.search,
-                    size: 20.sp,
-                    color: context.colors.textSecondary,
-                  ),
-                  SizedBox(width: 8.w),
-                  Expanded(
-                    child: Builder(
-                      builder: (_) {
-                        final showRotating =
-                            !_hintCycleDone &&
-                            _searchController.text.isEmpty &&
-                            !_searchFocusNode.hasFocus;
-                        return Stack(
-                          alignment: Alignment.centerLeft,
-                          children: [
-                            if (showRotating) _buildRotatingSearchHint(),
-                            TextField(
-                              key: e2eKey(E2eIds.playerGamesSearchField),
-                              controller: _searchController,
-                              focusNode: _searchFocusNode,
-                              style: AppTypography.textSmRegular.copyWith(
-                                color: context.colors.textPrimary,
-                              ),
-                              onChanged: _onSearchChanged,
-                              decoration: InputDecoration(
-                                isDense: true,
-                                // The TextField owns the "Search" hint except
-                                // while the rotating overlay is driving it.
-                                hintText: showRotating ? null : 'Search',
-                                hintStyle: AppTypography.textSmRegular.copyWith(
-                                  color: context.colors.textSecondary,
-                                ),
-                                border: InputBorder.none,
-                                contentPadding: EdgeInsets.symmetric(
-                                  vertical: 14.h,
-                                ),
-                              ),
-                            ),
-                          ],
-                        );
-                      },
-                    ),
-                  ),
-                  if (_searchController.text.isNotEmpty ||
-                      state.searchQuery.isNotEmpty) ...[
-                    GestureDetector(
-                      onTap: _clearSearch,
-                      child: Icon(
-                        Icons.close,
-                        size: 20.sp,
-                        color: context.colors.textSecondary,
-                      ),
-                    ),
-                    SizedBox(width: 8.w),
-                  ],
-                  SizedBox(width: 8.w),
-                ],
-              ),
-            ),
-          ),
-
-          // Filter button
-          SizedBox(width: 8.w),
-          GestureDetector(
-            onTap: _showFilterDialog,
-            child: Container(
-              key: e2eKey(E2eIds.playerGamesFilterButton),
-              width: searchBarHeight,
-              height: searchBarHeight,
-              decoration: BoxDecoration(
-                color:
-                    hasActiveFilters
-                        ? const Color(0xFFEF4444).withValues(alpha: 0.15)
-                        : context.colors.background,
-                borderRadius: BorderRadius.circular(12.br),
-                border: Border.all(
-                  color:
-                      hasActiveFilters
-                          ? const Color(0xFFEF4444).withValues(alpha: 0.5)
-                          : context.colors.surfaceRecessed,
-                ),
-              ),
-              child: Stack(
-                alignment: Alignment.center,
-                children: [
-                  Icon(
-                    Icons.tune_rounded,
-                    size: 20.sp,
-                    color:
-                        hasActiveFilters
-                            ? (context.isLightTheme
-                                ? context.colors.danger
-                                : const Color(0xFFEF4444))
-                            : context.colors.textSecondary,
-                  ),
-                  if (hasActiveFilters)
-                    Positioned(
-                      right: 6.w,
-                      top: 6.h,
-                      child: Container(
-                        width: 14.w,
-                        height: 14.h,
-                        decoration: BoxDecoration(
-                          color:
-                              context.isLightTheme
-                                  ? context.colors.danger
-                                  : const Color(0xFFEF4444),
-                          shape: BoxShape.circle,
-                        ),
-                        child: Center(
-                          child: Text(
-                            '$activeFilterCount',
-                            style: AppTypography.textXsBold.copyWith(
-                              color:
-                                  context.isLightTheme
-                                      ? labelOnFill(
-                                        context,
-                                        context.colors.danger,
-                                      )
-                                      : context.colors.textPrimary,
-                              fontSize: 9.sp,
-                              height: 1,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-            ),
-          ),
-
-          // Layout toggle button
-          SizedBox(width: 8.w),
-          GestureDetector(
-            onTap: () => ref.read(gamesListViewModeSwitcher).toggleViewMode(),
-            child: Container(
-              width: searchBarHeight,
-              height: searchBarHeight,
-              decoration: BoxDecoration(
-                color: context.colors.background,
-                borderRadius: BorderRadius.circular(12.br),
-                border: Border.all(color: context.colors.surfaceRecessed),
-              ),
-              child: Center(
-                child: SvgPicture.asset(
-                  SvgAsset.chase_grid,
-                  width: 20.sp,
-                  height: 20.sp,
-                  colorFilter: ColorFilter.mode(
-                    context.colors.textSecondary,
-                    BlendMode.srcIn,
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
+    return PlayerGamesSearchBar(
+      controller: _searchController,
+      focusNode: _searchFocusNode,
+      onChanged: _onSearchChanged,
+      onClear: _clearSearch,
+      onFilterTap: _showFilterDialog,
+      onLayoutToggle: () => ref.read(gamesListViewModeSwitcher).toggleViewMode(),
+      hasQuery: state.searchQuery.isNotEmpty,
+      hasActiveFilters: state.hasActiveFilters,
+      activeFilterCount: state.activeFilterCount,
+      searchFieldKey: e2eKey(E2eIds.playerGamesSearchField),
+      filterButtonKey: e2eKey(E2eIds.playerGamesFilterButton),
     );
   }
 
@@ -926,212 +671,51 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
     PlayerProfileGamesState state,
     int selectedVisibleCount,
   ) {
-    final title =
-        selectedVisibleCount == 0
-            ? 'Choose games to save'
-            : '$selectedVisibleCount selected';
-    final subtitle =
-        _isLoadingAllPagesForSelection
-            ? (state.totalCount != null &&
-                    state.totalCount! > state.allGames.length
-                ? 'Loading ${formatCompactCount(state.allGames.length)} of ${formatCompactCount(state.totalCount!)} games...'
-                : 'Preparing your filtered game list...')
-            : state.hasActiveFilters
-            ? 'Selection follows current filters and search'
-            : 'Tap games manually or use quick select';
-
-    return SingleMotionBuilder(
-      motion: const CupertinoMotion.bouncy(),
-      value: 1.0,
-      builder: (context, progress, child) {
-        return Opacity(
-          opacity: progress.clamp(0.0, 1.0),
-          child: Transform.translate(
-            offset: Offset(0, (1.0 - progress) * -10),
-            child: Container(
-              padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 12.h),
-              decoration: BoxDecoration(
-                color: context.colors.surface,
-                borderRadius: BorderRadius.circular(16.br),
-                border: Border.all(color: kPrimaryColor.withValues(alpha: 0.3)),
-                // No cyan bloom on paper: one tight contact shadow instead.
-                boxShadow: [
-                  context.isLightTheme
-                      ? BoxShadow(
-                        color: context.colors.shadow,
-                        blurRadius: 4,
-                        offset: const Offset(0, 1),
-                      )
-                      : BoxShadow(
-                        color: kPrimaryColor.withValues(alpha: 0.1),
-                        blurRadius: 12,
-                        offset: const Offset(0, 4),
-                      ),
-                ],
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text(
-                              title,
-                              style: AppTypography.textSmMedium.copyWith(
-                                color:
-                                    selectedVisibleCount == 0
-                                        ? context.colors.textPrimary.withValues(
-                                          alpha: 0.75,
-                                        )
-                                        : context.colors.accentText,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                            SizedBox(height: 2.h),
-                            Text(
-                              subtitle,
-                              style: AppTypography.textXsRegular.copyWith(
-                                color: context.textInk(0.58),
-                              ),
-                              maxLines: 2,
-                            ),
-                          ],
-                        ),
-                      ),
-                      SizedBox(width: 8.w),
-                      GestureDetector(
-                        onTap: () {
-                          HapticFeedback.lightImpact();
-                          ref
-                              .read(
-                                playerGamesSelectionModeProvider(
-                                  _playerKey,
-                                ).notifier,
-                              )
-                              .state = false;
-                        },
-                        child: Container(
-                          padding: EdgeInsets.symmetric(
-                            horizontal: 10.w,
-                            vertical: 8.h,
-                          ),
-                          decoration: BoxDecoration(
-                            color: context.colors.textPrimary.withValues(
-                              alpha: 0.1,
-                            ),
-                            borderRadius: BorderRadius.circular(10.br),
-                          ),
-                          child: Icon(
-                            Icons.close_rounded,
-                            size: 16.sp,
-                            color: context.colors.textPrimary.withValues(
-                              alpha: 0.8,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  SizedBox(height: 10.h),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: _SelectionActionButton(
-                          label:
-                              _isLoadingAllPagesForSelection
-                                  ? (state.totalCount != null &&
-                                          state.totalCount! >
-                                              state.allGames.length
-                                      ? 'Loading ${formatCompactCount(state.allGames.length)}/${formatCompactCount(state.totalCount!)}...'
-                                      : 'Selecting...')
-                                  : _selectAllLabel(state),
-                          icon: Icons.select_all_rounded,
-                          onTap:
-                              _isLoadingAllPagesForSelection
-                                  ? null
-                                  : () => _selectAllFilteredGames(state),
-                        ),
-                      ),
-                      SizedBox(width: 8.w),
-                      Expanded(
-                        child: _SelectionActionButton(
-                          label:
-                              selectedVisibleCount > 0
-                                  ? 'Add selected'
-                                  : 'Select first',
-                          icon: Icons.library_add_rounded,
-                          emphasized: selectedVisibleCount > 0,
-                          onTap:
-                              selectedVisibleCount > 0
-                                  ? () => _addSelectedToLibrary(state)
-                                  : null,
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ),
-        );
+    return PlayerGamesSelectionToolbar(
+      selectedCount: selectedVisibleCount,
+      subtitle:
+          _isLoadingAllPagesForSelection
+              ? (state.totalCount != null &&
+                      state.totalCount! > state.allGames.length
+                  ? 'Loading ${formatCompactCount(state.allGames.length)} of ${formatCompactCount(state.totalCount!)} games...'
+                  : 'Preparing your filtered game list...')
+              : state.hasActiveFilters
+              ? 'Selection follows current filters and search'
+              : 'Tap games manually or use quick select',
+      selectAllLabel:
+          _isLoadingAllPagesForSelection
+              ? (state.totalCount != null &&
+                      state.totalCount! > state.allGames.length
+                  ? 'Loading ${formatCompactCount(state.allGames.length)}/${formatCompactCount(state.totalCount!)}...'
+                  : 'Selecting...')
+              : _selectAllLabel(state),
+      onSelectAll:
+          _isLoadingAllPagesForSelection
+              ? null
+              : () => _selectAllFilteredGames(state),
+      onAddSelected: () => _addSelectedToLibrary(state),
+      onClose: () {
+        HapticFeedback.lightImpact();
+        ref.read(playerGamesSelectionModeProvider(_playerKey).notifier).state =
+            false;
       },
     );
   }
 
   Widget _buildActiveFiltersChip(PlayerProfileGamesState state) {
-    // Used as text on its own 10% tint: paper needs the deeper danger ink.
-    final filterRedColor =
-        context.isLightTheme ? context.colors.danger : const Color(0xFFEF4444);
-    return GestureDetector(
-      onTap: () {
+    return PlayerGamesActiveFiltersChip(
+      activeFilterCount: state.activeFilterCount,
+      gameCount: state.filteredGames.length,
+      resultLabel:
+          state.playerResultFilter != PlayerResultFilter.all
+              ? state.playerResultFilter.label
+              : null,
+      onClear: () {
         HapticFeedback.lightImpact();
         ref
             .read(playerProfileGamesKeyProvider(_playerKey).notifier)
             .clearFilter();
       },
-      child: Container(
-        margin: EdgeInsets.only(bottom: 8.h),
-        padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 8.h),
-        decoration: BoxDecoration(
-          color: filterRedColor.withValues(alpha: 0.1),
-          borderRadius: BorderRadius.circular(8.br),
-          border: Border.all(color: filterRedColor.withValues(alpha: 0.3)),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.filter_list_rounded, size: 16.sp, color: filterRedColor),
-            SizedBox(width: 6.w),
-            Text(
-              '${state.activeFilterCount} filter${state.activeFilterCount > 1 ? 's' : ''} active · ${formatCompactCount(state.filteredGames.length)} games',
-              style: AppTypography.textXsMedium.copyWith(color: filterRedColor),
-            ),
-            if (state.playerResultFilter != PlayerResultFilter.all) ...[
-              SizedBox(width: 8.w),
-              Container(
-                padding: EdgeInsets.symmetric(horizontal: 6.w, vertical: 2.h),
-                decoration: BoxDecoration(
-                  color: filterRedColor.withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(6.br),
-                ),
-                child: Text(
-                  state.playerResultFilter.label,
-                  style: AppTypography.textXsRegular.copyWith(
-                    color: filterRedColor,
-                  ),
-                ),
-              ),
-            ],
-            SizedBox(width: 8.w),
-            Icon(Icons.close_rounded, size: 14.sp, color: filterRedColor),
-          ],
-        ),
-      ),
     );
   }
 
@@ -1332,7 +916,7 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
           top: entry.isFirstEvent ? 8.h : 20.h,
           bottom: 12.h,
         ),
-        child: _EventSection(
+        child: PlayerGamesEventSection(
           eventData: entry.eventData,
           dataSource: widget.dataSource,
           tourId: entry.tourId,
@@ -1514,100 +1098,16 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
   }
 
   Widget _buildSelectableCardWrapper(
-    Widget child, {
+    Widget card, {
     required bool isSelected,
     VoidCallback? onTap,
     double cornerRadius = 14,
   }) {
-    return Stack(
-      clipBehavior: Clip.none,
-      children: [
-        // The card is laid out untouched. Selection chrome is painted OVER it,
-        // never around it: a `Border` on a parent inflates the box by its width
-        // and re-lays the card out, which cost grid cells 1.2px and tripped a
-        // RenderFlex overflow on their fixed-width board row.
-        child,
-        Positioned.fill(
-          child: IgnorePointer(
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 160),
-              curve: Curves.easeOutCubic,
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(cornerRadius.br),
-                border: Border.all(
-                  color:
-                      isSelected
-                          ? (context.isLightTheme
-                              ? context.colors.accentText
-                              : kPrimaryColor.withValues(alpha: 0.85))
-                          : Colors.transparent,
-                  width: 1.6,
-                ),
-                boxShadow:
-                    isSelected && !context.isLightTheme
-                        ? [
-                          BoxShadow(
-                            color: kPrimaryColor.withValues(alpha: 0.22),
-                            blurRadius: 18,
-                            spreadRadius: 0.5,
-                            offset: const Offset(0, 2),
-                          ),
-                        ]
-                        : null,
-              ),
-            ),
-          ),
-        ),
-        // Board and grid cards own their tap/long-press (navigate, context
-        // menu). In selection mode that has to become "toggle this game", so an
-        // opaque layer takes every gesture before the card sees it.
-        if (onTap != null)
-          Positioned.fill(
-            child: GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: onTap,
-              onLongPress: onTap,
-              child: const SizedBox.expand(),
-            ),
-          ),
-        Positioned(
-          top: -6.h,
-          right: -6.w,
-          child: Container(
-            width: 24.w,
-            height: 24.h,
-            decoration: BoxDecoration(
-              color:
-                  isSelected
-                      ? kPrimaryColor
-                      : context.colors.surface.withValues(alpha: 0.95),
-              shape: BoxShape.circle,
-              boxShadow: [
-                BoxShadow(
-                  color: context.colors.background.withValues(alpha: 0.55),
-                  blurRadius: 8,
-                  spreadRadius: 0.5,
-                  offset: const Offset(0, 2),
-                ),
-              ],
-              border: Border.all(
-                color:
-                    isSelected
-                        ? context.colors.textPrimary
-                        : context.colors.textPrimary.withValues(alpha: 0.24),
-                width: 1.2,
-              ),
-            ),
-            child: Icon(
-              isSelected
-                  ? Icons.check_rounded
-                  : Icons.radio_button_unchecked_rounded,
-              size: 14.5.sp,
-              color: context.colors.textPrimary,
-            ),
-          ),
-        ),
-      ],
+    return PlayerGamesSelectableCard(
+      card: card,
+      isSelected: isSelected,
+      onTap: onTap,
+      cornerRadius: cornerRadius,
     );
   }
 
@@ -1845,56 +1345,15 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
   }
 
   Widget _buildNoFilterResultsState() {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(
-            Icons.filter_alt_off_outlined,
-            size: 56.sp,
-            color: context.textInk(0.4),
-          ),
-          SizedBox(height: 12.h),
-          Text(
-            'No matching games',
-            style: AppTypography.textMdMedium.copyWith(
-              color: context.colors.textPrimary.withValues(alpha: 0.85),
-            ),
-          ),
-          SizedBox(height: 6.h),
-          Text(
-            'Try adjusting your filters',
-            style: AppTypography.textSmRegular.copyWith(
-              color: context.textInk(0.55),
-            ),
-            textAlign: TextAlign.center,
-          ),
-          SizedBox(height: 20.h),
-          GestureDetector(
-            onTap: () {
-              HapticFeedback.mediumImpact();
-              ref
-                  .read(playerProfileGamesKeyProvider(_playerKey).notifier)
-                  .clearFilter();
-              _clearSearch();
-            },
-            child: Container(
-              padding: EdgeInsets.symmetric(horizontal: 20.w, vertical: 10.h),
-              decoration: BoxDecoration(
-                color: context.colors.textPrimary.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(8.br),
-              ),
-              child: Text(
-                'Clear Filters',
-                style: AppTypography.textSmMedium.copyWith(
-                  color: context.colors.textPrimary,
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    ).animate().fadeIn(duration: 300.ms);
+    return PlayerGamesNoMatches(
+      onClear: () {
+        HapticFeedback.mediumImpact();
+        ref
+            .read(playerProfileGamesKeyProvider(_playerKey).notifier)
+            .clearFilter();
+        _clearSearch();
+      },
+    );
   }
 
   Widget _buildSearchingMoreState() {
@@ -1991,283 +1450,4 @@ class _PlayerCardGameEntry extends _PlayerGamesListEntry {
 
 class _PlayerPaginationFooterEntry extends _PlayerGamesListEntry {
   const _PlayerPaginationFooterEntry();
-}
-
-class _PlayerEventCollapseToggle extends StatelessWidget {
-  const _PlayerEventCollapseToggle({
-    required this.isCollapsed,
-    required this.onTap,
-  });
-
-  final bool isCollapsed;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return Semantics(
-      button: true,
-      label: isCollapsed ? 'Expand event games' : 'Collapse event games',
-      child: InkWell(
-        // Generous, square hit target so taps near the chevron toggle the
-        // event instead of falling through to the card's open-event tap.
-        customBorder: const CircleBorder(),
-        onTap: onTap,
-        child: SizedBox(
-          width: 44.w,
-          height: 44.h,
-          child: Center(
-            child: Icon(
-              isCollapsed
-                  ? Icons.keyboard_arrow_down_rounded
-                  : Icons.keyboard_arrow_up_rounded,
-              size: 20.sp,
-              color: context.colors.textPrimary.withValues(alpha: 0.65),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _SelectionActionButton extends StatelessWidget {
-  const _SelectionActionButton({
-    required this.label,
-    required this.icon,
-    required this.onTap,
-    this.emphasized = false,
-  });
-
-  final String label;
-  final IconData icon;
-  final VoidCallback? onTap;
-  final bool emphasized;
-
-  @override
-  Widget build(BuildContext context) {
-    final enabled = onTap != null;
-    return GestureDetector(
-      onTap: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 180),
-        padding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 9.h),
-        decoration: BoxDecoration(
-          color:
-              enabled
-                  ? (emphasized
-                      ? kPrimaryColor
-                      : context.colors.textPrimary.withValues(alpha: 0.1))
-                  : context.colors.textPrimary.withValues(alpha: 0.06),
-          borderRadius: BorderRadius.circular(10.br),
-          border: Border.all(
-            color:
-                enabled
-                    ? (emphasized
-                        // Paper: the cyan fill sits near the page's value,
-                        // so the rim carries the 3:1 edge in accent ink.
-                        ? (context.isLightTheme
-                            ? context.colors.accentText
-                            : kPrimaryColor.withValues(alpha: 0.8))
-                        : context.colors.textPrimary.withValues(alpha: 0.18))
-                    : context.colors.textPrimary.withValues(alpha: 0.08),
-          ),
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              icon,
-              size: 16.sp,
-              color:
-                  enabled
-                      ? context.colors.textPrimary
-                      : context.textInk(0.45),
-            ),
-            SizedBox(width: 6.w),
-            Flexible(
-              child: Text(
-                label,
-                style: AppTypography.textSmBold.copyWith(
-                  color:
-                      enabled
-                          ? context.colors.textPrimary
-                          : context.textInk(0.45),
-                ),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-/// Event section header: EventCard (or fallback) + player stats row
-class _EventSection extends ConsumerWidget {
-  const _EventSection({
-    this.eventData,
-    required this.dataSource,
-    required this.tourId,
-    this.tourSlug,
-    this.site,
-    required this.gameCount,
-    required this.playerScore,
-    required this.isCollapsed,
-    required this.onToggleCollapsed,
-  });
-
-  final PlayerEventData? eventData;
-  final PlayerProfileDataSource dataSource;
-  final String tourId;
-  final String? tourSlug;
-  final String? site;
-  final int gameCount;
-  final double playerScore;
-  final bool isCollapsed;
-  final VoidCallback onToggleCollapsed;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final request = PlayerProfileEventCardRequest(
-      dataSource: dataSource,
-      tourId: tourId,
-      tourName: eventData?.tourName ?? tourSlug ?? tourId,
-      tourSlug: eventData?.tourSlug ?? tourSlug,
-      broadcastSlug: eventData?.broadcastSlug,
-      site: eventData?.site ?? site,
-    );
-    final fallbackCard = _buildSyncCommunityCard();
-
-    return PlayerProfileResolvedEventCard(
-      request: request,
-      fallbackCard: fallbackCard,
-      gamebaseKey: eventData?.canonicalKey ?? tourSlug ?? tourId,
-      heroTagSuffix: '_player_games_$tourId',
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      onTap: (displayCard) => _navigateToEvent(context, ref, displayCard),
-      trailingWidget: _PlayerEventCollapseToggle(
-        isCollapsed: isCollapsed,
-        onTap: onToggleCollapsed,
-      ),
-      statsRow: _buildStatsRow(context),
-    );
-  }
-
-  Future<void> _navigateToEvent(
-    BuildContext context,
-    WidgetRef ref,
-    GroupEventCardModel displayCard,
-  ) {
-    return openProfileEvent(
-      context: context,
-      ref: ref,
-      dataSource: dataSource,
-      tourId: tourId,
-      eventName: eventData?.tourName ?? tourSlug ?? tourId,
-      site: eventData?.site ?? site,
-      broadcastSlug: eventData?.broadcastSlug,
-      gamebaseKey: eventData?.canonicalKey ?? tourSlug ?? tourId,
-      canonicalBroadcastId:
-          displayCard.eventSource == EventSource.lichessBroadcast
-              ? displayCard.id
-              : null,
-    );
-  }
-
-  /// Build a community event card synchronously from the data the header
-  /// already has (event name, dates, location). Used so the card renders fully
-  /// on first frame instead of flashing a short fallback while an async card
-  /// provider resolves.
-  GroupEventCardModel _buildSyncCommunityCard() {
-    final title = (eventData?.tourName ?? tourSlug ?? tourId).trim();
-    final id = 'twic_event_$tourId';
-    final start = eventData?.startDate;
-    final end = eventData?.endDate;
-    return GroupEventCardModel(
-      id: id,
-      title: title.isEmpty ? 'Event' : title,
-      dates: TimeUtils.formatDateRange(start, end),
-      maxAvgElo: eventData?.avgElo ?? eventData?.maxElo ?? 0,
-      timeUntilStart: TimeUtils.timeUntilStart(start),
-      tourEventCategory: GroupEventCardModel.getCategory(
-        groupId: id,
-        groupName: title,
-        startDate: start,
-        endDate: end,
-        liveGroupIds: const [],
-      ),
-      timeControl: '',
-      endDate: end,
-      startDate: start,
-      location: site ?? eventData?.site,
-      searchTerms: [title],
-      eventSource: EventSource.communityEvent,
-    );
-  }
-
-  Widget _buildStatsRow(BuildContext context) {
-    return Container(
-      margin: EdgeInsets.only(top: 1.h),
-      padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 8.h),
-      decoration: BoxDecoration(
-        color: context.colors.surface,
-        borderRadius: BorderRadius.only(
-          bottomLeft: Radius.circular(8.br),
-          bottomRight: Radius.circular(8.br),
-        ),
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Row(
-            children: [
-              Icon(
-                Icons.sports_esports_outlined,
-                size: 14.sp,
-                color: context.textInk(0.5),
-              ),
-              SizedBox(width: 4.w),
-              Text(
-                '$gameCount ${gameCount == 1 ? 'game' : 'games'}',
-                style: AppTypography.textXsRegular.copyWith(
-                  color: context.textInk(0.5),
-                ),
-              ),
-            ],
-          ),
-          if (gameCount > 0)
-            Container(
-              padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 3.h),
-              decoration: BoxDecoration(
-                color: _getScoreColor(context).withValues(alpha: 0.2),
-                borderRadius: BorderRadius.circular(4.br),
-              ),
-              child: Text(
-                '${_formatScore(playerScore)}/$gameCount',
-                style: AppTypography.textXsBold.copyWith(
-                  color: _getScoreColor(context),
-                ),
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-
-  String _formatScore(double score) {
-    if (score == score.truncateToDouble()) {
-      return score.toInt().toString();
-    }
-    return score.toStringAsFixed(1);
-  }
-
-  Color _getScoreColor(BuildContext context) {
-    if (gameCount == 0) return context.colors.textPrimary;
-    final percentage = playerScore / gameCount;
-    if (percentage >= 0.6) return context.colors.successStrong;
-    if (percentage >= 0.4) return context.colors.textPrimary;
-    return context.colors.danger;
-  }
 }

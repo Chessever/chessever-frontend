@@ -66,7 +66,8 @@ String spaceFavoriteIdentity(FavoritePlayer f) => spacePlayerIdentity(
 /// Whether [s] is a person's pin (a face that can come from Favorites too),
 /// rather than a Countrymen flag or a streak card.
 bool spaceIsPersonPin(SpaceShortcut s) =>
-    s.kind == SpaceShortcutKind.player || s.kind == SpaceShortcutKind.playerGames;
+    s.kind == SpaceShortcutKind.player ||
+    s.kind == SpaceShortcutKind.playerGames;
 
 /// The key a followed player is hidden from My Space under. It names the
 /// follow itself (its row), so following the player again after unfollowing
@@ -106,8 +107,7 @@ class SpacePlayerEntry {
   bool get isPerson => spaceIsPersonPin(shortcut);
 
   /// The FIDE id the face stands for, if any.
-  int? get fideId =>
-      isPerson ? _fideOf(shortcut) : null;
+  int? get fideId => isPerson ? _fideOf(shortcut) : null;
 }
 
 /// My Space's Players, in the order the page shows them: every followed
@@ -152,11 +152,10 @@ List<SpacePlayerEntry> spaceComposePlayers({
 
   // The face draws the pin a player was saved with (a player pin before a
   // player-games one); a follow alone draws as its own draft.
-  SpaceShortcut faceOf(List<SpaceShortcut> pins) =>
-      pins.firstWhere(
-        (p) => p.kind == SpaceShortcutKind.player,
-        orElse: () => pins.first,
-      );
+  SpaceShortcut faceOf(List<SpaceShortcut> pins) => pins.firstWhere(
+    (p) => p.kind == SpaceShortcutKind.player,
+    orElse: () => pins.first,
+  );
 
   final base = <SpacePlayerEntry>[];
   final seen = <String>{};
@@ -257,7 +256,10 @@ String? spacePlayerPinTarget(String key) {
 /// its FIDE id, else its game database id, else its name), else a follow
 /// with no FIDE id or game database id whose name is the key's, in any
 /// case.
-FavoritePlayer? spaceFollowOfPinKey(List<FavoritePlayer> favorites, String key) {
+FavoritePlayer? spaceFollowOfPinKey(
+  List<FavoritePlayer> favorites,
+  String key,
+) {
   final target = spacePlayerPinTarget(key);
   if (target == null || favorites.isEmpty) return null;
   for (final f in favorites) {

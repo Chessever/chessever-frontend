@@ -13,7 +13,7 @@ enum PrepSource {
   const PrepSource(this.label);
   final String label;
   bool get online => this == lichess || this == chesscom;
-  static const playerSources = [chessever, lichess, chesscom];
+  static const playerSources = [lichess, chessever, chesscom];
 
   GamebaseExternalPlayerSource get gamebase => switch (this) {
     PrepSource.lichess => GamebaseExternalPlayerSource.lichess,
@@ -66,10 +66,21 @@ enum PrepTimeControl {
   String labelFor(PrepSource? source) =>
       source == PrepSource.chesscom && this == correspondence ? 'Daily' : label;
 
+  /// The category for a provider rating key (`blitz`, `daily`, ...).
+  static PrepTimeControl? forRatingKey(String key) {
+    if (key == 'daily') return correspondence;
+    for (final value in values) {
+      if (value.name == key) return value;
+    }
+    return null;
+  }
+
   /// Which categories a provider actually has.
   static List<PrepTimeControl> offeredBy(PrepSource source) => switch (source) {
     PrepSource.lichess => values,
     PrepSource.chesscom => const [bullet, blitz, rapid, correspondence],
+    // Over-the-board games: the three FIDE rating lists.
+    PrepSource.chessever => const [blitz, rapid, classical],
     _ => const [],
   };
 }
@@ -118,6 +129,15 @@ class PrepDownloadPreferences {
   final DateTime? fromDate;
   final DateTime? toDate;
 
+  /// What the add dialog proposes for a new account. Online accounts are
+  /// mostly bullet by volume, so they start on the clocks worth preparing
+  /// against; ChessEver's over-the-board games start on every clock.
+  static PrepDownloadPreferences initialFor(PrepSource source) => source.online
+      ? const PrepDownloadPreferences(
+          timeControls: {PrepTimeControl.blitz, PrepTimeControl.rapid},
+        )
+      : const PrepDownloadPreferences();
+
   bool get isFiltered => timeControls.isNotEmpty || range != PrepDateRange.all;
 
   int? fromMs(DateTime now) =>
@@ -148,15 +168,13 @@ class PrepDownloadPreferences {
         '${untilMs == null ? '' : '|$untilMs'}';
   }
 
-  String describe(PrepSource? source) {
-    final clocks = timeControls.isEmpty
-        ? 'All time controls'
-        : PrepTimeControl.values
-              .where(timeControls.contains)
-              .map((t) => t.labelFor(source))
-              .join(', ');
-    return '$clocks · ${range == PrepDateRange.custom ? '${fromDate == null ? 'Any start' : prepDateText(fromDate!)} to ${toDate == null ? 'today' : prepDateText(toDate!)}' : range.label}';
-  }
+  /// The clocks to download, in display order. Empty means every clock.
+  List<PrepTimeControl> get orderedTimeControls =>
+      PrepTimeControl.values.where(timeControls.contains).toList();
+
+  String get rangeLabel => range == PrepDateRange.custom
+      ? '${fromDate == null ? 'Any start' : prepDateText(fromDate!)} to ${toDate == null ? 'today' : prepDateText(toDate!)}'
+      : range.label;
 
   PrepDownloadPreferences copyWith({
     Set<PrepTimeControl>? timeControls,
@@ -282,6 +300,14 @@ class PrepAccount {
   final int? cloudSyncedTs;
   final int cloudSyncedCount;
 
+  /// The selection the stored games should hold this month. ChessEver's
+  /// whole-player export keeps the scope it had before it could be narrowed.
+  String downloadScope(DateTime now) => source != PrepSource.chessever
+      ? preferences.scopeKey(now)
+      : preferences.isFiltered
+      ? 'chessever:${preferences.scopeKey(now)}'
+      : 'chessever:all';
+
   /// Case-insensitive identity, since both providers treat names that way.
   String get key => '${source.name}:${(externalId ?? username).toLowerCase()}';
 
@@ -387,7 +413,10 @@ class PrepAccount {
           ? (raw['playerAliases'] as List).whereType<String>().toList()
           : const [],
       ratings: ratings,
-      preferences: PrepDownloadPreferences.fromJson(raw['preferences']),
+      // A ChessEver account saved without options holds every game.
+      preferences: source == PrepSource.chessever && raw['preferences'] is! Map
+          ? const PrepDownloadPreferences(range: PrepDateRange.all)
+          : PrepDownloadPreferences.fromJson(raw['preferences']),
       lastSyncAtMs: raw['lastSyncAtMs'] is int
           ? raw['lastSyncAtMs'] as int
           : null,
@@ -480,30 +509,67 @@ class PrepProfile {
     return latest;
   }
 
-  /// Names that identify this person in a game's White/Black tags.
+  /// Names that identify this person in a game's White/Black tags. Online
+  /// handles stay exact. A database or PGN player is also known, as on
+  /// desktop, by the profile's name, without a leading title and with the
+  /// word order turned round (`Carlsen, Magnus` / `Magnus Carlsen`).
+  /// The index compares them all without case, spacing or punctuation.
   Set<String> get aliases {
     final aliases = <String>{};
+    void add(String raw) {
+      final clean = raw.trim().toLowerCase();
+      if (clean.isEmpty) return;
+      final untitled = _withoutTitles(clean);
+      for (final base in {clean, untitled}) {
+        if (base.isEmpty) continue;
+        aliases.add(base);
+        final words = base
+            .split(base.contains(',') ? ',' : RegExp(r'\s+'))
+            .map((w) => w.trim())
+            .where((w) => w.isNotEmpty)
+            .toList();
+        if (words.length < 2) continue;
+        aliases.add(
+          base.contains(',')
+              ? '${words.skip(1).join(' ')} ${words.first}'
+              : '${words.last} ${words.take(words.length - 1).join(' ')}',
+        );
+      }
+    }
+
+    if (accounts.any((a) => !a.source.online)) add(name);
     for (final account in accounts) {
       for (final raw in {account.username, ...account.playerAliases}) {
-        final clean = raw.trim().toLowerCase();
-        if (clean.isEmpty) continue;
-        aliases.add(clean);
-        // Database exports use both comma spacings and abbreviated given
-        // names. Online handles remain exact, even when they contain commas.
+        if (account.source.online) {
+          final handle = raw.trim().toLowerCase();
+          if (handle.isNotEmpty) aliases.add(handle);
+          continue;
+        }
+        add(raw);
+        // Database exports also abbreviate the given name.
         if (account.source != PrepSource.chessever) continue;
-        final parts = clean.split(',');
+        final parts = raw.trim().toLowerCase().split(',');
         if (parts.length != 2) continue;
         final family = parts.first.trim();
         final given = parts.last.trim();
         if (family.isEmpty || given.isEmpty) continue;
-        final initial = String.fromCharCode(given.runes.first);
-        for (final name in {given, initial, '$initial.'}) {
-          aliases.add('$family,$name');
-          aliases.add('$family, $name');
-        }
+        aliases.add('$family,${String.fromCharCode(given.runes.first)}');
       }
     }
     return aliases;
+  }
+
+  static final _titles = RegExp(
+    r'^(?:gm|wgm|im|wim|fm|wfm|cm|wcm|nm|wnm|agm|aim|afm|acm)\.?\s+',
+  );
+
+  static String _withoutTitles(String name) {
+    var clean = name;
+    while (true) {
+      final next = clean.replaceFirst(_titles, '').trim();
+      if (next == clean) return clean;
+      clean = next;
+    }
   }
 
   PrepProfile copyWith({

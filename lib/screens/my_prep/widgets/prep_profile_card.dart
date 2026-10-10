@@ -19,11 +19,29 @@ class PrepProfileCard extends ConsumerWidget {
     required this.onTap,
     this.fideId,
     this.preview = false,
+    this.status,
+    this.pendingSources = const [],
+    this.name,
+    this.moreButton = true,
   });
   final PrepProfile profile;
   final VoidCallback onTap;
   final String? fideId;
   final bool preview;
+
+  /// Shown instead of the profile's own name, where a list names every row
+  /// the same way.
+  final String? name;
+
+  /// Off where added and unadded players share a list: every row then ends
+  /// alike, and the menu stays on a long press.
+  final bool moreButton;
+
+  /// Replaces the sync line while the row is busy with something else.
+  final String? status;
+
+  /// Sources the next open attaches, marked beside the attached ones.
+  final List<PrepSource> pendingSources;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -36,22 +54,28 @@ class PrepProfileCard extends ConsumerWidget {
         .map((a) => a.error)
         .whereType<String>()
         .firstOrNull;
-    final status = syncing
-        ? 'Downloading games…'
-        : error ??
-              (profile.accounts.isEmpty
-                  ? 'No sources attached'
-                  : profile.lastSyncAtMs == null
-                  ? 'Ready to download'
-                  : prepGamesLabel(profile.gameCount));
+    final status =
+        this.status ??
+        (syncing ? 'Downloading games…' : null) ??
+        error ??
+        (profile.accounts.isEmpty
+            ? 'No sources attached'
+            : profile.lastSyncAtMs == null
+            ? 'Ready to download'
+            : prepGamesLabel(profile.gameCount));
+    final sources = [
+      ...profile.accounts.map((a) => a.source),
+      ...pendingSources,
+    ];
     final primary = profile.databaseAccount ?? profile.accounts.firstOrNull;
     final fide = profile.fideId ?? fideId;
+    final name = this.name ?? profile.name;
     return CardContextMenu(
       actions: (_) => preview ? [] : prepProfileMenu(context, ref, profile),
       onPreviewTap: onTap,
       child: FigmaPlayerCard(
         player: PlayerStandingModel(
-          name: profile.name,
+          name: name,
           countryCode: profile.country ?? '',
           title: profile.title,
           score: primary?.bestRating ?? 0,
@@ -64,35 +88,53 @@ class PrepProfileCard extends ConsumerWidget {
         reserveRankSpace: false,
         hideMissingRating: true,
         avatar: PrepAvatar(
-          name: profile.name,
+          name: name,
           size: 56.w,
           photoUrl: profile.avatarUrl,
           fideId: fide,
           title: profile.title,
         ),
-        detailWidget: Row(
-          children: [
-            PrepSourceMarks(
-              sources: profile.accounts.map((a) => a.source),
-              size: 14.sp,
-            ),
-            if (profile.accounts.isNotEmpty) SizedBox(width: 8.w),
-            Expanded(
-              child: Text(
-                status,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: AppTypography.textXsRegular.copyWith(
-                  color: error != null && !syncing
-                      ? context.colors.danger
-                      : context.colors.textSecondary,
+        // Three marks can be wider than a narrow row; they shrink before
+        // they overflow.
+        detailWidget: LayoutBuilder(
+          builder: (context, box) => Row(
+            children: [
+              ConstrainedBox(
+                constraints: BoxConstraints(maxWidth: box.maxWidth),
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: PrepSourceMarks(sources: sources, size: 14.sp),
                 ),
               ),
-            ),
-          ],
+              Expanded(
+                child: Padding(
+                  padding: EdgeInsets.only(left: sources.isEmpty ? 0 : 8.w),
+                  child: Builder(
+                    builder: (context) {
+                      final style = AppTypography.textXsRegular.copyWith(
+                        color: error != null && !syncing && this.status == null
+                            ? context.colors.danger
+                            : context.colors.textSecondary,
+                      );
+                      return syncing || this.status != null
+                          ? PrepShimmerText(status, style: style)
+                          : Text(
+                              status,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: style,
+                            );
+                    },
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
-        trailing: preview
-            ? const SizedBox(width: 16)
+        // A row without the more button holds its slot, so every row's text
+        // ends on the same x.
+        trailing: preview || !moreButton
+            ? const SizedBox(width: 44)
             : CardMoreButton(size: 18.sp),
         onTap: onTap,
       ),

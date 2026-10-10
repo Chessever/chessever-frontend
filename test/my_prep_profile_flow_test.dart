@@ -3,6 +3,8 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:chessever2/repository/gamebase/gamebase_repository.dart';
+import 'package:chessever2/repository/supabase/chess_player/chess_player_repository.dart';
+import 'package:chessever2/screens/favorites/rankings/ranking_filters.dart';
 import 'package:chessever2/screens/my_prep/models/prep_models.dart';
 import 'package:chessever2/screens/my_prep/my_prep_home_screen.dart';
 import 'package:chessever2/screens/my_prep/prep_profile_screen.dart';
@@ -14,7 +16,9 @@ import 'package:chessever2/screens/my_prep/services/prep_analysis.dart';
 import 'package:chessever2/screens/my_prep/services/prep_repository.dart';
 import 'package:chessever2/screens/my_prep/tabs/prep_overview_tab.dart';
 import 'package:chessever2/screens/my_prep/tabs/prep_trees_tab.dart';
+import 'package:chessever2/screens/my_prep/widgets/prep_common.dart';
 import 'package:chessever2/screens/my_prep/widgets/prep_dialogs.dart';
+import 'package:chessever2/screens/my_prep/widgets/prep_profile_card.dart';
 import 'package:chessever2/screens/my_prep/widgets/prep_import_dialog.dart';
 import 'package:chessever2/screens/my_prep/tabs/prep_games_tab.dart';
 import 'package:chessever2/widgets/game_filter/game_filter_model.dart';
@@ -27,13 +31,17 @@ import 'package:chessever2/screens/my_prep/widgets/prep_filter_dialog.dart';
 import 'package:chessever2/screens/my_prep/widgets/prep_filter_popup.dart';
 import 'package:chessever2/screens/my_prep/widgets/prep_identity.dart';
 import 'package:chessever2/screens/my_prep/widgets/prep_source_picker.dart';
+import 'package:chessever2/screens/player_profile/widgets/player_games_toolbar.dart';
 import 'package:chessever2/services/rewarded_premium/rewarded_access_provider.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:chessever2/widgets/card_context_menu.dart' show CardMoreButton;
+import 'package:chessever2/widgets/popover_add_fab.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:smooth_sheets/smooth_sheets.dart';
 import 'package:dio/dio.dart';
 
 import 'my_prep_sources_test.dart' show databasePlayer, sourceGame;
@@ -49,7 +57,9 @@ class _PickerRepository extends PrepRepository {
       );
   @override
   Future<List<GamebasePlayer>> searchPlayers(String query) async =>
-      query == 'unlisted' ? [] : [databasePlayer.copyWith(fideId: '0')];
+      query == 'unlisted'
+      ? []
+      : [databasePlayer.copyWith(fideId: query == '1503014' ? query : '0')];
   @override
   Future<PrepAccount> lookup(PrepSource source, String username) async =>
       PrepAccount(
@@ -78,6 +88,32 @@ class _PickerRepository extends PrepRepository {
     }
     return account;
   }
+}
+
+class _RankingRepository implements ChessPlayerRepository {
+  @override
+  Future<List<ChessPlayer>> getRankedPlayers({
+    required RankingFilters filters,
+    String? countryCode,
+    String searchQuery = '',
+    int limit = 30,
+    int offset = 0,
+    DateTime? now,
+  }) async => offset > 0
+      ? []
+      : const [
+          ChessPlayer(
+            fideid: 1503014,
+            name: 'Carlsen, Magnus',
+            title: 'GM',
+            rating: 2823,
+            country: 'NOR',
+          ),
+          ChessPlayer(fideid: 99, name: 'Unknown, Handle', rating: 2600),
+        ];
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
 Future<void> _loaded(ProviderContainer container) async {
@@ -307,6 +343,53 @@ void main() {
     return container;
   }
 
+  /// Lets a running attach reach its download prompt, then confirms it.
+  Future<void> confirmDownload(
+    WidgetTester tester, {
+    required String subtitle,
+  }) async {
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 50)),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Download games'), findsOneWidget);
+    expect(find.text(subtitle), findsOneWidget);
+    await tester.ensureVisible(find.text('Download'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Download'));
+    await tester.pumpAndSettle();
+  }
+
+  /// Taps a control of the add dialog, scrolling its card when a short
+  /// screen leaves the control below the fold.
+  Future<void> tapOnPage(WidgetTester tester, Finder target) async {
+    await tester.scrollUntilVisible(
+      target,
+      100,
+      scrollable: find
+          .descendant(
+            of: find.byType(ListView),
+            matching: find.byType(Scrollable),
+          )
+          .first,
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(target);
+    await tester.pumpAndSettle();
+  }
+
+  /// Walks the add dialog's download pages, one per chosen account.
+  Future<void> confirmScopes(WidgetTester tester, int pages) async {
+    for (var page = 1; page <= pages; page++) {
+      expect(find.text('Download games'), findsOneWidget);
+      expect(
+        find.text('$page/$pages'),
+        pages > 1 ? findsOneWidget : findsNothing,
+      );
+      await tapOnPage(tester, find.text(page < pages ? 'Next' : 'Download'));
+    }
+  }
+
   for (final light in [false, true]) {
     testWidgets(
       'source picker creates an online-only profile in ${light ? 'light' : 'dark'} theme',
@@ -334,7 +417,7 @@ void main() {
         await tester.tap(find.text('Lichess'));
         await tester.pumpAndSettle();
         await tester.enterText(
-          find.byKey(const ValueKey('prep_source_query_lichess')),
+          find.byKey(const ValueKey('prep_source_query')),
           'ClubPlayer',
         );
         await tester.pump(const Duration(milliseconds: 450));
@@ -345,14 +428,23 @@ void main() {
         expect(tester.takeException(), isNull);
         await tester.tap(find.text('Create profile'));
         await tester.pumpAndSettle();
+        expect(find.text('ClubPlayer on Lichess'), findsOneWidget);
+        await confirmScopes(tester, 1);
         expect(result?.accounts.single.source, PrepSource.lichess);
+        // An online account starts on blitz and rapid, a year back.
+        expect(
+          result?.accounts.single.preferences,
+          const PrepDownloadPreferences(
+            timeControls: {PrepTimeControl.blitz, PrepTimeControl.rapid},
+          ),
+        );
         expect(result?.accounts.single.fideId, isNull);
         expect(result?.name, 'Club Player');
       },
     );
   }
 
-  testWidgets('both plus buttons follow the selected My Prep tab', (
+  testWidgets('the add actions follow the selected My Prep tab', (
     tester,
   ) async {
     final container = await pump(
@@ -364,38 +456,25 @@ void main() {
     for (final (tab, label, title) in [
       ('My games', 'Attach your username', 'Attach your usernames'),
       ('Opponents', 'Add opponent', 'Add an opponent'),
-      ('Favorites', 'Add favorite', 'Add a favorite'),
     ]) {
       await tester.tap(find.text(tab));
       await tester.pumpAndSettle();
-      expect(find.text('Add opponent'), findsNothing);
       expect(find.text('Attach username'), findsNothing);
-      expect(
-        tester
-            .widget<IconButton>(find.byKey(const ValueKey('prep_add_top')))
-            .tooltip,
-        label,
-      );
-      expect(
-        tester
-            .widget<FloatingActionButton>(
-              find.byKey(const ValueKey('prep_add_floating')),
-            )
-            .tooltip,
-        label,
-      );
-      for (final key in ['prep_add_top', 'prep_add_floating']) {
-        await tester.tap(find.byKey(ValueKey(key)));
-        await tester.pumpAndSettle();
-        expect(find.text(title), findsOneWidget);
-        await tester.pageBack();
-        await tester.pumpAndSettle();
-      }
+      expect(find.byKey(const ValueKey('prep_add_top')), findsNothing);
+      // With nothing added, a tab offers its add in the page; the floating
+      // button waits for the first one.
+      expect(find.byKey(const ValueKey('prep_add_floating')), findsNothing);
+      expect(find.text(label), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('prep_add_empty')));
+      await tester.pumpAndSettle();
+      expect(find.text(title), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('prep_source_cancel')));
+      await tester.pumpAndSettle();
     }
     await tester.runAsync(() async {
       final profiles = container.read(prepProfilesProvider.notifier);
       profiles.create(
-        kind: PrepKind.favorite,
+        kind: PrepKind.opponent,
         name: 'My study player',
         accounts: [],
       );
@@ -403,6 +482,100 @@ void main() {
     });
     await tester.pumpAndSettle();
     expect(find.text('My study player'), findsOneWidget);
+    expect(find.byKey(const ValueKey('prep_add_empty')), findsNothing);
+    // The floating button offers the three sources, then asks in a dialog.
+    final fab = find.byKey(const ValueKey('prep_add_floating'));
+    expect(tester.widget<PopoverAddFab<PrepSource>>(fab).label, 'Add opponent');
+    await tester.tap(fab);
+    await tester.pumpAndSettle();
+    for (final source in PrepSource.playerSources) {
+      expect(find.text(source.label), findsOneWidget);
+    }
+    await tester.tap(find.text('Chess.com'));
+    await tester.pumpAndSettle();
+    expect(find.text('Add an opponent'), findsOneWidget);
+    expect(find.byKey(const ValueKey('prep_source_query')), findsOneWidget);
+    expect(find.text('Lichess'), findsNothing);
+    await tester.tap(find.byKey(const ValueKey('prep_source_cancel')));
+    await tester.pumpAndSettle();
+    // Favorites is a fixed ranking: no floating button and no in-page add.
+    await tester.tap(find.text('Favorites'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('prep_add_floating')), findsNothing);
+    expect(find.byKey(const ValueKey('prep_add_empty')), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('a ranked favorite joins Opponents through the add sheet with '
+      'its known accounts chosen, and keeps its ranking slot', (tester) async {
+    final container = await pump(
+      tester,
+      const MyPrepHomeScreen(),
+      premium: true,
+      overrides: [
+        chessPlayerRepositoryProvider.overrideWithValue(_RankingRepository()),
+      ],
+    );
+    await tester.tap(find.text('Favorites'));
+    await tester.pumpAndSettle();
+    PrepSourceMarks marks(String name) => tester.widget(
+      find.descendant(
+        of: find.ancestor(
+          of: find.text(name),
+          matching: find.byType(PrepProfileCard),
+        ),
+        matching: find.byType(PrepSourceMarks),
+      ),
+    );
+    expect(marks('Unknown, Handle').sources, [PrepSource.chessever]);
+    expect(marks('Carlsen, Magnus').sources, [
+      PrepSource.chessever,
+      PrepSource.chesscom,
+      PrepSource.lichess,
+    ]);
+    // No row carries a menu button, added or not.
+    expect(find.byType(CardMoreButton), findsNothing);
+    await tester.tap(find.text('Carlsen, Magnus'));
+    await tester.pumpAndSettle();
+    // Nothing is created until the reader confirms what to download.
+    expect(container.read(prepProfilesProvider).requireValue, isEmpty);
+    expect(find.text('Add an opponent'), findsOneWidget);
+    for (final key in [
+      'chessever:player-uuid',
+      'chesscom:magnuscarlsen',
+      'lichess:drnykterstein',
+    ]) {
+      expect(find.byKey(ValueKey('prep_pending_$key')), findsOneWidget);
+    }
+    // One of the known accounts is dropped before anything downloads.
+    await tester.tap(find.byTooltip('Remove DrNykterstein'));
+    await tester.pump();
+    await tapOnPage(tester, find.text('Create profile'));
+    expect(find.text('1/2'), findsOneWidget);
+    await tapOnPage(tester, find.text('Next'));
+    expect(find.text('2/2'), findsOneWidget);
+    // The added row keeps its download indicator turning.
+    await tester.tap(find.text('Download'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 500));
+    final profile = container.read(prepProfilesProvider).requireValue.single;
+    expect(profile.kind, PrepKind.opponent);
+    expect(profile.favoriteId, 'carlsen');
+    expect(profile.fideId, '1503014');
+    expect(profile.accounts.map((a) => a.source), [
+      PrepSource.chessever,
+      PrepSource.chesscom,
+    ]);
+    // The added player stays where the ranking put them, named as before.
+    final rows = tester
+        .widgetList<PrepProfileCard>(find.byType(PrepProfileCard))
+        .toList();
+    expect(rows.map((card) => card.name), [
+      'Carlsen, Magnus',
+      'Unknown, Handle',
+    ]);
+    expect(rows.first.preview, isFalse);
+    expect(find.byType(CardMoreButton), findsNothing);
     expect(tester.takeException(), isNull);
   });
 
@@ -430,17 +603,12 @@ void main() {
     await tester.tap(find.text('Start'));
     await tester.pumpAndSettle();
     expect(find.text('Attach your usernames'), findsOneWidget);
-    expect(
-      find.byKey(const ValueKey('prep_source_query_lichess')),
-      findsOneWidget,
-    );
+    expect(find.byKey(const ValueKey('prep_source_query')), findsOneWidget);
     for (final source in [PrepSource.lichess, PrepSource.chesscom]) {
-      if (source == PrepSource.chesscom) {
-        await tester.tap(find.text('Chess.com'));
-        await tester.pumpAndSettle();
-      }
+      await tester.tap(find.text(source.label));
+      await tester.pumpAndSettle();
       await tester.enterText(
-        find.byKey(ValueKey('prep_source_query_${source.name}')),
+        find.byKey(const ValueKey('prep_source_query')),
         'ClubPlayer',
       );
       await tester.pump(const Duration(milliseconds: 450));
@@ -452,10 +620,89 @@ void main() {
     expect(find.text('Attach 2 accounts'), findsOneWidget);
     await tester.tap(find.byKey(const ValueKey('prep_attach_accounts')));
     await tester.pumpAndSettle();
+    // The first page's arrow returns to the picker with both still queued.
+    expect(find.text('1/2'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('prep_scope_back')));
+    await tester.pumpAndSettle();
+    expect(find.text('Attach 2 accounts'), findsOneWidget);
+    expect(result, isNull);
+    await tester.tap(find.byKey(const ValueKey('prep_attach_accounts')));
+    await tester.pumpAndSettle();
+    // A choice made on one page survives a visit to the next and back.
+    await tester.tap(find.text('Bullet'));
+    await tester.pumpAndSettle();
+    await tapOnPage(tester, find.text('Next'));
+    expect(find.text('2/2'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('prep_scope_back')));
+    await tester.pumpAndSettle();
+    await confirmScopes(tester, 2);
+    expect(result?.accounts.first.preferences.timeControls, {
+      PrepTimeControl.bullet,
+      PrepTimeControl.blitz,
+      PrepTimeControl.rapid,
+    });
+    expect(result?.accounts.last.preferences.timeControls, {
+      PrepTimeControl.blitz,
+      PrepTimeControl.rapid,
+    });
     expect(result?.accounts.map((a) => a.source), [
       PrepSource.lichess,
       PrepSource.chesscom,
     ]);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('the add sheet rests on the bottom edge and back steps a page', (
+    tester,
+  ) async {
+    PrepAddResult? result;
+    var closed = false;
+    await pump(
+      tester,
+      Scaffold(
+        body: Builder(
+          builder: (context) => TextButton(
+            onPressed: () async {
+              result = await showPrepSourcePicker(
+                context,
+                kind: PrepKind.opponent,
+                only: PrepSource.lichess,
+                multiple: true,
+              );
+              closed = true;
+            },
+            child: const Text('Start'),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.text('Start'));
+    await tester.pumpAndSettle();
+    final sheet = find.byType(PagedSheet);
+    expect(tester.getRect(sheet).bottom, 640);
+    expect(tester.getRect(sheet).top, greaterThan(200));
+    await tester.enterText(
+      find.byKey(const ValueKey('prep_source_query')),
+      'ClubPlayer',
+    );
+    await tester.pump(const Duration(milliseconds: 450));
+    await tester.pump();
+    await tester.tap(find.text('Club Player'));
+    await tester.pump();
+    await tester.tap(find.byKey(const ValueKey('prep_attach_accounts')));
+    await tester.pumpAndSettle();
+    expect(find.text('Download games'), findsOneWidget);
+    expect(tester.getRect(sheet).bottom, 640);
+    // The system back gesture returns to the picker before it closes.
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    expect(find.text('Download games'), findsNothing);
+    expect(find.byKey(const ValueKey('prep_attach_accounts')), findsOneWidget);
+    expect(closed, isFalse);
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    expect(closed, isTrue);
+    expect(result, isNull);
     expect(tester.takeException(), isNull);
   });
 
@@ -480,7 +727,7 @@ void main() {
     await tester.tap(find.text('Start'));
     await tester.pumpAndSettle();
     await tester.enterText(
-      find.byKey(const ValueKey('prep_source_query_chessever')),
+      find.byKey(const ValueKey('prep_source_query')),
       'unlisted',
     );
     await tester.pump(const Duration(milliseconds: 450));
@@ -517,7 +764,7 @@ void main() {
     await tester.tap(find.text('Chess.com'));
     await tester.pumpAndSettle();
     await tester.enterText(
-      find.byKey(const ValueKey('prep_source_query_chesscom')),
+      find.byKey(const ValueKey('prep_source_query')),
       'ClubPlayer',
     );
     await tester.pump(const Duration(milliseconds: 450));
@@ -543,6 +790,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('Create profile'));
     await tester.pumpAndSettle();
+    await confirmScopes(tester, 1);
     expect(result?.accounts.single.source, PrepSource.chesscom);
   });
 
@@ -580,7 +828,7 @@ void main() {
         await tester.pumpAndSettle();
         for (final name in ['FirstHandle', 'SecondHandle']) {
           await tester.enterText(
-            find.byKey(ValueKey('prep_source_query_${source.name}')),
+            find.byKey(const ValueKey('prep_source_query')),
             name,
           );
           await tester.pump(const Duration(milliseconds: 450));
@@ -596,7 +844,7 @@ void main() {
       expect(find.text('Attach 4 accounts'), findsOneWidget);
       // Case-insensitive duplicates cannot be queued twice.
       await tester.enterText(
-        find.byKey(const ValueKey('prep_source_query_chesscom')),
+        find.byKey(const ValueKey('prep_source_query')),
         'FIRSTHANDLE',
       );
       await tester.pump(const Duration(milliseconds: 450));
@@ -607,6 +855,8 @@ void main() {
       expect(find.text('Attach 4 accounts'), findsOneWidget);
       await tester.tap(find.byKey(const ValueKey('prep_attach_accounts')));
       await tester.pumpAndSettle();
+      // Each of the four accounts gets its own download page.
+      await confirmScopes(tester, 4);
       await tester.runAsync(() => action!);
       final attached = profiles.byId(profile.id)!;
       expect(
@@ -618,7 +868,8 @@ void main() {
         hasLength(2),
       );
       expect(attached.databaseAccount, isNotNull);
-      expect(repo.syncCalls, 0);
+      // The download starts by itself; the database was already attached.
+      expect(repo.syncCalls, 4);
       await tester.runAsync(() => profiles.debugDrainWrites());
       final persisted = jsonDecode(
         File('${directory.path}/prep/profiles.json').readAsStringSync(),
@@ -676,7 +927,7 @@ void main() {
       await tester.runAsync(() => tester.tap(find.text('Start')));
       await tester.pumpAndSettle();
       await tester.enterText(
-        find.byKey(const ValueKey('prep_source_query_lichess')),
+        find.byKey(const ValueKey('prep_source_query')),
         'ExistingHandle',
       );
       await tester.pump(const Duration(milliseconds: 450));
@@ -687,7 +938,7 @@ void main() {
       expect(find.byKey(const ValueKey('prep_attach_accounts')), findsNothing);
       for (final name in ['RemoveMe', 'KeepStaged']) {
         await tester.enterText(
-          find.byKey(const ValueKey('prep_source_query_lichess')),
+          find.byKey(const ValueKey('prep_source_query')),
           name,
         );
         await tester.pump(const Duration(milliseconds: 450));
@@ -699,7 +950,7 @@ void main() {
       await tester.tap(find.byTooltip('Remove RemoveMe'));
       await tester.pumpAndSettle();
       expect(find.text('Attach account'), findsOneWidget);
-      await tester.pageBack();
+      await tester.tap(find.byKey(const ValueKey('prep_source_cancel')));
       await tester.pumpAndSettle();
       await tester.runAsync(() => action!);
       expect(
@@ -752,7 +1003,7 @@ void main() {
     await tester.runAsync(() => tester.tap(find.text('Start')));
     await tester.pumpAndSettle();
     await tester.enterText(
-      find.byKey(const ValueKey('prep_source_query_chesscom')),
+      find.byKey(const ValueKey('prep_source_query')),
       'NewHandle',
     );
     await tester.pump(const Duration(milliseconds: 450));
@@ -762,6 +1013,8 @@ void main() {
     expect(find.text('Attach source'), findsOneWidget);
     await tester.tap(find.text('Attach source'));
     await tester.pumpAndSettle();
+    // The account it replaces was never downloaded, so this one asks.
+    await confirmDownload(tester, subtitle: 'NewHandle on Chess.com');
     await tester.runAsync(() => action!);
     await tester.runAsync(() => profiles.debugDrainWrites());
     await tester.pumpAndSettle();
@@ -796,8 +1049,7 @@ void main() {
         overrides: [prepProfileProvider.overrideWith((ref, id) => profile)],
       );
       expect(find.text('ClubPlayer'), findsOneWidget);
-      expect(find.text('Ratings'), findsNothing);
-      expect(find.text('Download options'), findsNothing);
+      expect(find.byKey(const ValueKey('prep_download_scope')), findsNothing);
       await tester.tap(find.byKey(const ValueKey('prep_add_source')));
       await tester.pumpAndSettle();
       expect(
@@ -812,11 +1064,8 @@ void main() {
         find.byKey(const ValueKey('prep_account_lichess:clubplayer')),
       );
       await tester.pumpAndSettle();
-      expect(find.text('Ratings'), findsOneWidget);
-      expect(find.text('1900'), findsNothing);
-      await tester.ensureVisible(find.text('Ratings'));
-      await tester.tap(find.text('Ratings'));
-      await tester.pumpAndSettle();
+      // Ratings and the download scope are on the card, not behind a tap.
+      expect(find.byKey(const ValueKey('prep_download_scope')), findsOneWidget);
       await tester.ensureVisible(find.text('1900'));
       expect(find.text('1900'), findsOneWidget);
       expect(tester.takeException(), isNull);
@@ -872,7 +1121,7 @@ void main() {
         find.byKey(const ValueKey('prep_account_chesscom:secondaccount')),
       );
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Download options'));
+      await tester.tap(find.byKey(const ValueKey('prep_download_scope')));
       await tester.pumpAndSettle();
       expect(find.text('SecondAccount on Chess.com'), findsOneWidget);
       expect(find.text('Save'), findsOneWidget);
@@ -1072,7 +1321,10 @@ void main() {
         expect(find.text('3'), findsOneWidget);
         expect(find.textContaining('Ratings from'), findsNothing);
         expect(find.text('Sources'), findsNothing);
-        expect(find.byType(PrepFilterButton).hitTestable(), findsNothing);
+        expect(
+          find.byTooltip('Filter and sort games').hitTestable(),
+          findsNothing,
+        );
 
         await tester.tap(find.text('1900'));
         await tester.pumpAndSettle();
@@ -1080,7 +1332,11 @@ void main() {
         expect(tab.games, hasLength(1));
         expect(tab.filter.accountKey, online.key);
         expect(tab.filter.speed, PrepTimeControl.rapid);
-        expect(find.byType(PrepFilterButton).hitTestable(), findsOneWidget);
+        // The Games row is the player profile's: search, filters, layout.
+        expect(
+          find.byTooltip('Filter and sort games').hitTestable(),
+          findsOneWidget,
+        );
 
         await tester.tap(find.byTooltip('Filter and sort games'));
         await tester.pumpAndSettle();
@@ -1090,8 +1346,11 @@ void main() {
         await tester.pumpAndSettle();
         await tester.tap(find.text('Apply'));
         await tester.pumpAndSettle();
-        expect(find.text('No games match these filters.'), findsOneWidget);
-        expect(find.byType(PrepFilterButton).hitTestable(), findsOneWidget);
+        expect(find.text('No matching games'), findsOneWidget);
+        expect(
+          find.byTooltip('Filter and sort games').hitTestable(),
+          findsOneWidget,
+        );
         await tester.tap(find.byTooltip('Filter and sort games'));
         await tester.pumpAndSettle();
         await tester.tap(find.text('Reset'));
@@ -1104,7 +1363,10 @@ void main() {
         await tester.tap(find.text('About'));
         await tester.pumpAndSettle();
         expect(find.text('3'), findsOneWidget);
-        expect(find.byType(PrepFilterButton).hitTestable(), findsNothing);
+        expect(
+          find.byTooltip('Filter and sort games').hitTestable(),
+          findsNothing,
+        );
         await tester.tap(find.byTooltip('Manage sources'));
         await tester.pumpAndSettle();
         expect(find.byType(PrepSourcesScreen), findsOneWidget);
@@ -1301,6 +1563,84 @@ void main() {
     await profiles.debugDrainWrites();
   });
 
+  testWidgets('pulling the Games list down refreshes the profile', (
+    tester,
+  ) async {
+    const game = PrepGame(
+      index: 0,
+      source: PrepSource.lichess,
+      white: 'club',
+      black: 'Opponent',
+      result: '1-0',
+      plies: 4,
+      playerIsWhite: true,
+    );
+    final container = await pump(
+      tester,
+      Consumer(
+        builder: (context, ref, _) {
+          final profile = ref
+              .watch(prepProfilesProvider)
+              .valueOrNull
+              ?.firstOrNull;
+          if (profile == null) return const SizedBox.shrink();
+          return Scaffold(
+            body: PrepGamesTab(
+              profile: profile,
+              analysis: PrepAnalysis(
+                profileId: profile.id,
+                games: const [game],
+              ),
+              games: const [game],
+              filter: const PrepFilter(),
+              onFilterChanged: (_) {},
+            ),
+          );
+        },
+      ),
+      premium: true,
+    );
+    final profiles = container.read(prepProfilesProvider.notifier);
+    profiles.create(
+      kind: PrepKind.opponent,
+      name: 'Club',
+      accounts: [
+        const PrepAccount(
+          source: PrepSource.lichess,
+          username: 'club',
+          lastSyncAtMs: 1,
+          gameCount: 1,
+        ),
+      ],
+    );
+    await tester.pump();
+    expect(find.byType(PrepGamesTab), findsOneWidget);
+    expect(repo.syncCalls, 0);
+
+    await tester.drag(find.byType(CustomScrollView), const Offset(0, 420));
+    // The indicator settles into place, then asks for the refresh. No
+    // pumpAndSettle here: its spinner turns for as long as the refresh runs.
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 1));
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 50)),
+    );
+    await tester.pump();
+    expect(repo.syncCalls, 1, reason: 'the pull asks the source for new games');
+    // The refresh then saves the profile: file calls that finish in real
+    // time, each resuming on the next frame. Step both until it is done and
+    // the indicator has left.
+    for (var i = 0; i < 6; i++) {
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 20)),
+      );
+      await tester.pump(const Duration(milliseconds: 300));
+    }
+    expect(find.byType(RefreshProgressIndicator), findsNothing);
+    expect(profiles.byId(profiles.state.requireValue.single.id), isNotNull);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('game search and shared filters work with large text', (
     tester,
   ) async {
@@ -1318,7 +1658,11 @@ void main() {
       scale: 2,
     );
     final field = find.byType(TextField);
-    expect(tester.getSize(field).height, greaterThanOrEqualTo(48));
+    // The row grows with the text, so the search line is never cut.
+    expect(
+      tester.getSize(find.byType(PlayerGamesSearchBar)).height,
+      greaterThanOrEqualTo(48),
+    );
     await tester.enterText(field, 'Sicilian');
     await tester.pump();
     await tester.tap(find.byTooltip('Clear search'));

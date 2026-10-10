@@ -1,5 +1,7 @@
 import 'dart:async';
 
+import 'package:chessever2/repository/supabase/chess_player/chess_player_repository.dart'
+    show ChessPlayer;
 import 'package:chessever2/screens/library/widgets/library_context_menu.dart';
 import 'package:chessever2/screens/my_prep/data/prep_favorites.dart';
 import 'package:chessever2/screens/my_prep/library/prep_library.dart'
@@ -8,7 +10,7 @@ import 'package:chessever2/screens/my_prep/models/prep_models.dart';
 import 'package:chessever2/screens/my_prep/prep_access.dart';
 import 'package:chessever2/screens/my_prep/prep_profile_screen.dart';
 import 'package:chessever2/screens/my_prep/prep_source_actions.dart'
-    show prepExportProfile;
+    show prepExportProfile, prepStartDownloads;
 import 'package:chessever2/screens/my_prep/providers/prep_providers.dart';
 import 'package:chessever2/screens/my_prep/services/prep_repository.dart';
 import 'package:chessever2/screens/my_prep/widgets/prep_dialogs.dart';
@@ -21,7 +23,11 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 /// Adds the reader's own accounts to My games. They all live on one
 /// profile, so their games read together as "me".
-Future<void> prepAddMine(BuildContext context, WidgetRef ref) async {
+Future<void> prepAddMine(
+  BuildContext context,
+  WidgetRef ref, {
+  PrepSource? source,
+}) async {
   HapticFeedbackService.buttonPress();
   if (!await ensurePrepAccess(context) || !context.mounted) return;
   final profiles = ref.read(prepProfilesProvider.notifier);
@@ -30,6 +36,7 @@ Future<void> prepAddMine(BuildContext context, WidgetRef ref) async {
   final result = await showPrepSourcePicker(
     context,
     kind: PrepKind.mine,
+    only: source,
     existingKeys: {for (final a in existing?.accounts ?? const []) a.key},
     attaching: existing != null,
     multiple: true,
@@ -38,43 +45,88 @@ Future<void> prepAddMine(BuildContext context, WidgetRef ref) async {
   if (result == null || !context.mounted) return;
   await _releaseFromFavorites(ref, result.accounts);
   if (!context.mounted) return;
+  final String profileId;
   if (existing == null) {
-    profiles.create(
-      kind: PrepKind.mine,
-      name: result.name,
-      accounts: result.accounts,
-    );
+    profileId = profiles
+        .create(
+          kind: PrepKind.mine,
+          name: result.name,
+          accounts: result.accounts,
+        )
+        .id;
   } else {
     profiles.attach(existing.id, result.accounts);
+    profileId = existing.id;
   }
-  if (context.mounted) {
-    showAppSnack(context, 'Your accounts are attached to My games.');
-  }
+  // The card itself reports the download; no snack is needed.
+  await prepStartDownloads(
+    context,
+    ref,
+    profileId,
+    result.accounts,
+    scoped: true,
+  );
 }
 
-/// Adds an opponent with the accounts the reader typed and opens them.
-Future<void> prepAddOpponent(BuildContext context, WidgetRef ref) =>
-    _prepAddPlayer(context, ref, PrepKind.opponent);
-
-/// Adds a player to study alongside the curated Favorites.
-Future<void> prepAddFavorite(BuildContext context, WidgetRef ref) =>
-    _prepAddPlayer(context, ref, PrepKind.favorite);
+/// Adds an opponent with every account the reader typed. They stay on the
+/// list, where the new card reports its download.
+Future<void> prepAddOpponent(
+  BuildContext context,
+  WidgetRef ref, {
+  PrepSource? source,
+}) => _prepAddPlayer(context, ref, PrepKind.opponent, source);
 
 Future<void> _prepAddPlayer(
   BuildContext context,
   WidgetRef ref,
   PrepKind kind,
+  PrepSource? source,
 ) async {
   HapticFeedbackService.buttonPress();
   if (!await ensurePrepAccess(context) || !context.mounted) return;
-  final result = await showPrepSourcePicker(context, kind: kind);
-  if (result == null || !context.mounted) return;
+  await _prepPickPlayer(context, ref, kind, only: source);
+}
+
+/// The add sheet, and the profile made from what it hands back. [initial]
+/// accounts are chosen when it opens; a profile keeping any of them
+/// remembers the Favorites player ([favoriteId]) they belong to.
+Future<PrepProfile?> _prepPickPlayer(
+  BuildContext context,
+  WidgetRef ref,
+  PrepKind kind, {
+  PrepSource? only,
+  List<PrepAccount> initial = const [],
+  String? favoriteId,
+}) async {
+  final result = await showPrepSourcePicker(
+    context,
+    kind: kind,
+    only: only,
+    multiple: true,
+    initial: initial,
+  );
+  if (result == null || !context.mounted) return null;
   await _releaseFromFavorites(ref, result.accounts);
-  if (!context.mounted) return;
+  if (!context.mounted) return null;
+  final known = {for (final account in initial) account.key};
   final profile = ref
       .read(prepProfilesProvider.notifier)
-      .create(kind: kind, name: result.name, accounts: result.accounts);
-  unawaited(PrepProfileScreen.open(context, profile.id));
+      .create(
+        kind: kind,
+        name: result.name,
+        accounts: result.accounts,
+        favoriteId: result.accounts.any((a) => known.contains(a.key))
+            ? favoriteId
+            : null,
+      );
+  await prepStartDownloads(
+    context,
+    ref,
+    profile.id,
+    result.accounts,
+    scoped: true,
+  );
+  return profile;
 }
 
 /// Attaches a database player or online account to an existing profile.
@@ -103,51 +155,125 @@ Future<void> prepAddAccountTo(
     showAppSnack(context, '$error', tone: AppSnackTone.danger);
     return;
   }
+  await prepStartDownloads(
+    context,
+    ref,
+    profile.id,
+    result.accounts,
+    scoped: true,
+  );
 }
 
-/// A favorite opened before keeps its downloaded games; the first open
-/// creates its profile from the curated accounts.
+/// A ranked player already added opens their profile. Anyone else opens the
+/// add sheet Opponents uses, with ChessEver and their known accounts already
+/// chosen: the reader drops what they do not want and picks what to
+/// download before the player joins Opponents. [onResolved] runs as the
+/// sheet is about to open.
 Future<void> prepOpenFavorite(
   BuildContext context,
   WidgetRef ref,
-  PrepFavorite favorite,
-) async {
+  ChessPlayer player, {
+  VoidCallback? onResolved,
+}) async {
   HapticFeedbackService.cardTap();
+  final fide = '${player.fideid}';
+  final favorite = kPrepFavoritesByFide[fide];
   final profiles = ref.read(prepProfilesProvider.notifier);
   final all = ref.read(prepProfilesProvider).valueOrNull ?? const [];
-  final existing = all.where((p) => p.favoriteId == favorite.id).firstOrNull;
+  final existing = all.where((p) => prepFavoriteFide(p) == fide).firstOrNull;
   if (existing != null) {
+    unawaited(prepAttachFavoriteDatabase(ref, existing));
     unawaited(PrepProfileScreen.open(context, existing.id));
     return;
   }
   if (!await ensurePrepAccess(context) || !context.mounted) return;
-  final accounts = [
-    for (final (source, username) in favorite.accounts)
-      if (profiles.owning(source, username) == null)
-        PrepAccount(
-          source: source,
-          username: username,
-          displayName: favorite.name,
-          title: favorite.title,
-          country: favorite.country,
-        ),
+  final database = await _databaseAccount(ref, fide);
+  if (!context.mounted) return;
+  final known = [
+    ?database,
+    for (final (source, username)
+        in favorite?.accounts ?? const <(PrepSource, String)>[])
+      PrepAccount(
+        source: source,
+        username: username,
+        displayName: favorite!.name,
+        title: player.title,
+        country: player.country,
+      ),
   ];
-  if (accounts.isEmpty) {
-    // Every account is already followed elsewhere; open that instead.
-    final (source, username) = favorite.accounts.first;
-    final owner = profiles.owning(source, username);
-    if (owner != null) unawaited(PrepProfileScreen.open(context, owner.id));
+  if (known.isEmpty) {
+    showAppSnack(
+      context,
+      'Could not load this player from ChessEver. Check your connection and retry.',
+      tone: AppSnackTone.danger,
+    );
     return;
   }
-  final profile = profiles.create(
-    kind: PrepKind.favorite,
-    name: favorite.name,
-    accounts: accounts,
-    favoriteId: favorite.id,
+  PrepProfile? owner(PrepAccount a) =>
+      profiles.owning(a.source, a.externalId ?? a.username);
+  final accounts = [
+    for (final account in known)
+      if (owner(account) == null) account,
+  ];
+  if (accounts.isEmpty) {
+    // Every source is already followed elsewhere; open that instead.
+    unawaited(PrepProfileScreen.open(context, owner(known.first)!.id));
+    return;
+  }
+  onResolved?.call();
+  final messenger = ScaffoldMessenger.maybeOf(context);
+  final profile = await _prepPickPlayer(
+    context,
+    ref,
+    PrepKind.opponent,
+    initial: accounts,
+    favoriteId: favorite?.id ?? fide,
   );
+  if (profile == null) return;
   // Refresh ratings and avatars quietly; the curated values stand in.
   unawaited(_refreshProfiles(ref, profile.id));
-  unawaited(PrepProfileScreen.open(context, profile.id));
+  if (messenger != null) {
+    showAppSnackOn(messenger, '${profile.name} added to Opponents');
+  }
+}
+
+/// Whether [profile] is a favorite saved before ChessEver was one of its
+/// sources. A reader who detached the database keeps its FIDE identity, so
+/// that choice is never undone.
+bool prepFavoriteLacksDatabase(PrepProfile profile) =>
+    profile.kind == PrepKind.favorite &&
+    profile.fideId == null &&
+    prepFavoriteFide(profile) != null;
+
+/// Gives such a favorite its ChessEver source.
+Future<void> prepAttachFavoriteDatabase(
+  WidgetRef ref,
+  PrepProfile profile,
+) async {
+  if (!prepFavoriteLacksDatabase(profile)) return;
+  final profiles = ref.read(prepProfilesProvider.notifier);
+  final account = await _databaseAccount(ref, prepFavoriteFide(profile)!);
+  if (account == null) return;
+  try {
+    profiles.attach(profile.id, [account]);
+    unawaited(
+      ref.read(prepSyncProvider.notifier).syncAccount(profile.id, account),
+    );
+  } on PrepException {
+    // Another profile holds this player; leave both as they are.
+  }
+}
+
+Future<PrepAccount?> _databaseAccount(WidgetRef ref, String fideId) async {
+  try {
+    final players = await ref
+        .read(prepRepositoryProvider)
+        .searchPlayers(fideId);
+    final player = players.where((p) => p.fideId == fideId).firstOrNull;
+    return player == null ? null : PrepAccount.fromPlayer(player);
+  } catch (_) {
+    return null;
+  }
 }
 
 /// Accounts typed into My games or Opponents move out of a favorite that

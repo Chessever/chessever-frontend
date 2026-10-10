@@ -1,7 +1,9 @@
 import 'package:chessever2/screens/gamebase/services/player_opening_tree.dart';
 import 'package:chessever2/screens/my_prep/models/prep_models.dart';
+import 'package:chessever2/screens/player_profile/utils/twic_event_identity.dart';
 import 'package:chessever2/services/game_tree/game_tree_codec.dart';
 import 'package:chessever2/services/game_tree/game_tree_store.dart';
+import 'package:chessever2/utils/eco_openings.dart';
 import 'package:flutter/foundation.dart';
 
 /// How deep the device-built opening tree reaches, as the server's does.
@@ -32,7 +34,14 @@ class PrepGame {
     this.opening,
     this.url,
     this.event,
+    this.site,
+    this.round,
+    this.eventName,
+    this.eventId,
+    this.eventSlug,
+    this.eventDate,
     this.playerIsWhite,
+    this.online,
   });
 
   /// Position in the newest-first list.
@@ -55,7 +64,22 @@ class PrepGame {
   final String? eco;
   final String? opening;
   final String? url;
+
+  /// The `Event` tag as written, which a broadcast fills with its round.
   final String? event;
+
+  /// The `Site` tag: a venue, or a server's link to the game.
+  final String? site;
+  final String? round;
+
+  /// What a ChessEver broadcast calls its event, with the id and slug that
+  /// open it; null for a game from anywhere else.
+  final String? eventName;
+  final String? eventId;
+  final String? eventSlug;
+
+  /// The event's first day.
+  final DateTime? eventDate;
 
   /// Which side the prepared player had; null when neither name matched.
   final bool? playerIsWhite;
@@ -87,6 +111,13 @@ class PrepGame {
     opening: g.opening,
     url: g.url,
     event: g.event,
+    site: g.site,
+    round: g.round,
+    eventName: g.eventName,
+    eventId: g.eventId,
+    eventSlug: g.eventSlug,
+    eventDate: treeDateTime(g.eventDate),
+    online: g.online,
     playerIsWhite: switch (g.side) {
       1 => true,
       2 => false,
@@ -105,12 +136,13 @@ class PrepGame {
         : ratings.reduce((a, b) => a + b) / ratings.length;
   }
 
+  /// What the index read from the game's source and `Site`; null for a
+  /// game built without the index.
+  final bool? online;
+
+  /// Played on a server rather than over the board (the Format filter).
   bool get isOnline =>
-      source.online ||
-      RegExp(
-        r'lichess|chess\.com|chesscom|chess24',
-        caseSensitive: false,
-      ).hasMatch(url ?? '');
+      online ?? treeGameIsOnline(sourceKind: source.name, link: url);
 
   PrepOutcome get outcome {
     final white = playerIsWhite;
@@ -123,12 +155,61 @@ class PrepGame {
     };
   }
 
+  /// The tournament this game was played in; null for a server's pool game,
+  /// which belongs to none.
+  String? get eventTitle =>
+      prepEventTitle(broadcast: eventName, event: event, site: site);
+
+  /// What a game card prints where its event goes: the tournament, else
+  /// where and how fast the game was played (`Lichess · Blitz`).
+  String get eventLabel =>
+      eventTitle ??
+      (speed == null
+          ? source.label
+          : '${source.label} · ${speed!.labelFor(source)}');
+
+  /// Games sharing this belong under one event card. Null leaves a game
+  /// out of any: an online account's games stay a plain dated list, where
+  /// an arena played every hour would otherwise head a section each day.
+  String? get eventKey {
+    if (source.online) return null;
+    final key = eventTitle?.toLowerCase().replaceAll(_notWord, ' ').trim();
+    return key == null || key.isEmpty ? null : key;
+  }
+
   /// The family name of the opening, without its variation.
   String get openingFamily {
     final name = opening;
     if (name == null || name.isEmpty) return eco ?? 'Unknown opening';
     return name.split(RegExp(r'[:,]')).first.trim();
   }
+}
+
+final RegExp _notWord = RegExp(r'[^\p{L}\p{N}]+', unicode: true);
+
+/// What a server writes as the `Event` of a game played in no tournament:
+/// Lichess's `Rated Blitz game` (older exports end in the arena's link) and
+/// Chess.com's `Live Chess` and `Let's Play!`.
+final RegExp _poolGame = RegExp(
+  r"^(?:(?:rated|casual|unrated)\s.*\b(?:game|https?://\S+)"
+  r"|live chess|let'?s play!?|daily chess|online chess)$",
+  caseSensitive: false,
+);
+
+/// The name of the tournament a game belongs to, from what its PGN says.
+/// [broadcast] is a ChessEver broadcast's own name for it, which wins:
+/// there the `Event` tag may carry a round's dates or pairing instead.
+String? prepEventTitle({String? broadcast, String? event, String? site}) {
+  final named = broadcast?.trim();
+  if (named != null && named.isNotEmpty) return named;
+  final raw = event?.trim();
+  if (raw == null || raw.isEmpty || raw == '?' || _poolGame.hasMatch(raw)) {
+    return null;
+  }
+  // `Round 7: Carlsen - Caruana` names a pairing; its broadcast link, when
+  // the game has one, still names the tournament.
+  if (isTwicRoundDisplayTitle(raw)) return eventTitleFromBroadcastSite(site);
+  return raw;
 }
 
 /// Everything My Prep shows for a profile: the light games list in memory,
@@ -173,6 +254,8 @@ PrepTimeControl? prepSpeedOf({
     lichess: source == PrepSource.lichess,
     timeControl: timeControl,
     timeClass: timeClass,
+    event: event,
+    source: source.name,
   );
   return speed == null ? null : PrepTimeControl.values[speed];
 }
@@ -222,11 +305,24 @@ class PrepOpeningLine {
 class PrepOpponentLine {
   const PrepOpponentLine(this.name, this.rating, this.tally);
   final String name;
+
+  /// Their average rating across the games against them.
   final int? rating;
   final PrepTally tally;
 }
 
-/// The Overview numbers for a filtered set of games.
+/// One year of games: every game the player's side is known for, and the
+/// results among them. The difference is the unfinished ones.
+@immutable
+class PrepYearLine {
+  const PrepYearLine(this.year, this.total, this.tally);
+  final int year;
+  final int total;
+  final PrepTally tally;
+}
+
+/// The About numbers for a slice of games, defined as the desktop app's
+/// Prepare dashboard defines them. Only games whose side is known count.
 @immutable
 class PrepStats {
   const PrepStats({
@@ -239,118 +335,184 @@ class PrepStats {
     required this.opponents,
     required this.byYear,
     required this.lengths,
+    this.clocks = const [],
     this.peakRating,
     this.currentRating,
+    this.ratingSpeed,
+    this.ratingSource,
     this.performance,
     this.averageOpponent,
     this.ratingHistory = const [],
   });
 
+  /// Every game in the slice, including those left out of the results.
   final int games;
   final PrepTally overall;
   final PrepTally asWhite;
   final PrepTally asBlack;
+
+  /// The ten most played ECO codes with each colour.
   final List<PrepOpeningLine> whiteOpenings;
   final List<PrepOpeningLine> blackOpenings;
   final List<PrepOpponentLine> opponents;
-  final List<(int, PrepTally)> byYear;
+  final List<PrepYearLine> byYear;
 
-  /// Games ending within each 20-move band: ≤20, 21–40, 41–60, 61–80, 80+.
+  /// Games by length in moves: 0–20, 21–30, 31–40, 41–50, 50+.
   final List<int> lengths;
+  static const lengthLabels = ['0–20', '21–30', '31–40', '41–50', '50+'];
+
+  /// How the games divide by clock, most played first. Counted before the
+  /// clock, result and colour scopes, so it stays whole while they narrow.
+  final List<(PrepTimeControl?, int)> clocks;
+
+  /// The highest and the latest point of [ratingHistory].
   final int? peakRating;
   final int? currentRating;
+
+  /// The clock [ratingHistory] follows; null when it spans every clock.
+  final PrepTimeControl? ratingSpeed;
+
+  /// The provider whose scale [ratingHistory] is on.
+  final PrepSource? ratingSource;
   final int? performance;
   final int? averageOpponent;
   final List<(DateTime, int)> ratingHistory;
 
-  static PrepStats of(Iterable<PrepGame> games) {
-    var overall = const PrepTally();
+  int get decisive => overall.wins + overall.losses;
+
+  /// The share of decided games that had a winner, 0..1.
+  double? get decisiveRate =>
+      overall.total == 0 ? null : decisive / overall.total;
+
+  /// [games] is the scoped slice. [clockGames] is the same slice before its
+  /// clock, result and colour scopes. [speed] is the clock scope, and
+  /// [preferredRating] the ladder the rating history follows without one.
+  static PrepStats of(
+    Iterable<PrepGame> games, {
+    Iterable<PrepGame>? clockGames,
+    PrepTimeControl? speed,
+    PrepTimeControl preferredRating = PrepTimeControl.classical,
+  }) {
     var white = const PrepTally();
     var black = const PrepTally();
     final whiteOpenings = <String, (String?, PrepTally)>{};
     final blackOpenings = <String, (String?, PrepTally)>{};
-    final opponents = <String, (String, int?, PrepTally)>{};
-    final years = <int, PrepTally>{};
+    final opponents = <String, _Opponent>{};
+    final years = <int, (int, PrepTally)>{};
     final lengths = List<int>.filled(5, 0);
-    final ratingsByMonth = <int, (DateTime, int)>{};
-    final ratingTracks = <String>{};
-    int? peak;
-    int? current;
+    final rated = <PrepGame>[];
     var opponentSum = 0;
     var opponentCount = 0;
     var count = 0;
     for (final g in games) {
       count++;
+      final isWhite = g.playerIsWhite;
+      if (isWhite == null) continue;
       final outcome = g.outcome;
-      overall += outcome;
-      if (g.playerIsWhite == true) white += outcome;
-      if (g.playerIsWhite == false) black += outcome;
-      final table = g.playerIsWhite == false ? blackOpenings : whiteOpenings;
-      if (g.playerIsWhite != null) {
-        final name = g.openingFamily;
-        final prior = table[name];
-        table[name] = (
-          prior?.$1 ?? g.eco,
+      if (isWhite) {
+        white += outcome;
+      } else {
+        black += outcome;
+      }
+      final eco = g.eco?.trim().toUpperCase() ?? '';
+      if (eco.isNotEmpty && outcome != PrepOutcome.unknown) {
+        final table = isWhite ? whiteOpenings : blackOpenings;
+        final prior = table[eco];
+        table[eco] = (
+          prior?.$1 ?? _openingName(g.opening),
           (prior?.$2 ?? const PrepTally()) + outcome,
         );
-        final opp = g.opponent;
-        final key = opp.toLowerCase();
-        final seen = opponents[key];
-        opponents[key] = (
-          seen?.$1 ?? opp,
-          seen?.$2 ?? g.opponentElo,
-          (seen?.$3 ?? const PrepTally()) + outcome,
+      }
+      final theirs = g.opponentElo ?? 0;
+      final opp = g.opponent.trim();
+      if (opp.isNotEmpty && opp != '?') {
+        final line = opponents.putIfAbsent(
+          opp.toLowerCase(),
+          () => _Opponent(opp),
         );
-        final mine = g.playerElo;
-        if (mine != null && mine > 0) {
-          ratingTracks.add('${g.source.name}|${g.sourcePath}|${g.speed?.name}');
-          if (g.date case final date?) {
-            ratingsByMonth.putIfAbsent(
-              date.year * 12 + date.month,
-              () => (date, mine),
-            );
-          }
-          current ??= mine; // games are newest first
-          if (peak == null || mine > peak) peak = mine;
-        }
-        final theirs = g.opponentElo;
-        if (theirs != null && theirs > 0 && outcome != PrepOutcome.unknown) {
-          opponentSum += theirs;
-          opponentCount++;
+        line.tally += outcome;
+        if (theirs > 0) {
+          line.ratingSum += theirs;
+          line.ratingCount++;
         }
       }
+      if (theirs > 0) {
+        opponentSum += theirs;
+        opponentCount++;
+      }
+      if ((g.playerElo ?? 0) > 0 && g.date != null) rated.add(g);
       final year = g.date?.year;
       if (year != null) {
-        years[year] = (years[year] ?? const PrepTally()) + outcome;
+        final prior = years[year];
+        years[year] = (
+          (prior?.$1 ?? 0) + 1,
+          (prior?.$2 ?? const PrepTally()) + outcome,
+        );
       }
-      final moves = (g.plies + 1) ~/ 2;
-      lengths[moves <= 20
-          ? 0
-          : moves <= 40
-          ? 1
-          : moves <= 60
-          ? 2
-          : moves <= 80
-          ? 3
-          : 4]++;
+      if (g.plies > 0) {
+        lengths[g.plies <= 40
+            ? 0
+            : g.plies <= 60
+            ? 1
+            : g.plies <= 80
+            ? 2
+            : g.plies <= 100
+            ? 3
+            : 4]++;
+      }
     }
 
     List<PrepOpeningLine> top(Map<String, (String?, PrepTally)> table) {
-      final lines = [
-        for (final e in table.entries)
-          PrepOpeningLine(e.key, e.value.$1, e.value.$2),
-      ]..sort((a, b) => b.tally.total.compareTo(a.tally.total));
-      return lines.take(8).toList();
+      final lines =
+          [
+            for (final e in table.entries)
+              PrepOpeningLine(
+                // The game's own opening name, else the code's catalogue name.
+                e.value.$1 ?? EcoOpenings.codeToName[e.key] ?? e.key,
+                e.key,
+                e.value.$2,
+              ),
+          ]..sort((a, b) {
+            final byGames = b.tally.total.compareTo(a.tally.total);
+            return byGames != 0 ? byGames : a.eco!.compareTo(b.eco!);
+          });
+      return lines.take(10).toList();
     }
 
-    final average = opponentCount == 0 ? null : opponentSum / opponentCount;
-    final decided = overall.total;
-    final performance = average == null || decided == 0
+    final overall = PrepTally(
+      wins: white.wins + black.wins,
+      draws: white.draws + black.draws,
+      losses: white.losses + black.losses,
+    );
+    final average = opponentCount == 0
         ? null
-        : (average + 400 * (overall.wins - overall.losses) / decided).round();
-    final opponentLines = [
-      for (final o in opponents.values) PrepOpponentLine(o.$1, o.$2, o.$3),
-    ]..sort((a, b) => b.tally.total.compareTo(a.tally.total));
+        : (opponentSum / opponentCount).round();
+    final opponentLines =
+        [
+          for (final o in opponents.values)
+            if (o.tally.total > 0)
+              PrepOpponentLine(
+                o.name,
+                o.ratingCount == 0
+                    ? null
+                    : (o.ratingSum / o.ratingCount).round(),
+                o.tally,
+              ),
+        ]..sort((a, b) {
+          final byGames = b.tally.total.compareTo(a.tally.total);
+          return byGames != 0 ? byGames : b.tally.wins.compareTo(a.tally.wins);
+        });
+
+    final clockCounts = <PrepTimeControl?, int>{};
+    for (final g in clockGames ?? games) {
+      if (g.playerIsWhite == null) continue;
+      clockCounts[g.speed] = (clockCounts[g.speed] ?? 0) + 1;
+    }
+    final rating = _ratingSeries(
+      rated,
+      scoped: speed,
+      preferred: preferredRating,
+    );
 
     return PrepStats(
       games: count,
@@ -359,18 +521,129 @@ class PrepStats {
       asBlack: black,
       whiteOpenings: top(whiteOpenings),
       blackOpenings: top(blackOpenings),
-      opponents: opponentLines.take(8).toList(),
-      byYear: [for (final y in years.keys.toList()..sort()) (y, years[y]!)],
+      opponents: opponentLines.take(10).toList(),
+      byYear: [
+        for (final y in years.keys.toList()..sort())
+          PrepYearLine(y, years[y]!.$1, years[y]!.$2),
+      ],
       lengths: lengths,
-      peakRating: peak,
-      currentRating: current,
-      performance: performance,
-      averageOpponent: average?.round(),
-      // Separate accounts, providers and clock ratings use separate scales.
-      ratingHistory: ratingTracks.length == 1
-          ? (ratingsByMonth.values.toList()
-              ..sort((a, b) => a.$1.compareTo(b.$1)))
-          : const [],
+      clocks: clockCounts.entries.map((e) => (e.key, e.value)).toList()
+        ..sort((a, b) => b.$2.compareTo(a.$2)),
+      peakRating: rating.$1.isEmpty
+          ? null
+          : rating.$1.map((p) => p.$2).reduce((a, b) => a > b ? a : b),
+      currentRating: rating.$1.isEmpty ? null : rating.$1.last.$2,
+      ratingSpeed: rating.$2,
+      ratingSource: rating.$3,
+      performance: average == null || overall.total == 0
+          ? null
+          : average + _fideDp[(overall.score! * 100).round().clamp(0, 100)],
+      averageOpponent: average,
+      ratingHistory: rating.$1,
     );
   }
+
+  static String? _openingName(String? raw) {
+    final name = raw?.trim();
+    return switch (name?.toLowerCase()) {
+      null || '' || '?' || '-' || 'unknown' || 'unknown opening' => null,
+      _ => name,
+    };
+  }
+
+  /// One rating per day on a single ladder: the scoped clock, else the
+  /// preferred one when it was played, else the most played of classical,
+  /// rapid and blitz. A classical preference follows every rated game when
+  /// the rated history begins before the classical games do.
+  ///
+  /// Ratings from two accounts or providers are separate scales and are
+  /// never drawn as one line.
+  static (List<(DateTime, int)>, PrepTimeControl?, PrepSource?) _ratingSeries(
+    List<PrepGame> rated, {
+    required PrepTimeControl? scoped,
+    required PrepTimeControl preferred,
+  }) {
+    if (rated.isEmpty) return (const [], null, null);
+    var candidates = rated;
+    var selected = scoped;
+    if (scoped == null) {
+      const order = [
+        PrepTimeControl.classical,
+        PrepTimeControl.rapid,
+        PrepTimeControl.blitz,
+      ];
+      final counts = <PrepTimeControl, int>{};
+      for (final g in rated) {
+        final speed = g.speed;
+        if (speed != null && order.contains(speed)) {
+          counts[speed] = (counts[speed] ?? 0) + 1;
+        }
+      }
+      if (counts.containsKey(preferred)) {
+        selected = preferred;
+      } else if (counts.isNotEmpty) {
+        selected = order
+            .where(counts.containsKey)
+            .reduce((a, b) => counts[a]! >= counts[b]! ? a : b);
+      }
+      if (selected != null) {
+        final own = [
+          for (final g in rated)
+            if (g.speed == selected) g,
+        ];
+        DateTime first(List<PrepGame> list) =>
+            list.map((g) => g.date!).reduce((a, b) => a.isBefore(b) ? a : b);
+        if (preferred == PrepTimeControl.classical &&
+            own.isNotEmpty &&
+            first(rated).isBefore(first(own))) {
+          selected = null;
+        } else {
+          candidates = own;
+        }
+      }
+    }
+    // Each account rates on its own scale: follow the one with most games.
+    final tracks = <String, List<PrepGame>>{};
+    for (final g in candidates) {
+      (tracks['${g.source.name}|${g.sourcePath}'] ??= []).add(g);
+    }
+    candidates = tracks.values.reduce((a, b) => b.length > a.length ? b : a);
+    final source = candidates.first.source;
+    // Games arrive newest first, so the first seen on a day is its last.
+    final byDay = <int, (DateTime, int)>{};
+    for (final g in candidates) {
+      final date = g.date!;
+      byDay.putIfAbsent(
+        date.year * 10000 + date.month * 100 + date.day,
+        () => (date, g.playerElo!),
+      );
+    }
+    final spots = byDay.values.toList()..sort((a, b) => a.$1.compareTo(b.$1));
+    const most = 400;
+    if (spots.length <= most) return (spots, selected, source);
+    final step = spots.length / most;
+    final out = [for (var i = 0; i < most; i++) spots[(i * step).floor()]];
+    if (out.last != spots.last) out.add(spots.last);
+    return (out, selected, source);
+  }
 }
+
+class _Opponent {
+  _Opponent(this.name);
+  final String name;
+  PrepTally tally = const PrepTally();
+  int ratingSum = 0;
+  int ratingCount = 0;
+}
+
+/// FIDE's rating difference for a score percentage, 0..100.
+const List<int> _fideDp = [
+  -800, -677, -589, -538, -501, -470, -444, -422, -401, -383, -366, -351, //
+  -336, -322, -309, -296, -284, -273, -262, -251, -240, -230, -220, -211, //
+  -202, -193, -184, -175, -166, -158, -149, -141, -133, -125, -117, -110, //
+  -102, -95, -87, -80, -72, -65, -57, -50, -43, -36, -29, -21, -14, -7, 0, //
+  7, 14, 21, 29, 36, 43, 50, 57, 65, 72, 80, 87, 95, 102, 110, 117, 125, 133, //
+  141, 149, 158, 166, 175, 184, 193, 202, 211, 220, 230, 240, 251, 262, 273, //
+  284, 296, 309, 322, 336, 351, 366, 383, 401, 422, 444, 470, 501, 538, 589, //
+  677, 800,
+];

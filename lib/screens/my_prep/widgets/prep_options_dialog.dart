@@ -10,150 +10,72 @@ import 'package:chessever2/widgets/app_button.dart' show TappableScale;
 import 'package:flutter/material.dart';
 
 /// Which games to download for one account: its clocks and how far back.
-/// The same choices desktop Prep's download options offer.
+/// The same choices desktop Prep's download options offer. Accounts added
+/// together ([others]) are asked once; each keeps the clocks its site has.
 Future<PrepDownloadPreferences?> showPrepDownloadOptionsDialog(
   BuildContext context, {
   required PrepAccount account,
+  List<PrepAccount> others = const [],
   bool download = false,
+  PrepDownloadPreferences? initial,
 }) {
   return showAlertModal<PrepDownloadPreferences>(
     context: context,
-    child: _OptionsDialog(account: account, download: download),
+    child: _OptionsDialog(
+      account: account,
+      others: others,
+      download: download,
+      initial: initial ?? account.preferences,
+    ),
   );
 }
 
 class _OptionsDialog extends StatefulWidget {
-  const _OptionsDialog({required this.account, required this.download});
+  const _OptionsDialog({
+    required this.account,
+    required this.others,
+    required this.download,
+    required this.initial,
+  });
   final PrepAccount account;
+  final List<PrepAccount> others;
   final bool download;
+  final PrepDownloadPreferences initial;
 
   @override
   State<_OptionsDialog> createState() => _OptionsDialogState();
 }
 
 class _OptionsDialogState extends State<_OptionsDialog> {
-  late Set<PrepTimeControl> _clocks = {
-    ...widget.account.preferences.timeControls,
-  };
-  late PrepDateRange _range = widget.account.preferences.range;
-  late DateTime? _from = widget.account.preferences.fromDate;
-  late DateTime? _to = widget.account.preferences.toDate;
+  late PrepDownloadPreferences _value = widget.initial;
 
-  Future<void> _pickDate(bool start) async {
-    final value = await showDatePicker(
-      context: context,
-      initialDate: (start ? _from : _to) ?? DateTime.now(),
-      firstDate: DateTime(1800),
-      lastDate: DateTime.now(),
-      helpText: start ? 'First game date' : 'Last game date',
-    );
-    if (value == null || !mounted) return;
-    setState(() {
-      final date = DateTime.utc(value.year, value.month, value.day);
-      if (start) {
-        _from = date;
-      } else {
-        _to = date;
-      }
-    });
-  }
-
-  PrepSource get _source => widget.account.source;
+  late final _sources = {
+    widget.account.source,
+    for (final other in widget.others) other.source,
+  }.toList();
 
   @override
   Widget build(BuildContext context) {
-    final offered = PrepTimeControl.offeredBy(_source);
-    final next = PrepDownloadPreferences(
-      timeControls: _clocks.intersection(offered.toSet()),
-      range: _range,
-      fromDate: _from,
-      toDate: _to,
+    final account = widget.account;
+    final next = _value.copyWith(
+      timeControls: _value.timeControls.intersection(
+        prepOfferedClocks(_sources).toSet(),
+      ),
     );
-    final changed = next != widget.account.preferences;
+    final changed = next != account.preferences;
     return PrepDialogCard(
-      icon: PrepSourceMark(source: _source, size: 22.sp),
+      icon: PrepSourceMarks(sources: _sources, size: 22.sp),
       title: widget.download ? 'Download games' : 'Download options',
-      subtitle: '${widget.account.username} on ${_source.label}',
+      subtitle: widget.others.isEmpty
+          ? '${account.source.online ? account.username : account.displayName ?? account.username} on ${account.source.label}'
+          : _sources.map((s) => s.label).join(' and '),
       children: [
-        const PrepFieldLabel('Time controls'),
-        Wrap(
-          spacing: 8.w,
-          runSpacing: 8.h,
-          children: [
-            _Chip(
-              label: 'All',
-              selected: _clocks.isEmpty,
-              onTap: () => setState(() => _clocks = {}),
-            ),
-            for (final clock in offered)
-              _Chip(
-                label: clock.labelFor(_source),
-                selected: _clocks.contains(clock),
-                onTap: () => setState(() {
-                  _clocks = {..._clocks};
-                  if (!_clocks.remove(clock)) _clocks.add(clock);
-                }),
-              ),
-          ],
-        ),
-        SizedBox(height: 20.h),
-        const PrepFieldLabel('Period'),
-        Wrap(
-          spacing: 8.w,
-          runSpacing: 8.h,
-          children: [
-            for (final range in PrepDateRange.values)
-              _Chip(
-                label: range.label,
-                selected: _range == range,
-                onTap: () => setState(() => _range = range),
-              ),
-          ],
-        ),
-        SizedBox(height: 14.h),
-        if (_range == PrepDateRange.custom) ...[
-          Row(
-            children: [
-              Expanded(
-                child: TextButton(
-                  onPressed: () => _pickDate(true),
-                  child: Text(
-                    _from == null ? 'Start date' : prepDateText(_from!),
-                  ),
-                ),
-              ),
-              Expanded(
-                child: TextButton(
-                  onPressed: () => _pickDate(false),
-                  child: Text(_to == null ? 'End date' : prepDateText(_to!)),
-                ),
-              ),
-            ],
-          ),
-          TextButton(
-            onPressed: () => setState(() {
-              _from = null;
-              _to = null;
-            }),
-            child: const Text('Clear dates'),
-          ),
-          if (next.validationError case final error?)
-            Text(
-              error,
-              style: AppTypography.textXsRegular.copyWith(
-                color: context.colors.danger,
-              ),
-            ),
-        ],
-        Text(
-          _range == PrepDateRange.all
-              ? 'Large accounts can hold tens of thousands of games. A '
-                    'shorter period downloads and opens much faster.'
-              : 'Changing these replaces this account’s downloaded games.',
-          style: AppTypography.textXsRegular.copyWith(
-            color: context.colors.textSecondary,
-            height: 16 / 12,
-          ),
+        PrepScopeFields(
+          sources: _sources,
+          value: _value,
+          onChanged: (value) => setState(() => _value = value),
+          // A first download has nothing to replace.
+          replaces: !widget.download,
         ),
         SizedBox(height: 24.h),
         PrepDialogActions(
@@ -166,6 +88,160 @@ class _OptionsDialogState extends State<_OptionsDialog> {
                 }
               : null,
         ),
+      ],
+    );
+  }
+}
+
+/// The clocks any of [sources] has, in their usual order.
+List<PrepTimeControl> prepOfferedClocks(List<PrepSource> sources) => [
+  for (final clock in PrepTimeControl.values)
+    if (sources.any((s) => PrepTimeControl.offeredBy(s).contains(clock))) clock,
+];
+
+/// The clocks and period of a download, as chips. Shared by the options
+/// dialog and the add dialog's per-source pages.
+class PrepScopeFields extends StatelessWidget {
+  const PrepScopeFields({
+    super.key,
+    required this.sources,
+    required this.value,
+    required this.onChanged,
+    this.replaces = false,
+  });
+
+  final List<PrepSource> sources;
+  final PrepDownloadPreferences value;
+  final ValueChanged<PrepDownloadPreferences> onChanged;
+
+  /// Whether saving replaces games this account already downloaded.
+  final bool replaces;
+
+  /// Rebuilt whole, since a cleared date cannot pass through `copyWith`.
+  void _emit({
+    Set<PrepTimeControl>? clocks,
+    PrepDateRange? range,
+    DateTime? from,
+    DateTime? to,
+    bool clearDates = false,
+  }) => onChanged(
+    PrepDownloadPreferences(
+      timeControls: clocks ?? value.timeControls,
+      range: range ?? value.range,
+      fromDate: clearDates ? null : from ?? value.fromDate,
+      toDate: clearDates ? null : to ?? value.toDate,
+    ),
+  );
+
+  Future<void> _pickDate(BuildContext context, bool start) async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: (start ? value.fromDate : value.toDate) ?? DateTime.now(),
+      firstDate: DateTime(1800),
+      lastDate: DateTime.now(),
+      helpText: start ? 'First game date' : 'Last game date',
+    );
+    if (picked == null || !context.mounted) return;
+    final date = DateTime.utc(picked.year, picked.month, picked.day);
+    _emit(from: start ? date : null, to: start ? null : date);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // One site names its own clocks (Chess.com's Daily); several share the
+    // common names.
+    final source = sources.length == 1 ? sources.single : null;
+    final clocks = value.timeControls;
+    final range = value.range;
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const PrepFieldLabel('Time controls'),
+        Wrap(
+          spacing: 8.w,
+          runSpacing: 8.h,
+          children: [
+            _Chip(
+              label: 'All',
+              selected: clocks.isEmpty,
+              onTap: () => _emit(clocks: const {}),
+            ),
+            for (final clock in prepOfferedClocks(sources))
+              _Chip(
+                label: clock.labelFor(source),
+                selected: clocks.contains(clock),
+                onTap: () => _emit(
+                  clocks: clocks.contains(clock)
+                      ? clocks.difference({clock})
+                      : {...clocks, clock},
+                ),
+              ),
+          ],
+        ),
+        SizedBox(height: 20.h),
+        const PrepFieldLabel('Period'),
+        Wrap(
+          spacing: 8.w,
+          runSpacing: 8.h,
+          children: [
+            for (final option in PrepDateRange.values)
+              _Chip(
+                label: option.label,
+                selected: range == option,
+                onTap: () => _emit(range: option),
+              ),
+          ],
+        ),
+        SizedBox(height: 14.h),
+        if (range == PrepDateRange.custom) ...[
+          Row(
+            children: [
+              Expanded(
+                child: TextButton(
+                  onPressed: () => _pickDate(context, true),
+                  child: Text(
+                    value.fromDate == null
+                        ? 'Start date'
+                        : prepDateText(value.fromDate!),
+                  ),
+                ),
+              ),
+              Expanded(
+                child: TextButton(
+                  onPressed: () => _pickDate(context, false),
+                  child: Text(
+                    value.toDate == null
+                        ? 'End date'
+                        : prepDateText(value.toDate!),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          TextButton(
+            onPressed: () => _emit(clearDates: true),
+            child: const Text('Clear dates'),
+          ),
+          if (value.validationError case final error?)
+            Text(
+              error,
+              style: AppTypography.textXsRegular.copyWith(
+                color: context.colors.danger,
+              ),
+            ),
+        ],
+        if (range == PrepDateRange.all || replaces)
+          Text(
+            range == PrepDateRange.all
+                ? 'Large accounts can hold tens of thousands of games. A '
+                      'shorter period downloads and opens much faster.'
+                : 'Changing these replaces this account’s downloaded games.',
+            style: AppTypography.textXsRegular.copyWith(
+              color: context.colors.textSecondary,
+              height: 16 / 12,
+            ),
+          ),
       ],
     );
   }

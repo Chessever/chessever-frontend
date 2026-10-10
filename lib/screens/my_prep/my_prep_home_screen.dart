@@ -1,9 +1,12 @@
+import 'package:chessever2/repository/supabase/chess_player/chess_player_repository.dart'
+    show ChessPlayer;
 import 'package:chessever2/screens/my_prep/data/prep_favorites.dart';
 import 'package:chessever2/screens/my_prep/models/prep_models.dart';
 import 'package:chessever2/screens/my_prep/prep_access.dart';
 import 'package:chessever2/screens/my_prep/prep_actions.dart';
 import 'package:chessever2/screens/my_prep/prep_profile_screen.dart';
 import 'package:chessever2/screens/my_prep/prep_sources_screen.dart';
+import 'package:chessever2/screens/my_prep/providers/prep_favorites_provider.dart';
 import 'package:chessever2/screens/my_prep/providers/prep_providers.dart';
 import 'package:chessever2/screens/my_prep/widgets/prep_common.dart';
 import 'package:chessever2/screens/my_prep/widgets/prep_profile_card.dart';
@@ -11,6 +14,8 @@ import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/widgets/generic_loading_widget.dart';
+import 'package:chessever2/widgets/popover_add_fab.dart';
 import 'package:chessever2/widgets/segmented_switcher.dart';
 import 'package:chessever2/widgets/skeleton_widget.dart';
 import 'package:flutter/material.dart';
@@ -54,20 +59,15 @@ class _MyPrepHomeScreenState extends ConsumerState<MyPrepHomeScreen> {
     );
   }
 
-  String get _addLabel => switch (_tab) {
-    0 => 'Attach your username',
-    1 => 'Add opponent',
-    _ => 'Add favorite',
-  };
+  String get _addLabel => _tab == 0 ? 'Attach your username' : 'Add opponent';
 
-  void _add() {
-    switch (_tab) {
-      case 0:
-        prepAddMine(context, ref);
-      case 1:
-        prepAddOpponent(context, ref);
-      default:
-        prepAddFavorite(context, ref);
+  /// [source] is the one picked from the floating button's popover; the
+  /// other adds leave the choice to the dialog.
+  void _add([PrepSource? source]) {
+    if (_tab == 0) {
+      prepAddMine(context, ref, source: source);
+    } else {
+      prepAddOpponent(context, ref, source: source);
     }
   }
 
@@ -84,6 +84,22 @@ class _MyPrepHomeScreenState extends ConsumerState<MyPrepHomeScreen> {
     });
   }
 
+  /// An empty tab asks for its first player in the page itself, so the
+  /// floating button only joins once the reader has added one. Favorites is
+  /// a fixed ranking with nothing to add, so it never has one.
+  bool _hasAdd(List<PrepProfile> profiles) {
+    final kind = switch (_tab) {
+      0 => PrepKind.mine,
+      1 => PrepKind.opponent,
+      _ => null,
+    };
+    if (kind == null) return false;
+    // My games lists sources, so a profile with none attached is empty.
+    return profiles.any(
+      (p) => p.kind == kind && (kind != PrepKind.mine || p.accounts.isNotEmpty),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final profiles = ref.watch(prepProfilesProvider).valueOrNull;
@@ -92,15 +108,21 @@ class _MyPrepHomeScreenState extends ConsumerState<MyPrepHomeScreen> {
 
     return Scaffold(
       backgroundColor: context.colors.background,
-      floatingActionButton: FloatingActionButton(
-        key: const ValueKey('prep_add_floating'),
-        tooltip: _addLabel,
-        onPressed: profiles == null ? null : _add,
-        backgroundColor: context.colors.textPrimary,
-        foregroundColor: context.colors.textInverse,
-        elevation: 0,
-        child: const Icon(Icons.add_rounded),
-      ),
+      floatingActionButton: profiles == null || !_hasAdd(profiles)
+          ? null
+          : PopoverAddFab<PrepSource>(
+              key: const ValueKey('prep_add_floating'),
+              label: _addLabel,
+              choices: [
+                for (final source in PrepSource.playerSources)
+                  PopoverAddChoice(
+                    leading: PrepSourceMark(source: source, size: 22),
+                    label: source.label,
+                    value: source,
+                  ),
+              ],
+              onPicked: _add,
+            ),
       body: Center(
         child: ConstrainedBox(
           constraints: BoxConstraints(
@@ -109,10 +131,7 @@ class _MyPrepHomeScreenState extends ConsumerState<MyPrepHomeScreen> {
           child: Column(
             children: [
               SizedBox(height: MediaQuery.of(context).viewPadding.top + 4.h),
-              _AppBar(
-                addLabel: _addLabel,
-                onAdd: profiles == null ? null : _add,
-              ),
+              const _AppBar(),
               SizedBox(height: 8.h),
               Padding(
                 padding: EdgeInsets.symmetric(horizontal: gutter),
@@ -147,10 +166,8 @@ class _MyPrepHomeScreenState extends ConsumerState<MyPrepHomeScreen> {
 }
 
 class _AppBar extends StatelessWidget {
-  const _AppBar({required this.addLabel, required this.onAdd});
+  const _AppBar();
 
-  final String addLabel;
-  final VoidCallback? onAdd;
   @override
   Widget build(BuildContext context) {
     return Padding(
@@ -178,16 +195,8 @@ class _AppBar extends StatelessWidget {
               ),
             ),
           ),
-          IconButton(
-            key: const ValueKey('prep_add_top'),
-            tooltip: addLabel,
-            onPressed: onAdd,
-            icon: Icon(
-              Icons.add_rounded,
-              size: 24.ic,
-              color: context.colors.textPrimary,
-            ),
-          ),
+          // Balances the back button so the title stays centred.
+          const SizedBox(width: kMinInteractiveDimension),
         ],
       ),
     );
@@ -195,35 +204,6 @@ class _AppBar extends StatelessWidget {
 }
 
 double get _gutter => ResponsiveHelper.adaptive(phone: 16.w, tablet: 24.w);
-
-/// A tab's count line.
-class _TabHeader extends StatelessWidget {
-  const _TabHeader({required this.text});
-
-  final String text;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: EdgeInsets.fromLTRB(_gutter, 16.h, _gutter, 10.h),
-      child: Row(
-        children: [
-          Expanded(
-            child: Text(
-              text,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: AppTypography.textSmRegular.copyWith(
-                color: context.colors.textSecondary,
-                fontFeatures: const [FontFeature.tabularFigures()],
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
 
 // ------------------------------------------------------------------ my games
 
@@ -235,12 +215,15 @@ class _MyGamesTab extends ConsumerWidget {
     final mine = ref.watch(prepProfilesOfKindProvider(PrepKind.mine));
     if (mine == null) return const _ListSkeleton();
     final profile = mine.firstOrNull;
-    if (profile == null) {
+    // A profile whose every source was detached asks again like a new one.
+    if (profile == null || profile.accounts.isEmpty) {
       return _EmptyState(
         title: 'Attach your own usernames',
         body:
             'Add your Lichess and Chess.com accounts here. Their games stay together. You can also attach your ChessEver player record.',
         sources: PrepSource.playerSources,
+        actionLabel: 'Attach your username',
+        onAction: () => prepAddMine(context, ref),
       );
     }
     return RefreshIndicator(
@@ -252,56 +235,48 @@ class _MyGamesTab extends ConsumerWidget {
           parent: BouncingScrollPhysics(),
         ),
         padding: EdgeInsets.only(
+          top: 8.h,
           bottom: MediaQuery.viewPaddingOf(context).bottom + 96.h,
         ),
         children: [
-          _TabHeader(text: 'Your accounts'),
-          for (final account in profile.accounts)
-            Padding(
-              padding: EdgeInsets.symmetric(horizontal: _gutter),
-              child: ListTile(
-                contentPadding: EdgeInsets.zero,
-                leading: PrepSourceMark(source: account.source, size: 24.sp),
-                title: Text(
-                  account.source.online
-                      ? account.username
-                      : account.displayName ?? account.username,
-                  style: AppTypography.textMdMedium,
+          // My games is one person, so the tab lists their sources rather
+          // than a player card.
+          for (final source in PrepSource.values)
+            for (final account in profile.accounts.where(
+              (a) => a.source == source,
+            ))
+              Padding(
+                padding: EdgeInsets.fromLTRB(_gutter, 0, _gutter, 8.h),
+                child: Material(
+                  color: context.colors.surface,
+                  borderRadius: BorderRadius.circular(12.br),
+                  clipBehavior: Clip.antiAlias,
+                  child: PrepAccountRow(profile: profile, account: account),
                 ),
-                subtitle: Text(account.source.label),
-                onTap: () => PrepSourcesScreen.open(context, profile.id),
               ),
-            ),
-          Padding(
-            padding: EdgeInsets.symmetric(horizontal: _gutter),
-            child: Align(
-              alignment: Alignment.centerLeft,
-              child: TextButton(
+          if (profile.gameCount > 0)
+            Padding(
+              padding: EdgeInsets.fromLTRB(_gutter, 8.h, _gutter, 0),
+              child: FilledButton(
+                key: const ValueKey('prep_mine_open'),
                 onPressed: () {
                   HapticFeedbackService.cardTap();
                   PrepProfileScreen.open(context, profile.id);
                 },
-                child: Text(
-                  'View games · ${prepGamesLabel(profile.gameCount)}',
-                ),
-              ),
-            ),
-          ),
-          Padding(
-            padding: EdgeInsets.symmetric(horizontal: _gutter),
-            child: Align(
-              alignment: Alignment.centerLeft,
-              child: TextButton(
-                onPressed: () => PrepSourcesScreen.open(context, profile.id),
-                child: Text(
-                  'Manage my accounts',
-                  style: AppTypography.textSmMedium.copyWith(
-                    color: context.colors.textPrimary,
+                style: FilledButton.styleFrom(
+                  minimumSize: const Size.fromHeight(48),
+                  backgroundColor: context.colors.textPrimary,
+                  foregroundColor: context.colors.textInverse,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12.br),
                   ),
                 ),
+                child: Text(
+                  'Open ${prepGamesLabel(profile.gameCount)}',
+                  style: AppTypography.textSmBold,
+                ),
               ),
             ),
-          ),
         ],
       ),
     );
@@ -323,6 +298,8 @@ class _OpponentsTab extends ConsumerWidget {
         body:
             'Find them in ChessEver or start with a Lichess or Chess.com username. Attach all their sources to one profile.',
         sources: PrepSource.playerSources,
+        actionLabel: 'Add opponent',
+        onAction: () => prepAddOpponent(context, ref),
       );
     }
     return ListView.builder(
@@ -330,6 +307,7 @@ class _OpponentsTab extends ConsumerWidget {
         parent: BouncingScrollPhysics(),
       ),
       padding: EdgeInsets.only(
+        top: 8.h,
         bottom: MediaQuery.viewPaddingOf(context).bottom + 96.h,
       ),
       itemCount: opponents.length,
@@ -337,10 +315,10 @@ class _OpponentsTab extends ConsumerWidget {
         final profile = opponents[index];
         return Padding(
           key: ValueKey(profile.id),
-          padding: EdgeInsets.symmetric(horizontal: 4.w),
+          padding: EdgeInsets.symmetric(horizontal: _gutter),
           child: PrepProfileCard(
             profile: profile,
-            fideId: _favoriteFide(profile),
+            fideId: prepFavoriteFide(profile),
             onTap: () {
               HapticFeedbackService.cardTap();
               PrepProfileScreen.open(context, profile.id);
@@ -350,13 +328,6 @@ class _OpponentsTab extends ConsumerWidget {
       },
     );
   }
-}
-
-String? _favoriteFide(PrepProfile profile) {
-  final id = profile.favoriteId;
-  if (profile.fideId != null) return profile.fideId;
-  if (id == null) return null;
-  return kPrepFavorites.where((f) => f.id == id).firstOrNull?.fideId;
 }
 
 // ------------------------------------------------------------------ favorites
@@ -371,24 +342,49 @@ class _FavoritesTab extends ConsumerStatefulWidget {
 class _FavoritesTabState extends ConsumerState<_FavoritesTab> {
   final _search = TextEditingController();
 
+  /// The player whose ChessEver source is being resolved for a first open.
+  int? _opening;
+
   @override
   void dispose() {
     _search.dispose();
     super.dispose();
   }
 
+  Future<void> _open(ChessPlayer player) async {
+    if (_opening != null) return;
+    setState(() => _opening = player.fideid);
+    void resolved() {
+      if (mounted && _opening != null) setState(() => _opening = null);
+    }
+
+    try {
+      // The row stops reading "Opening…" once the add sheet covers it.
+      await prepOpenFavorite(context, ref, player, onResolved: resolved);
+    } finally {
+      resolved();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    final profiles = ref.watch(prepProfilesProvider).valueOrNull ?? const [];
-    final byFavorite = {
+    final loaded = ref.watch(prepProfilesProvider).valueOrNull;
+    final profiles = loaded ?? const <PrepProfile>[];
+    final ranked = ref.watch(prepRankedPlayersProvider);
+    final ranking = ref.read(prepRankedPlayersProvider.notifier);
+    const lead = 1;
+    final byFide = {
       for (final p in profiles)
-        if (p.favoriteId != null) p.favoriteId!: p,
+        if (prepFavoriteFide(p) case final fide?) fide: p,
     };
     final query = _search.text.trim().toLowerCase();
+    // Only a favorite with no FIDE player leads the list, since the ranking
+    // cannot place it. Everyone else keeps their ranking slot, added or
+    // not, so tapping a row never moves it.
     final custom = [
       for (final profile in profiles)
         if (profile.kind == PrepKind.favorite &&
-            profile.favoriteId == null &&
+            prepFavoriteFide(profile) == null &&
             (query.isEmpty ||
                 profile.name.toLowerCase().contains(query) ||
                 profile.accounts.any(
@@ -396,87 +392,172 @@ class _FavoritesTabState extends ConsumerState<_FavoritesTab> {
                 )))
           profile,
     ];
-    final list = [
-      for (final f in kPrepFavorites)
-        if (query.isEmpty ||
-            f.name.toLowerCase().contains(query) ||
-            (f.chesscom?.toLowerCase().contains(query) ?? false) ||
-            (f.lichess?.toLowerCase().contains(query) ?? false))
-          f,
-    ];
-    return ListView.builder(
-      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-      physics: const AlwaysScrollableScrollPhysics(
-        parent: BouncingScrollPhysics(),
-      ),
-      padding: EdgeInsets.only(
-        bottom: MediaQuery.viewPaddingOf(context).bottom + 96.h,
-      ),
-      itemCount: custom.length + list.length + 1,
-      itemBuilder: (context, index) {
-        if (index == 0) {
-          return Padding(
-            padding: EdgeInsets.fromLTRB(_gutter, 16.h, _gutter, 12.h),
-            child: _SearchField(
-              controller: _search,
-              onChanged: () => setState(() {}),
-            ),
-          );
-        }
-        if (index <= custom.length) {
-          final profile = custom[index - 1];
-          return Padding(
-            key: ValueKey(profile.id),
-            padding: EdgeInsets.symmetric(horizontal: 4.w),
-            child: PrepProfileCard(
-              profile: profile,
-              onTap: () => PrepProfileScreen.open(context, profile.id),
-            ),
-          );
-        }
-        final favorite = list[index - custom.length - 1];
-        return Padding(
-          key: ValueKey(favorite.id),
-          padding: EdgeInsets.symmetric(horizontal: 4.w),
-          child: _FavoriteCard(
-            favorite: favorite,
-            profile: byFavorite[favorite.id],
-          ),
-        );
+    final players = ranked.players;
+    return NotificationListener<ScrollNotification>(
+      onNotification: (notification) {
+        if (notification.metrics.extentAfter < 600) ranking.loadMore();
+        return false;
       },
+      child: ListView.builder(
+        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+        physics: const AlwaysScrollableScrollPhysics(
+          parent: BouncingScrollPhysics(),
+        ),
+        padding: EdgeInsets.only(
+          bottom: MediaQuery.viewPaddingOf(context).bottom + 96.h,
+        ),
+        itemCount: lead + custom.length + players.length + 1,
+        itemBuilder: (context, index) {
+          if (index == 0) {
+            return Padding(
+              padding: EdgeInsets.fromLTRB(_gutter, 16.h, _gutter, 12.h),
+              child: _SearchField(
+                controller: _search,
+                onChanged: () {
+                  setState(() {});
+                  ranking.search(_search.text);
+                },
+              ),
+            );
+          }
+          if (index < lead + custom.length) {
+            final profile = custom[index - lead];
+            return Padding(
+              key: ValueKey(profile.id),
+              padding: EdgeInsets.symmetric(horizontal: _gutter),
+              child: PrepProfileCard(
+                profile: profile,
+                moreButton: false,
+                onTap: () {
+                  HapticFeedbackService.cardTap();
+                  PrepProfileScreen.open(context, profile.id);
+                },
+              ),
+            );
+          }
+          if (index == lead + custom.length + players.length) {
+            return _RankingFooter(state: ranked, onRetry: ranking.retry);
+          }
+          final player = players[index - custom.length - lead];
+          return Padding(
+            key: ValueKey(player.fideid),
+            padding: EdgeInsets.symmetric(horizontal: _gutter),
+            child: _RankedCard(
+              player: player,
+              profile: byFide['${player.fideid}'],
+              opening: _opening == player.fideid,
+              onTap: () => _open(player),
+            ),
+          );
+        },
+      ),
     );
   }
 }
 
-class _FavoriteCard extends ConsumerWidget {
-  const _FavoriteCard({required this.favorite, this.profile});
-  final PrepFavorite favorite;
+/// A ranked player in their ranking slot: their own profile once added,
+/// otherwise ChessEver plus the Lichess and Chess.com accounts known for
+/// them. Both read alike, so adding a player changes only their status.
+class _RankedCard extends StatelessWidget {
+  const _RankedCard({
+    required this.player,
+    required this.opening,
+    required this.onTap,
+    this.profile,
+  });
+  final ChessPlayer player;
   final PrepProfile? profile;
+  final bool opening;
+  final VoidCallback onTap;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) => PrepProfileCard(
-    profile:
-        profile ??
-        PrepProfile(
-          id: 'preview-${favorite.id}',
-          kind: PrepKind.favorite,
-          name: favorite.name,
-          createdAtMs: 0,
-          favoriteId: favorite.id,
-          accounts: [
-            for (final (source, username) in favorite.accounts)
+  Widget build(BuildContext context) {
+    final fide = '${player.fideid}';
+    final profile = this.profile;
+    return PrepProfileCard(
+      profile:
+          profile ??
+          PrepProfile(
+            id: 'preview-$fide',
+            kind: PrepKind.favorite,
+            name: player.name,
+            createdAtMs: 0,
+            accounts: [
               PrepAccount(
-                source: source,
-                username: username,
-                title: favorite.title,
-                country: favorite.country,
+                source: PrepSource.chessever,
+                username: player.name,
+                fideId: fide,
+                title: player.title,
+                country: player.country,
+                ratings: {
+                  if (player.rating case final rating?) 'classical': rating,
+                },
               ),
-          ],
-        ),
-    fideId: favorite.fideId,
-    preview: profile == null,
-    onTap: () => prepOpenFavorite(context, ref, favorite),
-  );
+              for (final (source, username)
+                  in kPrepFavoritesByFide[fide]?.accounts ??
+                      const <(PrepSource, String)>[])
+                PrepAccount(source: source, username: username),
+            ],
+          ),
+      fideId: fide,
+      name: player.name,
+      preview: profile == null,
+      moreButton: false,
+      pendingSources: profile != null && prepFavoriteLacksDatabase(profile)
+          ? const [PrepSource.chessever]
+          : const [],
+      status: opening ? 'Opening…' : null,
+      onTap: onTap,
+    );
+  }
+}
+
+class _RankingFooter extends StatelessWidget {
+  const _RankingFooter({required this.state, required this.onRetry});
+  final PrepRankedPlayers state;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.colors;
+    final message = state.failed
+        ? 'Could not load players.'
+        : !state.loading && state.players.isEmpty
+        ? 'No player matches "${state.query}".'
+        : null;
+    if (message == null) {
+      return state.loading
+          ? Padding(
+              padding: EdgeInsets.symmetric(vertical: 24.h),
+              child: GenericLoadingWidget(size: 20.sp, centered: true),
+            )
+          : const SizedBox.shrink();
+    }
+    return Padding(
+      padding: EdgeInsets.fromLTRB(_gutter, 24.h, _gutter, 0),
+      child: Column(
+        children: [
+          Text(
+            message,
+            textAlign: TextAlign.center,
+            style: AppTypography.textSmRegular.copyWith(
+              color: colors.textSecondary,
+            ),
+          ),
+          if (state.failed)
+            TextButton(
+              onPressed: onRetry,
+              child: Text(
+                'Retry',
+                style: AppTypography.textSmBold.copyWith(
+                  color: colors.textPrimary,
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
 }
 
 class _SearchField extends StatelessWidget {
@@ -542,11 +623,15 @@ class _EmptyState extends StatelessWidget {
     required this.title,
     required this.body,
     required this.sources,
+    required this.actionLabel,
+    required this.onAction,
   });
 
   final String title;
   final String body;
   final List<PrepSource> sources;
+  final String actionLabel;
+  final VoidCallback onAction;
 
   @override
   Widget build(BuildContext context) {
@@ -588,7 +673,40 @@ class _EmptyState extends StatelessWidget {
             height: 20 / 14,
           ),
         ),
+        SizedBox(height: 24.h),
+        Center(
+          child: _AddButton(label: actionLabel, onPressed: onAction),
+        ),
       ],
+    );
+  }
+}
+
+/// A tab's add, in the page while the tab has nothing added yet.
+class _AddButton extends StatelessWidget {
+  const _AddButton({required this.label, required this.onPressed});
+
+  final String label;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.colors;
+    return ElevatedButton.icon(
+      key: const ValueKey('prep_add_empty'),
+      onPressed: onPressed,
+      style: ElevatedButton.styleFrom(
+        backgroundColor: colors.textPrimary,
+        foregroundColor: colors.textInverse,
+        padding: EdgeInsets.symmetric(horizontal: 20.w, vertical: 14.h),
+        minimumSize: const Size(0, 44),
+        elevation: 0,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12.br),
+        ),
+      ),
+      icon: Icon(Icons.add_rounded, size: 18.sp),
+      label: Text(label, style: AppTypography.textSmBold),
     );
   }
 }

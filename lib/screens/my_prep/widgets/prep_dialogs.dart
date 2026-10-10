@@ -6,7 +6,7 @@ import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/alert_dialog/alert_modal.dart';
 import 'package:flutter/material.dart';
 
-/// What the add dialog hands back: a display name and the accounts the
+/// What the add sheet hands back: a display name and the accounts the
 /// reader typed, each already confirmed to exist.
 class PrepAddResult {
   const PrepAddResult(this.name, this.accounts);
@@ -105,11 +105,16 @@ class PrepDialogActions extends StatelessWidget {
     super.key,
     required this.confirmLabel,
     required this.onConfirm,
+    this.onCancel,
     this.busy = false,
   });
 
   final String confirmLabel;
   final VoidCallback? onConfirm;
+
+  /// Where Cancel leads when the nearest navigator is not the way out, as on
+  /// a page inside a sheet. Pops by default.
+  final VoidCallback? onCancel;
   final bool busy;
 
   @override
@@ -118,7 +123,7 @@ class PrepDialogActions extends StatelessWidget {
       children: [
         Expanded(
           child: TextButton(
-            onPressed: () => Navigator.of(context).pop(),
+            onPressed: onCancel ?? () => Navigator.of(context).pop(),
             style: TextButton.styleFrom(
               padding: EdgeInsets.symmetric(vertical: 15.h),
               shape: RoundedRectangleBorder(

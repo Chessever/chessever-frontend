@@ -101,9 +101,9 @@ class _PrepTreesTabState extends ConsumerState<PrepTreesTab> {
         SizedBox(height: 12.h),
         _TreeRow(
           title: 'Combined',
-          subtitle: 'All attached sources',
           marks: PrepSourceMarks(
             sources: profile.accounts.map((a) => a.source),
+            size: 14.sp,
           ),
           target: PrepProfileTreeTarget(profile: profile, repository: repo),
           gameCount: profile.gameCount,
@@ -111,26 +111,36 @@ class _PrepTreesTabState extends ConsumerState<PrepTreesTab> {
           clock: clock,
           onSources: widget.onSources,
         ),
-        SizedBox(height: 16.h),
-        for (final account in profile.accounts) ...[
-          _TreeRow(
-            title: account.source.label,
-            subtitle: account.source.online
-                ? account.username
-                : account.displayName ?? account.username,
-            marks: PrepSourceMark(source: account.source),
-            target: PrepAccountTreeTarget(
-              profile: profile,
-              account: account,
-              repository: repo,
+        SizedBox(height: 8.h),
+        // Same order and card as the My games source list.
+        for (final source in PrepSource.values)
+          for (final account in profile.accounts.where(
+            (a) => a.source == source,
+          )) ...[
+            _TreeRow(
+              title: account.source.online
+                  ? account.username
+                  : account.displayName ?? account.username,
+              semanticsLabel: account.source.label,
+              leading: PrepSourceMark(source: account.source, size: 24.sp),
+              target: PrepAccountTreeTarget(
+                profile: profile,
+                account: account,
+                repository: repo,
+              ),
+              gameCount: account.gameCount,
+              emptyLabel:
+                  account.source != PrepSource.manual &&
+                      account.lastSyncAtMs == null
+                  ? 'Ready to download'
+                  : 'No games yet',
+              color: color,
+              clock: clock,
+              onSources: () =>
+                  prepDownloadSource(context, ref, profile, account),
             ),
-            gameCount: account.gameCount,
-            color: color,
-            clock: clock,
-            onSources: () => prepDownloadSource(context, ref, profile, account),
-          ),
-          SizedBox(height: 12.h),
-        ],
+            SizedBox(height: 8.h),
+          ],
         if (profile.accounts.isEmpty)
           TextButton(
             onPressed: widget.onSources,
@@ -200,88 +210,120 @@ class _TreeFilterDialogState extends State<_TreeFilterDialog> {
   }
 }
 
+/// One tree to build, laid out like the My games source card
+/// ([PrepAccountRow]): mark, name over a status line, then the action.
 class _TreeRow extends ConsumerWidget {
   const _TreeRow({
     required this.title,
-    required this.subtitle,
-    required this.marks,
     required this.target,
     required this.gameCount,
     required this.onSources,
+    this.leading,
+    this.marks,
+    this.semanticsLabel,
+    this.emptyLabel = 'No games yet',
     this.color,
     this.clock,
   });
   final String title;
-  final String subtitle;
-  final Widget marks;
+
+  /// The source the title belongs to, for screen readers.
+  final String? semanticsLabel;
+
+  /// A single source's mark, ahead of the title.
+  final Widget? leading;
+
+  /// Several sources' marks, trailing the title.
+  final Widget? marks;
   final GameTreeTarget target;
   final int gameCount;
+
+  /// The status line while there are no games to build from.
+  final String emptyLabel;
   final GamebasePlayerColor? color;
   final TimeControl? clock;
   final VoidCallback onSources;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final colors = context.colors;
     final status = ref.watch(
       gameTreeStatusProvider.select((s) => s[target.scopeId]),
     );
+    final busy = status?.busy == true;
+    final meta = busy
+        ? status?.message ?? 'Building tree…'
+        : gameCount == 0
+        ? emptyLabel
+        : prepGamesLabel(gameCount);
     return Container(
-      padding: EdgeInsets.all(16.sp),
+      padding: EdgeInsets.fromLTRB(16.w, 14.h, 16.w, 14.h),
       decoration: BoxDecoration(
-        color: context.colors.surface,
+        color: colors.surface,
         borderRadius: BorderRadius.circular(12.br),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: Row(
         children: [
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  title,
-                  style: AppTypography.textMdBold.copyWith(
-                    color: context.colors.textPrimary,
+          if (leading != null) ...[leading!, SizedBox(width: 14.w)],
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Flexible(
+                      child: Text(
+                        title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        semanticsLabel: semanticsLabel == null
+                            ? null
+                            : '$title on $semanticsLabel',
+                        style: AppTypography.textSmBold.copyWith(
+                          color: colors.textPrimary,
+                        ),
+                      ),
+                    ),
+                    if (marks != null) ...[SizedBox(width: 8.w), marks!],
+                  ],
+                ),
+                SizedBox(height: 4.h),
+                Text(
+                  meta,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppTypography.textXsRegular.copyWith(
+                    color: colors.textSecondary,
+                    fontFeatures: const [FontFeature.tabularFigures()],
                   ),
                 ),
-              ),
-              marks,
-            ],
-          ),
-          SizedBox(height: 6.h),
-          Text(
-            subtitle,
-            style: AppTypography.textXsRegular.copyWith(
-              color: context.colors.textSecondary,
+              ],
             ),
           ),
-          SizedBox(height: 10.h),
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  status?.busy == true
-                      ? status?.message ?? 'Building tree…'
-                      : gameCount == 0
-                      ? 'Download games first'
-                      : '${prepGamesLabel(gameCount)} available',
-                  style: AppTypography.textXsRegular.copyWith(
-                    color: context.colors.textSecondary,
-                  ),
-                ),
+          SizedBox(width: 12.w),
+          if (gameCount > 0 || busy)
+            BuildTreeButton(
+              target: target,
+              color: color,
+              timeControl: clock,
+              compact: MediaQuery.textScalerOf(context).scale(14) > 20
+                  ? true
+                  : null,
+            )
+          else
+            // No trailing padding, so the label ends on the card's inset.
+            TextButton(
+              onPressed: onSources,
+              style: TextButton.styleFrom(
+                foregroundColor: colors.textPrimary,
+                padding: EdgeInsets.only(left: 12.w),
+                minimumSize: const Size(44, 44),
+                alignment: Alignment.centerRight,
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                textStyle: AppTypography.textSmMedium,
               ),
-              if (gameCount > 0 || status?.busy == true)
-                BuildTreeButton(
-                  target: target,
-                  color: color,
-                  timeControl: clock,
-                  compact: MediaQuery.textScalerOf(context).scale(14) > 20
-                      ? true
-                      : null,
-                )
-              else
-                TextButton(onPressed: onSources, child: const Text('Download')),
-            ],
-          ),
+              child: const Text('Download'),
+            ),
         ],
       ),
     );

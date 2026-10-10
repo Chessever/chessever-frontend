@@ -9,6 +9,10 @@ class PngAsset {
   static const blitzIcon = 'assets/pngs/blitz.png';
   static const classicalIcon = 'assets/pngs/classical.png';
   static const rapidIcon = 'assets/pngs/rapid.png';
+  // Same art as desktop. They carry their own colour, so they have no
+  // light-theme twin.
+  static const bulletIcon = 'assets/pngs/bullet.png';
+  static const ultraBulletIcon = 'assets/pngs/ultra_bullet.png';
 
   // Light-theme twins of the three time-control glyphs, baked from the
   // originals (tool/generate_time_control_light_glyphs.py): the white owl and

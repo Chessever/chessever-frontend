@@ -46,6 +46,7 @@ class _PrepProfileScreenState extends ConsumerState<PrepProfileScreen> {
   static const _tabs = ['About', 'Games', 'Build Tree'];
   int _tab = 0;
   late final PageController _pages = PageController();
+  final _gamesController = PrepGamesController();
   PrepFilter _filter = const PrepFilter();
   bool _checkedFreshness = false;
 
@@ -56,6 +57,7 @@ class _PrepProfileScreenState extends ConsumerState<PrepProfileScreen> {
   List<PrepGame> _filterOutput = const [];
   List<PrepGame>? _statsInput;
   PrepStats? _stats;
+  bool? _statsOnline;
 
   List<PrepGame> _filtered(List<PrepGame> games) {
     if (!identical(games, _filterInput) || _filterUsed != _filter) {
@@ -66,10 +68,21 @@ class _PrepProfileScreenState extends ConsumerState<PrepProfileScreen> {
     return _filterOutput;
   }
 
-  PrepStats _statsOf(List<PrepGame> games) {
-    if (!identical(games, _statsInput) || _stats == null) {
+  PrepStats _statsOf(List<PrepGame> games, PrepProfile profile) {
+    final online = profile.accounts.any((a) => a.source.online);
+    if (!identical(games, _statsInput) ||
+        _statsOnline != online ||
+        _stats == null) {
       _statsInput = games;
-      _stats = PrepStats.of(games);
+      _statsOnline = online;
+      // The rating history follows the ladder desktop prefers: blitz for an
+      // online player, classical for an over-the-board one.
+      _stats = PrepStats.of(
+        games,
+        preferredRating: online
+            ? PrepTimeControl.blitz
+            : PrepTimeControl.classical,
+      );
     }
     return _stats!;
   }
@@ -172,7 +185,11 @@ class _PrepProfileScreenState extends ConsumerState<PrepProfileScreen> {
           child: Column(
             children: [
               SizedBox(height: MediaQuery.of(context).viewPadding.top + 4.h),
-              _TopBar(profile: profile),
+              _TopBar(
+                profile: profile,
+                // On Games the menu also acts on the games it shows.
+                games: _tab == 1 ? _gamesController : null,
+              ),
               SizedBox(height: 8.h),
               Padding(
                 padding: EdgeInsets.symmetric(
@@ -242,7 +259,7 @@ class _PrepProfileScreenState extends ConsumerState<PrepProfileScreen> {
                             )
                           : PrepOverviewTab(
                               profile: profile,
-                              stats: _statsOf(data.games),
+                              stats: _statsOf(data.games, profile),
                               filter: const PrepFilter(),
                               header: _identity(profile, inset: false),
                               onSources: () =>
@@ -275,6 +292,7 @@ class _PrepProfileScreenState extends ConsumerState<PrepProfileScreen> {
                               analysis: data,
                               games: filtered,
                               filter: _filter,
+                              controller: _gamesController,
                               onFilterChanged: (f) =>
                                   setState(() => _filter = f),
                             ),
@@ -296,8 +314,9 @@ class _PrepProfileScreenState extends ConsumerState<PrepProfileScreen> {
 }
 
 class _TopBar extends ConsumerWidget {
-  const _TopBar({required this.profile});
+  const _TopBar({required this.profile, this.games});
   final PrepProfile profile;
+  final PrepGamesController? games;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -355,7 +374,10 @@ class _TopBar extends ConsumerWidget {
           CardMoreButton(
             vertical: true,
             color: colors.iconPrimary,
-            actions: (_) => prepProfileMenu(context, ref, profile),
+            actions: (_) => [
+              ...prepGamesMenu(games),
+              ...prepProfileMenu(context, ref, profile),
+            ],
           ),
         ],
       ),

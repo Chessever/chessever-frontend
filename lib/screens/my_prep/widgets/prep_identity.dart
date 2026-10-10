@@ -2,9 +2,7 @@ import 'package:chessever2/screens/my_prep/models/prep_models.dart';
 import 'package:chessever2/screens/my_prep/widgets/prep_common.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/app_typography.dart';
-import 'package:chessever2/utils/png_asset.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
-import 'package:chessever2/widgets/time_control_glyph.dart';
 import 'package:flutter/material.dart';
 
 /// The same portrait and three rating columns as the mobile player About tab.
@@ -103,11 +101,6 @@ class _Rating extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final icon = switch (clock) {
-      PrepTimeControl.classical => PngAsset.classicalIcon,
-      PrepTimeControl.rapid => PngAsset.rapidIcon,
-      _ => PngAsset.blitzIcon,
-    };
     return Semantics(
       button: onTap != null,
       label: '${clock.label} rating ${rating ?? 'not recorded'}',
@@ -124,11 +117,7 @@ class _Rating extends StatelessWidget {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Image.asset(
-                TimeControlGlyph.resolve(icon, light: context.isLightTheme),
-                width: 20.w,
-                height: 20.h,
-              ),
+              PrepClockGlyph(clock, size: 20.w),
               SizedBox(height: 5.h),
               FittedBox(
                 fit: BoxFit.scaleDown,

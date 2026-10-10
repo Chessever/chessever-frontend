@@ -100,8 +100,8 @@ class PrepOverviewTab extends StatelessWidget {
                     onTap: (line) => onOpenGames?.call(
                       filter.copyWith(
                         side: white ? PrepSide.white : PrepSide.black,
-                        eco: null,
-                        opening: line.name,
+                        eco: line.eco,
+                        opening: null,
                       ),
                     ),
                   ),
@@ -109,10 +109,28 @@ class PrepOverviewTab extends StatelessWidget {
             ],
           ),
         ],
+        if (s.clocks.isNotEmpty) ...[
+          SizedBox(height: 12.h),
+          _DetailsPanel(
+            title: 'Time controls',
+            children: [
+              _ClockShare(
+                clocks: s.clocks,
+                source: filter.source,
+                onTap: (speed) => onOpenGames?.call(filter.withSpeed(speed)),
+              ),
+            ],
+          ),
+        ],
         if (s.ratingHistory.length >= 2) ...[
           SizedBox(height: 12.h),
           _DetailsPanel(
-            title: 'Rating history',
+            title: [
+              'Rating history',
+              if (profile.accounts.map((a) => a.source).toSet().length > 1)
+                ?s.ratingSource?.label,
+              ?s.ratingSpeed?.labelFor(s.ratingSource),
+            ].join(' · '),
             children: [PrepRatingHistory(points: s.ratingHistory)],
           ),
         ],
@@ -123,11 +141,21 @@ class PrepOverviewTab extends StatelessWidget {
             PrepStatStrip(
               items: [
                 ('Peak rating', s.peakRating?.toString() ?? '–'),
+                ('Rating now', s.currentRating?.toString() ?? '–'),
                 ('Performance', s.performance?.toString() ?? '–'),
               ],
             ),
-            if (s.averageOpponent != null) ...[
+            if (s.decisiveRate case final rate?) ...[
               SizedBox(height: 12.h),
+              Text(
+                '${prepCount(s.decisive)} decisive games · ${(rate * 100).round()}% decisive',
+                style: AppTypography.textXsRegular.copyWith(
+                  color: context.colors.textSecondary,
+                ),
+              ),
+            ],
+            if (s.averageOpponent != null) ...[
+              SizedBox(height: s.decisiveRate == null ? 12.h : 4.h),
               Text(
                 'Average opponent rating ${s.averageOpponent}',
                 style: AppTypography.textXsRegular.copyWith(
@@ -142,7 +170,7 @@ class PrepOverviewTab extends StatelessWidget {
               for (final o in s.opponents)
                 _LineRow(
                   title: o.name,
-                  meta: o.rating?.toString(),
+                  meta: o.rating == null ? null : 'avg ${o.rating}',
                   tally: o.tally,
                   onTap: () =>
                       onOpenGames?.call(filter.copyWith(opponent: o.name)),
@@ -150,7 +178,23 @@ class PrepOverviewTab extends StatelessWidget {
             ],
             if (s.byYear.length > 1) ...[
               SizedBox(height: 24.h),
-              Text('Games by year', style: AppTypography.textSmBold),
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      'Games by year',
+                      style: AppTypography.textSmBold,
+                    ),
+                  ),
+                  Text(
+                    '${prepCount(s.byYear.fold(0, (n, y) => n + y.total))} total',
+                    style: AppTypography.textXsRegular.copyWith(
+                      color: context.colors.textSecondary,
+                      fontFeatures: const [FontFeature.tabularFigures()],
+                    ),
+                  ),
+                ],
+              ),
               SizedBox(height: 12.h),
               _YearBars(
                 years: s.byYear,
@@ -205,8 +249,8 @@ class _OverallSummary extends StatelessWidget {
             children: [
               Expanded(
                 child: _SummaryValue(
-                  label: 'Games',
-                  value: prepCount(stats.games),
+                  label: 'Games analyzed',
+                  value: prepCount(stats.overall.total),
                 ),
               ),
               Expanded(
@@ -479,32 +523,102 @@ class _LineRow extends StatelessWidget {
 
 class _YearBars extends StatelessWidget {
   const _YearBars({required this.years, this.onYear});
-  final List<(int, PrepTally)> years;
+  final List<PrepYearLine> years;
   final ValueChanged<int>? onYear;
+
+  /// How many years fit before the row scrolls.
+  static const _fit = 10;
 
   @override
   Widget build(BuildContext context) {
-    final shown = years.length > 10 ? years.sublist(years.length - 10) : years;
-    final most = shown.fold<int>(1, (m, y) => math.max(m, y.$2.total));
+    final most = years.fold<int>(1, (m, y) => math.max(m, y.total));
+    Widget bar(PrepYearLine y) => InkWell(
+      onTap: () => onYear?.call(y.year),
+      child: _Bar(
+        fraction: y.total / most,
+        tally: y.tally,
+        rest: y.total - y.tally.total,
+        label: "'${(y.year % 100).toString().padLeft(2, '0')}",
+        value: prepCount(y.total),
+      ),
+    );
     return SizedBox(
       height: 120.h,
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: [
-          for (final (year, tally) in shown)
-            Expanded(
-              child: InkWell(
-                onTap: () => onYear?.call(year),
-                child: _Bar(
-                  fraction: tally.total / most,
-                  tally: tally,
-                  label: "'${(year % 100).toString().padLeft(2, '0')}",
-                  value: prepCount(tally.total),
+      child: years.length <= _fit
+          ? Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [for (final y in years) Expanded(child: bar(y))],
+            )
+          // Every year is kept; the newest stay in view and the rest scroll.
+          : LayoutBuilder(
+              builder: (context, constraints) => SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                reverse: true,
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    for (final y in years)
+                      SizedBox(
+                        width: constraints.maxWidth / _fit,
+                        height: 120.h,
+                        child: bar(y),
+                      ),
+                  ],
                 ),
               ),
             ),
-        ],
-      ),
+    );
+  }
+}
+
+/// How the games divide by clock. A row opens its games.
+class _ClockShare extends StatelessWidget {
+  const _ClockShare({required this.clocks, required this.onTap, this.source});
+  final List<(PrepTimeControl?, int)> clocks;
+  final PrepSource? source;
+  final ValueChanged<PrepTimeControl> onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.colors;
+    final total = clocks.fold<int>(0, (n, c) => n + c.$2);
+    return Column(
+      children: [
+        for (final (speed, count) in clocks)
+          InkWell(
+            onTap: speed == null ? null : () => onTap(speed),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(minHeight: 44),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      speed?.labelFor(source) ?? 'Unknown',
+                      style: AppTypography.textSmMedium.copyWith(
+                        color: colors.textPrimary,
+                      ),
+                    ),
+                  ),
+                  Text(
+                    '${prepCount(count)} · ${(count * 100 / total).round()}%',
+                    style: AppTypography.textXsMedium.copyWith(
+                      color: colors.textSecondary,
+                      fontFeatures: const [FontFeature.tabularFigures()],
+                    ),
+                  ),
+                  SizedBox(width: 8.w),
+                  Icon(
+                    Icons.chevron_right_rounded,
+                    size: 18,
+                    color: speed == null
+                        ? Colors.transparent
+                        : colors.iconSecondary,
+                  ),
+                ],
+              ),
+            ),
+          ),
+      ],
     );
   }
 }
@@ -513,7 +627,7 @@ class _LengthBars extends StatelessWidget {
   const _LengthBars({required this.lengths});
   final List<int> lengths;
 
-  static const _labels = ['≤20', '21–40', '41–60', '61–80', '80+'];
+  static const _labels = PrepStats.lengthLabels;
 
   @override
   Widget build(BuildContext context) {
@@ -556,12 +670,16 @@ class _Bar extends StatelessWidget {
     required this.label,
     required this.value,
     this.tally,
+    this.rest = 0,
   });
 
   final double fraction;
   final String label;
   final String value;
   final PrepTally? tally;
+
+  /// Games without a result, drawn above the results as their own segment.
+  final int rest;
 
   @override
   Widget build(BuildContext context) {
@@ -586,13 +704,23 @@ class _Bar extends StatelessWidget {
               heightFactor: fraction.clamp(0.02, 1.0),
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(3.br),
-                child: t == null || t.total == 0
+                child: t == null || t.total + rest == 0
                     ? ColoredBox(
                         color: colors.textPrimary.withValues(alpha: 0.35),
                         child: const SizedBox.expand(),
                       )
                     : Column(
                         children: [
+                          if (rest > 0)
+                            Expanded(
+                              flex: rest,
+                              child: ColoredBox(
+                                color: colors.textPrimary.withValues(
+                                  alpha: 0.18,
+                                ),
+                                child: const SizedBox.expand(),
+                              ),
+                            ),
                           if (t.losses > 0)
                             Expanded(
                               flex: t.losses,

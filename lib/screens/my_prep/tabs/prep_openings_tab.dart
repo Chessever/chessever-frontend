@@ -90,7 +90,10 @@ class _PrepOpeningsTabState extends State<PrepOpeningsTab> {
       color: _color,
       timeControl: _timeControl,
     );
-    final first = widget.analysis.tree.movesForFen(kInitialFEN, filters: criteria);
+    final first = widget.analysis.tree.movesForFen(
+      kInitialFEN,
+      filters: criteria,
+    );
     final total = first.fold<int>(0, (sum, m) => sum + m.total);
     final who = _mine ? 'you' : 'they';
 
@@ -114,7 +117,11 @@ class _PrepOpeningsTabState extends State<PrepOpeningsTab> {
             ),
             child: Row(
               children: [
-                Icon(Icons.account_tree_rounded, color: colors.textInverse, size: 22.sp),
+                Icon(
+                  Icons.account_tree_rounded,
+                  color: colors.textInverse,
+                  size: 22.sp,
+                ),
                 SizedBox(width: 12.w),
                 Expanded(
                   child: Column(
@@ -159,7 +166,9 @@ class _PrepOpeningsTabState extends State<PrepOpeningsTab> {
               ? 'White’s first move in their Black games. Tap one to see '
                     'how they answer it.'
               : 'Tap a move to open the explorer on it.',
-          style: AppTypography.textXsRegular.copyWith(color: colors.textSecondary),
+          style: AppTypography.textXsRegular.copyWith(
+            color: colors.textSecondary,
+          ),
         ),
         SizedBox(height: 12.h),
         if (first.isEmpty)

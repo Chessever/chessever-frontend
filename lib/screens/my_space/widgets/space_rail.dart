@@ -591,47 +591,47 @@ class _SpaceRailState extends ConsumerState<SpaceRail> {
             gutter: widget.gutter,
             viewport: viewport,
             child: ListView.builder(
-            key: PageStorageKey<String>('space_rail_${widget.storageId}'),
-            controller: _controller,
-            scrollDirection: Axis.horizontal,
-            physics: const BouncingScrollPhysics(),
-            padding: EdgeInsets.fromLTRB(
-              widget.gutter,
-              widget.airTop,
-              widget.gutter,
-              air,
-            ),
-            itemCount: count,
-            findChildIndexCallback: (key) {
-              if (key is! ValueKey<String>) return null;
-              final at = items.indexWhere((i) => i.id == key.value);
-              return at < 0 ? null : at;
-            },
-            itemBuilder: (context, index) {
-              final gap = index == 0
-                  ? 0.0
-                  : metrics.gapBefore(
-                      index < items.length ? items[index].slot : trailSlot,
-                      items[index - 1].slot,
-                    );
-              if (index >= items.length) {
+              key: PageStorageKey<String>('space_rail_${widget.storageId}'),
+              controller: _controller,
+              scrollDirection: Axis.horizontal,
+              physics: const BouncingScrollPhysics(),
+              padding: EdgeInsets.fromLTRB(
+                widget.gutter,
+                widget.airTop,
+                widget.gutter,
+                air,
+              ),
+              itemCount: count,
+              findChildIndexCallback: (key) {
+                if (key is! ValueKey<String>) return null;
+                final at = items.indexWhere((i) => i.id == key.value);
+                return at < 0 ? null : at;
+              },
+              itemBuilder: (context, index) {
+                final gap = index == 0
+                    ? 0.0
+                    : metrics.gapBefore(
+                        index < items.length ? items[index].slot : trailSlot,
+                        items[index - 1].slot,
+                      );
+                if (index >= items.length) {
+                  return Padding(
+                    key: const ValueKey<String>('space_rail_more'),
+                    padding: EdgeInsets.only(left: gap),
+                    child: SpaceRailSkeleton(
+                      width: metrics.widthOf(trailSlot),
+                      height: height,
+                      round: trailSlot == SpaceRailSlot.face,
+                    ),
+                  );
+                }
+                final item = items[index];
                 return Padding(
-                  key: const ValueKey<String>('space_rail_more'),
+                  key: ValueKey<String>(item.id),
                   padding: EdgeInsets.only(left: gap),
-                  child: SpaceRailSkeleton(
-                    width: metrics.widthOf(trailSlot),
-                    height: height,
-                    round: trailSlot == SpaceRailSlot.face,
-                  ),
+                  child: sized(context, item, item.widthIn(metrics)),
                 );
-              }
-              final item = items[index];
-              return Padding(
-                key: ValueKey<String>(item.id),
-                padding: EdgeInsets.only(left: gap),
-                child: sized(context, item, item.widthIn(metrics)),
-              );
-            },
+              },
             ),
           ),
         );

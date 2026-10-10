@@ -3,9 +3,11 @@ import 'package:chessever2/screens/my_prep/services/prep_analysis.dart';
 import 'package:chessever2/services/fide_photo_service.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/app_typography.dart';
+import 'package:chessever2/utils/png_asset.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/federation_flag.dart';
 import 'package:chessever2/widgets/player_initials_avatar.dart';
+import 'package:chessever2/widgets/time_control_glyph.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -21,6 +23,35 @@ double prepSegmentHeight(BuildContext context, {bool wrapLabels = false}) {
               lines +
           16.h)
       .clamp(44.0, double.infinity);
+}
+
+/// The app's own time-control mark for a clock category, as desktop draws
+/// them. Correspondence has no art, so it falls back to a plain glyph.
+class PrepClockGlyph extends StatelessWidget {
+  const PrepClockGlyph(this.clock, {super.key, required this.size});
+  final PrepTimeControl clock;
+  final double size;
+
+  static String? assetFor(PrepTimeControl clock) => switch (clock) {
+    PrepTimeControl.ultrabullet => PngAsset.ultraBulletIcon,
+    PrepTimeControl.bullet => PngAsset.bulletIcon,
+    PrepTimeControl.blitz => PngAsset.blitzIcon,
+    PrepTimeControl.rapid => PngAsset.rapidIcon,
+    PrepTimeControl.classical => PngAsset.classicalIcon,
+    PrepTimeControl.correspondence => null,
+  };
+
+  @override
+  Widget build(BuildContext context) {
+    final asset = assetFor(clock);
+    return asset == null
+        ? Icon(
+            Icons.mail_outline_rounded,
+            size: size,
+            color: context.colors.iconSecondary,
+          )
+        : TimeControlGlyph(asset, size: size);
+  }
 }
 
 /// Real provider marks, directly on the app surface.
@@ -78,6 +109,83 @@ class PrepSourceMark extends StatelessWidget {
             size: size,
             color: context.colors.textPrimary,
           ),
+        },
+      ),
+    );
+  }
+}
+
+/// Text for work in progress. A band of the primary ink travels across the
+/// label, so "Downloading games…" reads as running rather than as a caption.
+/// With animations disabled it is plain text.
+class PrepShimmerText extends StatefulWidget {
+  const PrepShimmerText(
+    this.text, {
+    super.key,
+    required this.style,
+    this.semanticsLabel,
+  });
+
+  final String text;
+  final TextStyle style;
+  final String? semanticsLabel;
+
+  @override
+  State<PrepShimmerText> createState() => _PrepShimmerTextState();
+}
+
+class _PrepShimmerTextState extends State<PrepShimmerText>
+    with SingleTickerProviderStateMixin {
+  // Constant motion, so the sweep is linear and never eases.
+  late final _sweep = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1500),
+  );
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (MediaQuery.disableAnimationsOf(context)) {
+      _sweep.stop();
+    } else if (!_sweep.isAnimating) {
+      _sweep.repeat();
+    }
+  }
+
+  @override
+  void dispose() {
+    _sweep.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final text = Text(
+      widget.text,
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+      semanticsLabel: widget.semanticsLabel,
+      style: widget.style,
+    );
+    if (MediaQuery.disableAnimationsOf(context)) return text;
+    final base = widget.style.color ?? context.colors.textSecondary;
+    final highlight = context.colors.textPrimary;
+    return RepaintBoundary(
+      child: AnimatedBuilder(
+        animation: _sweep,
+        child: text,
+        builder: (context, child) {
+          // The band starts fully off the left edge and leaves off the right.
+          final center = -2 + 4 * _sweep.value;
+          return ShaderMask(
+            blendMode: BlendMode.srcIn,
+            shaderCallback: (bounds) => LinearGradient(
+              begin: Alignment(center - 1, 0),
+              end: Alignment(center + 1, 0),
+              colors: [base, highlight, base],
+            ).createShader(bounds),
+            child: child,
+          );
         },
       ),
     );

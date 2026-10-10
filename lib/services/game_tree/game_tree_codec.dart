@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:typed_data';
 
+import 'package:chessever2/services/game_tree/time_control_classifier.dart';
 import 'package:dartchess/dartchess.dart';
 
 /// How deep a device-built opening tree reaches, as the server's trees do.
@@ -8,7 +9,7 @@ const int kGameTreeMaxPly = 24;
 
 /// Bumped whenever the on-disk layout or what is indexed changes; an index
 /// written by another version is rebuilt from its PGN sources.
-const int kGameTreeSchemaVersion = 2;
+const int kGameTreeSchemaVersion = 4;
 
 /// The first four FEN fields: what identifies a position in the tree.
 String gameTreeFenKey(String fen) =>
@@ -117,11 +118,16 @@ abstract final class TreeSpeed {
 }
 
 /// The clock category of a game. Chess.com's own TimeClass is
-/// authoritative; otherwise the estimated-duration bands Lichess uses.
+/// authoritative; otherwise the desktop app's classifier decides, from the
+/// clock with each provider's own bands and then from the event's name.
+/// [source] is the file's kind (`lichess`, `chesscom`, `chessever`, `manual`).
 int? classifyTreeSpeed({
   required bool lichess,
   String? timeControl,
   String? timeClass,
+  String? event,
+  String? site,
+  String? source,
 }) {
   switch (timeClass?.toLowerCase()) {
     case 'bullet':
@@ -133,19 +139,22 @@ int? classifyTreeSpeed({
     case 'daily':
       return TreeSpeed.correspondence;
   }
-  final tc = timeControl?.trim();
-  if (tc == null || tc.isEmpty || tc == '?') return null;
-  if (tc == '-' || tc.contains('/')) return TreeSpeed.correspondence;
-  final parts = tc.split('+');
-  final base = int.tryParse(parts.first);
-  if (base == null) return null;
-  final inc = parts.length > 1 ? int.tryParse(parts[1]) ?? 0 : 0;
-  final estimate = base + 40 * inc;
-  if (lichess && estimate < 30) return TreeSpeed.ultrabullet;
-  if (estimate < 180) return TreeSpeed.bullet;
-  if (estimate < 480) return TreeSpeed.blitz;
-  if (estimate < 1500) return TreeSpeed.rapid;
-  return TreeSpeed.classical;
+  // Lichess writes an unlimited or correspondence clock as a dash.
+  if (lichess && timeControl?.trim() == '-') return TreeSpeed.correspondence;
+  return switch (classifyTimeControlCategory(
+    timeControl,
+    event: event,
+    site: site,
+    source: lichess ? 'lichess' : source,
+  )) {
+    'ultrabullet' => TreeSpeed.ultrabullet,
+    'bullet' => TreeSpeed.bullet,
+    'blitz' => TreeSpeed.blitz,
+    'rapid' => TreeSpeed.rapid,
+    'classical' => TreeSpeed.classical,
+    'correspondence' => TreeSpeed.correspondence,
+    _ => null,
+  };
 }
 
 // ------------------------------------------------------------------ dates
@@ -182,12 +191,28 @@ int treeTimeOf(String? raw) {
 }
 
 /// Results as stored: 0 white won, 1 black won, 2 drawn, 3 unknown.
-int treeResultCode(String? result) => switch (result?.trim()) {
+int treeResultCode(String? result) => switch (result?.trim().toLowerCase()) {
   '1-0' => 0,
   '0-1' => 1,
-  '1/2-1/2' => 2,
+  '1/2-1/2' || '1/2' || '0.5-0.5' || '½-½' => 2,
   _ => 3,
 };
+
+/// Whether a game was played on a server rather than over the board, as
+/// the desktop app tells: its source or its `Site` names one. A database
+/// game from `chess.com INT` is online though its source is not.
+bool treeGameIsOnline({required String sourceKind, String? site, String? link}) {
+  final text = '$sourceKind ${site ?? ''} ${link ?? ''}'.toLowerCase();
+  return text.contains('lichess') ||
+      text.contains('chess.com') ||
+      text.contains('chesscom') ||
+      text.contains('chess24');
+}
+
+/// A player name as it is compared: case, spacing and `, . _ -` are not
+/// part of who someone is (`Carlsen,M.` is `Carlsen, M`).
+String treePlayerKey(String name) =>
+    name.toLowerCase().replaceAll(RegExp(r'[\s,._-]+'), '');
 
 String treeResultText(int code) => switch (code) {
   0 => '1-0',

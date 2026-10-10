@@ -326,9 +326,7 @@ class PrepSyncController extends StateNotifier<Map<String, PrepSyncStatus>> {
         return p.replaceAccount(
           live.copyWith(
             lastSyncAtMs: synced.lastSyncAtMs,
-            syncedScope:
-                account.source == PrepSource.chessever ||
-                    live.preferences == account.preferences
+            syncedScope: live.preferences == account.preferences
                 ? synced.syncedScope
                 : 'stale',
             gameCount: synced.gameCount,
@@ -397,9 +395,7 @@ class PrepSyncController extends StateNotifier<Map<String, PrepSyncStatus>> {
         if (last == null) continue;
         final stale =
             now - last >= every.inMilliseconds ||
-            (account.source.online &&
-                account.syncedScope !=
-                    account.preferences.scopeKey(DateTime.now()));
+            account.syncedScope != account.downloadScope(DateTime.now());
         if (stale && account.error == null) {
           unawaited(syncAccount(profile.id, account));
         }
@@ -451,6 +447,7 @@ final prepKeepFreshProvider = Provider<void>((ref) {
 /// What a profile's analysis depends on: its accounts' stored games.
 String _analysisKey(PrepProfile profile) => [
   profile.aliases.toList()..sort(),
+  profile.fideId,
   for (final a in profile.accounts) '${a.key}@${a.lastSyncAtMs}#${a.gameCount}',
 ].join(',');
 

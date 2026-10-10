@@ -11,6 +11,10 @@ import 'package:sqlite3/sqlite3.dart';
 /// found by a 64-bit position hash) and moves out of them, counted per
 /// (side, clock) bucket. `positions` lists, for every node, the games that
 /// passed through it, the ply, and the move they played there.
+///
+/// A game also keeps what names its tournament (`event`, `site`, `round`
+/// and, for a ChessEver broadcast, `ev`, `evid`, `evslug`, `evdate`), so the
+/// games list can group by event without reading a PGN.
 const List<String> kGameTreeSchema = [
   'CREATE TABLE IF NOT EXISTS meta(k TEXT PRIMARY KEY, v TEXT) WITHOUT ROWID',
   'CREATE TABLE IF NOT EXISTS sources('
@@ -22,7 +26,9 @@ const List<String> kGameTreeSchema = [
       'result INTEGER NOT NULL, welo INTEGER, belo INTEGER, date INTEGER, '
       'speed INTEGER, clock INTEGER NOT NULL DEFAULT 0, tc TEXT, eco TEXT, '
       'opening TEXT, event TEXT, url TEXT, plies INTEGER NOT NULL, '
-      'side INTEGER NOT NULL DEFAULT 0, ts INTEGER)',
+      'side INTEGER NOT NULL DEFAULT 0, ts INTEGER, '
+      'online INTEGER NOT NULL DEFAULT 0, site TEXT, round TEXT, ev TEXT, '
+      'evid TEXT, evslug TEXT, evdate INTEGER)',
   'CREATE UNIQUE INDEX IF NOT EXISTS games_gkey ON games(gkey)',
   // Newest first: ts is yyyymmddHHMMSS, so games of one day keep their order.
   'CREATE INDEX IF NOT EXISTS games_ts ON games(ts DESC, id DESC)',

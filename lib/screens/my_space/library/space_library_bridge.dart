@@ -472,7 +472,7 @@ Future<void> _createDatabase(
 }
 
 Future<void> _importFromClipboard(BuildContext context) async {
-    if (!await ensurePgnImportAccess(context) || !context.mounted) return;
+  if (!await ensurePgnImportAccess(context) || !context.mounted) return;
   final clipboard = await Clipboard.getData(Clipboard.kTextPlain);
   final text = clipboard?.text?.trim();
   if (!context.mounted) return;
@@ -500,7 +500,7 @@ Future<void> _importFromClipboard(BuildContext context) async {
 }
 
 Future<void> _pickPgnFile(BuildContext context) async {
-    if (!await ensurePgnImportAccess(context) || !context.mounted) return;
+  if (!await ensurePgnImportAccess(context) || !context.mounted) return;
   FilePickerResult? result;
   try {
     result = await FilePicker.platform.pickFiles(

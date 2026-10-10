@@ -132,7 +132,7 @@ void main() {
     },
   );
 
-  test('opening drill-down includes variations with different ECO codes', () {
+  test('openings group by ECO code, as on desktop, and drill down to it', () {
     const games = [
       PrepGame(
         index: 0,
@@ -168,12 +168,15 @@ void main() {
         opening: 'King’s Pawn Game',
       ),
     ];
-    final line = PrepStats.of(games).whiteOpenings.first;
-    expect(line.name, 'Sicilian Defense');
-    final filter = PrepFilter(side: PrepSide.white, opening: line.name);
+    final lines = PrepStats.of(games).whiteOpenings;
+    // Equal counts order by code.
+    expect(lines.map((l) => l.eco), ['B20', 'B21', 'C20']);
+    final line = lines.first;
+    expect(line.name, 'Sicilian Defense: Wing Gambit');
+    final filter = PrepFilter(side: PrepSide.white, eco: line.eco);
     expect(filter.apply(games).length, line.tally.total);
-    expect(filter.apply(games).map((g) => g.eco), ['B20', 'B21']);
-    expect(filter.copyWith(opening: null).apply(games), hasLength(3));
+    expect(filter.apply(games).map((g) => g.eco), ['B20']);
+    expect(filter.copyWith(eco: null).apply(games), hasLength(3));
   });
 
   test('database identity uses UUID and preserves both PGN name forms', () {
@@ -560,8 +563,9 @@ void main() {
         expect(stats.overall.wins, 3);
         expect(stats.overall.draws, 1);
         expect(stats.asBlack.total, 2);
-        // FIDE, Lichess and Chess.com scales are never graphed as one rating.
-        expect(stats.ratingHistory, isEmpty);
+        // FIDE, Lichess and Chess.com scales are never graphed as one rating:
+        // the history follows a single account.
+        expect(stats.ratingHistory.length, lessThanOrEqualTo(1));
       },
     );
     test(
@@ -723,5 +727,41 @@ void main() {
         expect(File(target).readAsStringSync(), isNot(contains('Unrelated')));
       },
     );
+  });
+
+  test('a ChessEver export keeps only the chosen period and clocks', () {
+    final directory = Directory.systemTemp.createTempSync('prep_scope_');
+    addTearDown(() => directory.deleteSync(recursive: true));
+    String game(String event, String date, String clock) =>
+        '[Event "$event"]\n[Site "Oslo"]\n[Date "$date"]\n'
+        '[White "A"]\n[Black "B"]\n[Result "1-0"]\n'
+        '[TimeControl "$clock"]\n\n1. e4 e5 1-0';
+    final export = [
+      game('Old Classic', '2019.05.01', '5400+30'),
+      game('New Classic', '2025.06.10', '5400+30'),
+      game('New Blitz', '2025.06.11', '180+2'),
+      // Only the year is known: it could still fall inside the period.
+      game('Year Only', '2025.??.??', '5400+30'),
+      game('Undated', '????.??.??', '5400+30'),
+    ].join('\n\n');
+    final from = DateTime.utc(2025, 3).millisecondsSinceEpoch;
+    List<String> kept({int? fromMs, Set<String> clocks = const {}}) {
+      final path = '${directory.path}/games.pgn';
+      writePrepGames(
+        path: path,
+        incoming: export,
+        merge: false,
+        fromMs: fromMs,
+        clocks: clocks,
+      );
+      return RegExp(
+        r'\[Event "([^"]+)"\]',
+      ).allMatches(File(path).readAsStringSync()).map((m) => m[1]!).toList();
+    }
+
+    expect(kept(), hasLength(5));
+    expect(kept(fromMs: from), ['New Classic', 'New Blitz', 'Year Only']);
+    expect(kept(fromMs: from, clocks: {'blitz'}), ['New Blitz']);
+    expect(kept(clocks: {'classical'}), hasLength(4));
   });
 }

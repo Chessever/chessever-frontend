@@ -643,7 +643,7 @@ Future<void> _settleEdit(WidgetTester tester) async {
 }
 
 /// The add button's check, shown in its place while the home is in Edit.
-final Finder _fabSave = find.byKey(const ValueKey<String>('space_fab_save'));
+final Finder _fabSave = find.byKey(const ValueKey<String>('popover_fab_save'));
 
 /// Saves the home's Edit with the add button's check.
 Future<void> _saveHomeEdit(WidgetTester tester) async {

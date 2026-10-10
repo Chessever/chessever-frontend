@@ -66,6 +66,22 @@ class PrepFilter {
       window != PrepStatsWindow.all ||
       hasFacets;
 
+  /// How many narrowings are on, for the filter button's badge.
+  int get activeCount =>
+      [
+        source != null || accountKey != null,
+        speed != null,
+        side != PrepSide.both,
+        window != PrepStatsWindow.all,
+        outcome != null,
+        year != null,
+        eco != null,
+        opening != null,
+        opponent != null,
+        base?.hasActiveSorts ?? false,
+      ].where((on) => on).length +
+      (base?.activeFilterCount ?? 0);
+
   /// Context for the current slice, without keeping its controls on screen.
   String get summary => [
     if (source != null) source!.label,
@@ -175,7 +191,7 @@ class PrepFilter {
       (accountFile == null || g.sourcePath.endsWith(accountFile!)) &&
       (outcome == null || g.outcome == outcome) &&
       (year == null || g.date?.year == year) &&
-      (eco == null || g.eco == eco) &&
+      (eco == null || g.eco?.trim().toUpperCase() == eco!.toUpperCase()) &&
       (opening == null || g.openingFamily == opening) &&
       _matchesBase(g) &&
       (since == null || (g.date != null && !g.date!.isBefore(since))) &&

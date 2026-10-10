@@ -267,6 +267,10 @@ class _PrepFilterDialogState extends State<PrepFilterDialog> {
             ),
           ],
         ),
+        if (_draft.year case final year?)
+          _facet('$year', () => _draft = _draft.copyWith(year: null)),
+        if (_draft.eco case final eco?)
+          _facet(eco, () => _draft = _draft.copyWith(eco: null)),
         if (_draft.opening case final opening?)
           _facet(opening, () => _draft = _draft.copyWith(opening: null)),
         if (_draft.opponent case final opponent?)

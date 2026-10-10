@@ -24,6 +24,7 @@ class GameTreeBuildRequest {
     required this.dbPath,
     required this.sources,
     this.aliases = const [],
+    this.fideId,
     this.revision,
     this.cancelPath,
   });
@@ -34,6 +35,10 @@ class GameTreeBuildRequest {
   /// Lower-case usernames of the prepared player. Empty for a collection,
   /// whose games have no "player" side.
   final List<String> aliases;
+
+  /// The prepared player's FIDE id. A game whose `WhiteFideId` or
+  /// `BlackFideId` carries it is theirs whatever the name is spelt like.
+  final String? fideId;
 
   /// The caller's own notion of the source's version (a collection's game
   /// count, say), stored so a later look can tell whether it is current.
@@ -46,6 +51,7 @@ class GameTreeBuildRequest {
   String get signature => jsonEncode({
     'v': kGameTreeSchemaVersion,
     'aliases': [...aliases]..sort(),
+    if (fideId != null) 'fide': fideId,
     'sources': [
       for (final s in [...sources]..sort((a, b) => a.path.compareTo(b.path)))
         [s.path, s.kind],
@@ -144,12 +150,40 @@ class _SourceRow {
 
 class _GameTreeBuilder {
   _GameTreeBuilder(this.db, this.request, this.onProgress)
-    : aliases = {for (final a in request.aliases) a.toLowerCase()};
+    : aliases = {
+        for (final a in request.aliases)
+          if (treePlayerKey(a).isNotEmpty) treePlayerKey(a),
+      },
+      fideId = _fideKey(request.fideId);
 
   final Database db;
   final GameTreeBuildRequest request;
   final void Function(double)? onProgress;
+  /// The player's names as [treePlayerKey]s.
   final Set<String> aliases;
+  final String? fideId;
+
+  static String? _fideKey(String? raw) {
+    final clean = raw?.trim().toLowerCase();
+    return clean == null || clean.isEmpty ? null : clean;
+  }
+
+  /// 1 when the prepared player had White, 2 for Black, 0 when neither tag
+  /// is theirs. Their FIDE id decides; a side that carries someone else's
+  /// id is not matched by name.
+  int _sideOf(PgnScan scan, String white, String black) {
+    if (aliases.isEmpty && fideId == null) return 0;
+    bool named(String name) => aliases.contains(treePlayerKey(name));
+    final id = fideId;
+    if (id == null) return named(white) ? 1 : named(black) ? 2 : 0;
+    final whiteId = _fideKey(scan.tag('WhiteFideId') ?? scan.tag('WhiteFideID'));
+    final blackId = _fideKey(scan.tag('BlackFideId') ?? scan.tag('BlackFideID'));
+    if (whiteId == id) return 1;
+    if (blackId == id) return 2;
+    if (whiteId == null && named(white)) return 1;
+    if (blackId == null && named(black)) return 2;
+    return 0;
+  }
 
   final Map<int, int> _nodeIds = {};
   final Map<int, _MoveTally> _tallies = {};
@@ -331,7 +365,8 @@ class _GameTreeBuilder {
     _insertGame = db.prepare(
       'INSERT OR IGNORE INTO games(src, off, len, gkey, white, black, result, '
       'welo, belo, date, speed, clock, tc, eco, opening, event, url, plies, '
-      'side, ts) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+      'side, ts, online, site, round, ev, evid, evslug, evdate) '
+      'VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
       persistent: true,
     );
     _insertPosition = db.prepare(
@@ -468,13 +503,7 @@ class _GameTreeBuilder {
 
     final white = scan.tag('White') ?? 'White';
     final black = scan.tag('Black') ?? 'Black';
-    final side = aliases.isEmpty
-        ? 0
-        : aliases.contains(white.toLowerCase())
-        ? 1
-        : aliases.contains(black.toLowerCase())
-        ? 2
-        : 0;
+    final side = _sideOf(scan, white, black);
     final site = scan.tag('Site');
     final lichess =
         source.kind == 'lichess' || (site?.contains('lichess.org') ?? false);
@@ -483,6 +512,9 @@ class _GameTreeBuilder {
           lichess: lichess,
           timeControl: scan.tag('TimeControl'),
           timeClass: scan.tag('TimeClass'),
+          event: scan.tag('Event'),
+          site: site,
+          source: source.kind,
         ) ??
         (source.kind == 'chessever' && !lichess ? TreeSpeed.classical : null);
     final clock = TreeSpeed.explorerClock(speed);
@@ -520,6 +552,14 @@ class _GameTreeBuilder {
                       scan.tag('EndTime') ??
                       scan.tag('StartTime'),
                 ),
+      treeGameIsOnline(sourceKind: source.kind, site: site, link: link) ? 1 : 0,
+      site,
+      _roundOf(scan.tag('Round')),
+      // A broadcast game names its event apart from the round's own Event.
+      scan.tag('ChessEverGroupBroadcastName') ?? scan.tag('BroadcastName'),
+      scan.tag('ChessEverGroupBroadcastId') ?? scan.tag('ChessEverTourId'),
+      scan.tag('ChessEverBroadcastSlug') ?? scan.tag('ChessEverTourSlug'),
+      treeDateOf(scan.tag('EventDate')),
     ]);
     if (db.updatedRows == 0) return; // already indexed (same provider URL)
     final gameId = db.lastInsertRowId;
@@ -604,6 +644,9 @@ class _GameTreeBuilder {
     _tallies.clear();
   }
 }
+
+/// Servers write a game outside any round as a dash.
+String? _roundOf(String? round) => round == '-' ? null : round;
 
 /// Chess.com names the opening only in its ECOUrl slug.
 String? _ecoUrlName(String? url) {

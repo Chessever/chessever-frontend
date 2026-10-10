@@ -118,7 +118,10 @@ class PrepSourcesScreen extends ConsumerWidget {
                                 for (final account in profile.accounts.where(
                                   (account) => account.source == source,
                                 ))
-                                  _Account(profile: profile, account: account),
+                                  PrepAccountRow(
+                                    profile: profile,
+                                    account: account,
+                                  ),
                             ],
                           ),
                         ),
@@ -131,8 +134,13 @@ class PrepSourcesScreen extends ConsumerWidget {
   }
 }
 
-class _Account extends ConsumerWidget {
-  const _Account({required this.profile, required this.account});
+/// One attached source: its mark, username, download state and actions.
+class PrepAccountRow extends ConsumerWidget {
+  const PrepAccountRow({
+    super.key,
+    required this.profile,
+    required this.account,
+  });
   final PrepProfile profile;
   final PrepAccount account;
 
@@ -165,25 +173,29 @@ class _Account extends ConsumerWidget {
                     ),
                   ),
                   SizedBox(height: 4.h),
-                  Text(
-                    busy
-                        ? status.message
-                        : account.error != null
-                        ? 'Download failed · Tap for details'
-                        : account.source != PrepSource.manual &&
-                              account.lastSyncAtMs == null &&
-                              account.gameCount == 0
-                        ? 'Ready to download'
-                        : prepGamesLabel(account.gameCount),
-                    style: AppTypography.textXsRegular.copyWith(
-                      color: account.error != null && !busy
-                          ? colors.danger
-                          : colors.textSecondary,
+                  if (busy)
+                    PrepShimmerText(
+                      status.message,
+                      semanticsLabel: 'Download progress: ${status.message}',
+                      style: AppTypography.textXsRegular.copyWith(
+                        color: colors.textSecondary,
+                      ),
+                    )
+                  else
+                    Text(
+                      account.error != null
+                          ? 'Download failed · Tap for details'
+                          : account.source != PrepSource.manual &&
+                                account.lastSyncAtMs == null &&
+                                account.gameCount == 0
+                          ? 'Ready to download'
+                          : prepGamesLabel(account.gameCount),
+                      style: AppTypography.textXsRegular.copyWith(
+                        color: account.error != null
+                            ? colors.danger
+                            : colors.textSecondary,
+                      ),
                     ),
-                    semanticsLabel: busy
-                        ? 'Download progress: ${status.message}'
-                        : null,
-                  ),
                 ],
               ),
             ),
@@ -240,7 +252,7 @@ class _Account extends ConsumerWidget {
             ? ref.read(prepSyncProvider.notifier).cancel(account)
             : prepDownloadSource(context, ref, profile, account),
       ),
-    if (account.source.online)
+    if (account.source != PrepSource.manual)
       LibraryMenuAction(
         icon: Icons.tune_rounded,
         label: 'Download options',
@@ -340,80 +352,62 @@ class _SourceDetails extends ConsumerWidget {
           : account.displayName ?? account.username,
       subtitle: account.source.label,
       children: [
-        Text(
-          prepGamesLabel(account.gameCount),
-          style: AppTypography.textMdBold.copyWith(color: colors.textPrimary),
-        ),
-        SizedBox(height: 4.h),
-        Text(
-          prepSyncedAgo(account.lastSyncAtMs),
-          style: AppTypography.textXsRegular.copyWith(
-            color: colors.textSecondary,
-          ),
-        ),
-        if (status != null || account.error != null) ...[
-          SizedBox(height: 12.h),
-          Text(
-            status?.message ?? account.error!,
-            style: AppTypography.textSmRegular.copyWith(
-              color: status != null ? colors.textSecondary : colors.danger,
-            ),
-          ),
-        ],
-        if (account.source.online) ...[
-          SizedBox(height: 16.h),
-          Text(
-            account.preferences.describe(account.source),
-            style: AppTypography.textXsRegular.copyWith(
-              color: colors.textSecondary,
-            ),
-          ),
-          Align(
-            alignment: Alignment.centerLeft,
-            child: TextButton(
-              onPressed: status == null
-                  ? () => Navigator.of(context).pop(_SourceDetailAction.options)
-                  : null,
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.baseline,
+          textBaseline: TextBaseline.alphabetic,
+          children: [
+            Flexible(
               child: Text(
-                'Download options',
-                style: AppTypography.textSmMedium.copyWith(
+                prepGamesLabel(account.gameCount),
+                style: AppTypography.textLgBold.copyWith(
                   color: colors.textPrimary,
+                  fontFeatures: const [FontFeature.tabularFigures()],
                 ),
               ),
             ),
+            SizedBox(width: 12.w),
+            Expanded(
+              child: Text(
+                prepSyncedAgo(account.lastSyncAtMs),
+                textAlign: TextAlign.end,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: AppTypography.textXsRegular.copyWith(
+                  color: colors.textSecondary,
+                ),
+              ),
+            ),
+          ],
+        ),
+        if (status != null || account.error != null) ...[
+          SizedBox(height: 10.h),
+          if (status != null)
+            PrepShimmerText(
+              status.message,
+              style: AppTypography.textSmRegular.copyWith(
+                color: colors.textSecondary,
+              ),
+            )
+          else
+            Text(
+              account.error!,
+              style: AppTypography.textSmRegular.copyWith(color: colors.danger),
+            ),
+        ],
+        if (account.source != PrepSource.manual) ...[
+          SizedBox(height: 14.h),
+          _DownloadScope(
+            account: account,
+            onEdit: status == null
+                ? () => Navigator.of(context).pop(_SourceDetailAction.options)
+                : null,
           ),
         ],
-        if (account.ratings.isNotEmpty)
-          ExpansionTile(
-            tilePadding: EdgeInsets.zero,
-            childrenPadding: EdgeInsets.only(bottom: 16.h),
-            shape: const Border(),
-            collapsedShape: const Border(),
-            title: Text('Ratings', style: AppTypography.textSmMedium),
-            children: [
-              for (final rating in account.ratings.entries)
-                Padding(
-                  padding: EdgeInsets.symmetric(vertical: 6.h),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          '${rating.key[0].toUpperCase()}${rating.key.substring(1)}',
-                          style: AppTypography.textXsRegular.copyWith(
-                            color: colors.textSecondary,
-                          ),
-                        ),
-                      ),
-                      Text(
-                        '${rating.value}',
-                        style: AppTypography.textXsMedium,
-                      ),
-                    ],
-                  ),
-                ),
-            ],
-          ),
-        SizedBox(height: 16.h),
+        if (account.ratings.isNotEmpty) ...[
+          SizedBox(height: 20.h),
+          _RatingGrid(account: account),
+        ],
+        SizedBox(height: 24.h),
         if (account.source == PrepSource.manual)
           TextButton(
             onPressed: () => Navigator.of(context).pop(),
@@ -465,6 +459,177 @@ class _SourceDetails extends ConsumerWidget {
               ),
             ],
           ),
+      ],
+    );
+  }
+}
+
+/// What this account downloads, as one tappable panel that opens the options.
+class _DownloadScope extends StatelessWidget {
+  const _DownloadScope({required this.account, required this.onEdit});
+  final PrepAccount account;
+  final VoidCallback? onEdit;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.colors;
+    final clocks = account.preferences.orderedTimeControls;
+    final radius = BorderRadius.circular(14.br);
+    return Semantics(
+      button: true,
+      enabled: onEdit != null,
+      label: 'Download options',
+      child: Material(
+        key: const ValueKey('prep_download_scope'),
+        color: colors.surfaceElevated,
+        borderRadius: radius,
+        child: InkWell(
+          onTap: onEdit,
+          borderRadius: radius,
+          child: Padding(
+            padding: EdgeInsets.fromLTRB(14.sp, 12.sp, 12.sp, 12.sp),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (clocks.isEmpty)
+                        Text(
+                          'All time controls',
+                          style: AppTypography.textSmMedium.copyWith(
+                            color: colors.textPrimary,
+                          ),
+                        )
+                      else
+                        Wrap(
+                          spacing: 14.w,
+                          runSpacing: 6.h,
+                          children: [
+                            for (final clock in clocks)
+                              Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  PrepClockGlyph(clock, size: 16.ic),
+                                  SizedBox(width: 6.w),
+                                  Text(
+                                    clock.labelFor(account.source),
+                                    style: AppTypography.textSmMedium.copyWith(
+                                      color: colors.textPrimary,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                          ],
+                        ),
+                      SizedBox(height: 4.h),
+                      Text(
+                        account.preferences.rangeLabel,
+                        style: AppTypography.textXsRegular.copyWith(
+                          color: colors.textSecondary,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                SizedBox(width: 12.w),
+                Icon(
+                  Icons.tune_rounded,
+                  size: 20.ic,
+                  color: onEdit == null
+                      ? colors.textTertiary
+                      : colors.iconSecondary,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// The account's ratings, three to a row so every row shares its columns.
+class _RatingGrid extends StatelessWidget {
+  const _RatingGrid({required this.account});
+  final PrepAccount account;
+
+  static const _columns = 3;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.colors;
+    // Known clocks first, in clock order; anything else keeps its own name.
+    final cells = <(PrepTimeControl?, String, int)>[
+      for (final clock in PrepTimeControl.values)
+        for (final entry in account.ratings.entries)
+          if (PrepTimeControl.forRatingKey(entry.key) == clock)
+            (clock, clock.labelFor(account.source), entry.value),
+      for (final entry in account.ratings.entries)
+        if (PrepTimeControl.forRatingKey(entry.key) == null)
+          (
+            null,
+            '${entry.key[0].toUpperCase()}${entry.key.substring(1)}',
+            entry.value,
+          ),
+    ];
+    return Column(
+      children: [
+        for (var row = 0; row < cells.length; row += _columns) ...[
+          if (row > 0) SizedBox(height: 14.h),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              for (var i = row; i < row + _columns; i++)
+                Expanded(
+                  child: i >= cells.length
+                      ? const SizedBox.shrink()
+                      : Semantics(
+                          label: '${cells[i].$2} rating ${cells[i].$3}',
+                          excludeSemantics: true,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  if (cells[i].$1 case final clock?) ...[
+                                    PrepClockGlyph(clock, size: 14.ic),
+                                    SizedBox(width: 5.w),
+                                  ],
+                                  Flexible(
+                                    child: Text(
+                                      cells[i].$2,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: AppTypography.textXsRegular
+                                          .copyWith(
+                                            color: colors.textSecondary,
+                                          ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              SizedBox(height: 2.h),
+                              FittedBox(
+                                fit: BoxFit.scaleDown,
+                                alignment: Alignment.centerLeft,
+                                child: Text(
+                                  '${cells[i].$3}',
+                                  style: AppTypography.textMdBold.copyWith(
+                                    color: colors.textPrimary,
+                                    fontFeatures: const [
+                                      FontFeature.tabularFigures(),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                ),
+            ],
+          ),
+        ],
       ],
     );
   }
