@@ -12,6 +12,9 @@ import 'package:chessever2/providers/auth_state_provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
 import 'package:chessever2/screens/calendar/calendar_screen.dart';
+import 'package:chessever2/screens/inbox/inbox_provider.dart';
+import 'package:chessever2/screens/inbox/inbox_screen.dart';
+import 'package:chessever2/screens/inbox/inbox_unread_dot.dart';
 import 'package:chessever2/screens/my_profile/my_profile_screen.dart';
 import 'package:chessever2/services/discovery_dots/discovery_dot.dart';
 import 'package:chessever2/theme/app_colors.dart';
@@ -171,6 +174,23 @@ class HamburgerMenu extends HookConsumerWidget {
                       // that bakes a white-on-light-grey contrast bug, so we
                       // recolour to `iconPrimary` only when the theme is light;
                       // dark theme renders the asset unchanged.
+                      if (ref.watch(inboxAvailableProvider))
+                        _MenuItem(
+                          key: const ValueKey('drawer-inbox'),
+                          icon: Icons.inbox_outlined,
+                          title: 'Inbox',
+                          trailing: ref.watch(inboxHasUnreadProvider)
+                              ? const InboxUnreadDot(key: ValueKey('drawer-inbox-dot'))
+                              : null,
+                          onPressed: () {
+                            final navigator = Navigator.of(context);
+                            navigator.pop();
+                            navigator.push(MaterialPageRoute<void>(
+                              builder: (_) => const InboxScreen(),
+                            ));
+                          },
+                          showChevron: true,
+                        ),
                       _MenuItem(
                         key: e2eKey(E2eIds.drawerBoard),
                         customIcon: BoardNavigationIcon(
@@ -407,10 +427,13 @@ class _UserProfileHeader extends ConsumerWidget {
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            UserAvatar(
-              size: 40,
-              showPremiumBorder: true,
-              onTap: () => showProfileAvatarEditor(context),
+            InboxAvatarBadge(
+              unread: ref.watch(inboxHasUnreadProvider),
+              child: UserAvatar(
+                size: 40,
+                showPremiumBorder: true,
+                onTap: () => showProfileAvatarEditor(context),
+              ),
             ),
             SizedBox(width: 12.w),
 
@@ -669,6 +692,7 @@ class _MenuItem extends StatelessWidget {
     this.showChevron = false,
     this.onPressed,
     this.textStyle,
+    this.trailing,
     super.key,
   });
 
@@ -678,6 +702,7 @@ class _MenuItem extends StatelessWidget {
   final bool showChevron;
   final VoidCallback? onPressed;
   final TextStyle? textStyle;
+  final Widget? trailing;
 
   VoidCallback? get _onTap => onPressed != null
       ? () {
@@ -709,6 +734,7 @@ class _MenuItem extends StatelessWidget {
                 ),
           ),
         ),
+        if (trailing != null) ...[trailing!, SizedBox(width: 8.w)],
         if (showChevron)
           Icon(
             Icons.chevron_right_outlined,

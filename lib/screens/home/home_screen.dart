@@ -8,6 +8,7 @@ import 'package:chessever2/repository/authentication/auth_repository.dart';
 import 'package:chessever2/repository/local_storage/local_storage_repository.dart';
 import 'package:chessever2/screens/authentication/auth_screen_provider.dart';
 import 'package:chessever2/screens/collections/collections_screen.dart';
+import 'package:chessever2/screens/inbox/inbox_provider.dart';
 import 'package:chessever2/screens/my_space/widgets/space_add_fab.dart';
 import 'package:chessever2/screens/my_prep/providers/prep_providers.dart'
     show prepKeepFreshProvider;
@@ -236,6 +237,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     _listenForFavoriteSignals();
     // My Prep players' new games arrive while the app is open.
     ref.watch(prepKeepFreshProvider);
+    // Start account-scoped Inbox sync even before the drawer is opened.
+    ref.watch(inboxHasUnreadProvider);
 
     // Tablet layout: NavigationRail on the side
     if (ResponsiveHelper.isTablet) {

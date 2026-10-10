@@ -19,6 +19,7 @@ import 'package:chessever2/screens/chessboard/chess_board_screen_new.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
 import 'package:chessever2/screens/chessboard/utils/game_share_utils.dart'
     show kGamebaseShareSourceParam, kGamebaseShareSourceValue;
+import 'package:chessever2/screens/inbox/inbox_screen.dart';
 import 'package:chessever2/screens/library/book_preview_screen.dart';
 import 'package:chessever2/screens/library/folder_contents_screen.dart';
 import 'package:chessever2/screens/library/utils/gamebase_game_to_games_tour_model.dart';
@@ -1365,6 +1366,18 @@ class DeepLinkService {
 
         if (folderId != null) {
           _navigateToFolder(folderId, navigatorKey, ref);
+          return;
+        }
+
+        // An announcement that also sits in the Inbox opens there, over home,
+        // so Back lands on the app rather than leaving it.
+        if (_asNonEmptyString(data['inbox_message_id']) != null) {
+          _addBreadcrumb('notification opens inbox', data: {'type': type});
+          final navigator = navigatorKey.currentState;
+          navigator?.pushNamedAndRemoveUntil('/home_screen', (route) => false);
+          navigator?.push(
+            MaterialPageRoute<void>(builder: (_) => const InboxScreen()),
+          );
           return;
         }
 
