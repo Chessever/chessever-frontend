@@ -518,6 +518,7 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
     return Padding(
       padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
       child: SegmentedSwitcher(
+        dotScope: 'event.tab',
         // Four-tab layouts scroll with exactly three segments visible. The
         // mode signature distinguishes team and knockout lists of equal size.
         key: ValueKey(

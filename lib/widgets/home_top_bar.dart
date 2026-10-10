@@ -4,6 +4,7 @@ import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/widgets/discovery_dot.dart';
 import 'package:chessever2/widgets/search/search_motion.dart';
 import 'package:chessever2/widgets/user_avatar.dart';
 import 'package:flutter/material.dart';
@@ -236,7 +237,12 @@ class HomeTopBarRow extends StatelessWidget {
               children: [
                 HomeTopBarTapTarget(
                   child: chrome(
-                    HomeTopBarAvatar(key: avatarKey, onTap: onAvatarTap),
+                    // The way into the drawer, so a dot on a drawer row can
+                    // lead here first.
+                    DiscoveryDotAnchor(
+                      id: 'home.menu',
+                      child: HomeTopBarAvatar(key: avatarKey, onTap: onAvatarTap),
+                    ),
                   ),
                 ),
                 SizedBox(width: HomeTopBarMetrics.gap),

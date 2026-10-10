@@ -13,6 +13,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
 import 'package:chessever2/screens/calendar/calendar_screen.dart';
 import 'package:chessever2/screens/my_profile/my_profile_screen.dart';
+import 'package:chessever2/services/discovery_dots/discovery_dot.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
@@ -27,6 +28,7 @@ import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
 import 'package:chessever2/widgets/svg_widget.dart';
 import 'package:chessever2/widgets/user_avatar.dart';
 import 'package:chessever2/services/review_prompt_service.dart';
+import 'package:chessever2/widgets/discovery_dot.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:chessever2/main.dart';
@@ -721,6 +723,19 @@ class _MenuItem extends StatelessWidget {
   Widget build(BuildContext context) {
     // Menu items: InkWell wraps the full Padding so the 4 sp vertical gaps
     // above/below are part of the tap surface (larger hit area, same UI).
+    // Every row is a discovery-dot anchor named after its title
+    // (`drawer.calendar`), with the dot on the icon's top-right shoulder.
+    return DiscoveryDotAnchor(
+      id: discoveryDotId('drawer', title),
+      alignment: Alignment.centerLeft,
+      offset: Offset(16.sp + 20, -10),
+      // The row closes the drawer, so a bubble would point at nothing.
+      message: DiscoveryDotMessage.snack,
+      child: _buildTarget(context),
+    );
+  }
+
+  Widget _buildTarget(BuildContext context) {
     return InkWell(
       onTap: _onTap,
       customBorder: RoundedRectangleBorder(

@@ -136,6 +136,7 @@ class _MyPrepHomeScreenState extends ConsumerState<MyPrepHomeScreen> {
               Padding(
                 padding: EdgeInsets.symmetric(horizontal: gutter),
                 child: SegmentedSwitcher(
+                  dotScope: 'prep.tab',
                   height: prepSegmentHeight(context),
                   options: MyPrepHomeScreen.tabs,
                   initialSelection: _tab,

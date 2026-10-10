@@ -142,6 +142,7 @@ class _CollectionsScreenState extends ConsumerState<CollectionsScreen> {
   Widget build(BuildContext context) {
     final query = _query;
     return EventViewShell(
+      dotScope: 'collections.tab',
       key: e2eKey(E2eIds.collectionsRoot),
       title: 'Collections',
       header: HomeTopBarFrame(
@@ -900,6 +901,7 @@ class _CollectionScreenState extends ConsumerState<CollectionScreen> {
     }
 
     return EventViewShell(
+      dotScope: 'collection.tab',
       title: c.title,
       tabs: _collectionTabs,
       // scrollableTabs: _isBook,

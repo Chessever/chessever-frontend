@@ -33,6 +33,7 @@ import 'package:chessever2/widgets/hub_tile.dart';
 // import 'package:chessever2/widgets/hub_tile_art.dart';
 import 'package:chessever2/widgets/hub_tile_captions.dart';
 import 'package:chessever2/widgets/skeleton_widget.dart';
+import 'package:chessever2/widgets/discovery_dot.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -288,6 +289,7 @@ class _MyPrepTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) => HubTile(
     key: const ValueKey('my_space_my_prep_tile'),
+    dotId: 'my_space.tile.my_prep',
     title: 'My Prep',
     caption: 'Your games and opponents',
     ramp: false,
@@ -307,6 +309,16 @@ class _MyLikesCard extends ConsumerWidget {
     final caption = hubLikesCaption(
       ref.watch(likedGamesProvider.select(likesSummary)),
     );
+    return DiscoveryDotAnchor(
+      id: 'my_space.tile.my_likes',
+      offset: const Offset(-12, 12),
+      // The card opens a page, so a bubble would point at nothing.
+      message: DiscoveryDotMessage.snack,
+      child: _card(context, caption),
+    );
+  }
+
+  Widget _card(BuildContext context, String caption) {
     return CollectionPlateRow(
       stacked: small,
       // The heart the Library's My Likes card wears, at the size it wears
@@ -333,6 +345,7 @@ class _LibraryTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) => HubTile(
     key: const ValueKey('my_space_library_tile'),
+    dotId: 'my_space.tile.library',
     title: 'Library',
     caption: 'Your databases',
     ramp: false,

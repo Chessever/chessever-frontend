@@ -38,7 +38,12 @@ class EventViewShell extends StatefulWidget {
     this.onTabChanged,
     this.tabLongPressFor,
     this.tabLongPressHint,
+    this.dotScope,
   });
+
+  /// Names the segmented tabs as discovery-dot anchors; see
+  /// [SegmentedSwitcher.dotScope].
+  final String? dotScope;
 
   /// Reports the tab the shell moved to (a tap, a swipe, or a controller
   /// request), so a parent can remember it.
@@ -360,6 +365,7 @@ class _EventViewShellState extends State<EventViewShell> {
                           ],
                         )
                       : SegmentedSwitcher(
+                          dotScope: widget.dotScope,
                           key: ValueKey(
                             'event_view_tabs_${widget.tabs.join('_')}',
                           ),

@@ -192,6 +192,7 @@ class _FavoritesTabScreenState extends ConsumerState<FavoritesTabScreen> {
     return Padding(
       padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
       child: SegmentedSwitcher(
+        dotScope: 'favorites.tab',
         backgroundColor: context.colors.popup,
         selectedBackgroundColor: context.colors.popup,
         options: favoritesModeNames.values.toList(),

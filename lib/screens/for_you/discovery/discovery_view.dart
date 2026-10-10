@@ -68,6 +68,7 @@ class _DiscoveryViewState extends ConsumerState<DiscoveryView> {
                     HubTileRow(
                       left: HubTile(
                         key: const ValueKey('discovery_feed_tile'),
+                        dotId: 'discovery.tile.feed',
                         title: 'Feed',
                         caption: hubFeedCaption(feed),
                         artwork: const HubSceneBackdrop(scene: HubScene.feed),
@@ -75,6 +76,7 @@ class _DiscoveryViewState extends ConsumerState<DiscoveryView> {
                       ),
                       right: HubTile(
                         key: const ValueKey('discovery_likes_tile'),
+                        dotId: 'discovery.tile.likes',
                         title: 'Likes',
                         caption: 'Community favorites',
                         artwork: const HubSceneBackdrop(
@@ -86,6 +88,7 @@ class _DiscoveryViewState extends ConsumerState<DiscoveryView> {
                     HubTileRow(
                       left: HubTile(
                         key: const ValueKey('discovery_miniatures_tile'),
+                        dotId: 'discovery.tile.miniatures',
                         title: 'Miniatures',
                         caption: '25 moves or fewer',
                         artwork: const HubSceneBackdrop(
@@ -95,6 +98,7 @@ class _DiscoveryViewState extends ConsumerState<DiscoveryView> {
                       ),
                       right: HubTile(
                         key: const ValueKey('discovery_reports_tile'),
+                        dotId: 'discovery.tile.reports',
                         title: 'Reports',
                         caption: 'Games with analysis',
                         artwork: const HubSceneBackdrop(

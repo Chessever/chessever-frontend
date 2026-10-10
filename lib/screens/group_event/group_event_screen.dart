@@ -820,6 +820,7 @@ class _SegmentedSwitcher extends ConsumerWidget {
         }).toList();
 
     return SegmentedSwitcher(
+      dotScope: 'events.tab',
       backgroundColor: context.colors.popup,
       selectedBackgroundColor: context.colors.popup,
       options: options,

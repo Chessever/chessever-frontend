@@ -1,5 +1,7 @@
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/services/discovery_dots/discovery_dot.dart';
 import 'package:chessever2/theme/app_colors.dart';
+import 'package:chessever2/widgets/discovery_dot.dart';
 import 'package:flutter/material.dart';
 import '../utils/app_typography.dart';
 
@@ -31,6 +33,11 @@ class SegmentedSwitcher extends StatefulWidget {
   /// Lets compact screens keep scaled labels and 44dp tap targets clear.
   final double? height;
 
+  /// Makes each segment a discovery-dot anchor named `<dotScope>.<label>`,
+  /// e.g. `home.tab` + "My Space" is `home.tab.my_space`, so the admin console
+  /// can point at a tab. Omitted: no segment is an anchor.
+  final String? dotScope;
+
   const SegmentedSwitcher({
     super.key,
     required this.options,
@@ -50,6 +57,7 @@ class SegmentedSwitcher extends StatefulWidget {
     this.height,
     this.longPressFor,
     this.longPressHint,
+    this.dotScope,
   }) : assert(
          initialSelection >= 0 && initialSelection < options.length,
          'initialSelection must be within options range',
@@ -122,11 +130,19 @@ class _SegmentedSwitcherState extends State<SegmentedSwitcher> {
   /// A segment's tap target: select on tap, and run [longPressFor] on hold.
   Widget _segmentTarget(int index, {required Widget child}) {
     final onLongPress = widget.longPressFor?.call(index);
-    final target = GestureDetector(
+    final dotScope = widget.dotScope;
+    final Widget target = GestureDetector(
       onTap: () => _onSelectionChanged(index),
       onLongPress: onLongPress,
       behavior: HitTestBehavior.opaque,
-      child: child,
+      child: dotScope == null
+          ? child
+          : DiscoveryDotAnchor(
+              id: discoveryDotId(dotScope, widget.options[index]),
+              selected: index == _selectedIndex,
+              offset: const Offset(-10, 7),
+              child: child,
+            ),
     );
     final hint = onLongPress == null ? null : widget.longPressHint?.call(index);
     // Only the segments that announce a hold carry the extra semantics node.

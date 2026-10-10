@@ -533,6 +533,7 @@ class _ForYouSegments extends StatelessWidget {
     final colors = context.colors;
     final current = selectedIndex.clamp(0, options.length - 1);
     return SegmentedSwitcher(
+      dotScope: 'home.tab',
       backgroundColor: colors.popup,
       selectedBackgroundColor: colors.popup,
       options: options,

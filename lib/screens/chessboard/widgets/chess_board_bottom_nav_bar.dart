@@ -9,6 +9,7 @@ import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/svg_asset.dart';
+import 'package:chessever2/widgets/discovery_dot.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -232,23 +233,33 @@ class _ChessBoardBottomNavBarState
       children: [
         // Gamebase Explorer Toggle (only shown when showGamebaseButton is true)
         if (widget.showGamebaseButton)
-          ChessSvgBottomNavbar(
-            key: e2eKey(E2eIds.boardGamebaseToggle),
-            width: buttonWidth,
-            svgPath: SvgAsset.libraryNavIcon,
-            onPressed: widget.onGamebaseToggle,
-            isActive: widget.isGamebaseActive,
+          DiscoveryDotAnchor(
+            id: 'board.bar.explorer',
+            alignment: Alignment.center,
+            offset: const Offset(14, -14),
+            child: ChessSvgBottomNavbar(
+              key: e2eKey(E2eIds.boardGamebaseToggle),
+              width: buttonWidth,
+              svgPath: SvgAsset.libraryNavIcon,
+              onPressed: widget.onGamebaseToggle,
+              isActive: widget.isGamebaseActive,
+            ),
           ),
 
         // Computer/Engine Analysis Toggle Button
-        ChessSvgBottomNavbar(
-          key: e2eKey(E2eIds.boardEngineToggle),
-          width: buttonWidth,
-          svgPath: SvgAsset.laptop,
-          onPressed: widget.toggleEngineVisibility,
-          onLongPress: widget.onEngineSettingsLongPress,
-          isActive: widget.showEngineAnalysis,
-          depthText: widget.showEngineAnalysis ? depthText : null,
+        DiscoveryDotAnchor(
+          id: 'board.bar.engine',
+          alignment: Alignment.center,
+          offset: const Offset(14, -14),
+          child: ChessSvgBottomNavbar(
+            key: e2eKey(E2eIds.boardEngineToggle),
+            width: buttonWidth,
+            svgPath: SvgAsset.laptop,
+            onPressed: widget.toggleEngineVisibility,
+            onLongPress: widget.onEngineSettingsLongPress,
+            isActive: widget.showEngineAnalysis,
+            depthText: widget.showEngineAnalysis ? depthText : null,
+          ),
         ),
 
         // Events with streams expose video here and board swap in the menu.

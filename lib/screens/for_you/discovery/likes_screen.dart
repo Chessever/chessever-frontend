@@ -46,6 +46,7 @@ class _LikesScreenState extends State<LikesScreen> {
 
   @override
   Widget build(BuildContext context) => EventViewShell(
+    dotScope: 'likes.tab',
     title: 'Likes',
     titleIcon: const Icon(Icons.favorite_rounded),
     tabs: const ['About', 'Games', 'Players'],

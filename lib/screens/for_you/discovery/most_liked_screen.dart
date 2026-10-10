@@ -47,6 +47,7 @@ class _MostLikedScreenState extends State<MostLikedScreen> {
   @override
   Widget build(BuildContext context) {
     return EventViewShell(
+      dotScope: 'most_liked.tab',
       title: 'Most liked',
       embedded: widget.embedded,
       tabs: const ['Games', 'Players'],

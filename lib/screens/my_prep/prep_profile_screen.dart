@@ -199,6 +199,7 @@ class _PrepProfileScreenState extends ConsumerState<PrepProfileScreen> {
                   ),
                 ),
                 child: SegmentedSwitcher(
+                  dotScope: 'prep_profile.tab',
                   height: prepSegmentHeight(context, wrapLabels: true),
                   backgroundColor: context.colors.popup,
                   selectedBackgroundColor: context.colors.popup,

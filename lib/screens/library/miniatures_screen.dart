@@ -104,6 +104,7 @@ class _MiniaturesScreenState extends ConsumerState<MiniaturesScreen> {
             Padding(
               padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
               child: SegmentedSwitcher(
+                dotScope: 'miniatures.tab',
                 backgroundColor: context.colors.popup,
                 selectedBackgroundColor: context.colors.popup,
                 options: miniaturesModeNames.values.toList(),

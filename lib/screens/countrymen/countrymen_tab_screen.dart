@@ -374,6 +374,7 @@ class _CountrymenTabScreenState extends ConsumerState<CountrymenTabScreen> {
     return Padding(
       padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
       child: SegmentedSwitcher(
+        dotScope: 'countrymen.tab',
         backgroundColor: context.colors.popup,
         selectedBackgroundColor: context.colors.popup,
         options: countrymenModeNames.values.toList(),

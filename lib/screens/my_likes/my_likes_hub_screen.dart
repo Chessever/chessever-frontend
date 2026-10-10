@@ -92,6 +92,7 @@ class _MyLikesHubScreenState extends ConsumerState<MyLikesHubScreen> {
       }
     }
     return EventViewShell(
+      dotScope: 'my_likes.tab',
       title: 'My Likes',
       embedded: widget.embedded,
       secondaryTabs: widget.embedded,

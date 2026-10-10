@@ -1,5 +1,6 @@
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/widgets/discovery_dot.dart';
 import 'package:chessever2/widgets/svg_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:motor/motor.dart';
@@ -15,6 +16,7 @@ class BottomNavBarWidget extends StatefulWidget {
     required this.width,
     this.icon,
     this.onLongPress,
+    this.dotId,
     super.key,
   });
 
@@ -25,6 +27,9 @@ class BottomNavBarWidget extends StatefulWidget {
   final String title;
   final double width;
   final IconData? icon;
+
+  /// Discovery-dot anchor id, so the admin console can point at this tab.
+  final String? dotId;
 
   @override
   State<BottomNavBarWidget> createState() => _BottomNavBarWidgetState();
@@ -79,20 +84,27 @@ class _BottomNavBarWidgetState extends State<BottomNavBarWidget> {
                   active: !MediaQuery.disableAnimationsOf(context),
                   builder: (context, scale, child) =>
                       Transform.scale(scale: scale, child: child),
-                  child: SizedBox(
-                    height: 44,
-                    child: Center(
-                      child: widget.icon != null
-                          ? Icon(widget.icon, size: iconSide + 4, color: ink)
-                          : SvgWidget(
-                              widget.svgIcon,
-                              height: iconSide,
-                              width: iconSide,
-                              colorFilter: ColorFilter.mode(
-                                ink,
-                                BlendMode.srcIn,
+                  child: DiscoveryDotAnchor(
+                    id: widget.dotId,
+                    selected: widget.isSelected,
+                    alignment: Alignment.center,
+                    // Off the icon's top-right shoulder, clear of the glyph.
+                    offset: Offset(iconSide / 2 + 3, -(iconSide / 2 + 3)),
+                    child: SizedBox(
+                      height: 44,
+                      child: Center(
+                        child: widget.icon != null
+                            ? Icon(widget.icon, size: iconSide + 4, color: ink)
+                            : SvgWidget(
+                                widget.svgIcon,
+                                height: iconSide,
+                                width: iconSide,
+                                colorFilter: ColorFilter.mode(
+                                  ink,
+                                  BlendMode.srcIn,
+                                ),
                               ),
-                            ),
+                      ),
                     ),
                   ),
                 ),

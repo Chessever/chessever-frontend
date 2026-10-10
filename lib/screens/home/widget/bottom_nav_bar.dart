@@ -74,6 +74,14 @@ final Map<BottomNavBarItem, String> bottomNavBarIcons = {
   BottomNavBarItem.collections: 'assets/svgs/collections_nav.svg',
 };
 
+/// Discovery-dot anchor ids of the root destinations, shared by the phone bar
+/// and the tablet rail.
+const bottomNavBarDotIds = {
+  BottomNavBarItem.tournaments: 'home.nav.events',
+  BottomNavBarItem.forYou: 'home.nav.home',
+  BottomNavBarItem.collections: 'home.nav.collections',
+};
+
 final namesBottomNavBarIcons = {
   BottomNavBarItem.tournaments: 'Events',
   BottomNavBarItem.forYou: 'Home',
@@ -144,6 +152,7 @@ class BottomNavBar extends ConsumerWidget {
                 width:
                     MediaQuery.sizeOf(context).width / bottomNavBarOrder.length,
                 isSelected: selectedItem == item,
+                dotId: bottomNavBarDotIds[item],
                 onTap: () {
                   final previous = ref.read(selectedBottomNavBarItemProvider);
                   if (previous == item) {

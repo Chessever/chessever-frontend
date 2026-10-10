@@ -6,6 +6,7 @@ import 'package:chessever2/screens/my_space/widgets/space_glyphs.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/widgets/discovery_dot.dart';
 import 'package:flutter/material.dart';
 import 'package:motor/motor.dart';
 
@@ -56,6 +57,7 @@ class HubTile extends StatelessWidget {
     this.titleIcon,
     this.ramp = true,
     this.onLongPressStart,
+    this.dotId,
   }) : assert(
          (artwork == null) != (mark == null),
          'A hub tile has either full-bleed artwork or a mark.',
@@ -83,6 +85,9 @@ class HubTile extends StatelessWidget {
   /// Long-press, for tiles that lift into the focus menu.
   final GestureLongPressStartCallback? onLongPressStart;
 
+  /// Discovery-dot anchor id, so the admin console can point at this tile.
+  final String? dotId;
+
   @override
   Widget build(BuildContext context) {
     final tile = HubTilePress(
@@ -104,7 +109,15 @@ class HubTile extends StatelessWidget {
       label: '$title, $caption',
       excludeSemantics: true,
       onTap: onTap,
-      child: tile,
+      child: dotId == null
+          ? tile
+          : DiscoveryDotAnchor(
+              id: dotId,
+              offset: const Offset(-12, 12),
+              // The tile opens a page, so a bubble would point at nothing.
+              message: DiscoveryDotMessage.snack,
+              child: tile,
+            ),
     );
     if (longPress == null) return semantic;
     return GestureDetector(

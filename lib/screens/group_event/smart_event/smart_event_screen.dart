@@ -427,6 +427,7 @@ class _SmartEventScreenState extends ConsumerState<SmartEventScreen> {
                       horizontal: horizontalPadding,
                     ),
                     child: SegmentedSwitcher(
+                      dotScope: 'smart_event.tab',
                       options: _tabs,
                       initialSelection: _index,
                       currentSelection: _index,

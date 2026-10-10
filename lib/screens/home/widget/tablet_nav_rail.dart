@@ -4,6 +4,7 @@ import 'package:chessever2/screens/home/start_screen.dart';
 import 'package:chessever2/screens/home/widget/bottom_nav_bar.dart';
 import 'package:chessever2/services/analytics/analytics_service.dart';
 import 'package:chessever2/theme/app_colors.dart';
+import 'package:chessever2/widgets/discovery_dot.dart';
 import 'package:chessever2/widgets/svg_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -175,48 +176,55 @@ class _NavRailItemState extends State<_NavRailItem> {
           onTap: widget.onTap,
           onLongPress: widget.onLongPress,
           behavior: HitTestBehavior.opaque,
-          child: Container(
-            width: double.infinity,
-            padding: EdgeInsets.symmetric(
-              vertical: verticalPadding,
-              horizontal: 8.0,
-            ),
-            child: SingleMotionBuilder(
-              motion: _press,
-              value: _pressed ? 0.97 : 1.0,
-              active: !MediaQuery.disableAnimationsOf(context),
-              builder: (context, scale, child) =>
-                  Transform.scale(scale: scale, child: child),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 8.0),
-                    child: widget.item == BottomNavBarItem.forYou
-                        ? Icon(Icons.home_rounded, size: iconSize, color: ink)
-                        : SvgWidget(
-                            iconPath,
-                            width: iconSize,
-                            height: iconSize,
-                            colorFilter: ColorFilter.mode(ink, BlendMode.srcIn),
-                          ),
-                  ),
-                  const SizedBox(height: 4.0),
-                  // Label
-                  Text(
-                    title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      fontSize: 11.0,
-                      fontWeight: widget.isSelected
-                          ? FontWeight.w600
-                          : FontWeight.w400,
-                      color: ink,
+          child: DiscoveryDotAnchor(
+            id: bottomNavBarDotIds[widget.item],
+            selected: widget.isSelected,
+            alignment: Alignment.topCenter,
+            // Off the icon's top-right shoulder, clear of the glyph.
+            offset: Offset(iconSize / 2 + 3, verticalPadding + 4),
+            child: Container(
+              width: double.infinity,
+              padding: EdgeInsets.symmetric(
+                vertical: verticalPadding,
+                horizontal: 8.0,
+              ),
+              child: SingleMotionBuilder(
+                motion: _press,
+                value: _pressed ? 0.97 : 1.0,
+                active: !MediaQuery.disableAnimationsOf(context),
+                builder: (context, scale, child) =>
+                    Transform.scale(scale: scale, child: child),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 8.0),
+                      child: widget.item == BottomNavBarItem.forYou
+                          ? Icon(Icons.home_rounded, size: iconSize, color: ink)
+                          : SvgWidget(
+                              iconPath,
+                              width: iconSize,
+                              height: iconSize,
+                              colorFilter: ColorFilter.mode(ink, BlendMode.srcIn),
+                            ),
                     ),
-                  ),
-                ],
+                    const SizedBox(height: 4.0),
+                    // Label
+                    Text(
+                      title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 11.0,
+                        fontWeight: widget.isSelected
+                            ? FontWeight.w600
+                            : FontWeight.w400,
+                        color: ink,
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),

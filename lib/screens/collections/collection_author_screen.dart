@@ -148,6 +148,7 @@ class _CollectionAuthorScreenState
       ),
     );
     return EventViewShell(
+      dotScope: 'author.tab',
       title: author.name,
       onTitleTap: () {
         HapticFeedbackService.buttonPress();
