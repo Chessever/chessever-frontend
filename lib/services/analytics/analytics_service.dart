@@ -4,7 +4,7 @@ import 'dart:io';
 import 'package:amplitude_flutter/amplitude.dart';
 import 'package:amplitude_flutter/configuration.dart';
 import 'package:amplitude_flutter/constants.dart' show LogLevel;
-import 'package:amplitude_flutter/default_tracking.dart';
+import 'package:amplitude_flutter/autocapture/autocapture.dart';
 import 'package:amplitude_flutter/events/base_event.dart';
 import 'package:amplitude_flutter/events/identify.dart';
 import 'package:flutter/foundation.dart';
@@ -48,7 +48,7 @@ class AnalyticsService {
       flushQueueSize: 20,
       flushIntervalMillis: 10000,
       logLevel: kDebugMode ? LogLevel.debug : LogLevel.error,
-      defaultTracking: DefaultTrackingOptions.none(),
+      autocapture: const AutocaptureDisabled(),
     );
 
     final amplitude = Amplitude(config);
@@ -150,6 +150,7 @@ class AnalyticsService {
     String eventName, {
     Map<String, dynamic>? properties,
     Map<String, dynamic>? userProperties,
+    bool forwardToAppsFlyer = true,
   }) async {
     await _initFuture;
     final client = _client;
@@ -160,23 +161,26 @@ class AnalyticsService {
       if (properties != null) ...properties,
     });
 
-    final normalizedUserProps =
-        userProperties != null ? _normalizeProperties(userProperties) : null;
+    final normalizedUserProps = userProperties != null
+        ? _normalizeProperties(userProperties)
+        : null;
 
     final event = BaseEvent(
       eventName,
       eventProperties: eventProps.isEmpty ? null : eventProps,
       userProperties:
           normalizedUserProps != null && normalizedUserProps.isNotEmpty
-              ? normalizedUserProps
-              : null,
+          ? normalizedUserProps
+          : null,
     );
 
     try {
       await client.track(event);
 
       // Also log to AppsFlyer for affiliate marketing tracking
-      unawaited(AppsflyerService.instance.logEvent(eventName, eventProps));
+      if (forwardToAppsFlyer) {
+        unawaited(AppsflyerService.instance.logEvent(eventName, eventProps));
+      }
     } catch (e, st) {
       if (kDebugMode) {
         debugPrint('[Analytics] Failed to send $eventName: $e');
@@ -210,11 +214,6 @@ class AnalyticsService {
     } catch (_) {
       // Safe to ignore; app version is a nice-to-have
     }
-
-    Locale? locale;
-    try {
-      locale = WidgetsBinding.instance.platformDispatcher.locale;
-    } catch (_) {}
 
     final platformName = kIsWeb ? 'web' : Platform.operatingSystem;
     final osVersion = kIsWeb ? null : Platform.operatingSystemVersion;

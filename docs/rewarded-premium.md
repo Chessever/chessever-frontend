@@ -1,17 +1,73 @@
 # Rewarded Premium access
 
+## Ad diagnostics (36.2.1+3583)
+
+Clarity's custom user ID is the Supabase account UUID for both guest and signed-in
+accounts. Account changes start a fresh recording session; signed-out sessions
+use `signed-out`. Clarity's generated User ID remains separate. Existing
+recordings cannot be linked retroactively.
+
+The `Rewarded Ad` Amplitude event records stage outcomes, timing, error codes,
+and reward status. These events do not forward to AppsFlyer. Detailed failures
+appear as `Rewarded ad failed: <stage>` warnings in Sentry, with `rewarded_stage`
+and a `rewarded_ad` context containing the account UUID, flow ID, backend attempt
+ID when available, recording URL when available, ad unit, and SDK error details
+(domain, code, message, response ID and mediation response information). Session
+capability tokens and request bodies are excluded. Clarity also receives custom
+events named `rewarded_<stage>_<status>`.
+
+Automatic consent refresh, SDK initialization, backend requests, and SSV option
+setup time out after 30 seconds per step. Ad loading has a 45-second deadline
+including the platform invocation. Late load callbacks cannot show an abandoned
+ad. Human consent prompts and watching an ad have no deadline. Cached valid
+consent remains usable when a refresh or form fails. Reward confirmation retries
+keep their original attempt and do not require another ad.
+
+Device check after release: as a guest, complete an ad and confirm Premium opens.
+Find the recording using the custom account ID. Retry with network unavailable
+and check the Sentry failure stage and SDK reason. Restore connectivity and retry.
+For a delayed reward, Retry confirmation must not show another ad. Switch
+accounts and verify the next recording uses the new account UUID.
+
 Production Android/iOS only. ChessEver Test never requests ads or accepts
 rewarded access. Rewarded access is enabled by default in production release builds. Debug and
 profile builds require an explicit opt-in.
+
+## Rewarded-interstitial fallback (36.2.1+3583)
+
+When the primary rewarded ad fails to load or times out, the app offers one
+rewarded-interstitial alternative. A brief intro explains the ten-minute reward
+and offers Watch ad / Skip. Skip or dismissal never grants access. Known SDK
+network errors, consent/setup failures, full-screen show failures, and early ad
+closure do not trigger this fallback. Both formats still require Google's
+signed SSV callback before granting Premium.
+
+The fallback prepares a new backend attempt with the interstitial's own ad unit.
+Its reward is confirmed using that new attempt. If SSV is delayed, Retry
+confirmation keeps this attempt and never shows another ad. Failed fallback
+loads have their own `interstitial_load` diagnostic stage and do not recurse.
+
+Before release, configure both new AdMob units as **Rewarded interstitial**, with
+"10 minutes of Premium" and the SSV URL below. Deploy both reward Edge Functions
+with the shared four-unit allowlist. If production has `REWARDED_AD_UNIT_IDS`
+set, update that override to include all four units before shipping the client.
+No migration or change to the ten-minute reward policy is needed.
+
+Device acceptance: force a no-fill failure for the primary rewarded placement
+on a registered test device, accept the intro, finish the fallback ad, and
+verify Premium opens. Repeat with Skip and early ad dismissal; neither should
+grant access. Verify no intro appears after an ordinary successful rewarded ad,
+and delayed fallback confirmation retries do not request another ad. The user
+performs these live checks; agents must not run or drive the app.
 
 ## Configuration
 
 The supplied production IDs are configured as defaults:
 
-| Platform | App ID | Rewarded ad-unit ID |
-| --- | --- | --- |
-| Android | `ca-app-pub-3681310687796023~4858872090` | `ca-app-pub-3681310687796023/8590975808` |
-| iOS | `ca-app-pub-3681310687796023~5640461560` | `ca-app-pub-3681310687796023/8331032066` |
+| Platform | App ID | Rewarded ad-unit ID | Rewarded-interstitial ad-unit ID |
+| --- | --- | --- | --- |
+| Android | `ca-app-pub-3681310687796023~4858872090` | `ca-app-pub-3681310687796023/8590975808` | `ca-app-pub-3681310687796023/2102597268` |
+| iOS | `ca-app-pub-3681310687796023~5640461560` | `ca-app-pub-3681310687796023/8331032066` | `ca-app-pub-3681310687796023/1181317704` |
 
 Production release builds enable rewarded access by default.
 `REWARDED_PREMIUM_ENABLED=false` disables it at build time. Debug/profile
@@ -24,9 +80,11 @@ flutter run --profile --dart-define-from-file=.env --dart-define=REWARDED_PREMIU
 
 Google sample units in debug builds cannot activate production rewards; the
 production server accepts only the configured first-party rewarded units.
-The four `ADMOB_ANDROID_APP_ID`, `ADMOB_ANDROID_REWARDED_ID`,
-`ADMOB_IOS_APP_ID`, and `ADMOB_IOS_REWARDED_ID` Dart defines can override these
-defaults. Android's native SDK app ID reads the same override. If overriding
+The `ADMOB_ANDROID_APP_ID`, `ADMOB_ANDROID_REWARDED_ID`,
+`ADMOB_IOS_APP_ID`, `ADMOB_IOS_REWARDED_ID`,
+`ADMOB_ANDROID_REWARDED_INTERSTITIAL_ID`, and
+`ADMOB_IOS_REWARDED_INTERSTITIAL_ID` Dart defines can override these defaults.
+An empty or malformed interstitial override disables fallback on that platform. Android's native SDK app ID reads the same override. If overriding
 iOS, also create `ios/Flutter/AdMob-production.xcconfig` containing
 `ADMOB_APP_ID = <the same ADMOB_IOS_APP_ID>`.
 ChessEver Test retains sample native app IDs and cannot obtain rewarded access.
@@ -45,13 +103,14 @@ runs before requesting iOS ads; denying tracking does not itself deny access.
 AdMob chooses the duration and may supply an ad pod; the app never promises
 30 seconds or chains ads itself.
 
-Both Edge Functions default to the two supplied production rewarded unit IDs.
+Both Edge Functions share the four supplied production rewarded and
+rewarded-interstitial unit IDs.
 No CLI secret setup is needed for these public identifiers. An optional
 `REWARDED_AD_UNIT_IDS` environment variable overrides the defaults with a
 comma-separated allowlist. For the supplied production units, its value is:
 
 ```text
-REWARDED_AD_UNIT_IDS=ca-app-pub-3681310687796023/8590975808,ca-app-pub-3681310687796023/8331032066
+REWARDED_AD_UNIT_IDS=ca-app-pub-3681310687796023/8590975808,ca-app-pub-3681310687796023/8331032066,ca-app-pub-3681310687796023/2102597268,ca-app-pub-3681310687796023/1181317704
 ```
 
 The functions refuse other Supabase project hosts. Configure production units only for production. Never enable a bypass

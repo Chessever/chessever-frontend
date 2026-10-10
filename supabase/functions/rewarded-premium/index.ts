@@ -1,8 +1,9 @@
 import { createClient } from 'npm:@supabase/supabase-js@2.57.4';
+import { rewardedAdUnits } from '../_shared/rewarded_ad_units.ts';
 
 const project = Deno.env.get('SUPABASE_URL')!;
 const expectedHost = 'oelbsuggrzyqwzmvidju.supabase.co';
-const units = (Deno.env.get('REWARDED_AD_UNIT_IDS') ?? 'ca-app-pub-3681310687796023/8590975808,ca-app-pub-3681310687796023/8331032066').split(',').map(s => s.trim()).filter(Boolean);
+const units = rewardedAdUnits(Deno.env.get('REWARDED_AD_UNIT_IDS'));
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), {
   status, headers: {'content-type': 'application/json', 'cache-control': 'no-store'},
 });

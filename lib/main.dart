@@ -63,6 +63,7 @@ import 'package:chessever2/repository/sqlite/app_database.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:terminate_restart/terminate_restart.dart';
 import 'package:clarity_flutter/clarity_flutter.dart';
+import 'package:chessever2/services/clarity_identity.dart';
 import 'package:heroine/heroine.dart';
 import 'package:chessever2/services/phone_store_upgrader.dart';
 import 'package:chessever2/widgets/phone_update_route_observer.dart';
@@ -1317,6 +1318,9 @@ class MyApp extends HookConsumerWidget {
 
                 final initialized = Clarity.initialize(context, clarityConfig);
                 debugPrint('Clarity initialized: $initialized');
+                if (initialized) {
+                  ClarityIdentity.instance.start(Supabase.instance.client);
+                }
               } catch (e, st) {
                 debugPrint('Failed to initialize Clarity: $e');
                 debugPrintStack(stackTrace: st);
@@ -1327,6 +1331,7 @@ class MyApp extends HookConsumerWidget {
       });
 
       return () {
+        ClarityIdentity.instance.stop();
         DeepLinkService.instance.detachNotificationRouter();
         DeepLinkService.instance.dispose();
         PgnFileIntakeService.instance.dispose();
