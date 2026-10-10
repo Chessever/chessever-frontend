@@ -71,13 +71,8 @@ class _PickerFlow {
   /// them, the ones under the top page included.
   final scopesChanged = ValueNotifier(0);
 
-  /// A profile is named after its ChessEver player when it has one.
-  void finishWith(List<PrepAccount> accounts) {
-    final named =
-        accounts.where((a) => a.source == PrepSource.chessever).firstOrNull ??
-        accounts.first;
-    finish(PrepAddResult(named.displayName ?? named.username, accounts));
-  }
+  void finishWith(List<PrepAccount> accounts) =>
+      finish(PrepAddResult.named(accounts));
 }
 
 Route<void> _pickerPage(WidgetBuilder builder) =>

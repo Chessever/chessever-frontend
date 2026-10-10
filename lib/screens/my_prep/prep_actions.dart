@@ -177,18 +177,174 @@ Future<void> prepOpenFavorite(
 }) async {
   HapticFeedbackService.cardTap();
   final fide = '${player.fideid}';
-  final favorite = kPrepFavoritesByFide[fide];
-  final profiles = ref.read(prepProfilesProvider.notifier);
-  final all = ref.read(prepProfilesProvider).valueOrNull ?? const [];
-  final existing = all.where((p) => prepFavoriteFide(p) == fide).firstOrNull;
+  final existing = _favoriteProfile(ref, fide);
   if (existing != null) {
     unawaited(prepAttachFavoriteDatabase(ref, existing));
     unawaited(PrepProfileScreen.open(context, existing.id));
     return;
   }
   if (!await ensurePrepAccess(context) || !context.mounted) return;
-  final database = await _databaseAccount(ref, fide);
+  final sources = await _favoriteSources(ref, player);
   if (!context.mounted) return;
+  if (sources.known.isEmpty) {
+    showAppSnack(context, _favoriteUnavailable, tone: AppSnackTone.danger);
+    return;
+  }
+  if (sources.free.isEmpty) {
+    // Every source is already followed elsewhere; open that instead.
+    unawaited(PrepProfileScreen.open(context, sources.owner!.id));
+    return;
+  }
+  onResolved?.call();
+  final messenger = ScaffoldMessenger.maybeOf(context);
+  final profile = await _prepPickPlayer(
+    context,
+    ref,
+    PrepKind.opponent,
+    initial: sources.free,
+    favoriteId: kPrepFavoritesByFide[fide]?.id ?? fide,
+  );
+  if (profile == null) return;
+  // Refresh ratings and avatars quietly; the curated values stand in.
+  unawaited(_refreshProfiles(ref, profile.id));
+  if (messenger != null) {
+    showAppSnackOn(messenger, '${profile.name} added to Opponents');
+  }
+}
+
+/// The + on a Favorites row: the whole player joins Opponents in one tap,
+/// exactly as the add sheet would leave them had the reader kept every known
+/// account and each proposed scope. Tapping the row still opens that sheet
+/// for a reader who wants to choose.
+Future<void> prepQuickAddFavorite(
+  BuildContext context,
+  WidgetRef ref,
+  ChessPlayer player,
+) async {
+  HapticFeedbackService.buttonPress();
+  if (!await ensurePrepAccess(context) || !context.mounted) return;
+  final messenger = ScaffoldMessenger.maybeOf(context);
+  final profiles = ref.read(prepProfilesProvider.notifier);
+  final fide = '${player.fideid}';
+  final existing = _favoriteProfile(ref, fide);
+  if (existing != null) {
+    await _moveToOpponents(context, ref, existing, messenger);
+    return;
+  }
+  final sources = await _favoriteSources(ref, player);
+  if (!context.mounted) return;
+  if (sources.known.isEmpty) {
+    showAppSnack(context, _favoriteUnavailable, tone: AppSnackTone.danger);
+    return;
+  }
+  if (sources.free.isEmpty) {
+    // Every source is already followed elsewhere: nothing is left to add.
+    await _moveToOpponents(context, ref, sources.owner!, messenger);
+    return;
+  }
+  final result = PrepAddResult.named([
+    for (final account in sources.free)
+      account.copyWith(
+        preferences: PrepDownloadPreferences.initialFor(account.source),
+      ),
+  ]);
+  final PrepProfile profile;
+  try {
+    profile = profiles.create(
+      kind: PrepKind.opponent,
+      name: result.name,
+      accounts: result.accounts,
+      favoriteId: kPrepFavoritesByFide[fide]?.id ?? fide,
+    );
+  } on PrepException catch (error) {
+    if (messenger != null) {
+      showAppSnackOn(messenger, error.message, tone: AppSnackTone.danger);
+    }
+    return;
+  }
+  await prepStartDownloads(
+    context,
+    ref,
+    profile.id,
+    result.accounts,
+    scoped: true,
+  );
+  unawaited(_refreshProfiles(ref, profile.id));
+  if (messenger != null) {
+    showAppSnackOn(messenger, '${profile.name} added to Opponents');
+  }
+}
+
+/// The + on a player already kept in Favorites: they move to Opponents with
+/// their games.
+Future<void> prepMoveFavoriteToOpponents(
+  BuildContext context,
+  WidgetRef ref,
+  PrepProfile profile,
+) async {
+  HapticFeedbackService.buttonPress();
+  if (!await ensurePrepAccess(context) || !context.mounted) return;
+  await _moveToOpponents(
+    context,
+    ref,
+    profile,
+    ScaffoldMessenger.maybeOf(context),
+  );
+}
+
+/// A favorite joins Opponents as it stands, and whatever it never
+/// downloaded starts. A profile that was never in Favorites only says where
+/// it already is.
+Future<void> _moveToOpponents(
+  BuildContext context,
+  WidgetRef ref,
+  PrepProfile profile,
+  ScaffoldMessengerState? messenger,
+) async {
+  if (profile.kind != PrepKind.favorite) {
+    if (messenger != null) {
+      showAppSnackOn(
+        messenger,
+        '${profile.name} is already in '
+        '${profile.kind == PrepKind.mine ? 'My games' : 'Opponents'}',
+      );
+    }
+    return;
+  }
+  ref
+      .read(prepProfilesProvider.notifier)
+      .edit(profile.id, (p) => p.copyWith(kind: PrepKind.opponent));
+  unawaited(prepAttachFavoriteDatabase(ref, profile));
+  await prepStartDownloads(
+    context,
+    ref,
+    profile.id,
+    profile.accounts,
+    scoped: true,
+  );
+  if (messenger != null) {
+    showAppSnackOn(messenger, '${profile.name} added to Opponents');
+  }
+}
+
+const _favoriteUnavailable =
+    'Could not load this player from ChessEver. Check your connection and retry.';
+
+/// The profile standing for the ranked player [fide], whichever tab it is in.
+PrepProfile? _favoriteProfile(WidgetRef ref, String fide) =>
+    (ref.read(prepProfilesProvider).valueOrNull ?? const <PrepProfile>[])
+        .where((p) => prepFavoriteFide(p) == fide)
+        .firstOrNull;
+
+/// What Favorites knows of a ranked [player]: their ChessEver source and the
+/// curated Lichess and Chess.com handles. `free` are the ones no profile
+/// holds yet, and `owner` the profile holding the first of the rest.
+Future<({List<PrepAccount> known, List<PrepAccount> free, PrepProfile? owner})>
+_favoriteSources(WidgetRef ref, ChessPlayer player) async {
+  final fide = '${player.fideid}';
+  final favorite = kPrepFavoritesByFide[fide];
+  final profiles = ref.read(prepProfilesProvider.notifier);
+  final database = await _databaseAccount(ref, fide);
   final known = [
     ?database,
     for (final (source, username)
@@ -201,40 +357,16 @@ Future<void> prepOpenFavorite(
         country: player.country,
       ),
   ];
-  if (known.isEmpty) {
-    showAppSnack(
-      context,
-      'Could not load this player from ChessEver. Check your connection and retry.',
-      tone: AppSnackTone.danger,
-    );
-    return;
-  }
   PrepProfile? owner(PrepAccount a) =>
       profiles.owning(a.source, a.externalId ?? a.username);
-  final accounts = [
-    for (final account in known)
-      if (owner(account) == null) account,
-  ];
-  if (accounts.isEmpty) {
-    // Every source is already followed elsewhere; open that instead.
-    unawaited(PrepProfileScreen.open(context, owner(known.first)!.id));
-    return;
-  }
-  onResolved?.call();
-  final messenger = ScaffoldMessenger.maybeOf(context);
-  final profile = await _prepPickPlayer(
-    context,
-    ref,
-    PrepKind.opponent,
-    initial: accounts,
-    favoriteId: favorite?.id ?? fide,
+  return (
+    known: known,
+    free: [
+      for (final account in known)
+        if (owner(account) == null) account,
+    ],
+    owner: known.map(owner).whereType<PrepProfile>().firstOrNull,
   );
-  if (profile == null) return;
-  // Refresh ratings and avatars quietly; the curated values stand in.
-  unawaited(_refreshProfiles(ref, profile.id));
-  if (messenger != null) {
-    showAppSnackOn(messenger, '${profile.name} added to Opponents');
-  }
 }
 
 /// Whether [profile] is a favorite saved before ChessEver was one of its

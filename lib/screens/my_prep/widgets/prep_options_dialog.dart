@@ -30,7 +30,7 @@ Future<PrepDownloadPreferences?> showPrepDownloadOptionsDialog(
   );
 }
 
-class _OptionsDialog extends StatefulWidget {
+class _OptionsDialog extends StatelessWidget {
   const _OptionsDialog({
     required this.account,
     required this.others,
@@ -43,32 +43,84 @@ class _OptionsDialog extends StatefulWidget {
   final PrepDownloadPreferences initial;
 
   @override
-  State<_OptionsDialog> createState() => _OptionsDialogState();
+  Widget build(BuildContext context) {
+    final sources = prepSourcesOf(account, others);
+    return PrepDialogCard(
+      icon: PrepSourceMarks(sources: sources, size: 22.sp),
+      title: prepOptionsTitle(download: download),
+      subtitle: others.isEmpty
+          ? prepAccountOnSource(account)
+          : sources.map((s) => s.label).join(' and '),
+      children: [
+        PrepOptionsForm(
+          account: account,
+          others: others,
+          download: download,
+          initial: initial,
+          onConfirm: (options) => Navigator.of(context).pop(options),
+        ),
+      ],
+    );
+  }
 }
 
-class _OptionsDialogState extends State<_OptionsDialog> {
-  late PrepDownloadPreferences _value = widget.initial;
+String prepOptionsTitle({required bool download}) =>
+    download ? 'Download games' : 'Download options';
 
-  late final _sources = {
-    widget.account.source,
-    for (final other in widget.others) other.source,
-  }.toList();
+/// "ClubPlayer on Lichess": whose games a download's choices are for.
+String prepAccountOnSource(PrepAccount account) =>
+    '${account.source.online ? account.username : account.displayName ?? account.username} on ${account.source.label}';
+
+/// The sources [account] and the accounts asked along with it come from.
+List<PrepSource> prepSourcesOf(PrepAccount account, List<PrepAccount> others) =>
+    {account.source, for (final other in others) other.source}.toList();
+
+/// An account's download choices and the actions that settle them: the
+/// options dialog's body, and the second page of a source's popup.
+class PrepOptionsForm extends StatefulWidget {
+  const PrepOptionsForm({
+    super.key,
+    required this.account,
+    required this.onConfirm,
+    this.others = const [],
+    this.download = false,
+    this.initial,
+    this.onCancel,
+  });
+
+  final PrepAccount account;
+  final List<PrepAccount> others;
+
+  /// A first download: it confirms the scope as it stands, with nothing yet
+  /// to replace.
+  final bool download;
+  final PrepDownloadPreferences? initial;
+  final ValueChanged<PrepDownloadPreferences> onConfirm;
+
+  /// Where Cancel leads. Pops by default.
+  final VoidCallback? onCancel;
+
+  @override
+  State<PrepOptionsForm> createState() => _PrepOptionsFormState();
+}
+
+class _PrepOptionsFormState extends State<PrepOptionsForm> {
+  late PrepDownloadPreferences _value =
+      widget.initial ?? widget.account.preferences;
+
+  late final _sources = prepSourcesOf(widget.account, widget.others);
 
   @override
   Widget build(BuildContext context) {
-    final account = widget.account;
     final next = _value.copyWith(
       timeControls: _value.timeControls.intersection(
         prepOfferedClocks(_sources).toSet(),
       ),
     );
-    final changed = next != account.preferences;
-    return PrepDialogCard(
-      icon: PrepSourceMarks(sources: _sources, size: 22.sp),
-      title: widget.download ? 'Download games' : 'Download options',
-      subtitle: widget.others.isEmpty
-          ? '${account.source.online ? account.username : account.displayName ?? account.username} on ${account.source.label}'
-          : _sources.map((s) => s.label).join(' and '),
+    final changed = next != widget.account.preferences;
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         PrepScopeFields(
           sources: _sources,
@@ -80,11 +132,12 @@ class _OptionsDialogState extends State<_OptionsDialog> {
         SizedBox(height: 24.h),
         PrepDialogActions(
           confirmLabel: widget.download ? 'Download' : 'Save',
+          onCancel: widget.onCancel,
           onConfirm:
               (widget.download || changed) && next.validationError == null
               ? () {
                   HapticFeedbackService.medium();
-                  Navigator.of(context).pop(next);
+                  widget.onConfirm(next);
                 }
               : null,
         ),

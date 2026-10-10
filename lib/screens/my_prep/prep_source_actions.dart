@@ -68,23 +68,41 @@ Future<void> prepEditDownloadOptions(
     download: download,
   );
   if (options == null || !context.mounted) return;
-  await ref.read(prepSyncProvider.notifier).cancelAndWait(account);
+  final live = await prepSaveDownloadOptions(ref, profile.id, account, options);
   if (!context.mounted) return;
-  ref.read(prepProfilesProvider.notifier).edit(profile.id, (p) {
+  if (live != null && prepOptionsNeedDownload(live, download: download)) {
+    await prepRefreshAccount(context, ref, profile.id, live);
+  }
+}
+
+/// Stores [options] as [account]'s download scope, once any download it has
+/// running has stopped. Returns the account as saved, or null when it has
+/// left the profile. Safe to outlive the widget [ref] belongs to.
+Future<PrepAccount?> prepSaveDownloadOptions(
+  WidgetRef ref,
+  String profileId,
+  PrepAccount account,
+  PrepDownloadPreferences options,
+) async {
+  final profiles = ref.read(prepProfilesProvider.notifier);
+  await ref.read(prepSyncProvider.notifier).cancelAndWait(account);
+  profiles.edit(profileId, (p) {
     final live = p.accounts.where((a) => a.key == account.key).firstOrNull;
     return live == null
         ? p
         : p.replaceAccount(live.copyWith(preferences: options));
   });
-  final live = ref
-      .read(prepProfileProvider(profile.id))
+  return profiles
+      .byId(profileId)
       ?.accounts
       .where((a) => a.key == account.key)
       .firstOrNull;
-  if (live != null && (download || live.lastSyncAtMs != null)) {
-    await prepRefreshAccount(context, ref, profile.id, live);
-  }
 }
+
+/// Whether saving a scope must fetch games: a first [download] always does,
+/// and games already downloaded are replaced to match the new scope.
+bool prepOptionsNeedDownload(PrepAccount account, {required bool download}) =>
+    download || account.lastSyncAtMs != null;
 
 /// Starts the first download of accounts the reader just attached, so a new
 /// source never sits idle. Accounts from the add dialog are [scoped]: each

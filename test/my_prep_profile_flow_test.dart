@@ -37,7 +37,8 @@ import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:chessever2/widgets/card_context_menu.dart' show CardMoreButton;
+import 'package:chessever2/widgets/card_context_menu.dart'
+    show CardActionButton, CardMoreButton;
 import 'package:chessever2/widgets/popover_add_fab.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -579,6 +580,76 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('the + on a Favorites row adds the whole player to Opponents in '
+      'one tap, as the add sheet would with nothing changed', (tester) async {
+    final container = await pump(
+      tester,
+      const MyPrepHomeScreen(),
+      premium: true,
+      overrides: [
+        chessPlayerRepositoryProvider.overrideWithValue(_RankingRepository()),
+      ],
+    );
+    await tester.tap(find.text('Favorites'));
+    await tester.pumpAndSettle();
+    Finder row(String name) => find.ancestor(
+      of: find.text(name),
+      matching: find.byType(PrepProfileCard),
+    );
+    Finder add(String name) =>
+        find.descendant(of: row(name), matching: find.byType(CardActionButton));
+    // Every row ends in the same button, on a full-size target.
+    expect(find.byType(CardActionButton), findsNWidgets(2));
+    expect(tester.getSize(add('Carlsen, Magnus')), const Size(44, 44));
+    final before = tester.getRect(row('Carlsen, Magnus'));
+    final nameBefore = tester.getRect(find.text('Carlsen, Magnus'));
+
+    await tester.tap(add('Carlsen, Magnus'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 500));
+    // No sheet and no profile screen: the player is simply in Opponents.
+    expect(find.text('Add an opponent'), findsNothing);
+    expect(find.byType(PrepProfileScreen), findsNothing);
+    final profile = container.read(prepProfilesProvider).requireValue.single;
+    expect(profile.kind, PrepKind.opponent);
+    expect(profile.favoriteId, 'carlsen');
+    expect(profile.fideId, '1503014');
+    expect(profile.accounts.map((a) => a.source), [
+      PrepSource.chessever,
+      PrepSource.chesscom,
+      PrepSource.lichess,
+    ]);
+    // Each account carries what the sheet's scope page would have proposed.
+    for (final account in profile.accounts) {
+      final proposed = PrepDownloadPreferences.initialFor(account.source);
+      expect(account.preferences.timeControls, proposed.timeControls);
+      expect(account.preferences.range, proposed.range);
+    }
+    expect(repo.syncCalls, 3);
+    expect(find.text('${profile.name} added to Opponents'), findsOneWidget);
+    // The row holds its place and size; only its end mark changes.
+    expect(tester.getRect(row('Carlsen, Magnus')), before);
+    expect(tester.getRect(find.text('Carlsen, Magnus')), nameBefore);
+    expect(add('Carlsen, Magnus'), findsNothing);
+    expect(
+      find.descendant(
+        of: row('Carlsen, Magnus'),
+        matching: find.byIcon(Icons.check_rounded),
+      ),
+      findsOneWidget,
+    );
+    // The row reads its state out with the rest of its text.
+    expect(find.bySemanticsLabel(RegExp('In Opponents')), findsOneWidget);
+
+    // A player ChessEver cannot resolve, with no known handle, adds nothing.
+    await tester.tap(add('Unknown, Handle'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 500));
+    expect(container.read(prepProfilesProvider).requireValue, hasLength(1));
+    expect(add('Unknown, Handle'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('My games attaches own usernames from both online sites', (
     tester,
   ) async {
@@ -1069,9 +1140,15 @@ void main() {
       await tester.ensureVisible(find.text('1900'));
       expect(find.text('1900'), findsOneWidget);
       expect(tester.takeException(), isNull);
-      await tester.ensureVisible(find.text('Close'));
-      await tester.tap(find.text('Close'));
+      // Both actions fit, stacked, and the popup leaves by its close button.
+      await tester.ensureVisible(find.text('Go to profile'));
+      expect(find.text('Download games'), findsOneWidget);
+      expect(find.text('Close'), findsNothing);
+      expect(tester.takeException(), isNull);
+      await tester.ensureVisible(find.byTooltip('Close'));
+      await tester.tap(find.byTooltip('Close'));
       await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('prep_download_scope')), findsNothing);
       await pump(
         tester,
         Scaffold(
@@ -1085,7 +1162,7 @@ void main() {
   );
 
   testWidgets(
-    'account details open the correct download options without starting a download',
+    'a source popup steps to its download options and back in place',
     (tester) async {
       const account = PrepAccount(
         source: PrepSource.chesscom,
@@ -1104,31 +1181,122 @@ void main() {
         premium: true,
         overrides: [prepProfileProvider.overrideWith((ref, id) => profile)],
       );
+      final scope = find.byKey(const ValueKey('prep_download_scope'));
       await tester.tap(
         find.byKey(const ValueKey('prep_account_chesscom:secondaccount')),
       );
       await tester.pumpAndSettle();
+      expect(find.text('1/2'), findsOneWidget);
+      // A first download offers its scope on the popup's second page.
       await tester.tap(find.text('Download games'));
       await tester.pumpAndSettle();
+      expect(find.text('2/2'), findsOneWidget);
       expect(find.text('SecondAccount on Chess.com'), findsOneWidget);
       expect(find.text('Time controls'), findsOneWidget);
+      expect(find.text('Download'), findsOneWidget);
+      expect(scope, findsNothing);
       expect(repo.syncCalls, 0);
+      // Cancel steps back to the details; the popup stays open.
       await tester.ensureVisible(find.text('Cancel'));
       await tester.tap(find.text('Cancel'));
       await tester.pumpAndSettle();
-      expect(find.text('Sources'), findsOneWidget);
-      await tester.tap(
-        find.byKey(const ValueKey('prep_account_chesscom:secondaccount')),
-      );
+      expect(find.text('1/2'), findsOneWidget);
+      expect(find.text('Time controls'), findsNothing);
+      await tester.tap(scope);
       await tester.pumpAndSettle();
-      await tester.tap(find.byKey(const ValueKey('prep_download_scope')));
-      await tester.pumpAndSettle();
+      expect(find.text('Download options'), findsOneWidget);
       expect(find.text('SecondAccount on Chess.com'), findsOneWidget);
       expect(find.text('Save'), findsOneWidget);
       expect(repo.syncCalls, 0);
-      await tester.ensureVisible(find.text('Cancel'));
-      await tester.tap(find.text('Cancel'));
+      await tester.tap(find.byKey(const ValueKey('prep_source_back')));
       await tester.pumpAndSettle();
+      expect(scope, findsOneWidget);
+      // The system back gesture steps back a page before it leaves.
+      await tester.tap(scope);
+      await tester.pumpAndSettle();
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      expect(scope, findsOneWidget);
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      expect(scope, findsNothing);
+      expect(find.text('Sources'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'refreshing a source reports inside its popup, which then opens the profile',
+    (tester) async {
+      late PrepProfile profile;
+      late PrepProfilesNotifier profiles;
+      var profileOpened = 0;
+      final container = await pump(
+        tester,
+        Consumer(
+          builder: (context, ref, _) {
+            final live = ref.watch(prepProfilesProvider).valueOrNull ?? [];
+            return Scaffold(
+              body: live.isEmpty
+                  ? const SizedBox.shrink()
+                  : PrepAccountRow(
+                      profile: live.single,
+                      account: live.single.accounts.single,
+                      onOpenProfile: () => profileOpened++,
+                    ),
+            );
+          },
+        ),
+        premium: true,
+      );
+      profiles = container.read(prepProfilesProvider.notifier);
+      profile = (await tester.runAsync(() async {
+        final created = profiles.create(
+          kind: PrepKind.opponent,
+          name: 'Club Player',
+          accounts: [
+            PrepAccount.fromPlayer(
+              databasePlayer,
+            ).copyWith(gameCount: 12, lastSyncAtMs: 1),
+          ],
+        );
+        await profiles.debugDrainWrites();
+        return created;
+      }))!;
+      await tester.pump();
+      final account = profile.accounts.single;
+      repo.deferSync = true;
+      await tester.tap(find.byKey(ValueKey('prep_account_${account.key}')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Refresh games'));
+      // The spinner never settles: pump by hand while the download runs.
+      await tester.pump();
+      await tester.pump();
+      // The popup stays open and carries the progress itself.
+      expect(repo.syncCalls, 1);
+      expect(find.text('Stop download'), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('prep_source_progress')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: find.byKey(const ValueKey('prep_source_primary')),
+          matching: find.byType(CircularProgressIndicator),
+        ),
+        findsOneWidget,
+      );
+      await tester.tap(find.text('Stop download'));
+      await tester.pump();
+      await tester.pump();
+      expect(container.read(prepSyncProvider), isEmpty);
+      expect(find.text('Refresh games'), findsOneWidget);
+      await tester.tap(find.text('Go to profile'));
+      await tester.pump();
+      await tester.pump();
+      expect(find.text('Refresh games'), findsNothing);
+      expect(profileOpened, 1);
+      await tester.runAsync(() => profiles.debugDrainWrites());
       expect(tester.takeException(), isNull);
     },
   );

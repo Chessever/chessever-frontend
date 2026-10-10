@@ -3,11 +3,11 @@ import 'dart:async';
 import 'package:chessever2/screens/library/widgets/library_context_menu.dart';
 import 'package:chessever2/screens/my_prep/models/prep_models.dart';
 import 'package:chessever2/screens/my_prep/prep_actions.dart';
+import 'package:chessever2/screens/my_prep/prep_profile_screen.dart';
 import 'package:chessever2/screens/my_prep/prep_source_actions.dart';
 import 'package:chessever2/screens/my_prep/providers/prep_providers.dart';
 import 'package:chessever2/screens/my_prep/widgets/prep_common.dart';
-import 'package:chessever2/screens/my_prep/widgets/prep_dialogs.dart';
-import 'package:chessever2/widgets/alert_dialog/alert_modal.dart';
+import 'package:chessever2/screens/my_prep/widgets/prep_source_dialog.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
@@ -121,6 +121,9 @@ class PrepSourcesScreen extends ConsumerWidget {
                                   PrepAccountRow(
                                     profile: profile,
                                     account: account,
+                                    // Sources is pushed from its profile.
+                                    onOpenProfile: () =>
+                                        Navigator.of(context).maybePop(),
                                   ),
                             ],
                           ),
@@ -140,9 +143,14 @@ class PrepAccountRow extends ConsumerWidget {
     super.key,
     required this.profile,
     required this.account,
+    this.onOpenProfile,
   });
   final PrepProfile profile;
   final PrepAccount account;
+
+  /// Where the popup's "Go to profile" leads. Opens the profile by default;
+  /// a list already sitting on that profile leads back to it instead.
+  final VoidCallback? onOpenProfile;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -154,7 +162,7 @@ class PrepAccountRow extends ConsumerWidget {
         : account.displayName ?? account.username;
     return InkWell(
       key: ValueKey('prep_account_${account.key}'),
-      onTap: () => _details(context, ref),
+      onTap: () => _details(context),
       child: Padding(
         padding: EdgeInsets.fromLTRB(16.w, 14.h, 4.w, 14.h),
         child: Row(
@@ -211,26 +219,18 @@ class PrepAccountRow extends ConsumerWidget {
     );
   }
 
-  Future<void> _details(BuildContext context, WidgetRef ref) async {
-    final action = await showAlertModal<_SourceDetailAction>(
-      context: context,
-      child: _SourceDetails(profileId: profile.id, accountKey: account.key),
+  /// The source's popup, and the profile when the reader asks for it there.
+  Future<void> _details(BuildContext context) async {
+    final toProfile = await showPrepSourceDialog(
+      context,
+      profileId: profile.id,
+      accountKey: account.key,
     );
-    if (!context.mounted || action == null) return;
-    final liveProfile = ref.read(prepProfileProvider(profile.id));
-    final live = liveProfile?.accounts
-        .where((a) => a.key == account.key)
-        .firstOrNull;
-    if (liveProfile == null || live == null) return;
-    switch (action) {
-      case _SourceDetailAction.download:
-        if (ref.read(prepSyncProvider).containsKey(live.key)) {
-          ref.read(prepSyncProvider.notifier).cancel(live);
-        } else {
-          await prepDownloadSource(context, ref, liveProfile, live);
-        }
-      case _SourceDetailAction.options:
-        await prepEditDownloadOptions(context, ref, liveProfile, live);
+    if (toProfile != true || !context.mounted) return;
+    if (onOpenProfile case final open?) {
+      open();
+    } else {
+      unawaited(PrepProfileScreen.open(context, profile.id));
     }
   }
 
@@ -238,7 +238,7 @@ class PrepAccountRow extends ConsumerWidget {
     LibraryMenuAction(
       icon: Icons.info_outline_rounded,
       label: 'Account details',
-      onSelected: () => _details(context, ref),
+      onSelected: () => _details(context),
     ),
     if (account.source != PrepSource.manual)
       LibraryMenuAction(
@@ -325,312 +325,4 @@ class PrepAccountRow extends ConsumerWidget {
       onSelected: () => prepDetachSource(context, ref, profile, account),
     ),
   ];
-}
-
-enum _SourceDetailAction { download, options }
-
-/// Secondary account information stays off the source list.
-class _SourceDetails extends ConsumerWidget {
-  const _SourceDetails({required this.profileId, required this.accountKey});
-  final String profileId;
-  final String accountKey;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final account = ref
-        .watch(prepProfileProvider(profileId))
-        ?.accounts
-        .where((a) => a.key == accountKey)
-        .firstOrNull;
-    if (account == null) return const SizedBox.shrink();
-    final status = ref.watch(prepSyncProvider.select((s) => s[accountKey]));
-    final colors = context.colors;
-    return PrepDialogCard(
-      icon: PrepSourceMark(source: account.source, size: 24.sp),
-      title: account.source.online
-          ? account.username
-          : account.displayName ?? account.username,
-      subtitle: account.source.label,
-      children: [
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.baseline,
-          textBaseline: TextBaseline.alphabetic,
-          children: [
-            Flexible(
-              child: Text(
-                prepGamesLabel(account.gameCount),
-                style: AppTypography.textLgBold.copyWith(
-                  color: colors.textPrimary,
-                  fontFeatures: const [FontFeature.tabularFigures()],
-                ),
-              ),
-            ),
-            SizedBox(width: 12.w),
-            Expanded(
-              child: Text(
-                prepSyncedAgo(account.lastSyncAtMs),
-                textAlign: TextAlign.end,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: AppTypography.textXsRegular.copyWith(
-                  color: colors.textSecondary,
-                ),
-              ),
-            ),
-          ],
-        ),
-        if (status != null || account.error != null) ...[
-          SizedBox(height: 10.h),
-          if (status != null)
-            PrepShimmerText(
-              status.message,
-              style: AppTypography.textSmRegular.copyWith(
-                color: colors.textSecondary,
-              ),
-            )
-          else
-            Text(
-              account.error!,
-              style: AppTypography.textSmRegular.copyWith(color: colors.danger),
-            ),
-        ],
-        if (account.source != PrepSource.manual) ...[
-          SizedBox(height: 14.h),
-          _DownloadScope(
-            account: account,
-            onEdit: status == null
-                ? () => Navigator.of(context).pop(_SourceDetailAction.options)
-                : null,
-          ),
-        ],
-        if (account.ratings.isNotEmpty) ...[
-          SizedBox(height: 20.h),
-          _RatingGrid(account: account),
-        ],
-        SizedBox(height: 24.h),
-        if (account.source == PrepSource.manual)
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: Text(
-              'Close',
-              style: AppTypography.textSmMedium.copyWith(
-                color: colors.textSecondary,
-              ),
-            ),
-          )
-        else
-          Row(
-            children: [
-              Expanded(
-                child: TextButton(
-                  onPressed: () => Navigator.of(context).pop(),
-                  child: Text(
-                    'Close',
-                    style: AppTypography.textSmMedium.copyWith(
-                      color: colors.textSecondary,
-                    ),
-                  ),
-                ),
-              ),
-              SizedBox(width: 8.w),
-              Expanded(
-                flex: 2,
-                child: FilledButton(
-                  onPressed: () =>
-                      Navigator.of(context).pop(_SourceDetailAction.download),
-                  style: FilledButton.styleFrom(
-                    minimumSize: const Size(0, 48),
-                    backgroundColor: colors.textPrimary,
-                    foregroundColor: colors.textInverse,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12.br),
-                    ),
-                  ),
-                  child: Text(
-                    status != null
-                        ? 'Stop download'
-                        : account.lastSyncAtMs == null
-                        ? 'Download games'
-                        : 'Refresh games',
-                    textAlign: TextAlign.center,
-                    style: AppTypography.textSmBold,
-                  ),
-                ),
-              ),
-            ],
-          ),
-      ],
-    );
-  }
-}
-
-/// What this account downloads, as one tappable panel that opens the options.
-class _DownloadScope extends StatelessWidget {
-  const _DownloadScope({required this.account, required this.onEdit});
-  final PrepAccount account;
-  final VoidCallback? onEdit;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = context.colors;
-    final clocks = account.preferences.orderedTimeControls;
-    final radius = BorderRadius.circular(14.br);
-    return Semantics(
-      button: true,
-      enabled: onEdit != null,
-      label: 'Download options',
-      child: Material(
-        key: const ValueKey('prep_download_scope'),
-        color: colors.surfaceElevated,
-        borderRadius: radius,
-        child: InkWell(
-          onTap: onEdit,
-          borderRadius: radius,
-          child: Padding(
-            padding: EdgeInsets.fromLTRB(14.sp, 12.sp, 12.sp, 12.sp),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      if (clocks.isEmpty)
-                        Text(
-                          'All time controls',
-                          style: AppTypography.textSmMedium.copyWith(
-                            color: colors.textPrimary,
-                          ),
-                        )
-                      else
-                        Wrap(
-                          spacing: 14.w,
-                          runSpacing: 6.h,
-                          children: [
-                            for (final clock in clocks)
-                              Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  PrepClockGlyph(clock, size: 16.ic),
-                                  SizedBox(width: 6.w),
-                                  Text(
-                                    clock.labelFor(account.source),
-                                    style: AppTypography.textSmMedium.copyWith(
-                                      color: colors.textPrimary,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                          ],
-                        ),
-                      SizedBox(height: 4.h),
-                      Text(
-                        account.preferences.rangeLabel,
-                        style: AppTypography.textXsRegular.copyWith(
-                          color: colors.textSecondary,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                SizedBox(width: 12.w),
-                Icon(
-                  Icons.tune_rounded,
-                  size: 20.ic,
-                  color: onEdit == null
-                      ? colors.textTertiary
-                      : colors.iconSecondary,
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// The account's ratings, three to a row so every row shares its columns.
-class _RatingGrid extends StatelessWidget {
-  const _RatingGrid({required this.account});
-  final PrepAccount account;
-
-  static const _columns = 3;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = context.colors;
-    // Known clocks first, in clock order; anything else keeps its own name.
-    final cells = <(PrepTimeControl?, String, int)>[
-      for (final clock in PrepTimeControl.values)
-        for (final entry in account.ratings.entries)
-          if (PrepTimeControl.forRatingKey(entry.key) == clock)
-            (clock, clock.labelFor(account.source), entry.value),
-      for (final entry in account.ratings.entries)
-        if (PrepTimeControl.forRatingKey(entry.key) == null)
-          (
-            null,
-            '${entry.key[0].toUpperCase()}${entry.key.substring(1)}',
-            entry.value,
-          ),
-    ];
-    return Column(
-      children: [
-        for (var row = 0; row < cells.length; row += _columns) ...[
-          if (row > 0) SizedBox(height: 14.h),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              for (var i = row; i < row + _columns; i++)
-                Expanded(
-                  child: i >= cells.length
-                      ? const SizedBox.shrink()
-                      : Semantics(
-                          label: '${cells[i].$2} rating ${cells[i].$3}',
-                          excludeSemantics: true,
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
-                                children: [
-                                  if (cells[i].$1 case final clock?) ...[
-                                    PrepClockGlyph(clock, size: 14.ic),
-                                    SizedBox(width: 5.w),
-                                  ],
-                                  Flexible(
-                                    child: Text(
-                                      cells[i].$2,
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: AppTypography.textXsRegular
-                                          .copyWith(
-                                            color: colors.textSecondary,
-                                          ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              SizedBox(height: 2.h),
-                              FittedBox(
-                                fit: BoxFit.scaleDown,
-                                alignment: Alignment.centerLeft,
-                                child: Text(
-                                  '${cells[i].$3}',
-                                  style: AppTypography.textMdBold.copyWith(
-                                    color: colors.textPrimary,
-                                    fontFeatures: const [
-                                      FontFeature.tabularFigures(),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                ),
-            ],
-          ),
-        ],
-      ],
-    );
-  }
 }

@@ -234,7 +234,7 @@ class _CardMenuScope extends InheritedWidget {
 /// than through ink, which an opaque card would paint over. The button also
 /// takes the pointer once a press rests on it, so the card around it never
 /// sinks as if the card itself had been pressed.
-class CardMoreButton extends StatefulWidget {
+class CardMoreButton extends StatelessWidget {
   const CardMoreButton({
     super.key,
     this.actions,
@@ -254,7 +254,69 @@ class CardMoreButton extends StatefulWidget {
   final bool vertical;
 
   @override
-  State<CardMoreButton> createState() => _CardMoreButtonState();
+  Widget build(BuildContext context) {
+    final scopeElement = _CardMenuScope.elementOf(context);
+    final card = (scopeElement?.widget as _CardMenuScope?)?.state;
+    final canOpen = actions != null || card != null;
+    return _CardButton(
+      tooltip: tooltip,
+      onTap: canOpen ? () => _open(context) : null,
+      icon: Icon(
+        vertical ? Icons.more_vert_rounded : Icons.more_horiz_rounded,
+        size: size ?? 20.sp,
+        color: color ?? context.colors.iconSecondary,
+      ),
+    );
+  }
+
+  void _open(BuildContext context) {
+    final actions = this.actions;
+    // The button's own centre is the press point, so the menu opens on the
+    // side of the card the button sits on.
+    final box = context.findRenderObject();
+    final origin = box is RenderBox && box.hasSize
+        ? box.localToGlobal(box.size.center(Offset.zero))
+        : null;
+    final scopeElement = _CardMenuScope.elementOf(context);
+    final card = (scopeElement?.widget as _CardMenuScope?)?.state;
+    if (card != null && card.mounted && scopeElement != null) {
+      // Inside a card the whole card lifts, whichever actions it shows.
+      card._open(scopeElement, actions: actions, origin: origin);
+    } else if (actions != null) {
+      CardContextMenu.open(context, actions: actions, origin: origin);
+    }
+  }
+}
+
+/// One direct action in a card's trailing slot, such as adding the card's
+/// player to a list. It has [CardMoreButton]'s target, press and hold on the
+/// pointer, so a card reads the same whichever of the two it ends in.
+class CardActionButton extends StatelessWidget {
+  const CardActionButton({
+    super.key,
+    required this.icon,
+    required this.tooltip,
+    required this.onPressed,
+    this.color,
+    this.size,
+  });
+
+  final IconData icon;
+  final String tooltip;
+  final VoidCallback onPressed;
+  final Color? color;
+  final double? size;
+
+  @override
+  Widget build(BuildContext context) => _CardButton(
+    tooltip: tooltip,
+    onTap: onPressed,
+    icon: Icon(
+      icon,
+      size: size ?? 20.sp,
+      color: color ?? context.colors.iconSecondary,
+    ),
+  );
 }
 
 /// Press feedback: short and firm, landing exactly on rest.
@@ -265,7 +327,24 @@ const Motion _kMorePressMotion = CupertinoMotion.smooth(
 const double _kMorePressedScale = 0.97;
 const double _kMoreTarget = 44;
 
-class _CardMoreButtonState extends State<CardMoreButton> {
+/// The target and press a card's trailing buttons share. Without [onTap] the
+/// glyph still holds its slot, but takes no pointer.
+class _CardButton extends StatefulWidget {
+  const _CardButton({
+    required this.icon,
+    required this.tooltip,
+    required this.onTap,
+  });
+
+  final Widget icon;
+  final String tooltip;
+  final VoidCallback? onTap;
+
+  @override
+  State<_CardButton> createState() => _CardButtonState();
+}
+
+class _CardButtonState extends State<_CardButton> {
   bool _pressed = false;
 
   void _setPressed(bool value) {
@@ -275,9 +354,7 @@ class _CardMoreButtonState extends State<CardMoreButton> {
 
   @override
   Widget build(BuildContext context) {
-    final scopeElement = _CardMenuScope.elementOf(context);
-    final card = (scopeElement?.widget as _CardMenuScope?)?.state;
-    final canOpen = widget.actions != null || card != null;
+    final onTap = widget.onTap;
     final reduceMotion = MediaQuery.disableAnimationsOf(context);
     // Tonal: a step off the surface in the ink's own direction, the same
     // step the focus menu's rows take when pressed.
@@ -288,16 +365,10 @@ class _CardMoreButtonState extends State<CardMoreButton> {
     Widget button = SizedBox(
       width: _kMoreTarget,
       height: _kMoreTarget,
-      child: Center(
-        child: Icon(
-          widget.vertical ? Icons.more_vert_rounded : Icons.more_horiz_rounded,
-          size: widget.size ?? 20.sp,
-          color: widget.color ?? context.colors.iconSecondary,
-        ),
-      ),
+      child: Center(child: widget.icon),
     );
 
-    if (canOpen) {
+    if (onTap != null) {
       button = RawGestureDetector(
         // The whole 44dp square is the target, not just the glyph's ink.
         behavior: HitTestBehavior.opaque,
@@ -311,7 +382,7 @@ class _CardMoreButtonState extends State<CardMoreButton> {
                   ..onTapDown = ((_) => _setPressed(true))
                   ..onTapUp = ((_) => _setPressed(false))
                   ..onTapCancel = (() => _setPressed(false))
-                  ..onTap = (() => _open(context)),
+                  ..onTap = onTap,
               ),
         },
         child: SingleMotionBuilder(
@@ -341,27 +412,9 @@ class _CardMoreButtonState extends State<CardMoreButton> {
       button: true,
       label: widget.tooltip,
       excludeSemantics: true,
-      onTap: canOpen ? () => _open(context) : null,
+      onTap: onTap,
       child: Tooltip(message: widget.tooltip, child: button),
     );
-  }
-
-  void _open(BuildContext context) {
-    final actions = widget.actions;
-    // The button's own centre is the press point, so the menu opens on the
-    // side of the card the button sits on.
-    final box = context.findRenderObject();
-    final origin = box is RenderBox && box.hasSize
-        ? box.localToGlobal(box.size.center(Offset.zero))
-        : null;
-    final scopeElement = _CardMenuScope.elementOf(context);
-    final card = (scopeElement?.widget as _CardMenuScope?)?.state;
-    if (card != null && card.mounted && scopeElement != null) {
-      // Inside a card the whole card lifts, whichever actions it shows.
-      card._open(scopeElement, actions: actions, origin: origin);
-    } else if (actions != null) {
-      CardContextMenu.open(context, actions: actions, origin: origin);
-    }
   }
 }
 

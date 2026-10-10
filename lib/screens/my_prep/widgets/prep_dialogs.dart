@@ -10,6 +10,15 @@ import 'package:flutter/material.dart';
 /// reader typed, each already confirmed to exist.
 class PrepAddResult {
   const PrepAddResult(this.name, this.accounts);
+
+  /// A profile is named after its ChessEver player when it has one.
+  factory PrepAddResult.named(List<PrepAccount> accounts) {
+    final named =
+        accounts.where((a) => a.source == PrepSource.chessever).firstOrNull ??
+        accounts.first;
+    return PrepAddResult(named.displayName ?? named.username, accounts);
+  }
+
   final String name;
   final List<PrepAccount> accounts;
 }
@@ -43,6 +52,30 @@ class PrepDialogCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    return PrepDialogSurface(
+      child: SingleChildScrollView(
+        padding: EdgeInsets.all(24.sp),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            PrepDialogHeader(leading: icon, title: title, subtitle: subtitle),
+            SizedBox(height: 22.h),
+            ...children,
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// The rounded surface a Prep dialog's content sits on.
+class PrepDialogSurface extends StatelessWidget {
+  const PrepDialogSurface({super.key, required this.child});
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
     return ConstrainedBox(
       constraints: BoxConstraints(
         maxWidth: ResponsiveHelper.isTablet ? 440 : double.infinity,
@@ -53,48 +86,114 @@ class PrepDialogCard extends StatelessWidget {
           color: context.colors.surface,
           borderRadius: BorderRadius.circular(24.br),
         ),
-        child: SingleChildScrollView(
-          padding: EdgeInsets.all(24.sp),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Row(
-                children: [
-                  icon,
-                  SizedBox(width: 14.w),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          title,
-                          style: AppTypography.textLgBold.copyWith(
-                            color: context.colors.textPrimary,
-                            letterSpacing: -0.4,
-                          ),
-                        ),
-                        if (subtitle != null) ...[
-                          SizedBox(height: 2.h),
-                          Text(
-                            subtitle!,
-                            style: AppTypography.textXsRegular.copyWith(
-                              color: context.colors.textSecondary,
-                              height: 16 / 12,
-                            ),
-                          ),
-                        ],
-                      ],
+        child: child,
+      ),
+    );
+  }
+}
+
+/// A Prep dialog's heading: its mark, then the title over its subtitle. A
+/// dialog of several pages names the page it is on with [step], and keeps
+/// [trailingInset] clear for a close button laid over the heading's end.
+class PrepDialogHeader extends StatelessWidget {
+  const PrepDialogHeader({
+    super.key,
+    required this.leading,
+    required this.title,
+    this.subtitle,
+    this.gap,
+    this.step,
+    this.stepLabel,
+    this.trailingInset = 0,
+    this.band,
+  });
+
+  final Widget leading;
+  final String title;
+  final String? subtitle;
+
+  /// The space between [leading] and the title. 14 by default.
+  final double? gap;
+  final String? step;
+  final String? stepLabel;
+  final double trailingInset;
+
+  /// The height of the line the mark and the page number sit on, measured
+  /// from the heading's top. Without one they centre on the whole heading;
+  /// with one they hold that line when a long title wraps under it, level
+  /// with a control laid over the heading's end.
+  final double? band;
+
+  /// How tall a one-line title over a one-line subtitle stands.
+  static double blockHeight(BuildContext context) {
+    final scaler = MediaQuery.textScalerOf(context);
+    final title = AppTypography.textLgBold;
+    final subtitle = AppTypography.textXsRegular;
+    return scaler.scale(title.fontSize!) * title.height! +
+        2.h +
+        scaler.scale(subtitle.fontSize!) * (16 / 12);
+  }
+
+  Widget _onBand(Widget child) => band == null
+      ? child
+      : SizedBox(
+          height: band,
+          child: Center(widthFactor: 1, child: child),
+        );
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.colors;
+    return Row(
+      crossAxisAlignment: band == null
+          ? CrossAxisAlignment.center
+          : CrossAxisAlignment.start,
+      children: [
+        _onBand(leading),
+        SizedBox(width: gap ?? 14.w),
+        Expanded(
+          child: ConstrainedBox(
+            constraints: BoxConstraints(minHeight: band ?? 0),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: AppTypography.textLgBold.copyWith(
+                    color: colors.textPrimary,
+                    letterSpacing: -0.4,
+                  ),
+                ),
+                if (subtitle != null) ...[
+                  SizedBox(height: 2.h),
+                  Text(
+                    subtitle!,
+                    style: AppTypography.textXsRegular.copyWith(
+                      color: colors.textSecondary,
+                      height: 16 / 12,
                     ),
                   ),
                 ],
-              ),
-              SizedBox(height: 22.h),
-              ...children,
-            ],
+              ],
+            ),
           ),
         ),
-      ),
+        if (step != null) ...[
+          SizedBox(width: 8.w),
+          _onBand(
+            Text(
+              step!,
+              semanticsLabel: stepLabel,
+              style: AppTypography.textSmMedium.copyWith(
+                color: colors.textSecondary,
+                fontFeatures: const [FontFeature.tabularFigures()],
+              ),
+            ),
+          ),
+        ],
+        if (trailingInset > 0) SizedBox(width: trailingInset),
+      ],
     );
   }
 }

@@ -14,6 +14,8 @@ import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/widgets/card_context_menu.dart'
+    show CardActionButton;
 import 'package:chessever2/widgets/generic_loading_widget.dart';
 import 'package:chessever2/widgets/popover_add_fab.dart';
 import 'package:chessever2/widgets/segmented_switcher.dart';
@@ -343,8 +345,9 @@ class _FavoritesTab extends ConsumerStatefulWidget {
 class _FavoritesTabState extends ConsumerState<_FavoritesTab> {
   final _search = TextEditingController();
 
-  /// The player whose ChessEver source is being resolved for a first open.
-  int? _opening;
+  /// The player whose ChessEver source is being resolved, and what their
+  /// row reads meanwhile.
+  ({int fide, String status})? _busy;
 
   @override
   void dispose() {
@@ -352,20 +355,37 @@ class _FavoritesTabState extends ConsumerState<_FavoritesTab> {
     super.dispose();
   }
 
-  Future<void> _open(ChessPlayer player) async {
-    if (_opening != null) return;
-    setState(() => _opening = player.fideid);
+  /// One player at a time: a second tap waits for the first to land.
+  Future<void> _resolve(
+    ChessPlayer player,
+    String status,
+    Future<void> Function(VoidCallback resolved) run,
+  ) async {
+    if (_busy != null) return;
+    setState(() => _busy = (fide: player.fideid, status: status));
     void resolved() {
-      if (mounted && _opening != null) setState(() => _opening = null);
+      if (mounted && _busy != null) setState(() => _busy = null);
     }
 
     try {
-      // The row stops reading "Opening…" once the add sheet covers it.
-      await prepOpenFavorite(context, ref, player, onResolved: resolved);
+      await run(resolved);
     } finally {
       resolved();
     }
   }
+
+  // The row stops reading "Opening…" once the add sheet covers it.
+  void _open(ChessPlayer player) => _resolve(
+    player,
+    'Opening…',
+    (resolved) => prepOpenFavorite(context, ref, player, onResolved: resolved),
+  );
+
+  void _add(ChessPlayer player) => _resolve(
+    player,
+    'Adding…',
+    (_) => prepQuickAddFavorite(context, ref, player),
+  );
 
   @override
   Widget build(BuildContext context) {
@@ -428,7 +448,10 @@ class _FavoritesTabState extends ConsumerState<_FavoritesTab> {
               padding: EdgeInsets.symmetric(horizontal: _gutter),
               child: PrepProfileCard(
                 profile: profile,
-                moreButton: false,
+                action: _OpponentAction(
+                  onAdd: () =>
+                      prepMoveFavoriteToOpponents(context, ref, profile),
+                ),
                 onTap: () {
                   HapticFeedbackService.cardTap();
                   PrepProfileScreen.open(context, profile.id);
@@ -446,8 +469,9 @@ class _FavoritesTabState extends ConsumerState<_FavoritesTab> {
             child: _RankedCard(
               player: player,
               profile: byFide['${player.fideid}'],
-              opening: _opening == player.fideid,
+              status: _busy?.fide == player.fideid ? _busy!.status : null,
               onTap: () => _open(player),
+              onAdd: () => _add(player),
             ),
           );
         },
@@ -458,18 +482,23 @@ class _FavoritesTabState extends ConsumerState<_FavoritesTab> {
 
 /// A ranked player in their ranking slot: their own profile once added,
 /// otherwise ChessEver plus the Lichess and Chess.com accounts known for
-/// them. Both read alike, so adding a player changes only their status.
+/// them. Both read alike, so adding a player changes only their status and
+/// the mark their row ends in.
 class _RankedCard extends StatelessWidget {
   const _RankedCard({
     required this.player,
-    required this.opening,
     required this.onTap,
+    required this.onAdd,
     this.profile,
+    this.status,
   });
   final ChessPlayer player;
   final PrepProfile? profile;
-  final bool opening;
+
+  /// What the row reads while the player is being resolved.
+  final String? status;
   final VoidCallback onTap;
+  final VoidCallback onAdd;
 
   @override
   Widget build(BuildContext context) {
@@ -503,12 +532,58 @@ class _RankedCard extends StatelessWidget {
       fideId: fide,
       name: player.name,
       preview: profile == null,
-      moreButton: false,
+      action: _OpponentAction(
+        added: switch (profile?.kind) {
+          PrepKind.opponent => 'In Opponents',
+          PrepKind.mine => 'In My games',
+          _ => null,
+        },
+        onAdd: onAdd,
+      ),
       pendingSources: profile != null && prepFavoriteLacksDatabase(profile)
           ? const [PrepSource.chessever]
           : const [],
-      status: opening ? 'Opening…' : null,
+      status: status,
       onTap: onTap,
+    );
+  }
+}
+
+/// How a Favorites row ends: a + that takes the whole player to Opponents,
+/// or a quiet mark once they are on a list. Both fill one slot, so a row
+/// holds still as its player is added.
+class _OpponentAction extends StatelessWidget {
+  const _OpponentAction({required this.onAdd, this.added});
+
+  /// Where the player already is, read out in place of the +.
+  final String? added;
+  final VoidCallback onAdd;
+
+  @override
+  Widget build(BuildContext context) {
+    final added = this.added;
+    if (added == null) {
+      return CardActionButton(
+        icon: Icons.add_rounded,
+        tooltip: 'Add to Opponents',
+        size: 22.sp,
+        color: context.colors.iconPrimary,
+        onPressed: onAdd,
+      );
+    }
+    // Not a control: a tap here is the row's own, and opens the player.
+    return Semantics(
+      label: added,
+      child: SizedBox.square(
+        dimension: 44,
+        child: Center(
+          child: Icon(
+            Icons.check_rounded,
+            size: 20.sp,
+            color: context.colors.textTertiary,
+          ),
+        ),
+      ),
     );
   }
 }

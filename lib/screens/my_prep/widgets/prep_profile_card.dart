@@ -22,7 +22,7 @@ class PrepProfileCard extends ConsumerWidget {
     this.status,
     this.pendingSources = const [],
     this.name,
-    this.moreButton = true,
+    this.action,
   });
   final PrepProfile profile;
   final VoidCallback onTap;
@@ -33,9 +33,9 @@ class PrepProfileCard extends ConsumerWidget {
   /// the same way.
   final String? name;
 
-  /// Off where added and unadded players share a list: every row then ends
-  /// alike, and the menu stays on a long press.
-  final bool moreButton;
+  /// Ends the row in place of the more button, where a list gives every
+  /// player the same direct action. The menu then stays on a long press.
+  final Widget? action;
 
   /// Replaces the sync line while the row is busy with something else.
   final String? status;
@@ -131,11 +131,11 @@ class PrepProfileCard extends ConsumerWidget {
             ],
           ),
         ),
-        // A row without the more button holds its slot, so every row's text
-        // ends on the same x.
-        trailing: preview || !moreButton
-            ? const SizedBox(width: 44)
-            : CardMoreButton(size: 18.sp),
+        // Whatever ends a row fills the more button's slot, so every row's
+        // text ends on the same x.
+        trailing:
+            action ??
+            (preview ? const SizedBox(width: 44) : CardMoreButton(size: 18.sp)),
         onTap: onTap,
       ),
     );
