@@ -59,9 +59,9 @@ import 'package:chessever2/widgets/auth/auth_upgrade_sheet.dart';
 import 'package:chessever2/widgets/hub_tile.dart';
 import 'package:chessever2/widgets/card_context_menu.dart';
 import 'package:chessever2/widgets/skeleton_widget.dart';
-import 'package:chessever2/screens/library/game_tree/library_game_tree_targets.dart';
-import 'package:chessever2/widgets/game_tree/build_tree_button.dart';
-import 'package:chessever2/widgets/paywall/premium_game_access.dart';
+// import 'package:chessever2/screens/library/game_tree/library_game_tree_targets.dart';
+// import 'package:chessever2/widgets/game_tree/build_tree_button.dart';
+// import 'package:chessever2/widgets/paywall/premium_game_access.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:intl/intl.dart';
@@ -933,23 +933,25 @@ class _CollectionScreenState extends ConsumerState<CollectionScreen> {
             )
           : null,
       actions: [
-        if ((contents.valueOrNull?.games.length ?? 0) > 0) ...[
-          BuildTreeButton(
-            compact: true,
-            target: CollectionTreeTarget(
-              repository: ref.read(collectionsRepositoryProvider),
-              slug: slug,
-              title: c.title,
-              knownGameCount: contents.valueOrNull?.games.length,
-              requestAccess: (collection) => ensurePremiumGameAccess(
-                context,
-                featureId: collectionPaywallFeatureId(collection.kind),
-                returnTo: kCollectionPaywallReturnTo,
-              ),
-            ),
-          ),
-          SizedBox(width: 6.w),
-        ],
+        // Build Tree is off here: opening trees belong to My Prep, where they
+        // track one player's preparation. Restore with the imports above.
+        // if ((contents.valueOrNull?.games.length ?? 0) > 0) ...[
+        //   BuildTreeButton(
+        //     compact: true,
+        //     target: CollectionTreeTarget(
+        //       repository: ref.read(collectionsRepositoryProvider),
+        //       slug: slug,
+        //       title: c.title,
+        //       knownGameCount: contents.valueOrNull?.games.length,
+        //       requestAccess: (collection) => ensurePremiumGameAccess(
+        //         context,
+        //         featureId: collectionPaywallFeatureId(collection.kind),
+        //         returnTo: kCollectionPaywallReturnTo,
+        //       ),
+        //     ),
+        //   ),
+        //   SizedBox(width: 6.w),
+        // ],
         Semantics(
           label: 'Toggle chessboard view',
           child: AppBarIcons(
@@ -2265,9 +2267,13 @@ class _GamesPageState extends ConsumerState<_GamesPage>
     return _groupedBody(contents);
   }
 
-  /// Keep the API's sequence intact for both the list and board previous/next.
+  /// One sequence for both the list and board previous/next: the latest game
+  /// first, or the server's order once the reader picks a sort.
   Widget _flatBody(CollectionContents contents) {
-    final ordered = [for (final game in contents.games) game.game];
+    final games = _query.sort == 'default'
+        ? collectionGamesNewestFirst(contents.games)
+        : contents.games;
+    final ordered = [for (final game in games) game.game];
     final perRow = widget.viewMode == GamesListViewMode.chessBoardGrid ? 2 : 1;
     final opening = widget.opening;
     final showOpeningLine = opening != null && widget.onClearOpening != null;

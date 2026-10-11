@@ -362,6 +362,37 @@ DateTime? _collectionGameDay(CollectionGame game) {
   return day == null ? null : DateTime(day.year, day.month, day.day);
 }
 
+/// A book's games with the most recently played first. A book lists what its
+/// author filed, in filing order; the reader wants the latest game on top.
+/// Games on one day keep the later start first, then the book's own order.
+/// A game with no known day goes last.
+List<CollectionGame> collectionGamesNewestFirst(List<CollectionGame> games) {
+  if (games.length < 2) return games;
+  final indexed = [
+    for (var i = 0; i < games.length; i++)
+      (i, _collectionGameDay(games[i]), games[i]),
+  ];
+  indexed.sort((a, b) {
+    final dayA = a.$2;
+    final dayB = b.$2;
+    if (dayA == null || dayB == null) {
+      if (dayA != null) return -1;
+      if (dayB != null) return 1;
+      return a.$1.compareTo(b.$1);
+    }
+    final byDay = dayB.compareTo(dayA);
+    if (byDay != 0) return byDay;
+    final atA = a.$3.card.playedAt;
+    final atB = b.$3.card.playedAt;
+    if (atA != null && atB != null) {
+      final byStart = atB.compareTo(atA);
+      if (byStart != 0) return byStart;
+    }
+    return a.$1.compareTo(b.$1);
+  });
+  return [for (final entry in indexed) entry.$3];
+}
+
 /// The selector's games and board navigation share the same membership. An
 /// ancestor header keeps a chapter's context without including sibling games.
 List<CollectionGameGroup> selectCollectionGameGroups(

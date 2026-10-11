@@ -21,10 +21,10 @@ import 'package:chessever2/screens/library/widgets/add_to_library_sheet.dart';
 import 'package:chessever2/screens/library/widgets/book_saved_game_card.dart';
 import 'package:chessever2/screens/library/widgets/create_folder_dialog.dart';
 import 'package:chessever2/screens/library/widgets/folder_card.dart';
-import 'package:chessever2/screens/library/game_tree/library_game_tree_targets.dart';
+// import 'package:chessever2/screens/library/game_tree/library_game_tree_targets.dart';
 import 'package:chessever2/screens/library/widgets/library_context_menu.dart';
 import 'package:chessever2/widgets/card_context_menu.dart';
-import 'package:chessever2/widgets/game_tree/build_tree_button.dart';
+// import 'package:chessever2/widgets/game_tree/build_tree_button.dart';
 import 'package:chessever2/screens/library/widgets/swipe_action_card.dart';
 import 'package:chessever2/services/pgn_file_intake_service.dart';
 import 'package:chessever2/theme/app_colors.dart';
@@ -750,16 +750,18 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
               size: 22.ic,
               actions: (_) => moreActions,
             ),
-          if (_isDatabase && (bookAsync.valueOrNull?.totalCount ?? 0) > 0) ...[
-            SizedBox(width: 2.w),
-            BuildTreeButton(
-              compact: true,
-              target: LibraryFolderTreeTarget(
-                repository: ref.read(libraryRepositoryProvider),
-                folder: widget.folder,
-              ),
-            ),
-          ],
+          // Build Tree is off here: opening trees belong to My Prep, where they
+          // track one player's preparation. Restore with the imports above.
+          // if (_isDatabase && (bookAsync.valueOrNull?.totalCount ?? 0) > 0) ...[
+          //   SizedBox(width: 2.w),
+          //   BuildTreeButton(
+          //     compact: true,
+          //     target: LibraryFolderTreeTarget(
+          //       repository: ref.read(libraryRepositoryProvider),
+          //       folder: widget.folder,
+          //     ),
+          //   ),
+          // ],
         ],
       ),
     );
