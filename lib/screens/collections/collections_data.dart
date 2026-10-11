@@ -2,6 +2,10 @@ import 'dart:math' show Random;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:chessever2/repository/gamebase/collections/collection_search_query.dart';
 import 'dart:async';
+import 'dart:convert';
+
+import 'package:chessever2/providers/favorite_events_provider.dart';
+import 'package:dio/dio.dart';
 
 import 'package:chessever2/repository/gamebase/collections/collections_models.dart';
 import 'package:chessever2/repository/gamebase/gamebase_repository.dart';
@@ -931,45 +935,250 @@ final _collectionReaderId = FutureProvider<String>((ref) async {
   await preferences.setString('collection_reader_id', id);
   return id;
 });
-Future<void> trackCollectionRead(WidgetRef ref, Collection collection) async {
+
+/// The signed-in permanent account, the only kind that can own a star.
+String? _collectionStarAccount() {
   try {
-    final id = await ref.read(_collectionReaderId.future);
-    final counts = await ref
-        .read(gamebaseRepositoryProvider)
-        .recordCollectionEngagement(collection.slug, {'viewerId': id});
-    ref
-            .read(collectionEngagementCountsProvider(collection.slug).notifier)
-            .state =
-        counts;
+    final user = Supabase.instance.client.auth.currentUser;
+    return user == null || user.isAnonymous ? null : user.id;
   } catch (_) {
-    /* Counts never interrupt reading. */
+    return null;
   }
 }
+
+/// View and star counts as the server holds them.
+///
+/// Lives with the container, not a widget: a count answered after its page
+/// closed still belongs in the store, and a star the server has not yet
+/// confirmed waits here (and on disk) until it is.
+class CollectionEngagement {
+  CollectionEngagement(
+    this._ref, {
+    String? Function() account = _collectionStarAccount,
+    Future<String?> Function() accessToken = collectionsSessionToken,
+  }) : _account = account, // ignore: prefer_initializing_formals
+       _accessToken = accessToken; // ignore: prefer_initializing_formals
+
+  final Ref _ref;
+  final String? Function() _account;
+  final Future<String?> Function() _accessToken;
+
+  /// When this device last heard a slug's counts from its own write. A
+  /// catalog read that started before then is older and must not win.
+  final _lastWrite = <String, DateTime>{};
+  bool _refreshing = false;
+  Future<void>? _flush;
+
+  /// The queue when this device has no storage to keep it in.
+  final _unsaved = <String, Map<String, bool>>{};
+
+  Future<SharedPreferences?> _preferences() async {
+    try {
+      return await SharedPreferences.getInstance();
+    } catch (_) {
+      return null;
+    }
+  }
+
+  static String _pendingKey(String account) =>
+      'collection_star_pending_$account';
+  static String _backfilledKey(String account) =>
+      'collection_star_backfilled_$account';
+
+  void _apply(String slug, Map<String, dynamic> counts) {
+    _lastWrite[slug] = DateTime.now();
+    _ref.read(collectionEngagementCountsProvider(slug).notifier).state = counts;
+  }
+
+  /// Counts opening [collection] as a read. Counts never interrupt reading.
+  Future<void> trackRead(Collection collection) async {
+    try {
+      final id = await _ref.read(_collectionReaderId.future);
+      final counts = await _ref
+          .read(gamebaseRepositoryProvider)
+          .recordCollectionEngagement(collection.slug, {'viewerId': id});
+      _apply(collection.slug, counts);
+    } catch (_) {
+      /* A missed count is not the reader's problem. */
+    }
+  }
+
+  /// Records this account's star on [slug] and sends it. A star the server
+  /// did not confirm stays queued and is sent again on the next refresh.
+  Future<void> setStar(String slug, bool starred) async {
+    final account = _account();
+    if (account == null) return;
+    final preferences = await _preferences();
+    final pending = _pending(preferences, account)..[slug] = starred;
+    await _store(preferences, account, pending);
+    await flushStars();
+  }
+
+  /// Sends every star the server has not confirmed yet.
+  Future<void> flushStars() =>
+      _flush ??= _sendPendingStars().whenComplete(() => _flush = null);
+
+  Future<void> _sendPendingStars() async {
+    try {
+      final account = _account();
+      if (account == null) return;
+      final preferences = await _preferences();
+      await _queueEarlierStars(preferences, account);
+      if (_pending(preferences, account).isEmpty) return;
+      final token = await _accessToken();
+      if (token == null) return;
+      final api = _ref.read(gamebaseRepositoryProvider);
+      final failed = <String>{};
+      // Re-read each round: a star pressed while this runs joins the queue.
+      while (true) {
+        final next = _pending(
+          preferences,
+          account,
+        ).entries.where((e) => !failed.contains(e.key)).firstOrNull;
+        if (next == null) return;
+        var settled = false;
+        try {
+          final counts = await api.recordCollectionEngagement(
+            next.key,
+            {'starred': next.value},
+            bearer: token,
+            star: true,
+          );
+          _apply(next.key, counts);
+          settled = true;
+        } catch (e) {
+          // A collection that is gone, or a body the server will never
+          // take, is dropped. Anything else is tried again later.
+          final status = switch (e) {
+            DioException() => e.response?.statusCode,
+            CollectionsRequestException() => e.statusCode,
+            _ => null,
+          };
+          settled = status == 400 || status == 404;
+        }
+        if (!settled) {
+          failed.add(next.key);
+          continue;
+        }
+        // Only what was sent is settled: a newer press stays queued.
+        final pending = _pending(preferences, account);
+        if (pending[next.key] == next.value) {
+          pending.remove(next.key);
+          await _store(preferences, account, pending);
+        }
+      }
+    } catch (_) {
+      /* The queue is on disk; the next refresh sends it. */
+    }
+  }
+
+  /// Stars made before the server counted them, queued once per account.
+  Future<void> _queueEarlierStars(
+    SharedPreferences? preferences,
+    String account,
+  ) async {
+    if (preferences == null) return;
+    if (preferences.getBool(_backfilledKey(account)) ?? false) return;
+    final favorites = _ref.read(favoriteEventsProvider).valueOrNull;
+    if (favorites == null) return;
+    const prefix = 'collection:';
+    final pending = _pending(preferences, account);
+    for (final favorite in favorites) {
+      final slug = favorite.eventId.startsWith(prefix)
+          ? favorite.eventId.substring(prefix.length)
+          : favorite.metadata['kind'] == 'collection'
+          ? favorite.metadata['slug']
+          : null;
+      if (slug is String && slug.isNotEmpty) {
+        pending.putIfAbsent(slug, () => true);
+      }
+    }
+    await _store(preferences, account, pending);
+    await preferences.setBool(_backfilledKey(account), true);
+  }
+
+  Map<String, bool> _pending(SharedPreferences? preferences, String account) {
+    if (preferences == null) return {...?_unsaved[account]};
+    try {
+      final raw = preferences.getString(_pendingKey(account));
+      if (raw == null) return {};
+      return {
+        for (final entry in (jsonDecode(raw) as Map).entries)
+          if (entry.value is bool) entry.key as String: entry.value as bool,
+      };
+    } catch (_) {
+      return {};
+    }
+  }
+
+  Future<void> _store(
+    SharedPreferences? preferences,
+    String account,
+    Map<String, bool> pending,
+  ) async {
+    if (preferences == null) {
+      _unsaved[account] = pending;
+    } else if (pending.isEmpty) {
+      await preferences.remove(_pendingKey(account));
+    } else {
+      await preferences.setString(_pendingKey(account), jsonEncode(pending));
+    }
+  }
+
+  /// Reads every book's counts fresh. The catalog search is the one public
+  /// read the server never caches, so this is what other readers did since.
+  Future<void> refresh() async {
+    if (_refreshing) return;
+    _refreshing = true;
+    try {
+      await flushStars();
+      final started = DateTime.now();
+      final repository = _ref.read(collectionsRepositoryProvider);
+      var offset = 0;
+      while (true) {
+        final page = await repository.searchBooks(
+          const CollectionSearchQuery(),
+          offset,
+        );
+        for (final book in page.items) {
+          final written = _lastWrite[book.slug];
+          if (written != null && written.isAfter(started)) continue;
+          final counts = _ref.read(
+            collectionEngagementCountsProvider(book.slug).notifier,
+          );
+          final current = counts.state;
+          if (current?['viewCount'] == book.viewCount &&
+              current?['starCount'] == book.starCount) {
+            continue;
+          }
+          counts.state = {
+            'viewCount': book.viewCount,
+            'starCount': book.starCount,
+          };
+        }
+        offset += page.items.length;
+        if (page.items.isEmpty || offset >= page.total) break;
+      }
+    } catch (_) {
+      /* The counts on screen stay until the next refresh. */
+    } finally {
+      _refreshing = false;
+    }
+  }
+}
+
+final collectionEngagementProvider = Provider<CollectionEngagement>(
+  CollectionEngagement.new,
+);
+
+Future<void> trackCollectionRead(WidgetRef ref, Collection collection) =>
+    ref.read(collectionEngagementProvider).trackRead(collection);
 
 Future<void> syncCollectionStar(
   WidgetRef ref,
   Collection collection,
   bool starred,
-) async {
-  try {
-    final token = await collectionsSessionToken();
-    if (token == null) return;
-    final counts = await ref
-        .read(gamebaseRepositoryProvider)
-        .recordCollectionEngagement(
-          collection.slug,
-          {'starred': starred},
-          bearer: token,
-          star: true,
-        );
-    ref
-            .read(collectionEngagementCountsProvider(collection.slug).notifier)
-            .state =
-        counts;
-  } catch (_) {
-    /* The existing favorite remains authoritative for pinning. */
-  }
-}
+) => ref.read(collectionEngagementProvider).setStar(collection.slug, starred);
 
 final collectionFilteredContentsProvider = FutureProvider.autoDispose
     .family<

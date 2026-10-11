@@ -4,6 +4,7 @@ import 'package:chessever2/screens/collections/opening_event_card.dart'
 import 'package:chessever2/screens/tour_detail/widgets/event_search_bar.dart'
     show EventSearchBarFrame;
 import 'package:chessever2/screens/collections/collection_catalog_views.dart';
+import 'package:chessever2/screens/collections/collection_counts_refresher.dart';
 import 'package:chessever2/repository/gamebase/collections/collection_search_query.dart';
 import 'package:chessever2/screens/collections/collection_search_filters.dart';
 import 'package:chessever2/widgets/simple_search_bar.dart';
@@ -141,6 +142,10 @@ class _CollectionsScreenState extends ConsumerState<CollectionsScreen> {
   @override
   Widget build(BuildContext context) {
     final query = _query;
+    return CollectionCountsRefresher(child: _shell(context, query));
+  }
+
+  Widget _shell(BuildContext context, CollectionSearchQuery query) {
     return EventViewShell(
       dotScope: 'collections.tab',
       key: e2eKey(E2eIds.collectionsRoot),
