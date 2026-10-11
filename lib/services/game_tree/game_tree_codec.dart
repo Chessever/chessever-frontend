@@ -9,7 +9,7 @@ const int kGameTreeMaxPly = 24;
 
 /// Bumped whenever the on-disk layout or what is indexed changes; an index
 /// written by another version is rebuilt from its PGN sources.
-const int kGameTreeSchemaVersion = 4;
+const int kGameTreeSchemaVersion = 5;
 
 /// The first four FEN fields: what identifies a position in the tree.
 String gameTreeFenKey(String fen) =>
@@ -214,6 +214,25 @@ bool treeGameIsOnline({required String sourceKind, String? site, String? link}) 
 String treePlayerKey(String name) =>
     name.toLowerCase().replaceAll(RegExp(r'[\s,._-]+'), '');
 
+/// Whether a `Variant` tag names chess as the index reads it: no tag,
+/// standard chess, or standard chess from a set-up position, which Lichess
+/// reports as the variant "From Position". Chess960, Crazyhouse and the
+/// rest play by other rules.
+bool treeReadsVariant(String? variant) {
+  final name = variant?.toLowerCase().replaceAll(RegExp(r'[\s_-]+'), '');
+  return name == null ||
+      name.isEmpty ||
+      name == 'standard' ||
+      name == 'chess' ||
+      name == 'fromposition';
+}
+
+/// Whether [scan] is a game the index keeps: it has moves and plays by the
+/// rules above. A source's game count asks the same question of every game
+/// it stores, so the count and the games read from the index agree.
+bool treeReadsGame(PgnScan scan) =>
+    scan.sans.isNotEmpty && treeReadsVariant(scan.tag('Variant'));
+
 String treeResultText(int code) => switch (code) {
   0 => '1-0',
   1 => '0-1',
@@ -334,6 +353,34 @@ PgnScan scanPgnGame(String pgn, {int sanLimit = kGameTreeMaxPly}) {
     if (sans.length < sanLimit) sans.add(token);
   }
   return PgnScan(headers: headers, sans: sans, plies: plies);
+}
+
+/// A game's result, length and every move of its main line, as one key.
+/// The same game written by two sources (a database with the players'
+/// names, the site with their handles) agrees on these and on little else.
+/// Check marks and `=` are left out: sources differ on whether to write
+/// them. [scan] must hold the whole main line.
+String treeMovesKey(PgnScan scan, int result) {
+  final moves = StringBuffer();
+  for (final san in scan.sans) {
+    moves
+      ..write(san.replaceAll(_sanMarks, ''))
+      ..write(' ');
+  }
+  return '$result|${scan.plies}|${gameTreeFenHash(moves.toString())}';
+}
+
+final RegExp _sanMarks = RegExp('[+#=]');
+
+/// Whether two games with one [treeMovesKey] are one game: played within a
+/// day of each other, since a source may date by its own clock. A game with
+/// no date is only taken for the other when it is long enough for its moves
+/// to say so alone.
+bool treeSameGame({required int? date, required int? other, required int plies}) {
+  final a = treeDateTime(date);
+  final b = treeDateTime(other);
+  if (a == null || b == null) return plies >= 80;
+  return a.difference(b).inDays.abs() <= 1;
 }
 
 /// A provider game's stable identity: its Lichess or Chess.com URL.

@@ -11,6 +11,7 @@ import 'package:chessever2/screens/my_prep/prep_access.dart';
 import 'package:chessever2/screens/my_prep/prep_profile_screen.dart';
 import 'package:chessever2/screens/my_prep/prep_source_actions.dart'
     show prepExportProfile, prepStartDownloads;
+import 'package:chessever2/screens/my_prep/providers/prep_known_accounts_provider.dart';
 import 'package:chessever2/screens/my_prep/providers/prep_providers.dart';
 import 'package:chessever2/screens/my_prep/services/prep_repository.dart';
 import 'package:chessever2/screens/my_prep/widgets/prep_dialogs.dart';
@@ -21,7 +22,7 @@ import 'package:chessever2/widgets/app_snack.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
-/// Adds the reader's own accounts to My games. They all live on one
+/// Adds the reader's own accounts to My Games. They all live on one
 /// profile, so their games read together as "me".
 Future<void> prepAddMine(
   BuildContext context,
@@ -89,7 +90,7 @@ Future<void> _prepAddPlayer(
 
 /// The add sheet, and the profile made from what it hands back. [initial]
 /// accounts are chosen when it opens; a profile keeping any of them
-/// remembers the Favorites player ([favoriteId]) they belong to.
+/// remembers the ranked player ([favoriteId]) they belong to.
 Future<PrepProfile?> _prepPickPlayer(
   BuildContext context,
   WidgetRef ref,
@@ -165,10 +166,7 @@ Future<void> prepAddAccountTo(
 }
 
 /// A ranked player already added opens their profile. Anyone else opens the
-/// add sheet Opponents uses, with ChessEver and their known accounts already
-/// chosen: the reader drops what they do not want and picks what to
-/// download before the player joins Opponents. [onResolved] runs as the
-/// sheet is about to open.
+/// add sheet. [onResolved] runs as the sheet is about to open.
 Future<void> prepOpenFavorite(
   BuildContext context,
   WidgetRef ref,
@@ -176,13 +174,54 @@ Future<void> prepOpenFavorite(
   VoidCallback? onResolved,
 }) async {
   HapticFeedbackService.cardTap();
-  final fide = '${player.fideid}';
-  final existing = _favoriteProfile(ref, fide);
+  final existing = _favoriteProfile(ref, '${player.fideid}');
   if (existing != null) {
     unawaited(prepAttachFavoriteDatabase(ref, existing));
     unawaited(PrepProfileScreen.open(context, existing.id));
     return;
   }
+  await _addRanked(context, ref, player, add: false, onResolved: onResolved);
+}
+
+/// The + on a Players row. It adds nothing by itself: the reader goes
+/// through the add sheet first, as for any other profile. A player kept
+/// from an earlier version moves to Profiles instead, asked the same
+/// question about what to download.
+Future<void> prepAddFavorite(
+  BuildContext context,
+  WidgetRef ref,
+  ChessPlayer player, {
+  VoidCallback? onResolved,
+}) async {
+  HapticFeedbackService.buttonPress();
+  final existing = _favoriteProfile(ref, '${player.fideid}');
+  if (existing != null) {
+    if (!await ensurePrepAccess(context) || !context.mounted) return;
+    await _moveToOpponents(
+      context,
+      ref,
+      existing,
+      ScaffoldMessenger.maybeOf(context),
+    );
+    return;
+  }
+  await _addRanked(context, ref, player, add: true, onResolved: onResolved);
+}
+
+/// The add sheet Profiles uses, opened on a ranked [player] with ChessEver
+/// and the handles the server knows for them already chosen. The reader
+/// drops what they do not want and picks what to download; nothing is
+/// created or downloaded before that. Where another profile already holds
+/// every one of the player's sources, a tap opens it and [add] only says
+/// where the player is.
+Future<void> _addRanked(
+  BuildContext context,
+  WidgetRef ref,
+  ChessPlayer player, {
+  required bool add,
+  VoidCallback? onResolved,
+}) async {
+  final fide = '${player.fideid}';
   if (!await ensurePrepAccess(context) || !context.mounted) return;
   final sources = await _favoriteSources(ref, player);
   if (!context.mounted) return;
@@ -190,13 +229,16 @@ Future<void> prepOpenFavorite(
     showAppSnack(context, _favoriteUnavailable, tone: AppSnackTone.danger);
     return;
   }
+  final messenger = ScaffoldMessenger.maybeOf(context);
   if (sources.free.isEmpty) {
-    // Every source is already followed elsewhere; open that instead.
-    unawaited(PrepProfileScreen.open(context, sources.owner!.id));
+    if (add) {
+      await _moveToOpponents(context, ref, sources.owner!, messenger);
+    } else {
+      unawaited(PrepProfileScreen.open(context, sources.owner!.id));
+    }
     return;
   }
   onResolved?.call();
-  final messenger = ScaffoldMessenger.maybeOf(context);
   final profile = await _prepPickPlayer(
     context,
     ref,
@@ -208,74 +250,11 @@ Future<void> prepOpenFavorite(
   // Refresh ratings and avatars quietly; the curated values stand in.
   unawaited(_refreshProfiles(ref, profile.id));
   if (messenger != null) {
-    showAppSnackOn(messenger, '${profile.name} added to Opponents');
+    showAppSnackOn(messenger, '${profile.name} added to Profiles');
   }
 }
 
-/// The + on a Favorites row: the whole player joins Opponents in one tap,
-/// exactly as the add sheet would leave them had the reader kept every known
-/// account and each proposed scope. Tapping the row still opens that sheet
-/// for a reader who wants to choose.
-Future<void> prepQuickAddFavorite(
-  BuildContext context,
-  WidgetRef ref,
-  ChessPlayer player,
-) async {
-  HapticFeedbackService.buttonPress();
-  if (!await ensurePrepAccess(context) || !context.mounted) return;
-  final messenger = ScaffoldMessenger.maybeOf(context);
-  final profiles = ref.read(prepProfilesProvider.notifier);
-  final fide = '${player.fideid}';
-  final existing = _favoriteProfile(ref, fide);
-  if (existing != null) {
-    await _moveToOpponents(context, ref, existing, messenger);
-    return;
-  }
-  final sources = await _favoriteSources(ref, player);
-  if (!context.mounted) return;
-  if (sources.known.isEmpty) {
-    showAppSnack(context, _favoriteUnavailable, tone: AppSnackTone.danger);
-    return;
-  }
-  if (sources.free.isEmpty) {
-    // Every source is already followed elsewhere: nothing is left to add.
-    await _moveToOpponents(context, ref, sources.owner!, messenger);
-    return;
-  }
-  final result = PrepAddResult.named([
-    for (final account in sources.free)
-      account.copyWith(
-        preferences: PrepDownloadPreferences.initialFor(account.source),
-      ),
-  ]);
-  final PrepProfile profile;
-  try {
-    profile = profiles.create(
-      kind: PrepKind.opponent,
-      name: result.name,
-      accounts: result.accounts,
-      favoriteId: kPrepFavoritesByFide[fide]?.id ?? fide,
-    );
-  } on PrepException catch (error) {
-    if (messenger != null) {
-      showAppSnackOn(messenger, error.message, tone: AppSnackTone.danger);
-    }
-    return;
-  }
-  await prepStartDownloads(
-    context,
-    ref,
-    profile.id,
-    result.accounts,
-    scoped: true,
-  );
-  unawaited(_refreshProfiles(ref, profile.id));
-  if (messenger != null) {
-    showAppSnackOn(messenger, '${profile.name} added to Opponents');
-  }
-}
-
-/// The + on a player already kept in Favorites: they move to Opponents with
+/// The + on a player already kept in Players: they move to Profiles with
 /// their games.
 Future<void> prepMoveFavoriteToOpponents(
   BuildContext context,
@@ -292,9 +271,9 @@ Future<void> prepMoveFavoriteToOpponents(
   );
 }
 
-/// A favorite joins Opponents as it stands, and whatever it never
-/// downloaded starts. A profile that was never in Favorites only says where
-/// it already is.
+/// A favorite joins Profiles as it stands. What it never downloaded is
+/// offered with its clocks and period first, as when a source is attached.
+/// A profile that was never in Players only says where it already is.
 Future<void> _moveToOpponents(
   BuildContext context,
   WidgetRef ref,
@@ -306,7 +285,7 @@ Future<void> _moveToOpponents(
       showAppSnackOn(
         messenger,
         '${profile.name} is already in '
-        '${profile.kind == PrepKind.mine ? 'My games' : 'Opponents'}',
+        '${profile.kind == PrepKind.mine ? 'My Games' : 'Profiles'}',
       );
     }
     return;
@@ -315,16 +294,10 @@ Future<void> _moveToOpponents(
       .read(prepProfilesProvider.notifier)
       .edit(profile.id, (p) => p.copyWith(kind: PrepKind.opponent));
   unawaited(prepAttachFavoriteDatabase(ref, profile));
-  await prepStartDownloads(
-    context,
-    ref,
-    profile.id,
-    profile.accounts,
-    scoped: true,
-  );
   if (messenger != null) {
-    showAppSnackOn(messenger, '${profile.name} added to Opponents');
+    showAppSnackOn(messenger, '${profile.name} added to Profiles');
   }
+  await prepStartDownloads(context, ref, profile.id, profile.accounts);
 }
 
 const _favoriteUnavailable =
@@ -336,23 +309,27 @@ PrepProfile? _favoriteProfile(WidgetRef ref, String fide) =>
         .where((p) => prepFavoriteFide(p) == fide)
         .firstOrNull;
 
-/// What Favorites knows of a ranked [player]: their ChessEver source and the
-/// curated Lichess and Chess.com handles. `free` are the ones no profile
-/// holds yet, and `owner` the profile holding the first of the rest.
+/// What Players knows of a ranked [player]: their ChessEver source and the
+/// Lichess and Chess.com handles the server lists for them. `free` are the
+/// ones no profile holds yet, and `owner` the profile holding the first of
+/// the rest.
 Future<({List<PrepAccount> known, List<PrepAccount> free, PrepProfile? owner})>
 _favoriteSources(WidgetRef ref, ChessPlayer player) async {
   final fide = '${player.fideid}';
-  final favorite = kPrepFavoritesByFide[fide];
   final profiles = ref.read(prepProfilesProvider.notifier);
-  final database = await _databaseAccount(ref, fide);
+  // Both are asked at once: neither waits on the other.
+  final (database, handles) = await (
+    _databaseAccount(ref, fide),
+    prepKnownAccounts(ref),
+  ).wait;
   final known = [
     ?database,
     for (final (source, username)
-        in favorite?.accounts ?? const <(PrepSource, String)>[])
+        in handles[fide] ?? const <(PrepSource, String)>[])
       PrepAccount(
         source: source,
         username: username,
-        displayName: favorite!.name,
+        displayName: kPrepFavoritesByFide[fide]?.name ?? player.name,
         title: player.title,
         country: player.country,
       ),
@@ -408,7 +385,7 @@ Future<PrepAccount?> _databaseAccount(WidgetRef ref, String fideId) async {
   }
 }
 
-/// Accounts typed into My games or Opponents move out of a favorite that
+/// Accounts typed into My Games or Profiles move out of a favorite that
 /// held them, so one account's games are never stored twice.
 Future<void> _releaseFromFavorites(
   WidgetRef ref,
@@ -520,14 +497,14 @@ List<LibraryMenuAction> prepProfileMenu(
     if (profile.kind == PrepKind.favorite)
       LibraryMenuAction(
         icon: Icons.person_add_alt_1_rounded,
-        label: 'Add to Opponents',
+        label: 'Add to Profiles',
         prominent: true,
         onSelected: () {
           ref
               .read(prepProfilesProvider.notifier)
               .edit(profile.id, (p) => p.copyWith(kind: PrepKind.opponent));
           if (messenger != null) {
-            showAppSnackOn(messenger, '${profile.name} added to Opponents');
+            showAppSnackOn(messenger, '${profile.name} added to Profiles');
           }
         },
       ),
@@ -576,7 +553,7 @@ Future<bool> prepConfirmRemove(
         : 'Remove ${profile.name}?',
     message: favorite
         ? 'The downloaded games are deleted from this device. They stay in '
-              'Favorites and download again when opened.'
+              'Players and download again when opened.'
         : 'Their downloaded games are deleted from this device. You can add '
               'them again any time.',
     confirmText: favorite ? 'Clear' : 'Remove',

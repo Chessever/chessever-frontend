@@ -204,10 +204,14 @@ class GameTreeStore {
   late SqliteOpeningTreeIndex _tree;
   var _closed = false;
   int _games = 0;
+  int _shared = 0;
   String? _revision;
 
   SqliteOpeningTreeIndex get tree => _tree;
   int get gameCount => _games;
+
+  /// Games two of the index's sources both hold, which it keeps once.
+  int get sharedGames => _shared;
   String? get revision => _revision;
   bool get isClosed => _closed;
 
@@ -259,6 +263,7 @@ class GameTreeStore {
           ),
       });
     _games = int.tryParse(readGameTreeMeta(_db, 'games') ?? '') ?? 0;
+    _shared = int.tryParse(readGameTreeMeta(_db, 'shared') ?? '') ?? 0;
     _revision = readGameTreeMeta(_db, 'revision');
     _tree = SqliteOpeningTreeIndex._(
       this,

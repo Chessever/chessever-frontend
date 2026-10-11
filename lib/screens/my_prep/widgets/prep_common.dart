@@ -11,9 +11,18 @@ import 'package:chessever2/widgets/time_control_glyph.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:motor/motor.dart';
 
 /// Chess.com's green, used only on its own mark and source chips.
 const Color kChessComGreen = Color(0xFF81B64C);
+
+/// The spring My Prep's small toggles move on: a chevron turning, a list of
+/// sources unfolding, the source switch's thumb sliding. It never overshoots,
+/// so nothing it moves passes the edge it stops at.
+const Motion kPrepToggleMotion = CupertinoMotion.smooth(
+  duration: Duration(milliseconds: 280),
+  snapToEnd: true,
+);
 
 double prepSegmentHeight(BuildContext context, {bool wrapLabels = false}) {
   final scaler = MediaQuery.textScalerOf(context);
@@ -445,3 +454,9 @@ String prepCount(int n) {
 }
 
 String prepGamesLabel(int n) => n == 1 ? '1 game' : '${prepCount(n)} games';
+
+/// A source's name where its mark already stands beside it: the handle
+/// online, the player's name for a database or PGN source.
+String prepAccountName(PrepAccount account) => account.source.online
+    ? account.username
+    : account.displayName ?? account.username;

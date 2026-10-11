@@ -195,8 +195,10 @@ class PrepFilter {
       (opening == null || g.openingFamily == opening) &&
       _matchesBase(g) &&
       (since == null || (g.date != null && !g.date!.isBefore(since))) &&
+      // Who the opponent was is only known once the player's side is.
       (opponent == null ||
-          g.opponent.toLowerCase() == opponent!.toLowerCase()) &&
+          (g.playerIsWhite != null &&
+              g.opponent.trim().toLowerCase() == opponent!.toLowerCase())) &&
       switch (side) {
         PrepSide.both => true,
         PrepSide.white => g.playerIsWhite == true,

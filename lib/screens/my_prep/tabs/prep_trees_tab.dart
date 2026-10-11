@@ -112,7 +112,7 @@ class _PrepTreesTabState extends ConsumerState<PrepTreesTab> {
           onSources: widget.onSources,
         ),
         SizedBox(height: 8.h),
-        // Same order and card as the My games source list.
+        // Same order and card as the My Games source list.
         for (final source in PrepSource.values)
           for (final account in profile.accounts.where(
             (a) => a.source == source,
@@ -210,7 +210,7 @@ class _TreeFilterDialogState extends State<_TreeFilterDialog> {
   }
 }
 
-/// One tree to build, laid out like the My games source card
+/// One tree to build, laid out like the My Games source card
 /// ([PrepAccountRow]): mark, name over a status line, then the action.
 class _TreeRow extends ConsumerWidget {
   const _TreeRow({

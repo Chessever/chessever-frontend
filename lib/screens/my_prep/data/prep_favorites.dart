@@ -29,19 +29,20 @@ class PrepFavorite {
     if (chesscom != null) (PrepSource.chesscom, chesscom!),
     if (lichess != null) (PrepSource.lichess, lichess!),
   ];
-
-  /// Whether [query] names one of the handles, which the ranking's own name
-  /// search cannot see.
-  bool matches(String query) {
-    final clean = query.trim().toLowerCase();
-    return clean.length >= 2 &&
-        ((chesscom?.toLowerCase().contains(clean) ?? false) ||
-            (lichess?.toLowerCase().contains(clean) ?? false));
-  }
 }
 
 final Map<String, PrepFavorite> kPrepFavoritesByFide = {
   for (final favorite in kPrepFavorites) favorite.fideId: favorite,
+};
+
+/// The Lichess and Chess.com handles known for FIDE players, by FIDE id.
+typedef PrepKnownAccounts = Map<String, List<(PrepSource, String)>>;
+
+/// The handles shipped with the app. The server's list began as these and
+/// is the one that counts; they stand in for it until it is read, and when
+/// it cannot be.
+final PrepKnownAccounts kPrepBundledAccounts = {
+  for (final favorite in kPrepFavorites) favorite.fideId: favorite.accounts,
 };
 
 /// The FIDE id [profile] stands for: its own, or the one its saved favorite

@@ -65,11 +65,15 @@ class GameTreeBuildResult {
     required this.positions,
     required this.added,
     required this.rebuilt,
+    this.shared = 0,
     this.canceled = false,
   });
 
   final int games;
   final int positions;
+
+  /// Games left out because another source had already brought them.
+  final int shared;
 
   /// Games indexed by this run.
   final int added;
@@ -195,7 +199,13 @@ class _GameTreeBuilder {
   var _bytesTotal = 1;
   var _lastReported = -1.0;
 
+  /// Several sources may each hold the same game. Read together, it counts
+  /// once: the first source to bring it keeps it.
+  late final bool _several = request.sources.length > 1;
+  var _shared = 0;
+
   late final PreparedStatement _insertGame;
+  late final PreparedStatement _findTwin;
   late final PreparedStatement _insertPosition;
   late final PreparedStatement _insertNode;
   late final PreparedStatement _findNode;
@@ -203,9 +213,11 @@ class _GameTreeBuilder {
   late final PreparedStatement _markSource;
 
   GameTreeBuildResult run() {
-    createGameTreeSchema(db);
     final signature = request.signature;
     var rebuild = readGameTreeMeta(db, 'signature') != signature;
+    // An index from another version is dropped whole, never added to: its
+    // tables may lack what this schema's own indexes name.
+    if (!rebuild) createGameTreeSchema(db);
     final sources = rebuild ? <_SourceRow>[] : _loadSources();
     if (!rebuild) {
       for (final source in sources) {
@@ -229,6 +241,7 @@ class _GameTreeBuilder {
       return _result(rebuilt: false);
     }
     _bytesTotal = math.max(1, _bytesTotal);
+    _shared = int.tryParse(readGameTreeMeta(db, 'shared') ?? '') ?? 0;
 
     _prepare();
     try {
@@ -258,6 +271,7 @@ class _GameTreeBuilder {
     } finally {
       for (final s in [
         _insertGame,
+        _findTwin,
         _insertPosition,
         _insertNode,
         _findNode,
@@ -281,6 +295,7 @@ class _GameTreeBuilder {
       positions: positions,
       added: _added,
       rebuilt: rebuilt,
+      shared: int.tryParse(readGameTreeMeta(db, 'shared') ?? '') ?? 0,
       canceled: canceled,
     );
   }
@@ -365,8 +380,12 @@ class _GameTreeBuilder {
     _insertGame = db.prepare(
       'INSERT OR IGNORE INTO games(src, off, len, gkey, white, black, result, '
       'welo, belo, date, speed, clock, tc, eco, opening, event, url, plies, '
-      'side, ts, online, site, round, ev, evid, evslug, evdate) '
-      'VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+      'side, ts, online, site, round, ev, evid, evslug, evdate, mkey) '
+      'VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+      persistent: true,
+    );
+    _findTwin = db.prepare(
+      'SELECT date, gkey FROM games WHERE mkey = ? AND src != ?',
       persistent: true,
     );
     _insertPosition = db.prepare(
@@ -481,6 +500,8 @@ class _GameTreeBuilder {
   void _commit() {
     _flushTallies();
     writeGameTreeMeta(db, 'next_node', '$_nextNode');
+    // With the games it was counted against, so the two never disagree.
+    if (_several) writeGameTreeMeta(db, 'shared', '$_shared');
     if (!db.autocommit) db.execute('COMMIT');
     _batch = 0;
   }
@@ -496,10 +517,11 @@ class _GameTreeBuilder {
   void _game(_SourceRow source, Uint8List bytes, int offset) {
     final text = decodePgnBytes(bytes);
     if (text.isEmpty) return;
-    final scan = scanPgnGame(text);
-    if (scan.sans.isEmpty) return;
-    final variant = scan.tag('Variant')?.toLowerCase();
-    if (variant != null && variant != 'standard' && variant != 'chess') return;
+    // Telling a game from its twin in another source takes every move.
+    final scan = _several
+        ? scanPgnGame(text, sanLimit: 1 << 20)
+        : scanPgnGame(text);
+    if (!treeReadsGame(scan)) return;
 
     final white = scan.tag('White') ?? 'White';
     final black = scan.tag('Black') ?? 'Black';
@@ -523,12 +545,29 @@ class _GameTreeBuilder {
     );
     final result = treeResultCode(scan.tag('Result'));
     final link = scan.tag('Link');
+    final url = treeGameKey(scan.headers);
+    final moves = _several ? treeMovesKey(scan, result) : null;
+    if (moves != null) {
+      for (final twin in _findTwin.select([moves, source.id])) {
+        // Two games a site each gave its own address are two games, however
+        // alike. A twin is a database's or a file's copy of another's game.
+        if (url != null && twin.columnAt(1) != null) continue;
+        if (treeSameGame(
+          date: date,
+          other: twin.columnAt(0) as int?,
+          plies: scan.plies,
+        )) {
+          _shared++;
+          return;
+        }
+      }
+    }
 
     _insertGame.execute([
       source.id,
       offset,
       bytes.length,
-      treeGameKey(scan.headers),
+      url,
       white,
       black,
       result,
@@ -560,6 +599,7 @@ class _GameTreeBuilder {
       scan.tag('ChessEverGroupBroadcastId') ?? scan.tag('ChessEverTourId'),
       scan.tag('ChessEverBroadcastSlug') ?? scan.tag('ChessEverTourSlug'),
       treeDateOf(scan.tag('EventDate')),
+      moves,
     ]);
     if (db.updatedRows == 0) return; // already indexed (same provider URL)
     final gameId = db.lastInsertRowId;

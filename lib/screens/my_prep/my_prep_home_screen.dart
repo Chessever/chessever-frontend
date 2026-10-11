@@ -1,3 +1,5 @@
+import 'package:chessever2/providers/favorite_players_provider.dart';
+import 'package:chessever2/repository/favorites/models/favorite_player.dart';
 import 'package:chessever2/repository/supabase/chess_player/chess_player_repository.dart'
     show ChessPlayer;
 import 'package:chessever2/screens/my_prep/data/prep_favorites.dart';
@@ -7,11 +9,14 @@ import 'package:chessever2/screens/my_prep/prep_actions.dart';
 import 'package:chessever2/screens/my_prep/prep_profile_screen.dart';
 import 'package:chessever2/screens/my_prep/prep_sources_screen.dart';
 import 'package:chessever2/screens/my_prep/providers/prep_favorites_provider.dart';
+import 'package:chessever2/screens/my_prep/providers/prep_known_accounts_provider.dart';
 import 'package:chessever2/screens/my_prep/providers/prep_providers.dart';
 import 'package:chessever2/screens/my_prep/widgets/prep_common.dart';
 import 'package:chessever2/screens/my_prep/widgets/prep_profile_card.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/app_typography.dart';
+import 'package:chessever2/utils/favorite_player_identity.dart'
+    show favoriteCountryCode;
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/card_context_menu.dart'
@@ -22,15 +27,16 @@ import 'package:chessever2/widgets/segmented_switcher.dart';
 import 'package:chessever2/widgets/skeleton_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:motor/motor.dart';
 
-/// My Prep: the reader's own games, the opponents they prepare for, and
+/// My Prep: the reader's own games, the profiles they prepare against, and
 /// players to study, with database, online and PGN sources.
 class MyPrepHomeScreen extends ConsumerStatefulWidget {
   const MyPrepHomeScreen({super.key, this.initialTab = 0});
 
   final int initialTab;
 
-  static const List<String> tabs = ['My games', 'Opponents', 'Favorites'];
+  static const List<String> tabs = ['My Games', 'Profiles', 'Players'];
 
   @override
   ConsumerState<MyPrepHomeScreen> createState() => _MyPrepHomeScreenState();
@@ -41,11 +47,19 @@ class _MyPrepHomeScreenState extends ConsumerState<MyPrepHomeScreen> {
   late final PageController _pages = PageController(initialPage: _tab);
   bool _refreshedOnOpen = false;
 
+  /// The profiles whose sources are listed under their card. Kept here, so
+  /// a list stays as the reader left it after visiting another tab.
+  final _unfolded = <String>{};
+
   @override
   void dispose() {
     _pages.dispose();
     super.dispose();
   }
+
+  void _fold(String profileId) => setState(() {
+    if (!_unfolded.remove(profileId)) _unfolded.add(profileId);
+  });
 
   void _select(int index) {
     if (index == _tab) return;
@@ -87,7 +101,7 @@ class _MyPrepHomeScreenState extends ConsumerState<MyPrepHomeScreen> {
   }
 
   /// An empty tab asks for its first player in the page itself, so the
-  /// floating button only joins once the reader has added one. Favorites is
+  /// floating button only joins once the reader has added one. Players is
   /// a fixed ranking with nothing to add, so it never has one.
   bool _hasAdd(List<PrepProfile> profiles) {
     final kind = switch (_tab) {
@@ -96,7 +110,7 @@ class _MyPrepHomeScreenState extends ConsumerState<MyPrepHomeScreen> {
       _ => null,
     };
     if (kind == null) return false;
-    // My games lists sources, so a profile with none attached is empty.
+    // My Games lists sources, so a profile with none attached is empty.
     return profiles.any(
       (p) => p.kind == kind && (kind != PrepKind.mine || p.accounts.isNotEmpty),
     );
@@ -153,10 +167,10 @@ class _MyPrepHomeScreenState extends ConsumerState<MyPrepHomeScreen> {
                   onPageChanged: (index) {
                     if (index != _tab) setState(() => _tab = index);
                   },
-                  children: const [
-                    _MyGamesTab(),
-                    _OpponentsTab(),
-                    _FavoritesTab(),
+                  children: [
+                    const _MyGamesTab(),
+                    _OpponentsTab(unfolded: _unfolded, onFold: _fold),
+                    const _FavoritesTab(),
                   ],
                 ),
               ),
@@ -242,7 +256,7 @@ class _MyGamesTab extends ConsumerWidget {
           bottom: MediaQuery.viewPaddingOf(context).bottom + 96.h,
         ),
         children: [
-          // My games is one person, so the tab lists their sources rather
+          // My Games is one person, so the tab lists their sources rather
           // than a player card.
           for (final source in PrepSource.values)
             for (final account in profile.accounts.where(
@@ -289,7 +303,11 @@ class _MyGamesTab extends ConsumerWidget {
 // ------------------------------------------------------------------ opponents
 
 class _OpponentsTab extends ConsumerWidget {
-  const _OpponentsTab();
+  const _OpponentsTab({required this.unfolded, required this.onFold});
+
+  /// The profiles whose sources are listed under their card.
+  final Set<String> unfolded;
+  final ValueChanged<String> onFold;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -316,19 +334,102 @@ class _OpponentsTab extends ConsumerWidget {
       itemCount: opponents.length,
       itemBuilder: (context, index) {
         final profile = opponents[index];
+        final open =
+            profile.accounts.isNotEmpty && unfolded.contains(profile.id);
         return Padding(
           key: ValueKey(profile.id),
           padding: EdgeInsets.symmetric(horizontal: _gutter),
-          child: PrepProfileCard(
-            profile: profile,
-            fideId: prepFavoriteFide(profile),
-            onTap: () {
-              HapticFeedbackService.cardTap();
-              PrepProfileScreen.open(context, profile.id);
-            },
+          // One rule per profile, under whatever it shows: the card alone, or
+          // the card and its sources. Folded, it lies where the card's own
+          // rule did.
+          child: DecoratedBox(
+            position: DecorationPosition.foreground,
+            decoration: BoxDecoration(
+              border: Border(bottom: BorderSide(color: context.colors.divider)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                // The card stays every source together; its sources unfold
+                // beneath it.
+                PrepProfileCard(
+                  profile: profile,
+                  fideId: prepFavoriteFide(profile),
+                  expanded: open,
+                  onExpand: profile.accounts.isEmpty
+                      ? null
+                      : () {
+                          HapticFeedbackService.selection();
+                          onFold(profile.id);
+                        },
+                  onTap: () {
+                    HapticFeedbackService.cardTap();
+                    PrepProfileScreen.open(context, profile.id);
+                  },
+                ),
+                _ProfileSources(profile: profile, open: open),
+              ],
+            ),
           ),
         );
       },
+    );
+  }
+}
+
+/// A profile's sources under its card, each on the My Games source card.
+/// Nothing is ruled between the card and them: they are one profile.
+class _ProfileSources extends StatelessWidget {
+  const _ProfileSources({required this.profile, required this.open});
+
+  final PrepProfile profile;
+  final bool open;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.colors;
+    return SingleMotionBuilder(
+      value: open ? 1.0 : 0.0,
+      motion: kPrepToggleMotion,
+      active: !MediaQuery.disableAnimationsOf(context),
+      builder: (context, t, child) {
+        final shown = t.clamp(0.0, 1.0);
+        if (shown < 0.002) return const SizedBox(width: double.infinity);
+        // At rest nothing clips the list.
+        if (shown > 0.998) return child!;
+        return ClipRect(
+          child: Align(
+            alignment: Alignment.topCenter,
+            heightFactor: shown,
+            child: child,
+          ),
+        );
+      },
+      child: Column(
+        key: ValueKey('prep_profile_sources_${profile.id}'),
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          SizedBox(height: 4.h),
+          for (final source in PrepSource.values)
+            for (final account in profile.accounts.where(
+              (a) => a.source == source,
+            ))
+              Padding(
+                // Level with the profile's picture on the left; on the right
+                // the two more buttons share one column.
+                padding: EdgeInsets.fromLTRB(12.w, 0, 8.w, 8.h),
+                child: Material(
+                  color: colors.surface,
+                  borderRadius: BorderRadius.circular(12.br),
+                  clipBehavior: Clip.antiAlias,
+                  child: PrepAccountRow(profile: profile, account: account),
+                ),
+              ),
+          // With the last card's own gap, as far from the rule below as the
+          // profile card is from it when folded.
+          SizedBox(height: 4.h),
+        ],
+      ),
     );
   }
 }
@@ -381,10 +482,11 @@ class _FavoritesTabState extends ConsumerState<_FavoritesTab> {
     (resolved) => prepOpenFavorite(context, ref, player, onResolved: resolved),
   );
 
+  // The + asks first too: it opens the same sheet, never a download.
   void _add(ChessPlayer player) => _resolve(
     player,
-    'Adding…',
-    (_) => prepQuickAddFavorite(context, ref, player),
+    'Opening…',
+    (resolved) => prepAddFavorite(context, ref, player, onResolved: resolved),
   );
 
   @override
@@ -399,7 +501,31 @@ class _FavoritesTabState extends ConsumerState<_FavoritesTab> {
         if (prepFavoriteFide(p) case final fide?) fide: p,
     };
     final query = _search.text.trim().toLowerCase();
-    // Only a favorite with no FIDE player leads the list, since the ranking
+    final known = ref.watch(prepKnownAccountsNowProvider);
+    // The players the reader follows in Favorites lead the list, the newest
+    // first, so following one brings them to the top here.
+    final followed = <int>{};
+    final pinned = [
+      for (final favorite
+          in ref.watch(favoritePlayersProviderNew).valueOrNull ??
+              const <FavoritePlayer>[])
+        if (int.tryParse(favorite.fideId ?? '') case final fide?
+            when fide > 0 &&
+                (query.isEmpty ||
+                    favorite.playerName.toLowerCase().contains(query) ||
+                    (known['$fide'] ?? const []).any(
+                      (handle) => handle.$2.toLowerCase().contains(query),
+                    )) &&
+                followed.add(fide))
+          ChessPlayer(
+            fideid: fide,
+            name: favorite.playerName,
+            title: favorite.metadata['title']?.toString(),
+            rating: (favorite.metadata['rating'] as num?)?.toInt(),
+            country: favoriteCountryCode(favorite),
+          ),
+    ];
+    // A kept player with no FIDE record follows them, since the ranking
     // cannot place it. Everyone else keeps their ranking slot, added or
     // not, so tapping a row never moves it.
     final custom = [
@@ -413,7 +539,11 @@ class _FavoritesTabState extends ConsumerState<_FavoritesTab> {
                 )))
           profile,
     ];
-    final players = ranked.players;
+    final players = [
+      ...pinned,
+      for (final player in ranked.players)
+        if (!followed.contains(player.fideid)) player,
+    ];
     return NotificationListener<ScrollNotification>(
       onNotification: (notification) {
         if (notification.metrics.extentAfter < 600) ranking.loadMore();
@@ -427,7 +557,7 @@ class _FavoritesTabState extends ConsumerState<_FavoritesTab> {
         padding: EdgeInsets.only(
           bottom: MediaQuery.viewPaddingOf(context).bottom + 96.h,
         ),
-        itemCount: lead + custom.length + players.length + 1,
+        itemCount: lead + players.length + custom.length + 1,
         itemBuilder: (context, index) {
           if (index == 0) {
             return Padding(
@@ -441,8 +571,15 @@ class _FavoritesTabState extends ConsumerState<_FavoritesTab> {
               ),
             );
           }
-          if (index < lead + custom.length) {
-            final profile = custom[index - lead];
+          // Followed players, then kept ones, then the ranking.
+          final slot = index - lead;
+          final ahead = slot < pinned.length
+              ? 0
+              : slot < pinned.length + custom.length
+              ? -1
+              : custom.length;
+          if (ahead < 0) {
+            final profile = custom[slot - pinned.length];
             return Padding(
               key: ValueKey(profile.id),
               padding: EdgeInsets.symmetric(horizontal: _gutter),
@@ -462,12 +599,14 @@ class _FavoritesTabState extends ConsumerState<_FavoritesTab> {
           if (index == lead + custom.length + players.length) {
             return _RankingFooter(state: ranked, onRetry: ranking.retry);
           }
-          final player = players[index - custom.length - lead];
+          final player = players[slot - ahead];
           return Padding(
             key: ValueKey(player.fideid),
             padding: EdgeInsets.symmetric(horizontal: _gutter),
             child: _RankedCard(
               player: player,
+              handles: known['${player.fideid}'] ?? const [],
+              followed: slot < pinned.length,
               profile: byFide['${player.fideid}'],
               status: _busy?.fide == player.fideid ? _busy!.status : null,
               onTap: () => _open(player),
@@ -487,12 +626,20 @@ class _FavoritesTabState extends ConsumerState<_FavoritesTab> {
 class _RankedCard extends StatelessWidget {
   const _RankedCard({
     required this.player,
+    required this.handles,
     required this.onTap,
     required this.onAdd,
+    this.followed = false,
     this.profile,
     this.status,
   });
   final ChessPlayer player;
+
+  /// The Lichess and Chess.com handles known for the player.
+  final List<(PrepSource, String)> handles;
+
+  /// Whether the reader follows this player in Favorites.
+  final bool followed;
   final PrepProfile? profile;
 
   /// What the row reads while the player is being resolved.
@@ -523,19 +670,18 @@ class _RankedCard extends StatelessWidget {
                   if (player.rating case final rating?) 'classical': rating,
                 },
               ),
-              for (final (source, username)
-                  in kPrepFavoritesByFide[fide]?.accounts ??
-                      const <(PrepSource, String)>[])
+              for (final (source, username) in handles)
                 PrepAccount(source: source, username: username),
             ],
           ),
       fideId: fide,
       name: player.name,
       preview: profile == null,
+      badge: followed ? const _FollowedMark() : null,
       action: _OpponentAction(
         added: switch (profile?.kind) {
-          PrepKind.opponent => 'In Opponents',
-          PrepKind.mine => 'In My games',
+          PrepKind.opponent => 'In Profiles',
+          PrepKind.mine => 'In My Games',
           _ => null,
         },
         onAdd: onAdd,
@@ -549,7 +695,7 @@ class _RankedCard extends StatelessWidget {
   }
 }
 
-/// How a Favorites row ends: a + that takes the whole player to Opponents,
+/// How a Players row ends: a + that takes the whole player to Profiles,
 /// or a quiet mark once they are on a list. Both fill one slot, so a row
 /// holds still as its player is added.
 class _OpponentAction extends StatelessWidget {
@@ -565,7 +711,7 @@ class _OpponentAction extends StatelessWidget {
     if (added == null) {
       return CardActionButton(
         icon: Icons.add_rounded,
-        tooltip: 'Add to Opponents',
+        tooltip: 'Add to Profiles',
         size: 22.sp,
         color: context.colors.iconPrimary,
         onPressed: onAdd,
@@ -582,6 +728,30 @@ class _OpponentAction extends StatelessWidget {
             size: 20.sp,
             color: context.colors.textTertiary,
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// The Favorites heart on a player the reader already follows there. Not a
+/// control: a tap here is the row's own.
+class _FollowedMark extends StatelessWidget {
+  const _FollowedMark();
+
+  /// The heart Favorites itself draws.
+  static const _heart = Color(0xFFEF4444);
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      label: 'In your favorites',
+      child: SizedBox(
+        // Narrower than a button: only the + beside it is one.
+        width: 28,
+        height: 44,
+        child: Center(
+          child: Icon(Icons.favorite, size: 18.sp, color: _heart),
         ),
       ),
     );

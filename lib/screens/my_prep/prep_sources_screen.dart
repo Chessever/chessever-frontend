@@ -148,8 +148,9 @@ class PrepAccountRow extends ConsumerWidget {
   final PrepProfile profile;
   final PrepAccount account;
 
-  /// Where the popup's "Go to profile" leads. Opens the profile by default;
-  /// a list already sitting on that profile leads back to it instead.
+  /// Where the popup's "Go to profile" leads. Opens the profile on this
+  /// source by default; a list already sitting on that profile leads back
+  /// to it instead.
   final VoidCallback? onOpenProfile;
 
   @override
@@ -157,9 +158,7 @@ class PrepAccountRow extends ConsumerWidget {
     final colors = context.colors;
     final status = ref.watch(prepSyncProvider.select((s) => s[account.key]));
     final busy = status != null;
-    final title = account.source.online
-        ? account.username
-        : account.displayName ?? account.username;
+    final title = prepAccountName(account);
     return InkWell(
       key: ValueKey('prep_account_${account.key}'),
       onTap: () => _details(context),
@@ -230,7 +229,9 @@ class PrepAccountRow extends ConsumerWidget {
     if (onOpenProfile case final open?) {
       open();
     } else {
-      unawaited(PrepProfileScreen.open(context, profile.id));
+      unawaited(
+        PrepProfileScreen.open(context, profile.id, accountKey: account.key),
+      );
     }
   }
 

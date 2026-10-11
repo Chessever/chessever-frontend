@@ -458,9 +458,11 @@ class _WriteRequest {
   final Set<String> clocks;
 }
 
-/// Writes (or adds to) one account's PGN file and returns its game count.
-/// Adding appends only games whose provider URL the file does not hold yet,
-/// leaving every stored byte where it was. Runs off the UI isolate.
+/// Writes (or adds to) one account's PGN file and returns its game count:
+/// the games the opening index will read from it, so a source never counts
+/// a game its profile cannot show. Adding appends only games whose provider
+/// URL the file does not hold yet, leaving every stored byte where it was.
+/// Runs off the UI isolate.
 int _writeGames(_WriteRequest request) => writePrepGames(
   path: request.path,
   incoming: request.incoming,
@@ -483,7 +485,8 @@ int writePrepGames({
   final file = File(path);
   final games = [
     for (final game in splitPrepPgn(incoming))
-      if (_inSelection(game, fromMs, untilMs, clocks)) game,
+      if (_inSelection(game, fromMs, untilMs, clocks) && _indexReads(game))
+        game,
   ];
   if (!merge || !file.existsSync()) {
     final seen = <String>{};
@@ -500,9 +503,7 @@ int writePrepGames({
     for (final m in _siteTag.allMatches(existing))
       if (_isProviderUrl(m.group(1)!)) m.group(1)!,
   };
-  final stored = existing.trim().isEmpty
-      ? 0
-      : _eventStart.allMatches(existing).length.clamp(1, 1 << 30);
+  final stored = _countIndexed(existing);
   final fresh = <String>[];
   for (final game in games) {
     final key = prepGameKey(game);
@@ -521,6 +522,25 @@ int writePrepGames({
 
 bool _isProviderUrl(String url) =>
     url.contains('lichess.org/') || url.contains('chess.com/');
+
+/// Whether the opening index keeps [game]: only its first move is looked
+/// for, the rest of the rule being [treeReadsGame]'s.
+bool _indexReads(String game) => treeReadsGame(scanPgnGame(game, sanLimit: 1));
+
+/// How many of a stored file's games the index reads. A file written before
+/// games were sifted on the way in may still hold some it does not. Games
+/// are cut out one at a time, so a large file is never held twice.
+int _countIndexed(String stored) {
+  if (stored.trim().isEmpty) return 0;
+  final starts = [for (final m in _eventStart.allMatches(stored)) m.start];
+  if (starts.isEmpty) return _indexReads(stored) ? 1 : 0;
+  var count = 0;
+  for (var i = 0; i < starts.length; i++) {
+    final end = i + 1 < starts.length ? starts[i + 1] : stored.length;
+    if (_indexReads(stored.substring(starts[i], end))) count++;
+  }
+  return count;
+}
 
 /// Exports Combined one source at a time. Run off the UI isolate.
 int writeCombinedPrepGames({

@@ -2,12 +2,12 @@ import 'dart:async';
 
 import 'package:chessever2/repository/supabase/chess_player/chess_player_repository.dart';
 import 'package:chessever2/screens/favorites/rankings/ranking_filters.dart';
-import 'package:chessever2/screens/my_prep/data/prep_favorites.dart';
+import 'package:chessever2/screens/my_prep/providers/prep_known_accounts_provider.dart';
 import 'package:chessever2/utils/transient_request_retry.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
-/// The Favorites tab's suggestions: the FIDE ranking the Favorites Players
+/// The Players tab's suggestions: the FIDE ranking the Favorites Players
 /// tab reads, a page at a time. Every one of them is a ChessEver source.
 @immutable
 class PrepRankedPlayers {
@@ -87,10 +87,13 @@ class PrepRankedPlayersNotifier extends StateNotifier<PrepRankedPlayers> {
         ),
       );
       // A handle (`DrNykterstein`) finds its player too.
-      final byHandle = reset && query.isNotEmpty
+      final handle = query.toLowerCase();
+      final byHandle = reset && handle.length >= 2
           ? await repo.getPlayersByFideIds([
-              for (final f in kPrepFavorites)
-                if (f.matches(query)) ?int.tryParse(f.fideId),
+              for (final entry
+                  in _ref.read(prepKnownAccountsNowProvider).entries)
+                if (entry.value.any((a) => a.$2.toLowerCase().contains(handle)))
+                  ?int.tryParse(entry.key),
             ])
           : const <int, ChessPlayer>{};
       if (!mounted || generation != _generation) return;

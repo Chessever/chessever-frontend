@@ -536,6 +536,7 @@ final prepSourceAnalysisProvider = FutureProvider.autoDispose
         final analysis = PrepAnalysis(
           profileId: scope,
           store: store,
+          shared: store.sharedGames,
           games: List.unmodifiable([
             for (var i = 0; i < rows.length; i++)
               PrepGame.fromIndex(rows[i], i),

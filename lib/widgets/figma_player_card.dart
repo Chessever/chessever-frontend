@@ -72,6 +72,11 @@ class FigmaPlayerCard extends ConsumerWidget {
   /// Allows long collection counts to wrap without consuming the name column.
   final double? matchScoreMaxWidth;
 
+  /// Whether the row rules itself off from the next. A list that puts more
+  /// under a row draws the rule there instead; the row keeps the rule's
+  /// height either way, so it measures the same.
+  final bool showDivider;
+
   const FigmaPlayerCard({
     super.key,
     required this.player,
@@ -93,6 +98,7 @@ class FigmaPlayerCard extends ConsumerWidget {
     this.matchScorePending = false,
     this.reserveMatchScoreSlot = false,
     this.matchScoreMaxWidth,
+    this.showDivider = true,
   });
 
   /// The longest record the leaderboard produces. Both the reserved width and
@@ -224,7 +230,7 @@ class FigmaPlayerCard extends ConsumerWidget {
             // object, so it keeps the rule's height (the copy stays in
             // register over the original) but draws nothing.
             bottom: BorderSide(
-              color: LiftedRowSurface.isLifted(context)
+              color: !showDivider || LiftedRowSurface.isLifted(context)
                   ? Colors.transparent
                   : context.colors.divider,
               width: 1,

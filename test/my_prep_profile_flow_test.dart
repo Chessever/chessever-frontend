@@ -2,6 +2,8 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:chessever2/providers/favorite_players_provider.dart';
+import 'package:chessever2/repository/favorites/models/favorite_player.dart';
 import 'package:chessever2/repository/gamebase/gamebase_repository.dart';
 import 'package:chessever2/repository/supabase/chess_player/chess_player_repository.dart';
 import 'package:chessever2/screens/favorites/rankings/ranking_filters.dart';
@@ -11,11 +13,13 @@ import 'package:chessever2/screens/my_prep/prep_profile_screen.dart';
 import 'package:chessever2/screens/my_prep/prep_actions.dart';
 import 'package:chessever2/screens/my_prep/prep_source_actions.dart';
 import 'package:chessever2/screens/my_prep/prep_sources_screen.dart';
+import 'package:chessever2/screens/my_prep/providers/prep_known_accounts_provider.dart';
 import 'package:chessever2/screens/my_prep/providers/prep_providers.dart';
 import 'package:chessever2/screens/my_prep/services/prep_analysis.dart';
 import 'package:chessever2/screens/my_prep/services/prep_repository.dart';
 import 'package:chessever2/screens/my_prep/tabs/prep_overview_tab.dart';
 import 'package:chessever2/screens/my_prep/tabs/prep_trees_tab.dart';
+import 'package:chessever2/screens/my_prep/widgets/prep_account_switch.dart';
 import 'package:chessever2/screens/my_prep/widgets/prep_common.dart';
 import 'package:chessever2/screens/my_prep/widgets/prep_dialogs.dart';
 import 'package:chessever2/screens/my_prep/widgets/prep_profile_card.dart';
@@ -39,6 +43,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:chessever2/widgets/card_context_menu.dart'
     show CardActionButton, CardMoreButton;
+import 'package:chessever2/widgets/figma_player_card.dart';
 import 'package:chessever2/widgets/popover_add_fab.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -116,6 +121,25 @@ class _RankingRepository implements ChessPlayerRepository {
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
+
+/// The players the reader follows in Favorites, newest first.
+class _Follows extends FavoritePlayersNotifierNew {
+  _Follows(this.seed);
+  final List<FavoritePlayer> seed;
+
+  @override
+  Future<List<FavoritePlayer>> build() async => seed;
+}
+
+FavoritePlayer _follow(String name, int fide, int rating) => FavoritePlayer(
+  id: 'fav-$fide',
+  userId: 'u1',
+  fideId: '$fide',
+  playerName: name,
+  metadata: {'title': 'GM', 'rating': rating},
+  createdAt: DateTime(2026, 7),
+  updatedAt: DateTime(2026, 7),
+);
 
 Future<void> _loaded(ProviderContainer container) async {
   final ready = Completer<void>();
@@ -306,6 +330,7 @@ void main() {
     bool light = false,
     bool premium = false,
     double scale = 1,
+    List<FavoritePlayer> follows = const [],
     List<Override> overrides = const [],
   }) async {
     await tester.binding.setSurfaceSize(const Size(320, 640));
@@ -314,6 +339,7 @@ void main() {
       overrides: [
         prepRepositoryProvider.overrideWithValue(repo),
         premiumAccessProvider.overrideWithValue(premium),
+        favoritePlayersProviderNew.overrideWith(() => _Follows(follows)),
         ...overrides,
       ],
     );
@@ -455,8 +481,8 @@ void main() {
     );
     await tester.pumpAndSettle();
     for (final (tab, label, title) in [
-      ('My games', 'Attach your username', 'Attach your usernames'),
-      ('Opponents', 'Add opponent', 'Add an opponent'),
+      ('My Games', 'Attach your username', 'Attach your usernames'),
+      ('Profiles', 'Add opponent', 'Add an opponent'),
     ]) {
       await tester.tap(find.text(tab));
       await tester.pumpAndSettle();
@@ -499,15 +525,15 @@ void main() {
     expect(find.text('Lichess'), findsNothing);
     await tester.tap(find.byKey(const ValueKey('prep_source_cancel')));
     await tester.pumpAndSettle();
-    // Favorites is a fixed ranking: no floating button and no in-page add.
-    await tester.tap(find.text('Favorites'));
+    // Players is a fixed ranking: no floating button and no in-page add.
+    await tester.tap(find.text('Players'));
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('prep_add_floating')), findsNothing);
     expect(find.byKey(const ValueKey('prep_add_empty')), findsNothing);
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('a ranked favorite joins Opponents through the add sheet with '
+  testWidgets('a ranked favorite joins Profiles through the add sheet with '
       'its known accounts chosen, and keeps its ranking slot', (tester) async {
     final container = await pump(
       tester,
@@ -517,7 +543,7 @@ void main() {
         chessPlayerRepositoryProvider.overrideWithValue(_RankingRepository()),
       ],
     );
-    await tester.tap(find.text('Favorites'));
+    await tester.tap(find.text('Players'));
     await tester.pumpAndSettle();
     PrepSourceMarks marks(String name) => tester.widget(
       find.descendant(
@@ -580,8 +606,8 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('the + on a Favorites row adds the whole player to Opponents in '
-      'one tap, as the add sheet would with nothing changed', (tester) async {
+  testWidgets('the + on a Players row asks before anything is added or '
+      'downloaded, with the known usernames already chosen', (tester) async {
     final container = await pump(
       tester,
       const MyPrepHomeScreen(),
@@ -590,7 +616,7 @@ void main() {
         chessPlayerRepositoryProvider.overrideWithValue(_RankingRepository()),
       ],
     );
-    await tester.tap(find.text('Favorites'));
+    await tester.tap(find.text('Players'));
     await tester.pumpAndSettle();
     Finder row(String name) => find.ancestor(
       of: find.text(name),
@@ -605,11 +631,34 @@ void main() {
     final nameBefore = tester.getRect(find.text('Carlsen, Magnus'));
 
     await tester.tap(add('Carlsen, Magnus'));
-    await tester.pump();
+    await tester.pumpAndSettle();
+    // The same sheet Profiles adds with: nothing exists yet, nothing runs.
+    expect(find.text('Add an opponent'), findsOneWidget);
+    expect(container.read(prepProfilesProvider).requireValue, isEmpty);
+    expect(repo.syncCalls, 0);
+    for (final key in [
+      'chessever:player-uuid',
+      'chesscom:magnuscarlsen',
+      'lichess:drnykterstein',
+    ]) {
+      expect(find.byKey(ValueKey('prep_pending_$key')), findsOneWidget);
+    }
+    // Backing out leaves the list exactly as it was.
+    await tester.tap(find.byKey(const ValueKey('prep_source_cancel')));
+    await tester.pumpAndSettle();
+    expect(container.read(prepProfilesProvider).requireValue, isEmpty);
+    expect(repo.syncCalls, 0);
+    expect(tester.getRect(row('Carlsen, Magnus')), before);
+    expect(add('Carlsen, Magnus'), findsOneWidget);
+
+    // Confirmed, the reader is asked what to download for each source.
+    await tester.tap(add('Carlsen, Magnus'));
+    await tester.pumpAndSettle();
+    await tapOnPage(tester, find.text('Create profile'));
+    expect(repo.syncCalls, 0);
+    // One page per source, ChessEver included.
+    await confirmScopes(tester, 3);
     await tester.pump(const Duration(milliseconds: 500));
-    // No sheet and no profile screen: the player is simply in Opponents.
-    expect(find.text('Add an opponent'), findsNothing);
-    expect(find.byType(PrepProfileScreen), findsNothing);
     final profile = container.read(prepProfilesProvider).requireValue.single;
     expect(profile.kind, PrepKind.opponent);
     expect(profile.favoriteId, 'carlsen');
@@ -619,14 +668,8 @@ void main() {
       PrepSource.chesscom,
       PrepSource.lichess,
     ]);
-    // Each account carries what the sheet's scope page would have proposed.
-    for (final account in profile.accounts) {
-      final proposed = PrepDownloadPreferences.initialFor(account.source);
-      expect(account.preferences.timeControls, proposed.timeControls);
-      expect(account.preferences.range, proposed.range);
-    }
     expect(repo.syncCalls, 3);
-    expect(find.text('${profile.name} added to Opponents'), findsOneWidget);
+    expect(find.text('${profile.name} added to Profiles'), findsOneWidget);
     // The row holds its place and size; only its end mark changes.
     expect(tester.getRect(row('Carlsen, Magnus')), before);
     expect(tester.getRect(find.text('Carlsen, Magnus')), nameBefore);
@@ -639,7 +682,7 @@ void main() {
       findsOneWidget,
     );
     // The row reads its state out with the rest of its text.
-    expect(find.bySemanticsLabel(RegExp('In Opponents')), findsOneWidget);
+    expect(find.bySemanticsLabel(RegExp('In Profiles')), findsOneWidget);
 
     // A player ChessEver cannot resolve, with no known handle, adds nothing.
     await tester.tap(add('Unknown, Handle'));
@@ -650,7 +693,199 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('My games attaches own usernames from both online sites', (
+  testWidgets('followed players lead the Players list under a heart, and the '
+      'server decides whose usernames are known', (tester) async {
+    await pump(
+      tester,
+      const MyPrepHomeScreen(initialTab: 2),
+      premium: true,
+      // Lower rated than the ranking's first, and still ahead of it.
+      follows: [
+        _follow('Followed, Second', 4242, 2500),
+        _follow('Unknown, Handle', 99, 2600),
+      ],
+      overrides: [
+        chessPlayerRepositoryProvider.overrideWithValue(_RankingRepository()),
+        // The server withdrew Carlsen's Chess.com handle, renamed his
+        // Lichess one and published one for a player the app never shipped.
+        prepKnownAccountsProvider.overrideWith(
+          (ref) async => {
+            '1503014': [(PrepSource.lichess, 'ServerHandle')],
+            '4242': [(PrepSource.chesscom, 'second_one')],
+          },
+        ),
+      ],
+    );
+    await tester.pumpAndSettle();
+    final cards = tester
+        .widgetList<PrepProfileCard>(find.byType(PrepProfileCard))
+        .toList();
+    // Followed players first, in the order Favorites lists them, and once:
+    // the one the ranking also holds does not appear again below.
+    expect(cards.map((card) => card.name), [
+      'Followed, Second',
+      'Unknown, Handle',
+      'Carlsen, Magnus',
+    ]);
+    Finder row(String name) => find.ancestor(
+      of: find.text(name),
+      matching: find.byType(PrepProfileCard),
+    );
+    Finder heart(String name) =>
+        find.descendant(of: row(name), matching: find.byIcon(Icons.favorite));
+    Finder add(String name) =>
+        find.descendant(of: row(name), matching: find.byType(CardActionButton));
+    for (final name in ['Followed, Second', 'Unknown, Handle']) {
+      expect(heart(name), findsOneWidget);
+      // The heart says where the player already is; the + is still there.
+      expect(add(name), findsOneWidget);
+      expect(tester.getSize(add(name)), const Size(44, 44));
+    }
+    expect(heart('Carlsen, Magnus'), findsNothing);
+    expect(
+      find.bySemanticsLabel(RegExp('In your favorites')),
+      findsNWidgets(2),
+    );
+    // Every row's + stands in one column, heart or not.
+    expect(
+      tester.getRect(add('Followed, Second')).left,
+      tester.getRect(add('Carlsen, Magnus')).left,
+    );
+    PrepSourceMarks marks(String name) => tester.widget(
+      find.descendant(of: row(name), matching: find.byType(PrepSourceMarks)),
+    );
+    expect(marks('Carlsen, Magnus').sources, [
+      PrepSource.chessever,
+      PrepSource.lichess,
+    ]);
+    expect(marks('Followed, Second').sources, [
+      PrepSource.chessever,
+      PrepSource.chesscom,
+    ]);
+
+    // The sheet is prefilled from the server's list, not the shipped one.
+    await tester.tap(add('Carlsen, Magnus'));
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const ValueKey('prep_pending_lichess:serverhandle')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('prep_pending_chesscom:magnuscarlsen')),
+      findsNothing,
+    );
+    await tester.tap(find.byKey(const ValueKey('prep_source_cancel')));
+    await tester.pumpAndSettle();
+
+    // A handle finds its player, and the followed ones answer a search too.
+    await tester.enterText(find.byType(TextField), 'second');
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pumpAndSettle();
+    expect(row('Followed, Second'), findsOneWidget);
+    expect(row('Unknown, Handle'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('a chosen ChessEver player offers their known usernames, one '
+      'tap each, and none is added unless tapped', (tester) async {
+    PrepAddResult? result;
+    await pump(
+      tester,
+      Scaffold(
+        body: Builder(
+          builder: (context) => TextButton(
+            onPressed: () async {
+              result = await showPrepSourcePicker(
+                context,
+                kind: PrepKind.opponent,
+                multiple: true,
+              );
+            },
+            child: const Text('Start'),
+          ),
+        ),
+      ),
+      overrides: [
+        prepKnownAccountsProvider.overrideWith(
+          (ref) async => {
+            '1503014': [
+              (PrepSource.chesscom, 'MagnusCarlsen'),
+              (PrepSource.lichess, 'DrNykterstein'),
+              (PrepSource.lichess, 'SecondHandle'),
+            ],
+          },
+        ),
+      ],
+    );
+    await tester.tap(find.text('Start'));
+    await tester.pumpAndSettle();
+    const chesscom = ValueKey('prep_suggested_chesscom:magnuscarlsen');
+    const lichess = ValueKey('prep_suggested_lichess:drnykterstein');
+    const second = ValueKey('prep_suggested_lichess:secondhandle');
+    // Nothing is offered before a player is chosen.
+    expect(find.text('Known accounts'), findsNothing);
+    await tester.enterText(
+      find.byKey(const ValueKey('prep_source_query')),
+      '1503014',
+    );
+    await tester.pump(const Duration(milliseconds: 450));
+    await tester.pump();
+    await tester.tap(find.text('Local Player'));
+    await tester.pumpAndSettle();
+    final player = find.byKey(
+      const ValueKey('prep_pending_chessever:player-uuid'),
+    );
+    expect(player, findsOneWidget);
+    // The offers sit right under the player they belong to, several of one
+    // site included.
+    expect(find.text('Known accounts'), findsOneWidget);
+    for (final key in [chesscom, lichess, second]) {
+      expect(find.byKey(key), findsOneWidget);
+      expect(
+        tester.getTopLeft(find.byKey(key)).dy,
+        greaterThan(tester.getBottomLeft(player).dy - 1),
+      );
+      expect(tester.getSize(find.byKey(key)).height, greaterThanOrEqualTo(44));
+    }
+
+    await tester.tap(find.byKey(lichess));
+    await tester.pumpAndSettle();
+    expect(find.byKey(lichess), findsNothing);
+    expect(
+      find.byKey(const ValueKey('prep_pending_lichess:drnykterstein')),
+      findsOneWidget,
+    );
+    // Taken back out, it is on offer again.
+    await tester.tap(find.byTooltip('Remove DrNykterstein'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(lichess), findsOneWidget);
+    await tester.tap(find.byKey(lichess));
+    await tester.pumpAndSettle();
+
+    // Typing a username by hand still works beside the offers.
+    await tester.tap(find.text('Chess.com'));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const ValueKey('prep_source_query')),
+      'TypedByHand',
+    );
+    await tester.pump(const Duration(milliseconds: 450));
+    await tester.pump();
+    await tester.tap(find.text('Club Player'));
+    await tester.pumpAndSettle();
+
+    await tapOnPage(tester, find.text('Create profile'));
+    await confirmScopes(tester, 3);
+    // Only what was tapped or typed: the two offers left alone are not.
+    expect(result?.accounts.map((a) => a.key), [
+      'chessever:player-uuid',
+      'lichess:drnykterstein',
+      'chesscom:typedbyhand',
+    ]);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('My Games attaches own usernames from both online sites', (
     tester,
   ) async {
     PrepAddResult? result;
@@ -1535,13 +1770,455 @@ void main() {
           find.byTooltip('Filter and sort games').hitTestable(),
           findsNothing,
         );
-        await tester.tap(find.byTooltip('Manage sources'));
+        // With several sources the marks switch between them instead.
+        expect(find.byTooltip('Manage sources'), findsNothing);
+        expect(find.byType(PrepAccountSwitch), findsOneWidget);
+        expect(tester.takeException(), isNull);
+      },
+    );
+
+    testWidgets(
+      'About and Games read one source alone or all together in ${light ? 'light' : 'dark'} theme',
+      (tester) async {
+        const online = PrepAccount(
+          source: PrepSource.lichess,
+          username: 'ClubPlayer',
+          ratings: {'rapid': 1900},
+        );
+        // Two sources of one kind: their marks alone would be alike.
+        const other = PrepAccount(
+          source: PrepSource.chesscom,
+          username: 'ClubPlayer',
+          ratings: {'rapid': 2100},
+        );
+        const empty = PrepAccount(
+          source: PrepSource.chesscom,
+          username: 'NoGames',
+        );
+        const slow = PrepAccount(source: PrepSource.manual, username: 'Slow');
+        const profile = PrepProfile(
+          id: 'p',
+          kind: PrepKind.opponent,
+          name: 'Club Player',
+          createdAtMs: 1,
+          accounts: [online, other, empty, slow],
+        );
+        PrepGame game(int i, PrepAccount account, String result) => PrepGame(
+          index: i,
+          source: account.source,
+          sourcePath: PrepRepository.gamesFileName(account),
+          white: 'ClubPlayer',
+          black: 'Opponent $i',
+          result: result,
+          plies: 4,
+          speed: PrepTimeControl.rapid,
+          playerIsWhite: true,
+        );
+        final mine = {
+          online.key: [game(0, online, '1-0')],
+          other.key: [game(1, other, '0-1'), game(2, other, '0-1')],
+          empty.key: <PrepGame>[],
+          slow.key: [for (var i = 3; i < 7; i++) game(i, slow, '1-0')],
+        };
+        // One source's games take their time to be read.
+        final read = Completer<void>();
+        // A phone's status bar and home indicator: a list left to pad
+        // itself would sit lower than one that is told how.
+        tester.view.padding = const FakeViewPadding(top: 177, bottom: 102);
+        tester.view.viewPadding = const FakeViewPadding(top: 177, bottom: 102);
+        addTearDown(tester.view.resetPadding);
+        addTearDown(tester.view.resetViewPadding);
+        await pump(
+          tester,
+          // Opened from a source's popup, a profile starts on that source.
+          PrepProfileScreen(profileId: 'p', accountKey: other.key),
+          light: light,
+          overrides: [
+            prepProfileProvider.overrideWith((ref, id) => profile),
+            prepAnalysisProvider.overrideWith(
+              (ref, id) async => PrepAnalysis(
+                profileId: id,
+                games: [for (final games in mine.values) ...games],
+                // Two games reach the profile from two sources each.
+                shared: 2,
+              ),
+            ),
+            prepSourceAnalysisProvider.overrideWith((ref, scope) async {
+              if (scope.accountKey == slow.key) await read.future;
+              return PrepAnalysis(
+                profileId: scope.profileId,
+                games: mine[scope.accountKey]!,
+              );
+            }),
+          ],
+        );
+        // Wide enough for the whole switch, so nothing here scrolls.
+        await tester.binding.setSurfaceSize(const Size(500, 900));
+        await tester.pumpAndSettle();
+        String caption() => tester
+            .widget<Text>(find.byKey(const ValueKey('prep_switch_caption')))
+            .data!;
+        Finder segment(String? key) =>
+            find.byKey(ValueKey('prep_switch_${key ?? 'all'}'));
+        Finder named(String? key, String name) =>
+            find.descendant(of: segment(key), matching: find.text(name));
+        bool selected(String? key) => tester
+            .getSemantics(segment(key))
+            .flagsCollection
+            .isSelected
+            .toBoolOrNull()!;
+        String analyzed() => tester
+            .widget<Text>(
+              find
+                  .descendant(
+                    of: find.ancestor(
+                      of: find.text('Games analyzed'),
+                      matching: find.byType(Column),
+                    ),
+                    matching: find.byType(Text),
+                  )
+                  .at(1),
+            )
+            .data!;
+        // Everything that must hold still while sources change.
+        List<Rect> placed() => [
+          tester.getRect(find.byType(PrepIdentity)),
+          tester.getRect(find.text('Overall Performance')),
+          tester.getRect(find.byType(PrepAccountSwitch)),
+        ];
+
+        expect(caption(), 'Chess.com · ClubPlayer');
+        expect(selected(other.key), isTrue);
+        expect(selected(null), isFalse);
+        expect(analyzed(), '2');
+        // One source holds no game twice.
+        const sharedNote = ValueKey('prep_shared_games');
+        expect(find.byKey(sharedNote), findsNothing);
+        // The rating columns are that source's own.
+        expect(find.text('2100'), findsOneWidget);
+        expect(find.text('1900'), findsNothing);
+        // Two Chess.com sources are told apart by name; a kind with one
+        // source is its mark alone.
+        expect(named(other.key, 'ClubPlayer'), findsOneWidget);
+        expect(named(empty.key, 'NoGames'), findsOneWidget);
+        expect(named(online.key, 'ClubPlayer'), findsNothing);
+        expect(named(slow.key, 'Slow'), findsNothing);
+        // Every choice is a full tap target, and none is cut by the screen.
+        for (final key in [null, online.key, other.key, empty.key, slow.key]) {
+          final at = tester.getRect(segment(key));
+          expect(at.height, greaterThanOrEqualTo(44));
+          expect(at.left, greaterThanOrEqualTo(0));
+          expect(at.right, lessThanOrEqualTo(500));
+        }
+        final at = placed();
+        final summaryAt = tester.getRect(find.text('Games analyzed'));
+
+        await tester.tap(segment(online.key));
+        await tester.pumpAndSettle();
+        expect(caption(), 'Lichess · ClubPlayer');
+        expect(selected(online.key), isTrue);
+        expect(selected(other.key), isFalse);
+        expect(analyzed(), '1');
+        expect(find.text('1900'), findsOneWidget);
+        // Choosing a source moves nothing: not the identity, the heading or
+        // the switch, nor the statistics that follow them.
+        expect(placed(), at);
+        expect(tester.getRect(find.text('Games analyzed')), summaryAt);
+
+        // A source with nothing downloaded can still be left again.
+        await tester.tap(segment(empty.key));
+        await tester.pumpAndSettle();
+        expect(caption(), 'Chess.com · NoGames');
+        expect(find.text('No games yet'), findsOneWidget);
+        expect(placed(), at);
+
+        await tester.tap(segment(null));
+        await tester.pumpAndSettle();
+        expect(caption(), 'Combined · 4 sources');
+        expect(selected(null), isTrue);
+        expect(analyzed(), '7');
+        expect(placed(), at);
+        expect(tester.getRect(find.text('Games analyzed')), summaryAt);
+        // Together, the reader is told why the sources' counts add up to
+        // more than this.
+        expect(
+          tester.widget<Text>(find.byKey(sharedNote)).data,
+          '2 games are in two sources and are counted once.',
+        );
+
+        // While a source's games are read, the statistics on screen wait
+        // where they are, out of reach, under a heading that says so.
+        await tester.tap(segment(slow.key));
+        await tester.pump();
+        await tester.pump();
+        expect(selected(slow.key), isTrue);
+        expect(
+          find.byKey(const ValueKey('prep_switch_progress')),
+          findsOneWidget,
+        );
+        expect(find.text('Reading games…'), findsOneWidget);
+        expect(find.byKey(const ValueKey('prep_switch_caption')), findsNothing);
+        expect(analyzed(), '7');
+        expect(placed(), at);
+        expect(tester.getRect(find.text('Games analyzed')), summaryAt);
+        await tester.tap(find.text('Wins'), warnIfMissed: false);
+        await tester.pumpAndSettle();
+        expect(find.byType(PrepGamesTab), findsNothing);
+        read.complete();
+        await tester.pumpAndSettle();
+        expect(caption(), 'PGN · Slow');
+        expect(analyzed(), '4');
+        expect(placed(), at);
+        expect(tester.getRect(find.text('Games analyzed')), summaryAt);
+
+        // Games follows the source About reads, and what About opens there
+        // stays within it.
+        await tester.tap(segment(online.key));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Games'));
+        await tester.pumpAndSettle();
+        var tab = tester.widget<PrepGamesTab>(find.byType(PrepGamesTab));
+        expect(tab.filter.accountKey, online.key);
+        expect(tab.games, hasLength(1));
+        await tester.tap(find.text('About'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Wins'));
+        await tester.pumpAndSettle();
+        tab = tester.widget<PrepGamesTab>(find.byType(PrepGamesTab));
+        expect(tab.filter.accountKey, online.key);
+        expect(tab.filter.outcome, PrepOutcome.win);
+        await tester.tap(find.text('About'));
+        await tester.pumpAndSettle();
+        await tester.tap(segment(null));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Games'));
+        await tester.pumpAndSettle();
+        tab = tester.widget<PrepGamesTab>(find.byType(PrepGamesTab));
+        expect(tab.filter.accountKey, isNull);
+        expect(tab.filter.source, isNull);
+
+        // The marks no longer open the sources screen; the menu does.
+        expect(find.byTooltip('Manage sources'), findsNothing);
+        await tester.tap(find.byTooltip('More actions'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Manage sources'));
         await tester.pumpAndSettle();
         expect(find.byType(PrepSourcesScreen), findsOneWidget);
         expect(tester.takeException(), isNull);
       },
     );
   }
+
+  testWidgets('a switch too wide for its line brings the chosen source into '
+      'view', (tester) async {
+    final accounts = [
+      for (final name in ['First', 'Second', 'Third', 'Fourth'])
+        PrepAccount(source: PrepSource.lichess, username: name),
+    ];
+    String? chosen = accounts.last.key;
+    await pump(
+      tester,
+      Scaffold(
+        body: Center(
+          child: SizedBox(
+            width: 200,
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: StatefulBuilder(
+                builder: (context, setState) => PrepAccountSwitch(
+                  accounts: accounts,
+                  selectedKey: chosen,
+                  onSelected: (key) => setState(() => chosen = key),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final line = tester.getRect(find.byType(SingleChildScrollView));
+    Rect at(PrepAccount account) =>
+        tester.getRect(find.byKey(ValueKey('prep_switch_${account.key}')));
+    // Opened on its last source, the line starts where that source shows.
+    expect(
+      tester.getSize(find.byType(PrepAccountSwitch)).width,
+      greaterThan(200),
+    );
+    expect(at(accounts.last).right, lessThanOrEqualTo(line.right + 0.5));
+    expect(at(accounts.first).left, lessThan(line.left));
+    // Every source is named: four of one kind would be four alike marks.
+    for (final account in accounts) {
+      expect(find.text(account.username), findsOneWidget);
+    }
+    await tester.tap(find.text('Third'));
+    await tester.pumpAndSettle();
+    expect(chosen, accounts[2].key);
+    // Already in view, so the line holds still.
+    expect(at(accounts.last).right, lessThanOrEqualTo(line.right + 0.5));
+    await tester.dragFrom(line.center, const Offset(400, 0));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('prep_switch_all')));
+    await tester.pumpAndSettle();
+    expect(chosen, isNull);
+    expect(
+      tester.getRect(find.byKey(const ValueKey('prep_switch_all'))).left,
+      greaterThanOrEqualTo(line.left - 0.5),
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
+    'a profile unfolds its sources under the combined card and folds them away',
+    (tester) async {
+      final container = await pump(
+        tester,
+        const MyPrepHomeScreen(initialTab: 1),
+        // The profile a source's popup opens has nothing to index here.
+        overrides: [
+          prepAnalysisProvider.overrideWith(
+            (ref, id) async => PrepAnalysis.empty(id),
+          ),
+          prepSourceAnalysisProvider.overrideWith(
+            (ref, scope) async => PrepAnalysis.empty(scope.profileId),
+          ),
+        ],
+      );
+      await tester.runAsync(() async {
+        final profiles = container.read(prepProfilesProvider.notifier);
+        profiles.create(
+          kind: PrepKind.opponent,
+          name: 'Unsourced',
+          accounts: [],
+        );
+        profiles.create(
+          kind: PrepKind.opponent,
+          name: 'Club Player',
+          accounts: const [
+            PrepAccount(
+              source: PrepSource.chesscom,
+              username: 'SecondAccount',
+              gameCount: 8,
+              lastSyncAtMs: 1,
+            ),
+            PrepAccount(
+              source: PrepSource.lichess,
+              username: 'ClubPlayer',
+              gameCount: 4,
+              lastSyncAtMs: 1,
+            ),
+          ],
+        );
+        await profiles.debugDrainWrites();
+      });
+      await tester.pumpAndSettle();
+      Finder card(String name) => find.ancestor(
+        of: find.text(name),
+        matching: find.byType(PrepProfileCard),
+      );
+      Finder more(Finder within) =>
+          find.descendant(of: within, matching: find.byType(CardMoreButton));
+      const lichess = ValueKey('prep_account_lichess:clubplayer');
+      const chesscom = ValueKey('prep_account_chesscom:secondaccount');
+
+      // Folded, the list is the combined cards alone.
+      expect(find.text('12 games'), findsOneWidget);
+      expect(find.byKey(lichess), findsNothing);
+      expect(find.byType(PrepAccountRow), findsNothing);
+      // A profile with no sources has nothing to unfold, but its text ends
+      // where every other row's does.
+      expect(find.byTooltip('Show sources'), findsOneWidget);
+      expect(
+        tester.getRect(more(card('Unsourced'))).left,
+        tester.getRect(more(card('Club Player'))).left,
+      );
+      expect(
+        tester.getSize(find.byTooltip('Show sources')),
+        const Size(44, 44),
+      );
+      final cardAt = tester.getRect(card('Club Player'));
+      final moreAt = tester.getRect(more(card('Club Player')));
+      // One rule per profile, drawn by the list: folded, it lies along the
+      // card's own bottom edge, where the card would have ruled itself.
+      Finder rule(String name) => find.ancestor(
+        of: card(name),
+        matching: find.byWidgetPredicate(
+          (w) =>
+              w is DecoratedBox && w.position == DecorationPosition.foreground,
+        ),
+      );
+      bool selfRuled(String name) => tester
+          .widget<FigmaPlayerCard>(
+            find.descendant(
+              of: card(name),
+              matching: find.byType(FigmaPlayerCard),
+            ),
+          )
+          .showDivider;
+      for (final name in ['Unsourced', 'Club Player']) {
+        expect(rule(name), findsOneWidget);
+        expect(selfRuled(name), isFalse);
+        expect(
+          tester.getRect(rule(name)).bottom,
+          tester.getRect(card(name)).bottom,
+        );
+      }
+
+      await tester.tap(find.byTooltip('Show sources'));
+      await tester.pumpAndSettle();
+      expect(find.byTooltip('Hide sources'), findsOneWidget);
+      // The combined card holds still; its sources follow in list order.
+      expect(tester.getRect(card('Club Player')), cardAt);
+      expect(find.text('12 games'), findsOneWidget);
+      expect(find.text('4 games'), findsOneWidget);
+      expect(find.text('8 games'), findsOneWidget);
+      expect(
+        tester.getTopLeft(find.byKey(lichess)).dy,
+        lessThan(tester.getTopLeft(find.byKey(chesscom)).dy),
+      );
+      // Both more buttons stand in one column.
+      expect(
+        tester.getCenter(more(find.byKey(lichess))).dx,
+        moreOrLessEquals(moreAt.center.dx, epsilon: 0.5),
+      );
+      // Still one rule, now under the sources: nothing is ruled between the
+      // card and what belongs to it.
+      expect(rule('Club Player'), findsOneWidget);
+      expect(selfRuled('Club Player'), isFalse);
+      expect(
+        tester.getRect(rule('Club Player')).bottom,
+        greaterThan(tester.getRect(find.byKey(chesscom)).bottom),
+      );
+
+      // The list stays as it was left across the other tabs.
+      await tester.tap(find.text('My Games'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Profiles'));
+      await tester.pumpAndSettle();
+      expect(find.byType(PrepAccountRow), findsNWidgets(2));
+
+      // A source's popup leads to that source's own profile.
+      await tester.tap(find.byKey(lichess));
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(find.text('Go to profile'));
+      await tester.tap(find.text('Go to profile'));
+      await tester.pumpAndSettle();
+      expect(
+        tester
+            .widget<PrepProfileScreen>(find.byType(PrepProfileScreen))
+            .accountKey,
+        'lichess:clubplayer',
+      );
+      await tester.pageBack();
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byTooltip('Hide sources'));
+      await tester.pumpAndSettle();
+      expect(find.byType(PrepAccountRow), findsNothing);
+      expect(tester.getRect(card('Club Player')), cardAt);
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   testWidgets(
     'profile filters stay in a popup and apply only on confirmation',
@@ -1699,6 +2376,105 @@ void main() {
     await tester.tap(find.text('Wins'));
     expect(selected?.outcome, PrepOutcome.win);
     expect(selected?.source, PrepSource.lichess);
+  });
+
+  testWidgets('rating figures of several sources name the one source whose '
+      'scale they are on', (tester) async {
+    const database = PrepAccount(
+      source: PrepSource.chessever,
+      username: 'Player, Local',
+      externalId: 'player-uuid',
+    );
+    const first = PrepAccount(source: PrepSource.lichess, username: 'One');
+    const second = PrepAccount(source: PrepSource.lichess, username: 'Two');
+    const profile = PrepProfile(
+      id: 'p',
+      kind: PrepKind.opponent,
+      name: 'Local Player',
+      createdAtMs: 1,
+      accounts: [database, first, second],
+    );
+    var index = 0;
+    PrepGame game(PrepAccount account, int elo, int day) => PrepGame(
+      index: index++,
+      source: account.source,
+      sourcePath: '/prep/${PrepRepository.gamesFileName(account)}',
+      white: 'Player',
+      black: 'Opponent',
+      result: '1-0',
+      plies: 60,
+      whiteElo: elo,
+      blackElo: elo - 100,
+      date: DateTime.utc(2026, 3, day),
+      speed: PrepTimeControl.blitz,
+      playerIsWhite: true,
+    );
+    final games = [
+      for (var day = 1; day <= 3; day++) game(database, 2600, day),
+      // More games than the database, on a site's higher scale.
+      for (var day = 1; day <= 5; day++) game(second, 3000, day),
+      game(first, 2900, 1),
+    ];
+    Future<void> show(PrepStats stats) async {
+      await pump(
+        tester,
+        Scaffold(
+          body: PrepOverviewTab(
+            profile: profile,
+            stats: stats,
+            filter: const PrepFilter(),
+          ),
+        ),
+      );
+      await tester.binding.setSurfaceSize(const Size(430, 1600));
+      await tester.pumpAndSettle();
+      // The panel remembers being open from one showing to the next.
+      if (find.text('Game length').evaluate().isEmpty) {
+        await tester.tap(find.text('More statistics'));
+        await tester.pumpAndSettle();
+      }
+    }
+
+    // Together they follow the profile's main source, whatever its share.
+    final together = PrepStats.of(
+      games,
+      ratingAccount: PrepRepository.gamesFileName(database),
+    );
+    await show(together);
+    expect(together.averageOpponent, 2500);
+    expect(find.text('2600'), findsNWidgets(2));
+    expect(find.textContaining('Rating history · ChessEver'), findsOneWidget);
+    const scaleNote = ValueKey('prep_rating_scale');
+    expect(
+      tester.widget<Text>(find.byKey(scaleNote)).data,
+      startsWith('Rating figures are from ChessEver games only'),
+    );
+
+    // Two usernames on one site are told apart by name.
+    final site = PrepStats.of([
+      for (final g in games)
+        if (g.source == PrepSource.lichess) g,
+    ]);
+    await show(site);
+    expect(site.averageOpponent, 2900);
+    expect(
+      find.textContaining('Rating history · Lichess · Two'),
+      findsOneWidget,
+    );
+    expect(
+      tester.widget<Text>(find.byKey(scaleNote)).data,
+      startsWith('Rating figures are from Lichess · Two games only'),
+    );
+
+    // One source is one scale: nothing to explain.
+    await show(
+      PrepStats.of([
+        for (final g in games)
+          if (g.sourcePath.endsWith(PrepRepository.gamesFileName(first))) g,
+      ]),
+    );
+    expect(find.byKey(scaleNote), findsNothing);
+    expect(tester.takeException(), isNull);
   });
 
   test('freshness never starts the first game download', () async {

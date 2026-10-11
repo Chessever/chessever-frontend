@@ -434,7 +434,7 @@ class PrepAccount {
   }
 }
 
-/// A person being prepared: the user themself (My games) or an opponent,
+/// A person being prepared: the user themself (My Games) or an opponent,
 /// with optional sources whose games are read together.
 @immutable
 class PrepProfile {
@@ -458,7 +458,7 @@ class PrepProfile {
   /// Retained after detaching a database source, as on desktop Prepare.
   final String? fideIdentity;
 
-  /// Set when the profile was added from Favorites.
+  /// Set when the profile was added from Players.
   final String? favoriteId;
 
   /// The cloud Library folder this player is saved to (Premium). Each
@@ -546,14 +546,19 @@ class PrepProfile {
           continue;
         }
         add(raw);
-        // Database exports also abbreviate the given name.
+        // Database exports also cut the given name short, to one letter
+        // (`Carlsen,M`) or as many as tell namesakes apart (`Nakamura,Hi`).
         if (account.source != PrepSource.chessever) continue;
         final parts = raw.trim().toLowerCase().split(',');
         if (parts.length != 2) continue;
         final family = parts.first.trim();
-        final given = parts.last.trim();
+        final given = parts.last.trim().runes.toList();
         if (family.isEmpty || given.isEmpty) continue;
-        aliases.add('$family,${String.fromCharCode(given.runes.first)}');
+        for (var length = 1; length < given.length; length++) {
+          aliases.add(
+            '$family,${String.fromCharCodes(given.take(length)).trim()}',
+          );
+        }
       }
     }
     return aliases;

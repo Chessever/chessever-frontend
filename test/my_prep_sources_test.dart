@@ -8,6 +8,7 @@ import 'package:chessever2/screens/my_prep/services/prep_analysis.dart';
 import 'package:chessever2/screens/my_prep/services/prep_repository.dart';
 import 'package:chessever2/screens/my_prep/widgets/prep_filters.dart';
 import 'package:chessever2/services/game_tree/game_tree_builder.dart';
+import 'package:chessever2/services/game_tree/game_tree_codec.dart';
 import 'package:chessever2/services/game_tree/game_tree_store.dart';
 import 'package:dio/dio.dart';
 import 'package:dartchess/dartchess.dart' show kInitialFEN;
@@ -177,6 +178,29 @@ void main() {
     expect(filter.apply(games).length, line.tally.total);
     expect(filter.apply(games).map((g) => g.eco), ['B20']);
     expect(filter.copyWith(eco: null).apply(games), hasLength(3));
+  });
+
+  test('a database name with its given name cut short is still the player', () {
+    final profile = PrepProfile(
+      id: 'p',
+      kind: PrepKind.opponent,
+      name: 'Hikaru Nakamura',
+      createdAtMs: 1,
+      accounts: [
+        PrepAccount.fromPlayer(
+          databasePlayer.copyWith(name: 'Nakamura, Hikaru'),
+        ),
+      ],
+    );
+    final keys = profile.aliases.map(treePlayerKey).toSet();
+    // Older database games write `Nakamura, Hi`, others `Nakamura,H`.
+    for (final written in ['Nakamura, Hi', 'Nakamura,H', 'Nakamura, Hikaru', 'Hikaru Nakamura']) {
+      expect(keys, contains(treePlayerKey(written)), reason: written);
+    }
+    // A namesake is not him, nor is the family name alone.
+    for (final other in ['Nakamura, Ha', 'Nakamura', 'Nakamura, Hikaruu']) {
+      expect(keys, isNot(contains(treePlayerKey(other))), reason: other);
+    }
   });
 
   test('database identity uses UUID and preserves both PGN name forms', () {

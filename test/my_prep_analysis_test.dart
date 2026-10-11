@@ -252,6 +252,255 @@ $ids
     expect(writePrepGames(path: path, incoming: more, merge: false), 1);
   });
 
+  test('a source counts exactly the games its index reads', () async {
+    String tagged(String id, String tags, String moves) =>
+        '''
+[Event "casual blitz game"]
+[Site "https://lichess.org/$id"]
+[White "Me"]
+[Black "$id"]
+[Result "1-0"]
+[UTCDate "2026.10.01"]
+[TimeControl "300+3"]
+$tags
+
+$moves 1-0
+''';
+    // Lichess reports a game begun from a set-up position as a variant. It
+    // is standard chess, so it is counted and read like any other.
+    const setUp =
+        '[Variant "From Position"]\n'
+        '[FEN "r4rk1/1pq2pb1/1n1p2p1/pB1P4/P4p2/1N3P2/1PPQ4/2KR3R w - - 0 22"]\n'
+        '[SetUp "1"]';
+    final incoming = [
+      tagged('white', setUp, '22. Kb1 Qc5'),
+      tagged('black', setUp.replaceFirst(' w - ', ' b - '), '22... Qc5 23. Kb1'),
+      tagged('standard', '[Variant "Standard"]', '1. e4 e5'),
+      // Other rules, and a game nobody moved in: neither counted nor read.
+      tagged('chess960', '[Variant "Chess960"]', '1. e4 e5'),
+      tagged('unplayed', '[Variant "Standard"]', ''),
+    ].join('\n');
+    final path = '${dir.path}/variants.pgn';
+    final counted = writePrepGames(path: path, incoming: incoming, merge: false);
+    final db = '${dir.path}/variants.sqlite';
+    final built = runGameTreeBuild(
+      GameTreeBuildRequest(
+        dbPath: db,
+        sources: [GameTreeSourceFile(path: path, kind: 'lichess')],
+        aliases: const ['me'],
+      ),
+    );
+    expect(counted, 3);
+    expect(built.games, counted);
+    final store = GameTreeStore.open('variants', db, playerScope: true)!;
+    addTearDown(store.close);
+    final rows = await store.loadGames();
+    expect(
+      {for (var i = 0; i < rows.length; i++) PrepGame.fromIndex(rows[i], i).black},
+      {'white', 'black', 'standard'},
+    );
+
+    // A file stored before games were sifted on the way in still holds the
+    // rest; a later sync counts only what the index reads from it.
+    File(path).writeAsStringSync(incoming);
+    expect(
+      writePrepGames(
+        path: path,
+        incoming: tagged('later', '', '1. d4 d5'),
+        merge: true,
+      ),
+      4,
+    );
+    expect(
+      runGameTreeBuild(
+        GameTreeBuildRequest(
+          dbPath: '${dir.path}/later.sqlite',
+          sources: [GameTreeSourceFile(path: path, kind: 'lichess')],
+          aliases: const ['me'],
+        ),
+      ).games,
+      4,
+    );
+  });
+
+  test('read together, a game two sources hold counts once', () async {
+    String game({
+      required String white,
+      required String black,
+      required String date,
+      required String moves,
+      String result = '1-0',
+      String? site,
+      String elo = '2600',
+    }) =>
+        '''
+[Event "Titled Tuesday"]
+[Site "${site ?? 'Chess.com INT'}"]
+[Date "$date"]
+[White "$white"]
+[Black "$black"]
+[Result "$result"]
+[WhiteElo "$elo"]
+[BlackElo "$elo"]
+[TimeControl "180+1"]
+
+$moves $result
+''';
+    const played = '1. e4 c5 2. Nf3 d6 3. d4 cxd4 4. Nxd4 Nf6 5. Nc3 a6 6. Be3 e5';
+    // The database writes names, check marks and its own date; the site
+    // writes handles and may leave the marks out. Both are one game.
+    final database = File('${dir.path}/database.pgn')
+      ..writeAsStringSync(
+        [
+          game(white: 'Me, Myself', black: 'Rival, Real', date: '2026.09.29', moves: '$played 7. Bb5+ Bd7', elo: '2611'),
+          // Only the database has this one.
+          game(white: 'Other, One', black: 'Me, Myself', date: '2026.09.30', moves: '1. d4 d5 2. c4 e6', result: '0-1', elo: '2611'),
+        ].join('\n'),
+      );
+    final site = File('${dir.path}/site.pgn')
+      ..writeAsStringSync(
+        [
+          // A day later by the site's clock, no check mark: the same game.
+          game(white: 'me', black: 'rivalhandle', date: '2026.09.30', moves: '$played 7. Bb5 Bd7', site: 'https://www.chess.com/game/live/1', elo: '3000'),
+          // The same moves a year on are another game.
+          game(white: 'me', black: 'rivalhandle', date: '2027.09.30', moves: '$played 7. Bb5 Bd7', site: 'https://www.chess.com/game/live/2', elo: '3000'),
+        ].join('\n'),
+      );
+    // Another site's game with these very moves on that very day is its own
+    // game: each site gave it an address.
+    final second = File('${dir.path}/second.pgn')
+      ..writeAsStringSync(
+        game(white: 'me', black: 'someone', date: '2027.09.30', moves: '$played 7. Bb5 Bd7', site: 'https://lichess.org/abcdefgh', elo: '2800'),
+      );
+    Future<(List<PrepGame>, GameTreeBuildResult)> read(String name, List<(File, String)> files) async {
+      final db = '${dir.path}/$name.sqlite';
+      final built = runGameTreeBuild(
+        GameTreeBuildRequest(
+          dbPath: db,
+          sources: [for (final (file, kind) in files) GameTreeSourceFile(path: file.path, kind: kind)],
+          aliases: const ['me', 'me, myself'],
+        ),
+      );
+      final store = GameTreeStore.open(name, db, playerScope: true)!;
+      addTearDown(store.close);
+      expect(store.sharedGames, built.shared);
+      final rows = await store.loadGames();
+      return ([for (var i = 0; i < rows.length; i++) PrepGame.fromIndex(rows[i], i)], built);
+    }
+
+    final (all, built) = await read('all', [(database, 'chessever'), (site, 'chesscom'), (second, 'lichess')]);
+    // Two in the database, two on the site, one on the other: five games
+    // stored, four played.
+    expect(built.shared, 1);
+    expect(all, hasLength(4));
+    // The first source to bring the game keeps it.
+    expect(all.where((g) => g.source == PrepSource.chessever), hasLength(2));
+    expect(all.where((g) => g.source == PrepSource.chesscom).single.date, DateTime.utc(2027, 9, 30));
+    expect(all.where((g) => g.source == PrepSource.lichess), hasLength(1));
+    final combined = PrepStats.of(all, ratingAccount: 'database.pgn');
+    expect(combined.overall.wins, 4);
+    expect(combined.overall.total, 4);
+    expect(combined.accounts, 3);
+
+    // Each source alone still holds everything it was given.
+    final (alone, single) = await read('site', [(site, 'chesscom')]);
+    expect(single.shared, 0);
+    expect(alone, hasLength(2));
+
+    // Three sources are three rating scales. Every rating figure of the
+    // three together is the asked-for source's, never an average across.
+    final (own, _) = await read('database', [(database, 'chessever')]);
+    final database_ = PrepStats.of(own);
+    expect(combined.ratingPath, endsWith('database.pgn'));
+    expect(combined.ratingSource, PrepSource.chessever);
+    expect(combined.currentRating, database_.currentRating);
+    expect(combined.peakRating, 2611);
+    expect(combined.averageOpponent, database_.averageOpponent);
+    expect(combined.averageOpponent, 2611);
+    expect(combined.performance, database_.performance);
+    // Without a say, the source with most rated games is followed.
+    expect(PrepStats.of(alone).averageOpponent, 3000);
+  });
+
+  test('every About count is the number of games its tap lists', () {
+    var index = 0;
+    PrepGame g({
+      bool? white = true,
+      String result = '1-0',
+      String opponent = 'Rival',
+      PrepTimeControl? speed = PrepTimeControl.blitz,
+      int year = 2026,
+      String? eco = 'B90',
+    }) => PrepGame(
+      index: index++,
+      source: PrepSource.chessever,
+      white: white == false ? opponent : 'Me',
+      black: white == false ? 'Me' : opponent,
+      result: result,
+      plies: 60,
+      date: DateTime.utc(year, 3, 4),
+      speed: speed,
+      eco: eco,
+      playerIsWhite: white,
+    );
+    final games = [
+      g(),
+      g(result: '0-1'),
+      g(result: '1/2-1/2', speed: PrepTimeControl.rapid, year: 2025),
+      g(white: false, result: '0-1', eco: 'C65'),
+      // Unfinished: no result to score, still a game with that colour,
+      // opening, opponent, clock and year.
+      g(result: '*'),
+      g(white: false, result: '*', eco: 'C65', year: 2025),
+      // The player's side unknown: in the slice, scored nowhere.
+      g(white: null, opponent: 'Rival'),
+      g(white: null, speed: PrepTimeControl.rapid, year: 2025, eco: 'C65'),
+    ];
+    final s = PrepStats.of(games);
+    int listed(PrepFilter filter) => filter.apply(games).length;
+    const all = PrepFilter();
+
+    expect(s.games, games.length);
+    expect(s.overall.total, 4);
+    for (final (outcome, shown) in [
+      (PrepOutcome.win, s.overall.wins),
+      (PrepOutcome.draw, s.overall.draws),
+      (PrepOutcome.loss, s.overall.losses),
+    ]) {
+      expect(shown, listed(all.copyWith(outcome: outcome)), reason: '$outcome');
+    }
+    expect(s.whiteGames, listed(all.copyWith(side: PrepSide.white)));
+    expect(s.blackGames, listed(all.copyWith(side: PrepSide.black)));
+    expect((s.whiteGames, s.asWhite.total), (4, 3));
+    expect((s.blackGames, s.asBlack.total), (2, 1));
+    for (final (side, lines) in [
+      (PrepSide.white, s.whiteOpenings),
+      (PrepSide.black, s.blackOpenings),
+    ]) {
+      expect(lines, isNotEmpty);
+      for (final line in lines) {
+        expect(
+          line.games,
+          listed(all.copyWith(side: side, eco: line.eco)),
+          reason: '${line.eco} $side',
+        );
+      }
+    }
+    for (final (speed, shown) in s.clocks) {
+      expect(shown, listed(all.withSpeed(speed)), reason: '$speed');
+    }
+    expect(s.clocks.fold(0, (sum, c) => sum + c.$2), games.length);
+    for (final year in s.byYear) {
+      expect(year.total, listed(all.copyWith(year: year.year)));
+    }
+    expect(s.byYear.fold(0, (sum, y) => sum + y.total), games.length);
+    expect(s.lengths.fold(0, (sum, n) => sum + n), games.length);
+    for (final opponent in s.opponents) {
+      expect(opponent.games, listed(all.copyWith(opponent: opponent.name)));
+    }
+    expect(s.opponents.single.games, 6);
+  });
+
   test('chess.com TimeClass is authoritative and Daily maps to correspondence', () {
     expect(
       prepSpeedOf(source: PrepSource.chesscom, timeControl: '600', timeClass: 'blitz'),

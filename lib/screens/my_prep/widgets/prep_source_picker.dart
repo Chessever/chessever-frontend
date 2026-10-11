@@ -1,6 +1,9 @@
 import 'dart:async';
 
+import 'package:chessever2/screens/my_prep/data/prep_favorites.dart'
+    show PrepKnownAccounts;
 import 'package:chessever2/screens/my_prep/models/prep_models.dart';
+import 'package:chessever2/screens/my_prep/providers/prep_known_accounts_provider.dart';
 import 'package:chessever2/screens/my_prep/providers/prep_providers.dart';
 import 'package:chessever2/screens/my_prep/services/prep_repository.dart';
 import 'package:chessever2/screens/chessboard/widgets/smooth_sheet_config.dart';
@@ -340,7 +343,7 @@ class _SourcePickerState extends ConsumerState<_SourcePicker> {
         .read(prepProfilesProvider.notifier)
         .owning(account.source, account.externalId ?? account.username);
     if (owner != null && owner.kind != PrepKind.favorite) {
-      return 'Already in ${owner.kind == PrepKind.mine ? 'My games' : owner.name}';
+      return 'Already in ${owner.kind == PrepKind.mine ? 'My Games' : owner.name}';
     }
     return null;
   }
@@ -364,6 +367,31 @@ class _SourcePickerState extends ConsumerState<_SourcePicker> {
         () => _selected = _selected?.key == account.key ? null : account,
       );
     }
+  }
+
+  /// The handles the server knows for [player] that could still be added:
+  /// not chosen already, not attached, not in another profile.
+  List<PrepAccount> _suggested(
+    PrepKnownAccounts known, {
+    required String? fideId,
+    PrepAccount? player,
+  }) => [
+    for (final (source, username)
+        in known[fideId] ?? const <(PrepSource, String)>[])
+      PrepAccount(
+        source: source,
+        username: username,
+        displayName: player?.displayName ?? player?.username,
+        title: player?.title,
+        country: player?.country,
+      ),
+  ].where((account) => _unavailable(account) == null).toList();
+
+  /// A known handle joins the chosen accounts without being searched for.
+  void _quickAdd(PrepAccount account) {
+    if (_unavailable(account) != null) return;
+    HapticFeedbackService.selection();
+    setState(() => _pending.add(account));
   }
 
   void _confirmPending() {
@@ -402,6 +430,18 @@ class _SourcePickerState extends ConsumerState<_SourcePicker> {
         _error != null ||
         (!_busy && _query.text.trim().length >= 2 && _results.isEmpty);
     final queued = widget.multiple && _pending.isNotEmpty;
+    // A sheet that takes one source has no list to add a handle to.
+    final known = widget.multiple
+        ? ref.watch(prepKnownAccountsNowProvider)
+        : const <String, List<(PrepSource, String)>>{};
+    final chosenPlayer = _pending
+        .where((a) => a.source == PrepSource.chessever)
+        .firstOrNull;
+    // With no player chosen here, a profile's own FIDE identity stands in:
+    // its known handles lead the list.
+    final ownHandles = chosenPlayer == null
+        ? _suggested(known, fideId: widget.lockedFideId)
+        : const <PrepAccount>[];
     final title = widget.kind == PrepKind.mine
         ? 'Attach your usernames'
         : widget.attaching
@@ -604,7 +644,9 @@ class _SourcePickerState extends ConsumerState<_SourcePicker> {
                         ),
                   onTap: () => _select(account),
                 ),
-              for (final account in _pending)
+              if (ownHandles.isNotEmpty)
+                _KnownHandles(accounts: ownHandles, onAdd: _quickAdd),
+              for (final account in _pending) ...[
                 Padding(
                   key: ValueKey('prep_pending_${account.key}'),
                   padding: EdgeInsets.fromLTRB(12.w, 4.h, 0, 4.h),
@@ -640,6 +682,12 @@ class _SourcePickerState extends ConsumerState<_SourcePicker> {
                     ],
                   ),
                 ),
+                // Right under the player they belong to.
+                if (identical(account, chosenPlayer))
+                  if (_suggested(known, fideId: account.fideId, player: account)
+                      case final handles when handles.isNotEmpty)
+                    _KnownHandles(accounts: handles, onAdd: _quickAdd),
+              ],
             ],
           ),
         ),
@@ -701,6 +749,67 @@ class _SourcePickerState extends ConsumerState<_SourcePicker> {
           ],
         ],
       ),
+    );
+  }
+}
+
+/// The handles ChessEver knows for the chosen player, each one tap from
+/// joining the accounts above them. They are offers: left alone, nothing of
+/// theirs is added.
+class _KnownHandles extends StatelessWidget {
+  const _KnownHandles({required this.accounts, required this.onAdd});
+
+  final List<PrepAccount> accounts;
+  final ValueChanged<PrepAccount> onAdd;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.colors;
+    return Column(
+      key: const ValueKey('prep_known_handles'),
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: EdgeInsets.fromLTRB(12.w, 6.h, 12.w, 2.h),
+          child: Text(
+            'Known accounts',
+            style: AppTypography.textXsRegular.copyWith(
+              color: colors.textSecondary,
+            ),
+          ),
+        ),
+        for (final account in accounts)
+          InkWell(
+            key: ValueKey('prep_suggested_${account.key}'),
+            borderRadius: BorderRadius.circular(10.br),
+            onTap: () => onAdd(account),
+            child: Padding(
+              // The chosen accounts' own row, ending in + where theirs
+              // ends in a cross.
+              padding: EdgeInsets.fromLTRB(12.w, 4.h, 0, 4.h),
+              child: Row(
+                children: [
+                  PrepSourceMark(source: account.source, size: 22.sp),
+                  SizedBox(width: 12.w),
+                  Expanded(
+                    child: Text(
+                      account.username,
+                      semanticsLabel:
+                          'Add ${account.username} on ${account.source.label}',
+                      style: AppTypography.textSmMedium.copyWith(
+                        color: colors.textSecondary,
+                      ),
+                    ),
+                  ),
+                  SizedBox.square(
+                    dimension: 44,
+                    child: Icon(Icons.add_rounded, color: colors.iconPrimary),
+                  ),
+                ],
+              ),
+            ),
+          ),
+      ],
     );
   }
 }

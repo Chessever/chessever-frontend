@@ -28,8 +28,11 @@ const List<String> kGameTreeSchema = [
       'opening TEXT, event TEXT, url TEXT, plies INTEGER NOT NULL, '
       'side INTEGER NOT NULL DEFAULT 0, ts INTEGER, '
       'online INTEGER NOT NULL DEFAULT 0, site TEXT, round TEXT, ev TEXT, '
-      'evid TEXT, evslug TEXT, evdate INTEGER)',
+      'evid TEXT, evslug TEXT, evdate INTEGER, mkey TEXT)',
   'CREATE UNIQUE INDEX IF NOT EXISTS games_gkey ON games(gkey)',
+  // A game's moves, kept where an index reads several sources: the same
+  // game reaches it from a database and from the site it was played on.
+  'CREATE INDEX IF NOT EXISTS games_mkey ON games(mkey)',
   // Newest first: ts is yyyymmddHHMMSS, so games of one day keep their order.
   'CREATE INDEX IF NOT EXISTS games_ts ON games(ts DESC, id DESC)',
   // Positions are only ever found by hash, so the hash is the key and the

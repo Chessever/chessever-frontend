@@ -21,7 +21,7 @@ import 'package:dartchess/dartchess.dart' show Side, kInitialFEN;
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
-/// My Prep's entry point: My games, Opponents and Favorites. Saved
+/// My Prep's entry point: My Games, Profiles and Players. Saved
 /// openings and positions keep their own page ([MyPrepOpeningsScreen]).
 class MyPrepScreen extends StatelessWidget {
   const MyPrepScreen({super.key, this.initialTab = 0});
