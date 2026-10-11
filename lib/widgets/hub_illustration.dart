@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:flutter/material.dart';
@@ -10,6 +12,7 @@ class HubIllustration extends StatelessWidget {
     required this.asset,
     this.alignment = Alignment.topCenter,
     this.framed = false,
+    this.shift = 0,
   });
 
   final String asset;
@@ -17,6 +20,15 @@ class HubIllustration extends StatelessWidget {
 
   /// Fits a wide study scene above the text rather than enlarging it to cover.
   final bool framed;
+
+  /// How far right a framed scene's picture sits of the card's edge.
+  final double shift;
+
+  /// The study scenes' own quiet field. The dark tile is this tone already,
+  /// so a scene narrower than its card ends unseen there. Paper is not: the
+  /// field is carried on to the card's far edge, or the wash would stop
+  /// partway across and read as a picture cut short.
+  static const _field = Color(0xFF0E0E10);
 
   @override
   Widget build(BuildContext context) => ExcludeSemantics(
@@ -31,11 +43,15 @@ class HubIllustration extends StatelessWidget {
                   // closer crop and top-right position in either card format.
                   final height = 100.sp.clamp(0.0, constraints.maxHeight);
                   final width = height * 3;
+                  final onPaper = context.isLightTheme;
+                  final span = onPaper
+                      ? math.max(width, constraints.maxWidth)
+                      : width;
                   return ClipRect(
                     child: OverflowBox(
                       alignment: Alignment.topRight,
-                      minWidth: width,
-                      maxWidth: width,
+                      minWidth: span,
+                      maxWidth: span,
                       minHeight: height,
                       maxHeight: height,
                       child: ShaderMask(
@@ -50,34 +66,62 @@ class HubIllustration extends StatelessWidget {
                           ],
                           stops: [0, 0.6, 1],
                         ).createShader(bounds),
-                        child: ShaderMask(
-                          blendMode: BlendMode.dstIn,
-                          // A full-row card exposes the source's left edge.
-                          // Fade those pixels before the subjects begin so
-                          // neither theme shows a rectangular image seam.
-                          shaderCallback: (bounds) => const LinearGradient(
-                            colors: [
-                              Colors.transparent,
-                              Color(0x08ffffff),
-                              Color(0x24ffffff),
-                              Color(0x51ffffff),
-                              Color(0x88ffffff),
-                              Color(0xbaffffff),
-                              Color(0xe1ffffff),
-                              Color(0xf8ffffff),
-                              Colors.white,
-                              Colors.white,
-                            ],
-                            stops: [0, .05, .1, .15, .2, .25, .3, .35, .4, 1],
-                          ).createShader(bounds),
-                          child: Image.asset(
-                            asset,
-                            width: width,
-                            height: height,
-                            fit: BoxFit.contain,
-                            cacheWidth: 768,
-                            filterQuality: FilterQuality.medium,
-                          ),
+                        child: Stack(
+                          children: [
+                            // Under the same fade to the label as the
+                            // picture, so the two are one wash.
+                            if (onPaper)
+                              const Positioned.fill(
+                                child: ColoredBox(color: _field),
+                              ),
+                            Positioned(
+                              top: 0,
+                              right: -shift,
+                              width: width,
+                              height: height,
+                              child: ShaderMask(
+                                blendMode: BlendMode.dstIn,
+                                // A full-row card exposes the source's left edge.
+                                // Fade those pixels before the subjects begin so
+                                // neither theme shows a rectangular image seam.
+                                shaderCallback: (bounds) =>
+                                    const LinearGradient(
+                                      colors: [
+                                        Colors.transparent,
+                                        Color(0x08ffffff),
+                                        Color(0x24ffffff),
+                                        Color(0x51ffffff),
+                                        Color(0x88ffffff),
+                                        Color(0xbaffffff),
+                                        Color(0xe1ffffff),
+                                        Color(0xf8ffffff),
+                                        Colors.white,
+                                        Colors.white,
+                                      ],
+                                      stops: [
+                                        0,
+                                        .05,
+                                        .1,
+                                        .15,
+                                        .2,
+                                        .25,
+                                        .3,
+                                        .35,
+                                        .4,
+                                        1,
+                                      ],
+                                    ).createShader(bounds),
+                                child: Image.asset(
+                                  asset,
+                                  width: width,
+                                  height: height,
+                                  fit: BoxFit.contain,
+                                  cacheWidth: 768,
+                                  filterQuality: FilterQuality.medium,
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     ),

@@ -114,7 +114,25 @@ void main() {
             }
             titleOffset = offset;
             final picture = tester.getRect(find.byType(Image));
-            expect(picture.height, closeTo(80.sp, .01));
+            expect(picture.height, closeTo(100.sp, .01));
+            // The scene is narrower than a full-row card. The dark tile is
+            // the scene's own tone, so it ends unseen; on paper its field is
+            // carried to the card's left edge, or the wash would stop short
+            // and read as a picture cut off.
+            final field = find.descendant(
+              of: find.byType(HubSceneBackdrop),
+              matching: find.byType(ColoredBox),
+            );
+            if (light) {
+              final wash = tester.getRect(field);
+              // Edge to edge inside the tile's one-pixel border.
+              expect(wash.left, lessThanOrEqualTo(tile.left + 1));
+              expect(wash.right, greaterThanOrEqualTo(tile.right - 1));
+              expect(wash.top, closeTo(picture.top, .01));
+              expect(wash.height, closeTo(picture.height, .01));
+            } else {
+              expect(field, findsNothing);
+            }
             final paintedSubject = Rect.fromLTRB(
               picture.left + subject.left * picture.width,
               picture.top + subject.top * picture.height,

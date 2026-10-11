@@ -16,8 +16,11 @@ enum HubScene {
 }
 
 class HubSceneBackdrop extends StatelessWidget {
-  const HubSceneBackdrop({super.key, required this.scene});
+  const HubSceneBackdrop({super.key, required this.scene, this.shift = 0});
   final HubScene scene;
+
+  /// How far right a study scene's picture sits of the card's edge.
+  final double shift;
 
   @override
   Widget build(BuildContext context) => HubIllustration(
@@ -30,15 +33,16 @@ class HubSceneBackdrop extends StatelessWidget {
       _ => 'assets/pngs/hub_${scene.name}_simple.webp',
     },
     framed: scene == HubScene.myPrep || scene == HubScene.library,
+    shift: shift,
   );
 }
 
 class HubLibraryBackdrop extends StatelessWidget {
   const HubLibraryBackdrop({super.key});
 
+  // The picture alone moves: on paper its field still reaches the card's
+  // left edge.
   @override
-  Widget build(BuildContext context) => Transform.translate(
-    offset: Offset(12.w, 0),
-    child: const HubSceneBackdrop(scene: HubScene.library),
-  );
+  Widget build(BuildContext context) =>
+      HubSceneBackdrop(scene: HubScene.library, shift: 12.w);
 }
