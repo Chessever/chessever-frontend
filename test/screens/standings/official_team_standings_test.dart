@@ -64,6 +64,28 @@ void main() {
       );
     },
   );
+  test('accepts three-one-zero match points only when published', () {
+    final table = snapshot();
+    (table['teams'] as List)[0] = {
+      'name': 'Other',
+      'rank': 1,
+      'matchPoints': 12,
+      'gamePoints': 14,
+      'matchesPlayed': 4,
+      'wins': 4,
+      'draws': 0,
+      'losses': 0,
+    };
+    expect(
+      buildOfficialTeamStandings(info: info(table), players: []),
+      isNull,
+      reason: '12 match points cannot come from four 2-1-0 matches',
+    );
+    table['matchScoring'] = {'win': 3, 'draw': 1, 'loss': 0};
+    final rows = buildOfficialTeamStandings(info: info(table), players: []);
+    expect(rows!.first.matchPoints, 12);
+  });
+
   test('preserves official shared ranks', () {
     final data = snapshot();
     (data['teams'] as List)[1]['rank'] = 1;
