@@ -3,7 +3,9 @@ import 'dart:async';
 
 import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
 import 'package:chessever2/services/rewarded_premium/rewarded_ads.dart';
+import 'package:chessever2/services/rewarded_premium/rewarded_ad_diagnostics.dart';
 import 'package:chessever2/services/rewarded_premium/rewarded_session.dart';
+import 'package:chessever2/widgets/paywall/rewarded_premium/rewarded_interstitial_intro.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -95,6 +97,7 @@ class RewardedAccessNotifier extends StateNotifier<RewardedAccessState> {
     String action,
     String token, {
     String? attempt,
+    String? adUnit,
   }) async {
     final result = await Supabase.instance.client.functions.invoke(
       'rewarded-premium',
@@ -102,7 +105,7 @@ class RewardedAccessNotifier extends StateNotifier<RewardedAccessState> {
         'action': action,
         'session_token': token,
         if (attempt != null) 'attempt_id': attempt,
-        if (action == 'prepare') 'ad_unit': RewardedAdsConfig.unitId,
+        if (action == 'prepare') 'ad_unit': adUnit ?? RewardedAdsConfig.unitId,
       },
     );
     return Map<String, dynamic>.from(result.data as Map);
@@ -115,6 +118,15 @@ class RewardedAccessNotifier extends StateNotifier<RewardedAccessState> {
     final generation = _generation;
     final user = Supabase.instance.client.auth.currentUser;
     if (user == null) throw StateError('Your guest session is not ready yet');
+    final diagnostics = RewardedAdDiagnostics(
+      userId: user.id,
+      adUnit: _flow.pending ? null : RewardedAdsConfig.unitId,
+    )..attemptId = _flow.attemptId;
+    diagnostics.event(
+      'unlock',
+      'started',
+      properties: {'retry_confirmation': _flow.pending},
+    );
     state = RewardedAccessState(
       expiry: state.expiry,
       busy: true,
@@ -124,10 +136,72 @@ class RewardedAccessNotifier extends StateNotifier<RewardedAccessState> {
       final unlocked = await _flow.unlock(
         prepareAds: () async {
           if (!context.mounted) throw StateError('Feature was closed');
-          await ads.prepare(context);
+          await diagnostics.step(
+            'prepare_ads',
+            () => ads.prepare(context, diagnostics: diagnostics),
+          );
         },
-        showAd: (attempt) => ads.show(attemptId: attempt, userId: user.id),
-        request: _request,
+        showAd: (attempt) {
+          diagnostics.attemptId = attempt;
+          return ads.show(
+            attemptId: attempt,
+            userId: user.id,
+            diagnostics: diagnostics,
+          );
+        },
+        request: (action, token, {attempt}) => diagnostics.step(
+          'backend_$action',
+          () async {
+            final result = await _request(action, token, attempt: attempt);
+            if (action == 'prepare') {
+              diagnostics.attemptId = result['attempt_id'] as String?;
+            }
+            diagnostics.event(
+              'backend_$action',
+              'response',
+              properties: {
+                if (result['status'] != null) 'reward_status': result['status'],
+              },
+            );
+            return result;
+          },
+          timeout: const Duration(seconds: 30),
+        ),
+        shouldUseFallback: RewardedAds.canUseInterstitialFallback,
+        prepareFallback: !RewardedAdsConfig.interstitialConfigured
+            ? null
+            : (token) async {
+                if (!context.mounted || generation != _generation) return null;
+                diagnostics.event('interstitial_intro', 'started');
+                final accepted = await showRewardedInterstitialIntro(context);
+                if (!accepted ||
+                    !context.mounted ||
+                    generation != _generation) {
+                  diagnostics.event('interstitial_intro', 'skipped');
+                  return null;
+                }
+                diagnostics.event('interstitial_intro', 'accepted');
+                diagnostics.adUnit = RewardedAdsConfig.interstitialUnitId;
+                diagnostics.attemptId = null;
+                return diagnostics.step(
+                  'backend_prepare_interstitial',
+                  () async {
+                    final prepared = await _request(
+                      'prepare',
+                      token,
+                      adUnit: RewardedAdsConfig.interstitialUnitId,
+                    );
+                    diagnostics.attemptId = prepared['attempt_id'] as String;
+                    return prepared;
+                  },
+                  timeout: const Duration(seconds: 30),
+                );
+              },
+        showFallbackAd: (attempt) => ads.showInterstitial(
+          attemptId: attempt,
+          userId: user.id,
+          diagnostics: diagnostics,
+        ),
         onPending: () {
           if (mounted && generation == _generation) {
             state = RewardedAccessState(
@@ -144,7 +218,24 @@ class RewardedAccessNotifier extends StateNotifier<RewardedAccessState> {
           expiry: state.expiry,
         );
       }
+      diagnostics.event(
+        'unlock',
+        unlocked
+            ? 'activated'
+            : _flow.pending
+            ? 'pending'
+            : 'not_earned',
+      );
       return unlocked;
+    } catch (error) {
+      if (error is! RewardedAdFailure) {
+        diagnostics.event(
+          'unlock',
+          'failed',
+          properties: RewardedAdDiagnostics.errorProperties(error),
+        );
+      }
+      rethrow;
     } finally {
       if (mounted && generation == _generation) {
         state = RewardedAccessState(

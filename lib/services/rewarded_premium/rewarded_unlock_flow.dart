@@ -22,6 +22,7 @@ class RewardedUnlockFlow {
   bool _busy = false;
   int _generation = 0;
   bool get pending => _attempt != null;
+  String? get attemptId => _attempt;
   bool get busy => _busy;
 
   void clear() {
@@ -34,6 +35,9 @@ class RewardedUnlockFlow {
     required Future<bool> Function(String attempt) showAd,
     required RewardedRequest request,
     required void Function() onPending,
+    bool Function(Object error)? shouldUseFallback,
+    Future<Map<String, dynamic>?> Function(String token)? prepareFallback,
+    Future<bool> Function(String attempt)? showFallbackAd,
   }) async {
     if (_busy) return false;
     if (session.active) return true;
@@ -47,8 +51,24 @@ class RewardedUnlockFlow {
         if (!current()) return false;
         final prepared = await request('prepare', token);
         if (!current()) return false;
-        final attempt = prepared['attempt_id'] as String;
-        final earned = await showAd(attempt);
+        var attempt = prepared['attempt_id'] as String;
+        bool earned;
+        try {
+          earned = await showAd(attempt);
+        } catch (error) {
+          if (!current()) return false;
+          if (prepareFallback == null ||
+              showFallbackAd == null ||
+              shouldUseFallback?.call(error) != true) {
+            rethrow;
+          }
+          final fallback = await prepareFallback(token);
+          if (!current() || fallback == null) return false;
+          attempt = fallback['attempt_id'] as String;
+          // Exactly one fallback. Failure propagates; there is no recursive
+          // retry, and future confirmation uses only this new unit's attempt.
+          earned = await showFallbackAd(attempt);
+        }
         if (!current() || !earned) return false;
         _attempt = attempt;
         onPending();
