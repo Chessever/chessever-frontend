@@ -19,13 +19,16 @@ import 'package:chessever2/screens/my_prep/widgets/prep_common.dart';
 import 'package:chessever2/screens/my_prep/widgets/prep_filters.dart';
 import 'package:chessever2/services/game_tree/game_tree_service.dart';
 import 'package:chessever2/theme/app_colors.dart';
+import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
+import 'package:chessever2/utils/number_format_utils.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/card_context_menu.dart';
 import 'package:chessever2/widgets/generic_loading_widget.dart';
 import 'package:chessever2/widgets/segmented_switcher.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:motor/motor.dart';
 
 /// One prepared person: About and Games over every source together or one
 /// source alone, and the source trees.
@@ -77,14 +80,27 @@ class _PrepProfileScreenState extends ConsumerState<PrepProfileScreen> {
   PrepAnalysis? _shown;
   String? _shownKey;
 
+  /// Whether the Games tab names how many games About's choices leave. A
+  /// choice on About raises it; opening Games, where they are, lowers it.
+  bool _cue = false;
+
+  /// How many games About's statistics are narrowed to.
+  int _matching = 0;
+
   // A large account is tens of thousands of games: filter and score them
   // once per change, not on every rebuild a sync's progress line causes.
   List<PrepGame>? _filterInput;
   PrepFilter? _filterUsed;
   List<PrepGame> _filterOutput = const [];
-  List<PrepGame>? _statsInput;
+  PrepFacets? _facets;
+  PrepFilter? _statsFilter;
   PrepStats? _stats;
   String? _statsRating;
+
+  /// [_filter] as About reads it, within the source its statistics are of.
+  PrepFilter? _aboutFrom;
+  String? _aboutKey;
+  PrepFilter _aboutFilter = const PrepFilter();
 
   List<PrepGame> _filtered(List<PrepGame> games) {
     if (!identical(games, _filterInput) || _filterUsed != _filter) {
@@ -95,18 +111,48 @@ class _PrepProfileScreenState extends ConsumerState<PrepProfileScreen> {
     return _filterOutput;
   }
 
-  /// [rating] is the file of the source whose scale the rating figures of
-  /// several sources read together follow.
-  PrepStats _statsOf(List<PrepGame> games, {required String? rating}) {
-    if (!identical(games, _statsInput) ||
-        _statsRating != rating ||
-        _stats == null) {
-      _statsInput = games;
+  /// About's numbers for [games] narrowed by [filter]. The games are read
+  /// into columns once; a choice then only counts them again. [rating] is
+  /// the file of the source whose scale the rating figures of several
+  /// sources read together follow.
+  PrepStats _statsOf(
+    List<PrepGame> games,
+    PrepFilter filter, {
+    required String? rating,
+  }) {
+    var facets = _facets;
+    if (facets == null || !identical(games, facets.games)) {
+      facets = _facets = PrepFacets(games);
+      _stats = null;
+    }
+    if (_stats == null ||
+        !identical(filter, _statsFilter) ||
+        _statsRating != rating) {
+      _statsFilter = filter;
       _statsRating = rating;
-      _stats = PrepStats.of(games, ratingAccount: rating);
+      _stats = filter.stats(facets, ratingAccount: rating);
     }
     return _stats!;
   }
+
+  /// [_filter] within [account], or every source's games for null: the same
+  /// instance until either changes, so what is counted from it is kept.
+  PrepFilter _aboutWithin(PrepAccount? account) {
+    final key = account?.key ?? '';
+    if (!identical(_aboutFrom, _filter) || _aboutKey != key) {
+      _aboutFrom = _filter;
+      _aboutKey = key;
+      _aboutFilter = _within(_filter, account);
+    }
+    return _aboutFilter;
+  }
+
+  /// Takes a choice made on About. It stays on About, which narrows to it;
+  /// Games follows, and its tab says how many games that is.
+  void _choose(PrepFilter filter) => setState(() {
+    _filter = filter;
+    _cue = true;
+  });
 
   @override
   void dispose() {
@@ -137,7 +183,10 @@ class _PrepProfileScreenState extends ConsumerState<PrepProfileScreen> {
 
   void _select(int index) {
     if (index == _tab) return;
-    setState(() => _tab = index);
+    setState(() {
+      _tab = index;
+      if (index == 1) _cue = false;
+    });
     if (MediaQuery.disableAnimationsOf(context)) {
       _pages.jumpToPage(index);
       return;
@@ -159,24 +208,22 @@ class _PrepProfileScreenState extends ConsumerState<PrepProfileScreen> {
     });
   }
 
-  Widget _identity(PrepProfile profile) => PrepIdentity(
+  /// [filter] is About's own. While another source's games are read there
+  /// is nothing yet to choose among, so the ratings wait as the statistics
+  /// do.
+  Widget _identity(
+    PrepProfile profile,
+    PrepFilter filter, {
+    required bool waiting,
+  }) => PrepIdentity(
     profile: profile,
     accountKey: _account,
     fideId: kPrepFavorites
         .where((f) => f.id == profile.favoriteId)
         .firstOrNull
         ?.fideId,
-    onRating: (account, speed) {
-      setState(
-        () => _filter = PrepFilter(
-          source: account.source,
-          speed: speed,
-          accountKey: account.key,
-          accountFile: PrepRepository.gamesFileName(account),
-        ),
-      );
-      _select(1);
-    },
+    chosen: filter.speed,
+    onRating: waiting ? null : (speed) => _choose(filter.toggleSpeed(speed)),
   );
 
   /// About for the source being read. Its identity and heading are there in
@@ -214,24 +261,28 @@ class _PrepProfileScreenState extends ConsumerState<PrepProfileScreen> {
     final progress = indexing == null
         ? 'Reading games…'
         : 'Indexing games · $indexing%';
+    // What About narrows to stays within the source its statistics are
+    // from, and so does what Games then lists.
+    final filter = _aboutWithin(
+      profile.accounts.where((a) => a.key == _shownKey).firstOrNull,
+    );
+    final stats = shown == null
+        ? null
+        : _statsOf(
+            shown.games,
+            filter,
+            rating: main == null ? null : PrepRepository.gamesFileName(main),
+          );
+    _matching = stats?.matching ?? 0;
     return PrepOverviewTab(
       profile: profile,
-      stats: shown == null
-          ? null
-          : _statsOf(
-              shown.games,
-              rating: main == null ? null : PrepRepository.gamesFileName(main),
-            ),
+      stats: stats,
+      total: shown?.games.length,
       stale: stale,
       arriving: arriving,
       shared: shown?.shared ?? 0,
-      // What About opens in Games stays within the source its statistics
-      // are from.
-      filter: _within(
-        const PrepFilter(),
-        profile.accounts.where((a) => a.key == _shownKey).firstOrNull,
-      ),
-      header: _identity(profile),
+      filter: filter,
+      header: _identity(profile, filter, waiting: stale),
       // With one source there is nothing to switch, so only statistics
       // carry a heading.
       heading: shown == null && profile.accounts.length < 2
@@ -264,10 +315,7 @@ class _PrepProfileScreenState extends ConsumerState<PrepProfileScreen> {
               child: _NoGames(profile: profile, account: account),
             ),
       onSources: () => PrepSourcesScreen.open(context, profile.id),
-      onOpenGames: (filter) {
-        setState(() => _filter = filter);
-        _select(1);
-      },
+      onFilterChanged: _choose,
     );
   }
 
@@ -326,7 +374,16 @@ class _PrepProfileScreenState extends ConsumerState<PrepProfileScreen> {
     final analysis = ref.watch(analysisProvider);
     final indexing = indexingOf(_filter.accountKey);
     final games = analysis.valueOrNull?.games ?? const <PrepGame>[];
-    final filtered = _filtered(games);
+    // Built first: the Games tab names what About's choices come to.
+    final about = _about(
+      profile,
+      account,
+      analysisOf(account?.key),
+      indexingOf(account?.key),
+    );
+    final cue = _cue && _tab != 1 && _filter.narrows && _matching > 0
+        ? _matching
+        : null;
 
     return Scaffold(
       backgroundColor: context.colors.background,
@@ -359,8 +416,14 @@ class _PrepProfileScreenState extends ConsumerState<PrepProfileScreen> {
                   selectedBackgroundColor: context.colors.popup,
                   options: _tabs,
                   optionLabels: [
-                    for (final tab in _tabs)
-                      Text(tab, maxLines: 2, textAlign: TextAlign.center),
+                    for (final (i, tab) in _tabs.indexed)
+                      Text(
+                        i == 1 && cue != null
+                            ? '$tab ${formatCompactCount(cue)}'
+                            : tab,
+                        maxLines: 2,
+                        textAlign: TextAlign.center,
+                      ),
                   ],
                   initialSelection: _tab,
                   currentSelection: _tab,
@@ -368,49 +431,65 @@ class _PrepProfileScreenState extends ConsumerState<PrepProfileScreen> {
                 ),
               ),
               Expanded(
-                child: PageView(
-                  controller: _pages,
-                  onPageChanged: (i) {
-                    if (i != _tab) setState(() => _tab = i);
-                  },
+                child: Stack(
                   children: [
-                    _about(
-                      profile,
-                      account,
-                      analysisOf(account?.key),
-                      indexingOf(account?.key),
+                    PageView(
+                      controller: _pages,
+                      onPageChanged: (i) {
+                        if (i == _tab) return;
+                        setState(() {
+                          _tab = i;
+                          if (i == 1) _cue = false;
+                        });
+                      },
+                      children: [
+                        about,
+                        analysis.when(
+                          skipLoadingOnReload: true,
+                          loading: () => PrepMessage(
+                            title: indexing == null
+                                ? 'Reading games…'
+                                : 'Indexing games · $indexing%',
+                            body: 'Your downloaded games are being indexed.',
+                            busy: true,
+                          ),
+                          error: (_, _) => PrepMessage(
+                            title: 'Could not read games',
+                            body: 'Try reading the downloaded games again.',
+                            actionLabel: 'Retry',
+                            onAction: () => ref.invalidate(analysisProvider),
+                          ),
+                          data: (data) =>
+                              data.games.isEmpty && !_filter.isActive
+                              ? _NoGames(profile: profile)
+                              // Listed when Games is built, not for every
+                              // choice made on About before it is opened.
+                              : Builder(
+                                  builder: (context) => PrepGamesTab(
+                                    profile: profile,
+                                    analysis: data,
+                                    games: _filtered(games),
+                                    filter: _filter,
+                                    controller: _gamesController,
+                                    onFilterChanged: (f) =>
+                                        setState(() => _filter = f),
+                                  ),
+                                ),
+                        ),
+                        PrepTreesTab(
+                          profile: profile,
+                          onSources: () =>
+                              PrepSourcesScreen.open(context, profile.id),
+                        ),
+                      ],
                     ),
-                    analysis.when(
-                      skipLoadingOnReload: true,
-                      loading: () => PrepMessage(
-                        title: indexing == null
-                            ? 'Reading games…'
-                            : 'Indexing games · $indexing%',
-                        body: 'Your downloaded games are being indexed.',
-                        busy: true,
-                      ),
-                      error: (_, _) => PrepMessage(
-                        title: 'Could not read games',
-                        body: 'Try reading the downloaded games again.',
-                        actionLabel: 'Retry',
-                        onAction: () => ref.invalidate(analysisProvider),
-                      ),
-                      data: (data) => data.games.isEmpty && !_filter.isActive
-                          ? _NoGames(profile: profile)
-                          : PrepGamesTab(
-                              profile: profile,
-                              analysis: data,
-                              games: filtered,
-                              filter: _filter,
-                              controller: _gamesController,
-                              onFilterChanged: (f) =>
-                                  setState(() => _filter = f),
-                            ),
-                    ),
-                    PrepTreesTab(
-                      profile: profile,
-                      onSources: () =>
-                          PrepSourcesScreen.open(context, profile.id),
+                    // Over the pages' top edge, so it takes no room of its
+                    // own under the tabs.
+                    Positioned(
+                      top: 0,
+                      left: 0,
+                      right: 0,
+                      child: _FilterLine(active: _filter.narrows),
                     ),
                   ],
                 ),
@@ -421,6 +500,49 @@ class _PrepProfileScreenState extends ConsumerState<PrepProfileScreen> {
       ),
     );
   }
+}
+
+/// The line a player's profile draws under its tabs while a filter is on.
+class _FilterLine extends StatelessWidget {
+  const _FilterLine({required this.active});
+  final bool active;
+
+  @override
+  Widget build(BuildContext context) => IgnorePointer(
+    child: ExcludeSemantics(
+      child: RepaintBoundary(
+        child: SizedBox(
+          height: 2.h,
+          child: SingleMotionBuilder(
+            motion: const CupertinoMotion.snappy(),
+            value: active ? 1.0 : 0.0,
+            active: !MediaQuery.disableAnimationsOf(context),
+            builder: (context, shown, _) {
+              if (shown < 0.01) return const SizedBox.shrink();
+              final t = shown.clamp(0.0, 1.0);
+              return Align(
+                alignment: Alignment.topCenter,
+                child: Container(
+                  height: 2.h * t,
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [
+                        kPrimaryColor.withValues(alpha: 0.0),
+                        kPrimaryColor.withValues(alpha: 0.8 * t),
+                        kPrimaryColor.withValues(alpha: 0.8 * t),
+                        kPrimaryColor.withValues(alpha: 0.0),
+                      ],
+                      stops: const [0.0, 0.2, 0.8, 1.0],
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      ),
+    ),
+  );
 }
 
 class _TopBar extends ConsumerWidget {

@@ -275,6 +275,11 @@ class _PrepFilterDialogState extends State<PrepFilterDialog> {
           _facet(opening, () => _draft = _draft.copyWith(opening: null)),
         if (_draft.opponent case final opponent?)
           _facet(opponent, () => _draft = _draft.copyWith(opponent: null)),
+        if (_draft.length case final length?)
+          _facet(
+            '${PrepStats.lengthLabels[length]} moves',
+            () => _draft = _draft.copyWith(length: null),
+          ),
         ListTile(
           contentPadding: EdgeInsets.zero,
           title: Text('More game filters', style: AppTypography.textSmMedium),

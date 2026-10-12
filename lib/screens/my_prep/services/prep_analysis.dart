@@ -1,3 +1,6 @@
+import 'dart:math' as math;
+import 'dart:typed_data';
+
 import 'package:chessever2/screens/gamebase/services/player_opening_tree.dart';
 import 'package:chessever2/screens/my_prep/models/prep_models.dart';
 import 'package:chessever2/screens/player_profile/utils/twic_event_identity.dart';
@@ -340,6 +343,7 @@ class PrepYearLine {
 class PrepStats {
   const PrepStats({
     required this.games,
+    required this.matching,
     required this.overall,
     required this.asWhite,
     required this.asBlack,
@@ -362,13 +366,19 @@ class PrepStats {
     this.ratingHistory = const [],
   });
 
-  /// Every game in the slice, including those left out of the results.
+  /// Every game the results are counted among, including those left out of
+  /// them. A chosen result does not narrow this or [overall]: they are what
+  /// it is chosen from.
   final int games;
+
+  /// The games every choice together leaves: what the Games tab lists.
+  final int matching;
   final PrepTally overall;
   final PrepTally asWhite;
   final PrepTally asBlack;
 
-  /// Every game with each colour, unfinished ones too.
+  /// Every game with each colour, unfinished ones too. A chosen colour does
+  /// not narrow these or the two tallies above.
   final int whiteGames;
   final int blackGames;
 
@@ -381,7 +391,8 @@ class PrepStats {
   /// one of them and none is ever averaged with another.
   final String? ratingPath;
 
-  /// The ten most played ECO codes with each colour.
+  /// The ten most played ECO codes with each colour, and after them a
+  /// chosen one that is not among the ten.
   final List<PrepOpeningLine> whiteOpenings;
   final List<PrepOpeningLine> blackOpenings;
   final List<PrepOpponentLine> opponents;
@@ -392,8 +403,7 @@ class PrepStats {
   static const lengthLabels = ['0–20', '21–30', '31–40', '41–50', '50+'];
 
   /// How the games divide by clock, most played first, every game counted.
-  /// Counted before the clock, result and colour scopes, so it stays whole
-  /// while they narrow.
+  /// A chosen clock does not narrow it, so the others stay beside it.
   final List<(PrepTimeControl?, int)> clocks;
 
   /// The highest and the latest point of [ratingHistory].
@@ -415,217 +425,32 @@ class PrepStats {
   double? get decisiveRate =>
       overall.total == 0 ? null : decisive / overall.total;
 
-  /// [games] is the scoped slice. [clockGames] is the same slice before its
-  /// clock, result and colour scopes. [speed] is the clock scope, and
-  /// [preferredRating] the ladder the rating history follows without one:
-  /// left out, blitz on a site's own scale and classical on FIDE's.
-  /// [ratingAccount] is the file of the source whose scale a slice of
-  /// several sources should follow, when that source has rated games.
+  /// Which of [lengthLabels] a game of [plies] half-moves falls under; null
+  /// when its moves are not known.
+  static int? lengthOf(int plies) => plies <= 0
+      ? null
+      : plies <= 40
+      ? 0
+      : plies <= 60
+      ? 1
+      : plies <= 80
+      ? 2
+      : plies <= 100
+      ? 3
+      : 4;
+
+  /// The numbers for [games] as they are, nothing chosen among them.
+  /// [preferredRating] is the ladder the rating history follows: left out,
+  /// blitz on a site's own scale and classical on FIDE's. [ratingAccount] is
+  /// the file of the source whose scale a slice of several sources should
+  /// follow, when that source has rated games.
   static PrepStats of(
     Iterable<PrepGame> games, {
-    Iterable<PrepGame>? clockGames,
-    PrepTimeControl? speed,
     PrepTimeControl? preferredRating,
     String? ratingAccount,
-  }) {
-    var white = const PrepTally();
-    var black = const PrepTally();
-    var whiteGames = 0;
-    var blackGames = 0;
-    final whiteOpenings = <String, _Opening>{};
-    final blackOpenings = <String, _Opening>{};
-    final opponents = <String, _Opponent>{};
-    final years = <int, (int, PrepTally)>{};
-    final lengths = List<int>.filled(5, 0);
-    // Each source rates on its own scale, so what ratings say is kept apart
-    // by source until one of them is chosen.
-    final scales = <String, _Scale>{};
-    var count = 0;
-    for (final g in games) {
-      count++;
-      final scale = scales.putIfAbsent(
-        '${g.source.name}|${g.sourcePath}',
-        () => _Scale(g.source, g.sourcePath),
-      );
-      // What the slice holds, whichever side the player had.
-      final isWhite = g.playerIsWhite;
-      final outcome = g.outcome;
-      final year = g.date?.year;
-      if (year != null) {
-        final prior = years[year];
-        years[year] = (
-          (prior?.$1 ?? 0) + 1,
-          (prior?.$2 ?? const PrepTally()) + outcome,
-        );
-      }
-      if (g.plies > 0) {
-        lengths[g.plies <= 40
-            ? 0
-            : g.plies <= 60
-            ? 1
-            : g.plies <= 80
-            ? 2
-            : g.plies <= 100
-            ? 3
-            : 4]++;
-      }
-      if (isWhite == null) continue;
-      if (isWhite) {
-        white += outcome;
-        whiteGames++;
-      } else {
-        black += outcome;
-        blackGames++;
-      }
-      final eco = g.eco?.trim().toUpperCase() ?? '';
-      if (eco.isNotEmpty) {
-        final line = (isWhite ? whiteOpenings : blackOpenings).putIfAbsent(
-          eco,
-          _Opening.new,
-        );
-        line.name ??= _openingName(g.opening);
-        line.tally += outcome;
-        line.games++;
-      }
-      final theirs = g.opponentElo ?? 0;
-      final opp = g.opponent.trim();
-      if (opp.isNotEmpty && opp != '?') {
-        final line = opponents.putIfAbsent(
-          opp.toLowerCase(),
-          () => _Opponent(opp),
-        );
-        line.tally += outcome;
-        line.games++;
-        if (theirs > 0) {
-          line.ratingSum += theirs;
-          line.ratingCount++;
-        }
-      }
-      scale.tally += outcome;
-      if (theirs > 0) {
-        scale.opponentSum += theirs;
-        scale.opponentCount++;
-      }
-      if ((g.playerElo ?? 0) > 0 && g.date != null) scale.rated.add(g);
-    }
-
-    List<PrepOpeningLine> top(Map<String, _Opening> table) {
-      final lines =
-          [
-            for (final e in table.entries)
-              // A line is a result to show: one never finished is not one.
-              if (e.value.tally.total > 0)
-                PrepOpeningLine(
-                  // The game's own opening name, else the code's catalogue
-                  // name.
-                  e.value.name ?? EcoOpenings.codeToName[e.key] ?? e.key,
-                  e.key,
-                  e.value.tally,
-                  e.value.games,
-                ),
-          ]..sort((a, b) {
-            final byGames = b.tally.total.compareTo(a.tally.total);
-            return byGames != 0 ? byGames : a.eco!.compareTo(b.eco!);
-          });
-      return lines.take(10).toList();
-    }
-
-    final overall = PrepTally(
-      wins: white.wins + black.wins,
-      draws: white.draws + black.draws,
-      losses: white.losses + black.losses,
-    );
-    final opponentLines =
-        [
-          for (final o in opponents.values)
-            if (o.tally.total > 0)
-              PrepOpponentLine(
-                o.name,
-                o.ratingCount == 0
-                    ? null
-                    : (o.ratingSum / o.ratingCount).round(),
-                o.tally,
-                o.games,
-              ),
-        ]..sort((a, b) {
-          final byGames = b.tally.total.compareTo(a.tally.total);
-          return byGames != 0 ? byGames : b.tally.wins.compareTo(a.tally.wins);
-        });
-
-    final clockCounts = <PrepTimeControl?, int>{};
-    for (final g in clockGames ?? games) {
-      clockCounts[g.speed] = (clockCounts[g.speed] ?? 0) + 1;
-    }
-
-    // One source's scale for every rating figure: the one asked for when it
-    // has rated games, else the one with most of them, else the one with
-    // most rated opponents.
-    _Scale? scale;
-    for (final candidate in scales.values) {
-      if (ratingAccount != null &&
-          candidate.rated.isNotEmpty &&
-          candidate.path.endsWith(ratingAccount)) {
-        scale = candidate;
-        break;
-      }
-      if (scale == null ||
-          candidate.rated.length > scale.rated.length ||
-          (candidate.rated.length == scale.rated.length &&
-              candidate.opponentCount > scale.opponentCount)) {
-        scale = candidate;
-      }
-    }
-    final rating = scale == null
-        ? (const <(DateTime, int)>[], null)
-        : _ratingSeries(
-            scale.rated,
-            scoped: speed,
-            preferred:
-                preferredRating ??
-                (scale.source.online
-                    ? PrepTimeControl.blitz
-                    : PrepTimeControl.classical),
-          );
-    final average = scale == null || scale.opponentCount == 0
-        ? null
-        : (scale.opponentSum / scale.opponentCount).round();
-    final scored = scale?.tally.score;
-
-    return PrepStats(
-      games: count,
-      overall: overall,
-      asWhite: white,
-      asBlack: black,
-      whiteGames: whiteGames,
-      blackGames: blackGames,
-      accounts: scales.length,
-      // Named only where there is a rating figure for it to explain.
-      ratingPath: rating.$1.isNotEmpty || average != null ? scale?.path : null,
-      whiteOpenings: top(whiteOpenings),
-      blackOpenings: top(blackOpenings),
-      opponents: opponentLines.take(10).toList(),
-      byYear: [
-        for (final y in years.keys.toList()..sort())
-          PrepYearLine(y, years[y]!.$1, years[y]!.$2),
-      ],
-      lengths: lengths,
-      clocks: clockCounts.entries.map((e) => (e.key, e.value)).toList()
-        ..sort((a, b) => b.$2.compareTo(a.$2)),
-      peakRating: rating.$1.isEmpty
-          ? null
-          : rating.$1.map((p) => p.$2).reduce((a, b) => a > b ? a : b),
-      currentRating: rating.$1.isEmpty ? null : rating.$1.last.$2,
-      ratingSpeed: rating.$2,
-      ratingSource: rating.$1.isEmpty ? null : scale?.source,
-      // The opposition's average and the score against it, both from the
-      // one source whose scale they are on.
-      performance: average == null || scored == null
-          ? null
-          : average + _fideDp[(scored * 100).round().clamp(0, 100)],
-      averageOpponent: average,
-      ratingHistory: rating.$1,
-    );
-  }
+  }) => PrepFacets(
+    games is List<PrepGame> ? games : games.toList(),
+  ).stats(preferredRating: preferredRating, ratingAccount: ratingAccount);
 
   static String? _openingName(String? raw) {
     final name = raw?.trim();
@@ -705,19 +530,506 @@ class PrepStats {
   }
 }
 
-class _Opening {
-  String? name;
-  PrepTally tally = const PrepTally();
-  int games = 0;
+/// What About's own controls narrow a profile's games by: one choice from
+/// each group of them on the page.
+@immutable
+class PrepPick {
+  const PrepPick({
+    this.white,
+    this.outcome,
+    this.speed,
+    this.year,
+    this.eco,
+    this.opponent,
+    this.length,
+  });
+
+  /// The player's colour; null for both.
+  final bool? white;
+  final PrepOutcome? outcome;
+  final PrepTimeControl? speed;
+  final int? year;
+  final String? eco;
+  final String? opponent;
+
+  /// An index into [PrepStats.lengthLabels].
+  final int? length;
 }
 
-class _Opponent {
-  _Opponent(this.name);
-  final String name;
-  PrepTally tally = const PrepTally();
-  int games = 0;
-  int ratingSum = 0;
-  int ratingCount = 0;
+/// A profile's games as columns of small numbers, read once, so that every
+/// About figure is counted again in one pass each time a choice changes: a
+/// source of tens of thousands of games answers a tap within the frame.
+///
+/// A choice narrows every figure but those of its own group. With Blitz
+/// chosen the openings, opponents and years are the blitz ones, while the
+/// clocks still list every clock beside it. A group is therefore counted
+/// over the games that pass every choice except its own.
+class PrepFacets {
+  PrepFacets(this.games)
+    : _side = Uint8List(games.length),
+      _outcome = Uint8List(games.length),
+      _clock = Uint8List(games.length),
+      _year = Int16List(games.length),
+      _length = Int8List(games.length),
+      _eco = Int32List(games.length),
+      _opponent = Int32List(games.length),
+      _theirElo = Int16List(games.length),
+      _scale = Uint16List(games.length) {
+    PrepSource? lastSource;
+    String? lastPath;
+    var lastScale = 0;
+    for (var i = 0; i < games.length; i++) {
+      final g = games[i];
+      final white = g.playerIsWhite;
+      final side = white == null
+          ? 0
+          : white
+          ? 1
+          : 2;
+      _side[i] = side;
+      _outcome[i] = g.outcome.index;
+      final clock = g.speed == null ? 0 : g.speed!.index + 1;
+      _clock[i] = clock;
+      if (!_clockSeen[clock]) {
+        _clockSeen[clock] = true;
+        _clockOrder.add(clock);
+      }
+      final year = g.date?.year ?? 0;
+      if (year > 0 && year <= 0x7fff) {
+        _year[i] = year;
+        if (_lastYear == 0 || year < _firstYear) _firstYear = year;
+        if (year > _lastYear) _lastYear = year;
+      }
+      _length[i] = PrepStats.lengthOf(g.plies) ?? -1;
+
+      final code = g.eco?.trim().toUpperCase() ?? '';
+      if (code.isEmpty) {
+        _eco[i] = -1;
+      } else {
+        var id = _ecoIds[code];
+        if (id == null) {
+          id = _ecoIds[code] = _ecoCodes.length;
+          _ecoCodes.add(code);
+          _ecoNames
+            ..add(null)
+            ..add(null);
+          _ecoPlayed
+            ..add(false)
+            ..add(false);
+        }
+        _eco[i] = id;
+        if (side != 0) {
+          final slot = id * 2 + side - 1;
+          _ecoPlayed[slot] = true;
+          // The game's own name for the opening, from the newest that has
+          // one, so a line reads the same whatever is chosen around it.
+          _ecoNames[slot] ??= PrepStats._openingName(g.opening);
+        }
+      }
+
+      // Who the opponent was is only known once the player's side is.
+      _opponent[i] = -1;
+      if (side != 0) {
+        final name = g.opponent.trim();
+        if (name.isNotEmpty && name != '?') {
+          final key = name.toLowerCase();
+          var id = _opponentIds[key];
+          if (id == null) {
+            id = _opponentIds[key] = _opponentNames.length;
+            _opponentNames.add(name);
+          }
+          _opponent[i] = id;
+        }
+        final theirs = g.opponentElo ?? 0;
+        if (theirs > 0) _theirElo[i] = math.min(theirs, 0x7fff);
+      }
+
+      // Each source rates on its own scale. Games arrive a source at a
+      // time, so the last one seen is nearly always this one's too.
+      if (g.source != lastSource || g.sourcePath != lastPath) {
+        lastSource = g.source;
+        lastPath = g.sourcePath;
+        final key = '${g.source.name}|${g.sourcePath}';
+        var id = _scaleIds[key];
+        if (id == null) {
+          id = _scaleIds[key] = _scales.length;
+          _scales.add((g.source, g.sourcePath));
+        }
+        lastScale = id;
+      }
+      _scale[i] = lastScale;
+    }
+  }
+
+  /// Newest first, as [PrepAnalysis.games] holds them.
+  final List<PrepGame> games;
+
+  /// 0 unknown, 1 White, 2 Black.
+  final Uint8List _side;
+
+  /// A [PrepOutcome]'s index.
+  final Uint8List _outcome;
+
+  /// A [PrepTimeControl]'s index + 1; 0 for a game of no known clock.
+  final Uint8List _clock;
+
+  /// 0 for an undated game.
+  final Int16List _year;
+
+  /// An index into [PrepStats.lengthLabels]; -1 for unknown moves.
+  final Int8List _length;
+
+  /// An index into [_ecoCodes]; -1 for a game without a code.
+  final Int32List _eco;
+
+  /// An index into [_opponentNames]; -1 where the opponent is not known.
+  final Int32List _opponent;
+
+  /// The opponent's rating; 0 where it is unknown.
+  final Int16List _theirElo;
+
+  /// An index into [_scales].
+  final Uint16List _scale;
+
+  final Map<String, int> _ecoIds = {};
+  final List<String> _ecoCodes = [];
+
+  /// Two per code, White then Black: the name the games give the opening,
+  /// and whether the player ever had it with that colour.
+  final List<String?> _ecoNames = [];
+  final List<bool> _ecoPlayed = [];
+
+  final Map<String, int> _opponentIds = {};
+  final List<String> _opponentNames = [];
+  final Map<String, int> _scaleIds = {};
+  final List<(PrepSource, String)> _scales = [];
+
+  /// The clocks in the order the games first show them.
+  final List<int> _clockOrder = [];
+  final List<bool> _clockSeen = List.filled(
+    PrepTimeControl.values.length + 1,
+    false,
+  );
+  int _firstYear = 0;
+  int _lastYear = 0;
+
+  Object? _scopeKey;
+  Uint8List? _scopeMask;
+
+  /// The games a filter's other narrowings leave, as one byte a game: 1 for
+  /// a game left in. The one read last is kept under [key], as choices
+  /// change far more often than what they are made within.
+  Uint8List scoped(Object key, bool Function(PrepGame game) holds) {
+    final kept = _scopeMask;
+    if (kept != null && _scopeKey == key) return kept;
+    final mask = Uint8List(games.length);
+    for (var i = 0; i < games.length; i++) {
+      if (holds(games[i])) mask[i] = 1;
+    }
+    _scopeKey = key;
+    return _scopeMask = mask;
+  }
+
+  static const int _bySide = 1;
+  static const int _byOutcome = 2;
+  static const int _byClock = 4;
+  static const int _byYear = 8;
+  static const int _byEco = 16;
+  static const int _byOpponent = 32;
+  static const int _byLength = 64;
+
+  /// No game holds this id: a choice the games here never had.
+  static const int _absent = -2;
+
+  /// The About numbers with [pick] chosen, among the games [scope] leaves
+  /// in (every game without one). [preferredRating] and [ratingAccount] are
+  /// those of [PrepStats.of].
+  PrepStats stats({
+    PrepPick pick = const PrepPick(),
+    Uint8List? scope,
+    PrepTimeControl? preferredRating,
+    String? ratingAccount,
+  }) {
+    final wantSide = switch (pick.white) {
+      null => 0,
+      true => 1,
+      false => 2,
+    };
+    final wantOutcome = pick.outcome?.index ?? -1;
+    final wantClock = pick.speed == null ? -1 : pick.speed!.index + 1;
+    final wantYear = pick.year ?? 0;
+    final chosenEco = pick.eco?.trim().toUpperCase();
+    final wantEco = chosenEco == null ? -1 : _ecoIds[chosenEco] ?? _absent;
+    final chosenOpponent = pick.opponent?.trim().toLowerCase();
+    final wantOpponent = chosenOpponent == null
+        ? -1
+        : _opponentIds[chosenOpponent] ?? _absent;
+    final wantLength = pick.length ?? -1;
+
+    var matching = 0;
+    var counted = 0;
+    final results = Int32List(4);
+    final colours = Int32List(8);
+    final lines = Int32List(_ecoCodes.length * 8);
+    final clocks = Int32List(_clockSeen.length);
+    final span = _lastYear == 0 ? 0 : _lastYear - _firstYear + 1;
+    final years = Int32List(span * 4);
+    final opponents = Int32List(_opponentNames.length * 4);
+    final theirSum = Float64List(_opponentNames.length);
+    final theirCount = Int32List(_opponentNames.length);
+    final lengths = List<int>.filled(PrepStats.lengthLabels.length, 0);
+    final scales = List<_Scale?>.filled(_scales.length, null);
+
+    for (var i = 0; i < games.length; i++) {
+      if (scope != null && scope[i] == 0) continue;
+      final side = _side[i];
+      final outcome = _outcome[i];
+      final eco = _eco[i];
+      final opponent = _opponent[i];
+      // Which choices this game does not meet.
+      var miss = 0;
+      if (wantSide != 0 && side != wantSide) miss |= _bySide;
+      if (wantOutcome >= 0 && outcome != wantOutcome) miss |= _byOutcome;
+      if (wantClock >= 0 && _clock[i] != wantClock) miss |= _byClock;
+      if (wantYear != 0 && _year[i] != wantYear) miss |= _byYear;
+      if (wantEco != -1 && eco != wantEco) miss |= _byEco;
+      if (wantOpponent != -1 && opponent != wantOpponent) miss |= _byOpponent;
+      if (wantLength >= 0 && _length[i] != wantLength) miss |= _byLength;
+
+      if (miss & ~_byOutcome == 0) {
+        counted++;
+        if (side != 0) results[outcome]++;
+      }
+      if (miss & ~_bySide == 0 && side != 0) {
+        colours[(side - 1) * 4 + outcome]++;
+      }
+      // A line is of one colour by its place on the page, so the colour
+      // chosen narrows the lines no more than the line chosen does.
+      if (miss & ~(_byEco | _bySide) == 0 && side != 0 && eco >= 0) {
+        lines[eco * 8 + (side - 1) * 4 + outcome]++;
+      }
+      if (miss & ~_byClock == 0) clocks[_clock[i]]++;
+      if (miss & ~_byYear == 0 && _year[i] != 0) {
+        years[(_year[i] - _firstYear) * 4 + outcome]++;
+      }
+      if (miss & ~_byOpponent == 0 && opponent >= 0) {
+        opponents[opponent * 4 + outcome]++;
+        final theirs = _theirElo[i];
+        if (theirs > 0) {
+          theirSum[opponent] += theirs;
+          theirCount[opponent]++;
+        }
+      }
+      if (miss & ~_byLength == 0 && _length[i] >= 0) lengths[_length[i]]++;
+
+      if (miss != 0) continue;
+      matching++;
+      // What ratings say is kept apart by source until one is chosen.
+      final at = _scale[i];
+      final scale = scales[at] ??= _Scale(_scales[at].$1, _scales[at].$2);
+      if (side == 0) continue;
+      scale.results[outcome]++;
+      final theirs = _theirElo[i];
+      if (theirs > 0) {
+        scale.opponentSum += theirs;
+        scale.opponentCount++;
+      }
+      final g = games[i];
+      if ((g.playerElo ?? 0) > 0 && g.date != null) scale.rated.add(g);
+    }
+
+    PrepTally tally(Int32List counts, int at) => PrepTally(
+      wins: counts[at],
+      draws: counts[at + 1],
+      losses: counts[at + 2],
+    );
+    int every(Int32List counts, int at) =>
+        counts[at] + counts[at + 1] + counts[at + 2] + counts[at + 3];
+
+    List<PrepOpeningLine> top(int colour) {
+      PrepOpeningLine line(int id) {
+        final code = _ecoCodes[id];
+        final at = id * 8 + colour * 4;
+        return PrepOpeningLine(
+          // The game's own opening name, else the code's catalogue name.
+          _ecoNames[id * 2 + colour] ?? EcoOpenings.codeToName[code] ?? code,
+          code,
+          tally(lines, at),
+          every(lines, at),
+        );
+      }
+
+      final ranked =
+          [
+            for (var id = 0; id < _ecoCodes.length; id++)
+              // A line is a result to show: one never finished is not one.
+              if (tally(lines, id * 8 + colour * 4).total > 0) line(id),
+          ]..sort((a, b) {
+            final byGames = b.tally.total.compareTo(a.tally.total);
+            return byGames != 0 ? byGames : a.eco!.compareTo(b.eco!);
+          });
+      final out = ranked.take(10).toList();
+      if (chosenEco == null || chosenEco.isEmpty) return out;
+      // The chosen line keeps its row where the other choices leave it few
+      // games or none: it is given up by the tap that took it.
+      bool played(int c) => wantEco >= 0 && _ecoPlayed[wantEco * 2 + c];
+      final here =
+          wantSide == colour + 1 ||
+          (wantSide == 0 &&
+              (played(colour) || (colour == 0 && !played(1 - colour))));
+      if (!here || out.any((l) => l.eco == chosenEco)) return out;
+      return out..add(
+        wantEco >= 0
+            ? line(wantEco)
+            : PrepOpeningLine(
+                EcoOpenings.codeToName[chosenEco] ?? chosenEco,
+                chosenEco,
+                const PrepTally(),
+                0,
+              ),
+      );
+    }
+
+    PrepOpponentLine against(int id) => PrepOpponentLine(
+      _opponentNames[id],
+      theirCount[id] == 0 ? null : (theirSum[id] / theirCount[id]).round(),
+      tally(opponents, id * 4),
+      every(opponents, id * 4),
+    );
+    // An online account meets tens of thousands of opponents, so the ten
+    // most played are picked out as they are passed rather than sorted out
+    // of all of them: most games first, then most wins, then first met.
+    final most = <int>[];
+    for (var id = 0; id < _opponentNames.length; id++) {
+      final at = id * 4;
+      final total = opponents[at] + opponents[at + 1] + opponents[at + 2];
+      if (total == 0) continue;
+      var place = most.length;
+      while (place > 0) {
+        final above = most[place - 1] * 4;
+        final theirs =
+            opponents[above] + opponents[above + 1] + opponents[above + 2];
+        if (theirs > total ||
+            (theirs == total && opponents[above] >= opponents[at])) {
+          break;
+        }
+        place--;
+      }
+      if (place >= 10) continue;
+      most.insert(place, id);
+      if (most.length > 10) most.removeLast();
+    }
+    final opponentLines = [for (final id in most) against(id)];
+    if (chosenOpponent != null &&
+        chosenOpponent.isNotEmpty &&
+        !opponentLines.any((o) => o.name.toLowerCase() == chosenOpponent)) {
+      opponentLines.add(
+        wantOpponent >= 0
+            ? against(wantOpponent)
+            : PrepOpponentLine(
+                pick.opponent!.trim(),
+                null,
+                const PrepTally(),
+                0,
+              ),
+      );
+    }
+
+    final byYear = [
+      for (var y = 0; y < span; y++)
+        if (every(years, y * 4) > 0 || _firstYear + y == wantYear)
+          PrepYearLine(
+            _firstYear + y,
+            every(years, y * 4),
+            tally(years, y * 4),
+          ),
+    ];
+    if (wantYear != 0 && !byYear.any((y) => y.year == wantYear)) {
+      byYear
+        ..add(PrepYearLine(wantYear, 0, const PrepTally()))
+        ..sort((a, b) => a.year.compareTo(b.year));
+    }
+
+    final clockLines = [
+      for (final clock in _clockOrder)
+        if (clocks[clock] > 0 || clock == wantClock)
+          (
+            clock == 0 ? null : PrepTimeControl.values[clock - 1],
+            clocks[clock],
+          ),
+    ]..sort((a, b) => b.$2.compareTo(a.$2));
+    if (wantClock >= 0 && !_clockSeen[wantClock]) {
+      clockLines.add((pick.speed, 0));
+    }
+
+    // One source's scale for every rating figure: the one asked for when it
+    // has rated games, else the one with most of them, else the one with
+    // most rated opponents.
+    final read = scales.whereType<_Scale>().toList();
+    _Scale? scale;
+    for (final candidate in read) {
+      if (ratingAccount != null &&
+          candidate.rated.isNotEmpty &&
+          candidate.path.endsWith(ratingAccount)) {
+        scale = candidate;
+        break;
+      }
+      if (scale == null ||
+          candidate.rated.length > scale.rated.length ||
+          (candidate.rated.length == scale.rated.length &&
+              candidate.opponentCount > scale.opponentCount)) {
+        scale = candidate;
+      }
+    }
+    final rating = scale == null
+        ? (const <(DateTime, int)>[], null)
+        : PrepStats._ratingSeries(
+            scale.rated,
+            scoped: pick.speed,
+            preferred:
+                preferredRating ??
+                (scale.source.online
+                    ? PrepTimeControl.blitz
+                    : PrepTimeControl.classical),
+          );
+    final average = scale == null || scale.opponentCount == 0
+        ? null
+        : (scale.opponentSum / scale.opponentCount).round();
+    final scored = scale == null ? null : tally(scale.results, 0).score;
+
+    return PrepStats(
+      games: counted,
+      matching: matching,
+      overall: tally(results, 0),
+      asWhite: tally(colours, 0),
+      asBlack: tally(colours, 4),
+      whiteGames: every(colours, 0),
+      blackGames: every(colours, 4),
+      accounts: read.length,
+      // Named only where there is a rating figure for it to explain.
+      ratingPath: rating.$1.isNotEmpty || average != null ? scale?.path : null,
+      whiteOpenings: top(0),
+      blackOpenings: top(1),
+      opponents: opponentLines,
+      byYear: byYear,
+      lengths: lengths,
+      clocks: clockLines,
+      peakRating: rating.$1.isEmpty
+          ? null
+          : rating.$1.map((p) => p.$2).reduce((a, b) => a > b ? a : b),
+      currentRating: rating.$1.isEmpty ? null : rating.$1.last.$2,
+      ratingSpeed: rating.$2,
+      ratingSource: rating.$1.isEmpty ? null : scale?.source,
+      // The opposition's average and the score against it, both from the
+      // one source whose scale they are on. Games of one result alone score
+      // all or nothing, which measures no performance.
+      performance: average == null || scored == null || pick.outcome != null
+          ? null
+          : average + _fideDp[(scored * 100).round().clamp(0, 100)],
+      averageOpponent: average,
+      ratingHistory: rating.$1,
+    );
+  }
 }
 
 /// What one source's games say on that source's own rating scale.
@@ -728,7 +1040,9 @@ class _Scale {
 
   /// The games carrying the player's own rating and a date.
   final List<PrepGame> rated = [];
-  PrepTally tally = const PrepTally();
+
+  /// Games by [PrepOutcome], among those whose side is known.
+  final Int32List results = Int32List(4);
   int opponentSum = 0;
   int opponentCount = 0;
 }

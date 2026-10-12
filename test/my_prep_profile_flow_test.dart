@@ -1395,7 +1395,7 @@ void main() {
       await pump(
         tester,
         Scaffold(
-          body: PrepIdentity(profile: profile, onRating: (_, _) {}),
+          body: PrepIdentity(profile: profile, onRating: (_) {}),
         ),
         scale: 2,
       );
@@ -1737,12 +1737,28 @@ void main() {
           findsNothing,
         );
 
+        // A rating narrows About to its clock where it stands, and the
+        // Games tab says how many games that leaves.
         await tester.tap(find.text('1900'));
+        await tester.pumpAndSettle();
+        expect(find.byType(PrepGamesTab), findsNothing);
+        expect(find.text('Overall Performance'), findsOneWidget);
+        expect(
+          tester
+              .widget<Text>(find.byKey(const ValueKey('prep_filter_count')))
+              .data,
+          '1 of 3',
+        );
+        expect(find.text('Games 1'), findsOneWidget);
+
+        await tester.tap(find.text('Games 1'));
         await tester.pumpAndSettle();
         final tab = tester.widget<PrepGamesTab>(find.byType(PrepGamesTab));
         expect(tab.games, hasLength(1));
-        expect(tab.filter.accountKey, online.key);
+        expect(tab.filter.accountKey, isNull);
         expect(tab.filter.speed, PrepTimeControl.rapid);
+        // Once Games is open its tab has nothing left to announce.
+        expect(find.text('Games 1'), findsNothing);
         // The Games row is the player profile's: search, filters, layout.
         expect(
           find.byTooltip('Filter and sort games').hitTestable(),
@@ -1751,7 +1767,7 @@ void main() {
 
         await tester.tap(find.byTooltip('Filter and sort games'));
         await tester.pumpAndSettle();
-        await tester.tap(find.text('Lichess · ClubPlayer').last);
+        await tester.tap(find.text('All attached sources').last);
         await tester.pumpAndSettle();
         await tester.tap(find.text('Chess.com · NoGames').last);
         await tester.pumpAndSettle();
@@ -1969,9 +1985,10 @@ void main() {
         expect(analyzed(), '7');
         expect(placed(), at);
         expect(tester.getRect(find.text('Games analyzed')), summaryAt);
+        const banner = ValueKey('prep_filter_banner');
         await tester.tap(find.text('Wins'), warnIfMissed: false);
         await tester.pumpAndSettle();
-        expect(find.byType(PrepGamesTab), findsNothing);
+        expect(find.byKey(banner), findsNothing);
         read.complete();
         await tester.pumpAndSettle();
         expect(caption(), 'PGN · Slow');
@@ -1979,7 +1996,7 @@ void main() {
         expect(placed(), at);
         expect(tester.getRect(find.text('Games analyzed')), summaryAt);
 
-        // Games follows the source About reads, and what About opens there
+        // Games follows the source About reads, and what About narrows to
         // stays within it.
         await tester.tap(segment(online.key));
         await tester.pumpAndSettle();
@@ -1990,13 +2007,27 @@ void main() {
         expect(tab.games, hasLength(1));
         await tester.tap(find.text('About'));
         await tester.pumpAndSettle();
+        // A result is taken on About itself: the page stays, says what it
+        // is narrowed to, and the Games tab counts what that leaves.
+        final identityAt = tester.getRect(find.byType(PrepIdentity));
         await tester.tap(find.text('Wins'));
+        await tester.pumpAndSettle();
+        expect(find.byType(PrepGamesTab), findsNothing);
+        expect(find.byKey(banner), findsOneWidget);
+        expect(tester.getRect(find.byType(PrepIdentity)), identityAt);
+        expect(find.text('Games 1'), findsOneWidget);
+        await tester.tap(find.text('Games 1'));
         await tester.pumpAndSettle();
         tab = tester.widget<PrepGamesTab>(find.byType(PrepGamesTab));
         expect(tab.filter.accountKey, online.key);
         expect(tab.filter.outcome, PrepOutcome.win);
         await tester.tap(find.text('About'));
         await tester.pumpAndSettle();
+        // The second tap gives the result up again. The banner names it
+        // too, above the count that is tapped.
+        await tester.tap(find.text('Wins').last);
+        await tester.pumpAndSettle();
+        expect(find.byKey(banner), findsNothing);
         await tester.tap(segment(null));
         await tester.pumpAndSettle();
         await tester.tap(find.text('Games'));
@@ -2004,6 +2035,7 @@ void main() {
         tab = tester.widget<PrepGamesTab>(find.byType(PrepGamesTab));
         expect(tab.filter.accountKey, isNull);
         expect(tab.filter.source, isNull);
+        expect(tab.filter.outcome, isNull);
 
         // The marks no longer open the sources screen; the menu does.
         expect(find.byTooltip('Manage sources'), findsNothing);
@@ -2345,45 +2377,139 @@ void main() {
     },
   );
 
-  testWidgets('result statistics open a correctly scoped games filter', (
-    tester,
-  ) async {
-    final stats = PrepStats.of([
-      const PrepGame(
-        index: 0,
-        source: PrepSource.lichess,
-        white: 'ClubPlayer',
-        black: 'Opponent',
-        result: '1-0',
-        plies: 4,
-        playerIsWhite: true,
-        whiteElo: 1900,
-        blackElo: 1800,
-      ),
-    ]);
-    PrepFilter? selected;
+  testWidgets('a choice on About narrows it where it stands, and a second '
+      'tap gives it up', (tester) async {
+    PrepGame game(
+      int i,
+      String result, {
+      required String eco,
+      required String opponent,
+      PrepTimeControl speed = PrepTimeControl.blitz,
+    }) => PrepGame(
+      index: i,
+      source: PrepSource.lichess,
+      white: 'ClubPlayer',
+      black: opponent,
+      result: result,
+      plies: 60,
+      playerIsWhite: true,
+      whiteElo: 1900,
+      blackElo: 1800,
+      eco: eco,
+      speed: speed,
+      date: DateTime.utc(2025 - i ~/ 12, 3),
+    );
+    final games = [
+      // A dozen openings met in blitz, each less often than the last.
+      for (var line = 0; line < 12; line++)
+        for (var n = 0; n < 12 - line; n++)
+          game(
+            line * 12 + n,
+            n.isEven ? '1-0' : '0-1',
+            eco: 'B${10 + line}',
+            opponent: 'Rival ${line % 3}',
+          ),
+      // One opening alone was played at the slow clock.
+      for (var n = 0; n < 2; n++)
+        game(
+          200 + n,
+          '1/2-1/2',
+          eco: 'C65',
+          opponent: 'Slow Rival',
+          speed: PrepTimeControl.classical,
+        ),
+    ];
+    final facets = PrepFacets(games);
+    var filter = const PrepFilter(source: PrepSource.lichess);
     await pump(
       tester,
       Scaffold(
-        body: PrepOverviewTab(
-          profile: const PrepProfile(
-            id: 'p',
-            kind: PrepKind.opponent,
-            name: 'ClubPlayer',
-            createdAtMs: 1,
+        body: StatefulBuilder(
+          builder: (context, setState) => PrepOverviewTab(
+            profile: const PrepProfile(
+              id: 'p',
+              kind: PrepKind.opponent,
+              name: 'ClubPlayer',
+              createdAtMs: 1,
+            ),
+            stats: filter.stats(facets),
+            total: games.length,
+            filter: filter,
+            onFilterChanged: (next) => setState(() => filter = next),
           ),
-          stats: stats,
-          filter: const PrepFilter(source: PrepSource.lichess),
-          onOpenGames: (filter) => selected = filter,
         ),
       ),
-      scale: 2,
     );
+    // Short enough that the lists opened below reach well past the fold.
+    await tester.binding.setSurfaceSize(const Size(430, 500));
+    await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
-    expect(find.text('Their White'), findsNothing);
+    expect(find.text('As White'), findsNothing);
+    const banner = ValueKey('prep_filter_banner');
+    String count() => tester
+        .widget<Text>(find.byKey(const ValueKey('prep_filter_count')))
+        .data!;
+    expect(find.byKey(banner), findsNothing);
+
+    // A result is taken in place; the counts beside it stay to choose from.
+    final winsAt = tester.getRect(find.text('Wins'));
     await tester.tap(find.text('Wins'));
-    expect(selected?.outcome, PrepOutcome.win);
-    expect(selected?.source, PrepSource.lichess);
+    await tester.pumpAndSettle();
+    expect(filter.outcome, PrepOutcome.win);
+    expect(filter.source, PrepSource.lichess);
+    expect(count(), '42 of 80');
+    expect(find.text('36'), findsOneWidget);
+    // The banner names the result too, above the count that was tapped.
+    await tester.tap(find.text('Wins').last);
+    await tester.pumpAndSettle();
+    expect(filter.outcome, isNull);
+    expect(find.byKey(banner), findsNothing);
+    expect(tester.getRect(find.text('Wins')), winsAt);
+
+    // With the lists open, a clock chosen below them leaves the openings
+    // above it two rows instead of ten. The row tapped stays under the
+    // finger all the same.
+    for (final panel in ['Opening repertoire', 'Time controls']) {
+      await tester.ensureVisible(find.text(panel));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text(panel));
+      await tester.pumpAndSettle();
+    }
+    expect(find.text('As White'), findsOneWidget);
+    expect(find.textContaining('B10'), findsOneWidget);
+    await tester.ensureVisible(find.text('Classical'));
+    await tester.pumpAndSettle();
+    final clockAt = tester.getRect(find.text('Classical'));
+    await tester.tap(find.text('Classical'));
+    await tester.pump();
+    expect(filter.speed, PrepTimeControl.classical);
+    // The banner over the statistics names the clock as well. A chosen row
+    // is a hundredth larger, which is all that its text has moved.
+    expect(
+      tester.getRect(find.text('Classical').last).top,
+      closeTo(clockAt.top, 0.5),
+    );
+    await tester.pumpAndSettle();
+    expect(count(), '2 of 80');
+    // The openings are now the slow clock's own, the other clock still
+    // listed beside the chosen one.
+    expect(find.textContaining('B10'), findsNothing);
+    expect(find.textContaining('C65'), findsOneWidget);
+    expect(find.text('Blitz'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+
+    // An opening is taken with its colour, and given up alone.
+    await tester.ensureVisible(find.textContaining('C65'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.textContaining('C65'));
+    await tester.pumpAndSettle();
+    expect(filter.eco, 'C65');
+    expect(filter.side, PrepSide.white);
+    await tester.tap(find.textContaining('C65').last);
+    await tester.pumpAndSettle();
+    expect(filter.eco, isNull);
+    expect(filter.side, PrepSide.white);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('rating figures of several sources name the one source whose '
