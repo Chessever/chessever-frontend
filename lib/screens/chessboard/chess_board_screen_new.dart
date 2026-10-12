@@ -16365,6 +16365,39 @@ String resolveEventInfoFallbackEventNameForTesting(
   );
 }
 
+/// ECO codes and time-control words: what archive rows keep in `roundSlug`.
+final RegExp _archiveFormatCode = RegExp(
+  r'^(?:[A-E]\d{2}|classical|rapid|blitz)$',
+  caseSensitive: false,
+);
+
+/// The Round line of Event info, or null when the game names no round.
+///
+/// Archive rows (Gamebase, TWIC) reuse `roundSlug` for the ECO code their list
+/// card prints, so for those the round comes from the PGN: the broadcast's
+/// own round name, else the `Round` tag ("6.2" is round 6, board 2).
+@visibleForTesting
+String? resolveEventInfoRoundLabelForTesting(
+  GamesTourModel game,
+  Map<String, String> headers,
+) {
+  final slug = game.roundSlug?.trim();
+  final isArchive =
+      game.source == GameSource.gamebase || game.source == GameSource.twic;
+  if (!isArchive || (slug != null && !_archiveFormatCode.hasMatch(slug))) {
+    return slug != null
+        ? StringUtils.formatRoundLabel(slug)
+        : (headers['Round'] ?? game.roundDisplayName);
+  }
+
+  final named = headers['ChessEverRoundName']?.trim() ?? '';
+  if (named.isNotEmpty) return named;
+  final round = headers['Round']?.trim() ?? '';
+  if (round.isEmpty || round == '?' || round == '-') return null;
+  final numbered = RegExp(r'^(\d+)(?:\.\d+)*$').firstMatch(round);
+  return numbered == null ? round : 'Round ${numbered.group(1)}';
+}
+
 DateTime? _parseEventInfoPgnDate(String? value) {
   final trimmed = value?.trim();
   if (trimmed == null ||
@@ -16742,17 +16775,18 @@ class _EventInfoSheet extends ConsumerWidget {
         ),
         SizedBox(height: 16.h),
         // Round info
-        _roundFocus(
-          eventName: eventName,
-          child: _EventInfoRow(
-            icon: Icons.format_list_numbered_rounded,
-            label: 'Round',
-            value: game.roundSlug != null
-                ? StringUtils.formatRoundLabel(game.roundSlug)
-                : (headers['Round'] ?? game.roundDisplayName),
+        if (resolveEventInfoRoundLabelForTesting(game, headers)
+            case final roundLabel?) ...[
+          _roundFocus(
+            eventName: eventName,
+            child: _EventInfoRow(
+              icon: Icons.format_list_numbered_rounded,
+              label: 'Round',
+              value: roundLabel,
+            ),
           ),
-        ),
-        SizedBox(height: 12.h),
+          SizedBox(height: 12.h),
+        ],
         // Board number
         if (game.boardNr != null || headers['Board'] != null) ...[
           _EventInfoRow(
@@ -17048,18 +17082,19 @@ class _EventInfoSheet extends ConsumerWidget {
         ),
         SizedBox(height: 12.h),
         // Round info from game
-        _roundFocus(
-          eventName: aboutModel.name,
-          groupBroadcastId: aboutModel.groupBroadcastId,
-          child: _EventInfoRow(
-            icon: Icons.format_list_numbered_rounded,
-            label: 'Round',
-            value: game.roundSlug != null
-                ? StringUtils.formatRoundLabel(game.roundSlug)
-                : game.roundDisplayName,
+        if (resolveEventInfoRoundLabelForTesting(game, _parseHeadersFromPgn())
+            case final roundLabel?) ...[
+          _roundFocus(
+            eventName: aboutModel.name,
+            groupBroadcastId: aboutModel.groupBroadcastId,
+            child: _EventInfoRow(
+              icon: Icons.format_list_numbered_rounded,
+              label: 'Round',
+              value: roundLabel,
+            ),
           ),
-        ),
-        SizedBox(height: 12.h),
+          SizedBox(height: 12.h),
+        ],
         // Board number
         if (game.boardNr != null) ...[
           _EventInfoRow(
