@@ -66,6 +66,22 @@ void main() {
       );
     });
 
+    // Trello #1228: a miniature played in a broadcast is opened with the
+    // "Miniatures" label on its row and the pairing in its PGN Event.
+    test('an opened broadcast miniature shows its tournament', () {
+      final game = _game(tourId: 'Miniatures', tourSlug: 'Miniatures');
+      const pgn =
+          '[Event "Round 6: Del Rio Baena, Dani - Garcia Canals, Gerard"]\n'
+          '[Site "https://lichess.org/broadcast/catalan-age-group-team-championship-2026-sub-18/round-6/rkYWEnda/R3kJFF30"]\n'
+          '[White "Del Rio Baena, Dani"]\n'
+          '[Black "Garcia Canals, Gerard"]\n\n*';
+
+      expect(
+        resolveEventInfoFallbackEventNameForTesting(game, pgn),
+        'Catalan Age Group Team Championship 2026 Sub 18',
+      );
+    });
+
     test('keeps short non-UUID tour ids as a last display fallback', () {
       final game = _game(tourId: 'U9AdmoyQ');
 
