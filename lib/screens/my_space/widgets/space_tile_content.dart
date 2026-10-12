@@ -1469,10 +1469,13 @@ class _GlyphTile extends StatelessWidget {
       SpaceShortcutKind.likes => (SpaceGlyphKind.heart, 'Liked games'),
       SpaceShortcutKind.smartEvent => (SpaceGlyphKind.boards, 'Smart Event'),
       SpaceShortcutKind.collection => (SpaceGlyphKind.database, 'Collection'),
-      SpaceShortcutKind.prepProfile => (SpaceGlyphKind.database, 'My Prep'),
+      SpaceShortcutKind.prepProfile => (SpaceGlyphKind.database, 'Prep'),
       _ => (SpaceGlyphKind.link, _host(shortcut.targetId)),
     };
-    final caption = shortcut.subtitle ?? fallbackSubtitle;
+    // Profiles pinned before the rename stored the old "My Prep" caption.
+    final caption = shortcut.kind == SpaceShortcutKind.prepProfile
+        ? fallbackSubtitle
+        : shortcut.subtitle ?? fallbackSubtitle;
     final captionStyle = spaceText(
       context,
       size: 11,

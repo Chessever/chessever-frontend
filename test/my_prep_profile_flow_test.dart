@@ -489,7 +489,7 @@ void main() {
     );
     await tester.pumpAndSettle();
     for (final (tab, label, title) in [
-      ('My Games', 'Attach your username', 'Attach your usernames'),
+      ('Games', 'Attach your username', 'Attach your usernames'),
       ('Profiles', 'Add opponent', 'Add an opponent'),
     ]) {
       await tester.tap(find.text(tab));
@@ -2199,7 +2199,7 @@ void main() {
       );
 
       // The list stays as it was left across the other tabs.
-      await tester.tap(find.text('My Games'));
+      await tester.tap(find.text('Games'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Profiles'));
       await tester.pumpAndSettle();

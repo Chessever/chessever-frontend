@@ -93,7 +93,7 @@ class _MyLikesHubScreenState extends ConsumerState<MyLikesHubScreen> {
     }
     return EventViewShell(
       dotScope: 'my_likes.tab',
-      title: 'My Likes',
+      title: 'Likes',
       embedded: widget.embedded,
       secondaryTabs: widget.embedded,
       tabs: MyLikesHubScreen.tabs,
@@ -152,7 +152,7 @@ class MyLikesAboutPage extends StatelessWidget {
         SizedBox(height: 8.h),
         Text(
           'Search, filter, or choose a player to find your likes. Swipe left '
-          'on a game to remove it from My Likes.',
+          'on a game to remove it from Likes.',
           style: AppTypography.textSmRegular.copyWith(
             color: colors.textSecondary,
           ),

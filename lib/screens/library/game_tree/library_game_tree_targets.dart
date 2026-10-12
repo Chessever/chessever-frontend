@@ -7,7 +7,10 @@ import 'package:chessever2/widgets/game_tree/build_tree_button.dart';
 
 /// A cloud Library database (owned or followed) as an opening tree.
 class LibraryFolderTreeTarget extends RemoteGameTreeTarget {
-  const LibraryFolderTreeTarget({required this.repository, required this.folder});
+  const LibraryFolderTreeTarget({
+    required this.repository,
+    required this.folder,
+  });
 
   final LibraryRepository repository;
   final LibraryFolder folder;
@@ -53,7 +56,7 @@ class LikedGamesTreeTarget extends RemoteGameTreeTarget {
   String get scopeId => GameTreeService.scopeFor('library:liked-games');
 
   @override
-  String get title => 'My Likes';
+  String get title => 'Likes';
 
   Future<LibraryFolder> _folder() => repository.ensureLikedGamesFolder();
 

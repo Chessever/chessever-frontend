@@ -343,7 +343,7 @@ class _SourcePickerState extends ConsumerState<_SourcePicker> {
         .read(prepProfilesProvider.notifier)
         .owning(account.source, account.externalId ?? account.username);
     if (owner != null && owner.kind != PrepKind.favorite) {
-      return 'Already in ${owner.kind == PrepKind.mine ? 'My Games' : owner.name}';
+      return 'Already in ${owner.kind == PrepKind.mine ? 'Games' : owner.name}';
     }
     return null;
   }

@@ -36,7 +36,7 @@ class MyPrepHomeScreen extends ConsumerStatefulWidget {
 
   final int initialTab;
 
-  static const List<String> tabs = ['My Games', 'Profiles', 'Players'];
+  static const List<String> tabs = ['Games', 'Profiles', 'Players'];
 
   @override
   ConsumerState<MyPrepHomeScreen> createState() => _MyPrepHomeScreenState();
@@ -205,7 +205,7 @@ class _AppBar extends StatelessWidget {
           Expanded(
             child: Center(
               child: Text(
-                'My Prep',
+                'Prep',
                 style: AppTypography.textLgBold.copyWith(
                   color: context.colors.textPrimary,
                 ),
@@ -681,7 +681,7 @@ class _RankedCard extends StatelessWidget {
       action: _OpponentAction(
         added: switch (profile?.kind) {
           PrepKind.opponent => 'In Profiles',
-          PrepKind.mine => 'In My Games',
+          PrepKind.mine => 'In Games',
           _ => null,
         },
         onAdd: onAdd,

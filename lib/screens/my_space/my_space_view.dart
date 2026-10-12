@@ -250,7 +250,7 @@ class _MySpaceViewState extends ConsumerState<MySpaceView> {
     return {
       kSpaceHomeMyPrep: SpaceEditItem(
         key: kSpaceHomeMyPrep,
-        label: 'My Prep',
+        label: 'Prep',
         selectable: false,
         wide: !small(kSpaceHomeMyPrep),
         onResize: () => resize(kSpaceHomeMyPrep),
@@ -268,7 +268,7 @@ class _MySpaceViewState extends ConsumerState<MySpaceView> {
       ),
       kSpaceHomeLikes: SpaceEditItem(
         key: kSpaceHomeLikes,
-        label: 'My Likes',
+        label: 'Likes',
         selectable: false,
         wide: !small(kSpaceHomeLikes),
         onResize: () => resize(kSpaceHomeLikes),
@@ -290,7 +290,7 @@ class _MyPrepTile extends StatelessWidget {
   Widget build(BuildContext context) => HubTile(
     key: const ValueKey('my_space_my_prep_tile'),
     dotId: 'my_space.tile.my_prep',
-    title: 'My Prep',
+    title: 'Prep',
     caption: 'Your games and opponents',
     ramp: false,
     artwork: const HubSceneBackdrop(scene: HubScene.myPrep),
@@ -324,10 +324,10 @@ class _MyLikesCard extends ConsumerWidget {
       // The heart the Library's My Likes card wears, at the size it wears
       // it there, so the destination has one mark on both pages.
       plate: Center(child: LikesHeartMark(size: 64.0.h)),
-      title: 'My Likes',
+      title: 'Likes',
       meta: 'Your saved games',
       tally: caption,
-      semanticsLabel: 'My Likes, your saved games, $caption',
+      semanticsLabel: 'Likes, your saved games, $caption',
       onTap: () {
         HapticFeedbackService.cardTap();
         Navigator.of(

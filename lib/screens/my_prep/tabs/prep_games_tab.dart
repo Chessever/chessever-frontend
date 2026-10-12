@@ -341,7 +341,7 @@ class _PrepGamesTabState extends ConsumerState<PrepGamesTab>
     await _save(
       picked,
       export: false,
-      label: 'My Prep · ${picked.length} selected games',
+      label: 'Prep · ${picked.length} selected games',
     );
   }
 
@@ -422,7 +422,7 @@ class _PrepGamesTabState extends ConsumerState<PrepGamesTab>
         await showImportPgnToFolderSheet(
           context: context,
           games: games,
-          sourceLabel: label ?? 'My Prep · ${games.length} filtered games',
+          sourceLabel: label ?? 'Prep · ${games.length} filtered games',
         );
       }
     } catch (_) {

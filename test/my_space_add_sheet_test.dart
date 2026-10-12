@@ -527,7 +527,7 @@ void main() {
       expect(find.text('ChessEver'), findsOneWidget);
       expect(find.text('Miniatures'), findsNothing);
 
-      expect(find.text('My Likes'), findsNothing);
+      expect(find.text('Likes'), findsNothing);
       expect(find.text('Liked Games'), findsNothing);
 
       await tester.tap(_toggleOf('Najdorf prep'));

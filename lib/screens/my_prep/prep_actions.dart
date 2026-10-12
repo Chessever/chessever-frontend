@@ -287,7 +287,7 @@ Future<void> _moveToOpponents(
       showAppSnackOn(
         messenger,
         '${profile.name} is already in '
-        '${profile.kind == PrepKind.mine ? 'My Games' : 'Profiles'}',
+        '${profile.kind == PrepKind.mine ? 'Games' : 'Profiles'}',
       );
     }
     return;

@@ -152,7 +152,7 @@ extension SpaceSectionX on SpaceSection {
     SpaceSection.library => 'Library',
     SpaceSection.players => 'Players',
     SpaceSection.events => 'Events',
-    SpaceSection.likes => 'My Likes',
+    SpaceSection.likes => 'Likes',
     SpaceSection.games => 'Games',
     SpaceSection.smartEvents => 'Smart Events',
     SpaceSection.openings => 'Openings',

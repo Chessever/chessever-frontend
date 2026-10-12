@@ -137,7 +137,7 @@ class PrepLibraryFolderCard extends ConsumerWidget {
       menuActions: (menuContext) => [
         LibraryMenuAction(
           icon: Icons.insights_rounded,
-          label: 'Open in My Prep',
+          label: 'Open in Prep',
           prominent: true,
           onSelected: () => PrepProfileScreen.open(context, profile.id),
         ),
@@ -396,7 +396,7 @@ class PrepLibraryFolderScreen extends ConsumerWidget {
                       actions: (_) => [
                         LibraryMenuAction(
                           icon: Icons.insights_rounded,
-                          label: 'Open in My Prep',
+                          label: 'Open in Prep',
                           prominent: true,
                           onSelected: () =>
                               PrepProfileScreen.open(context, profile.id),
@@ -709,7 +709,7 @@ class _PrepLibraryDatabaseScreenState
                             title: 'No games yet',
                             body:
                                 account?.error ??
-                                'Download games for this player in My Prep.',
+                                'Download games for this player in Prep.',
                             actionLabel: 'Refresh games',
                             onAction: () => account == null
                                 ? prepRefreshProfile(context, ref, profile.id)

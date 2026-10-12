@@ -912,7 +912,7 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
       if (!mounted) return;
       if (isLiked == null) {
         setState(() {
-          _errorMessage = "Couldn't load My Likes. Please try again.";
+          _errorMessage = "Couldn't load Likes. Please try again.";
         });
         HapticFeedback.lightImpact();
         return;

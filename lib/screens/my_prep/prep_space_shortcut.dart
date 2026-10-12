@@ -7,5 +7,5 @@ SpaceShortcut prepProfileSpaceDraft(PrepProfile profile) => SpaceShortcut.draft(
   kind: SpaceShortcutKind.prepProfile,
   targetId: profile.id,
   title: profile.name,
-  subtitle: 'My Prep',
+  subtitle: 'Prep',
 );

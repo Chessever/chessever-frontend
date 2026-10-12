@@ -767,7 +767,7 @@ void main() {
 
     await _openHomeEdit(tester);
     // The page's own cards stay, movable but never selectable.
-    expect(find.text('My Prep'), findsOneWidget);
+    expect(find.text('Prep'), findsOneWidget);
     expect(find.byType(SpaceEditCheck), findsNothing);
     // Edit adds no controls of its own: the add button turns into its save.
     expect(find.byKey(const ValueKey<String>('space_edit_done')), findsNothing);
@@ -780,8 +780,8 @@ void main() {
     await _saveHomeEdit(tester);
     expect(_fabSave, findsNothing);
     expect(find.bySemanticsLabel(SpaceAddFab.label), findsOneWidget);
-    expect(find.text('My Likes'), findsOneWidget);
-    expect(find.text('My Prep'), findsOneWidget);
+    expect(find.text('Likes'), findsOneWidget);
+    expect(find.text('Prep'), findsOneWidget);
     expect(find.text(kMyDatabaseEmptyText), findsOneWidget);
     expect(tester.takeException(), isNull);
     await _drain(tester);
@@ -1549,9 +1549,9 @@ void main() {
         ),
       ],
     );
-    expect(find.text('My Prep'), findsOneWidget);
+    expect(find.text('Prep'), findsOneWidget);
     expect(find.text('Library'), findsOneWidget);
-    expect(find.text('My Likes'), findsOneWidget);
+    expect(find.text('Likes'), findsOneWidget);
     expect(find.text('No likes yet'), findsOneWidget);
     expect(
       find.byKey(const ValueKey<String>('my_space_likes_card')),
