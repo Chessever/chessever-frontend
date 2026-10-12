@@ -1,6 +1,7 @@
 import 'package:chessever2/providers/board_settings_provider_new.dart';
 import 'package:chessever2/repository/gamebase/gamebase_repository.dart';
 import 'package:chessever2/repository/gamebase/memorial_tree_scope.dart';
+import 'package:chessever2/repository/library/library_game_event.dart';
 import 'package:chessever2/repository/gamebase/search/gamebase_search_models.dart';
 import 'package:chessever2/screens/gamebase/models/models.dart';
 import 'package:chessever2/screens/gamebase/services/player_opening_tree.dart';
@@ -1758,6 +1759,37 @@ final gameWithPgnByIdProvider = FutureProvider.autoDispose
 
       final repository = ref.read(gamebaseRepositoryProvider);
       return repository.getGameWithPgn(gameId.trim());
+    });
+
+/// The tournament [game] was played in, from the full game's own tags.
+///
+/// A broadcast game's `event` is the pairing ("Round 6: A - B"); the full game
+/// also carries the ChessEver tags and the broadcast `Site`, which name it.
+/// Null when none of them does.
+String? gamebaseGameEventTitle(GamebaseGameWithPgn game) {
+  final md = game.data?['md'];
+  final tags = md is Map ? md : const <String, dynamic>{};
+  return gamebaseRowEventTitle({
+    'canonicalEvent': tags['ChessEverGroupBroadcastName'],
+    'canonicalEventName': tags['ChessEverTourName'],
+    'eventName': tags['BroadcastName'],
+    'event': game.event,
+    'site': game.site,
+    'white': game.whiteName,
+    'black': game.blackName,
+  });
+}
+
+/// [gamebaseGameEventTitle] for a game id, off the full game a visible archive
+/// card already fetches for its board position, so it costs no request of its
+/// own. Null until that game is in.
+///
+/// `/api/miniatures` rows carry neither a site nor a canonical name, so this is
+/// where a miniature played in a broadcast gets its tournament.
+final gamebaseGameEventTitleProvider = Provider.autoDispose
+    .family<String?, String>((ref, gameId) {
+      final game = ref.watch(gameWithPgnByIdProvider(gameId)).valueOrNull;
+      return game == null ? null : gamebaseGameEventTitle(game);
     });
 
 /// Rows per page in a games sheet (`PositionGamesSheet`).

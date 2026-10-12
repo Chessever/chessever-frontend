@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:chessever2/repository/gamebase/miniatures/miniatures_models.dart';
+import 'package:chessever2/screens/gamebase/providers/gamebase_providers.dart';
 import 'package:chessever2/screens/library/miniatures/miniature_game_launcher.dart';
 import 'package:chessever2/screens/library/miniatures/miniatures_day_list_utils.dart';
 import 'package:chessever2/screens/player_profile/player_profile_data_source.dart';
@@ -215,13 +216,15 @@ class _MiniaturesGamesTabState extends ConsumerState<MiniaturesGamesTab>
   /// section header, so the strip earns its space with what is specific to the
   /// game: where it was played, the opening code, and how short it was.
   /// [GamesTourModel.boardNr] holds the final move number for miniatures.
-  String? _footerDetail(GamesTourModel game) {
+  ///
+  /// [hydratedEvent] is the tournament read off the full game, for a row whose
+  /// index entry names none (see [_rowNamesEvent]).
+  String? _footerDetail(GamesTourModel game, {String? hydratedEvent}) {
     final parts = <String>[];
 
-    final event = game.tourId.trim();
-    if (event.isNotEmpty && event.toLowerCase() != 'miniatures') {
-      parts.add(event);
-    }
+    final event =
+        _rowNamesEvent(game) ? game.tourId.trim() : (hydratedEvent ?? '');
+    if (event.isNotEmpty) parts.add(event);
 
     final eco = game.eco?.trim() ?? '';
     if (eco.isNotEmpty) parts.add(eco);
@@ -232,6 +235,13 @@ class _MiniaturesGamesTabState extends ConsumerState<MiniaturesGamesTab>
     }
 
     return parts.isEmpty ? null : parts.join('  ·  ');
+  }
+
+  /// Whether the index row itself names the tournament. "Miniatures" is the
+  /// label a row gets when it does not: no event at all, or only a pairing.
+  bool _rowNamesEvent(GamesTourModel game) {
+    final event = game.tourId.trim();
+    return event.isNotEmpty && event.toLowerCase() != 'miniatures';
   }
 
   Future<void> _openGame(List<GamesTourModel> games, int index) {
@@ -606,24 +616,42 @@ class _MiniaturesGamesTabState extends ConsumerState<MiniaturesGamesTab>
       //
       // Miniatures need their PGN fetched before the board can replay them, so
       // the wrapper's own navigation is declined and the launcher takes over.
-      Widget card = GameCardWrapperWidget(
-        key: ValueKey(
-          'mini_${entry.isBoard ? 'board' : 'card'}_${entry.game.gameId}',
-        ),
-        game: entry.game,
-        gamesData: gamesData,
-        gameIndex: entry.gameIndex,
-        isChessBoardVisible: entry.isBoard,
-        streamEnabled: false,
-        playerProfileDataSource: PlayerProfileDataSource.twic,
-        footerDetail: _footerDetail(entry.game),
-        // Pinning is meaningless outside a tour scope, so the long-press menu
-        // drops the item rather than offering a tap that does nothing.
-        showPin: false,
-        onPinToggle: (_) async {},
-        onBeforeOpen: () async {
-          await _openGame(games, entry.gameIndex);
-          return false;
+      //
+      // The footer's event is the one line that can arrive late: a broadcast
+      // game's index row names only its pairing, so the tournament comes off
+      // the full game the card is already fetching. The strip is one fixed
+      // line, so filling it in moves nothing.
+      Widget card = Consumer(
+        builder: (context, ref, _) {
+          final hydratedEvent =
+              _rowNamesEvent(entry.game)
+                  ? null
+                  : ref.watch(
+                    gamebaseGameEventTitleProvider(entry.game.gameId),
+                  );
+          return GameCardWrapperWidget(
+            key: ValueKey(
+              'mini_${entry.isBoard ? 'board' : 'card'}_${entry.game.gameId}',
+            ),
+            game: entry.game,
+            gamesData: gamesData,
+            gameIndex: entry.gameIndex,
+            isChessBoardVisible: entry.isBoard,
+            streamEnabled: false,
+            playerProfileDataSource: PlayerProfileDataSource.twic,
+            footerDetail: _footerDetail(
+              entry.game,
+              hydratedEvent: hydratedEvent,
+            ),
+            // Pinning is meaningless outside a tour scope, so the long-press
+            // menu drops the item rather than offering a tap that does nothing.
+            showPin: false,
+            onPinToggle: (_) async {},
+            onBeforeOpen: () async {
+              await _openGame(games, entry.gameIndex);
+              return false;
+            },
+          );
         },
       );
 
