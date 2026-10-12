@@ -279,12 +279,7 @@ List<SpaceEditTutorialStep> spaceHomeEditTutorialSteps(
         faces: s.faces,
       )
     else if (s.demo == SpaceEditTutorialDemo.hold)
-      SpaceEditTutorialStep(
-        demo: s.demo,
-        icon: s.icon,
-        title: s.title,
-        body: '${s.body} Use Small or Full row to change a card\'s size.',
-      ),
+      s,
 ];
 
 /// Edit's tips: the chess board's teaching card (white on the dim scrim,

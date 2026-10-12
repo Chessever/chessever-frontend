@@ -636,6 +636,13 @@ List<String> _groupTitles(WidgetTester tester) => [
 ];
 
 /// Lets Edit's springs (the lane, a check, a lifted card landing) run out.
+/// Flips a home card's size as its item offers it.
+void _resizeHomeCard(WidgetTester tester, String key) => tester
+    .widget<SpaceEditGrid>(find.byType(SpaceEditGrid))
+    .items
+    .singleWhere((item) => item.key == key)
+    .onResize!();
+
 Future<void> _settleEdit(WidgetTester tester) async {
   for (var i = 0; i < 12; i++) {
     await tester.pump(const Duration(milliseconds: 60));
@@ -1382,14 +1389,17 @@ void main() {
       b.key,
       smart.key,
     ]) {
-      final resize = find.byKey(ValueKey('space_edit_resize_$key'));
-      expect(resize, findsOneWidget, reason: key);
+      expect(
+        find.byKey(ValueKey('space_edit_grip_$key')),
+        findsOneWidget,
+        reason: key,
+      );
       final initial = tester
           .widget<SpaceEditGrid>(find.byType(SpaceEditGrid))
           .items
           .singleWhere((item) => item.key == key)
           .wide;
-      await tester.tap(resize);
+      _resizeHomeCard(tester, key);
       await _settleEdit(tester);
       expect(
         tester
@@ -1400,12 +1410,12 @@ void main() {
         !initial,
       );
       expect(_selectedKeys(tester), isEmpty);
-      await tester.tap(resize);
+      _resizeHomeCard(tester, key);
       await _settleEdit(tester);
     }
     // Two saved cards can occupy one row with readable, reflowed content.
     for (final key in [a.key, b.key]) {
-      await tester.tap(find.byKey(ValueKey('space_edit_resize_$key')));
+      _resizeHomeCard(tester, key);
       await _settleEdit(tester);
     }
     final rowA = find.ancestor(
@@ -1508,19 +1518,7 @@ void main() {
         expect(find.text(event.title), findsOneWidget);
         expect(find.text(collection.title), findsOneWidget);
         for (final pin in pins) {
-          final resize = find.byKey(ValueKey('space_edit_resize_${pin.key}'));
-          await tester.ensureVisible(resize);
-          final label = tester.renderObject<RenderParagraph>(
-            find.descendant(of: resize, matching: find.byType(Text)).first,
-          );
-          expect(
-            label.size.height,
-            greaterThanOrEqualTo(
-              label.getMaxIntrinsicHeight(label.size.width) - 0.01,
-            ),
-            reason: 'The size label must remain whole',
-          );
-          await tester.tap(resize);
+          _resizeHomeCard(tester, pin.key);
           await _settleEdit(tester);
           final changed = tester.widget<SpaceEditGrid>(
             find.byType(SpaceEditGrid),
