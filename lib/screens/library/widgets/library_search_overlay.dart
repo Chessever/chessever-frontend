@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 
+import 'package:chessever2/repository/library/library_game_event.dart';
 import 'package:chessever2/repository/library/models/library_folder.dart';
 import 'package:chessever2/repository/library/models/saved_analysis.dart';
 import 'package:chessever2/screens/gamebase/models/models.dart';
@@ -303,11 +304,10 @@ class LibrarySearchOverlay extends ConsumerWidget {
     final blackRating = parseRating(row['blackRating']);
 
     final eco = row['eco']?.toString() ?? row['ECO']?.toString() ?? '';
+    final rawTourId = row['tourId']?.toString() ?? '';
     final event =
-        row['event']?.toString() ??
-        row['Event']?.toString() ??
-        row['tourId']?.toString() ??
-        '';
+        gamebaseRowEventTitle(row) ??
+        (looksLikeRoundPairingEvent(rawTourId) ? '' : rawTourId);
 
     DateTime? date;
     final rawDate = row['date']?.toString();

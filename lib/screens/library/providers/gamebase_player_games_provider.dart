@@ -1,4 +1,5 @@
 import 'package:chessever2/repository/gamebase/gamebase_repository.dart';
+import 'package:chessever2/repository/library/library_game_event.dart';
 import 'package:chessever2/screens/gamebase/models/models.dart';
 import 'package:chessever2/screens/library/utils/gamebase_pgn_builder.dart';
 import 'package:chessever2/utils/chess_title_utils.dart';
@@ -225,7 +226,7 @@ class GamebasePlayerGamesNotifier
                       row['blackName']?.toString() ??
                       'Black')
                   .trim();
-          final event = (row['event']?.toString() ?? 'Gamebase').trim();
+          final event = gamebaseRowEventTitle(row) ?? 'Gamebase';
           final site = row['site']?.toString();
           final eco = row['eco']?.toString();
           final opening = row['opening']?.toString();

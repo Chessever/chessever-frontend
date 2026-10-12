@@ -1,5 +1,6 @@
 import 'package:chessever2/repository/gamebase/gamebase_repository.dart';
 import 'package:chessever2/repository/gamebase/search/gamebase_search_models_extra.dart';
+import 'package:chessever2/repository/library/library_game_event.dart';
 import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart';
 import 'package:chessever2/screens/library/providers/gamebase_database_games_provider.dart';
 import 'package:chessever2/screens/library/providers/gamebase_filter_provider.dart';
@@ -178,8 +179,11 @@ class TwicEventAggregatesNotifier
               : null,
     );
 
+    // The index groups by raw PGN `Event`, so a broadcast game's pairing label
+    // comes back as a one-game "event". It is not one.
     final events = response.events
         .where((e) => e.event.trim().isNotEmpty)
+        .where((e) => !looksLikeRoundPairingEvent(e.event))
         .map(TwicEventAggregate.fromApi)
         .toList(growable: false);
 

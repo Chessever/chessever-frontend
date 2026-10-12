@@ -1,4 +1,5 @@
 import 'package:chessever2/repository/gamebase/gamebase_repository.dart';
+import 'package:chessever2/repository/library/library_game_event.dart';
 import 'package:chessever2/repository/supabase/chess_player/chess_player_repository.dart';
 import 'package:chessever2/screens/gamebase/models/models.dart'
     show GamebasePlayer;
@@ -126,7 +127,7 @@ GamesTourModel _mapPlayerGameRowToModel(
   final variation = row['variation']?.toString();
   final site = row['site']?.toString();
 
-  final event = (row['event']?.toString() ?? 'Gamebase').trim();
+  final event = gamebaseRowEventTitle(row) ?? 'Gamebase';
 
   final tourId =
       (row['tour_id']?.toString() ?? row['tournament_id']?.toString() ?? event)

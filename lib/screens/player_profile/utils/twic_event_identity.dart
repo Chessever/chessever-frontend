@@ -1,15 +1,6 @@
+import 'package:chessever2/repository/library/library_game_event.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/utils/string_utils.dart';
-
-final RegExp _roundTitlePattern = RegExp(
-  r'^\s*(?:round|rd|r)\s*\d+[A-Za-z]?(?:\.\d+)?\s*[:\-–—]',
-  caseSensitive: false,
-);
-
-final RegExp _gamePairingTitlePattern = RegExp(
-  r'^\s*(?:.+\|\s*)?(?:game|match|board)\s*\d+[A-Za-z]?(?:\.\d+)?\s*[:\-–—]',
-  caseSensitive: false,
-);
 
 /// Matches the parent broadcast slug in a Lichess broadcast `Site` URL, e.g.
 /// `https://lichess.org/broadcast/<parent-slug>/round-7/<roundId>/<chapterId>`
@@ -173,12 +164,10 @@ String? eventFromPgn(String? pgn) {
 /// These labels can arrive in PGN Event headers or player-events rows. They
 /// should never replace a canonical event title when one is available from the
 /// player-games list.
-bool isTwicRoundDisplayTitle(String? value) {
-  final text = value?.trim();
-  if (text == null || text.isEmpty) return false;
-  return _roundTitlePattern.hasMatch(text) ||
-      _gamePairingTitlePattern.hasMatch(text);
-}
+///
+/// Delegates to the app's one detector, [looksLikeRoundPairingEvent].
+bool isTwicRoundDisplayTitle(String? value) =>
+    looksLikeRoundPairingEvent(value);
 
 bool _isUsefulEventTitle(String? value) {
   final text = value?.trim();

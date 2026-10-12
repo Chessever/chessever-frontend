@@ -73,6 +73,82 @@ String resolveGamebaseEventName({
       'Gamebase';
 }
 
+/// Row fields that can name the tournament, most trustworthy first.
+/// `canonicalEvent` is the group-broadcast name the Gamebase resolves
+/// server-side; `event` is the raw PGN header and comes last.
+const List<String> _gamebaseRowEventKeys = [
+  'canonicalEvent',
+  'canonicalEventName',
+  'canonical_event_name',
+  'eventName',
+  'event_name',
+  'event',
+  'Event',
+];
+
+/// The tournament a Gamebase row belongs to, for display and for grouping.
+///
+/// Every mapper that turns a Gamebase row into a game reads its event through
+/// here: shown raw, a pairing label repeats the two names the card already
+/// prints, and used as a grouping key it makes every game its own event card.
+///
+/// Null when the row names no tournament, so the caller picks its own neutral
+/// fallback rather than the pairing.
+String? gamebaseRowEventTitle(Map<String, dynamic> row) {
+  String? read(String key) {
+    final raw = row[key];
+    if (raw is! String) return null;
+    final value = raw.trim();
+    return value.isEmpty ? null : value;
+  }
+
+  final whiteName = read('white') ?? read('whiteName');
+  final blackName = read('black') ?? read('blackName');
+  for (final key in _gamebaseRowEventKeys) {
+    final value = read(key);
+    if (_namesTournament(value, whiteName: whiteName, blackName: blackName)) {
+      return value;
+    }
+  }
+  return eventNameFromLibrarySite(read('site') ?? read('Site'));
+}
+
+/// The tournament named by a PGN's own headers: `Event` unless it is only a
+/// round/pairing label, then Lichess's `BroadcastName`, then the parent slug of
+/// the broadcast `Site` URL. Null when none of them names one.
+String? eventTitleFromPgnHeaders(Map<String, Object?> headers) {
+  String? read(String key) {
+    final raw = headers[key];
+    return raw is String ? raw.trim() : null;
+  }
+
+  final whiteName = read('White');
+  final blackName = read('Black');
+  for (final key in const ['Event', 'BroadcastName']) {
+    final value = read(key);
+    if (_namesTournament(value, whiteName: whiteName, blackName: blackName)) {
+      return value;
+    }
+  }
+  return eventNameFromLibrarySite(read('Site'));
+}
+
+/// A value from a field that only ever holds an event name: usable unless it
+/// is blank, a placeholder, or a round/pairing label. Unlike
+/// [isReadableLibraryEventName] it does not second-guess short single words as
+/// opaque ids, which would drop "Linares" or "Bundesliga".
+bool _namesTournament(String? value, {String? whiteName, String? blackName}) {
+  final text = value?.trim() ?? '';
+  if (text.isEmpty || text == '?' || text == '-') return false;
+  final lower = text.toLowerCase();
+  if (lower == 'gamebase' || lower == 'library') return false;
+  return !looksLikeRoundPairingEvent(
+    text,
+    whiteName: whiteName,
+    blackName: blackName,
+  );
+}
+
 bool isReadableLibraryEventName(
   String? value, {
   String? whiteName,
@@ -102,6 +178,28 @@ bool isReadableLibraryEventName(
   return !looksLikeOpaqueLibraryEventId(text);
 }
 
+/// "Round 7: ...", "Rd 9 - ...", "R3.2: ...": a numbered round followed by a
+/// separator. Nothing after the separator can make that a tournament name.
+final RegExp _numberedRoundPrefix = RegExp(
+  r'^\s*(?:round|rd|r)\s*\d+[A-Za-z]?(?:\.\d+)?\s*[:\-–—]',
+  caseSensitive: false,
+);
+
+/// "Game 3: ...", "Board 2 - ...", and the staged form Lichess uses for
+/// knockouts: "Semifinals | Game 3: Yu, Yangyi - Wang, Hao".
+final RegExp _numberedGamePrefix = RegExp(
+  r'^\s*(?:.+\|\s*)?(?:game|match|board)\s*\d+[A-Za-z]?(?:\.\d+)?\s*[:\-–—]',
+  caseSensitive: false,
+);
+
+/// True when [value] labels a round or a pairing ("Round 7: Kovacevic, Sinisa -
+/// Antic, Dejan") rather than a tournament.
+///
+/// This is the one detector for the whole app. Lichess exports broadcast games
+/// with such a label in the PGN `Event` header and the Gamebase stores it
+/// verbatim, so any surface that prints or groups by a raw event must ask here
+/// first. Resolve a row through [gamebaseRowEventTitle] or PGN headers through
+/// [eventTitleFromPgnHeaders] instead of calling this directly.
 bool looksLikeRoundPairingEvent(
   String? value, {
   String? whiteName,
@@ -109,6 +207,10 @@ bool looksLikeRoundPairingEvent(
 }) {
   final text = value?.trim() ?? '';
   if (text.isEmpty) return false;
+  if (_numberedRoundPrefix.hasMatch(text) ||
+      _numberedGamePrefix.hasMatch(text)) {
+    return true;
+  }
 
   final colonIndex = text.indexOf(':');
   final lower = text.toLowerCase();

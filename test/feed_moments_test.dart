@@ -74,6 +74,44 @@ void main() {
     });
   });
 
+  // Trello #1228: Lichess broadcast PGNs carry the pairing in `Event` and the
+  // tournament in `BroadcastName`. Headers copied from a production game.
+  group('clip event', () {
+    const moves = '1. e4 e5 2. Nf3 Nc6 3. Bb5 a6 1-0';
+
+    test('reads the tournament, not the pairing', () {
+      final clip = feedClipFromPgn('''
+[Event "Round 6: Del Rio Baena, Dani - Garcia Canals, Gerard"]
+[Site "https://lichess.org/broadcast/catalan-age-group-team-championship-2026-sub-18/round-6/rkYWEnda/R3kJFF30"]
+[White "Del Rio Baena, Dani"]
+[Black "Garcia Canals, Gerard"]
+[Result "1-0"]
+[BroadcastName "Catalan Age-Group Team Championship 2026 Sub 18"]
+
+$moves
+''')!;
+
+      expect(clip.event, 'Catalan Age-Group Team Championship 2026 Sub 18');
+    });
+
+    test('names no event when the PGN has only the pairing', () {
+      final clip = feedClipFromPgn('''
+[Event "Round 2: Czech, Emil - Manka, Igor"]
+[White "Czech, Emil"]
+[Black "Manka, Igor"]
+[Result "1-0"]
+
+$moves
+''')!;
+
+      expect(clip.event, isNull);
+    });
+
+    test('keeps a real Event header', () {
+      expect(feedClipFromPgn(_operaGame)!.event, 'Paris');
+    });
+  });
+
   group('Opera Game (Morphy 1858)', () {
     late FeedClip clip;
 

@@ -1,3 +1,4 @@
+import 'package:chessever2/repository/library/library_game_event.dart';
 import 'package:chessever2/screens/library/utils/gamebase_pgn_builder.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/utils/average_game_rating.dart';
@@ -460,6 +461,9 @@ class GamebaseMiniature {
   final String timeControl; // CLASSICAL | RAPID | BLITZ
   final bool isOnline;
   final DateTime? date;
+
+  /// The tournament, or null when the index has none for this game. Never a
+  /// per-pairing label: see [gamebaseRowEventTitle].
   final String? event;
   final String? eco;
   final String? ecoCategory;
@@ -487,7 +491,7 @@ class GamebaseMiniature {
       timeControl: _readString(json['timeControl']),
       isOnline: _readBool(json['isOnline']),
       date: _readDate(json['date']),
-      event: _readNullableString(json['event']),
+      event: gamebaseRowEventTitle(json),
       eco: _readNullableString(json['eco']),
       ecoCategory: _readNullableString(json['ecoCategory']),
       opening: _readNullableString(json['opening']),
