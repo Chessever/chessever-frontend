@@ -26,6 +26,7 @@ List<TeamStandingModel>? buildOfficialTeamStandings({
       event != _eventId(snapshot['sourceUrl'])) {
     return null;
   }
+  final maxMatchPoints = _matchWinPoints(snapshot['matchScoring']) * round;
 
   final playersByTeam = <String, List<PlayerStandingModel>>{};
   for (final player in players) {
@@ -56,7 +57,7 @@ List<TeamStandingModel>? buildOfficialTeamStandings({
         (rank != lastRank && rank != rows.length + 1) ||
         mp == null ||
         mp < 0 ||
-        mp > 2 * round ||
+        mp > maxMatchPoints ||
         gp is! num ||
         !gp.isFinite ||
         gp < 0 ||
@@ -90,6 +91,14 @@ List<TeamStandingModel>? buildOfficialTeamStandings({
     );
   }
   return rows;
+}
+
+/// Points for a match win as published with the table (3-1-0 leagues exist);
+/// 2 when the snapshot predates the field.
+int _matchWinPoints(dynamic scoring) {
+  if (scoring is! Map) return 2;
+  final win = _integer(scoring['win']);
+  return win == null || win < 1 || win > 10 ? 2 : win;
 }
 
 int? _integer(dynamic value) =>
