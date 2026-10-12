@@ -66,6 +66,11 @@ enum SpaceShortcutKind {
   /// Discovery's Collection). targetId: the collection id. params: `slug`,
   /// `collectionKind`, `coverUrl`, `gameCount`. Sits with the databases.
   collection,
+
+  /// A saved My Prep profile, including all its attached sources.
+  /// targetId: the local PrepProfile id. Removing this shortcut never removes
+  /// the profile or its downloaded games.
+  prepProfile,
 }
 
 /// The row a shortcut lives in on My Space, in page order. Never persisted:
@@ -84,7 +89,7 @@ enum SpaceSection {
 }
 
 extension SpaceShortcutKindX on SpaceShortcutKind {
-  /// My Space exposes events, databases and smart events. Keep the
+  /// My Space exposes events, databases, prep profiles and smart events. Keep the
   /// other kinds and their navigation intact for previously saved data.
   bool get canAddToMySpace => switch (this) {
     // Product scope: temporarily disabled, not removed from persistence.
@@ -100,6 +105,7 @@ extension SpaceShortcutKindX on SpaceShortcutKind {
     SpaceShortcutKind.event ||
     SpaceShortcutKind.folder ||
     SpaceShortcutKind.collection ||
+    SpaceShortcutKind.prepProfile ||
     SpaceShortcutKind.smartEvent => true,
     _ => false,
   };
@@ -115,6 +121,7 @@ extension SpaceShortcutKindX on SpaceShortcutKind {
     SpaceShortcutKind.playerOpenings => SpaceSection.openings,
     SpaceShortcutKind.folder ||
     SpaceShortcutKind.miniatures ||
+    SpaceShortcutKind.prepProfile ||
     SpaceShortcutKind.collection => SpaceSection.library,
     SpaceShortcutKind.likes => SpaceSection.likes,
     SpaceShortcutKind.game => SpaceSection.games,

@@ -1,6 +1,7 @@
 import 'package:chessever2/screens/favorites/tabs/favorites_players_tab.dart';
 import 'package:chessever2/screens/my_space/models/space_shortcut.dart';
 import 'package:chessever2/screens/my_space/providers/space_shortcuts_provider.dart';
+import 'package:chessever2/screens/my_space/providers/space_auto_provider.dart';
 import 'package:chessever2/screens/my_space/sheets/space_add_sheet.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
@@ -8,6 +9,15 @@ import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+
+class _Hidden extends SpaceHiddenAutoKeys {
+  @override
+  Set<String> build() => const {};
+  @override
+  void hide(String key) => state = {...state, key};
+  @override
+  void unhide(String key) => state = {...state}..remove(key);
+}
 
 class _Store extends SpaceShortcutsNotifier {
   final added = <String>[];
@@ -66,6 +76,7 @@ Future<_Store> _open(
     ProviderScope(
       overrides: [
         spaceShortcutsProvider.overrideWith(() => store),
+        spaceHiddenAutoKeysProvider.overrideWith(_Hidden.new),
         playerPhotoProvider.overrideWith((ref, fideId) async => null),
       ],
       child: MaterialApp(
@@ -205,10 +216,7 @@ void main() {
     expect(find.text('GM Blitz Games'), findsNothing);
     // Several format picks collapse in the shared name; the line keeps them.
     expect(find.text('GM Games'), findsOneWidget);
-    expect(
-      find.text('Game average 2500+, blitz, live events'),
-      findsOneWidget,
-    );
+    expect(find.text('Game average 2500+, blitz, live events'), findsOneWidget);
 
     await tester.tap(find.byKey(const ValueKey('smart-builder-opening-field')));
     await _settle(tester);

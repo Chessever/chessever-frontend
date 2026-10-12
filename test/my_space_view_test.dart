@@ -2888,8 +2888,8 @@ void main() {
     await _drain(tester);
   });
 
-  testWidgets('in Edit the cards draw none of their own controls: no star on '
-      'an event, no chevron on a saved row', (tester) async {
+  testWidgets('My Space events never show favorite stars, and Edit hides '
+      'the open chevrons on events and saved rows', (tester) async {
     final seed = [
       _pin(eventSpaceDraft(_feed[0]), 'e0', 20),
       _pin(eventSpaceDraft(_feed[1]), 'e1', 19),
@@ -2904,10 +2904,12 @@ void main() {
     );
 
     await _openSeeAll(tester, seed, SpaceSection.events);
-    expect(stars(), findsNWidgets(2));
+    expect(stars(), findsNothing);
+    expect(chevrons(), findsNWidgets(2));
     await tester.tap(find.byKey(const ValueKey<String>('space_edit')));
     await _settleEdit(tester);
     expect(stars(), findsNothing);
+    expect(chevrons(), findsNothing);
     await _drain(tester);
 
     await _openSeeAll(tester, seed, SpaceSection.library);

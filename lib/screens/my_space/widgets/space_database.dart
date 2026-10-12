@@ -31,6 +31,8 @@ import 'package:chessever2/screens/my_space/actions/space_menu_action.dart';
 import 'package:chessever2/screens/my_space/actions/space_player_actions.dart';
 import 'package:chessever2/screens/my_space/library/space_library_bridge.dart';
 import 'package:chessever2/screens/my_space/models/space_shortcut.dart';
+import 'package:chessever2/screens/my_prep/providers/prep_providers.dart';
+import 'package:chessever2/screens/my_prep/widgets/prep_common.dart';
 import 'package:chessever2/screens/my_space/my_prep_screen.dart';
 import 'package:chessever2/screens/my_space/navigation/space_shortcut_navigator.dart';
 import 'package:chessever2/screens/my_space/providers/space_game_card_provider.dart';
@@ -573,7 +575,15 @@ Widget _savedEventCard(
     heroTagSuffix: '_myspace',
     forceCompactLayout: true,
     stacked: stacked,
-    trailingWidget: editing ? SizedBox(width: 4.w) : null,
+    // Favorites are managed on the event's source screens. Here a tap opens
+    // the event and its hold menu removes only the My Space shortcut.
+    trailingWidget: editing
+        ? SizedBox(width: 4.w)
+        : Icon(
+            Icons.chevron_right_rounded,
+            size: 20.ic,
+            color: context.colors.iconSecondary,
+          ),
     onTap: () => openSpaceShortcut(context, ref, s),
   );
 }
@@ -1505,6 +1515,9 @@ Widget _savedRow(
   bool editing = false,
   bool stacked = false,
 }) {
+  if (s.kind == SpaceShortcutKind.prepProfile) {
+    return SpaceSavedRow(shortcut: s, stacked: stacked, disclosure: !editing);
+  }
   if (!library) {
     final host = Uri.tryParse(s.targetId)?.host;
     return SpaceSavedRow(
@@ -2333,12 +2346,14 @@ class SpaceSavedRow extends ConsumerWidget {
     SpaceShortcutKind.streak => 'Streak',
     SpaceShortcutKind.link => 'Link',
     SpaceShortcutKind.collection => 'Collection',
+    SpaceShortcutKind.prepProfile => 'Prep profile',
   };
 
   /// The pixel object standing for the thing, from My Space's own set.
   static SpaceSection artFor(SpaceShortcutKind kind) => switch (kind) {
     SpaceShortcutKind.folder ||
     SpaceShortcutKind.miniatures ||
+    SpaceShortcutKind.prepProfile ||
     SpaceShortcutKind.collection => SpaceSection.library,
     SpaceShortcutKind.position ||
     SpaceShortcutKind.opening ||
@@ -2389,6 +2404,9 @@ class SpaceSavedRow extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final prep = shortcut.kind == SpaceShortcutKind.prepProfile
+        ? ref.watch(prepProfileProvider(shortcut.targetId))
+        : null;
     if (shortcut.kind == SpaceShortcutKind.collection) {
       final collections = ref.watch(collectionsProvider).asData?.value;
       Collection? collection;
@@ -2435,7 +2453,17 @@ class SpaceSavedRow extends ConsumerWidget {
             child: SizedBox(
               width: plateWidth,
               height: plateHeight,
-              child: _plate(context, plateWidth),
+              child: shortcut.kind == SpaceShortcutKind.prepProfile
+                  ? Center(
+                      child: PrepAvatar(
+                        name: prep?.name ?? shortcut.title,
+                        size: plateHeight,
+                        photoUrl: prep?.avatarUrl,
+                        fideId: prep?.fideId,
+                        title: prep?.title,
+                      ),
+                    )
+                  : _plate(context, plateWidth),
             ),
           ),
         ),
@@ -2446,7 +2474,7 @@ class SpaceSavedRow extends ConsumerWidget {
             CardPlateTitle(
               stacked: stacked,
               child: Text(
-                shortcut.title,
+                prep?.name ?? shortcut.title,
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
                 style: AppTypography.textSmMedium.copyWith(
@@ -2463,6 +2491,22 @@ class SpaceSavedRow extends ConsumerWidget {
               overflow: TextOverflow.ellipsis,
               child:
                   meta ??
+                  (prep == null
+                      ? null
+                      : Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            PrepSourceMarks(
+                              sources: prep.accounts
+                                  .map((a) => a.source)
+                                  .toList(),
+                              size: 14.sp,
+                            ),
+                            SizedBox(height: 4.h),
+                            Text(prepGamesLabel(prep.gameCount)),
+                          ],
+                        )) ??
                   Text(saved, maxLines: 1, overflow: TextOverflow.ellipsis),
             ),
           ],
@@ -2487,7 +2531,7 @@ class SpaceSavedRow extends ConsumerWidget {
     final own = menuActions;
     return Semantics(
       button: true,
-      label: '${shortcut.title}, $saved',
+      label: '${prep?.name ?? shortcut.title}, $saved',
       excludeSemantics: true,
       onTap: () => _open(context, ref),
       child: TappableScale(

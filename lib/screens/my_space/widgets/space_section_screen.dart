@@ -3,6 +3,7 @@ import 'dart:math' as math;
 
 import 'package:chessever2/screens/my_space/widgets/smart_events_empty.dart';
 import 'package:chessever2/screens/my_space/actions/space_remove_confirmation.dart';
+import 'package:chessever2/screens/my_space/actions/space_shortcut_removal.dart';
 import 'package:chessever2/config/feature_flags.dart';
 import 'package:chessever2/repository/library/models/saved_analysis.dart';
 import 'package:chessever2/screens/for_you/discovery/widgets/discovery_common.dart'
@@ -151,14 +152,14 @@ class _SpaceSectionScreenState extends ConsumerState<SpaceSectionScreen> {
       return false;
     }
     final messenger = ScaffoldMessenger.maybeOf(context);
-    final notifier = ref.read(spaceShortcutsProvider.notifier);
-    unawaited(notifier.removeTarget(current.kind, current.targetId));
+    final removal = removeSpaceShortcut(ref, current);
+    unawaited(removal.written);
     if (messenger != null) {
       showAppSnackOn(
         messenger,
         'Removed from My Space',
         actionLabel: 'Undo',
-        onAction: () => notifier.restore(current),
+        onAction: removal.undo,
       );
     }
     return true;

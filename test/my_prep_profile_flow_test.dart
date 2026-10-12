@@ -23,6 +23,8 @@ import 'package:chessever2/screens/my_prep/widgets/prep_account_switch.dart';
 import 'package:chessever2/screens/my_prep/widgets/prep_common.dart';
 import 'package:chessever2/screens/my_prep/widgets/prep_dialogs.dart';
 import 'package:chessever2/screens/my_prep/widgets/prep_profile_card.dart';
+import 'package:chessever2/screens/my_space/models/space_shortcut.dart';
+import 'package:chessever2/screens/my_space/providers/space_shortcuts_provider.dart';
 import 'package:chessever2/screens/my_prep/widgets/prep_import_dialog.dart';
 import 'package:chessever2/screens/my_prep/tabs/prep_games_tab.dart';
 import 'package:chessever2/widgets/game_filter/game_filter_model.dart';
@@ -129,6 +131,11 @@ class _Follows extends FavoritePlayersNotifierNew {
 
   @override
   Future<List<FavoritePlayer>> build() async => seed;
+}
+
+class _SpaceShortcuts extends SpaceShortcutsNotifier {
+  @override
+  Future<List<SpaceShortcut>> build() async => const [];
 }
 
 FavoritePlayer _follow(String name, int fide, int rating) => FavoritePlayer(
@@ -340,6 +347,7 @@ void main() {
         prepRepositoryProvider.overrideWithValue(repo),
         premiumAccessProvider.overrideWithValue(premium),
         favoritePlayersProviderNew.overrideWith(() => _Follows(follows)),
+        spaceShortcutsProvider.overrideWith(_SpaceShortcuts.new),
         ...overrides,
       ],
     );

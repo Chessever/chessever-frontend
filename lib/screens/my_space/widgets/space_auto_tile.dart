@@ -1,13 +1,11 @@
 import 'dart:async';
 
 import 'package:chessever2/repository/library/models/saved_analysis.dart';
-import 'package:chessever2/repository/liked_games/liked_games_provider.dart';
 import 'package:chessever2/screens/library/utils/load_saved_analysis.dart';
 import 'package:chessever2/screens/library/widgets/library_context_menu.dart';
 import 'package:chessever2/screens/library/widgets/saved_game_actions.dart';
-import 'package:chessever2/screens/my_likes/provider/my_likes_provider.dart'
-    show myLikesTagCountsProvider, myLikesViewProvider;
 import 'package:chessever2/screens/my_space/actions/space_share.dart';
+import 'package:chessever2/screens/my_space/actions/space_menu_action.dart';
 import 'package:chessever2/screens/my_space/library/space_library_bridge.dart';
 import 'package:chessever2/screens/my_space/models/space_auto_item.dart';
 import 'package:chessever2/screens/my_space/models/space_shortcut.dart';
@@ -24,8 +22,8 @@ import 'package:share_plus/share_plus.dart';
 
 /// A tile a row shows without it being pinned: a Library destination, a liked
 /// game, or a suggestion. It opens like the thing it stands for and carries
-/// that thing's own menu (the Library card's, the My Likes card's), or, for a
-/// suggestion, Pin to My Space and Hide. It is never carried, reordered or
+/// non-removal source actions and Remove from My Space, or, for a suggestion,
+/// Pin to My Space and Hide. It is never carried, reordered or
 /// thrown out; the rows and "See all" build every such tile here.
 class SpaceAutoTile extends ConsumerWidget {
   const SpaceAutoTile({
@@ -85,34 +83,33 @@ class SpaceAutoTile extends ConsumerWidget {
     );
     final folder = item.folder;
     if (folder != null) {
-      return [openRow, ...spaceLibraryFolderActions(context, ref, folder)];
+      return [
+        openRow,
+        ...spaceLibraryFolderActions(context, ref, folder),
+        spaceAutoRemoveMenuAction(
+          context: context,
+          ref: ref,
+          shortcut: item.shortcut,
+        ),
+      ];
     }
     final analysis = item.analysis;
     if (analysis != null) {
-      final messenger = ScaffoldMessenger.maybeOf(context);
-      final likes = ref.read(likedGamesProvider.notifier);
-      final container = ProviderScope.containerOf(context, listen: false);
-      return savedGameMenuActions(
-        context: context,
-        ref: ref,
-        analysis: analysis,
-        onOpen: open,
-        deleteLabel: 'Remove from likes',
-        deleteIcon: Icons.heart_broken_rounded,
-        onDelete: () async {
-          final removed = await likes.removeAnalysis(analysis);
-          if (removed) {
-            container.invalidate(myLikesViewProvider);
-            container.invalidate(myLikesTagCountsProvider);
-          } else if (messenger != null && messenger.mounted) {
-            showAppSnackOn(
-              messenger,
-              "Couldn't remove this like. Please try again.",
-              tone: AppSnackTone.danger,
-            );
-          }
-        },
-      );
+      return [
+        ...savedGameMenuActions(
+          context: context,
+          ref: ref,
+          analysis: analysis,
+          onOpen: open,
+          readOnly: true,
+          showSpaceAction: false,
+        ),
+        spaceAutoRemoveMenuAction(
+          context: context,
+          ref: ref,
+          shortcut: item.shortcut,
+        ),
+      ];
     }
     return _suggestionActions(context, ref, openRow);
   }

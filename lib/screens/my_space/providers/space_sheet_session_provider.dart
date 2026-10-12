@@ -17,8 +17,8 @@ class SpaceSheetSession {
   /// up and lets them spring in once it closes, where they can be seen.
   final Set<String> added;
 
-  /// Followed players the sheet brought back into My Space (their hidden
-  /// keys), which the closing Undo hides again.
+  /// Cards or followed players the sheet brought back into My Space (their
+  /// hidden keys), which the closing Undo hides again.
   final Set<String> unhidden;
 
   SpaceSheetSession withAdded(String key) => SpaceSheetSession(

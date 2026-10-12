@@ -84,6 +84,7 @@ class SpaceTileContent extends StatelessWidget {
       SpaceShortcutKind.likes ||
       SpaceShortcutKind.smartEvent ||
       SpaceShortcutKind.collection ||
+      SpaceShortcutKind.prepProfile ||
       SpaceShortcutKind.link => _GlyphTile(
         shortcut: shortcut,
         subtitle: subtitle,
@@ -1468,6 +1469,7 @@ class _GlyphTile extends StatelessWidget {
       SpaceShortcutKind.likes => (SpaceGlyphKind.heart, 'Liked games'),
       SpaceShortcutKind.smartEvent => (SpaceGlyphKind.boards, 'Smart Event'),
       SpaceShortcutKind.collection => (SpaceGlyphKind.database, 'Collection'),
+      SpaceShortcutKind.prepProfile => (SpaceGlyphKind.database, 'My Prep'),
       _ => (SpaceGlyphKind.link, _host(shortcut.targetId)),
     };
     final caption = shortcut.subtitle ?? fallbackSubtitle;

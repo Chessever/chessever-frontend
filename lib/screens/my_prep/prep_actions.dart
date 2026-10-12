@@ -9,6 +9,8 @@ import 'package:chessever2/screens/my_prep/library/prep_library.dart'
 import 'package:chessever2/screens/my_prep/models/prep_models.dart';
 import 'package:chessever2/screens/my_prep/prep_access.dart';
 import 'package:chessever2/screens/my_prep/prep_profile_screen.dart';
+import 'package:chessever2/screens/my_prep/prep_space_shortcut.dart';
+import 'package:chessever2/screens/my_space/actions/space_menu_action.dart';
 import 'package:chessever2/screens/my_prep/prep_source_actions.dart'
     show prepExportProfile, prepStartDownloads;
 import 'package:chessever2/screens/my_prep/providers/prep_known_accounts_provider.dart';
@@ -488,6 +490,11 @@ List<LibraryMenuAction> prepProfileMenu(
         onSelected: () => PrepLibraryFolderScreen.open(context, profile.id),
       ),
     prepCloudMenuAction(context, ref, profile),
+    spaceMenuAction(
+      context: context,
+      ref: ref,
+      draft: prepProfileSpaceDraft(profile),
+    ),
     LibraryMenuAction(
       icon: Icons.ios_share_rounded,
       label: 'Export combined PGN',

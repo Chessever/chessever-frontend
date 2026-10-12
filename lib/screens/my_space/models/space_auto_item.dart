@@ -115,7 +115,7 @@ SpaceAutoRow composeSpaceAutoRow({
   final seen = <String>{};
   final lead = <SpaceAutoItem>[
     for (final item in leading)
-      if (seen.add(item.key)) item,
+      if (!hidden.contains(item.key) && seen.add(item.key)) item,
   ];
   final trail = <SpaceAutoItem>[];
   for (final item in trailing) {

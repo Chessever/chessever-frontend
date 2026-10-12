@@ -137,6 +137,15 @@ chessever_frontend_desktop_oss/scripts/which_repo_owns_function.sh <slug>
 
 `onesignal-dispatch`, `fetch-fide-photo-webp` and `revenuecat-webhook` have stale copies in other repos. Deploying from the wrong one rolls production back — it happened on 2026-08-26 and reverted an auth check to a version that accepted any request with no token header. This repo is the source of truth for the notification, RevenueCat and photo functions.
 
+## My Space: removal preserves the source
+
+- Removing anything from My Space changes only its shortcut or My Space
+  visibility, including bulk removal and automatic cards. Preserve the original
+  favorite, event, prep profile, downloaded games, database, liked game, and
+  subscription. Undo restores only My Space state.
+- Keep deletion, unfavoriting, unliking, and unsubscribe actions on their source
+  screens. My Space cards offer `Remove from My Space` instead.
+
 ## Local commit preference
 
 - Commit completed mobile changes locally after validation, including the required version bump.

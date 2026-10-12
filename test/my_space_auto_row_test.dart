@@ -73,6 +73,22 @@ void main() {
       );
     });
 
+    test('removing a mirror hides it locally and leaves its source intact', () {
+      final source = _folder('mine', 'Najdorf prep');
+      final draft = spaceLibraryFolderDraft(source);
+      final item = SpaceAutoItem(
+        shortcut: draft,
+        origin: SpaceAutoOrigin.library,
+        folder: source,
+      );
+      expect(
+        composeSpaceAutoRow(leading: [item], hidden: {item.key}).leading,
+        isEmpty,
+      );
+      expect(item.folder, source);
+      expect(composeSpaceAutoRow(leading: [item]).leading.single, item);
+    });
+
     test('a mirrored tile stands in for its pin', () {
       final twic = spaceLibraryFolderDraft(kTwicFolder);
       final row = composeSpaceAutoRow(

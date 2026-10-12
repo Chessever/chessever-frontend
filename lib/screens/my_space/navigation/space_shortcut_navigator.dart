@@ -35,6 +35,9 @@ import 'package:chessever2/screens/my_likes/provider/my_likes_provider.dart'
 import 'package:chessever2/screens/my_space/actions/space_share.dart'
     show isSpaceCalendarEvent;
 import 'package:chessever2/screens/my_space/models/space_shortcut.dart';
+import 'package:chessever2/screens/my_prep/models/prep_models.dart';
+import 'package:chessever2/screens/my_prep/prep_profile_screen.dart';
+import 'package:chessever2/screens/my_prep/providers/prep_providers.dart';
 import 'package:chessever2/screens/my_space/providers/space_shortcuts_provider.dart';
 import 'package:chessever2/screens/player_profile/player_profile_data_source.dart';
 import 'package:chessever2/screens/player_profile/player_profile_screen.dart';
@@ -147,7 +150,27 @@ Future<bool> _open(BuildContext context, WidgetRef ref, SpaceShortcut s) {
     SpaceShortcutKind.likes => _push(context, const MyLikesScreen()),
     SpaceShortcutKind.link => _openLink(context, s.targetId),
     SpaceShortcutKind.collection => _openCollection(context, ref, s),
+    SpaceShortcutKind.prepProfile => _openPrepProfile(context, s),
   };
+}
+
+Future<bool> _openPrepProfile(BuildContext context, SpaceShortcut s) async {
+  final container = ProviderScope.containerOf(context, listen: false);
+  final ready = Completer<AsyncValue<List<PrepProfile>>>();
+  final subscription = container.listen(prepProfilesProvider, (_, profiles) {
+    if (!profiles.isLoading && !ready.isCompleted) ready.complete(profiles);
+  }, fireImmediately: true);
+  final AsyncValue<List<PrepProfile>> profiles;
+  try {
+    profiles = await ready.future;
+  } finally {
+    subscription.close();
+  }
+  if (!context.mounted ||
+      !(profiles.valueOrNull?.any((p) => p.id == s.targetId) ?? false)) {
+    return false;
+  }
+  return _push(context, PrepProfileScreen(profileId: s.targetId));
 }
 
 /// A published collection, by id, from the team's list (usually warm: the
