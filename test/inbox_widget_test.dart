@@ -4,6 +4,8 @@ import 'package:chessever2/providers/app_version_provider.dart';
 import 'package:chessever2/providers/auth_state_provider.dart';
 import 'package:chessever2/repository/authentication/model/app_user.dart';
 import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
+import 'package:chessever2/screens/feed/news/news_cover.dart';
+import 'package:chessever2/screens/feed/news/news_rich_blocks.dart';
 import 'package:chessever2/screens/inbox/inbox_message.dart';
 import 'package:chessever2/screens/inbox/inbox_provider.dart';
 import 'package:chessever2/screens/inbox/inbox_screen.dart';
@@ -242,6 +244,62 @@ void main() {
       await _close(tester);
     },
   );
+  testWidgets('a Markdown message renders as Markdown with its image', (
+    tester,
+  ) async {
+    final source = FakeInboxSource()
+      ..rows[inboxOwnerA] = [
+        InboxMessage(
+          id: inboxIdA,
+          title: 'Fixture: rich message',
+          body:
+              '## LOCAL FIXTURE heading\n\nA **bold** word and a '
+              '[link](https://chessever.com/feed).\n\n<script>x</script>',
+          publishedAt: DateTime.utc(2026, 9, 30),
+          isMarkdown: true,
+          imageUrl: 'https://chessever.com/fixture.webp',
+          actionLabel: 'Tap to see',
+          actionUrl: 'https://chessever.com/feed',
+        ),
+        InboxMessage(
+          id: inboxIdB,
+          title: 'Fixture: picture from elsewhere',
+          body: 'LOCAL FIXTURE ONLY',
+          publishedAt: DateTime.utc(2026, 9, 29),
+          imageUrl: 'https://tracker.example/pixel.png',
+          actionLabel: 'Never drawn',
+          actionUrl: 'javascript:alert(1)',
+        ),
+      ];
+    await _pump(tester, source);
+    await tester.pump(const Duration(milliseconds: 300));
+    // The list shows running text, never Markdown marks.
+    expect(find.textContaining('LOCAL FIXTURE heading A bold'), findsOneWidget);
+    expect(find.textContaining('##'), findsNothing);
+    // Only the picture on an allowed origin is asked for.
+    expect(find.byType(NewsNetworkImage), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('inbox-row-$inboxIdA')));
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 1));
+    expect(find.byType(NewsMarkdown), findsOneWidget);
+    expect(find.byType(SelectableText), findsNothing);
+    expect(find.byKey(const ValueKey('inbox-image')), findsOneWidget);
+    expect(find.text('LOCAL FIXTURE heading'), findsOneWidget);
+    expect(find.textContaining('**'), findsNothing);
+    expect(find.byKey(const ValueKey('inbox-action')), findsOneWidget);
+    expect(find.text('Tap to see'), findsOneWidget);
+    expect(source.marks, [(inboxOwnerA, inboxIdA)]);
+    // A button whose link is not http(s) is left out, with no dead control.
+    await tester.pageBack();
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 1));
+    await tester.tap(find.byKey(const ValueKey('inbox-row-$inboxIdB')));
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 1));
+    expect(find.byKey(const ValueKey('inbox-full-text')), findsOneWidget);
+    expect(find.byKey(const ValueKey('inbox-action')), findsNothing);
+    await _close(tester);
+  });
   testWidgets(
     'read failure keeps cyan and text; explicit Retry confirms read',
     (tester) async {

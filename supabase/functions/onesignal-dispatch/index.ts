@@ -9,6 +9,7 @@ import {
 import { collectFavoriteMatches } from "./favorite_match.ts";
 import { filterGameStartedPlayerRecipients } from "./player_game_recipients.ts";
 import { chunk, packForUrlBudget } from "./postgrest_in.ts";
+import { pushImageUrl } from "./push_image.ts";
 import {
   smartEventAverageRating,
   type SmartEventRound,
@@ -389,6 +390,7 @@ async function processItem(item: OutboxItem) {
         title,
         body,
         url: optionalPayloadString(item.payload, "url"),
+        imageUrl: pushImageUrl(item.payload?.image_url),
         data: { ...payloadData, type: "call_to_action" },
         androidChannelId: channelForEvent("call_to_action"),
       });
@@ -2466,6 +2468,8 @@ type NotificationPayload = {
   androidChannelId?: string;
   iosSound?: string;
   androidSound?: string;
+  /** A picture shown with the push; see [pushImageUrl]. */
+  imageUrl?: string | null;
 };
 
 const ANDROID_CHANNELS = {
@@ -2961,6 +2965,15 @@ function buildOneSignalPayload(notification: NotificationPayload) {
 
   if (notification.url) {
     payload.url = notification.url;
+  }
+
+  if (notification.imageUrl) {
+    // Android draws the big picture as is. iOS downloads an attachment only
+    // through a notification service extension, so `mutable_content` is set
+    // for the app builds that carry one; without it the text still arrives.
+    payload.big_picture = notification.imageUrl;
+    payload.ios_attachments = { image: notification.imageUrl };
+    payload.mutable_content = true;
   }
 
   // NOTE: android_channel_id omitted — channels are not registered in

@@ -13,6 +13,37 @@
   configuration and credentials are unchanged. The phone code shipped as
   `36.0.2+3580`. Local implementation/testing grants no remote authority.
 
+## Rich messages (36.4.2)
+
+Migration: `supabase/migrations/20261012200000_editorial_inbox_rich.sql`, additive
+on top of the contract below. Where the two disagree, this section is current.
+
+- `editorial_inbox_messages.body_format` is `plain` (default; every message
+  published before this) or `markdown`. The phone renders Markdown with the
+  article reader's `NewsMarkdown` after `sanitizeNewsMarkdown`; raw HTML is never
+  interpreted. An unknown format is shown literally.
+- `editorial_inbox_messages.image_url` is one optional attached image: a
+  thumbnail on the list card, full width above the opened text.
+- `action_label` + `action_url` (both or neither) are one button under the opened
+  text: the label after an up-right arrow. A chessever.com link opens the matching
+  screen in the app through the deep-link router; any other https link opens the
+  browser. A link that is not http(s) draws no button.
+- The phone loads a picture on its own only from the origins article pictures
+  use (`isNewsImageSourceAllowed`: this project's public Storage, chessever.com).
+  An attached image anywhere else is not shown; an inline Markdown image
+  anywhere else becomes a link. Admin uploads go to the public
+  `editorial-inbox` bucket (5 MB; JPEG, PNG, WebP), written by the service role only.
+- RPCs: `list_editorial_inbox_v2` (authenticated), `save_editorial_inbox_draft_v2`
+  and `publish_editorial_inbox_v2` (service role). The originals stay for older
+  builds, which show a Markdown body as its source text and no image. The phone
+  asks for v2 and falls back to the original when the function does not exist.
+- A push is separate from the message. Its title, text and optional image travel
+  in the `notification_outbox` payload (`title`, `body`, `image_url`,
+  `data.inbox_message_id`) and are not stored on the message. `onesignal-dispatch`
+  passes `image_url` on as `big_picture` (Android) and `ios_attachments` with
+  `mutable_content`. **iOS shows a push picture only with a notification service
+  extension, which the app does not have yet**; until then iPhones get the text.
+
 ## Data and access contract
 
 Migration: `supabase/migrations/20261010120000_editorial_inbox.sql`.

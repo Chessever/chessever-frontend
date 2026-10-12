@@ -1,18 +1,25 @@
 import 'dart:async';
 
 import 'package:chessever2/screens/collections/event_view_shell.dart';
+import 'package:chessever2/screens/feed/news/news_content.dart';
+import 'package:chessever2/screens/feed/news/news_cover.dart';
+import 'package:chessever2/screens/feed/news/news_rich_blocks.dart';
 import 'package:chessever2/screens/for_you/discovery/widgets/discovery_common.dart';
 import 'package:chessever2/screens/my_space/widgets/pixel_art.dart';
+import 'package:chessever2/screens/my_space/widgets/space_glyphs.dart';
 import 'package:chessever2/theme/app_colors.dart';
+import 'package:chessever2/services/deep_link_service.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/app_button.dart';
+import 'package:chessever2/widgets/app_snack.dart';
 import 'package:chessever2/widgets/generic_error_widget.dart';
 import 'package:chessever2/widgets/skeleton_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:intl/intl.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import 'inbox_message.dart';
 import 'inbox_provider.dart';
@@ -21,6 +28,14 @@ import 'inbox_unread_dot.dart';
 String _date(BuildContext context, DateTime date) => DateFormat.yMMMd(
   Localizations.localeOf(context).toString(),
 ).format(date.toLocal());
+
+/// A message's attached image, when it may load on its own: only from the
+/// origins article pictures load from (this project's public Storage and
+/// chessever.com), so opening a message never calls out to another host.
+Uri? inboxImageUri(String? url) {
+  final uri = resolveNewsHref(url);
+  return uri != null && isNewsImageSourceAllowed(uri) ? uri : null;
+}
 
 /// Reading width of a message's text on tablets; phones use the full width.
 const double _readingWidth = 640;
@@ -116,7 +131,8 @@ class _InboxScreenState extends ConsumerState<InboxScreen> {
             _InboxRow(
               key: ValueKey('inbox-row-${message.id}'),
               title: message.title,
-              preview: message.body,
+              preview: message.previewText,
+              image: inboxImageUri(message.imageUrl),
               date: _date(context, message.publishedAt),
               unreadDot: message.isUnread
                   ? InboxUnreadDot(key: ValueKey('inbox-row-dot-${message.id}'))
@@ -141,7 +157,8 @@ class _InboxScreenState extends ConsumerState<InboxScreen> {
 /// One message in the list, in the hub's card frame: the title and its date
 /// on one line, the first lines of the text beneath. Unread shows in the
 /// title's weight and a dot at the end of the text, a place kept once the
-/// message is read so nothing reflows.
+/// message is read so nothing reflows. An attached image shows as a thumbnail
+/// at the card's end.
 class _InboxRow extends StatelessWidget {
   const _InboxRow({
     super.key,
@@ -150,10 +167,12 @@ class _InboxRow extends StatelessWidget {
     required this.date,
     required this.unreadDot,
     required this.onTap,
+    this.image,
   });
 
   final String title;
   final String preview;
+  final Uri? image;
   final String date;
   final Widget? unreadDot;
   final VoidCallback? onTap;
@@ -170,70 +189,98 @@ class _InboxRow extends StatelessWidget {
       weight: FontWeight.w400,
       color: colors.textSecondary,
     );
+    final picture = image;
+    final thumb = 56.sp;
+    final text = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.baseline,
+          textBaseline: TextBaseline.alphabetic,
+          children: [
+            Expanded(
+              child: Text(
+                title,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: discoveryType(
+                  context,
+                  DiscoveryType.body,
+                  weight: unread ? FontWeight.w700 : FontWeight.w500,
+                  color: unread ? colors.textPrimary : colors.textPrimaryMuted,
+                ),
+              ),
+            ),
+            SizedBox(width: 12.w),
+            Text(
+              date,
+              maxLines: 1,
+              style: discoveryType(context, DiscoveryType.meta, tabular: true),
+            ),
+          ],
+        ),
+        SizedBox(height: 4.h),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: Text(
+                preview,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: previewStyle,
+              ),
+            ),
+            SizedBox(width: 12.w),
+            SizedBox(
+              width: _dotSlot,
+              // Level with the text's first line, whatever its size.
+              height: MediaQuery.textScalerOf(
+                context,
+              ).scale(previewStyle.fontSize! * previewStyle.height!),
+              child: Center(child: unreadDot),
+            ),
+          ],
+        ),
+      ],
+    );
     final card = Container(
       decoration: BoxDecoration(
         color: colors.surface,
         borderRadius: BorderRadius.circular(8.br),
       ),
       padding: EdgeInsets.fromLTRB(14.sp, 12.sp, 14.sp, 14.sp),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.baseline,
-            textBaseline: TextBaseline.alphabetic,
-            children: [
-              Expanded(
-                child: Text(
-                  title,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: discoveryType(
-                    context,
-                    DiscoveryType.body,
-                    weight: unread ? FontWeight.w700 : FontWeight.w500,
-                    color: unread ? colors.textPrimary : colors.textPrimaryMuted,
+      child: picture == null
+          ? text
+          : Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(child: text),
+                SizedBox(width: 12.w),
+                ExcludeSemantics(
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(4.br),
+                    child: NewsNetworkImage(
+                      url: picture.toString(),
+                      pixelWidth:
+                          (thumb * MediaQuery.devicePixelRatioOf(context))
+                              .round(),
+                      width: thumb,
+                      height: thumb,
+                      fit: BoxFit.cover,
+                      placeholder: (context, _) => ColoredBox(
+                        color: colors.surfaceRecessed,
+                        child: SizedBox.square(dimension: thumb),
+                      ),
+                      errorWidget: (context, _, _) => ColoredBox(
+                        color: colors.surfaceRecessed,
+                        child: SizedBox.square(dimension: thumb),
+                      ),
+                    ),
                   ),
                 ),
-              ),
-              SizedBox(width: 12.w),
-              Text(
-                date,
-                maxLines: 1,
-                style: discoveryType(
-                  context,
-                  DiscoveryType.meta,
-                  tabular: true,
-                ),
-              ),
-            ],
-          ),
-          SizedBox(height: 4.h),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(
-                child: Text(
-                  // Collapse line breaks so two lines carry real text.
-                  preview.replaceAll(RegExp(r'\s+'), ' ').trim(),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: previewStyle,
-                ),
-              ),
-              SizedBox(width: 12.w),
-              SizedBox(
-                width: _dotSlot,
-                // Level with the text's first line, whatever its size.
-                height: MediaQuery.textScalerOf(context).scale(
-                  previewStyle.fontSize! * previewStyle.height!,
-                ),
-                child: Center(child: unreadDot),
-              ),
-            ],
-          ),
-        ],
-      ),
+              ],
+            ),
     );
     final open = onTap;
     return Padding(
@@ -336,6 +383,30 @@ class InboxMessageScreen extends ConsumerStatefulWidget {
 class _InboxMessageScreenState extends ConsumerState<InboxMessageScreen> {
   bool _scheduledRead = false;
 
+  /// A link in a message: a ChessEver page opens in the app, anything else
+  /// in the browser.
+  Future<void> _openLink(Uri uri) async {
+    unawaited(HapticFeedbackService.buttonPress());
+    final route = newsInAppRoute(uri);
+    if (route != null && DeepLinkService.instance.openLinkFromApp(route)) {
+      return;
+    }
+    final messenger = ScaffoldMessenger.maybeOf(context);
+    var opened = false;
+    try {
+      opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } catch (error) {
+      debugPrint('[Inbox] link failed: $error');
+    }
+    if (!opened && messenger != null) {
+      showAppSnackOn(
+        messenger,
+        "Couldn't open the link.",
+        tone: AppSnackTone.danger,
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(inboxProvider);
@@ -369,6 +440,14 @@ class _InboxMessageScreenState extends ConsumerState<InboxMessageScreen> {
     final markError = state.markErrors[message.id];
     final cacheError = state.cacheError;
     final side = EdgeInsets.symmetric(horizontal: discoveryGutter);
+    final picture = inboxImageUri(message.imageUrl);
+    // The button's link: http(s) only, a ChessEver page opening in the app.
+    final actionLabel = message.actionLabel;
+    final actionUri = resolveNewsHref(message.actionUrl);
+    final pictureWidth =
+        (MediaQuery.sizeOf(context).width.clamp(0, _readingWidth) *
+                MediaQuery.devicePixelRatioOf(context))
+            .round();
     return _inboxShell(
       child: Center(
         child: ConstrainedBox(
@@ -401,18 +480,72 @@ class _InboxMessageScreenState extends ConsumerState<InboxMessageScreen> {
                 ),
               ),
               SizedBox(height: 20.h),
-              Padding(
-                padding: side,
-                // No HTML/Markdown/link interpretation, attachments or CTAs.
-                child: SelectableText(
-                  message.body,
-                  key: const ValueKey('inbox-full-text'),
-                  style: AppTypography.textMdRegular.copyWith(
-                    color: colors.textPrimary,
-                    height: 1.6,
+              if (picture != null) ...[
+                Padding(
+                  padding: side,
+                  child: ExcludeSemantics(
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(8.br),
+                      child: NewsNetworkImage(
+                        key: const ValueKey('inbox-image'),
+                        url: picture.toString(),
+                        pixelWidth: pictureWidth > 0 ? pictureWidth : null,
+                        fit: BoxFit.fitWidth,
+                        width: double.infinity,
+                        placeholder: (context, _) => AspectRatio(
+                          aspectRatio: 16 / 9,
+                          child: ColoredBox(color: colors.surface),
+                        ),
+                        errorWidget: (context, _, _) => const SizedBox.shrink(),
+                      ),
+                    ),
                   ),
                 ),
+                SizedBox(height: 20.h),
+              ],
+              Padding(
+                padding: side,
+                child: message.isMarkdown
+                    // Markdown only, in the article reader's own renderer:
+                    // raw HTML is never interpreted.
+                    ? KeyedSubtree(
+                        key: const ValueKey('inbox-full-text'),
+                        child: NewsMarkdown(
+                          markdown: sanitizeNewsMarkdown(message.body),
+                          onLink: _openLink,
+                        ),
+                      )
+                    // Plain text is shown exactly as written.
+                    : SelectableText(
+                        message.body,
+                        key: const ValueKey('inbox-full-text'),
+                        style: AppTypography.textMdRegular.copyWith(
+                          color: colors.textPrimary,
+                          height: 1.6,
+                        ),
+                      ),
               ),
+              if (actionLabel != null && actionUri != null) ...[
+                SizedBox(height: 24.h),
+                Padding(
+                  padding: side,
+                  child: Semantics(
+                    button: true,
+                    label: actionLabel,
+                    excludeSemantics: true,
+                    child: AppButton(
+                      key: const ValueKey('inbox-action'),
+                      text: actionLabel,
+                      icon: SpaceGlyph(
+                        SpaceGlyphKind.arrowUpRight,
+                        size: 14.sp,
+                        ink: colors.textInverse,
+                      ),
+                      onPressed: () => _openLink(actionUri),
+                    ),
+                  ),
+                ),
+              ],
               if (markError != null || cacheError != null)
                 SizedBox(height: 12.h),
               if (markError != null)

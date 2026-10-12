@@ -107,6 +107,99 @@ void main() {
       );
     }
   });
+  test('rich fields round-trip; rows without them are plain text', () {
+    final rich = InboxMessage.fromJson({
+      ...inboxFixture(inboxIdA).toJson(),
+      'body_format': 'markdown',
+      'image_url': ' https://chessever.com/a.webp ',
+      'action_label': ' Tap to see ',
+      'action_url': 'https://chessever.com/feed',
+    });
+    expect(rich.actionLabel, 'Tap to see');
+    expect(rich.actionUrl, 'https://chessever.com/feed');
+    expect(rich.withReadAt(inboxReadTime).actionLabel, 'Tap to see');
+    // Half a button is no button.
+    expect(
+      InboxMessage.fromJson({...rich.toJson(), 'action_url': null}).actionLabel,
+      isNull,
+    );
+    expect(rich.isMarkdown, true);
+    expect(rich.imageUrl, 'https://chessever.com/a.webp');
+    final copy = InboxMessage.fromJson(jsonDecode(jsonEncode(rich.toJson())));
+    expect(copy.toJson(), rich.toJson());
+    expect(copy.withReadAt(inboxReadTime).isMarkdown, true);
+    expect(copy.withReadAt(inboxReadTime).imageUrl, rich.imageUrl);
+
+    final legacy = inboxFixture(inboxIdA).toJson()
+      ..remove('body_format')
+      ..remove('image_url')
+      ..remove('action_label')
+      ..remove('action_url');
+    final plain = InboxMessage.fromJson(legacy);
+    expect(plain.isMarkdown, false);
+    expect(plain.imageUrl, isNull);
+    expect(plain.actionLabel, isNull);
+    // A format this build does not know is shown literally, never guessed at.
+    expect(
+      InboxMessage.fromJson({...legacy, 'body_format': 'html'}).isMarkdown,
+      false,
+    );
+  });
+  test('a Markdown body previews as running text', () {
+    final message = InboxMessage(
+      id: inboxIdA,
+      title: 'LOCAL FIXTURE',
+      body:
+          '## What is new\n\n![board](https://chessever.com/b.png)\n\n'
+          '- **Pin** a _player_ in [Prep](https://chessever.com/prep)\n'
+          '1. `Open` it\n\n---\n\n> ~~Old~~ notes stay.',
+      publishedAt: DateTime.utc(2026, 9, 30),
+      isMarkdown: true,
+    );
+    expect(
+      message.previewText,
+      'What is new Pin a player in Prep Open it Old notes stay.',
+    );
+    // Plain text keeps its marks: they are what the author typed.
+    expect(
+      InboxMessage(
+        id: inboxIdA,
+        title: 'LOCAL FIXTURE',
+        body: '**kept**\nas typed',
+        publishedAt: DateTime.utc(2026, 9, 30),
+      ).previewText,
+      '**kept** as typed',
+    );
+  });
+  test(
+    'a database without the rich listing is asked once, then served as before',
+    () async {
+      final paths = <String>[];
+      final client = _client((request) async {
+        paths.add(request.url.path);
+        if (request.url.path.endsWith('_v2')) {
+          return http.Response(
+            '{"code":"PGRST202","message":"LOCAL FIXTURE no such function"}',
+            404,
+          );
+        }
+        final row = inboxFixture(inboxIdA).toJson()
+          ..remove('body_format')
+          ..remove('image_url');
+        return http.Response(jsonEncode([row]), 200);
+      });
+      addTearDown(client.dispose);
+      await _signIn(client, inboxOwnerA);
+      final source = SupabaseInboxSource(() => client);
+      expect((await source.fetch(inboxOwnerA)).single.isMarkdown, false);
+      expect(await source.fetch(inboxOwnerA), hasLength(1));
+      expect(paths, [
+        '/rest/v1/rpc/list_editorial_inbox_v2',
+        '/rest/v1/rpc/list_editorial_inbox',
+        '/rest/v1/rpc/list_editorial_inbox',
+      ]);
+    },
+  );
   test(
     'real Supabase adapter paginates every row with exact cursor and owner JWT',
     () async {
@@ -126,7 +219,7 @@ void main() {
       var page = 0;
       final requests = <Map<String, dynamic>>[];
       final client = _client((request) async {
-        expect(request.url.path, '/rest/v1/rpc/list_editorial_inbox');
+        expect(request.url.path, '/rest/v1/rpc/list_editorial_inbox_v2');
         expect(
           request.headers['authorization'],
           'Bearer LOCAL-FIXTURE-TOKEN-$inboxOwnerA',

@@ -20,6 +20,14 @@ class SupabaseInboxSource implements InboxSource {
   SupabaseClient get client => _client();
   static const _requestTimeout = Duration(seconds: 15);
 
+  /// Whether the listing that carries a message's format and image exists
+  /// on this database; cleared the first time it turns out not to.
+  bool _richListing = true;
+
+  /// PostgREST's and Postgres's "no such function".
+  static bool _isMissingFunction(PostgrestException error) =>
+      error.code == 'PGRST202' || error.code == '42883';
+
   @override
   bool hasSession(String ownerId) {
     try {
@@ -64,20 +72,28 @@ class SupabaseInboxSource implements InboxSource {
     while (true) {
       await _freshSession(requestClient, ownerId);
       final session = _session(requestClient, ownerId);
-      final rows = await requestClient
-          .rpc(
-            'list_editorial_inbox',
-            params: {
-              'p_before_published_at': cursor?.publishedAt
-                  .toUtc()
-                  .toIso8601String(),
-              'p_before_id': cursor?.id,
-              'p_limit': 100,
-            },
-          )
+      final params = {
+        'p_before_published_at': cursor?.publishedAt.toUtc().toIso8601String(),
+        'p_before_id': cursor?.id,
+        'p_limit': 100,
+      };
+      Future<dynamic> list(String rpc) => requestClient
+          .rpc(rpc, params: params)
           // Keep A's credential pinned if the SDK awaits again during dispatch.
           .setHeader('Authorization', 'Bearer ${session.accessToken}')
           .timeout(_requestTimeout);
+      dynamic rows;
+      if (_richListing) {
+        try {
+          rows = await list('list_editorial_inbox_v2');
+        } on PostgrestException catch (error) {
+          if (!_isMissingFunction(error)) rethrow;
+          // A database from before rich messages: its listing still answers,
+          // with text only. Asked once, not on every page and refresh.
+          _richListing = false;
+        }
+      }
+      rows ??= await list('list_editorial_inbox');
       _session(requestClient, ownerId);
       final page = (rows as List)
           .map(
