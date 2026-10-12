@@ -128,13 +128,16 @@ class FavoriteEventsNotifier extends AsyncNotifier<List<FavoriteEvent>> {
       eventName: eventName,
     );
     final storeId = resolved.storeId;
-    final calAlias = calendarEventFavoriteIdFromName(eventName);
+    // A collection or a smart event is not a tournament: it carries no
+    // calendar alias, so its star never stands in for a same-named event.
+    final isEvent = !isNonEventFavoriteId(eventId);
 
     final metadata = <String, dynamic>{
       if (timeControl != null) 'timeControl': timeControl,
       if (maxAvgElo != null) 'maxAvgElo': maxAvgElo,
       if (dates != null) 'dates': dates,
-      'cal_event_alias': calAlias,
+      if (isEvent)
+        'cal_event_alias': calendarEventFavoriteIdFromName(eventName),
       if (resolved.sourceEventId != null)
         'source_event_id': resolved.sourceEventId,
       ...?extraMetadata,
@@ -203,7 +206,8 @@ class FavoriteEventsNotifier extends AsyncNotifier<List<FavoriteEvent>> {
 
       // Starring an event is an opt-in for event-round alerts. Do not force
       // push_enabled (needs OS permission); only ensure the category flag.
-      unawaited(_ensureFavoriteEventAlertsEnabled(userId));
+      // A collection or a smart event asks first (see star_notifications).
+      if (isEvent) unawaited(_ensureFavoriteEventAlertsEnabled(userId));
 
       // STEP 3: Fetch fresh data from Supabase (without loading state)
       final freshEvents = await _loadFavorites();
@@ -250,13 +254,19 @@ class FavoriteEventsNotifier extends AsyncNotifier<List<FavoriteEvent>> {
       final idsToDelete = <String>{
         eventId,
         for (final e in removed) e.eventId,
+        // Older collection and smart-event rows carry a calendar alias they
+        // were never an alias of; following it would unstar a real event.
         for (final e in removed)
-          if (e.metadata['cal_event_alias'] is String)
+          if (!isNonEventFavoriteId(e.eventId) &&
+              e.metadata['cal_event_alias'] is String)
             e.metadata['cal_event_alias'] as String,
         for (final e in removed)
-          if (e.metadata['source_event_id'] is String)
+          if (!isNonEventFavoriteId(e.eventId) &&
+              e.metadata['source_event_id'] is String)
             e.metadata['source_event_id'] as String,
-        if (eventName != null && eventName.trim().isNotEmpty)
+        if (!isNonEventFavoriteId(eventId) &&
+            eventName != null &&
+            eventName.trim().isNotEmpty)
           calendarEventFavoriteIdFromName(eventName),
       };
       for (final id in idsToDelete) {
@@ -378,6 +388,12 @@ class FavoriteEventsNotifier extends AsyncNotifier<List<FavoriteEvent>> {
       metadata: favorite.metadata,
     )) {
       return true;
+    }
+    // Collections and smart events match by id alone (see
+    // [isNonEventFavoriteId]); the name bridges below are for tournaments.
+    if (isNonEventFavoriteId(favorite.eventId) ||
+        isNonEventFavoriteId(candidateId)) {
+      return false;
     }
     // Also match when the card is a cal_event_* alias of the stored name
     // or the stored row's cal_event_alias equals the candidate.

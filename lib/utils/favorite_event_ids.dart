@@ -25,6 +25,17 @@ bool isSyntheticFavoriteEventId(String eventId) {
   return eventId.startsWith('cal_event_') || eventId.startsWith('twic_event_');
 }
 
+/// True when [eventId] names a starred row that is not a tournament: a
+/// collection (`collection:<slug>`) or a smart event (`smart_event:…`).
+///
+/// These share the favorites table but never the tournament aliasing: a
+/// collection titled like the event it covers must not be read as that
+/// event's star, nor the other way round. They match by exact id only.
+bool isNonEventFavoriteId(String eventId) {
+  return eventId.startsWith('collection:') ||
+      eventId.startsWith('smart_event:');
+}
+
 /// All id strings that should be treated as "this event" for star UI and
 /// recipient resolution, given a stored or card [eventId] and optional
 /// display [eventName].
@@ -37,6 +48,7 @@ Set<String> favoriteEventIdCandidates(
   String? eventName,
 }) {
   final ids = <String>{eventId};
+  if (isNonEventFavoriteId(eventId)) return ids;
   final name = eventName?.trim();
   if (name != null && name.isNotEmpty) {
     ids.add(calendarEventFavoriteIdFromName(name));
@@ -57,6 +69,10 @@ bool favoriteEventMatchesId({
   Map<String, dynamic>? metadata,
 }) {
   if (storedEventId == candidateId) return true;
+  if (isNonEventFavoriteId(storedEventId) ||
+      isNonEventFavoriteId(candidateId)) {
+    return false;
+  }
 
   final meta = metadata ?? const <String, dynamic>{};
   final calAlias = meta['cal_event_alias'] as String?;

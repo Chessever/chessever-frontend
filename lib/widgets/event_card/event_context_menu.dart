@@ -155,7 +155,9 @@ bool eventIsFavorited(
           eventName: e.eventName,
           metadata: e.metadata,
         ) ||
-        e.eventName.trim().toLowerCase() == title,
+        // A starred collection titled like this event is not its star.
+        (!isNonEventFavoriteId(e.eventId) &&
+            e.eventName.trim().toLowerCase() == title),
   );
 }
 

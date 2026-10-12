@@ -602,6 +602,7 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
       summary: smartEventCardSummary(request),
       live: watchSmartEventLive(ref, request),
       spaceDraft: smartEventSpaceDraft(request),
+      starRequest: request,
       onTap:
           () => Navigator.of(context).push(
             MaterialPageRoute(

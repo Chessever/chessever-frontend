@@ -1205,12 +1205,6 @@ final collectionEngagementProvider = Provider<CollectionEngagement>(
 Future<void> trackCollectionRead(WidgetRef ref, Collection collection) =>
     ref.read(collectionEngagementProvider).trackRead(collection);
 
-Future<void> syncCollectionStar(
-  WidgetRef ref,
-  Collection collection,
-  bool starred,
-) => ref.read(collectionEngagementProvider).setStar(collection.slug, starred);
-
 final collectionFilteredContentsProvider = FutureProvider.autoDispose
     .family<
       CollectionContents,

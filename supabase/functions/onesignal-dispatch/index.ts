@@ -10,6 +10,13 @@ import { collectFavoriteMatches } from "./favorite_match.ts";
 import { filterGameStartedPlayerRecipients } from "./player_game_recipients.ts";
 import { chunk, packForUrlBudget } from "./postgrest_in.ts";
 import {
+  smartEventAverageRating,
+  type SmartEventRound,
+  smartEventsNeedGameAverages,
+  type SmartEventSubscription,
+  smartEventSubscribersForRound,
+} from "./smart_event_match.ts";
+import {
   describeError,
   isTransientError,
   type PostgrestResult,
@@ -95,6 +102,12 @@ const INVOCATION_DEADLINE_MS = 120_000;
 const STOP_CLAIMING_WITH_MS = 20_000;
 const ONESIGNAL_EXTERNAL_ID_CHUNK_SIZE = 1000;
 const ONESIGNAL_SUBSCRIPTION_ID_CHUNK_SIZE = 20000;
+/** Round alerts a starred smart event receives, like a starred event. */
+const SMART_EVENT_ROUND_TYPES = new Set([
+  "round_started",
+  "round_heads_up",
+  "round_finished",
+]);
 const dispatchTokenCache: { token: string | null; expiresAtMs: number } = {
   token: null,
   expiresAtMs: 0,
@@ -702,6 +715,41 @@ async function processItem(item: OutboxItem) {
         status: "sent",
         recipients: playerRecipients.length + eventRecipients.length,
       };
+    }
+
+    if (item.event_type === "collection_games_added") {
+      const slug = optionalPayloadString(item.payload, "slug");
+      if (!slug) {
+        await markSkipped(item.id, "missing_collection_slug");
+        return {
+          id: item.id,
+          status: "skipped",
+          reason: "missing_collection_slug",
+        };
+      }
+
+      const subscriberIds = await resolveCollectionSubscribers(slug);
+      if (subscriberIds.length === 0) {
+        await markSkipped(item.id, "no_subscribers");
+        return { id: item.id, status: "skipped", reason: "no_subscribers" };
+      }
+
+      const eligible = await filterCollectionRecipients(subscriberIds);
+      if (eligible.length === 0) {
+        await markSkipped(item.id, "no_recipients");
+        return { id: item.id, status: "skipped", reason: "no_recipients" };
+      }
+
+      await sendOneSignal(eligible, {
+        title: optionalPayloadString(item.payload, "title") ?? "Collection",
+        body: collectionGamesAddedBody(item.payload?.added),
+        url: null,
+        data: { type: "collection_games_added", collection_slug: slug },
+        androidChannelId: channelForEvent("collection_games_added"),
+      });
+
+      await markSent(item.id);
+      return { id: item.id, status: "sent", recipients: eligible.length };
     }
 
     if (item.event_type.startsWith("book_")) {
@@ -1316,6 +1364,7 @@ async function buildContext(item: OutboxItem) {
 
   let playerGameIds = new Map<string, Set<string>>();
   let roundBoards = new Map<string, RoundBoard>();
+  let roundGameAverages: number[] | null = null;
 
   if (
     (item.event_type === "round_started" ||
@@ -1323,6 +1372,7 @@ async function buildContext(item: OutboxItem) {
     item.round_id
   ) {
     const roundPlayers = await fetchRoundPlayers(item.round_id);
+    roundGameAverages = roundPlayers.gameAverages;
     for (const name of roundPlayers.playerNames) {
       playerNames.add(name);
     }
@@ -1333,12 +1383,25 @@ async function buildContext(item: OutboxItem) {
     roundBoards = roundPlayers.roundBoards;
   }
 
+  // Round-level alerts only: a board alert belongs to its players' followers.
+  const smartEventUserIds = groupBroadcastId && item.round_id &&
+      SMART_EVENT_ROUND_TYPES.has(item.event_type)
+    ? await resolveSmartEventSubscribers({
+      item,
+      roundId: item.round_id,
+      groupBroadcastId,
+      tourId,
+      gameAverages: roundGameAverages,
+    })
+    : [];
+
   const { eventUserIds, playerUserIds, playerFavoriteRows } =
     await resolveRecipients({
       groupBroadcastId,
       eventName,
       fideIds: Array.from(fideIdSet),
       players: Array.from(playerNames),
+      smartEventUserIds,
     });
 
   // Per-user favorite names word board alerts as well as round heads-up.
@@ -1511,8 +1574,11 @@ async function fetchRoundPlayers(roundId: string) {
   // single id) because a knockout round can pair the same player twice.
   const playerGameIds = new Map<string, Set<string>>();
   const roundBoards = new Map<string, RoundBoard>();
+  // Each board's two-player average, for starred smart events' level floors.
+  const gameAverages: number[] = [];
 
   for (const row of (data ?? []) as RoundGameRow[]) {
+    gameAverages.push(smartEventAverageRating(row.players));
     if (row.player_white) playerNames.add(row.player_white);
     if (row.player_black) playerNames.add(row.player_black);
     for (const id of row.player_fide_ids ?? []) {
@@ -1547,7 +1613,75 @@ async function fetchRoundPlayers(roundId: string) {
     fideIds: Array.from(fideIds),
     playerGameIds,
     roundBoards,
+    gameAverages,
   };
+}
+
+/**
+ * The users whose starred smart events gather this round and who turned
+ * their notifications on. They join the event-starred audience, so the
+ * round's mute, category and time-control rules apply to them unchanged.
+ *
+ * Never throws: a failed lookup costs these users one alert, not the round
+ * its send.
+ */
+async function resolveSmartEventSubscribers(args: {
+  item: OutboxItem;
+  roundId: string;
+  groupBroadcastId: string | null;
+  tourId: string | null;
+  gameAverages: number[] | null;
+}): Promise<string[]> {
+  try {
+    // Only the criteria: the row's event snapshot can run to kilobytes.
+    const subscriptions = (await fetchAllPages<unknown>(
+      "Smart event subscription lookup",
+      (from, to) =>
+        supabase
+          .from("user_favorite_events")
+          .select(
+            "user_id,min_elo:metadata->minElo,max_elo:metadata->maxElo," +
+              "formats:metadata->formatsAndStates,eco:metadata->ecoCode",
+          )
+          .eq("metadata->>type", "smart_event")
+          .eq("metadata->>notificationsEnabled", "true")
+          .order("id")
+          .range(from, to),
+    )) as SmartEventSubscription[];
+    if (subscriptions.length === 0) return [];
+
+    let gameAverages = args.gameAverages;
+    if (!gameAverages && smartEventsNeedGameAverages(subscriptions)) {
+      const boards = await fetchAllPages<{ players: unknown }>(
+        "Smart event round boards lookup",
+        (from, to) =>
+          supabase
+            .from("games")
+            .select("id,players")
+            .eq("round_id", args.roundId)
+            .order("id")
+            .range(from, to),
+      );
+      gameAverages = boards.map((row) => smartEventAverageRating(row.players));
+    }
+
+    const round: SmartEventRound = {
+      timeControl: await resolveGameTimeControl({
+        groupBroadcastId: args.groupBroadcastId,
+        tourId: args.tourId,
+      }),
+      gameAverages: gameAverages ?? [],
+      phase: args.item.event_type === "round_finished" ? "finish" : "start",
+    };
+    return smartEventSubscribersForRound(subscriptions, round);
+  } catch (error) {
+    console.error(
+      `[onesignal-dispatch] smart event subscribers failed for ${args.item.event_type} ${args.roundId}; event stars still used: ${
+        describeError(error)
+      }`,
+    );
+    return [];
+  }
 }
 
 /** Calendar-card favorite id: cal_event_<sanitized name> (matches Flutter). */
@@ -1564,6 +1698,7 @@ async function resolveRecipients(args: {
   eventName?: string | null;
   fideIds: string[];
   players: string[];
+  smartEventUserIds?: string[];
 }) {
   const eventUserIds = new Set<string>();
   const playerUserIds = new Set<string>();
@@ -1597,7 +1732,9 @@ async function resolveRecipients(args: {
     }
 
     // Also match by display name (case-insensitive) so renamed-id leftovers
-    // and pure name-starred rows still receive round notifications.
+    // and pure name-starred rows still receive round notifications. A starred
+    // collection or smart event that shares the name is not this event's
+    // star: those rows notify only through their own opt-in.
     if (name) {
       const byName = await fetchAllPages<{ user_id: string | null }>(
         "Favorite event name lookup",
@@ -1606,12 +1743,19 @@ async function resolveRecipients(args: {
             .from("user_favorite_events")
             .select("user_id")
             .ilike("event_name", name)
+            .not("event_id", "like", "collection:%")
+            .not("event_id", "like", "smart_event:%")
             .order("id")
             .range(from, to),
       );
       for (const row of byName) {
         if (row.user_id) eventUserIds.add(row.user_id);
       }
+    }
+
+    // Added before the mute pass below, so a muted event stays muted.
+    for (const userId of args.smartEventUserIds ?? []) {
+      eventUserIds.add(userId);
     }
   }
 
@@ -2167,6 +2311,61 @@ async function resolveRecursiveBookSubscribers(
   return [...new Set((subs ?? []).map((s) => s.subscriber_id))];
 }
 
+/**
+ * The users who starred the collection `slug` and turned its notifications
+ * on. A star is a favorites row keyed `collection:<slug>`; a star made
+ * before the question existed carries no flag and stays quiet.
+ */
+async function resolveCollectionSubscribers(slug: string): Promise<string[]> {
+  const rows = await fetchAllPages<{ user_id: string | null }>(
+    "Collection subscription lookup",
+    (from, to) =>
+      supabase
+        .from("user_favorite_events")
+        .select("user_id")
+        .eq("event_id", `collection:${slug}`)
+        .eq("metadata->>notificationsEnabled", "true")
+        .order("id")
+        .range(from, to),
+  );
+  return [
+    ...new Set(
+      rows.map((row) => row.user_id).filter((id): id is string => !!id),
+    ),
+  ];
+}
+
+/** A starred collection is a starred event to the settings: same switch. */
+async function filterCollectionRecipients(
+  userIds: string[],
+): Promise<string[]> {
+  if (userIds.length === 0) return [];
+
+  const prefsMap = await fetchPreferenceMap(
+    userIds,
+    "user_id,push_enabled,favorite_event_alerts",
+  );
+
+  const filtered: string[] = [];
+  for (const userId of userIds) {
+    const prefs = prefsMap.get(userId);
+    if (prefs && prefs.push_enabled === false) continue;
+    if (prefs && prefs.favorite_event_alerts === false) continue;
+    filtered.push(userId);
+  }
+  return filtered;
+}
+
+/** "3 new games added." A count the importer could not give is left out. */
+function collectionGamesAddedBody(added: unknown): string {
+  const count = typeof added === "number" && Number.isFinite(added)
+    ? Math.trunc(added)
+    : 0;
+  if (count === 1) return "1 new game added.";
+  if (count > 1) return `${count} new games added.`;
+  return "New games added.";
+}
+
 async function filterBookUpdateRecipients(
   userIds: string[],
 ): Promise<string[]> {
@@ -2584,6 +2783,8 @@ function channelForEvent(eventType: string) {
       return ANDROID_CHANNELS.favorites;
     case "call_to_action":
       return ANDROID_CHANNELS.callToAction;
+    case "collection_games_added":
+      return ANDROID_CHANNELS.favorites;
     case "book_game_added":
     case "book_game_updated":
     case "book_game_removed":

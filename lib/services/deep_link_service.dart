@@ -16,6 +16,10 @@ import 'package:chessever2/repository/gamebase/memorial_player_local_search.dart
 import 'package:chessever2/repository/library/library_repository.dart';
 import 'package:chessever2/repository/library/models/library_folder.dart';
 import 'package:chessever2/screens/chessboard/chess_board_screen_new.dart';
+import 'package:chessever2/screens/collections/collections_data.dart'
+    show Collection, collectionsRepositoryProvider;
+import 'package:chessever2/screens/collections/collections_screen.dart'
+    show CollectionScreen;
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
 import 'package:chessever2/screens/chessboard/utils/game_share_utils.dart'
     show kGamebaseShareSourceParam, kGamebaseShareSourceValue;
@@ -783,6 +787,55 @@ class DeepLinkService {
     }
   }
 
+  /// Opens the collection a "new games" push was sent for. A collection that
+  /// is no longer published (or cannot be read right now) lands on Home.
+  Future<void> _navigateToCollection(
+    String slug,
+    GlobalKey<NavigatorState> navigatorKey,
+    WidgetRef ref,
+  ) async {
+    if (_isNavigating) return;
+    _isNavigating = true;
+
+    try {
+      try {
+        await _appReadyCompleter.future.timeout(const Duration(seconds: 30));
+      } catch (_) {
+        debugPrint(
+          'DeepLinkService: Timed out waiting for app ready, proceeding',
+        );
+      }
+
+      Collection? collection;
+      try {
+        collection = await ref
+            .read(collectionsRepositoryProvider)
+            .fetchCollection(slug);
+      } catch (e, stackTrace) {
+        _captureDeepLinkException(
+          e,
+          stackTrace,
+          stage: 'navigate_to_collection',
+          extras: {'slug': slug},
+        );
+      }
+
+      final navigator = navigatorKey.currentState;
+      if (navigator == null) return;
+      // Over Home, so Back lands on the app rather than leaving it.
+      navigator.pushNamedAndRemoveUntil('/home_screen', (route) => false);
+      final opened = collection;
+      if (opened == null) return;
+      navigator.push(
+        MaterialPageRoute<void>(
+          builder: (_) => CollectionScreen(collection: opened),
+        ),
+      );
+    } finally {
+      _isNavigating = false;
+    }
+  }
+
   /// Navigate to a specific library folder for push notifications (e.g. game added/updated in a database).
   Future<void> _navigateToFolder(
     String folderId,
@@ -1281,6 +1334,10 @@ class DeepLinkService {
       data['folder_id'],
       data['folderId'],
     ]);
+    final collectionSlug = _firstNonEmptyString([
+      data['collection_slug'],
+      data['collectionSlug'],
+    ]);
 
     // The notification path used to be completely untelemetered, so a tap that
     // ended on Home was indistinguishable from a tap that never reached Dart at
@@ -1297,6 +1354,7 @@ class DeepLinkService {
         'hasRoundId': roundId != null,
         'hasTourId': tourId != null,
         'hasFolderId': folderId != null,
+        'hasCollectionSlug': collectionSlug != null,
         'keys': data.keys.toList()..sort(),
       },
     );
@@ -1329,6 +1387,17 @@ class DeepLinkService {
           _navigateToHome(
             navigatorKey,
             reason: 'notification_missing_event_ids',
+            extras: {'type': type, 'appReady': wasAppReady},
+          );
+        }
+        return;
+      case 'collection_games_added':
+        if (collectionSlug != null) {
+          _navigateToCollection(collectionSlug, navigatorKey, ref);
+        } else {
+          _navigateToHome(
+            navigatorKey,
+            reason: 'notification_missing_collection_slug',
             extras: {'type': type, 'appReady': wasAppReady},
           );
         }

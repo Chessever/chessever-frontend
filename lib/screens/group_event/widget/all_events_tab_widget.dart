@@ -58,6 +58,7 @@ class _AllEventsTabWidgetState extends ConsumerState<AllEventsTabWidget> {
       summary: smartEventCardSummary(smartData.request),
       live: watchSmartEventLive(ref, smartData.request),
       spaceDraft: smartEventSpaceDraft(smartData.request),
+      starRequest: smartData.request,
       onTap:
           () => Navigator.of(context).push(
             MaterialPageRoute(

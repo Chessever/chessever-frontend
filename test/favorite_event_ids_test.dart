@@ -58,6 +58,51 @@ void main() {
       );
     });
 
+    test('a collection or a smart event matches by id alone, never by the '
+        'name it shares with a tournament', () {
+      expect(isNonEventFavoriteId('collection:candidates-2026'), isTrue);
+      expect(isNonEventFavoriteId('smart_event:v2:2500-3000:standard'), isTrue);
+      expect(isNonEventFavoriteId('candidates_2026'), isFalse);
+      expect(isNonEventFavoriteId('cal_event_candidates_2026'), isFalse);
+
+      // No calendar alias: starring one never touches the event's rows.
+      expect(
+        favoriteEventIdCandidates(
+          'collection:candidates-2026',
+          eventName: 'Candidates 2026',
+        ),
+        {'collection:candidates-2026'},
+      );
+
+      // A starred collection is not the star of the event it is named after,
+      // even where an older row still carries that event's calendar alias.
+      expect(
+        favoriteEventMatchesId(
+          storedEventId: 'collection:candidates-2026',
+          candidateId: 'cal_event_candidates_2026',
+          eventName: 'Candidates 2026',
+          metadata: {'cal_event_alias': 'cal_event_candidates_2026'},
+        ),
+        isFalse,
+      );
+      // Nor is the event's star the collection's.
+      expect(
+        favoriteEventMatchesId(
+          storedEventId: 'cal_event_candidates_2026',
+          candidateId: 'collection:candidates-2026',
+          eventName: 'Candidates 2026',
+        ),
+        isFalse,
+      );
+      expect(
+        favoriteEventMatchesId(
+          storedEventId: 'collection:candidates-2026',
+          candidateId: 'collection:candidates-2026',
+        ),
+        isTrue,
+      );
+    });
+
     test('favoriteEventMatchesId matches calendar alias of stored name', () {
       expect(
         favoriteEventMatchesId(

@@ -41,6 +41,8 @@ import 'package:chessever2/utils/time_utils.dart';
 import 'package:chessever2/widgets/auth/auth_upgrade_sheet.dart';
 import 'package:chessever2/widgets/alert_dialog/alert_modal.dart';
 import 'package:chessever2/widgets/event_card/event_card.dart';
+import 'package:chessever2/widgets/event_card/smart_event_star.dart';
+import 'package:chessever2/widgets/star_notifications.dart';
 import 'package:chessever2/widgets/fluid_shimmer_painter.dart';
 import 'package:chessever2/widgets/game_filter/game_filter_dialog.dart';
 import 'package:chessever2/widgets/game_filter/game_filter_model.dart';
@@ -265,7 +267,11 @@ class _SmartEventScreenState extends ConsumerState<SmartEventScreen> {
       eventId: updated.favoriteEventId,
       eventName: updated.displayName,
       maxAvgElo: updated.minElo > 0 ? updated.minElo : null,
-      extraMetadata: updated.toFavoriteMetadata(),
+      extraMetadata: {
+        ...updated.toFavoriteMetadata(),
+        // The owner's answer about notifications outlives a re-key.
+        kStarNotificationsKey: starNotificationsEnabled(savedFavorite),
+      },
     );
   }
 
@@ -713,9 +719,24 @@ class _AppBar extends ConsumerWidget {
                           draft: spaceDraft,
                         ),
                       ),
-                      // A smart event is kept through My Space above; the
-                      // menu offers no separate save. One saved earlier
-                      // still manages itself here.
+                      // Starred here as on its card; a starred one manages
+                      // its notifications and itself below.
+                      if (savedFavorite == null)
+                        LibraryMenuAction(
+                          icon: Icons.star_outline_rounded,
+                          label: 'Star',
+                          onSelected: () => toggleSmartEventFavorite(
+                            context: context,
+                            request: request,
+                          ),
+                        ),
+                      starNotificationsMenuAction(
+                        context: context,
+                        favorite: smartEventCanNotify(request)
+                            ? savedFavorite
+                            : null,
+                        surface: 'smart_event',
+                      ),
                       if (savedFavorite != null)
                         LibraryMenuAction(
                           icon: isDirty
