@@ -789,7 +789,10 @@ void main() {
     expect(find.bySemanticsLabel(SpaceAddFab.label), findsOneWidget);
     expect(find.text('Likes'), findsOneWidget);
     expect(find.text('Prep'), findsOneWidget);
-    expect(find.text(kMyDatabaseEmptyText), findsOneWidget);
+    expect(
+      find.text('Add a database or build a smart event using +.'),
+      findsNothing,
+    );
     expect(tester.takeException(), isNull);
     await _drain(tester);
   });
@@ -1555,7 +1558,10 @@ void main() {
       find.byKey(const ValueKey<String>('my_space_likes_card')),
       findsOneWidget,
     );
-    expect(find.text(kMyDatabaseEmptyText), findsOneWidget);
+    expect(
+      find.text('Add a database or build a smart event using +.'),
+      findsNothing,
+    );
     expect(find.byType(EventCard), findsNothing);
     expect(find.byType(SpaceSaveToggle), findsNothing);
     expect(find.text('Build smart event'), findsNothing);
@@ -1752,7 +1758,10 @@ void main() {
     );
     expect(_groupTitles(tester), isEmpty);
     expect(find.text('Carlsen'), findsNothing);
-    expect(find.text(kMyDatabaseEmptyText), findsOneWidget);
+    expect(
+      find.text('Add a database or build a smart event using +.'),
+      findsNothing,
+    );
     expect(find.byType(SpaceSaveToggle), findsNothing);
     await store.add(_folder);
     for (var i = 0; i < 6; i++) {
@@ -1760,7 +1769,10 @@ void main() {
     }
     expect(_groupTitles(tester), isEmpty);
     expect(find.text('Najdorf prep'), findsOneWidget);
-    expect(find.text(kMyDatabaseEmptyText), findsNothing);
+    expect(
+      find.text('Add a database or build a smart event using +.'),
+      findsNothing,
+    );
     expect(find.byType(SpaceSaveToggle), findsNothing);
     expect(tester.takeException(), isNull);
     await _drain(tester);
@@ -3043,7 +3055,10 @@ void main() {
       await tester.pump(const Duration(milliseconds: 200));
     }
     expect(find.text('Najdorf prep'), findsNothing);
-    expect(find.text(kMyDatabaseEmptyText), findsOneWidget);
+    expect(
+      find.text('Add a database or build a smart event using +.'),
+      findsNothing,
+    );
     await _drain(tester);
   });
 

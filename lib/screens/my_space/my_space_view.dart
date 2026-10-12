@@ -22,7 +22,6 @@ import 'package:chessever2/screens/my_space/widgets/space_database.dart';
 import 'package:chessever2/screens/my_space/widgets/space_edit_grid.dart';
 import 'package:chessever2/screens/my_space/widgets/space_edit_tutorial.dart';
 import 'package:chessever2/theme/app_colors.dart';
-import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 
@@ -36,10 +35,6 @@ import 'package:chessever2/widgets/skeleton_widget.dart';
 import 'package:chessever2/widgets/discovery_dot.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
-
-/// Guidance for the two supported My Space products.
-const String kMyDatabaseEmptyText =
-    'Add a database or build a smart event using +.';
 
 /// How many live events a new user is offered to save.
 const int kMySpaceSuggestions = 3;
@@ -158,12 +153,6 @@ class _MySpaceViewState extends ConsumerState<MySpaceView> {
     ];
     final keys = {for (final pin in pins) pin.key};
     _selected.retainAll(keys);
-    // Automatic follows and legacy pins do not replace the empty state.
-    final pinned = ref.watch(
-      spaceShortcutsProvider.select(
-        (s) => s.valueOrNull?.any((pin) => pin.canAddToMySpace) ?? false,
-      ),
-    );
     final order = spaceHomeOrder([
       for (final pin in pins) pin.key,
     ], ref.watch(spaceHomeLayoutProvider));
@@ -181,9 +170,7 @@ class _MySpaceViewState extends ConsumerState<MySpaceView> {
         : child;
 
     // Under the last row, at the air the page has always left there.
-    final Widget? footer = groups == null
-        ? const _DatabaseSkeleton()
-        : (!pinned ? const _DatabaseEmpty() : null);
+    final Widget? footer = groups == null ? const _DatabaseSkeleton() : null;
 
     final grid = SpaceHomeGrid(
       pins: pins,
@@ -360,26 +347,6 @@ class _LibraryTile extends StatelessWidget {
       );
     },
   );
-}
-
-// ------------------------------------------------------------------ empty
-
-class _DatabaseEmpty extends StatelessWidget {
-  const _DatabaseEmpty();
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: EdgeInsets.fromLTRB(hubGutter, 4.sp, hubGutter, 16.sp),
-      child: Text(
-        kMyDatabaseEmptyText,
-        style: AppTypography.textSmRegular.copyWith(
-          color: context.colors.textSecondary,
-          height: 20 / 14,
-        ),
-      ),
-    );
-  }
 }
 
 // Event suggestions are temporarily outside My Space's product scope.
