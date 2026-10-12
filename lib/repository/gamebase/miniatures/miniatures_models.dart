@@ -5,6 +5,19 @@ import 'package:chessever2/utils/average_game_rating.dart';
 
 const int miniatureMissingRatingFallback = missingGameRatingFallback;
 
+/// What a miniature row is filed under when the index names no tournament for
+/// it: no event at all, or only a round/pairing label.
+const String kMiniatureNoEventLabel = 'Miniatures';
+
+/// Whether [game], built from a miniature row, names its own tournament. When
+/// it does not, a card reads the tournament off the full game instead (see
+/// `gamebaseGameEventTitleProvider`).
+bool miniatureRowNamesEvent(GamesTourModel game) {
+  final event = game.tourId.trim();
+  return event.isNotEmpty &&
+      event.toLowerCase() != kMiniatureNoEventLabel.toLowerCase();
+}
+
 /// Round-id marker stamped on every miniature row.
 ///
 /// Card surfaces key their Gamebase preview fetch off this value (miniatures
@@ -531,7 +544,8 @@ class GamebaseMiniature {
     // event off `tourSlug`/`tourId`, so both carry the same label here — the
     // archive rows have no URL slug to distinguish them (see
     // `buildGameShareUrl`, which keeps these display labels out of the link).
-    final eventLabel = eventClean.isNotEmpty ? eventClean : 'Miniatures';
+    final eventLabel =
+        eventClean.isNotEmpty ? eventClean : kMiniatureNoEventLabel;
 
     final fallbackPgn = buildHeaderOnlyPgn(
       whiteName: whiteClean,

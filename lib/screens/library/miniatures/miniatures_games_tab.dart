@@ -218,12 +218,12 @@ class _MiniaturesGamesTabState extends ConsumerState<MiniaturesGamesTab>
   /// [GamesTourModel.boardNr] holds the final move number for miniatures.
   ///
   /// [hydratedEvent] is the tournament read off the full game, for a row whose
-  /// index entry names none (see [_rowNamesEvent]).
+  /// index entry names none (see [miniatureRowNamesEvent]).
   String? _footerDetail(GamesTourModel game, {String? hydratedEvent}) {
     final parts = <String>[];
 
     final event =
-        _rowNamesEvent(game) ? game.tourId.trim() : (hydratedEvent ?? '');
+        miniatureRowNamesEvent(game) ? game.tourId.trim() : (hydratedEvent ?? '');
     if (event.isNotEmpty) parts.add(event);
 
     final eco = game.eco?.trim() ?? '';
@@ -235,13 +235,6 @@ class _MiniaturesGamesTabState extends ConsumerState<MiniaturesGamesTab>
     }
 
     return parts.isEmpty ? null : parts.join('  ·  ');
-  }
-
-  /// Whether the index row itself names the tournament. "Miniatures" is the
-  /// label a row gets when it does not: no event at all, or only a pairing.
-  bool _rowNamesEvent(GamesTourModel game) {
-    final event = game.tourId.trim();
-    return event.isNotEmpty && event.toLowerCase() != 'miniatures';
   }
 
   Future<void> _openGame(List<GamesTourModel> games, int index) {
@@ -624,7 +617,7 @@ class _MiniaturesGamesTabState extends ConsumerState<MiniaturesGamesTab>
       Widget card = Consumer(
         builder: (context, ref, _) {
           final hydratedEvent =
-              _rowNamesEvent(entry.game)
+              miniatureRowNamesEvent(entry.game)
                   ? null
                   : ref.watch(
                     gamebaseGameEventTitleProvider(entry.game.gameId),
