@@ -2,6 +2,7 @@ import 'package:chessever2/screens/chessboard/classification_fx/move_class.dart'
 import 'package:chessever2/screens/chessboard/game_review/classification_style.dart';
 import 'package:chessever2/screens/feed/puzzles/feed_puzzle_model.dart';
 import 'package:chessever2/screens/feed/widgets/feed_action_row.dart';
+import 'package:chessever2/screens/feed/widgets/feed_layout.dart';
 import 'package:chessever2/services/lichess_move_annotations_service.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/app_typography.dart';
@@ -220,12 +221,12 @@ class PuzzlePlayerRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = context.colors;
-    // The game cards' row type (their list rows set 10pt, title in the
-    // title accent, rating muted), so a puzzle page's rows read like a game
-    // page's.
+    // The Feed's player-row type (the game rows' title accent and muted
+    // rating at the same reading size), so a puzzle page's rows read like
+    // a game page's.
     final base = AppTypography.textXsMedium.copyWith(
-      fontSize: 10,
-      height: 1.15,
+      fontSize: FeedLayout.playerFontSize,
+      height: 1.2,
       fontWeight: FontWeight.w500,
       color: colors.textPrimary,
     );

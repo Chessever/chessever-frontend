@@ -92,6 +92,13 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
   /// rules.
   final bool ignoreNoSpoilers;
 
+  /// Base font size for the title, name, rating, clock and result, in place
+  /// of the compact size [playerView] would otherwise pick. Null (every
+  /// caller but the Feed) keeps the view's own size. The Feed's rows span
+  /// the full board width, so they can carry a reading size instead of a
+  /// game card's: the caller owns the row height that fits it.
+  final double? fontSizeOverride;
+
   const PlayerFirstRowDetailWidget({
     super.key,
     required this.playerView,
@@ -113,6 +120,7 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
     this.replayMoveTimes,
     this.replayMoveIndex = -1,
     this.ignoreNoSpoilers = false,
+    this.fontSizeOverride,
   });
 
   bool get isReplay => replayMoveTimes != null;
@@ -342,7 +350,8 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
                 effectiveGameModel.blackClockCentiseconds > 0);
 
     // Harmonized text styles for consistent visual hierarchy
-    final rankStyle =
+    final fontOverride = fontSizeOverride;
+    final rankStyleBase =
         playerView == PlayerView.listView
             ? TextStyle(
               fontSize: 8.5.f,
@@ -366,7 +375,7 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
               height: 1.2,
             );
 
-    final nameStyle =
+    final nameStyleBase =
         playerView == PlayerView.listView
             ? TextStyle(
               fontSize: 8.5.f,
@@ -390,7 +399,7 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
               height: 1.2,
             );
 
-    final ratingStyle =
+    final ratingStyleBase =
         playerView == PlayerView.listView
             ? TextStyle(
               fontSize: 8.5.f,
@@ -416,19 +425,23 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
 
     // Proportional flag sizing for visual consistency
     final flagHeight =
-        playerView == PlayerView.listView
+        fontOverride != null
+            ? 12.h
+            : playerView == PlayerView.listView
             ? 10.h
             : playerView == PlayerView.gridView
             ? 12.h
             : 12.h;
     final flagWidth =
-        playerView == PlayerView.listView
+        fontOverride != null
+            ? 16.w
+            : playerView == PlayerView.listView
             ? 12.w
             : playerView == PlayerView.gridView
             ? 16.w
             : 16.w;
 
-    final timeStyle =
+    final timeStyleBase =
         playerView == PlayerView.listView
             ? TextStyle(
               fontSize: 8.5.f,
@@ -462,6 +475,22 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
               fontWeight: FontWeight.w500,
               fontFeatures: const [FontFeature.tabularFigures()],
             );
+
+    // A caller that owns the row's height (the Feed) can lift the whole
+    // row to a reading size; every part scales together, so the title,
+    // name, rating and clock keep their relative weight.
+    final rankStyle = fontOverride == null
+        ? rankStyleBase
+        : rankStyleBase.copyWith(fontSize: fontOverride.f, height: 1.2);
+    final nameStyle = fontOverride == null
+        ? nameStyleBase
+        : nameStyleBase.copyWith(fontSize: fontOverride.f, height: 1.2);
+    final ratingStyle = fontOverride == null
+        ? ratingStyleBase
+        : ratingStyleBase.copyWith(fontSize: fontOverride.f, height: 1.2);
+    final timeStyle = fontOverride == null
+        ? timeStyleBase
+        : timeStyleBase.copyWith(fontSize: fontOverride.f, height: 1.2);
 
     // CRITICAL: Pixel-perfect alignment with board edges
     // Structure: [Container Padding] [EvalBar] [Flag at board LEFT edge] [Name] [Clock at board RIGHT edge] [Container Padding]
@@ -831,7 +860,9 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
                                   ? context.colors.textPrimaryMuted
                                   : context.colors.danger;
                           final scoreFontSize =
-                              playerView == PlayerView.listView
+                              fontOverride != null
+                                  ? (fontOverride + 2).f
+                                  : playerView == PlayerView.listView
                                   ? 12.f
                                   : playerView == PlayerView.gridView
                                   ? 13.f

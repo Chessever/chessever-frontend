@@ -236,6 +236,39 @@ void _expectSameRows(WidgetTester tester) {
       .length;
   expect(flags(feed), flags(card));
   expect(flags(card), 2);
+
+  // The Feed's rows span the full board width, so their names run larger
+  // than a game card's compact rows (the Trello ask); the words stay the
+  // same, only the size grows.
+  double nameSize(Finder host) {
+    var largest = 0.0;
+    for (final element
+        in find
+            .descendant(
+              of: find.descendant(
+                of: host,
+                matching: find.byType(PlayerFirstRowDetailWidget),
+              ),
+              matching: find.byType(RichText),
+            )
+            .evaluate()) {
+      final span = (element.widget as RichText).text as TextSpan;
+      if ((span.toPlainText()).length <= 3) continue;
+      void visit(TextSpan s) {
+        final size = s.style?.fontSize ?? 0;
+        if (size > largest) largest = size;
+        for (final child in s.children ?? const <InlineSpan>[]) {
+          if (child is TextSpan) visit(child);
+        }
+      }
+
+      visit(span);
+    }
+    return largest;
+  }
+
+  expect(nameSize(card), greaterThan(0));
+  expect(nameSize(feed), greaterThan(nameSize(card)));
 }
 
 FeedItem _item(GamesTourModel game) {

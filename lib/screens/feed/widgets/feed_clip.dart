@@ -1955,6 +1955,7 @@ class _FeedClipState extends ConsumerState<FeedClip>
               ? PlayerProfileDataSource.supabase
               : PlayerProfileDataSource.twic,
           nameMenu: true,
+          fontSizeOverride: FeedLayout.playerFontSize,
           revealResult: revealResult,
           // The Feed shows every game's outcome and evaluation itself, so the
           // event's No Spoilers preference does not reach its rows either.
