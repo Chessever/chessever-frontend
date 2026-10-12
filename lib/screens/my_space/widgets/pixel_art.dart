@@ -313,6 +313,13 @@ class PixelArt {
     PixelTone tone = PixelTone.dark,
   }) => _doors.putIfAbsent((section, tone), () => _buildDoor(section, tone));
 
+  static final Map<PixelTone, PixelArt> _envelopes = {};
+
+  /// The Inbox's sealed envelope: a checkered body with the flap's fold in
+  /// the accent. It stands where the Inbox has nothing to list.
+  static PixelArt envelope({PixelTone tone = PixelTone.dark}) =>
+      _envelopes.putIfAbsent(tone, () => _buildEnvelope(tone));
+
   /// The small 9 x 12 streak flame. Hotter streaks burn faster and throw
   /// sparks (10+: two, 20+: three).
   static PixelArt flame(int streak, {PixelTone tone = PixelTone.dark}) =>
@@ -431,6 +438,18 @@ const List<String> kLikesBitmap = [
   '...XXXXX...',
   '....XXX....',
   '.....X.....',
+];
+
+/// Sealed envelope; `f` is the fold of its flap.
+const List<String> kEnvelopeBitmap = [
+  'fXXXXXXXXXXf',
+  'XfXXXXXXXXfX',
+  'XXfXXXXXXfXX',
+  'XXXfXXXXfXXX',
+  'XXXXfXXfXXXX',
+  'XXXXXffXXXXX',
+  'XXXXXXXXXXXX',
+  'XXXXXXXXXXXX',
 ];
 
 /// Trophy with a star.
@@ -830,6 +849,29 @@ PixelEmberSpec _ember(
     opacity: opacity,
     period: dur * 2,
     phase: _phaseFor(delay, dur * 2),
+  );
+}
+
+PixelArt _buildEnvelope(PixelTone tone) {
+  final p = PixelPalette.of(tone);
+  final rnd = PixelRandom.forKey('envelope');
+  final cells = _cellsFrom(kEnvelopeBitmap, (r, c, nr, ch) {
+    final v = rnd.next();
+    if (ch == 'f') return _Style(p.accent, 0.85 + v * 0.15);
+    // The flap, inside the fold, sits back from the body under it.
+    final flap = c > r && c < kEnvelopeBitmap.first.length - 1 - r;
+    return _Style(
+      _checker(p, r, c, oddIsLight: true),
+      flap ? 0.2 + v * 0.18 : 0.55 + v * 0.4,
+    );
+  });
+  return PixelArt._(
+    id: tone == PixelTone.light ? 'envelope:light' : 'envelope',
+    bitmap: kEnvelopeBitmap,
+    cells: cells,
+    glint: true,
+    shareTexture: true,
+    palette: p,
   );
 }
 

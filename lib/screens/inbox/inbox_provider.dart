@@ -286,7 +286,7 @@ class InboxController extends StateNotifier<InboxState> {
           markErrors: {
             ...state.markErrors,
             messageId:
-                'Could not save this read. It stays unread until confirmed. Retry.',
+                'Could not save this read. It stays unread until confirmed.',
           },
         );
       }

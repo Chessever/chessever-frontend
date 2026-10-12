@@ -1,12 +1,20 @@
 import 'dart:async';
 
+import 'package:chessever2/screens/collections/event_view_shell.dart';
+import 'package:chessever2/screens/for_you/discovery/widgets/discovery_common.dart';
+import 'package:chessever2/screens/my_space/widgets/pixel_art.dart';
 import 'package:chessever2/theme/app_colors.dart';
-import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
+import 'package:chessever2/utils/haptic_feedback_service.dart';
+import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/widgets/app_button.dart';
+import 'package:chessever2/widgets/generic_error_widget.dart';
+import 'package:chessever2/widgets/skeleton_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:intl/intl.dart';
 
+import 'inbox_message.dart';
 import 'inbox_provider.dart';
 import 'inbox_unread_dot.dart';
 
@@ -14,35 +22,37 @@ String _date(BuildContext context, DateTime date) => DateFormat.yMMMd(
   Localizations.localeOf(context).toString(),
 ).format(date.toLocal());
 
-/// Reading width on tablets; phones use the full width.
+/// Reading width of a message's text on tablets; phones use the full width.
 const double _readingWidth = 640;
 
-/// The page's own flat bar: no elevation and no Material tint on scroll.
-AppBar _inboxBar(
-  BuildContext context, {
-  required String title,
-  List<Widget>? actions,
-}) => AppBar(
-  title: Text(title),
-  titleTextStyle: AppTypography.textLgBold.copyWith(
-    color: context.colors.textPrimary,
-  ),
-  // Tight to the back arrow; a normal gutter when there is none.
-  titleSpacing: (ModalRoute.of(context)?.canPop ?? false) ? 0 : 16,
-  backgroundColor: context.colors.background,
-  foregroundColor: context.colors.textPrimary,
-  surfaceTintColor: Colors.transparent,
-  elevation: 0,
-  scrolledUnderElevation: 0,
-  actions: actions,
+/// The Inbox's pages on the shell every pushed hub destination stands in:
+/// the back arrow, the destination's mark and name, and one page beneath.
+Widget _inboxShell({required Widget child}) => EventViewShell(
+  title: 'Inbox',
+  titleIcon: const Icon(Icons.inbox_outlined),
+  tabs: const ['Inbox'],
+  tabStripOverride: const SizedBox.shrink(),
+  pageBuilder: (_, _) => child,
 );
 
-Widget _reading({required Widget child}) => Center(
-  child: ConstrainedBox(
-    constraints: const BoxConstraints(maxWidth: _readingWidth),
-    child: child,
-  ),
-);
+/// A state that fills the page (nothing to list, a failed load) and still
+/// scrolls, so pull-to-refresh answers on it too.
+class _FillPage extends StatelessWidget {
+  const _FillPage({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, constraints) => SingleChildScrollView(
+      physics: const AlwaysScrollableScrollPhysics(),
+      child: ConstrainedBox(
+        constraints: BoxConstraints(minHeight: constraints.maxHeight),
+        child: child,
+      ),
+    ),
+  );
+}
 
 class InboxScreen extends ConsumerStatefulWidget {
   const InboxScreen({super.key});
@@ -60,113 +70,78 @@ class _InboxScreenState extends ConsumerState<InboxScreen> {
     });
   }
 
+  void _open(InboxState state, InboxMessage message) {
+    final owner = state.ownerId;
+    if (owner == null) return;
+    HapticFeedbackService.cardTap();
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) =>
+            InboxMessageScreen(ownerId: owner, messageId: message.id),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(inboxProvider);
     final controller = ref.read(inboxProvider.notifier);
-    return Scaffold(
-      backgroundColor: context.colors.background,
-      appBar: _inboxBar(
-        context,
-        title: 'Inbox',
-        actions: [
-          IconButton(
-            tooltip: 'Refresh Inbox',
-            onPressed: state.refreshing ? null : controller.refresh,
-            icon: const Icon(Icons.refresh),
-          ),
-        ],
-      ),
-      body: RefreshIndicator(
-        onRefresh: controller.refresh,
-        child: state.loading
-            ? ListView(
-                physics: const AlwaysScrollableScrollPhysics(),
-                children: const [
-                  Padding(
-                    padding: EdgeInsets.all(48),
-                    child: Center(child: CircularProgressIndicator()),
-                  ),
-                ],
-              )
-            : _reading(
-                child: ListView(
-                  physics: const AlwaysScrollableScrollPhysics(),
-                  padding: const EdgeInsets.only(top: 4, bottom: 24),
-                  children: [
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                      child: Text(
-                        'Updates and chess tips from ChessEver',
-                        style: AppTypography.textSmRegular.copyWith(
-                          color: context.colors.textSecondary,
-                        ),
-                      ),
-                    ),
-                    if (state.refreshing)
-                      LinearProgressIndicator(
-                        minHeight: 2,
-                        color: context.isLightTheme
-                            ? context.colors.accentText
-                            : kPrimaryColor,
-                        backgroundColor: Colors.transparent,
-                      ),
-                    if (state.syncError != null)
-                      _RetryNotice(
-                        message: state.syncError!,
-                        onRetry: controller.refresh,
-                      ),
-                    if (state.cacheError != null)
-                      _RetryNotice(
-                        message: state.cacheError!,
-                        onRetry: controller.refresh,
-                      ),
-                    if (state.messages.isEmpty && state.syncError == null)
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(32, 72, 32, 32),
-                        child: Text(
-                          'Your Inbox is empty.\nChessEver messages will appear here.',
-                          textAlign: TextAlign.center,
-                          style: AppTypography.textMdRegular.copyWith(
-                            color: context.colors.textSecondary,
-                          ),
-                        ),
-                      ),
-                    for (final message in state.messages)
-                      _InboxRow(
-                        key: ValueKey('inbox-row-${message.id}'),
-                        title: message.title,
-                        preview: message.body,
-                        date: _date(context, message.publishedAt),
-                        unreadDot: message.isUnread
-                            ? InboxUnreadDot(
-                                key: ValueKey('inbox-row-dot-${message.id}'),
-                              )
-                            : null,
-                        onTap: () {
-                          final owner = state.ownerId;
-                          if (owner == null) return;
-                          Navigator.of(context).push(
-                            MaterialPageRoute<void>(
-                              builder: (_) => InboxMessageScreen(
-                                ownerId: owner,
-                                messageId: message.id,
-                              ),
-                            ),
-                          );
-                        },
-                      ),
-                  ],
-                ),
+    final bottom = MediaQuery.viewPaddingOf(context).bottom + 24.h;
+
+    final Widget page;
+    if (state.loading) {
+      page = const _InboxSkeleton();
+    } else if (state.messages.isEmpty && state.syncError != null) {
+      page = _FillPage(
+        child: GenericErrorWidget(
+          message: state.syncError,
+          onRetry: controller.refresh,
+        ),
+      );
+    } else if (state.messages.isEmpty) {
+      page = const _FillPage(child: _InboxEmpty());
+    } else {
+      page = ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: EdgeInsets.only(top: 4.h, bottom: bottom),
+        children: [
+          for (final error in [state.syncError, state.cacheError])
+            if (error != null)
+              DiscoveryNotice(
+                text: error,
+                actionLabel: 'Retry',
+                onAction: controller.refresh,
               ),
+          for (final message in state.messages)
+            _InboxRow(
+              key: ValueKey('inbox-row-${message.id}'),
+              title: message.title,
+              preview: message.body,
+              date: _date(context, message.publishedAt),
+              unreadDot: message.isUnread
+                  ? InboxUnreadDot(key: ValueKey('inbox-row-dot-${message.id}'))
+                  : null,
+              onTap: () => _open(state, message),
+            ),
+        ],
+      );
+    }
+
+    return _inboxShell(
+      child: RefreshIndicator(
+        onRefresh: controller.refresh,
+        color: context.colors.accentText,
+        backgroundColor: context.colors.surface,
+        child: page,
       ),
     );
   }
 }
 
-/// One message in the list: a quiet card with the title, the date and the
-/// first lines of the text. Unread shows in the title's weight and a dot in
-/// the gutter, which stays reserved once read so titles never shift.
+/// One message in the list, in the hub's card frame: the title and its date
+/// on one line, the first lines of the text beneath. Unread shows in the
+/// title's weight and a dot at the end of the text, a place kept once the
+/// message is read so nothing reflows.
 class _InboxRow extends StatelessWidget {
   const _InboxRow({
     super.key,
@@ -181,85 +156,164 @@ class _InboxRow extends StatelessWidget {
   final String preview;
   final String date;
   final Widget? unreadDot;
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
 
-  static const double _gutter = 20;
+  static const double _dotSlot = 8;
 
   @override
   Widget build(BuildContext context) {
     final colors = context.colors;
     final unread = unreadDot != null;
-    final radius = BorderRadius.circular(14);
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-      child: Material(
-        color: colors.popup,
-        borderRadius: radius,
-        child: InkWell(
-          borderRadius: radius,
-          onTap: onTap,
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(12, 14, 16, 16),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                SizedBox(
-                  width: _gutter,
-                  // Level with the title's first line, whatever its size.
-                  height:
-                      (AppTypography.textMdBold.fontSize ?? 16) *
-                      (AppTypography.textMdBold.height ?? 1.5),
-                  child: Center(child: unreadDot),
-                ),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.baseline,
-                        textBaseline: TextBaseline.alphabetic,
-                        children: [
-                          Expanded(
-                            child: Text(
-                              title,
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                              style:
-                                  (unread
-                                          ? AppTypography.textMdBold
-                                          : AppTypography.textMdMedium)
-                                      .copyWith(
-                                        color: unread
-                                            ? colors.textPrimary
-                                            : colors.textSecondary,
-                                      ),
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          Text(
-                            date,
-                            style: AppTypography.textXsRegular.copyWith(
-                              color: colors.textTertiary,
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        // Collapse line breaks so two lines carry real text.
-                        preview.replaceAll(RegExp(r'\s+'), ' ').trim(),
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: AppTypography.textSmRegular.copyWith(
-                          color: colors.textSecondary,
-                        ),
-                      ),
-                    ],
+    final previewStyle = discoveryType(
+      context,
+      DiscoveryType.label,
+      weight: FontWeight.w400,
+      color: colors.textSecondary,
+    );
+    final card = Container(
+      decoration: BoxDecoration(
+        color: colors.surface,
+        borderRadius: BorderRadius.circular(8.br),
+      ),
+      padding: EdgeInsets.fromLTRB(14.sp, 12.sp, 14.sp, 14.sp),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.baseline,
+            textBaseline: TextBaseline.alphabetic,
+            children: [
+              Expanded(
+                child: Text(
+                  title,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: discoveryType(
+                    context,
+                    DiscoveryType.body,
+                    weight: unread ? FontWeight.w700 : FontWeight.w500,
+                    color: unread ? colors.textPrimary : colors.textPrimaryMuted,
                   ),
                 ),
-              ],
-            ),
+              ),
+              SizedBox(width: 12.w),
+              Text(
+                date,
+                maxLines: 1,
+                style: discoveryType(
+                  context,
+                  DiscoveryType.meta,
+                  tabular: true,
+                ),
+              ),
+            ],
           ),
+          SizedBox(height: 4.h),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Text(
+                  // Collapse line breaks so two lines carry real text.
+                  preview.replaceAll(RegExp(r'\s+'), ' ').trim(),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: previewStyle,
+                ),
+              ),
+              SizedBox(width: 12.w),
+              SizedBox(
+                width: _dotSlot,
+                // Level with the text's first line, whatever its size.
+                height: MediaQuery.textScalerOf(context).scale(
+                  previewStyle.fontSize! * previewStyle.height!,
+                ),
+                child: Center(child: unreadDot),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+    final open = onTap;
+    return Padding(
+      padding: EdgeInsets.fromLTRB(discoveryGutter, 0, discoveryGutter, 8.h),
+      child: open == null
+          ? card
+          : Semantics(
+              button: true,
+              child: TappableScale(scaleDown: 0.98, onTap: open, child: card),
+            ),
+    );
+  }
+}
+
+/// The list's shape while the first load is out: the rows themselves, boned.
+class _InboxSkeleton extends StatelessWidget {
+  const _InboxSkeleton();
+
+  @override
+  Widget build(BuildContext context) => SkeletonWidget(
+    child: ListView(
+      physics: const AlwaysScrollableScrollPhysics(),
+      padding: EdgeInsets.only(top: 4.h),
+      children: [
+        for (final title in const [
+          'A message from the team',
+          'What changed this week',
+          'A tip for your next game',
+          'Something new to try out',
+        ])
+          _InboxRow(
+            title: title,
+            preview:
+                'The first lines of a message stand here while the Inbox '
+                'is loading, two lines of them at the most.',
+            date: 'Sep 30, 2026',
+            unreadDot: null,
+            onTap: null,
+          ),
+      ],
+    ),
+  );
+}
+
+/// Nothing published yet: the Inbox's envelope and one line.
+class _InboxEmpty extends StatelessWidget {
+  const _InboxEmpty();
+
+  @override
+  Widget build(BuildContext context) {
+    final side = 96.w;
+    return Center(
+      child: Padding(
+        padding: EdgeInsets.symmetric(horizontal: 40.w, vertical: 48.h),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ExcludeSemantics(
+              child: SizedBox(
+                width: side,
+                // The envelope is 12 blocks by 8.
+                height: side * 2 / 3,
+                child: PixelArtView(
+                  scene: PixelScene.mark(
+                    PixelArt.envelope(tone: PixelTone.of(context)),
+                    Size(side, side * 2 / 3),
+                  ),
+                ),
+              ),
+            ),
+            SizedBox(height: 20.h),
+            Text(
+              'Updates and chess tips from the ChessEver team arrive here.',
+              textAlign: TextAlign.center,
+              style: AppTypography.textSmRegular.copyWith(
+                color: context.colors.textSecondary,
+                height: 20 / 14,
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -285,6 +339,7 @@ class _InboxMessageScreenState extends ConsumerState<InboxMessageScreen> {
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(inboxProvider);
+    final controller = ref.read(inboxProvider.notifier);
     // Never retain a route-local body across an account change.
     final message = state.ownerId == widget.ownerId
         ? state.message(widget.messageId)
@@ -299,124 +354,83 @@ class _InboxMessageScreenState extends ConsumerState<InboxMessageScreen> {
           return;
         }
         // The first frame containing this exact full text is now on screen.
-        unawaited(
-          ref.read(inboxProvider.notifier).markOpened(widget.messageId),
-        );
+        unawaited(controller.markOpened(widget.messageId));
       });
     }
-    return Scaffold(
-      backgroundColor: context.colors.background,
-      appBar: _inboxBar(context, title: 'ChessEver message'),
-      body: message == null
-          ? Center(
-              child: Padding(
-                padding: const EdgeInsets.all(24),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      'This message is unavailable for this account.',
-                      textAlign: TextAlign.center,
-                      style: AppTypography.textMdRegular.copyWith(
-                        color: context.colors.textSecondary,
-                      ),
-                    ),
-                    TextButton(
-                      onPressed: () =>
-                          ref.read(inboxProvider.notifier).refresh(),
-                      child: const Text('Retry'),
-                    ),
-                  ],
+    if (message == null) {
+      return _inboxShell(
+        child: GenericErrorWidget(
+          message: 'This message is unavailable for this account.',
+          onRetry: controller.refresh,
+        ),
+      );
+    }
+    final colors = context.colors;
+    final markError = state.markErrors[message.id];
+    final cacheError = state.cacheError;
+    final side = EdgeInsets.symmetric(horizontal: discoveryGutter);
+    return _inboxShell(
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: _readingWidth),
+          child: ListView(
+            padding: EdgeInsets.only(
+              top: 12.h,
+              bottom: MediaQuery.viewPaddingOf(context).bottom + 40.h,
+            ),
+            children: [
+              Padding(
+                padding: side,
+                child: Text(
+                  message.title,
+                  style: AppTypography.displayXsBold.copyWith(
+                    color: colors.textPrimary,
+                  ),
                 ),
               ),
-            )
-          : _reading(
-              child: ListView(
-                padding: const EdgeInsets.fromLTRB(20, 12, 20, 40),
-                children: [
-                  Text(
-                    message.title,
-                    style: AppTypography.displayXsBold.copyWith(
-                      color: context.colors.textPrimary,
-                    ),
+              SizedBox(height: 6.h),
+              Padding(
+                padding: side,
+                child: Text(
+                  _date(context, message.publishedAt),
+                  style: discoveryType(
+                    context,
+                    DiscoveryType.meta,
+                    tabular: true,
                   ),
-                  const SizedBox(height: 8),
-                  Text(
-                    _date(context, message.publishedAt),
-                    style: AppTypography.textSmRegular.copyWith(
-                      color: context.colors.textTertiary,
-                    ),
-                  ),
-                  const SizedBox(height: 24),
-                  // No HTML/Markdown/link interpretation, attachments or CTAs.
-                  SelectableText(
-                    message.body,
-                    key: const ValueKey('inbox-full-text'),
-                    style: AppTypography.textMdRegular.copyWith(
-                      color: context.colors.textPrimary,
-                      height: 1.6,
-                    ),
-                  ),
-                  if (state.marking.contains(message.id))
-                    Padding(
-                      padding: const EdgeInsets.only(top: 20),
-                      child: Text(
-                        'Saving read status…',
-                        style: AppTypography.textSmRegular.copyWith(
-                          color: context.colors.textTertiary,
-                        ),
-                      ),
-                    ),
-                  if (state.markErrors[message.id] != null)
-                    _RetryNotice(
-                      message: state.markErrors[message.id]!,
-                      onRetry: () => ref
-                          .read(inboxProvider.notifier)
-                          .markOpened(message.id),
-                    ),
-                  if (state.cacheError != null)
-                    _RetryNotice(
-                      message: state.cacheError!,
-                      onRetry: () => ref.read(inboxProvider.notifier).refresh(),
-                    ),
-                ],
+                ),
               ),
-            ),
+              SizedBox(height: 20.h),
+              Padding(
+                padding: side,
+                // No HTML/Markdown/link interpretation, attachments or CTAs.
+                child: SelectableText(
+                  message.body,
+                  key: const ValueKey('inbox-full-text'),
+                  style: AppTypography.textMdRegular.copyWith(
+                    color: colors.textPrimary,
+                    height: 1.6,
+                  ),
+                ),
+              ),
+              if (markError != null || cacheError != null)
+                SizedBox(height: 12.h),
+              if (markError != null)
+                DiscoveryNotice(
+                  text: markError,
+                  actionLabel: 'Retry',
+                  onAction: () => controller.markOpened(message.id),
+                ),
+              if (cacheError != null)
+                DiscoveryNotice(
+                  text: cacheError,
+                  actionLabel: 'Retry',
+                  onAction: controller.refresh,
+                ),
+            ],
+          ),
+        ),
+      ),
     );
   }
-}
-
-class _RetryNotice extends StatelessWidget {
-  const _RetryNotice({required this.message, required this.onRetry});
-  final String message;
-  final VoidCallback onRetry;
-
-  @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          message,
-          style: AppTypography.textSmRegular.copyWith(
-            color: context.colors.textSecondary,
-          ),
-        ),
-        TextButton(
-          onPressed: onRetry,
-          style: TextButton.styleFrom(
-            padding: EdgeInsets.zero,
-            minimumSize: const Size(44, 44),
-            alignment: Alignment.centerLeft,
-            foregroundColor: context.isLightTheme
-                ? context.colors.accentText
-                : kPrimaryColor,
-            textStyle: AppTypography.textSmSemiBold,
-          ),
-          child: const Text('Retry'),
-        ),
-      ],
-    ),
-  );
 }
