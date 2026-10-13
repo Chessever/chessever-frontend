@@ -1,5 +1,49 @@
 import 'dart:convert';
 
+const discoveryNudgeLabelMax = 8;
+const discoveryNudgeMessageMax = 140;
+const discoveryNudgeMessagesMax = 5;
+
+class DiscoveryNudgeMessage {
+  const DiscoveryNudgeMessage({required this.body, this.actionUrl});
+  final String body;
+  final Uri? actionUrl;
+}
+
+String? discoveryNudgeLabel(Object? raw) {
+  if (raw is! String) return null;
+  final label = raw.trim();
+  if (label.isEmpty ||
+      label.runes.length > discoveryNudgeLabelMax ||
+      RegExp(r'\s').hasMatch(label)) {
+    return null;
+  }
+  return label;
+}
+
+DiscoveryNudgeMessage? _readMessage(Object? raw) {
+  if (raw is! Map) return null;
+  final body = raw['body'];
+  if (body is! String ||
+      body.trim().isEmpty ||
+      body.runes.length > discoveryNudgeMessageMax) {
+    return null;
+  }
+  final link = raw['action_url'];
+  final uri = link is String ? Uri.tryParse(link.trim()) : null;
+  return DiscoveryNudgeMessage(
+    body: body.trim(),
+    actionUrl:
+        uri != null &&
+            uri.scheme == 'https' &&
+            uri.host.contains('.') &&
+            uri.userInfo.isEmpty &&
+            uri.port == 443
+        ? uri
+        : null,
+  );
+}
+
 /// One remotely published "look here" dot.
 ///
 /// A dot points at a [target] surface (a tab, a tile, a drawer row) and may
@@ -12,6 +56,8 @@ class DiscoveryDot {
     required this.target,
     this.trail = const [],
     this.message,
+    this.label,
+    this.messages = const [],
   });
 
   /// Stable name of the campaign. Dismissals are remembered against it.
@@ -28,6 +74,14 @@ class DiscoveryDot {
 
   /// Shown once when the target is reached. Null dismisses silently.
   final String? message;
+  final String? label;
+  final List<DiscoveryNudgeMessage> messages;
+
+  List<DiscoveryNudgeMessage> get tooltipMessages => messages.isNotEmpty
+      ? messages
+      : message == null
+      ? const []
+      : [DiscoveryNudgeMessage(body: message!)];
 }
 
 /// Reads the Remote Config value. Anything malformed is dropped entry by
@@ -58,6 +112,13 @@ List<DiscoveryDot> parseDiscoveryDots(String raw) {
     if (!ids.add(id)) continue;
     final trail = row['trail'];
     final message = row['message'];
+    final rawMessages = row['messages'];
+    final messages = rawMessages is List
+        ? [
+            for (final raw in rawMessages.take(discoveryNudgeMessagesMax))
+              if (_readMessage(raw) case final parsed?) parsed,
+          ]
+        : <DiscoveryNudgeMessage>[];
     dots.add(
       DiscoveryDot(
         id: id,
@@ -72,6 +133,8 @@ List<DiscoveryDot> parseDiscoveryDots(String raw) {
         message: message is String && message.trim().isNotEmpty
             ? message.trim()
             : null,
+        label: discoveryNudgeLabel(row['label']),
+        messages: messages,
       ),
     );
   }
@@ -114,24 +177,29 @@ Set<String> litDiscoveryAnchors(
 }
 
 /// What tapping [anchor] changes: the keys to remember, and the message of a
-/// target that was just reached (the first one, if several dots share it).
-({Map<String, int> seen, String? message}) acknowledgeDiscoveryAnchor(
+/// target that was just reached, plus the full stack when campaigns share it.
+({Map<String, int> seen, String? message, List<DiscoveryNudgeMessage> messages})
+acknowledgeDiscoveryAnchor(
   List<DiscoveryDot> dots,
   String anchor,
   Map<String, int> seen,
 ) {
   final next = {...seen};
-  String? message;
+  final messages = <DiscoveryNudgeMessage>[];
   for (final dot in dots) {
     if (!discoveryDotShowsAt(dot, anchor, seen)) continue;
     if (anchor == dot.target) {
       next[dot.id] = dot.rev;
-      message ??= dot.message;
+      messages.addAll(dot.tooltipMessages);
     } else {
       next[discoveryDotHopKey(dot, anchor)] = dot.rev;
     }
   }
-  return (seen: next, message: message);
+  return (
+    seen: next,
+    message: messages.isEmpty ? null : messages.first.body,
+    messages: messages,
+  );
 }
 
 final _nonIdChars = RegExp('[^a-z0-9]+');

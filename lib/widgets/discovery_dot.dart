@@ -1,6 +1,8 @@
 import 'dart:async';
 
 import 'package:chessever2/services/discovery_dots/discovery_dots_provider.dart';
+import 'package:chessever2/services/discovery_dots/discovery_dot.dart';
+import 'package:chessever2/widgets/discovery_nudge_tooltip.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
@@ -92,8 +94,33 @@ class _DiscoveryDotAnchorState extends ConsumerState<DiscoveryDotAnchor> {
   void _acknowledge() {
     final id = widget.id;
     if (id == null) return;
-    final message = ref.read(discoveryDotsProvider.notifier).acknowledge(id);
-    if (message == null) return;
+    final state = ref.read(discoveryDotsProvider);
+    final rich = state.dots.any(
+      (dot) =>
+          discoveryDotShowsAt(dot, id, state.seen) &&
+          (dot.label != null || dot.messages.isNotEmpty),
+    );
+    final messages = ref.read(discoveryDotsProvider.notifier).acknowledge(id);
+    if (messages.isEmpty) return;
+    if (rich ||
+        messages.length > 1 ||
+        messages.any((message) => message.actionUrl != null)) {
+      final navigator = Navigator.of(context, rootNavigator: true);
+      final box = context.findRenderObject();
+      final target = box is RenderBox && box.hasSize
+          ? box.localToGlobal(Offset.zero) & box.size
+          : null;
+      // The surface keeps its own tap. Present above the route it opens, using
+      // the root navigator so a drawer/anchor unmount cannot lose the tooltip.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        final host = navigator.overlay?.context;
+        if (navigator.mounted && host != null && host.mounted) {
+          showDiscoveryNudgeTooltip(host, messages: messages, target: target);
+        }
+      });
+      return;
+    }
+    final message = messages.single.body;
     switch (widget.message) {
       case DiscoveryDotMessage.snack:
         showAppSnack(context, message, duration: const Duration(seconds: 5));
@@ -129,6 +156,16 @@ class _DiscoveryDotAnchorState extends ConsumerState<DiscoveryDotAnchor> {
     final lit =
         id != null &&
         ref.watch(discoveryDotsProvider.select((s) => s.lit.contains(id)));
+    final label = lit
+        ? ref.watch(
+            discoveryDotsProvider.select((state) {
+              for (final dot in state.dots) {
+                if (discoveryDotShowsAt(dot, id, state.seen)) return dot.label;
+              }
+              return null;
+            }),
+          )
+        : null;
 
     // A raw Listener sits outside the gesture arena, so the surface's own tap,
     // long-press and drag recognizers are untouched.
@@ -153,12 +190,48 @@ class _DiscoveryDotAnchorState extends ConsumerState<DiscoveryDotAnchor> {
           if (lit)
             Positioned.fill(
               child: IgnorePointer(
-                child: Align(
-                  alignment: widget.alignment,
-                  child: Transform.translate(
-                    offset: widget.offset,
-                    child: const DiscoveryDotMark(),
-                  ),
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    var word = label;
+                    if (word != null) {
+                      final text = TextPainter(
+                        text: TextSpan(
+                          text: word,
+                          style: DiscoveryDotMark.labelStyle(context),
+                        ),
+                        textDirection: Directionality.of(context),
+                        textScaler: TextScaler.noScaling,
+                      )..layout();
+                      // An icon-sized control keeps its circle rather than crop
+                      // a word or paint it over its neighbour's tap target.
+                      if (text.width + 12 > constraints.maxWidth - 12) {
+                        word = null;
+                      }
+                      text.dispose();
+                    }
+                    final alignment = word == null
+                        ? widget.alignment
+                        : Alignment.topRight;
+                    return Align(
+                      alignment: alignment,
+                      child: Transform.translate(
+                        offset: word == null
+                            ? widget.offset
+                            : const Offset(-6, -6),
+                        child: OverflowBox(
+                          alignment: alignment,
+                          minWidth: 0,
+                          maxWidth: double.infinity,
+                          minHeight: 0,
+                          maxHeight: double.infinity,
+                          child: DiscoveryDotMark(
+                            label: word,
+                            semanticsLabel: label,
+                          ),
+                        ),
+                      ),
+                    );
+                  },
                 ),
               ),
             ),
@@ -171,7 +244,13 @@ class _DiscoveryDotAnchorState extends ConsumerState<DiscoveryDotAnchor> {
 /// The dot itself: the brand accent, breathing slowly. Still when the system
 /// asks for reduced motion.
 class DiscoveryDotMark extends StatefulWidget {
-  const DiscoveryDotMark({super.key});
+  const DiscoveryDotMark({super.key, this.label, this.semanticsLabel});
+  final String? label;
+  final String? semanticsLabel;
+
+  static TextStyle labelStyle(BuildContext context) => AppTypography
+      .textSmMedium
+      .copyWith(fontSize: 11, height: 1.2, color: context.colors.background);
 
   static const double size = 8;
 
@@ -193,7 +272,17 @@ class _DiscoveryDotMarkState extends State<DiscoveryDotMark>
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    if (MediaQuery.disableAnimationsOf(context)) {
+    _syncMotion();
+  }
+
+  @override
+  void didUpdateWidget(DiscoveryDotMark oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.label != widget.label) _syncMotion();
+  }
+
+  void _syncMotion() {
+    if (widget.label != null || MediaQuery.disableAnimationsOf(context)) {
       _controller
         ..stop()
         ..value = 1;
@@ -210,21 +299,38 @@ class _DiscoveryDotMarkState extends State<DiscoveryDotMark>
 
   @override
   Widget build(BuildContext context) {
+    final label = widget.label;
     return Semantics(
-      label: 'New',
+      label: widget.semanticsLabel ?? label ?? 'New',
+      excludeSemantics: true,
       child: RepaintBoundary(
         child: FadeTransition(
-          opacity: _opacity,
+          opacity: label == null ? _opacity : const AlwaysStoppedAnimation(1.0),
           child: Container(
-            width: DiscoveryDotMark.size,
-            height: DiscoveryDotMark.size,
+            width: label == null ? DiscoveryDotMark.size : null,
+            height: label == null ? DiscoveryDotMark.size : null,
+            padding: label == null
+                ? null
+                : const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
             decoration: BoxDecoration(
               // Brand cyan is ~2:1 on paper, so light uses the deep accent.
-              color: context.isLightTheme
+              color: label != null
+                  ? context.colors.textPrimary
+                  : context.isLightTheme
                   ? context.colors.accentText
                   : kPrimaryColor,
-              shape: BoxShape.circle,
+              shape: label == null ? BoxShape.circle : BoxShape.rectangle,
+              borderRadius: label == null ? null : BorderRadius.circular(8),
             ),
+            child: label == null
+                ? null
+                : Text(
+                    label,
+                    textAlign: TextAlign.center,
+                    softWrap: false,
+                    textScaler: TextScaler.noScaling,
+                    style: DiscoveryDotMark.labelStyle(context),
+                  ),
           ),
         ),
       ),

@@ -10,6 +10,7 @@ import 'package:chessever2/screens/inbox/inbox_message.dart';
 import 'package:chessever2/screens/inbox/inbox_provider.dart';
 import 'package:chessever2/screens/inbox/inbox_screen.dart';
 import 'package:chessever2/screens/inbox/inbox_unread_dot.dart';
+import 'package:chessever2/services/editorial_link_service.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/hamburger_menu/hamburger_menu.dart';
@@ -47,6 +48,7 @@ Future<ProviderContainer> _pump(
   bool light = false,
   double scale = 1,
   bool anonymous = true,
+  EditorialLinkOpener? openLink,
 }) async {
   tester.view.physicalSize = const Size(393, 852);
   tester.view.devicePixelRatio = 1;
@@ -68,6 +70,8 @@ Future<ProviderContainer> _pump(
       appVersionProvider.overrideWith((ref) async => '35.25.4'),
       inboxSourceProvider.overrideWithValue(source),
       inboxCacheProvider.overrideWithValue(FakeInboxCache()),
+      if (openLink != null)
+        editorialLinkOpenerProvider.overrideWithValue(openLink),
     ],
   );
   _testContainer = container;
@@ -271,7 +275,14 @@ void main() {
           actionUrl: 'javascript:alert(1)',
         ),
       ];
-    await _pump(tester, source);
+    final links = <Uri>[];
+    await _pump(
+      tester,
+      source,
+      openLink: (context, uri) async {
+        links.add(uri);
+      },
+    );
     await tester.pump(const Duration(milliseconds: 300));
     // The list shows running text, never Markdown marks.
     expect(find.textContaining('LOCAL FIXTURE heading A bold'), findsOneWidget);
@@ -288,6 +299,9 @@ void main() {
     expect(find.textContaining('**'), findsNothing);
     expect(find.byKey(const ValueKey('inbox-action')), findsOneWidget);
     expect(find.text('Tap to see'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('inbox-action')));
+    await tester.pump();
+    expect(links.map((uri) => uri.toString()), ['https://chessever.com/feed']);
     expect(source.marks, [(inboxOwnerA, inboxIdA)]);
     // A button whose link is not http(s) is left out, with no dead control.
     await tester.pageBack();

@@ -162,13 +162,13 @@ class DiscoveryDotsNotifier extends Notifier<DiscoveryDotsState> {
     }
   }
 
-  /// Records that the user reached [anchor]. Returns the message to show when
-  /// that completed a dot which carries one.
-  String? acknowledge(String anchor) {
-    if (!state.lit.contains(anchor)) return null;
+  /// Records that the user reached [anchor]. Returns the tooltip stack for
+  /// every campaign completed at this target, in publication order.
+  List<DiscoveryNudgeMessage> acknowledge(String anchor) {
+    if (!state.lit.contains(anchor)) return const [];
     final result = acknowledgeDiscoveryAnchor(state.dots, anchor, state.seen);
     state = DiscoveryDotsState._(state.dots, result.seen);
     unawaited(ref.read(discoveryDotsSeenStoreProvider).write(result.seen));
-    return result.message;
+    return result.messages;
   }
 }

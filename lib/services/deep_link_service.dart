@@ -55,6 +55,7 @@ import 'package:chessever2/screens/streaks/streaks_screen.dart';
 import 'package:chessever2/services/pgn_file_intake_service.dart';
 import 'package:chessever2/widgets/event_card/event_context_menu.dart'
     show kEventTabQueryParam;
+import 'package:chessever2/widgets/paywall/premium_game_access.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:sentry_flutter/sentry_flutter.dart';
@@ -1213,6 +1214,17 @@ class DeepLinkService {
     required Future<void> appReadyFuture,
     bool preserveCurrentRoute = false,
   }) async {
+    await appReadyFuture;
+    final context = navigatorKey.currentState?.overlay?.context;
+    if (context == null || !context.mounted) return;
+    if (!await ensurePremiumGameAccess(
+      context,
+      featureId: 'archive_games',
+      returnTo: 'shared_game',
+    )) {
+      return;
+    }
+    if (!context.mounted) return;
     final gamebaseGame = await ref
         .read(gamebaseRepositoryProvider)
         .getGameById(gameId)
@@ -1225,7 +1237,7 @@ class DeepLinkService {
 
     final gameTourModel = mapGamebaseGameToGamesTourModel(gamebaseGame);
 
-    await appReadyFuture;
+    if (!context.mounted) return;
 
     ref.read(chessboardViewFromProviderNew.notifier).state =
         ChessboardView.forYou;

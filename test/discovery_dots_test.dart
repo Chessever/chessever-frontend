@@ -5,6 +5,7 @@ import 'package:chessever2/services/discovery_dots/discovery_dot.dart';
 import 'package:chessever2/services/discovery_dots/discovery_dots_provider.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/discovery_dot.dart';
+import 'package:chessever2/services/editorial_link_service.dart';
 import 'package:chessever2/widgets/segmented_switcher.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -87,6 +88,35 @@ void main() {
       );
       expect(dots.single.message, isNull);
     });
+    test(
+      'reads marker words and tooltip links; bad links do not become actions',
+      () {
+        final dot = parseDiscoveryDots(
+          _config([
+            {
+              ..._feed,
+              'label': 'NEW',
+              'messages': [
+                {
+                  'body': 'See your game reports.',
+                  'action_url': 'https://chessever.com/reports',
+                },
+                {'body': 'Unsafe link.', 'action_url': 'javascript:alert(1)'},
+              ],
+            },
+          ]),
+        ).single;
+        expect(dot.label, 'NEW');
+        expect(
+          dot.tooltipMessages[0].actionUrl.toString(),
+          'https://chessever.com/reports',
+        );
+        expect(dot.tooltipMessages[1].actionUrl, isNull);
+        expect(discoveryNudgeLabel('TOO-LONG-WORD'), isNull);
+        expect(discoveryNudgeLabel('Two words'), isNull);
+        expect(discoveryNudgeLabel('New'), 'New');
+      },
+    );
   });
 
   group('visibility', () {
@@ -131,6 +161,27 @@ void main() {
         'home.nav.home',
       });
     });
+    test('all messages at one target stack, while trail hops show none', () {
+      final dots = parseDiscoveryDots(
+        _config([
+          {
+            ..._feed,
+            'messages': [
+              {'body': 'First'},
+              {'body': 'Second'},
+            ],
+          },
+          {..._feed, 'id': 'another', 'message': 'Third'},
+        ]),
+      );
+      expect(
+        acknowledgeDiscoveryAnchor(dots, 'home.nav.home', {}).messages,
+        isEmpty,
+      );
+      final result = acknowledgeDiscoveryAnchor(dots, 'home.tab.discovery', {});
+      expect(result.messages.map((m) => m.body), ['First', 'Second', 'Third']);
+      expect(litDiscoveryAnchors(dots, result.seen), isEmpty);
+    });
   });
 
   test('discoveryDotId slugs a label inside its scope', () {
@@ -143,6 +194,7 @@ void main() {
       WidgetTester tester, {
       List<Map<String, Object?>> dots = const [_feed],
       Map<String, int>? seen,
+      EditorialLinkOpener? openLink,
     }) async {
       final source = _FakeSource(_config(dots));
       final store = _MemoryStore(seen);
@@ -151,6 +203,8 @@ void main() {
           overrides: [
             discoveryDotsSourceProvider.overrideWithValue(source),
             discoveryDotsSeenStoreProvider.overrideWithValue(store),
+            if (openLink != null)
+              editorialLinkOpenerProvider.overrideWithValue(openLink),
           ],
           child: MaterialApp(
             home: Builder(
@@ -194,6 +248,127 @@ void main() {
       expect(dotIn('Today'), findsNothing);
       expect(dotIn('My Space'), findsNothing);
     });
+    testWidgets(
+      'NEW marker opens a paged tooltip and See routes its current link',
+      (tester) async {
+        final links = <Uri>[];
+        await pumpTabs(
+          tester,
+          openLink: (context, uri) async {
+            links.add(uri);
+          },
+          dots: [
+            {
+              ..._feed,
+              'label': 'NEW',
+              'messages': [
+                {
+                  'body': 'First tip',
+                  'action_url': 'https://chessever.com/feed',
+                },
+                {
+                  'body': 'Second tip',
+                  'action_url': 'https://chessever.com/reports',
+                },
+              ],
+            },
+          ],
+        );
+        expect(find.text('NEW'), findsOneWidget);
+        await tester.tap(find.text('Discovery'));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 350));
+        expect(find.text('1/2'), findsOneWidget);
+        expect(find.text('First tip'), findsOneWidget);
+        await tester.tap(find.byTooltip('Next message'));
+        await tester.pump();
+        expect(find.text('2/2'), findsOneWidget);
+        expect(find.text('Second tip'), findsOneWidget);
+        await tester.tap(find.text('See'));
+        await tester.pump(const Duration(milliseconds: 350));
+        expect(links.map((uri) => uri.toString()), [
+          'https://chessever.com/reports',
+        ]);
+        expect(find.text('2/2'), findsNothing);
+        expect(tester.takeException(), isNull);
+      },
+    );
+
+    testWidgets(
+      'the longest marker is whole, readable and inside the viewport',
+      (tester) async {
+        await pumpTabs(
+          tester,
+          dots: [
+            {..._feed, 'label': 'UPCOMING'},
+          ],
+        );
+        final marker = tester.getRect(find.text('UPCOMING'));
+        final viewport =
+            tester.view.physicalSize / tester.view.devicePixelRatio;
+        expect(marker.left, greaterThanOrEqualTo(0));
+        expect(marker.right, lessThanOrEqualTo(viewport.width));
+        expect(marker.top, greaterThanOrEqualTo(0));
+        expect(marker.bottom, lessThanOrEqualTo(viewport.height));
+        final fade = tester.widget<FadeTransition>(
+          find.descendant(
+            of: find.byType(DiscoveryDotMark),
+            matching: find.byType(FadeTransition),
+          ),
+        );
+        expect(fade.opacity.value, 1);
+      },
+    );
+
+    testWidgets(
+      'an icon-sized control uses a circle instead of cropping the word',
+      (tester) async {
+        final source = _FakeSource(
+          _config([
+            {..._feed, 'label': 'UPCOMING'},
+          ]),
+        );
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [
+              discoveryDotsSourceProvider.overrideWithValue(source),
+              discoveryDotsSeenStoreProvider.overrideWithValue(_MemoryStore()),
+            ],
+            child: MaterialApp(
+              home: Builder(
+                builder: (context) {
+                  ResponsiveHelper.init(context);
+                  return Scaffold(
+                    body: Center(
+                      child: SizedBox(
+                        width: 44,
+                        height: 44,
+                        child: DiscoveryDotAnchor(
+                          id: 'home.tab.discovery',
+                          child: IconButton(
+                            onPressed: () {},
+                            icon: const Icon(Icons.info_outline),
+                          ),
+                        ),
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ),
+        );
+        await tester.pump();
+        await tester.pump();
+        final marker = tester.widget<DiscoveryDotMark>(
+          find.byType(DiscoveryDotMark),
+        );
+        expect(marker.label, isNull);
+        expect(marker.semanticsLabel, 'UPCOMING');
+        expect(tester.getSize(find.byType(DiscoveryDotMark)), const Size(8, 8));
+        expect(tester.takeException(), isNull);
+      },
+    );
 
     testWidgets('tapping the tab retires the dot and shows its message', (
       tester,

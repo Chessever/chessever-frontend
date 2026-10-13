@@ -8,18 +8,16 @@ import 'package:chessever2/screens/for_you/discovery/widgets/discovery_common.da
 import 'package:chessever2/screens/my_space/widgets/pixel_art.dart';
 import 'package:chessever2/screens/my_space/widgets/space_glyphs.dart';
 import 'package:chessever2/theme/app_colors.dart';
-import 'package:chessever2/services/deep_link_service.dart';
+import 'package:chessever2/services/editorial_link_service.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/app_button.dart';
-import 'package:chessever2/widgets/app_snack.dart';
 import 'package:chessever2/widgets/generic_error_widget.dart';
 import 'package:chessever2/widgets/skeleton_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:intl/intl.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import 'inbox_message.dart';
 import 'inbox_provider.dart';
@@ -387,24 +385,7 @@ class _InboxMessageScreenState extends ConsumerState<InboxMessageScreen> {
   /// in the browser.
   Future<void> _openLink(Uri uri) async {
     unawaited(HapticFeedbackService.buttonPress());
-    final route = newsInAppRoute(uri);
-    if (route != null && DeepLinkService.instance.openLinkFromApp(route)) {
-      return;
-    }
-    final messenger = ScaffoldMessenger.maybeOf(context);
-    var opened = false;
-    try {
-      opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
-    } catch (error) {
-      debugPrint('[Inbox] link failed: $error');
-    }
-    if (!opened && messenger != null) {
-      showAppSnackOn(
-        messenger,
-        "Couldn't open the link.",
-        tone: AppSnackTone.danger,
-      );
-    }
+    await ref.read(editorialLinkOpenerProvider)(context, uri);
   }
 
   @override
