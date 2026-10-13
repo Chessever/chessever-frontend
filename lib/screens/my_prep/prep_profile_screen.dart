@@ -280,7 +280,6 @@ class _PrepProfileScreenState extends ConsumerState<PrepProfileScreen> {
       total: shown?.games.length,
       stale: stale,
       arriving: arriving,
-      shared: shown?.shared ?? 0,
       filter: filter,
       header: _identity(profile, filter, waiting: stale),
       // With one source there is nothing to switch, so only statistics

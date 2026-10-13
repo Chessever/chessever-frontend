@@ -38,7 +38,6 @@ class PrepOverviewTab extends StatefulWidget {
     this.message,
     this.stale = false,
     this.arriving = false,
-    this.shared = 0,
     this.onFilterChanged,
     this.onSources,
   });
@@ -74,9 +73,6 @@ class PrepOverviewTab extends StatefulWidget {
   /// Whether [stats] have just taken another source's place, and so settle
   /// in from faint rather than appear at once.
   final bool arriving;
-
-  /// Games two of the sources both hold, which [stats] count once.
-  final int shared;
 
   /// Takes [filter] with one choice taken or given up.
   final ValueChanged<PrepFilter>? onFilterChanged;
@@ -158,7 +154,6 @@ class _PrepOverviewTabState extends State<PrepOverviewTab> {
                         profile: widget.profile,
                         stats: s,
                         filter: filter,
-                        shared: widget.shared,
                         onFilterChanged: widget.stale
                             ? null
                             : widget.onFilterChanged,
@@ -670,14 +665,12 @@ class _Statistics extends StatelessWidget {
     required this.profile,
     required this.stats,
     required this.filter,
-    this.shared = 0,
     this.onFilterChanged,
   });
 
   final PrepProfile profile;
   final PrepStats stats;
   final PrepFilter filter;
-  final int shared;
   final ValueChanged<PrepFilter>? onFilterChanged;
 
   /// The source every rating figure is on the scale of, named as far as the
@@ -718,21 +711,6 @@ class _Statistics extends StatelessWidget {
               ? null
               : (outcome) => onFilterChanged!(filter.toggleOutcome(outcome)),
         ),
-        // Why every source together is fewer games than the sources' own
-        // counts add up to.
-        if (shared > 0) ...[
-          SizedBox(height: 8.h),
-          Text(
-            shared == 1
-                ? '1 game is in two sources and is counted once.'
-                : '${prepCount(shared)} games are in two sources and are '
-                      'counted once.',
-            key: const ValueKey('prep_shared_games'),
-            style: AppTypography.textXsRegular.copyWith(
-              color: context.colors.textSecondary,
-            ),
-          ),
-        ],
         SizedBox(height: 20.h),
         _DetailsPanel(
           title: 'Performance by colour',

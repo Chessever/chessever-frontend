@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:typed_data';
+import 'package:flutter/foundation.dart' show immutable;
 
 import 'package:dio/dio.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -27,14 +28,92 @@ enum LibraryAuthorCredit {
   self,
   other;
 
+  String get wire => name;
+  static LibraryAuthorCredit? maybeParse(Object? raw) => switch (raw) {
+    'self' => self,
+    'other' => other,
+    _ => null,
+  };
+
   static LibraryAuthorCredit parse(Object? raw) =>
       raw == 'other' ? LibraryAuthorCredit.other : LibraryAuthorCredit.self;
 }
+
+/// One credited author of a collection: the name readers see and, when one
+/// was uploaded, their own photo. Every author carries their own credit,
+/// like the first author always could: [LibraryAuthorCredit.self] is their own
+/// ChessEver account (linked by [userId]/[authProject] when it is not the
+/// publishing account), pictured by its profile photo; [LibraryAuthorCredit.other]
+/// credits the person, pictured by [photoUrl].
+@immutable
+class LibraryBookAuthor {
+  const LibraryBookAuthor({
+    required this.name,
+    this.photoUrl = '',
+    this.id = '',
+    this.about,
+    this.credit,
+    this.userId,
+    this.authProject,
+  });
+
+  final String name;
+  final String photoUrl;
+
+  /// The catalog identity (`account:`/`credit:`) the author's collections
+  /// are filed under, when the server sent one.
+  final String id;
+
+  /// This author's description, when the payload carries one (a book's own
+  /// detail and editor answers; list rows omit it). Null leaves it alone.
+  final String? about;
+
+  /// This author's own credit, when the payload carries one.
+  final LibraryAuthorCredit? credit;
+
+  /// The ChessEver account a `self` author is linked to (editor answers
+  /// only; never on a public one).
+  final String? userId;
+  final String? authProject;
+
+  bool get hasAccountLink => userId != null && authProject != null;
+
+  @override
+  bool operator ==(Object other) =>
+      other is LibraryBookAuthor &&
+      other.name == name &&
+      other.photoUrl == photoUrl &&
+      other.id == id &&
+      other.about == about &&
+      other.credit == credit &&
+      other.userId == userId &&
+      other.authProject == authProject;
+
+  @override
+  int get hashCode =>
+      Object.hash(name, photoUrl, id, about, credit, userId, authProject);
+}
+
+/// How several authors read on one line: "A", "A and B", "A, B and C".
+/// Blank names are skipped; no names give an empty string.
+String bookAuthorCredit(Iterable<String> names) {
+  final named = [
+    for (final name in names)
+      if (name.trim().isNotEmpty) name.trim(),
+  ];
+  if (named.length <= 1) return named.join();
+  return '${named.take(named.length - 1).join(', ')} and ${named.last}';
+}
+
+/// The most authors one collection can credit, the first one included.
+const libraryBookMaxAuthors = 6;
 
 class LibraryBookMetadata {
   const LibraryBookMetadata({
     required this.title,
     this.subtitle = '',
+    this.slug,
+    this.annotator,
     this.author = '',
     this.about = '',
     this.foreword = '',
@@ -43,11 +122,17 @@ class LibraryBookMetadata {
     this.coverUrl = '',
     this.authorCredit,
     this.authorPhotoUrl = '',
+    this.coAuthors = const [],
+    this.sendAuthorList = false,
     this.authorAbout,
+    this.authorUserId,
+    this.authorAuthProject,
   });
 
   final String title;
   final String subtitle;
+  final String? slug;
+  final String? annotator;
   final String author;
   final String about;
   final String foreword;
@@ -55,53 +140,241 @@ class LibraryBookMetadata {
   final int? publishedYear;
   final String coverUrl;
 
-  /// Null when the server predates author credits (it then refuses the key),
-  /// so it is only sent when known or when someone else is credited.
+  /// null means the key is absent from the save body entirely — the only safe
+  /// value for an old server that rejects unknown keys with 400, and for a new
+  /// book that never left "Me". [LibraryAuthorCredit.self]/[LibraryAuthorCredit.other] are
+  /// sent verbatim: "other" when the user credited someone else, "self" (which
+  /// also tells the server to drop any credited photo) when a book that
+  /// already carried the key is switched back to Me.
   final LibraryAuthorCredit? authorCredit;
 
-  /// The credited author's own photo. Set only by its upload, never sent.
+  /// The credited author's own photo, distinct from the cover and from the
+  /// publishing account's profile photo. Empty when none is set.
   final String authorPhotoUrl;
 
-  /// The author's description of themselves, shown on their author page and
-  /// under "About the author". Null when the server predates it (it then
-  /// refuses the key), so it is only sent when known or when one is written.
+  /// Everyone credited after the first author, in order. [author] and
+  /// [authorPhotoUrl] stay the first author's, so a one-author collection
+  /// reads and saves exactly as it always did.
+  final List<LibraryBookAuthor> coAuthors;
+
+  /// Whether a save writes the whole author list. Only set when there is more
+  /// than one author, or the saved collection had more than one (so removing
+  /// them reaches the server): an older server refuses the unknown key.
+  final bool sendAuthorList;
+
+  /// The first author's description of themselves, shown on their author
+  /// page and under "About the author". Null when the server predates it (it
+  /// then refuses the key), so it is only sent when known or when one is
+  /// written.
   final String? authorAbout;
 
-  factory LibraryBookMetadata.fromJson(Map<String, dynamic> json) =>
-      LibraryBookMetadata(
-        title: json['title'] as String? ?? '',
-        subtitle: json['subtitle'] as String? ?? '',
-        author: json['author'] as String? ?? '',
-        about: json['about'] as String? ?? '',
-        foreword: json['foreword'] as String? ?? '',
-        publisher: json['publisher'] as String? ?? '',
-        publishedYear: (json['publishedYear'] as num?)?.toInt(),
-        coverUrl: json['coverUrl'] as String? ?? '',
-        authorCredit: json.containsKey('authorCredit')
-            ? LibraryAuthorCredit.parse(json['authorCredit'])
-            : null,
-        authorPhotoUrl: json['authorPhotoUrl'] as String? ?? '',
-        authorAbout: json.containsKey('authorBio')
-            ? json['authorBio'] as String? ?? ''
-            : null,
-      );
+  /// The ChessEver account the first author is linked to when they are
+  /// credited as themselves but are not the publishing account.
+  final String? authorUserId;
+  final String? authorAuthProject;
+
+  bool get authorHasAccountLink =>
+      authorUserId != null && authorAuthProject != null;
+
+  /// Every credited author, the first one included.
+  List<LibraryBookAuthor> get authors => [
+    if (author.trim().isNotEmpty || coAuthors.isNotEmpty)
+      LibraryBookAuthor(
+        name: author.trim(),
+        photoUrl: authorPhotoUrl,
+        about: authorAbout,
+        credit: authorHasAccountLink ? LibraryAuthorCredit.self : authorCredit,
+        userId: authorUserId,
+        authProject: authorAuthProject,
+      ),
+    ...coAuthors,
+  ];
+
+  /// The author list of a book payload, or empty when the server sent none.
+  static List<LibraryBookAuthor> _authorsOf(Object? raw) {
+    if (raw is! List) return const [];
+    return [
+      for (final item in raw)
+        if (item is Map && (item['name'] as Object?) is String)
+          if ((item['name'] as String).trim().isNotEmpty)
+            LibraryBookAuthor(
+              name: (item['name'] as String).trim(),
+              photoUrl: item['photoUrl'] as String? ?? '',
+              id: item['id'] as String? ?? '',
+              about: item['about'] as String?,
+              credit: LibraryAuthorCredit.maybeParse(item['credit']),
+              userId: item['userId'] as String?,
+              authProject: item['authProject'] as String?,
+            ),
+    ];
+  }
+
+  factory LibraryBookMetadata.fromJson(Map<String, dynamic> json) {
+    // With an author list the legacy `author` is every name joined for old
+    // clients; the first entry is the one this form's name field edits.
+    final listed = _authorsOf(json['authors']);
+    return LibraryBookMetadata(
+      title: json['title'] as String? ?? '',
+      subtitle: json['subtitle'] as String? ?? '',
+      slug: json['slug'] as String?,
+      annotator: json.containsKey('annotator')
+          ? json['annotator'] as String? ?? ''
+          : null,
+      author: listed.isNotEmpty
+          ? listed.first.name
+          : json['author'] as String? ?? '',
+      about: json['about'] as String? ?? '',
+      foreword: json['foreword'] as String? ?? '',
+      publisher: json['publisher'] as String? ?? '',
+      publishedYear: (json['publishedYear'] as num?)?.toInt(),
+      coverUrl: json['coverUrl'] as String? ?? '',
+      authorCredit: LibraryAuthorCredit.maybeParse(json['authorCredit']),
+      authorPhotoUrl: listed.isNotEmpty && listed.first.photoUrl.isNotEmpty
+          ? listed.first.photoUrl
+          : json['authorPhotoUrl'] as String? ?? '',
+      coAuthors: listed.skip(1).toList(growable: false),
+      sendAuthorList:
+          listed.length > 1 || listed.any((author) => author.hasAccountLink),
+      authorAbout: json.containsKey('authorBio')
+          ? json['authorBio'] as String? ?? ''
+          : listed.isNotEmpty
+          ? listed.first.about
+          : null,
+      authorUserId: listed.isNotEmpty ? listed.first.userId : null,
+      authorAuthProject: listed.isNotEmpty ? listed.first.authProject : null,
+    );
+  }
+
+  LibraryBookMetadata copyWith({
+    String? author,
+    LibraryAuthorCredit? authorCredit,
+    bool clearAuthorCredit = false,
+    String? authorPhotoUrl,
+    List<LibraryBookAuthor>? coAuthors,
+    bool? sendAuthorList,
+    String? authorUserId,
+    String? authorAuthProject,
+    bool clearAuthorLink = false,
+  }) => LibraryBookMetadata(
+    title: title,
+    subtitle: subtitle,
+    slug: slug,
+    annotator: annotator,
+    author: author ?? this.author,
+    about: about,
+    foreword: foreword,
+    publisher: publisher,
+    publishedYear: publishedYear,
+    coverUrl: coverUrl,
+    authorCredit: clearAuthorCredit
+        ? null
+        : (authorCredit ?? this.authorCredit),
+    authorPhotoUrl: authorPhotoUrl ?? this.authorPhotoUrl,
+    coAuthors: coAuthors ?? this.coAuthors,
+    sendAuthorList: sendAuthorList ?? this.sendAuthorList,
+    authorAbout: authorAbout,
+    authorUserId: clearAuthorLink ? null : (authorUserId ?? this.authorUserId),
+    authorAuthProject: clearAuthorLink
+        ? null
+        : (authorAuthProject ?? this.authorAuthProject),
+  );
 
   Map<String, dynamic> toJson() => {
     'title': title.trim(),
     'subtitle': _nullable(subtitle),
+    if (slug != null && slug!.trim().isNotEmpty) 'slug': slug!.trim(),
+    if (annotator != null) 'annotator': _nullable(annotator!),
     'author': _nullable(author),
     'about': _nullable(about),
     'foreword': _nullable(foreword),
     'publisher': _nullable(publisher),
     'publishedYear': publishedYear,
     'coverUrl': _nullable(coverUrl),
-    if (authorCredit != null) 'authorCredit': authorCredit!.name,
-    // Null clears what this collection wrote about the author.
+    // Omit the key unless it must travel: old servers 400 on unknown keys, so
+    // a new "Me" book sends nothing. authorPhotoUrl is never written here — it
+    // is only ever changed through the author-photo upload/remove endpoints.
+    if (authorCredit != null) 'authorCredit': authorCredit!.wire,
+    // Null clears what this collection wrote about its first author.
     if (authorAbout != null) 'authorAbout': _nullable(authorAbout!),
+    // Each photo is changed through the author-photo endpoints, and the
+    // server keeps a photo with its name when the list is edited. An empty
+    // list is refused; with nobody left to credit, the null `author` above
+    // is what clears the credit.
+    if (sendAuthorList && _creditedNames.isNotEmpty)
+      'authors': [
+        for (final credited in authors)
+          if (credited.name.trim().isNotEmpty)
+            {
+              'name': credited.name.trim(),
+              if (credited.about != null) 'about': _nullable(credited.about!),
+              if (credited.credit != null) 'credit': credited.credit!.wire,
+              if (credited.hasAccountLink) 'userId': credited.userId,
+              if (credited.hasAccountLink) 'authProject': credited.authProject,
+            },
+      ],
   };
+
+  List<String> get _creditedNames => [
+    for (final credited in authors)
+      if (credited.name.trim().isNotEmpty) credited.name.trim(),
+  ];
 
   static String? _nullable(String value) =>
       value.trim().isEmpty ? null : value.trim();
+}
+
+/// Where a draft stands with ChessEver staff. A submission is not a status:
+/// the book stays a draft, [pending] while it waits and [changesRequested]
+/// once staff send it back with a note.
+enum LibraryBookReviewState { none, pending, changesRequested }
+
+/// The review round of a draft, as the server answers it. Servers that
+/// predate reviews omit it; that reads as [none].
+class LibraryBookReview {
+  const LibraryBookReview({
+    this.state = LibraryBookReviewState.none,
+    this.submittedAt,
+    this.note = '',
+    this.decidedAt,
+  });
+
+  static const none = LibraryBookReview();
+
+  final LibraryBookReviewState state;
+
+  /// When it was last submitted; null unless it is pending.
+  final DateTime? submittedAt;
+
+  /// What staff asked to change; empty unless it was sent back.
+  final String note;
+
+  /// When staff sent it back; null unless it was sent back.
+  final DateTime? decidedAt;
+
+  factory LibraryBookReview.fromJson(Object? raw) {
+    if (raw is! Map) return none;
+    DateTime? when(Object? value) =>
+        value is String ? DateTime.tryParse(value)?.toLocal() : null;
+    final note = raw['note'];
+    return switch (raw['state']) {
+      'pending' => LibraryBookReview(
+        state: LibraryBookReviewState.pending,
+        submittedAt: when(raw['submittedAt']),
+      ),
+      // Sent back without a note is not a state the author could act on.
+      'changes_requested' when note is String && note.trim().isNotEmpty =>
+        LibraryBookReview(
+          state: LibraryBookReviewState.changesRequested,
+          // The server caps a note at 1,000 characters; never trust that
+          // with the dialog's layout.
+          note: note.trim().length > 1000
+              ? '${note.trim().substring(0, 1000)}…'
+              : note.trim(),
+          decidedAt: when(raw['decidedAt']),
+        ),
+      _ => none,
+    };
+  }
 }
 
 class LibraryBookPublication {
@@ -110,12 +383,14 @@ class LibraryBookPublication {
     required this.metadata,
     this.bookId,
     this.gameCount = 0,
+    this.review = LibraryBookReview.none,
   });
 
   final String status;
   final LibraryBookMetadata metadata;
   final String? bookId;
   final int gameCount;
+  final LibraryBookReview review;
   bool get isPublished => status == 'published';
 
   factory LibraryBookPublication.fromJson(
@@ -140,6 +415,7 @@ class LibraryBookPublication {
           : LibraryBookMetadata.fromJson(book),
       bookId: book?['id'] as String?,
       gameCount: (book?['gameCount'] as num?)?.toInt() ?? 0,
+      review: LibraryBookReview.fromJson(book?['review']),
     );
   }
 }
@@ -170,9 +446,13 @@ abstract class LibraryBookPublisher {
   /// cover and from the profile photo. Uploading credits someone else.
   Future<LibraryBookPublication> uploadAuthorPhoto(
     LibraryFolder folder,
-    Uint8List image,
-  );
-  Future<LibraryBookPublication> removeAuthorPhoto(LibraryFolder folder);
+    Uint8List image, {
+    int index = 0,
+  });
+  Future<LibraryBookPublication> removeAuthorPhoto(
+    LibraryFolder folder, {
+    int index = 0,
+  });
 
   /// Existing ChessEver authors a word of [name] starts, so a credited name
   /// keeps the spelling their other collections use. Never throws: any
@@ -186,12 +466,17 @@ class LibraryAuthorSuggestion {
     required this.name,
     this.bookCount = 0,
     this.avatarUrl,
+    this.userId,
+    this.authProject,
   });
 
   final String id;
   final String name;
   final int bookCount;
   final String? avatarUrl;
+  final String? userId;
+  final String? authProject;
+  bool get hasAccount => userId != null && authProject != null;
 
   /// Null for a row that is not a usable suggestion.
   static LibraryAuthorSuggestion? fromJson(Object? raw) {
@@ -204,6 +489,8 @@ class LibraryAuthorSuggestion {
       id: raw['id'] as String? ?? name,
       name: name,
       bookCount: (raw['bookCount'] as num?)?.toInt() ?? 0,
+      userId: raw['userId'] as String?,
+      authProject: raw['authProject'] as String?,
       avatarUrl: uri != null && uri.scheme == 'https' && uri.host.isNotEmpty
           ? avatar as String
           : null,
@@ -307,17 +594,26 @@ class GamebaseLibraryBookPublisher implements LibraryBookPublisher {
   @override
   Future<LibraryBookPublication> uploadAuthorPhoto(
     LibraryFolder folder,
-    Uint8List image,
-  ) => _request(
+    Uint8List image, {
+    int index = 0,
+  }) => _request(
     folder,
     'POST',
     resource: 'book/author-photo',
+    query: index == 0 ? null : {'index': index},
     body: {'image': base64Encode(image)},
   );
 
   @override
-  Future<LibraryBookPublication> removeAuthorPhoto(LibraryFolder folder) =>
-      _request(folder, 'DELETE', resource: 'book/author-photo');
+  Future<LibraryBookPublication> removeAuthorPhoto(
+    LibraryFolder folder, {
+    int index = 0,
+  }) => _request(
+    folder,
+    'DELETE',
+    resource: 'book/author-photo',
+    query: index == 0 ? null : {'index': index},
+  );
 
   @override
   Future<List<LibraryAuthorSuggestion>> suggestAuthors(String name) async {

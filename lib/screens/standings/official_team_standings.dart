@@ -38,9 +38,7 @@ List<TeamStandingModel>? buildOfficialTeamStandings({
       final rows = _buildOfficialTeamSnapshot(
         Map<String, dynamic>.from(raw),
         matches.single.sourceUrl,
-        matches.single.players
-            .map(PlayerStandingModel.fromPlayer)
-            .toList(),
+        matches.single.players.map(PlayerStandingModel.fromPlayer).toList(),
       );
       if (rows == null) return null;
       first ??= rows;

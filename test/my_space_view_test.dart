@@ -1232,8 +1232,8 @@ void main() {
         findsNothing,
       );
     }
-    // The move badge stays on the left of the card: in the corner when there
-    // is no circle, and in the slot beside the circle when there is one.
+    // The drag handle always occupies the top-left corner. A selection
+    // circle, when the card has one, sits in the slot to its right.
     for (final (key, card) in <(String, Finder)>[
       (kSpaceHomeMyPrep, cards[0]),
       (kSpaceHomeLibrary, cards[1]),
@@ -1255,8 +1255,8 @@ void main() {
       find.byKey(ValueKey<String>('space_edit_check_${a.key}')),
     );
     final savedHost = tester.getRect(cards[3]);
-    expect(savedCheck.left - savedHost.left, lessThan(savedHost.width / 4));
-    expect(savedCheck.right, lessThanOrEqualTo(savedGrip.left));
+    expect(savedGrip.left - savedHost.left, lessThan(savedHost.width / 4));
+    expect(savedGrip.right, lessThanOrEqualTo(savedCheck.left));
     expect(savedGrip.top, closeTo(savedCheck.top, 0.5));
     // A tap on one of the page's own cards neither selects nor opens it.
     await tester.tap(cards[0]);

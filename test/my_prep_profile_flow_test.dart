@@ -1863,8 +1863,6 @@ void main() {
               (ref, id) async => PrepAnalysis(
                 profileId: id,
                 games: [for (final games in mine.values) ...games],
-                // Two games reach the profile from two sources each.
-                shared: 2,
               ),
             ),
             prepSourceAnalysisProvider.overrideWith((ref, scope) async {
@@ -1915,9 +1913,6 @@ void main() {
         expect(selected(other.key), isTrue);
         expect(selected(null), isFalse);
         expect(analyzed(), '2');
-        // One source holds no game twice.
-        const sharedNote = ValueKey('prep_shared_games');
-        expect(find.byKey(sharedNote), findsNothing);
         // The rating columns are that source's own.
         expect(find.text('2100'), findsOneWidget);
         expect(find.text('1900'), findsNothing);
@@ -1963,12 +1958,6 @@ void main() {
         expect(analyzed(), '7');
         expect(placed(), at);
         expect(tester.getRect(find.text('Games analyzed')), summaryAt);
-        // Together, the reader is told why the sources' counts add up to
-        // more than this.
-        expect(
-          tester.widget<Text>(find.byKey(sharedNote)).data,
-          '2 games are in two sources and are counted once.',
-        );
 
         // While a source's games are read, the statistics on screen wait
         // where they are, out of reach, under a heading that says so.

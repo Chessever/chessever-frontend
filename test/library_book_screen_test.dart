@@ -102,6 +102,7 @@ class _Publisher implements LibraryBookPublisher {
   }
 
   final authorPhotos = <Uint8List>[];
+  final authorPhotoIndexes = <int>[];
   int authorPhotoRemovals = 0;
   final suggestionQueries = <String>[];
 
@@ -125,18 +126,44 @@ class _Publisher implements LibraryBookPublisher {
   @override
   Future<LibraryBookPublication> uploadAuthorPhoto(
     LibraryFolder folder,
-    Uint8List image,
-  ) async {
+    Uint8List image, {
+    int index = 0,
+  }) async {
     authorPhotos.add(image);
+    authorPhotoIndexes.add(index);
+    if (index > 0) {
+      return _withCoAuthorPhoto(index, 'https://example.test/coauthor.webp');
+    }
     return publication = _withAuthorPhoto(
       'https://media.example.invalid/author.webp',
     );
   }
 
   @override
-  Future<LibraryBookPublication> removeAuthorPhoto(LibraryFolder folder) async {
+  Future<LibraryBookPublication> removeAuthorPhoto(
+    LibraryFolder folder, {
+    int index = 0,
+  }) async {
     authorPhotoRemovals++;
+    authorPhotoIndexes.add(index);
+    if (index > 0) return _withCoAuthorPhoto(index, '');
     return publication = _withAuthorPhoto('');
+  }
+
+  LibraryBookPublication _withCoAuthorPhoto(int index, String photoUrl) {
+    final authors = [...publication.metadata.coAuthors];
+    final author = authors[index - 1];
+    authors[index - 1] = LibraryBookAuthor(
+      name: author.name,
+      about: author.about,
+      credit: LibraryAuthorCredit.other,
+      photoUrl: photoUrl,
+    );
+    return publication = LibraryBookPublication(
+      status: 'draft',
+      bookId: publication.bookId,
+      metadata: publication.metadata.copyWith(coAuthors: authors),
+    );
   }
 
   @override
@@ -216,13 +243,104 @@ Future<void> _tap(WidgetTester tester, String text) async {
       )
       .first;
   await tester.scrollUntilVisible(find.text(text), 300, scrollable: list);
-  await tester.ensureVisible(find.text(text).last);
+  await Scrollable.ensureVisible(
+    tester.element(find.text(text).last),
+    alignment: 0.5,
+  );
   await tester.pumpAndSettle();
   await tester.tap(find.text(text).last);
+
   await tester.pumpAndSettle();
 }
 
 void main() {
+  testWidgets(
+    'coauthor photo upload and removal keep their list position and biography',
+    (tester) async {
+      final publisher = _Publisher()
+        ..publication = const LibraryBookPublication(
+          status: 'draft',
+          bookId: 'book-1',
+          metadata: LibraryBookMetadata(
+            title: 'Shared study',
+            author: 'Owner',
+            about: 'Games',
+            sendAuthorList: true,
+            coAuthors: [
+              LibraryBookAuthor(
+                name: 'Co Writer',
+                about: 'A coach.',
+                credit: LibraryAuthorCredit.other,
+              ),
+            ],
+          ),
+        );
+      pickedAuthorPhoto = _onePixelPng;
+      addTearDown(() => pickedAuthorPhoto = null);
+      await _pump(tester, publisher, width: 320);
+      await _tap(tester, 'Choose photo');
+      expect(publisher.authorPhotoIndexes, [1]);
+      expect(publisher.publication.metadata.coAuthors.single.about, 'A coach.');
+      await _tap(tester, 'Remove photo');
+      expect(publisher.authorPhotoIndexes, [1, 1]);
+      expect(publisher.publication.metadata.coAuthors.single.photoUrl, isEmpty);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'coauthors keep account links and biographies when publishing details',
+    (tester) async {
+      final publisher = _Publisher()
+        ..suggest = (_) async => const [
+          LibraryAuthorSuggestion(
+            id: 'account:writer',
+            name: 'Writer',
+            userId: '11111111-1111-4111-8111-111111111111',
+            authProject: 'project',
+          ),
+        ];
+      await _pump(tester, publisher);
+      await _tap(tester, 'Add an author');
+      final name = find.byKey(const ValueKey('book_coauthor_name_0'));
+      await tester.ensureVisible(name);
+      await tester.enterText(name, 'Wri');
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.pumpAndSettle();
+      await _tap(tester, 'Writer · ChessEver account');
+      final bio = find.byKey(const ValueKey('book_coauthor_about_0'));
+      await tester.ensureVisible(bio);
+      await tester.enterText(bio, 'A coach.');
+      await _tap(tester, 'Save private draft');
+      final author = publisher.saves.single.metadata.coAuthors.single;
+      expect(author.userId, '11111111-1111-4111-8111-111111111111');
+      expect(author.credit, LibraryAuthorCredit.self);
+      expect(author.about, 'A coach.');
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'review notes are shown and taken-down collections cannot be submitted',
+    (tester) async {
+      final publisher = _Publisher()
+        ..publication = const LibraryBookPublication(
+          status: 'archived',
+          metadata: LibraryBookMetadata(title: 'Study', author: 'Owner'),
+          review: LibraryBookReview(
+            state: LibraryBookReviewState.changesRequested,
+            note: 'Add the source of the notes.',
+          ),
+        );
+      await _pump(tester, publisher);
+      expect(find.text('Add the source of the notes.'), findsOneWidget);
+      final submit = tester.widget<FilledButton>(
+        find.widgetWithText(FilledButton, 'Submit for approval'),
+      );
+      expect(submit.onPressed, isNull);
+      expect(publisher.saves, isEmpty);
+    },
+  );
   setUp(() => SharedPreferences.setMockInitialValues({}));
 
   testWidgets('title stays validated after scrolling down to the actions', (
@@ -273,7 +391,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('foreword and publisher are not asked for but survive a save', (
+  testWidgets('foreword and publisher are editable and survive a save', (
     tester,
   ) async {
     final publisher = _Publisher()
@@ -288,12 +406,34 @@ void main() {
         ),
       );
     await _pump(tester, publisher);
-    expect(find.text('Foreword'), findsNothing);
-    expect(find.text('Publisher'), findsNothing);
-    expect(find.text('Optional'), findsNWidgets(4));
+    expect(find.text('Foreword'), findsOneWidget);
+    expect(find.text('Publisher'), findsOneWidget);
+    expect(find.text('Optional'), findsNWidgets(8));
+    for (final edit in {
+      'Kept foreword': 'First paragraph.\n\nSecond paragraph.',
+      'ChessEver': 'Study Press',
+    }.entries) {
+      await tester.enterText(
+        find.widgetWithText(TextFormField, edit.key),
+        edit.value,
+      );
+    }
+    await tester.enterText(
+      find.widgetWithText(TextFormField, 'my-collection'),
+      'shared-study',
+    );
+    await tester.enterText(
+      find.widgetWithText(TextFormField, 'Annotator name'),
+      'Notes Writer',
+    );
     await _tap(tester, 'Save private draft');
-    expect(publisher.saves.single.metadata.foreword, 'Kept foreword');
-    expect(publisher.saves.single.metadata.publisher, 'ChessEver');
+    expect(
+      publisher.saves.single.metadata.foreword,
+      'First paragraph.\n\nSecond paragraph.',
+    );
+    expect(publisher.saves.single.metadata.publisher, 'Study Press');
+    expect(publisher.saves.single.metadata.slug, 'shared-study');
+    expect(publisher.saves.single.metadata.annotator, 'Notes Writer');
   });
 
   testWidgets('preview follows what is typed', (tester) async {

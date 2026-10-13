@@ -67,11 +67,19 @@ Future<void> openLibraryBookEditor(
   );
 }
 
-/// The fields this screen edits, in the order they read on the collection
-/// page. Foreword and publisher are not edited here: the publisher is always
-/// ChessEver's own editor, and a foreword belongs to a printed book, not to
-/// a folder of games. Whatever the server already holds for them is kept.
-enum _Field { title, subtitle, author, year, about, authorAbout }
+/// The author-editable metadata shared by mobile, desktop and web.
+enum _Field {
+  title,
+  subtitle,
+  author,
+  year,
+  about,
+  authorAbout,
+  publisher,
+  foreword,
+  slug,
+  annotator,
+}
 
 /// Which preview the field is drawn in: the list row or the collection page.
 const _listFields = {_Field.title, _Field.author};
@@ -120,6 +128,13 @@ class _LibraryBookScreenState extends ConsumerState<LibraryBookScreen> {
   /// Whether the server knows author credits: an older one refuses the key,
   /// so "Me" is only sent once it has answered with one.
   bool _creditKnown = false;
+  String? _authorUserId;
+  String? _authorAuthProject;
+  String _authorLinkedName = '';
+  bool get _authorHasLink =>
+      _authorUserId != null && _authorAuthProject != null;
+  final List<_CoAuthor> _coAuthors = [];
+  bool _hadAuthorList = false;
   String _authorPhotoUrl = '';
   Uint8List? _authorPhotoPreview;
   bool _authorPhotoBusy = false;
@@ -135,7 +150,11 @@ class _LibraryBookScreenState extends ConsumerState<LibraryBookScreen> {
   int _suggestSeq = 0;
   Timer? _suggestTimer;
 
-  bool get _anyBusy => _busy || _coverBusy || _authorPhotoBusy;
+  bool get _anyBusy =>
+      _busy ||
+      _coverBusy ||
+      _authorPhotoBusy ||
+      _coAuthors.any((row) => row.busy);
   bool get _creditsOther => _credit == LibraryAuthorCredit.other;
 
   @override
@@ -158,6 +177,9 @@ class _LibraryBookScreenState extends ConsumerState<LibraryBookScreen> {
     }
     for (final node in _focus.values) {
       node.dispose();
+    }
+    for (final row in _coAuthors) {
+      row.dispose();
     }
     super.dispose();
   }
@@ -185,11 +207,22 @@ class _LibraryBookScreenState extends ConsumerState<LibraryBookScreen> {
       _Field.about: m.about,
       _Field.authorAbout: m.authorAbout ?? '',
       _Field.year: m.publishedYear?.toString() ?? '',
+      _Field.publisher: m.publisher,
+      _Field.slug: m.slug ?? '',
+      _Field.annotator: m.annotator ?? '',
+      _Field.foreword: m.foreword,
     };
     for (final entry in values.entries) {
       _fields[entry.key]!.text = entry.value;
     }
-    final credit = m.authorCredit ?? LibraryAuthorCredit.self;
+    _authorUserId = m.authorUserId;
+    _authorAuthProject = m.authorAuthProject;
+    _authorLinkedName = m.author;
+    _syncCoAuthors(m.coAuthors);
+    _hadAuthorList = m.sendAuthorList;
+    final credit = m.authorHasAccountLink
+        ? LibraryAuthorCredit.other
+        : m.authorCredit ?? LibraryAuthorCredit.self;
     _authorPrefilled = false;
     if (m.author.trim().isEmpty && credit == LibraryAuthorCredit.self) {
       _prefillRemembered();
@@ -243,9 +276,21 @@ class _LibraryBookScreenState extends ConsumerState<LibraryBookScreen> {
 
   Future<void> _stashDraft() async {
     // Read synchronously: this also runs from dispose().
-    final values = {
+    final values = <String, Object?>{
       for (final f in _Field.values) f.name: _text(f),
       'authorCredit': _credit.name,
+      'authorUserId': _authorUserId,
+      'authorAuthProject': _authorAuthProject,
+      'coAuthors': [
+        for (final row in _coAuthors)
+          {
+            'name': row.text,
+            'about': row.about.text,
+            'credit': row.credit.name,
+            'userId': row.userId,
+            'authProject': row.authProject,
+          },
+      ],
     };
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -278,7 +323,32 @@ class _LibraryBookScreenState extends ConsumerState<LibraryBookScreen> {
     final draftCredit = draft['authorCredit'] is String
         ? LibraryAuthorCredit.parse(draft['authorCredit'])
         : _credit;
+    final draftAuthors = draft['coAuthors'] is List
+        ? LibraryBookMetadata.fromJson({
+            'title': '',
+            'authors': [
+              {'name': 'First'},
+              ...(draft['coAuthors'] as List),
+            ],
+          }).coAuthors
+        : null;
     final differs =
+        (draftAuthors != null &&
+            jsonEncode(draft['coAuthors']) !=
+                jsonEncode(
+                  _coAuthors
+                      .map(
+                        (row) => {
+                          'name': row.text,
+                          'about': row.about.text,
+                          'credit': row.credit.name,
+                          'userId': row.userId,
+                          'authProject': row.authProject,
+                        },
+                      )
+                      .toList(),
+                )) ||
+        draft['authorUserId'] != _authorUserId ||
         draftCredit != _credit ||
         values.entries.any((e) => e.value.trim() != _text(e.key).trim());
     if (!differs) {
@@ -300,6 +370,12 @@ class _LibraryBookScreenState extends ConsumerState<LibraryBookScreen> {
           _fields[e.key]!.text = e.value;
         }
         _credit = draftCredit;
+        _authorUserId = draft!['authorUserId'] as String?;
+        _authorAuthProject = draft['authorAuthProject'] as String?;
+        _authorLinkedName = _authorTerm;
+        if (draftAuthors != null) {
+          _syncCoAuthors(draftAuthors, preservePhotos: true);
+        }
         _authorPrefilled = false;
         _dirty = true;
       });
@@ -348,7 +424,6 @@ class _LibraryBookScreenState extends ConsumerState<LibraryBookScreen> {
   }
 
   LibraryBookMetadata get _metadata {
-    final saved = _publication?.metadata;
     return LibraryBookMetadata(
       title: _text(_Field.title).trim(),
       subtitle: _text(_Field.subtitle).trim(),
@@ -361,13 +436,32 @@ class _LibraryBookScreenState extends ConsumerState<LibraryBookScreen> {
               _text(_Field.authorAbout).trim().isNotEmpty
           ? _text(_Field.authorAbout).trim()
           : null,
-      // Not editable here; carried through so a save never erases them.
-      foreword: saved?.foreword ?? '',
-      publisher: saved?.publisher ?? '',
+      foreword: _text(_Field.foreword).trim(),
+      publisher: _text(_Field.publisher).trim(),
+      slug: _text(_Field.slug).trim().isEmpty
+          ? null
+          : _text(_Field.slug).trim(),
+      annotator:
+          _publication?.metadata.annotator != null ||
+              _text(_Field.annotator).trim().isNotEmpty
+          ? _text(_Field.annotator).trim()
+          : null,
       publishedYear: int.tryParse(_text(_Field.year).trim()),
       // Set by the cover upload, never typed; carried through on save.
       coverUrl: _coverUrl,
-      authorCredit: _creditsOther
+      coAuthors: [
+        for (final row in _coAuthors)
+          if (row.text.isNotEmpty) row.value,
+      ],
+      sendAuthorList:
+          _hadAuthorList ||
+          _coAuthors.any((row) => row.text.isNotEmpty) ||
+          _authorHasLink,
+      authorUserId: _authorUserId,
+      authorAuthProject: _authorAuthProject,
+      authorCredit: _authorHasLink
+          ? LibraryAuthorCredit.self
+          : _creditsOther
           ? LibraryAuthorCredit.other
           : _creditKnown
           ? LibraryAuthorCredit.self
@@ -378,9 +472,9 @@ class _LibraryBookScreenState extends ConsumerState<LibraryBookScreen> {
   bool _validateForReview = false;
 
   Future<void> _save({bool publish = false}) async {
-    if (_anyBusy) return;
+    if (_anyBusy || _publication?.status == 'archived') return;
     _validateForReview = publish;
-    if (!(_form.currentState?.validate() ?? false)) {
+    if (!_validateForm()) {
       setState(
         () =>
             _error = 'Check the highlighted collection details before saving.',
@@ -434,7 +528,7 @@ class _LibraryBookScreenState extends ConsumerState<LibraryBookScreen> {
   /// cover belongs to a saved collection, so a never-saved one is first
   /// saved as a private draft with what is typed.
   Future<void> _pickCover() async {
-    if (_anyBusy) return;
+    if (_anyBusy || _publication?.status == 'archived') return;
     final Uint8List? image;
     try {
       image = await ref.read(collectionCoverPickerProvider)(context);
@@ -453,7 +547,7 @@ class _LibraryBookScreenState extends ConsumerState<LibraryBookScreen> {
       final publisher = ref.read(libraryBookPublisherProvider);
       if (_publication?.bookId == null) {
         _validateForReview = false;
-        if (!(_form.currentState?.validate() ?? false)) {
+        if (!_validateForm()) {
           throw const LibraryBookPublicationException(
             'Add a title first. The cover is saved with the collection.',
           );
@@ -493,7 +587,7 @@ class _LibraryBookScreenState extends ConsumerState<LibraryBookScreen> {
   }
 
   Future<void> _removeCover() async {
-    if (_anyBusy) return;
+    if (_anyBusy || _publication?.status == 'archived') return;
     setState(() {
       _coverBusy = true;
       _error = null;
@@ -525,10 +619,15 @@ class _LibraryBookScreenState extends ConsumerState<LibraryBookScreen> {
   /// "Me" or "Someone else". Crediting someone else clears a name that was
   /// only pre-filled with the publisher's own; going back to "Me" fills it in.
   void _setCredit(LibraryAuthorCredit next) {
-    if (next == _credit || _anyBusy) return;
+    if (next == _credit || _anyBusy || _publication?.status == 'archived') {
+      return;
+    }
     final author = _fields[_Field.author]!;
     setState(() {
       _credit = next;
+      _authorUserId = null;
+      _authorAuthProject = null;
+      _authorLinkedName = '';
       _dirty = true;
       if (next == LibraryAuthorCredit.other && _authorPrefilled) {
         author.clear();
@@ -564,6 +663,12 @@ class _LibraryBookScreenState extends ConsumerState<LibraryBookScreen> {
   void _scheduleSuggestions() {
     _suggestTimer?.cancel();
     final term = _authorTerm;
+    if (_authorHasLink &&
+        term.toLowerCase() != _authorLinkedName.toLowerCase()) {
+      _authorUserId = null;
+      _authorAuthProject = null;
+      _authorLinkedName = '';
+    }
     if (!_creditsOther || term.length < 2) {
       _suggestSeq++;
       if (_suggestions.isNotEmpty || _suggestionsFor.isNotEmpty) {
@@ -611,6 +716,9 @@ class _LibraryBookScreenState extends ConsumerState<LibraryBookScreen> {
         text: suggestion.name,
         selection: TextSelection.collapsed(offset: suggestion.name.length),
       );
+      _authorUserId = suggestion.userId;
+      _authorAuthProject = suggestion.authProject;
+      _authorLinkedName = suggestion.hasAccount ? suggestion.name : '';
       _authorPrefilled = false;
       _suggestions = [suggestion];
       _suggestionsFor = suggestion.name;
@@ -623,7 +731,7 @@ class _LibraryBookScreenState extends ConsumerState<LibraryBookScreen> {
   /// once. Like the cover, it needs a saved collection, so a never-saved one
   /// is first saved as a private draft (credited to someone else).
   Future<void> _pickAuthorPhoto() async {
-    if (_anyBusy) return;
+    if (_anyBusy || _publication?.status == 'archived') return;
     final Uint8List? image;
     try {
       image = await ref.read(authorPhotoPickerProvider)(context);
@@ -637,13 +745,15 @@ class _LibraryBookScreenState extends ConsumerState<LibraryBookScreen> {
       _authorPhotoBusy = true;
       _authorPhotoPreview = image;
       _credit = LibraryAuthorCredit.other;
+      _authorUserId = null;
+      _authorAuthProject = null;
       _error = null;
     });
     try {
       final publisher = ref.read(libraryBookPublisherProvider);
       if (_publication?.bookId == null) {
         _validateForReview = false;
-        if (!(_form.currentState?.validate() ?? false)) {
+        if (!_validateForm()) {
           throw const LibraryBookPublicationException(
             'Add a title first. The author photo is saved with the collection.',
           );
@@ -688,7 +798,7 @@ class _LibraryBookScreenState extends ConsumerState<LibraryBookScreen> {
   }
 
   Future<void> _removeAuthorPhoto() async {
-    if (_anyBusy) return;
+    if (_anyBusy || _publication?.status == 'archived') return;
     setState(() {
       _authorPhotoBusy = true;
       _error = null;
@@ -761,8 +871,332 @@ class _LibraryBookScreenState extends ConsumerState<LibraryBookScreen> {
     }
   }
 
+  void _syncCoAuthors(
+    List<LibraryBookAuthor> authors, {
+    bool preservePhotos = false,
+  }) {
+    final old = List<_CoAuthor>.of(_coAuthors);
+    final next = <_CoAuthor>[];
+    for (final author in authors) {
+      final index = old.indexWhere(
+        (row) => row.text.toLowerCase() == author.name.toLowerCase(),
+      );
+      final row = index < 0 ? _CoAuthor(author) : old.removeAt(index);
+      row.about.text = author.about ?? '';
+      if (!preservePhotos || index < 0) row.photoUrl = author.photoUrl;
+      row.credit = author.credit ?? LibraryAuthorCredit.other;
+      row.userId = author.userId;
+      row.authProject = author.authProject;
+      row.linkedName = author.hasAccountLink ? author.name : '';
+      next.add(row);
+    }
+    _coAuthors
+      ..clear()
+      ..addAll(next);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      for (final row in old) {
+        row.dispose();
+      }
+    });
+  }
+
+  bool _validateForm() {
+    final valid = _form.currentState?.validate() ?? false;
+    final seen = <String>{_authorTerm.toLowerCase()};
+    var rowsValid = true;
+    for (final row in _coAuthors) {
+      final name = row.text;
+      row.error = name.isEmpty
+          ? null
+          : row.credit == LibraryAuthorCredit.self && !row.hasLink
+          ? 'Select a ChessEver account below.'
+          : seen.contains(name.toLowerCase())
+          ? 'This author is already listed.'
+          : null;
+      if (name.isNotEmpty) seen.add(name.toLowerCase());
+      if (row.error != null) rowsValid = false;
+    }
+    setState(() {});
+    return valid && rowsValid;
+  }
+
+  void _lookupCoAuthor(_CoAuthor row) {
+    row.timer?.cancel();
+    final seq = ++row.sequence;
+    final name = row.text;
+    row.suggestions = const [];
+    if (name.length < 2) return;
+    row.timer = Timer(const Duration(milliseconds: 300), () async {
+      final items = await ref
+          .read(libraryBookPublisherProvider)
+          .suggestAuthors(name);
+      if (!mounted ||
+          !_coAuthors.contains(row) ||
+          seq != row.sequence ||
+          row.text != name) {
+        return;
+      }
+      setState(() => row.suggestions = items);
+    });
+  }
+
+  Future<void> _changeCoAuthorPhoto(
+    _CoAuthor row, {
+    bool remove = false,
+  }) async {
+    if (_anyBusy || _publication?.status == 'archived') return;
+    if (row.text.isEmpty) {
+      setState(() => row.error = 'Name this author first.');
+      return;
+    }
+    final Uint8List? image;
+    try {
+      image = remove
+          ? null
+          : await ref.read(authorPhotoPickerProvider)(context);
+    } on FormatException catch (error) {
+      if (mounted) setState(() => _error = error.message);
+      return;
+    }
+    if (!mounted || (!remove && image == null)) return;
+    _validateForReview = false;
+    if (!_validateForm()) return;
+    setState(() {
+      row.busy = true;
+      _error = null;
+    });
+    try {
+      final publisher = ref.read(libraryBookPublisherProvider);
+      if (_dirty ||
+          _publication?.bookId == null ||
+          !_publication!.metadata.authors.any((a) => a.name == row.text)) {
+        final saved = await publisher.save(widget.folder, _metadata);
+        if (!mounted) return;
+        _accept(saved);
+        unawaited(_clearDraft());
+      }
+      final index = _publication!.metadata.authors.indexWhere(
+        (author) => author.name.toLowerCase() == row.text.toLowerCase(),
+      );
+      if (index < 1) {
+        throw const LibraryBookPublicationException(
+          'Save this author before adding their photo.',
+        );
+      }
+      final result = remove
+          ? await publisher.removeAuthorPhoto(widget.folder, index: index)
+          : await publisher.uploadAuthorPhoto(
+              widget.folder,
+              image!,
+              index: index,
+            );
+      if (!mounted) return;
+      _accept(result);
+      _invalidateCollections();
+      showAppSnack(
+        context,
+        remove ? 'Author photo removed' : 'Author photo saved',
+        tone: AppSnackTone.success,
+      );
+    } catch (error) {
+      if (mounted) setState(() => _error = _message(error));
+    } finally {
+      if (mounted) setState(() => row.busy = false);
+    }
+  }
+
+  Widget _coAuthorsSection() {
+    final enabled = !_anyBusy && _publication?.status != 'archived';
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _sectionHeading('More authors'),
+        const SizedBox(height: 12),
+        for (final row in _coAuthors)
+          Padding(
+            key: ObjectKey(row),
+            padding: const EdgeInsets.only(bottom: 24),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextFormField(
+                        key: ValueKey(
+                          'book_coauthor_name_${_coAuthors.indexOf(row)}',
+                        ),
+                        controller: row.name,
+                        enabled: enabled,
+                        maxLength: 80,
+                        decoration: InputDecoration(
+                          labelText: 'Author ${_coAuthors.indexOf(row) + 2}',
+                          errorText: row.error,
+                        ),
+                        onChanged: (_) {
+                          setState(() {
+                            if (row.hasLink &&
+                                row.text.toLowerCase() !=
+                                    row.linkedName.toLowerCase()) {
+                              row.userId = null;
+                              row.authProject = null;
+                              row.credit = LibraryAuthorCredit.other;
+                            }
+                            _dirty = true;
+                            row.error = null;
+                          });
+                          _lookupCoAuthor(row);
+                          _scheduleStash();
+                        },
+                      ),
+                    ),
+                    IconButton(
+                      tooltip: 'Remove this author',
+                      onPressed: enabled
+                          ? () {
+                              setState(() {
+                                _coAuthors.remove(row);
+                                _dirty = true;
+                              });
+                              WidgetsBinding.instance.addPostFrameCallback(
+                                (_) => row.dispose(),
+                              );
+                              _scheduleStash();
+                            }
+                          : null,
+                      icon: const Icon(Icons.close),
+                    ),
+                  ],
+                ),
+                SegmentedSwitcher(
+                  options: const ['Named author', 'ChessEver account'],
+                  currentSelection: row.credit == LibraryAuthorCredit.self
+                      ? 1
+                      : 0,
+                  onSelectionChanged: (i) {
+                    if (!enabled) return;
+                    setState(() {
+                      row.credit = i == 1
+                          ? LibraryAuthorCredit.self
+                          : LibraryAuthorCredit.other;
+                      if (i == 0) {
+                        row.userId = null;
+                        row.authProject = null;
+                      }
+                      _dirty = true;
+                    });
+                    _lookupCoAuthor(row);
+                    _scheduleStash();
+                  },
+                ),
+                for (final suggestion in row.suggestions)
+                  TextButton(
+                    onPressed: enabled
+                        ? () {
+                            row.timer?.cancel();
+                            row.sequence++;
+                            setState(() {
+                              row.name.text = suggestion.name;
+                              row.userId = suggestion.userId;
+                              row.authProject = suggestion.authProject;
+                              row.linkedName = suggestion.name;
+                              row.credit = suggestion.hasAccount
+                                  ? LibraryAuthorCredit.self
+                                  : LibraryAuthorCredit.other;
+                              row.suggestions = const [];
+                              _dirty = true;
+                            });
+                            _scheduleStash();
+                          }
+                        : null,
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        '${suggestion.name}${suggestion.hasAccount ? ' · ChessEver account' : ''}',
+                      ),
+                    ),
+                  ),
+                if (row.hasLink)
+                  const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 10),
+                    child: Text(
+                      'Linked to their ChessEver author page. Their profile photo is shown.',
+                    ),
+                  ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  key: ValueKey(
+                    'book_coauthor_about_${_coAuthors.indexOf(row)}',
+                  ),
+                  controller: row.about,
+                  enabled: enabled,
+                  minLines: 2,
+                  maxLines: 5,
+                  maxLength: 4000,
+                  decoration: const InputDecoration(
+                    labelText: 'About this author',
+                  ),
+                  onChanged: (_) {
+                    setState(() => _dirty = true);
+                    _scheduleStash();
+                  },
+                ),
+                if (row.credit == LibraryAuthorCredit.other)
+                  Wrap(
+                    spacing: 8,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      if (row.photoUrl.isNotEmpty)
+                        _AuthorAvatar(url: row.photoUrl, size: 40),
+                      TextButton(
+                        onPressed: enabled
+                            ? () => _changeCoAuthorPhoto(row)
+                            : null,
+                        child: Text(
+                          row.busy
+                              ? 'Saving photo…'
+                              : row.photoUrl.isEmpty
+                              ? 'Choose photo'
+                              : 'Replace photo',
+                        ),
+                      ),
+                      if (row.photoUrl.isNotEmpty)
+                        TextButton(
+                          onPressed: enabled
+                              ? () => _changeCoAuthorPhoto(row, remove: true)
+                              : null,
+                          child: const Text('Remove photo'),
+                        ),
+                    ],
+                  ),
+              ],
+            ),
+          ),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: TextButton.icon(
+            onPressed: enabled && _coAuthors.length < libraryBookMaxAuthors - 1
+                ? () {
+                    setState(() {
+                      _coAuthors.add(
+                        _CoAuthor(const LibraryBookAuthor(name: '')),
+                      );
+                      _dirty = true;
+                    });
+                    _scheduleStash();
+                  }
+                : null,
+            icon: const Icon(Icons.add),
+            label: const Text('Add an author'),
+          ),
+        ),
+        const SizedBox(height: 20),
+      ],
+    );
+  }
+
   Future<void> _close() async {
-    if (_busy) return;
+    if (_anyBusy) return;
     // Nothing to discard: unsaved edits are kept on the device and offered
     // back on the next visit.
     if (_dirty) await _stashDraft();
@@ -781,7 +1215,11 @@ class _LibraryBookScreenState extends ConsumerState<LibraryBookScreen> {
         return value.length < 3 ? 'Use at least 3 characters' : null;
       case _Field.author:
         if (value.isEmpty) {
-          return _validateForReview ? 'Credit the author by name' : null;
+          return _coAuthors.any((row) => row.text.isNotEmpty)
+              ? 'Name the first author before adding more.'
+              : _validateForReview
+              ? 'Credit the author by name'
+              : null;
         }
         return RegExp(r'\p{L}{2}', unicode: true).hasMatch(value)
             ? null
@@ -790,7 +1228,15 @@ class _LibraryBookScreenState extends ConsumerState<LibraryBookScreen> {
         return _validateForReview && value.isEmpty
             ? 'Describe this collection'
             : null;
+      case _Field.slug:
+        return value.isEmpty ||
+                RegExp(r'^[a-z0-9]+(?:-[a-z0-9]+)*$').hasMatch(value)
+            ? null
+            : 'Use lowercase letters, numbers and hyphens.';
+      case _Field.annotator:
       case _Field.authorAbout:
+      case _Field.publisher:
+      case _Field.foreword:
         return null;
       case _Field.year:
         if (value.isEmpty) return null;
@@ -864,7 +1310,7 @@ class _LibraryBookScreenState extends ConsumerState<LibraryBookScreen> {
           TextFormField(
             controller: _fields[field],
             focusNode: _focus[field],
-            enabled: !_busy,
+            enabled: !_anyBusy && _publication?.status != 'archived',
             minLines: lines,
             maxLines: lines == 1 ? 1 : lines + 4,
             maxLength: limit,
@@ -882,9 +1328,9 @@ class _LibraryBookScreenState extends ConsumerState<LibraryBookScreen> {
                 ),
                 const _TidySpacesFormatter(),
               ],
-              _Field.about || _Field.authorAbout => [
-                const _TidySpacesFormatter(multiline: true),
-              ],
+              _Field.about ||
+              _Field.authorAbout ||
+              _Field.foreword => [const _TidySpacesFormatter(multiline: true)],
               _ => [const _TidySpacesFormatter()],
             },
             // Author is a proper name: every word starts upper-case, so
@@ -968,6 +1414,13 @@ class _LibraryBookScreenState extends ConsumerState<LibraryBookScreen> {
           child: Text(
             published
                 ? 'Published · ${_plural(_publication!.gameCount, 'game')} in Collections'
+                : _publication?.status == 'archived'
+                ? 'Taken down by ChessEver'
+                : _publication?.review.state == LibraryBookReviewState.pending
+                ? 'In review · waiting for ChessEver approval'
+                : _publication?.review.state ==
+                      LibraryBookReviewState.changesRequested
+                ? 'Changes requested · edit and resubmit'
                 : 'Private draft · only you can see it',
             style: AppTypography.textXsMedium.copyWith(
               color: context.textInk(0.7),
@@ -983,9 +1436,9 @@ class _LibraryBookScreenState extends ConsumerState<LibraryBookScreen> {
     final published = _publication?.isPublished ?? false;
     final colors = context.colors;
     return PopScope(
-      canPop: !_busy && !_dirty,
+      canPop: !_anyBusy && !_dirty,
       onPopInvokedWithResult: (didPop, _) {
-        if (!didPop && !_busy) _close();
+        if (!didPop && !_anyBusy) _close();
       },
       child: Scaffold(
         backgroundColor: colors.background,
@@ -994,7 +1447,7 @@ class _LibraryBookScreenState extends ConsumerState<LibraryBookScreen> {
           foregroundColor: colors.textPrimary,
           title: Text(published ? 'Edit collection' : 'Publish collection'),
           leading: IconButton(
-            onPressed: _busy ? null : _close,
+            onPressed: _anyBusy ? null : _close,
             tooltip: 'Back',
             icon: const Icon(Icons.arrow_back_ios_new_rounded),
           ),
@@ -1032,6 +1485,15 @@ class _LibraryBookScreenState extends ConsumerState<LibraryBookScreen> {
                           crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
                             _status(published),
+                            if (_publication!.review.state ==
+                                LibraryBookReviewState.changesRequested)
+                              Padding(
+                                padding: const EdgeInsets.only(top: 12),
+                                child: Text(
+                                  _publication!.review.note,
+                                  key: const ValueKey('book_review_note'),
+                                ),
+                              ),
                             SizedBox(height: 20.sp),
                             _sectionHeading('Preview'),
                             SizedBox(height: 10.sp),
@@ -1048,14 +1510,17 @@ class _LibraryBookScreenState extends ConsumerState<LibraryBookScreen> {
                                 page: _previewTab == 1,
                                 title: _text(_Field.title).trim(),
                                 subtitle: _text(_Field.subtitle).trim(),
-                                author: _text(_Field.author).trim(),
+                                author: bookAuthorCredit(
+                                  _metadata.authors.map(
+                                    (author) => author.name,
+                                  ),
+                                ),
                                 year: _text(_Field.year).trim(),
                                 about: _text(_Field.about).trim(),
                                 cover: _coverUri(_coverUrl),
                                 coverBytes: _coverPreview,
                                 coverLit: _coverBusy,
-                                publisher: _publication!.metadata.publisher
-                                    .trim(),
+                                publisher: _text(_Field.publisher).trim(),
                                 gameCount: _publication!.gameCount,
                                 focused: _focused,
                               ),
@@ -1076,7 +1541,7 @@ class _LibraryBookScreenState extends ConsumerState<LibraryBookScreen> {
                               where:
                                   'The name readers see in the list and on top of the page.',
                               hint: 'e.g. Carlsen’s Best Endgames',
-                              limit: 80,
+                              limit: 300,
                             ),
                             _field(
                               _Field.subtitle,
@@ -1085,7 +1550,7 @@ class _LibraryBookScreenState extends ConsumerState<LibraryBookScreen> {
                               where:
                                   'One short line under the title on the collection page. It adds detail the title leaves out.',
                               hint: 'e.g. 40 annotated wins, 2013–2023',
-                              limit: 120,
+                              limit: 300,
                             ),
                             _field(
                               _Field.author,
@@ -1094,7 +1559,7 @@ class _LibraryBookScreenState extends ConsumerState<LibraryBookScreen> {
                                   ? 'The person who wrote or compiled it, credited as “by …” in the list and on the page. Pick a name below if they’re already on ChessEver, so their collections stay together.'
                                   : 'Credited as “by …” in the list and on the page.',
                               hint: 'e.g. Magnus Carlsen',
-                              limit: 60,
+                              limit: 80,
                               above: _creditSwitch(),
                               below: _authorExtras(published),
                             ),
@@ -1126,7 +1591,45 @@ class _LibraryBookScreenState extends ConsumerState<LibraryBookScreen> {
                               hint:
                                   'What’s inside, who it’s for, and what readers will take away.',
                               lines: 4,
-                              limit: 1500,
+                              limit: 20000,
+                            ),
+                            _coAuthorsSection(),
+                            _field(
+                              _Field.publisher,
+                              label: 'Publisher',
+                              optional: true,
+                              where:
+                                  'The publisher credited on the collection page.',
+                              hint: 'Publisher name',
+                              limit: 200,
+                            ),
+                            _field(
+                              _Field.foreword,
+                              label: 'Foreword',
+                              optional: true,
+                              where:
+                                  'Your introduction, on the collection About tab.',
+                              hint:
+                                  'Introduce this collection and how to use it.',
+                              lines: 5,
+                              limit: 50000,
+                            ),
+                            _field(
+                              _Field.slug,
+                              label: 'Link',
+                              optional: true,
+                              where:
+                                  'The collection URL name. Leave empty to use the generated link.',
+                              hint: 'my-collection',
+                              limit: 120,
+                            ),
+                            _field(
+                              _Field.annotator,
+                              label: 'Annotator',
+                              optional: true,
+                              where: 'Who wrote the game annotations.',
+                              hint: 'Annotator name',
+                              limit: 300,
                             ),
                             _coverPicker(published),
                             if (published)
@@ -1190,7 +1693,8 @@ class _LibraryBookScreenState extends ConsumerState<LibraryBookScreen> {
                                 ),
                                 textStyle: AppTypography.textSmMedium,
                               ),
-                              onPressed: _busy
+                              onPressed:
+                                  _anyBusy || _publication?.status == 'archived'
                                   ? null
                                   : () => _save(publish: true),
                               child: Text(
@@ -1210,12 +1714,20 @@ class _LibraryBookScreenState extends ConsumerState<LibraryBookScreen> {
                             SizedBox(height: 4.sp),
                             if (!published)
                               TextButton(
-                                onPressed: _busy ? null : _save,
+                                onPressed:
+                                    _anyBusy ||
+                                        _publication?.status == 'archived'
+                                    ? null
+                                    : _save,
                                 child: const Text('Save private draft'),
                               ),
                             if (published)
                               TextButton(
-                                onPressed: _busy ? null : _unpublish,
+                                onPressed:
+                                    _anyBusy ||
+                                        _publication?.status == 'archived'
+                                    ? null
+                                    : _unpublish,
                                 child: const Text('Unpublish collection'),
                               ),
                           ],
@@ -1235,7 +1747,7 @@ class _LibraryBookScreenState extends ConsumerState<LibraryBookScreen> {
     final colors = context.colors;
     final url = _coverUri(_coverUrl);
     final hasCover = _coverPreview != null || url != null;
-    final enabled = !_busy && !_coverBusy;
+    final enabled = !_anyBusy && _publication?.status != 'archived';
     final thumb = _coverPreview != null
         ? Image.memory(_coverPreview!, fit: BoxFit.cover)
         : url != null
@@ -1384,6 +1896,14 @@ class _LibraryBookScreenState extends ConsumerState<LibraryBookScreen> {
   /// Under the name: for "Me", the profile photo it is pictured with; for
   /// someone else, existing ChessEver names to match and their own photo.
   Widget _authorExtras(bool published) {
+    if (_authorHasLink) {
+      return const Padding(
+        padding: EdgeInsets.only(top: 12),
+        child: Text(
+          'Linked to their ChessEver author page. Their profile photo is shown.',
+        ),
+      );
+    }
     return ListenableBuilder(
       listenable: _fields[_Field.author]!,
       builder: (context, _) {
@@ -1418,7 +1938,7 @@ class _LibraryBookScreenState extends ConsumerState<LibraryBookScreen> {
         }
         final matched = _matchedAuthor;
         final showList =
-            matched == null &&
+            (matched == null || (matched.hasAccount && !_authorHasLink)) &&
             _suggestions.isNotEmpty &&
             _suggestionsFor.toLowerCase() == _authorTerm.toLowerCase();
         return Column(
@@ -1472,7 +1992,9 @@ class _LibraryBookScreenState extends ConsumerState<LibraryBookScreen> {
               excludeSemantics: true,
               child: InkWell(
                 key: ValueKey('book_author_suggestion_${s.name}'),
-                onTap: _busy ? null : () => _useSuggestion(s),
+                onTap: _anyBusy || _publication?.status == 'archived'
+                    ? null
+                    : () => _useSuggestion(s),
                 child: ConstrainedBox(
                   constraints: const BoxConstraints(minHeight: 48),
                   child: Padding(
@@ -1559,7 +2081,7 @@ class _LibraryBookScreenState extends ConsumerState<LibraryBookScreen> {
     final colors = context.colors;
     final own = _authorPhotoPreview != null || _authorPhotoUrl.isNotEmpty;
     final borrowed = !own && matched?.avatarUrl != null;
-    final enabled = !_anyBusy;
+    final enabled = !_anyBusy && _publication?.status != 'archived';
     final photo = _AuthorAvatar(
       bytes: _authorPhotoPreview,
       url: _authorPhotoPreview != null
@@ -2060,5 +2582,43 @@ class _Spot extends StatelessWidget {
       ),
       child: child,
     );
+  }
+}
+
+class _CoAuthor {
+  _CoAuthor(LibraryBookAuthor author)
+    : name = TextEditingController(text: author.name),
+      about = TextEditingController(text: author.about ?? ''),
+      photoUrl = author.photoUrl,
+      credit = author.credit ?? LibraryAuthorCredit.other,
+      userId = author.userId,
+      authProject = author.authProject,
+      linkedName = author.name;
+  final TextEditingController name;
+  final TextEditingController about;
+  String photoUrl;
+  LibraryAuthorCredit credit;
+  String? userId;
+  String? authProject;
+  String linkedName;
+  String? error;
+  bool busy = false;
+  Timer? timer;
+  int sequence = 0;
+  List<LibraryAuthorSuggestion> suggestions = const [];
+  String get text => name.text.trim().replaceAll(RegExp(r'\s+'), ' ');
+  bool get hasLink => userId != null && authProject != null;
+  LibraryBookAuthor get value => LibraryBookAuthor(
+    name: text,
+    photoUrl: photoUrl,
+    about: about.text.trim(),
+    credit: credit,
+    userId: userId,
+    authProject: authProject,
+  );
+  void dispose() {
+    timer?.cancel();
+    name.dispose();
+    about.dispose();
   }
 }

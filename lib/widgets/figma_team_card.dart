@@ -112,10 +112,9 @@ class FigmaTeamCard extends StatelessWidget {
                                 text: '${team.matchesDrawn}',
                                 style: AppTypography.textSmMedium.copyWith(
                                   // #9AA0A6 is 2.5:1 on paper.
-                                  color:
-                                      context.isLightTheme
-                                          ? context.colors.textSecondary
-                                          : _drawGrey,
+                                  color: context.isLightTheme
+                                      ? context.colors.textSecondary
+                                      : _drawGrey,
                                 ),
                               ),
                               const TextSpan(text: ' · '),
@@ -170,13 +169,12 @@ class FigmaTeamCard extends StatelessWidget {
           duration: const Duration(milliseconds: 200),
           curve: Curves.easeInOut,
           alignment: Alignment.topCenter,
-          child:
-              isExpanded
-                  ? Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: expandedChildren,
-                  )
-                  : const SizedBox(width: double.infinity),
+          child: isExpanded
+              ? Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: expandedChildren,
+                )
+              : const SizedBox(width: double.infinity),
         ),
       ],
     );
