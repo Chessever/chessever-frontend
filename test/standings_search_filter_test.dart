@@ -21,6 +21,36 @@ PlayerStandingModel _player({
 }
 
 void main() {
+  test('keeps published shared ranks when assigning display ranks', () {
+    final ranked = assignOverallRanks([
+      PlayerStandingModel(
+        countryCode: '',
+        name: 'First',
+        score: 0,
+        scoreChange: 0,
+        matchScore: '0 / 0',
+        overallRank: 1,
+      ),
+      PlayerStandingModel(
+        countryCode: '',
+        name: 'Also first',
+        score: 0,
+        scoreChange: 0,
+        matchScore: '0 / 0',
+        overallRank: 1,
+      ),
+      PlayerStandingModel(
+        countryCode: '',
+        name: 'Third',
+        score: 0,
+        scoreChange: 0,
+        matchScore: '0 / 0',
+        overallRank: 3,
+      ),
+    ]);
+    expect(ranked.map((p) => p.overallRank), [1, 1, 3]);
+  });
+
   group('standings search filtering', () {
     test('preserves the unfiltered overall rank for a one-player result', () {
       final standings = assignOverallRanks([

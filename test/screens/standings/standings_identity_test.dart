@@ -48,6 +48,31 @@ void main() {
   });
   tearDown(() => client.dispose());
 
+  test(
+    'official player rank and zero played survive a broadcast win',
+    () async {
+      final rows = await buildStandingsFromData(
+        supabase: client,
+        tournamentPlayers: [
+          TournamentPlayer(
+            name: 'Published Player',
+            fideId: 101,
+            score: 0,
+            played: 0,
+            rank: 2,
+          ),
+        ],
+        gamesTourModels: [
+          game('r1', card('Published Player', 101), card('Opponent', 202)),
+        ],
+        useExternalOrder: true,
+      );
+      final published = rows.singleWhere((p) => p.fideId == 101);
+      expect(published.matchScore, '0 / 0');
+      expect(published.overallRank, 2);
+    },
+  );
+
   test('same FIDE player keeps results across name variants', () async {
     final rows = await buildStandingsFromData(
       supabase: client,

@@ -64,6 +64,27 @@ void main() {
       );
     },
   );
+  test('accepts the organizer three-point win scale', () {
+    final data = snapshot();
+    data['matchScoring'] = {'win': 3, 'draw': 1, 'loss': 0};
+    (data['teams'] as List)[0]['matchPoints'] = 9;
+    final rows = buildOfficialTeamStandings(info: info(data), players: []);
+    expect(rows!.first.matchPoints, 9);
+  });
+  test('rejects malformed scoring and negative points', () {
+    final data = snapshot();
+    data['matchScoring'] = {'win': 1, 'draw': 2, 'loss': 0};
+    expect(buildOfficialTeamStandings(info: info(data), players: []), isNull);
+    data['matchScoring'] = {'win': 3, 'draw': 1, 'loss': 0};
+    (data['teams'] as List)[0]['matchPoints'] = -1;
+    expect(buildOfficialTeamStandings(info: info(data), players: []), isNull);
+  });
+  test('preserves organizer awards beyond played-match totals', () {
+    final data = snapshot();
+    (data['teams'] as List)[0]['matchPoints'] = 9;
+    final rows = buildOfficialTeamStandings(info: info(data), players: []);
+    expect(rows!.first.matchPoints, 9);
+  });
   test('preserves official shared ranks', () {
     final data = snapshot();
     (data['teams'] as List)[1]['rank'] = 1;

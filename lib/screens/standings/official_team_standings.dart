@@ -27,6 +27,32 @@ List<TeamStandingModel>? buildOfficialTeamStandings({
     return null;
   }
 
+  // Older snapshots used 2/1/0. New snapshots carry the organizer's scale.
+  final scoring = snapshot['matchScoring'];
+  final winPoints = scoring == null
+      ? 2
+      : scoring is Map
+      ? _integer(scoring['win'])
+      : null;
+  final drawPoints = scoring == null
+      ? 1
+      : scoring is Map
+      ? _integer(scoring['draw'])
+      : null;
+  final lossPoints = scoring == null
+      ? 0
+      : scoring is Map
+      ? _integer(scoring['loss'])
+      : null;
+  if (winPoints == null ||
+      drawPoints == null ||
+      lossPoints == null ||
+      winPoints <= drawPoints ||
+      drawPoints < lossPoints ||
+      lossPoints < 0) {
+    return null;
+  }
+
   final playersByTeam = <String, List<PlayerStandingModel>>{};
   for (final player in players) {
     final key = player.team?.trim().toLowerCase();
@@ -49,14 +75,13 @@ List<TeamStandingModel>? buildOfficialTeamStandings({
     final losses = _integer(raw['losses']);
     if (name is! String ||
         name.trim().isEmpty ||
-        !names.add(name.toLowerCase()) ||
+        !names.add(name.trim().toLowerCase()) ||
         rank == null ||
         rank < 1 ||
         rank < lastRank ||
         (rank != lastRank && rank != rows.length + 1) ||
         mp == null ||
         mp < 0 ||
-        mp > 2 * round ||
         gp is! num ||
         !gp.isFinite ||
         gp < 0 ||
@@ -85,7 +110,7 @@ List<TeamStandingModel>? buildOfficialTeamStandings({
         matchesLost: losses,
         // The source counts matches; it does not certify played boards.
         boardsPlayed: 0,
-        players: playersByTeam[name.toLowerCase()] ?? const [],
+        players: playersByTeam[name.trim().toLowerCase()] ?? const [],
       ),
     );
   }
@@ -94,8 +119,8 @@ List<TeamStandingModel>? buildOfficialTeamStandings({
 
 int? _integer(dynamic value) =>
     value is num && value.isFinite && value == value.roundToDouble()
-        ? value.toInt()
-        : null;
+    ? value.toInt()
+    : null;
 
 String? _eventId(dynamic value) {
   if (value is! String) return null;

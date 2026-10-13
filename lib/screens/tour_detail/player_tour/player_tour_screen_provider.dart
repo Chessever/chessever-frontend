@@ -65,8 +65,9 @@ final mergedTournamentGamesProvider = AutoDisposeProvider<List<GamesTourModel>>(
           screen.gamesTourModels.length == complete.value!.length) {
         return screen.gamesTourModels;
       }
-      final rawGames =
-          ref.watch(completeGamesTourProvider(aboutTourModel.id)).valueOrNull;
+      final rawGames = ref
+          .watch(completeGamesTourProvider(aboutTourModel.id))
+          .valueOrNull;
       if (rawGames == null) {
         return const <GamesTourModel>[];
       }
@@ -83,14 +84,13 @@ final mergedTournamentGamesProvider = AutoDisposeProvider<List<GamesTourModel>>(
 
     if (isPaginationCategory(aboutTourModel.name)) {
       final baseName = getCategoryBaseName(aboutTourModel.name);
-      final relatedTours =
-          tourDetail.tours
-              .where(
-                (t) =>
-                    isPaginationCategory(t.tour.name) &&
-                    getCategoryBaseName(t.tour.name) == baseName,
-              )
-              .toList();
+      final relatedTours = tourDetail.tours
+          .where(
+            (t) =>
+                isPaginationCategory(t.tour.name) &&
+                getCategoryBaseName(t.tour.name) == baseName,
+          )
+          .toList();
 
       if (relatedTours.length > 1) {
         for (final tourModel in relatedTours) {
@@ -126,7 +126,7 @@ List<PlayerStandingModel> assignOverallRanks(
 ) {
   return [
     for (var i = 0; i < standings.length; i++)
-      standings[i].copyWith(overallRank: i + 1),
+      standings[i].copyWith(overallRank: standings[i].overallRank ?? i + 1),
   ];
 }
 
@@ -168,10 +168,11 @@ bool _matchesStandingSearch(String value, String normalizedQuery) {
   return queryTokens.every(normalizedValue.contains);
 }
 
-final playerTourScreenProvider = AutoDisposeAsyncNotifierProvider<
-  PlayerTourScreenNotifier,
-  List<PlayerStandingModel>
->(PlayerTourScreenNotifier.new);
+final playerTourScreenProvider =
+    AutoDisposeAsyncNotifierProvider<
+      PlayerTourScreenNotifier,
+      List<PlayerStandingModel>
+    >(PlayerTourScreenNotifier.new);
 
 class PlayerTourScreenNotifier
     extends AutoDisposeAsyncNotifier<List<PlayerStandingModel>> {
@@ -224,19 +225,17 @@ class PlayerTourScreenNotifier
     final List<TourModel> relatedTours;
     if (_isPaginationCategory(aboutTourModel.name)) {
       final baseName = _getCategoryBaseName(aboutTourModel.name);
-      relatedTours =
-          tourDetail.tours
-              .where(
-                (t) =>
-                    _isPaginationCategory(t.tour.name) &&
-                    _getCategoryBaseName(t.tour.name) == baseName,
-              )
-              .toList();
+      relatedTours = tourDetail.tours
+          .where(
+            (t) =>
+                _isPaginationCategory(t.tour.name) &&
+                _getCategoryBaseName(t.tour.name) == baseName,
+          )
+          .toList();
     } else {
-      relatedTours =
-          tourDetail.tours
-              .where((e) => e.tour.id == aboutTourModel.id)
-              .toList();
+      relatedTours = tourDetail.tours
+          .where((e) => e.tour.id == aboutTourModel.id)
+          .toList();
     }
 
     final catalogs = [
