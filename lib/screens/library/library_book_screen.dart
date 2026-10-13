@@ -107,7 +107,6 @@ class _LibraryBookScreenState extends ConsumerState<LibraryBookScreen> {
   bool _loading = true;
   bool _busy = false;
   bool _dirty = false;
-  bool _refreshGames = false;
   String _busyLabel = 'Saving collection details…';
   String? _error;
 
@@ -235,7 +234,6 @@ class _LibraryBookScreenState extends ConsumerState<LibraryBookScreen> {
       _authorPhotoUrl = m.authorPhotoUrl;
       _authorPhotoPreview = null;
       _dirty = false;
-      _refreshGames = false;
     });
   }
 
@@ -485,7 +483,7 @@ class _LibraryBookScreenState extends ConsumerState<LibraryBookScreen> {
     setState(() {
       _busy = true;
       _error = null;
-      _busyLabel = publish || _refreshGames
+      _busyLabel = publish
           ? 'Saving collection and indexing games…'
           : 'Saving collection details…';
     });
@@ -498,7 +496,7 @@ class _LibraryBookScreenState extends ConsumerState<LibraryBookScreen> {
             publish: publish,
             // Explicit publishing includes the current folder, including when
             // restoring a previously withdrawn edition. Metadata saves do not.
-            refreshGames: publish || _refreshGames,
+            refreshGames: publish,
           );
       if (!mounted) return;
       _accept(saved);
@@ -940,6 +938,31 @@ class _LibraryBookScreenState extends ConsumerState<LibraryBookScreen> {
     });
   }
 
+  void _useCoAuthorSuggestion(
+    _CoAuthor row,
+    LibraryAuthorSuggestion suggestion,
+  ) {
+    row.timer?.cancel();
+    row.sequence++;
+    setState(() {
+      row.name.value = TextEditingValue(
+        text: suggestion.name,
+        selection: TextSelection.collapsed(offset: suggestion.name.length),
+      );
+      row.userId = suggestion.userId;
+      row.authProject = suggestion.authProject;
+      row.linkedName = suggestion.hasAccount ? suggestion.name : '';
+      row.credit = suggestion.hasAccount
+          ? LibraryAuthorCredit.self
+          : LibraryAuthorCredit.other;
+      row.suggestions = const [];
+      row.matched = suggestion;
+      row.error = null;
+      _dirty = true;
+    });
+    _scheduleStash();
+  }
+
   Future<void> _changeCoAuthorPhoto(
     _CoAuthor row, {
     bool remove = false,
@@ -1028,6 +1051,13 @@ class _LibraryBookScreenState extends ConsumerState<LibraryBookScreen> {
                         ),
                         controller: row.name,
                         enabled: enabled,
+                        textCapitalization: TextCapitalization.words,
+                        inputFormatters: [
+                          FilteringTextInputFormatter.allow(
+                            RegExp(r"[\p{L}\p{M} .'’\-,&]", unicode: true),
+                          ),
+                          const _TidySpacesFormatter(),
+                        ],
                         maxLength: 80,
                         decoration: InputDecoration(
                           labelText: 'Author ${_coAuthors.indexOf(row) + 2}',
@@ -1044,6 +1074,7 @@ class _LibraryBookScreenState extends ConsumerState<LibraryBookScreen> {
                             }
                             _dirty = true;
                             row.error = null;
+                            row.matched = null;
                           });
                           _lookupCoAuthor(row);
                           _scheduleStash();
@@ -1076,6 +1107,7 @@ class _LibraryBookScreenState extends ConsumerState<LibraryBookScreen> {
                   onSelectionChanged: (i) {
                     if (!enabled) return;
                     setState(() {
+                      row.matched = null;
                       row.credit = i == 1
                           ? LibraryAuthorCredit.self
                           : LibraryAuthorCredit.other;
@@ -1089,30 +1121,19 @@ class _LibraryBookScreenState extends ConsumerState<LibraryBookScreen> {
                     _scheduleStash();
                   },
                 ),
-                for (final suggestion in row.suggestions)
-                  TextButton(
-                    onPressed: enabled
-                        ? () {
-                            row.timer?.cancel();
-                            row.sequence++;
-                            setState(() {
-                              row.name.text = suggestion.name;
-                              row.userId = suggestion.userId;
-                              row.authProject = suggestion.authProject;
-                              row.linkedName = suggestion.name;
-                              row.credit = suggestion.hasAccount
-                                  ? LibraryAuthorCredit.self
-                                  : LibraryAuthorCredit.other;
-                              row.suggestions = const [];
-                              _dirty = true;
-                            });
-                            _scheduleStash();
-                          }
-                        : null,
-                    child: Align(
-                      alignment: Alignment.centerLeft,
-                      child: Text(
-                        '${suggestion.name}${suggestion.hasAccount ? ' · ChessEver account' : ''}',
+                if (row.suggestions.isNotEmpty)
+                  _suggestionList(
+                    row.suggestions,
+                    (suggestion) => _useCoAuthorSuggestion(row, suggestion),
+                    enabled: enabled,
+                  ),
+                if (!row.hasLink && row.matched != null)
+                  Padding(
+                    padding: EdgeInsets.only(top: 8.sp),
+                    child: Text(
+                      'Matches an existing ChessEver author.',
+                      style: AppTypography.textXsMedium.copyWith(
+                        color: context.colors.success,
                       ),
                     ),
                   ),
@@ -1485,6 +1506,14 @@ class _LibraryBookScreenState extends ConsumerState<LibraryBookScreen> {
                           crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
                             _status(published),
+                            if (published)
+                              Align(
+                                alignment: Alignment.centerLeft,
+                                child: TextButton(
+                                  onPressed: _anyBusy ? null : _unpublish,
+                                  child: const Text('Unpublish collection'),
+                                ),
+                              ),
                             if (_publication!.review.state ==
                                 LibraryBookReviewState.changesRequested)
                               Padding(
@@ -1632,25 +1661,6 @@ class _LibraryBookScreenState extends ConsumerState<LibraryBookScreen> {
                               limit: 300,
                             ),
                             _coverPicker(published),
-                            if (published)
-                              CheckboxListTile(
-                                contentPadding: EdgeInsets.zero,
-                                controlAffinity:
-                                    ListTileControlAffinity.leading,
-                                title: const Text(
-                                  'Update collection games from this folder',
-                                ),
-                                subtitle: const Text(
-                                  'Includes your current games and annotations in the review.',
-                                ),
-                                value: _refreshGames,
-                                onChanged: _busy
-                                    ? null
-                                    : (value) => setState(() {
-                                        _refreshGames = value ?? false;
-                                        _dirty = true;
-                                      }),
-                              ),
                             if (_error != null)
                               Padding(
                                 padding: EdgeInsets.only(bottom: 16.sp),
@@ -1697,11 +1707,7 @@ class _LibraryBookScreenState extends ConsumerState<LibraryBookScreen> {
                                   _anyBusy || _publication?.status == 'archived'
                                   ? null
                                   : () => _save(publish: true),
-                              child: Text(
-                                published
-                                    ? 'Submit changes'
-                                    : 'Submit for approval',
-                              ),
+                              child: const Text('Submit'),
                             ),
                             SizedBox(height: 8.sp),
                             Text(
@@ -1712,24 +1718,10 @@ class _LibraryBookScreenState extends ConsumerState<LibraryBookScreen> {
                               ),
                             ),
                             SizedBox(height: 4.sp),
-                            if (!published)
-                              TextButton(
-                                onPressed:
-                                    _anyBusy ||
-                                        _publication?.status == 'archived'
-                                    ? null
-                                    : _save,
-                                child: const Text('Save private draft'),
-                              ),
-                            if (published)
-                              TextButton(
-                                onPressed:
-                                    _anyBusy ||
-                                        _publication?.status == 'archived'
-                                    ? null
-                                    : _unpublish,
-                                child: const Text('Unpublish collection'),
-                              ),
+                            TextButton(
+                              onPressed: _anyBusy ? null : _close,
+                              child: const Text('Cancel'),
+                            ),
                           ],
                         ),
                       ),
@@ -1944,7 +1936,12 @@ class _LibraryBookScreenState extends ConsumerState<LibraryBookScreen> {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            if (showList) _suggestionList(),
+            if (showList)
+              _suggestionList(
+                _suggestions,
+                _useSuggestion,
+                enabled: !_anyBusy && _publication?.status != 'archived',
+              ),
             if (matched != null)
               Padding(
                 padding: EdgeInsets.only(top: 8.sp),
@@ -1963,7 +1960,11 @@ class _LibraryBookScreenState extends ConsumerState<LibraryBookScreen> {
     );
   }
 
-  Widget _suggestionList() {
+  Widget _suggestionList(
+    List<LibraryAuthorSuggestion> suggestions,
+    ValueChanged<LibraryAuthorSuggestion> onPick, {
+    required bool enabled,
+  }) {
     final colors = context.colors;
     return Container(
       margin: EdgeInsets.only(top: 8.sp),
@@ -1984,7 +1985,7 @@ class _LibraryBookScreenState extends ConsumerState<LibraryBookScreen> {
               ),
             ),
           ),
-          for (final s in _suggestions)
+          for (final s in suggestions)
             Semantics(
               button: true,
               label:
@@ -1992,9 +1993,7 @@ class _LibraryBookScreenState extends ConsumerState<LibraryBookScreen> {
               excludeSemantics: true,
               child: InkWell(
                 key: ValueKey('book_author_suggestion_${s.name}'),
-                onTap: _anyBusy || _publication?.status == 'archived'
-                    ? null
-                    : () => _useSuggestion(s),
+                onTap: enabled ? () => onPick(s) : null,
                 child: ConstrainedBox(
                   constraints: const BoxConstraints(minHeight: 48),
                   child: Padding(
@@ -2007,13 +2006,26 @@ class _LibraryBookScreenState extends ConsumerState<LibraryBookScreen> {
                         _AuthorAvatar(url: s.avatarUrl, size: 32.sp),
                         SizedBox(width: 12.sp),
                         Expanded(
-                          child: Text(
-                            s.name,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: AppTypography.textSmMedium.copyWith(
-                              color: colors.textPrimary,
-                            ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                s.name,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: AppTypography.textSmMedium.copyWith(
+                                  color: colors.textPrimary,
+                                ),
+                              ),
+                              Text(
+                                s.hasAccount
+                                    ? 'ChessEver account'
+                                    : 'Credited by name',
+                                style: AppTypography.textXsRegular.copyWith(
+                                  color: context.textInk(0.6),
+                                ),
+                              ),
+                            ],
                           ),
                         ),
                         SizedBox(width: 8.sp),
@@ -2605,6 +2617,7 @@ class _CoAuthor {
   bool busy = false;
   Timer? timer;
   int sequence = 0;
+  LibraryAuthorSuggestion? matched;
   List<LibraryAuthorSuggestion> suggestions = const [];
   String get text => name.text.trim().replaceAll(RegExp(r'\s+'), ' ');
   bool get hasLink => userId != null && authProject != null;
