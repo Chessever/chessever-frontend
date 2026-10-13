@@ -8,13 +8,59 @@ import 'package:chessever2/screens/standings/team_standing_model.dart';
 List<TeamStandingModel>? buildOfficialTeamStandings({
   required TourInfo? info,
   required List<PlayerStandingModel> players,
+  String? selectedSectionId,
 }) {
   final snapshot = info?.officialTeamStandings;
+  final sections = snapshot?['sections'];
+  if (sections != null) {
+    if (snapshot?['source'] != 'chess-results' ||
+        _eventId(snapshot?['sourceUrl']) != _eventId(info?.standings)) {
+      return null;
+    }
+    if (sections is! List || sections.length < 2 || sections.length > 32) {
+      return null;
+    }
+    final definitions = info?.playerStandingSections ?? const [];
+    if (definitions.length != sections.length) return null;
+    final ids = <String>{};
+    List<TeamStandingModel>? selected;
+    List<TeamStandingModel>? first;
+    for (final raw in sections) {
+      if (raw is! Map || raw['id'] is! String || !ids.add(raw['id'])) {
+        return null;
+      }
+      final matches = definitions.where((s) => s.id == raw['id']).toList();
+      if (matches.length != 1 ||
+          matches.single.name != raw['name'] ||
+          _eventId(matches.single.sourceUrl) != _eventId(raw['sourceUrl'])) {
+        return null;
+      }
+      final rows = _buildOfficialTeamSnapshot(
+        Map<String, dynamic>.from(raw),
+        matches.single.sourceUrl,
+        matches.single.players
+            .map(PlayerStandingModel.fromPlayer)
+            .toList(),
+      );
+      if (rows == null) return null;
+      first ??= rows;
+      if (raw['id'] == selectedSectionId) selected = rows;
+    }
+    return selected ?? first;
+  }
+  return _buildOfficialTeamSnapshot(snapshot, info?.standings, players);
+}
+
+List<TeamStandingModel>? _buildOfficialTeamSnapshot(
+  Map<String, dynamic>? snapshot,
+  String? standingsUrl,
+  List<PlayerStandingModel> players,
+) {
   if (snapshot == null || snapshot['source'] != 'chess-results') return null;
   final round = _integer(snapshot['round']);
   final teams = snapshot['teams'];
   final fetchedAt = snapshot['fetchedAt'];
-  final event = _eventId(info?.standings);
+  final event = _eventId(standingsUrl);
   if (round == null ||
       round < 1 ||
       round > 100 ||

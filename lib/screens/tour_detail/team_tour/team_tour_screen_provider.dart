@@ -1,3 +1,4 @@
+import 'package:chessever2/screens/standings/player_standing_sections_provider.dart';
 import 'package:chessever2/repository/supabase/tour/tour.dart';
 import 'package:chessever2/screens/standings/standings_builder.dart';
 import 'package:chessever2/screens/standings/official_team_standings.dart';
@@ -57,7 +58,12 @@ List<GamesTourModel> _watchTeamGames(Ref ref) {
       games.add(GamesTourModel.fromGameIndex(g));
     } catch (_) {}
   }
-  return games;
+  final info = _selectedTourInfo(ref);
+  final section = selectedOfficialPlayerSection(
+    info?.playerStandingSections ?? const [],
+    ref.watch(selectedPlayerStandingSectionProvider(tourId)),
+  );
+  return section == null ? games : scopeOfficialSectionGames(section, games);
 }
 
 /// Round-by-round matches for a given team (by name). Powers both the
@@ -102,6 +108,16 @@ final teamStandingsProvider =
         final official = buildOfficialTeamStandings(
           info: info,
           players: players,
+          selectedSectionId: ref.watch(
+            selectedPlayerStandingSectionProvider(
+              ref
+                      .watch(tourDetailScreenProvider)
+                      .valueOrNull
+                      ?.aboutTourModel
+                      .id ??
+                  '',
+            ),
+          ),
         );
         if (official != null) return official;
         final games = _watchTeamGames(ref);
