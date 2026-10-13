@@ -432,5 +432,81 @@ void main() {
       await pumpTabs(tester);
       expect(tester.getRect(find.text('Discovery')), bare);
     });
+
+    testWidgets('a marker word never moves a baseline-aligned row', (
+      tester,
+    ) async {
+      Future<_FakeSource> pumpRow(List<Map<String, Object?>> dots) async {
+        final source = _FakeSource(_config(dots));
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [
+              discoveryDotsSourceProvider.overrideWithValue(source),
+              discoveryDotsSeenStoreProvider.overrideWithValue(_MemoryStore()),
+            ],
+            child: MaterialApp(
+              home: Builder(
+                builder: (context) {
+                  ResponsiveHelper.init(context);
+                  return const Scaffold(
+                    body: Center(
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.baseline,
+                        textBaseline: TextBaseline.alphabetic,
+                        children: [
+                          Text('Before', style: TextStyle(fontSize: 24)),
+                          DiscoveryDotAnchor(
+                            id: 'home.tab.discovery',
+                            child: Text('Discovery'),
+                          ),
+                          Text('After'),
+                        ],
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ),
+        );
+        await tester.pump();
+        await tester.pump();
+        return source;
+      }
+
+      List<Rect> rects() => [
+        for (final label in ['Before', 'Discovery', 'After'])
+          tester.getRect(find.text(label)),
+      ];
+
+      await pumpRow(const []);
+      final bare = rects();
+
+      final marked = {..._feed, 'label': 'NEW'};
+      final source = await pumpRow([marked]);
+      expect(find.text('NEW'), findsOneWidget);
+      expect(rects(), bare);
+
+      for (final dots in [
+        [
+          {...marked, 'enabled': false},
+        ],
+        <Map<String, Object?>>[],
+        [marked],
+      ]) {
+        source.controller.add(_config(dots));
+        await tester.pump();
+        await tester.pump();
+        expect(
+          find.text('NEW'),
+          dots.isEmpty || dots.single['enabled'] == false
+              ? findsNothing
+              : findsOneWidget,
+        );
+        expect(rects(), bare);
+      }
+      expect(tester.takeException(), isNull);
+    });
   });
 }

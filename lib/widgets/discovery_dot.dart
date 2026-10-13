@@ -9,6 +9,7 @@ import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/widgets/app_snack.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:motor/motor.dart';
 
@@ -189,49 +190,51 @@ class _DiscoveryDotAnchorState extends ConsumerState<DiscoveryDotAnchor> {
           widget.child,
           if (lit)
             Positioned.fill(
-              child: IgnorePointer(
-                child: LayoutBuilder(
-                  builder: (context, constraints) {
-                    var word = label;
-                    if (word != null) {
-                      final text = TextPainter(
-                        text: TextSpan(
-                          text: word,
-                          style: DiscoveryDotMark.labelStyle(context),
-                        ),
-                        textDirection: Directionality.of(context),
-                        textScaler: TextScaler.noScaling,
-                      )..layout();
-                      // An icon-sized control keeps its circle rather than crop
-                      // a word or paint it over its neighbour's tap target.
-                      if (text.width + 12 > constraints.maxWidth - 12) {
-                        word = null;
+              child: _NoBaseline(
+                child: IgnorePointer(
+                  child: LayoutBuilder(
+                    builder: (context, constraints) {
+                      var word = label;
+                      if (word != null) {
+                        final text = TextPainter(
+                          text: TextSpan(
+                            text: word,
+                            style: DiscoveryDotMark.labelStyle(context),
+                          ),
+                          textDirection: Directionality.of(context),
+                          textScaler: TextScaler.noScaling,
+                        )..layout();
+                        // An icon-sized control keeps its circle rather than crop
+                        // a word or paint it over its neighbour's tap target.
+                        if (text.width + 12 > constraints.maxWidth - 12) {
+                          word = null;
+                        }
+                        text.dispose();
                       }
-                      text.dispose();
-                    }
-                    final alignment = word == null
-                        ? widget.alignment
-                        : Alignment.topRight;
-                    return Align(
-                      alignment: alignment,
-                      child: Transform.translate(
-                        offset: word == null
-                            ? widget.offset
-                            : const Offset(-6, -6),
-                        child: OverflowBox(
-                          alignment: alignment,
-                          minWidth: 0,
-                          maxWidth: double.infinity,
-                          minHeight: 0,
-                          maxHeight: double.infinity,
-                          child: DiscoveryDotMark(
-                            label: word,
-                            semanticsLabel: label,
+                      final alignment = word == null
+                          ? widget.alignment
+                          : Alignment.topRight;
+                      return Align(
+                        alignment: alignment,
+                        child: Transform.translate(
+                          offset: word == null
+                              ? widget.offset
+                              : const Offset(-6, -6),
+                          child: OverflowBox(
+                            alignment: alignment,
+                            minWidth: 0,
+                            maxWidth: double.infinity,
+                            minHeight: 0,
+                            maxHeight: double.infinity,
+                            child: DiscoveryDotMark(
+                              label: word,
+                              semanticsLabel: label,
+                            ),
                           ),
                         ),
-                      ),
-                    );
-                  },
+                      );
+                    },
+                  ),
                 ),
               ),
             ),
@@ -239,6 +242,26 @@ class _DiscoveryDotAnchorState extends ConsumerState<DiscoveryDotAnchor> {
       ),
     );
   }
+}
+
+/// A Stack reports the highest baseline of all its children, positioned ones
+/// included, so a marker word would otherwise move a baseline-aligned row.
+class _NoBaseline extends SingleChildRenderObjectWidget {
+  const _NoBaseline({required super.child});
+
+  @override
+  RenderObject createRenderObject(BuildContext context) => _RenderNoBaseline();
+}
+
+class _RenderNoBaseline extends RenderProxyBox {
+  @override
+  double? computeDistanceToActualBaseline(TextBaseline baseline) => null;
+
+  @override
+  double? computeDryBaseline(
+    BoxConstraints constraints,
+    TextBaseline baseline,
+  ) => null;
 }
 
 /// The dot itself: the brand accent, breathing slowly. Still when the system

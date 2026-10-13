@@ -28,6 +28,28 @@ again or Remove. Example (illustrative, not published):
 {"dots":[{"id":"feature-launch","rev":1,"target":"home.tab.discovery","trail":["home.nav.home"],"label":"NEW","message":"Read the Feed.","messages":[{"body":"Read the Feed.","action_url":"https://chessever.com/feed"},{"body":"See your game reports.","action_url":"https://chessever.com/reports"}],"enabled":true,"name":"Feature launch"}]}
 ```
 
+## Floating only: no layout change
+
+A Nudge never moves, resizes, remounts or re-hit-tests the app. Every anchor is
+always wrapped the same way whether or not a Nudge is live, so publishing,
+pausing or removing one only paints or stops painting. The dot/word marker paints
+in a zero-size positioned layer above its surface, ignores touches, and reports
+no text baseline, so even a baseline-aligned row stays put
+(`test/discovery_dots_test.dart`). Tooltips and bubbles are separate overlays
+above the route. A marker can be clipped by a clipping ancestor, but it never
+takes space.
+
+## On, off and remove
+
+Everything is driven by the `discovery_dots` Remote Config parameter, with no
+app release required. In admin, Pause (`enabled: false`) hides a Nudge and
+Resume shows it again to anyone who has not yet reached it. Remove deletes it
+from the parameter. Show again raises `rev` so it returns for everyone. A new
+Nudge starts at a timestamp revision, so a recreated name is never hidden by an
+old dismissal. Open apps apply a publish within seconds through the Remote
+Config real-time listener. Other apps apply it when they next return to the
+foreground or launch. An empty or invalid value shows no Nudges at all.
+
 `message` retains the first tooltip's text for older app builds. Older campaigns
 with only `message` continue working. Unsupported/unsafe action URLs are omitted
 by the phone; publication rejects them in admin.
@@ -72,6 +94,9 @@ After deploying the admin change and installing the mobile version:
 4. Check large text, small phones, both themes and reduced motion. The tooltip
    text may scroll, but its action/navigation controls stay visible and tappable.
 5. Check an older single-message campaign and a silent dot, then Show again.
+6. With the app open on the target screen, publish Pause, then Resume, then
+   Remove. The marker disappears and reappears within seconds, and nothing on
+   the screen moves at any point.
 
 No production configuration, migration or notification is changed by the local
 implementation or tests. The existing rich Inbox migration is still required
