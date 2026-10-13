@@ -62,6 +62,58 @@ class _Adapter implements HttpClientAdapter {
 
 void main() {
   test(
+    'the full author editing contract preserves every author and metadata field',
+    () {
+      final metadata = LibraryBookMetadata.fromJson(const {
+        'title': 'Shared collection',
+        'slug': 'shared-collection',
+        'annotator': 'Coach',
+        'publisher': 'ChessEver',
+        'foreword': 'Introduction.',
+        'authors': [
+          {'name': 'Owner', 'credit': 'self', 'about': 'Owner bio.'},
+          {
+            'name': 'Writer',
+            'credit': 'self',
+            'userId': '11111111-1111-4111-8111-111111111111',
+            'authProject': 'project',
+            'about': 'Writer bio.',
+          },
+        ],
+      });
+      final body = metadata.toJson();
+      expect(body['slug'], 'shared-collection');
+      expect(body['annotator'], 'Coach');
+      expect(body['foreword'], 'Introduction.');
+      expect((body['authors'] as List)[1], {
+        'name': 'Writer',
+        'credit': 'self',
+        'userId': '11111111-1111-4111-8111-111111111111',
+        'authProject': 'project',
+        'about': 'Writer bio.',
+      });
+      expect(metadata.author, 'Owner');
+      expect(metadata.authorAbout, 'Owner bio.');
+    },
+  );
+  test('each coauthor photo reaches its saved author index', () async {
+    final adapter = _Adapter();
+    final dio = Dio()..httpClientAdapter = adapter;
+    final publisher = GamebaseLibraryBookPublisher(
+      dio: dio,
+      baseUrl: 'https://example.test/proxy/',
+      accessToken: () => 'session',
+    );
+    await publisher.uploadAuthorPhoto(_folder(), Uint8List(4), index: 2);
+    await publisher.removeAuthorPhoto(_folder(), index: 2);
+    expect(
+      adapter.requests.map((request) => request.queryParameters['index']),
+      [2, 2],
+    );
+    dio.close();
+  });
+
+  test(
     'native publishing reuses the authenticated Gamebase transport',
     () async {
       final adapter = _Adapter();
