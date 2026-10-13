@@ -291,7 +291,7 @@ Future<List<PlayerStandingModel>> buildStandingsFromData({
       singleTourScope &&
       enrichedPlayers.isNotEmpty &&
       enrichedPlayers.every((p) => p.rank != null);
-  if (hasUniversalRank) {
+  if (hasUniversalRank && !useExternalOrder) {
     enrichedPlayers.sort((a, b) {
       final aRank = a.rank ?? 1 << 30;
       final bRank = b.rank ?? 1 << 30;

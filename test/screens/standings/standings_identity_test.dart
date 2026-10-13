@@ -73,6 +73,43 @@ void main() {
     },
   );
 
+  test('shared official ranks retain the published row order', () async {
+    final rows = await buildStandingsFromData(
+      supabase: client,
+      tournamentPlayers: [
+        TournamentPlayer(
+          name: 'First in table',
+          rating: 1500,
+          score: 2,
+          played: 3,
+          rank: 1,
+        ),
+        TournamentPlayer(
+          name: 'Second in table',
+          rating: 2200,
+          score: 2,
+          played: 3,
+          rank: 1,
+        ),
+        TournamentPlayer(
+          name: 'Third in table',
+          rating: 2000,
+          score: 1,
+          played: 3,
+          rank: 3,
+        ),
+      ],
+      gamesTourModels: const [],
+      useExternalOrder: true,
+    );
+    expect(rows.map((row) => row.name), [
+      'First in table',
+      'Second in table',
+      'Third in table',
+    ]);
+    expect(rows.map((row) => row.overallRank), [1, 1, 3]);
+  });
+
   test('same FIDE player keeps results across name variants', () async {
     final rows = await buildStandingsFromData(
       supabase: client,

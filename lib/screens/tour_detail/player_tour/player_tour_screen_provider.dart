@@ -1,3 +1,4 @@
+import 'package:chessever2/screens/standings/player_standing_sections_provider.dart';
 import 'package:chessever2/repository/local_storage/favorite/favourate_standings_player_services.dart';
 import 'package:chessever2/repository/supabase/tour/tour.dart';
 import 'package:chessever2/screens/standings/player_standing_model.dart';
@@ -256,6 +257,22 @@ class PlayerTourScreenNotifier
       allPlayers.addAll(tourModel.tour.players);
     }
 
+    final sections = relatedTours.length == 1
+        ? relatedTours.first.tour.info.playerStandingSections
+        : const <OfficialPlayerSection>[];
+    final section = selectedOfficialPlayerSection(
+      sections,
+      ref.watch(selectedPlayerStandingSectionProvider(aboutTourModel.id)),
+    );
+    if (section != null) {
+      allPlayers
+        ..clear()
+        ..addAll(section.players);
+    }
+    final scopedGames = section == null
+        ? allGames
+        : scopeOfficialSectionGames(section, allGames);
+
     // Trust the server-side standings order only when scope is a single tour
     // that the data hub has flagged as canonically sorted (currently from
     // chess-results.com). Multi-tour pagination categories (e.g. "Boards 1-66"
@@ -263,7 +280,7 @@ class PlayerTourScreenNotifier
     // concatenation is not meaningful — fall back to client-side sort there.
     final useExternalOrder =
         relatedTours.length == 1 &&
-        relatedTours.first.tour.usesExternalStandings;
+        (section != null || relatedTours.first.tour.usesExternalStandings);
 
     // Use the app singleton client (same session/headers as Games), not the
     // secondary [supabaseProvider] client. A second anonymous client on the
@@ -272,7 +289,7 @@ class PlayerTourScreenNotifier
     final builtStandings = await buildStandingsFromData(
       supabase: Supabase.instance.client,
       tournamentPlayers: allPlayers,
-      gamesTourModels: allGames,
+      gamesTourModels: scopedGames,
       useExternalOrder: useExternalOrder,
       singleTourScope: relatedTours.length == 1,
     );

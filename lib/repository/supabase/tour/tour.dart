@@ -335,6 +335,109 @@ List<TournamentPlayer> sortByPerformance(List<TournamentPlayer> players) {
   return sorted;
 }
 
+/// Independently ranked organizer section. Its rank is local to this table.
+class OfficialPlayerSection {
+  const OfficialPlayerSection({
+    required this.id,
+    required this.name,
+    required this.sourceUrl,
+    required this.players,
+  });
+  final String id;
+  final String name;
+  final String sourceUrl;
+  final List<TournamentPlayer> players;
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'name': name,
+    'sourceUrl': sourceUrl,
+    'players': players.map((p) => p.toJson()).toList(),
+  };
+
+  static List<OfficialPlayerSection> parse(dynamic raw, String? standingsUrl) {
+    if (raw is! Map ||
+        raw['source'] != 'chess-results' ||
+        raw['sourceUrl'] != standingsUrl ||
+        DateTime.tryParse('${raw['fetchedAt']}') == null) {
+      return const [];
+    }
+    final sections = raw['sections'];
+    if (sections is! List || sections.length < 2 || sections.length > 32) {
+      return const [];
+    }
+    final ids = <String>{};
+    final result = <OfficialPlayerSection>[];
+    for (final section in sections) {
+      if (section is! Map ||
+          section['id'] is! String ||
+          section['name'] is! String ||
+          section['sourceUrl'] is! String ||
+          section['players'] is! List) {
+        return const [];
+      }
+      final id = section['id'] as String;
+      final name = section['name'] as String;
+      final url = section['sourceUrl'] as String;
+      final uri = Uri.tryParse(url);
+      if (name.trim().isEmpty ||
+          !ids.add(id) ||
+          uri == null ||
+          uri.scheme != 'https' ||
+          !(uri.host == 'chess-results.com' ||
+              RegExp(r'^s\d+\.chess-results\.com$').hasMatch(uri.host)) ||
+          uri.path != '/tnr$id.aspx') {
+        return const [];
+      }
+      final players = <TournamentPlayer>[];
+      var previousRank = 0;
+      final identities = <String>{};
+      for (final row in section['players'] as List) {
+        if (row is! Map ||
+            row['name'] is! String ||
+            (row['name'] as String).trim().isEmpty ||
+            row['rank'] is! int ||
+            row['score'] is! num ||
+            row['played'] is! int) {
+          return const [];
+        }
+        final rank = row['rank'] as int;
+        if (rank < 1 ||
+            rank < previousRank ||
+            (rank != previousRank && rank != players.length + 1) ||
+            !(row['score'] as num).isFinite ||
+            (row['score'] as num) < 0 ||
+            (row['played'] as int) < 0) {
+          return const [];
+        }
+        final player = TournamentPlayer.fromJson(
+          Map<String, dynamic>.from(row),
+        );
+        final identity = player.fideId == null
+            ? player.name.toLowerCase().trim()
+            : '${player.fideId}';
+        if (!identities.add(identity)) {
+          return const [];
+        }
+        previousRank = rank;
+        players.add(player);
+      }
+      if (players.isEmpty) {
+        return const [];
+      }
+      result.add(
+        OfficialPlayerSection(
+          id: id,
+          name: name,
+          sourceUrl: url,
+          players: List.unmodifiable(players),
+        ),
+      );
+    }
+    return List.unmodifiable(result);
+  }
+}
+
 class TourInfo {
   final String? tc; // Time control (e.g., "90 min + 30 sec / move")
   final String? fideTc; // FIDE time control category (standard, rapid, blitz)
@@ -363,6 +466,10 @@ class TourInfo {
 
   /// Complete organizer table with source, round and fetch timestamp.
   final Map<String, dynamic>? officialTeamStandings;
+  final Map<String, dynamic>? officialPlayerStandingsSections;
+
+  List<OfficialPlayerSection> get playerStandingSections =>
+      OfficialPlayerSection.parse(officialPlayerStandingsSections, standings);
 
   const TourInfo({
     this.tc,
@@ -379,6 +486,7 @@ class TourInfo {
     this.customScoring,
     this.teamScoring,
     this.officialTeamStandings,
+    this.officialPlayerStandingsSections,
   });
 
   factory TourInfo.fromJson(Map<String, dynamic> json) {
@@ -397,6 +505,9 @@ class TourInfo {
       customScoring: _asStringKeyMap(json['customScoring']),
       teamScoring: _asStringKeyMap(json['teamScoring']),
       officialTeamStandings: _asStringKeyMap(json['officialTeamStandings']),
+      officialPlayerStandingsSections: _asStringKeyMap(
+        json['officialPlayerStandingsSections'],
+      ),
     );
   }
 
@@ -429,6 +540,8 @@ class TourInfo {
       if (teamScoring != null) 'teamScoring': teamScoring,
       if (officialTeamStandings != null)
         'officialTeamStandings': officialTeamStandings,
+      if (officialPlayerStandingsSections != null)
+        'officialPlayerStandingsSections': officialPlayerStandingsSections,
     };
   }
 
@@ -525,10 +638,9 @@ class Tour {
       createdAt: DateTime.parse(json['created_at'] as String),
       url: json['url'] as String,
       tier: _parseInt(json['tier']) ?? 0,
-      dates:
-          (json['dates'] as List)
-              .map((date) => DateTime.parse(date as String))
-              .toList(),
+      dates: (json['dates'] as List)
+          .map((date) => DateTime.parse(date as String))
+          .toList(),
       image: json['image'] as String?,
       players: parsePlayersFromJson(playersList),
       search: (json['search'] as List?)?.map((e) => e as String).toList(),
@@ -568,8 +680,8 @@ class Tour {
   /// computed client-side.
   String? get standingsSourceLabel =>
       usesExternalStandings && info.standingsSource == 'chess-results'
-          ? 'chess-results.com'
-          : null;
+      ? 'chess-results.com'
+      : null;
 
   // Format time until start
   static String timeUntilStart(List<DateTime> dates) {

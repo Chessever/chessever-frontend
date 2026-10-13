@@ -1,3 +1,4 @@
+import 'package:chessever2/screens/standings/player_standing_section_select.dart';
 import 'package:chessever2/providers/favorite_players_provider.dart';
 import 'package:chessever2/repository/favorites/models/favorite_player.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
@@ -74,10 +75,9 @@ class _PlayerTourScreenState extends ConsumerState<PlayerTourScreen>
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || !_scrollController.hasClients) return;
       final position = _scrollController.position;
-      final target =
-          (_scrollOffsets[_scrollBucket] ?? 0)
-              .clamp(position.minScrollExtent, position.maxScrollExtent)
-              .toDouble();
+      final target = (_scrollOffsets[_scrollBucket] ?? 0)
+          .clamp(position.minScrollExtent, position.maxScrollExtent)
+          .toDouble();
       if ((position.pixels - target).abs() > 0.5) {
         _scrollController.jumpTo(target);
       }
@@ -100,6 +100,13 @@ class _PlayerTourScreenState extends ConsumerState<PlayerTourScreen>
       _handleSearchQueryChanged(next);
     });
 
+    final detail = ref.watch(tourDetailScreenProvider).valueOrNull;
+    final tourId = detail?.aboutTourModel.id ?? '';
+    final tour = detail?.tours
+        .where((item) => item.tour.id == tourId)
+        .firstOrNull
+        ?.tour;
+    final sections = tour?.info.playerStandingSections ?? const [];
     // Tablet-specific padding
     final horizontalPadding = ResponsiveHelper.adaptive(
       phone: 16.sp,
@@ -116,6 +123,8 @@ class _PlayerTourScreenState extends ConsumerState<PlayerTourScreen>
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
+              if (sections.isNotEmpty)
+                PlayerStandingSectionSelect(tourId: tourId, sections: sections),
               Expanded(child: _StandingsList(controller: _scrollController)),
             ],
           ),
