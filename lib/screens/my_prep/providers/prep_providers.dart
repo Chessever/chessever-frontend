@@ -3,7 +3,6 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:chessever2/repository/gamebase/gamebase_repository.dart';
-import 'package:chessever2/screens/my_prep/library/prep_cloud_sync.dart';
 import 'package:chessever2/screens/my_prep/models/prep_models.dart';
 import 'package:chessever2/screens/my_prep/services/prep_analysis.dart';
 import 'package:chessever2/screens/my_prep/services/prep_index.dart';
@@ -214,7 +213,6 @@ class PrepProfilesNotifier
   Future<void> delete(String profileId) async {
     final profile = byId(profileId);
     if (profile == null) return;
-    _ref.read(prepCloudSyncProvider.notifier).cancel(profileId);
     _set([
       for (final p in _profiles)
         if (p.id != profileId) p,
@@ -232,7 +230,6 @@ class PrepProfilesNotifier
   }
 
   Future<void> removeAccount(String profileId, PrepAccount account) async {
-    _ref.read(prepCloudSyncProvider.notifier).cancel(profileId);
     await _ref.read(prepSyncProvider.notifier).cancelAndWait(account);
     await GameTreeService.cancel(PrepIndex.accountScope(account));
     await GameTreeService.cancel(profileId);
@@ -334,8 +331,6 @@ class PrepSyncController extends StateNotifier<Map<String, PrepSyncStatus>> {
           ),
         );
       });
-      // A player saved to the cloud takes the new games there too.
-      _ref.read(prepCloudSyncProvider.notifier).syncAfterDownload(profileId);
       return null;
     } on DioException catch (error) {
       if (CancelToken.isCancel(error)) return null;

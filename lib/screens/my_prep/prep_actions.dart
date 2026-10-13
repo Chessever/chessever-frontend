@@ -5,7 +5,7 @@ import 'package:chessever2/repository/supabase/chess_player/chess_player_reposit
 import 'package:chessever2/screens/library/widgets/library_context_menu.dart';
 import 'package:chessever2/screens/my_prep/data/prep_favorites.dart';
 import 'package:chessever2/screens/my_prep/library/prep_library.dart'
-    show PrepLibraryFolderScreen, prepCloudMenuAction;
+    show PrepLibraryFolderScreen;
 import 'package:chessever2/screens/my_prep/models/prep_models.dart';
 import 'package:chessever2/screens/my_prep/prep_access.dart';
 import 'package:chessever2/screens/my_prep/prep_profile_screen.dart';
@@ -489,7 +489,6 @@ List<LibraryMenuAction> prepProfileMenu(
         label: 'Show in Library',
         onSelected: () => PrepLibraryFolderScreen.open(context, profile.id),
       ),
-    prepCloudMenuAction(context, ref, profile),
     spaceMenuAction(
       context: context,
       ref: ref,

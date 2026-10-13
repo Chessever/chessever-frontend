@@ -245,9 +245,6 @@ class PrepAccount {
     this.syncedScope,
     this.gameCount = 0,
     this.error,
-    this.cloudDatabaseId,
-    this.cloudSyncedTs,
-    this.cloudSyncedCount = 0,
     this.externalId,
     this.fideId,
     this.playerAliases = const [],
@@ -291,15 +288,6 @@ class PrepAccount {
   final int gameCount;
   final String? error;
 
-  /// The cloud Library database this account's games are saved to, when
-  /// the reader saved the player to the cloud (Premium).
-  final String? cloudDatabaseId;
-
-  /// The newest game already in [cloudDatabaseId], as yyyymmddHHMMSS: the
-  /// next cloud sync uploads only games played after it.
-  final int? cloudSyncedTs;
-  final int cloudSyncedCount;
-
   /// The selection the stored games should hold this month. ChessEver's
   /// whole-player export keeps the scope it had before it could be narrowed.
   String downloadScope(DateTime now) => source != PrepSource.chessever
@@ -336,10 +324,6 @@ class PrepAccount {
     int? gameCount,
     String? error,
     bool clearError = false,
-    String? cloudDatabaseId,
-    int? cloudSyncedTs,
-    int? cloudSyncedCount,
-    bool clearCloud = false,
     List<String>? playerAliases,
   }) => PrepAccount(
     source: source,
@@ -357,13 +341,6 @@ class PrepAccount {
     syncedScope: syncedScope ?? this.syncedScope,
     gameCount: gameCount ?? this.gameCount,
     error: clearError ? null : (error ?? this.error),
-    cloudDatabaseId: clearCloud
-        ? null
-        : (cloudDatabaseId ?? this.cloudDatabaseId),
-    cloudSyncedTs: clearCloud ? null : (cloudSyncedTs ?? this.cloudSyncedTs),
-    cloudSyncedCount: clearCloud
-        ? 0
-        : (cloudSyncedCount ?? this.cloudSyncedCount),
   );
 
   Map<String, Object?> toJson() => {
@@ -382,9 +359,6 @@ class PrepAccount {
     'syncedScope': syncedScope,
     'gameCount': gameCount,
     'error': error,
-    'cloudDatabaseId': cloudDatabaseId,
-    'cloudSyncedTs': cloudSyncedTs,
-    'cloudSyncedCount': cloudSyncedCount,
   };
 
   static PrepAccount? fromJson(Object? raw) {
@@ -423,13 +397,6 @@ class PrepAccount {
       syncedScope: _text(raw['syncedScope']),
       gameCount: raw['gameCount'] is int ? raw['gameCount'] as int : 0,
       error: _text(raw['error']),
-      cloudDatabaseId: _text(raw['cloudDatabaseId']),
-      cloudSyncedTs: raw['cloudSyncedTs'] is int
-          ? raw['cloudSyncedTs'] as int
-          : null,
-      cloudSyncedCount: raw['cloudSyncedCount'] is int
-          ? raw['cloudSyncedCount'] as int
-          : 0,
     );
   }
 }
@@ -445,7 +412,6 @@ class PrepProfile {
     required this.createdAtMs,
     this.accounts = const [],
     this.favoriteId,
-    this.cloudFolderId,
     this.fideIdentity,
   });
 
@@ -461,11 +427,6 @@ class PrepProfile {
   /// Set when the profile was added from Players.
   final String? favoriteId;
 
-  /// The cloud Library folder this player is saved to (Premium). Each
-  /// account's games go to their own database inside it, as on desktop.
-  final String? cloudFolderId;
-
-  bool get savedToCloud => cloudFolderId != null;
   String? get fideId =>
       fideIdentity ??
       accounts.map((a) => a.fideId).whereType<String>().firstOrNull;
@@ -581,8 +542,6 @@ class PrepProfile {
     String? name,
     List<PrepAccount>? accounts,
     PrepKind? kind,
-    String? cloudFolderId,
-    bool clearCloud = false,
   }) => PrepProfile(
     id: id,
     kind: kind ?? this.kind,
@@ -593,7 +552,6 @@ class PrepProfile {
         fideId ??
         accounts?.map((a) => a.fideId).whereType<String>().firstOrNull,
     favoriteId: favoriteId,
-    cloudFolderId: clearCloud ? null : (cloudFolderId ?? this.cloudFolderId),
   );
 
   PrepProfile replaceAccount(PrepAccount account) => copyWith(
@@ -608,7 +566,6 @@ class PrepProfile {
     'accounts': [for (final a in accounts) a.toJson()],
     'fideIdentity': fideId,
     'favoriteId': favoriteId,
-    'cloudFolderId': cloudFolderId,
   };
 
   static PrepProfile? fromJson(Object? raw) {
@@ -628,7 +585,6 @@ class PrepProfile {
           for (final a in rawAccounts) ?PrepAccount.fromJson(a),
       ],
       favoriteId: _text(raw['favoriteId']),
-      cloudFolderId: _text(raw['cloudFolderId']),
     );
   }
 }

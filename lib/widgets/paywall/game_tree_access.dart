@@ -24,22 +24,3 @@ Future<bool> ensureGameTreeAccess(BuildContext context) async {
     _promptOpen = false;
   }
 }
-
-/// Saving a My Prep player to the cloud library, and keeping that copy in
-/// step with new games, is Premium.
-Future<bool> ensurePrepCloudAccess(BuildContext context) async {
-  if (!context.mounted) return false;
-  final container = ProviderScope.containerOf(context, listen: false);
-  if (container.read(premiumAccessProvider)) return true;
-  if (_promptOpen) return false;
-  _promptOpen = true;
-  try {
-    return await showPremiumPaywallSheet(
-      context: context,
-      featureId: 'prep_cloud_sync',
-      returnTo: 'library',
-    );
-  } finally {
-    _promptOpen = false;
-  }
-}

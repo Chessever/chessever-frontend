@@ -4,7 +4,6 @@ import 'dart:io';
 import 'package:chessever2/screens/my_prep/models/prep_models.dart';
 import 'package:chessever2/screens/my_prep/prep_access.dart';
 import 'package:chessever2/screens/my_prep/prep_actions.dart';
-import 'package:chessever2/screens/my_prep/library/prep_cloud_sync.dart';
 import 'package:chessever2/screens/my_prep/providers/prep_providers.dart';
 import 'package:chessever2/screens/my_prep/services/prep_repository.dart';
 import 'package:chessever2/screens/my_prep/widgets/prep_import_dialog.dart';
@@ -343,7 +342,6 @@ Future<void> prepImportSource(
   if (!await ensurePrepAccess(context) || !context.mounted) return;
   final repo = ref.read(prepRepositoryProvider);
   final profiles = ref.read(prepProfilesProvider.notifier);
-  final cloud = ref.read(prepCloudSyncProvider.notifier);
   await showPrepImportDialog(
     context,
     playerName: profile.databaseAccount?.username ?? profile.name,
@@ -415,7 +413,6 @@ Future<void> prepImportSource(
         }
         rethrow;
       }
-      cloud.syncAfterDownload(profile.id);
       return true;
     },
   );

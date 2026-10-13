@@ -4,7 +4,6 @@ import 'package:chessever2/repository/library/models/library_folder.dart';
 import 'package:chessever2/screens/library/widgets/folder_card.dart';
 import 'package:chessever2/screens/library/widgets/library_context_menu.dart';
 import 'package:chessever2/screens/my_prep/data/prep_favorites.dart';
-import 'package:chessever2/screens/my_prep/library/prep_cloud_sync.dart';
 import 'package:chessever2/screens/my_prep/models/prep_models.dart';
 import 'package:chessever2/screens/my_prep/prep_actions.dart';
 import 'package:chessever2/screens/my_prep/prep_profile_screen.dart';
@@ -21,10 +20,8 @@ import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
-import 'package:chessever2/widgets/app_snack.dart';
 import 'package:chessever2/widgets/card_context_menu.dart';
 import 'package:chessever2/widgets/game_tree/build_tree_button.dart';
-import 'package:chessever2/widgets/paywall/game_tree_access.dart';
 import 'package:chessever2/widgets/screen_wrapper.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -83,15 +80,6 @@ final prepLibraryProfilesProvider = Provider<List<PrepProfile>>((ref) {
   ];
 });
 
-/// Cloud folders a player was saved to. The Library shows the player's own
-/// card for them, so they are not listed twice.
-final prepLinkedCloudFolderIdsProvider = Provider<Set<String>>(
-  (ref) => {
-    for (final p in ref.watch(prepLibraryProfilesProvider))
-      if (p.cloudFolderId case final id?) id,
-  },
-);
-
 String? _fideIdOf(PrepProfile profile) =>
     profile.fideId ??
     kPrepFavorites.where((f) => f.id == profile.favoriteId).firstOrNull?.fideId;
@@ -123,7 +111,6 @@ class PrepLibraryFolderCard extends ConsumerWidget {
       isExpanded: true,
       isFeatured: isFeatured,
       subtitle: subtitle,
-      badge: profile.savedToCloud ? Icons.cloud_done_rounded : null,
       leading: Center(
         child: PrepAvatar(
           name: profile.name,
@@ -145,42 +132,6 @@ class PrepLibraryFolderCard extends ConsumerWidget {
       ],
     );
   }
-}
-
-/// Save to cloud, or sync again once saved.
-LibraryMenuAction prepCloudMenuAction(
-  BuildContext context,
-  WidgetRef ref,
-  PrepProfile profile,
-) => LibraryMenuAction(
-  icon: profile.savedToCloud
-      ? Icons.cloud_sync_rounded
-      : Icons.cloud_upload_outlined,
-  label: profile.savedToCloud ? 'Sync to cloud now' : 'Save to cloud',
-  onSelected: () => prepSaveToCloud(context, ref, profile.id),
-);
-
-/// Saves (or brings up to date) a player's cloud copy, behind Premium.
-Future<void> prepSaveToCloud(
-  BuildContext context,
-  WidgetRef ref,
-  String profileId,
-) async {
-  HapticFeedbackService.buttonPress();
-  if (!await ensurePrepCloudAccess(context) || !context.mounted) return;
-  final messenger = ScaffoldMessenger.maybeOf(context);
-  final first = ref.read(prepProfileProvider(profileId))?.savedToCloud != true;
-  final error = await ref.read(prepCloudSyncProvider.notifier).save(profileId);
-  if (messenger == null) return;
-  final profile = ref.read(prepProfileProvider(profileId));
-  showAppSnackOn(
-    messenger,
-    error ??
-        (first
-            ? '${profile?.name ?? 'Player'} is in your cloud Library'
-            : '${profile?.name ?? 'Player'} is up to date in the cloud'),
-    tone: error == null ? AppSnackTone.success : AppSnackTone.danger,
-  );
 }
 
 // ------------------------------------------------------------------ trees
@@ -388,7 +339,6 @@ class PrepLibraryFolderScreen extends ConsumerWidget {
                   subtitle:
                       '$databases databases · ${prepGamesLabel(profile.gameCount)}',
                   actions: [
-                    _CloudButton(profile: profile),
                     CardMoreButton(
                       vertical: true,
                       color: context.colors.textPrimary,
@@ -498,7 +448,6 @@ class _DatabaseCard extends ConsumerWidget {
               _treeTarget(ref, profile, account),
             ),
           ),
-          prepCloudMenuAction(context, ref, profile),
         ],
       ),
     );
@@ -518,53 +467,6 @@ GameTreeTarget _treeTarget(
           account: account,
           repository: repository,
         );
-}
-
-/// The player's cloud action, kept in the folder header.
-class _CloudButton extends ConsumerWidget {
-  const _CloudButton({required this.profile});
-
-  final PrepProfile profile;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final status = ref.watch(
-      prepCloudSyncProvider.select((s) => s[profile.id]),
-    );
-    final saved = profile.savedToCloud;
-    final progress = status == null
-        ? null
-        : status.total == null || status.total == 0
-        ? status.message
-        : '${status.message} ${prepCount(status.done)} of ${prepCount(status.total!)}';
-    return IconButton(
-      tooltip: status != null
-          ? '$progress · Stop syncing'
-          : saved
-          ? 'Sync to cloud now'
-          : 'Save to cloud',
-      constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
-      onPressed: status != null
-          ? () => ref.read(prepCloudSyncProvider.notifier).cancel(profile.id)
-          : () => prepSaveToCloud(context, ref, profile.id),
-      icon: status != null
-          ? SizedBox.square(
-              dimension: 20.ic,
-              child: CircularProgressIndicator(
-                strokeWidth: 2,
-                value: status.total == null || status.total == 0
-                    ? null
-                    : status.done / status.total!,
-                color: context.colors.textSecondary,
-              ),
-            )
-          : Icon(
-              saved ? Icons.cloud_done_rounded : Icons.cloud_upload_outlined,
-              size: 22.ic,
-              color: context.colors.textPrimary,
-            ),
-    );
-  }
 }
 
 /// One of a player's databases: its games, newest first, on the Library's
