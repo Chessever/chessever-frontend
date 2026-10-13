@@ -1232,6 +1232,30 @@ void main() {
         findsNothing,
       );
     }
+    // The move badge stays in the top-left corner, including on a card that
+    // also wears a circle and on the half-width cards that share a row.
+    for (final (key, card) in <(String, Finder)>[
+      (kSpaceHomeMyPrep, cards[0]),
+      (kSpaceHomeLibrary, cards[1]),
+      (kSpaceHomeLikes, cards[2]),
+      (a.key, cards[3]),
+      (smart.key, cards[4]),
+    ]) {
+      final grip = tester.getRect(
+        find.byKey(ValueKey<String>('space_edit_grip_$key')),
+      );
+      final host = tester.getRect(card);
+      expect(grip.left - host.left, lessThan(host.width / 4), reason: key);
+      expect(grip.top - host.top, lessThan(host.height / 4), reason: key);
+    }
+    final savedGrip = tester.getRect(
+      find.byKey(ValueKey<String>('space_edit_grip_${a.key}')),
+    );
+    final savedCheck = tester.getRect(
+      find.byKey(ValueKey<String>('space_edit_check_${a.key}')),
+    );
+    expect(savedGrip.right, lessThanOrEqualTo(savedCheck.left));
+    expect(savedGrip.top, closeTo(savedCheck.top, 0.5));
     // A tap on one of the page's own cards neither selects nor opens it.
     await tester.tap(cards[0]);
     await _settleEdit(tester);

@@ -1205,20 +1205,13 @@ class _EditFace extends StatelessWidget {
             clipBehavior: Clip.none,
             children: [
               card(width),
-              if (marks && item.selectable)
-                Positioned(
-                  left: inset,
-                  top: inset,
-                  width: size,
-                  height: size,
-                  child: growing(),
-                ),
-              // Beside the circle where a card wears one, in the corner
-              // itself where it does not. It takes no touch: a hold anywhere
-              // on the card lifts it.
+              // The move badge owns the top-left corner on every card, the
+              // same place whether or not a card can be selected. A selection
+              // circle, where the card wears one, sits beside it. The badge
+              // takes no touch: a hold anywhere on the card lifts it.
               if (marks)
                 Positioned(
-                  left: item.selectable ? inset + size + 6.sp : inset,
+                  left: inset,
                   top: inset,
                   width: size,
                   height: size,
@@ -1237,6 +1230,14 @@ class _EditFace extends StatelessWidget {
                       ),
                     ),
                   ),
+                ),
+              if (marks && item.selectable)
+                Positioned(
+                  left: inset + size + 6.sp,
+                  top: inset,
+                  width: size,
+                  height: size,
+                  child: growing(),
                 ),
             ],
           ),
