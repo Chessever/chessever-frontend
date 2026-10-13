@@ -1232,8 +1232,8 @@ void main() {
         findsNothing,
       );
     }
-    // The move badge stays in the top-left corner, including on a card that
-    // also wears a circle and on the half-width cards that share a row.
+    // The move badge stays on the left of the card: in the corner when there
+    // is no circle, and in the slot beside the circle when there is one.
     for (final (key, card) in <(String, Finder)>[
       (kSpaceHomeMyPrep, cards[0]),
       (kSpaceHomeLibrary, cards[1]),
@@ -1254,7 +1254,9 @@ void main() {
     final savedCheck = tester.getRect(
       find.byKey(ValueKey<String>('space_edit_check_${a.key}')),
     );
-    expect(savedGrip.right, lessThanOrEqualTo(savedCheck.left));
+    final savedHost = tester.getRect(cards[3]);
+    expect(savedCheck.left - savedHost.left, lessThan(savedHost.width / 4));
+    expect(savedCheck.right, lessThanOrEqualTo(savedGrip.left));
     expect(savedGrip.top, closeTo(savedCheck.top, 0.5));
     // A tap on one of the page's own cards neither selects nor opens it.
     await tester.tap(cards[0]);
