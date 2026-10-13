@@ -78,6 +78,39 @@ Future<List<PlayerStandingModel>> buildStandingsFromData({
   bool useExternalOrder = false,
   bool singleTourScope = true,
 }) async {
+  // A published table owns both its membership and its tied ranks. Boards
+  // can include withdrawn/obsolete names absent from that table; adding them
+  // here invents official rows. Optional FIDE enrichment must not delay an
+  // already complete source table either.
+  final rankedSource = tournamentPlayers
+      .where(
+        (p) =>
+            p.rank != null &&
+            p.rank! > 0 &&
+            p.score != null &&
+            p.score!.isFinite,
+      )
+      .toList();
+  final hasPublishedOrder =
+      singleTourScope &&
+      rankedSource.isNotEmpty &&
+      (useExternalOrder ||
+          (rankedSource.length == tournamentPlayers.length &&
+              rankedSource.any((p) => p.played > 0)));
+  if (hasPublishedOrder) {
+    final indexed = rankedSource.indexed.toList()
+      ..sort((a, b) {
+        final rankOrder = a.$2.rank!.compareTo(b.$2.rank!);
+        return rankOrder == 0 ? a.$1.compareTo(b.$1) : rankOrder;
+      });
+    return [
+      for (final entry in indexed)
+        PlayerStandingModel.fromPlayer(
+          entry.$2,
+        ).copyWith(overallRank: entry.$2.rank),
+    ];
+  }
+
   final players = mergeTournamentRosterWithGamePlayers(
     tournamentPlayers: tournamentPlayers,
     gamesTourModels: gamesTourModels,

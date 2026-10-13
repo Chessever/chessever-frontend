@@ -444,7 +444,7 @@ class TeamEventShareImageCard extends StatelessWidget {
 
     return Row(
       children: [
-        tile('Team Pts', '${team.matchPoints}'),
+        tile('Team Pts', team.matchPointsLabel),
         const SizedBox(width: 8),
         tile('Board Pts', team.gamePointsLabel),
         const SizedBox(width: 8),

@@ -240,7 +240,7 @@ class _TeamHeader extends StatelessWidget {
                     Expanded(
                       child: _StatBox(
                         label: 'Team Pts',
-                        value: '${team.matchPoints}',
+                        value: team.matchPointsLabel,
                         height: avatarSize,
                       ),
                     ),

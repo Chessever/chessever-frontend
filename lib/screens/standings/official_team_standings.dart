@@ -32,17 +32,17 @@ List<TeamStandingModel>? buildOfficialTeamStandings({
   final winPoints = scoring == null
       ? 2
       : scoring is Map
-      ? _integer(scoring['win'])
+      ? _points(scoring['win'])
       : null;
   final drawPoints = scoring == null
       ? 1
       : scoring is Map
-      ? _integer(scoring['draw'])
+      ? _points(scoring['draw'])
       : null;
   final lossPoints = scoring == null
       ? 0
       : scoring is Map
-      ? _integer(scoring['loss'])
+      ? _points(scoring['loss'])
       : null;
   if (winPoints == null ||
       drawPoints == null ||
@@ -67,7 +67,7 @@ List<TeamStandingModel>? buildOfficialTeamStandings({
     if (raw is! Map) return null;
     final name = raw['name'];
     final rank = _integer(raw['rank']);
-    final mp = _integer(raw['matchPoints']);
+    final mp = _points(raw['matchPoints']);
     final gp = raw['gamePoints'];
     final played = _integer(raw['matchesPlayed']);
     final wins = _integer(raw['wins']);
@@ -116,6 +116,10 @@ List<TeamStandingModel>? buildOfficialTeamStandings({
   }
   return rows;
 }
+
+num? _points(dynamic value) => value is num && value.isFinite && value >= 0
+    ? (value % 1 == 0 ? value.toInt() : value)
+    : null;
 
 int? _integer(dynamic value) =>
     value is num && value.isFinite && value == value.roundToDouble()

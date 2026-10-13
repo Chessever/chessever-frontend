@@ -134,7 +134,7 @@ class FigmaTeamCard extends StatelessWidget {
                   Padding(
                     padding: EdgeInsets.only(left: 8.w),
                     child: Text(
-                      team.matchPoints.toString(),
+                      team.matchPointsLabel,
                       style: AppTypography.textMdMedium.copyWith(
                         color: context.colors.textPrimary,
                       ),

@@ -12,7 +12,7 @@ class TeamStandingModel {
 
   /// Match points — 2 win / 1 draw / 0 loss, counted only for completed
   /// matches. Primary ranking metric (chess team-event standard).
-  final int matchPoints;
+  final num matchPoints;
 
   /// Board (game) points — sum of finished individual board results. Tiebreak.
   final double gamePoints;
@@ -39,11 +39,14 @@ class TeamStandingModel {
     required this.players,
   });
 
+  String get matchPointsLabel => matchPoints % 1 == 0
+      ? matchPoints.toInt().toString()
+      : matchPoints.toString();
+
   /// Board points as a decimal, e.g. 26.5 -> "26.5", 31.0 -> "31".
-  String get gamePointsLabel =>
-      gamePoints % 1 == 0
-          ? gamePoints.toInt().toString()
-          : gamePoints.toStringAsFixed(1);
+  String get gamePointsLabel => gamePoints % 1 == 0
+      ? gamePoints.toInt().toString()
+      : gamePoints.toStringAsFixed(1);
 
   /// "W · D · L" record over completed matches.
   String get recordLabel => '$matchesWon · $matchesDrawn · $matchesLost';

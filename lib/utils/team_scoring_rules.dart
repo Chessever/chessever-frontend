@@ -11,9 +11,9 @@ class TeamScoringRules {
   final double blackWin;
   final double draw;
   final double loss;
-  final int matchWin;
-  final int matchDraw;
-  final int matchLoss;
+  final num matchWin;
+  final num matchDraw;
+  final num matchLoss;
 
   const TeamScoringRules({
     required this.whiteWin,
@@ -59,9 +59,9 @@ class TeamScoringRules {
         blackWin: blackWin,
         draw: draw,
         loss: loss,
-        matchWin: matchWin.round(),
-        matchDraw: matchDraw.round(),
-        matchLoss: matchLoss.round(),
+        matchWin: _matchScore(matchWin),
+        matchDraw: _matchScore(matchDraw),
+        matchLoss: _matchScore(matchLoss),
       );
     }
 
@@ -86,6 +86,9 @@ class TeamScoringRules {
     }
     return standard;
   }
+
+  static num _matchScore(double value) =>
+      value % 1 == 0 ? value.toInt() : value;
 
   static Map<String, dynamic>? _map(dynamic value) {
     if (value is Map<String, dynamic>) return value;
