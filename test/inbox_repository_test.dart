@@ -80,6 +80,19 @@ SupabaseClient _client(Future<http.Response> Function(http.Request) handle) =>
     );
 
 void main() {
+  test(
+    'a receipt from before republication stays unread, including cached rows',
+    () {
+      final message = inboxFixture(
+        inboxIdA,
+        readAt: inboxReadTime,
+        publishedAt: inboxReadTime.add(const Duration(days: 1)),
+      );
+      expect(message.isUnread, true);
+      expect(InboxMessage.fromJson(message.toJson()).isUnread, true);
+    },
+  );
+
   TestWidgetsFlutterBinding.ensureInitialized();
   test('plain message JSON round-trip preserves dates, body and exact ID', () {
     final message = inboxFixture(inboxIdA, readAt: inboxReadTime);

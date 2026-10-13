@@ -31,7 +31,7 @@ class InboxMessage {
   final String? actionLabel;
   final String? actionUrl;
 
-  bool get isUnread => readAt == null;
+  bool get isUnread => readAt == null || readAt!.isBefore(publishedAt);
 
   /// [body] as running text for a one-glance preview: Markdown marks taken
   /// off, pictures dropped, links reduced to their words, on one line.

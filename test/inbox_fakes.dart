@@ -11,7 +11,11 @@ const inboxIdA = '20000000-0000-4000-8000-000000000001';
 const inboxIdB = '20000000-0000-4000-8000-000000000002';
 final inboxReadTime = DateTime.utc(2026, 9, 30, 12);
 
-InboxMessage inboxFixture(String id, {DateTime? readAt}) => InboxMessage(
+InboxMessage inboxFixture(
+  String id, {
+  DateTime? readAt,
+  DateTime? publishedAt,
+}) => InboxMessage(
   id: id,
   title: id == inboxIdA
       ? 'Fixture: study a position'
@@ -19,7 +23,7 @@ InboxMessage inboxFixture(String id, {DateTime? readAt}) => InboxMessage(
   body:
       'LOCAL TEST FIXTURE ONLY.\n\nUse Board to explore a chess position. '
       '<script>alert(1)</script> [link](javascript:alert(1))',
-  publishedAt: DateTime.utc(2026, 9, 30),
+  publishedAt: publishedAt ?? DateTime.utc(2026, 9, 30),
   readAt: readAt,
 );
 
@@ -46,7 +50,11 @@ class FakeInboxSource implements InboxSource {
   }
 
   @override
-  Future<DateTime> markRead(String ownerId, String messageId) async {
+  Future<DateTime> markRead(
+    String ownerId,
+    String messageId, {
+    DateTime? expectedPublishedAt,
+  }) async {
     marks.add((ownerId, messageId));
     if (failMark) throw StateError('LOCAL FIXTURE mark failure');
     if (markOverride != null) return markOverride!(ownerId, messageId);

@@ -379,7 +379,7 @@ class InboxMessageScreen extends ConsumerStatefulWidget {
 }
 
 class _InboxMessageScreenState extends ConsumerState<InboxMessageScreen> {
-  bool _scheduledRead = false;
+  DateTime? _scheduledPublication;
 
   /// A link in a message: a ChessEver page opens in the app, anything else
   /// in the browser.
@@ -396,13 +396,14 @@ class _InboxMessageScreenState extends ConsumerState<InboxMessageScreen> {
     final message = state.ownerId == widget.ownerId
         ? state.message(widget.messageId)
         : null;
-    if (message != null && !_scheduledRead) {
-      _scheduledRead = true;
+    if (message != null && _scheduledPublication != message.publishedAt) {
+      _scheduledPublication = message.publishedAt;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted || ModalRoute.of(context)?.isCurrent != true) return;
         final current = ref.read(inboxProvider);
         if (current.ownerId != widget.ownerId ||
-            current.message(widget.messageId) == null) {
+            current.message(widget.messageId)?.publishedAt !=
+                message.publishedAt) {
           return;
         }
         // The first frame containing this exact full text is now on screen.

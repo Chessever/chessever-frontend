@@ -10,7 +10,11 @@ import 'inbox_message.dart';
 abstract interface class InboxSource {
   bool hasSession(String ownerId);
   Future<List<InboxMessage>> fetch(String ownerId);
-  Future<DateTime> markRead(String ownerId, String messageId);
+  Future<DateTime> markRead(
+    String ownerId,
+    String messageId, {
+    DateTime? expectedPublishedAt,
+  });
 }
 
 /// Uses the app's configured Supabase client; never a service key or push SDK.
@@ -23,6 +27,7 @@ class SupabaseInboxSource implements InboxSource {
   /// Whether the listing that carries a message's format and image exists
   /// on this database; cleared the first time it turns out not to.
   bool _richListing = true;
+  bool _versionedReads = true;
 
   /// PostgREST's and Postgres's "no such function".
   static bool _isMissingFunction(PostgrestException error) =>
@@ -112,14 +117,36 @@ class SupabaseInboxSource implements InboxSource {
   }
 
   @override
-  Future<DateTime> markRead(String ownerId, String messageId) async {
+  Future<DateTime> markRead(
+    String ownerId,
+    String messageId, {
+    DateTime? expectedPublishedAt,
+  }) async {
     final requestClient = client;
     await _freshSession(requestClient, ownerId);
     final session = _session(requestClient, ownerId);
-    final result = await requestClient
-        .rpc('mark_editorial_inbox_read', params: {'p_message_id': messageId})
-        .setHeader('Authorization', 'Bearer ${session.accessToken}')
-        .timeout(_requestTimeout);
+    Future<dynamic> mark(String rpc, Map<String, dynamic> params) =>
+        requestClient
+            .rpc(rpc, params: params)
+            .setHeader('Authorization', 'Bearer ${session.accessToken}')
+            .timeout(_requestTimeout);
+    dynamic result;
+    if (expectedPublishedAt != null && _versionedReads) {
+      try {
+        result = await mark('mark_editorial_inbox_read_v2', {
+          'p_message_id': messageId,
+          'p_expected_published_at': expectedPublishedAt
+              .toUtc()
+              .toIso8601String(),
+        });
+      } on PostgrestException catch (error) {
+        if (!_isMissingFunction(error)) rethrow;
+        _versionedReads = false;
+      }
+    }
+    result ??= await mark('mark_editorial_inbox_read', {
+      'p_message_id': messageId,
+    });
     _session(requestClient, ownerId);
     // A null/invalid acknowledgement is a failure, not permission to clear dots.
     return DateTime.parse(result as String).toUtc();

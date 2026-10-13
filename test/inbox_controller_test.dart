@@ -54,6 +54,60 @@ void main() {
       expect(controller.state.hasUnread, false);
     },
   );
+  test(
+    'removing the last unread message clears the dot and durable cache',
+    () async {
+      await controller.start();
+      await controller.markOpened(inboxIdA);
+      source.rows[inboxOwnerA] = [
+        inboxFixture(inboxIdA, readAt: inboxReadTime),
+      ];
+      await controller.refresh();
+      expect(controller.state.hasUnread, false);
+      expect(controller.state.message(inboxIdB), isNull);
+      expect((await cache.load(inboxOwnerA))!.map((m) => m.id), [inboxIdA]);
+      source.rows[inboxOwnerA] = [];
+      await controller.refresh();
+      expect(controller.state.messages, isEmpty);
+      expect(controller.state.hasUnread, false);
+      expect(await cache.load(inboxOwnerA), isEmpty);
+    },
+  );
+  test(
+    'republishing an ID invalidates its confirmed read from the old version',
+    () async {
+      await controller.start();
+      await controller.markOpened(inboxIdA);
+      final publication = inboxReadTime.add(const Duration(days: 1));
+      source.rows[inboxOwnerA] = [
+        inboxFixture(inboxIdA, publishedAt: publication),
+      ];
+      await controller.refresh();
+      expect(controller.state.message(inboxIdA)!.isUnread, true);
+      expect(controller.state.hasUnread, true);
+      expect((await cache.load(inboxOwnerA))!.single.isUnread, true);
+    },
+  );
+  test(
+    'a pending old-version read cannot mark a republished or removed row',
+    () async {
+      await controller.start();
+      final gate = Completer<DateTime>();
+      source.markOverride = (_, _) => gate.future;
+      final marking = controller.markOpened(inboxIdA);
+      source.rows[inboxOwnerA] = [
+        inboxFixture(
+          inboxIdA,
+          publishedAt: inboxReadTime.add(const Duration(days: 1)),
+        ),
+      ];
+      await controller.refresh();
+      gate.complete(inboxReadTime);
+      expect(await marking, false);
+      expect(controller.state.hasUnread, true);
+      expect(controller.state.marking, isEmpty);
+    },
+  );
   test('unknown ID cannot be marked', () async {
     await controller.start();
     expect(await controller.markOpened('unknown'), false);
