@@ -288,9 +288,19 @@ class _MyGamesTab extends ConsumerWidget {
                     borderRadius: BorderRadius.circular(12.br),
                   ),
                 ),
-                child: Text(
-                  'Open ${prepGamesLabel(profile.gameCount)}',
-                  style: AppTypography.textSmBold,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Flexible(
+                      child: Text(
+                        'Open profile',
+                        textAlign: TextAlign.center,
+                        style: AppTypography.textSmBold,
+                      ),
+                    ),
+                    SizedBox(width: 8.w),
+                    Icon(Icons.arrow_forward_rounded, size: 18.sp),
+                  ],
                 ),
               ),
             ),
