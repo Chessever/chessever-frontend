@@ -1,4 +1,5 @@
 import 'package:chessever2/repository/supabase/tour/published_tiebreak.dart';
+import 'package:chessever2/repository/supabase/tour/info64_source.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_app_bar_view_model.dart';
 import 'package:intl/intl.dart';
 
@@ -687,14 +688,15 @@ class Tour {
   /// False for past tours that pre-date the data hub PR, future tours, and
   /// tours mid-round-1 where no game has finished + 20 min yet.
   bool get usesExternalStandings =>
-      info.standingsSource == 'chess-results' &&
+      (info.standingsSource == 'chess-results' ||
+          (info.standingsSource == 'info64' &&
+              info64EventUrl(info.standings) != null)) &&
       info.standingsUpdatedAt != null;
 
   /// Human-readable name of the standings source, or null when standings are
   /// computed client-side.
-  String? get standingsSourceLabel =>
-      usesExternalStandings && info.standingsSource == 'chess-results'
-      ? 'chess-results.com'
+  String? get standingsSourceLabel => usesExternalStandings
+      ? (info.standingsSource == 'info64' ? 'info64.org' : 'chess-results.com')
       : null;
 
   // Format time until start
