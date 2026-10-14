@@ -84,21 +84,25 @@ void main() {
     expect(find.text('Continue'), findsOneWidget);
   });
 
-  test('the native permission dialog has exactly one trigger', () {
+  test('native permission is requested only from the explanatory steps', () {
     final mainSource = File('lib/main.dart').readAsStringSync();
-    final authSource =
-        File('lib/widgets/auth_state_listener.dart').readAsStringSync();
-    final selectionSource =
-        File(
-          'lib/screens/onboarding/player_selection_screen.dart',
-        ).readAsStringSync();
-    final feedSource =
-        File(
-          'lib/screens/onboarding/onboarding_flow_screen.dart',
-        ).readAsStringSync();
+    final authSource = File(
+      'lib/widgets/auth_state_listener.dart',
+    ).readAsStringSync();
+    final selectionSource = File(
+      'lib/screens/onboarding/player_selection_screen.dart',
+    ).readAsStringSync();
+    final feedSource = File(
+      'lib/screens/onboarding/onboarding_flow_screen.dart',
+    ).readAsStringSync();
 
     expect(mainSource, isNot(contains('notificationPermissionPromptProvider')));
-    expect(authSource, isNot(contains('requestPermissionIfNotGranted')));
+    expect(
+      'requestPermissionIfNotGranted'.allMatches(authSource),
+      hasLength(1),
+      reason: 'Returning sign-ins use a gated notification step over home.',
+    );
+    expect(authSource, contains('NotificationPermissionStep('));
     expect(selectionSource, isNot(contains('requestPermissionIfNotGranted')));
     expect(
       'requestPermissionIfNotGranted'.allMatches(feedSource),

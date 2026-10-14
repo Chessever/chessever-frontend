@@ -250,11 +250,6 @@ class AuthStateListener extends ConsumerWidget {
                 : '/onboarding';
             navigator.pushNamedAndRemoveUntil(targetRoute, (route) => false);
             ref.read(authScreenProvider.notifier).reset();
-            // Signing in from the welcome page skips onboarding's notification
-            // step; ask here instead when this install never has.
-            if (hasSeenOnboarding && !E2eConfig.suppressInterruptivePrompts) {
-              unawaited(_offerNotificationsAfterSignIn(navigator));
-            }
           }
         } else if (authState.status == AppAuthStatus.unauthenticated) {
           // Clear the sync tracking when user logs out
@@ -302,30 +297,67 @@ class AuthStateListener extends ConsumerWidget {
   }
 }
 
-/// Shows onboarding's notification step over home after a sign-in that
-/// skipped it, so a reinstall or cleared app data does not leave a returning
-/// user with notifications quietly off.
-Future<void> _offerNotificationsAfterSignIn(NavigatorState navigator) async {
-  final service = PushNotificationsService.instance;
-  if (!await service.shouldOfferPermissionPrompt()) return;
-  if (!navigator.mounted) return;
-  await navigator.push(
-    MaterialPageRoute<void>(
-      fullscreenDialog: true,
-      builder: (context) {
-        final padding = MediaQuery.paddingOf(context);
-        return Scaffold(
-          backgroundColor: context.colors.background,
-          body: NotificationPermissionStep(
-            topPadding: padding.top,
-            bottomPadding: padding.bottom,
-            onContinue: () async {
-              await service.requestPermissionIfNotGranted();
-              if (context.mounted) Navigator.of(context).pop();
-            },
-          ),
-        );
-      },
-    ),
-  );
+bool _notificationOfferInFlight = false;
+
+/// Shows onboarding's notification step after the auth screen navigates home,
+/// so a returning user who skipped it still gets the permission ask.
+Future<void> offerNotificationsAfterSignIn(NavigatorState navigator) async {
+  if (E2eConfig.suppressInterruptivePrompts ||
+      _notificationOfferInFlight ||
+      !navigator.mounted) {
+    return;
+  }
+
+  // The navigator's own context cannot see its descendant ModalRoute. Read
+  // the top route without popping anything: this predicate always stops first.
+  Route<dynamic>? topRoute;
+  navigator.popUntil((route) {
+    topRoute = route;
+    return true;
+  });
+  final homeRoute = topRoute;
+  if (homeRoute == null ||
+      homeRoute.settings.name != '/home_screen' ||
+      !homeRoute.isCurrent) {
+    return;
+  }
+
+  _notificationOfferInFlight = true;
+  try {
+    final service = PushNotificationsService.instance;
+    if (!await service.shouldOfferPermissionPrompt()) return;
+    // A delayed permission read must not interrupt a different screen/session.
+    if (!navigator.mounted || !homeRoute.isCurrent) return;
+    await navigator.push(
+      MaterialPageRoute<void>(
+        fullscreenDialog: true,
+        builder: (context) {
+          final padding = MediaQuery.paddingOf(context);
+          final permissionRoute = ModalRoute.of(context);
+          return Scaffold(
+            backgroundColor: context.colors.background,
+            body: NotificationPermissionStep(
+              topPadding: padding.top,
+              bottomPadding: padding.bottom,
+              onContinue: () async {
+                try {
+                  await service.requestPermissionIfNotGranted();
+                } catch (error) {
+                  debugPrint(
+                    '[PushNotifications] Sign-in permission request failed: $error',
+                  );
+                } finally {
+                  if (context.mounted && permissionRoute?.isCurrent == true) {
+                    Navigator.of(context).pop();
+                  }
+                }
+              },
+            ),
+          );
+        },
+      ),
+    );
+  } finally {
+    _notificationOfferInFlight = false;
+  }
 }
