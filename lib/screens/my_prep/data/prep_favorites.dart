@@ -51,6 +51,7 @@ String? prepFavoriteFide(PrepProfile profile) {
   if (profile.fideId case final fide?) return fide;
   final id = profile.favoriteId;
   if (id == null) return null;
+  if ((int.tryParse(id) ?? 0) > 0) return id;
   for (final favorite in kPrepFavorites) {
     if (favorite.id == id) return favorite.fideId;
   }

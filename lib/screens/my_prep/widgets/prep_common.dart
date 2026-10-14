@@ -1,6 +1,8 @@
 import 'package:chessever2/screens/my_prep/models/prep_models.dart';
 import 'package:chessever2/screens/my_prep/services/prep_analysis.dart';
-import 'package:chessever2/services/fide_photo_service.dart';
+import 'package:cached_network_image/cached_network_image.dart';
+import 'package:chessever2/screens/my_prep/providers/prep_photo_provider.dart';
+import 'package:chessever2/screens/my_prep/providers/prep_providers.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/png_asset.dart';
@@ -230,18 +232,16 @@ class PrepSourceMarks extends StatelessWidget {
   }
 }
 
-final _fidePhotoProvider = FutureProvider.autoDispose.family<String?, String?>(
-  (ref, fideId) => FidePhotoService.getPhotoUrlOrNull(fideId),
-);
-
-/// A profile's picture: its FIDE photo for famous players, a Chess.com
-/// avatar when one exists, or initials, with the title band the app's
-/// player cards use.
+/// The player's photo, with quiet initials while loading or unavailable.
+/// A rectangular My Space thumbnail uses the whole plate, without a second
+/// square tile inside it. Failed photos try the next known account photo.
 class PrepAvatar extends ConsumerWidget {
   const PrepAvatar({
     super.key,
     required this.name,
     required this.size,
+    this.width,
+    this.profileId,
     this.photoUrl,
     this.fideId,
     this.title,
@@ -250,6 +250,8 @@ class PrepAvatar extends ConsumerWidget {
 
   final String name;
   final double size;
+  final double? width;
+  final String? profileId;
   final String? photoUrl;
   final String? fideId;
   final String? title;
@@ -257,31 +259,110 @@ class PrepAvatar extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final fidePhoto = fideId == null
+    final fidePhoto = fideId == null || fideId!.isEmpty
         ? null
-        : ref.watch(_fidePhotoProvider(fideId)).valueOrNull;
-    return PlayerInitialsAvatar(
-      photoUrl: fidePhoto ?? photoUrl,
-      initials: prepInitials(name),
-      size: size,
-      borderRadius: borderRadius ?? 8.br,
-      title: title,
+        : ref.watch(prepFidePhotoProvider(fideId!)).valueOrNull;
+    final resolved = profileId == null
+        ? null
+        : ref.watch(prepProfilePhotoProvider(profileId!)).valueOrNull;
+    final savedProfile = profileId == null
+        ? null
+        : ref.watch(prepProfileProvider(profileId!));
+    final urls = {
+      for (final url in [
+        fidePhoto,
+        resolved,
+        photoUrl,
+        ...?savedProfile?.accounts.map((a) => a.avatarUrl),
+      ])
+        if (url != null && url.trim().isNotEmpty) url.trim(),
+    }.toList();
+    final colors = context.colors;
+    final label = title?.trim();
+    final hasTitle = label != null && label.isNotEmpty;
+    final band = hasTitle ? (size * 0.23).clamp(16.0, size).toDouble() : 0.0;
+    final placeholder = ColoredBox(
+      color: colors.surfaceRecessed,
+      child: Padding(
+        padding: EdgeInsets.only(bottom: band),
+        child: Center(
+          child: Text(
+            prepInitials(name),
+            maxLines: 1,
+            softWrap: false,
+            textScaler: TextScaler.noScaling,
+            style: AppTypography.textSmMedium.copyWith(
+              fontSize: size * 0.32,
+              height: 1,
+              leadingDistribution: TextLeadingDistribution.even,
+              color: colors.textPrimaryMuted,
+            ),
+          ),
+        ),
+      ),
+    );
+
+    Widget photo(int index) {
+      if (index >= urls.length) return placeholder;
+      return CachedNetworkImage(
+        key: ValueKey(urls[index]),
+        imageUrl: urls[index],
+        width: width ?? size,
+        height: size,
+        fit: BoxFit.cover,
+        memCacheWidth:
+            ((width ?? size) * MediaQuery.devicePixelRatioOf(context)).round(),
+        fadeInDuration: const Duration(milliseconds: 120),
+        fadeOutDuration: Duration.zero,
+        placeholder: (_, _) => placeholder,
+        errorWidget: (_, _, _) => photo(index + 1),
+      );
+    }
+
+    return Material(
+      type: MaterialType.transparency,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(borderRadius ?? 8.br),
+        child: SizedBox(
+          width: width ?? size,
+          height: size,
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              photo(0),
+              if (hasTitle)
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  height: band,
+                  child: ColoredBox(
+                    color: colors.background.withValues(alpha: 0.85),
+                    child: Center(
+                      child: Text(
+                        label,
+                        maxLines: 1,
+                        softWrap: false,
+                        textScaler: TextScaler.noScaling,
+                        style: AppTypography.textXsMedium.copyWith(
+                          fontSize: band * 0.58,
+                          height: 1,
+                          color: colors.textPrimary,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
 
 String prepInitials(String name) {
-  final words = name
-      .split(RegExp(r'[\s_\-]+'))
-      .where((w) => w.isNotEmpty)
-      .toList();
-  if (words.isEmpty) return '?';
-  if (words.length == 1) {
-    return words.first
-        .substring(0, words.first.length.clamp(0, 2))
-        .toUpperCase();
-  }
-  return (words.first[0] + words.last[0]).toUpperCase();
+  return getPlayerInitials(name.replaceAll(RegExp(r'[_\-]+'), ' '));
 }
 
 /// A small flag, or nothing when the country is unknown.

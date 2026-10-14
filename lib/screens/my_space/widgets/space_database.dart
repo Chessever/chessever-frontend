@@ -2456,8 +2456,10 @@ class SpaceSavedRow extends ConsumerWidget {
               child: shortcut.kind == SpaceShortcutKind.prepProfile
                   ? Center(
                       child: PrepAvatar(
+                        profileId: shortcut.targetId,
                         name: prep?.name ?? shortcut.title,
                         size: plateHeight,
+                        width: plateWidth,
                         photoUrl: prep?.avatarUrl,
                         fideId: prep?.fideId,
                         title: prep?.title,

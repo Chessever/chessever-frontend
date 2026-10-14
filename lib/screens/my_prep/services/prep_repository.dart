@@ -5,6 +5,7 @@ import 'dart:io';
 import 'package:chessever2/repository/gamebase/gamebase_repository.dart';
 import 'package:chessever2/screens/my_prep/models/prep_models.dart';
 import 'package:chessever2/screens/gamebase/models/gamebase_player.dart';
+import 'package:chessever2/services/fide_photo_service.dart';
 import 'package:chessever2/services/game_tree/game_tree_codec.dart';
 import 'package:chessever2/services/game_tree/time_control_classifier.dart';
 import 'package:crypto/crypto.dart';
@@ -31,11 +32,16 @@ typedef PrepProgress = void Function(String message);
 /// Lichess and Chess.com profile lookups, and the server-cached game
 /// downloads desktop Prep uses, stored as one PGN file per account.
 class PrepRepository {
-  PrepRepository(this._gamebase, {http.Client? client})
-    : _client = client ?? http.Client();
+  PrepRepository(
+    this._gamebase, {
+    http.Client? client,
+    Future<String?> Function(String fideId)? fidePhotoLookup,
+  }) : _client = client ?? http.Client(),
+       _fidePhotoLookup = fidePhotoLookup ?? FidePhotoService.getPhotoUrlOrNull;
 
   final GamebaseRepository _gamebase;
   final http.Client _client;
+  final Future<String?> Function(String fideId) _fidePhotoLookup;
   void dispose() => _client.close();
 
   Future<List<GamebasePlayer>> searchPlayers(String query) {
@@ -75,9 +81,42 @@ class PrepRepository {
         ),
       };
 
+  /// Resolves a missing portrait without downloading games or rating stats.
+  /// Lichess publishes a linked FIDE id, rather than a direct avatar URL.
+  Future<String?> lookupPhoto(PrepAccount account) async {
+    if (!account.source.online) return null;
+    final clean = _cleanUsername(account.username);
+    final chessCom = account.source == PrepSource.chesscom;
+    final response = await _get(
+      chessCom
+          ? Uri.https('api.chess.com', '/pub/player/${clean.toLowerCase()}')
+          : Uri.https('lichess.org', '/api/user/$clean', {'fideId': 'true'}),
+    );
+    if (response.statusCode == 404) return null;
+    _check(response, account.source.label);
+    final profile = jsonDecode(response.body);
+    if (profile is! Map) return null;
+    if (chessCom) {
+      if (profile['status']?.toString().startsWith('closed') == true) {
+        return null;
+      }
+      return _photoUrl(profile['avatar']);
+    }
+    if (profile['closed'] == true || profile['disabled'] == true) return null;
+    return _lichessPhoto(profile);
+  }
+
+  Future<String?> _lichessPhoto(Map profile) async {
+    final fideId = profile['fideId'];
+    if (fideId is! int || fideId <= 0) return null;
+    return _photoUrl(await _fidePhotoLookup(fideId.toString()));
+  }
+
   Future<PrepAccount> _lookupLichess(String username) async {
     final clean = _cleanUsername(username);
-    final response = await _get(Uri.https('lichess.org', '/api/user/$clean'));
+    final response = await _get(
+      Uri.https('lichess.org', '/api/user/$clean', {'fideId': 'true'}),
+    );
     if (response.statusCode == 404) {
       throw PrepException('No Lichess account is called "$clean".');
     }
@@ -106,10 +145,17 @@ class PrepRepository {
             profile['lastName'],
           ].whereType<String>().where((s) => s.trim().isNotEmpty).join(' ')
         : '';
+    String? photoUrl;
+    try {
+      photoUrl = await _lichessPhoto(json);
+    } catch (_) {
+      // A portrait lookup must not prevent attaching a valid account.
+    }
     return PrepAccount(
       source: PrepSource.lichess,
       username: id?.isNotEmpty == true ? id! : clean,
       displayName: realName.isNotEmpty ? realName : null,
+      avatarUrl: photoUrl,
       title: json['title']?.toString(),
       country: profile is Map ? _flagCode(profile['flag']) : null,
       ratings: ratings,
@@ -167,7 +213,7 @@ class PrepRepository {
       source: PrepSource.chesscom,
       username: cased.toLowerCase() == clean ? cased : clean,
       displayName: name?.isNotEmpty == true ? name : null,
-      avatarUrl: profile['avatar']?.toString(),
+      avatarUrl: _photoUrl(profile['avatar']),
       title: profile['title']?.toString(),
       country: _chessComCountry(profile['country']?.toString()),
       ratings: ratings,
@@ -408,6 +454,17 @@ class PrepRepository {
     );
     await done.future;
   }
+}
+
+String? _photoUrl(Object? value) {
+  if (value is! String) return null;
+  final clean = value.trim();
+  final uri = Uri.tryParse(clean);
+  return uri != null &&
+          (uri.scheme == 'https' || uri.scheme == 'http') &&
+          uri.host.isNotEmpty
+      ? clean
+      : null;
 }
 
 String _cleanUsername(String raw) {
