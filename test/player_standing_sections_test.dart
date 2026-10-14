@@ -65,6 +65,45 @@ void main() {
     },
   );
 
+  test('preserves published skipped ranks within each independent section', () {
+    final data = snapshot();
+    final players = (data['sections'] as List).first['players'] as List;
+    players[1]['rank'] = 2;
+    players.addAll(<Map<String, Object>>[
+      {'name': 'Third', 'rank': 4, 'score': 2, 'played': 4},
+      {'name': 'Fourth', 'rank': 4, 'score': 2, 'played': 4},
+    ]);
+    final parsed = OfficialPlayerSection.parse(
+      data,
+      'https://chess-results.com/tnr100.aspx',
+    );
+    expect(parsed, hasLength(2));
+    expect(parsed.first.players.map((p) => p.rank), [1, 2, 4, 4]);
+    expect(parsed.last.players.map((p) => p.rank), [1, 1]);
+  });
+
+  test('rejects out-of-range, descending and missing-first section ranks', () {
+    for (final ranks in [
+      [2, 2],
+      [1, 3],
+      [2, 1],
+      [1, 0],
+    ]) {
+      final data = snapshot();
+      final players = (data['sections'] as List).first['players'] as List;
+      for (var i = 0; i < ranks.length; i++) {
+        players[i]['rank'] = ranks[i];
+      }
+      expect(
+        OfficialPlayerSection.parse(
+          data,
+          'https://chess-results.com/tnr100.aspx',
+        ),
+        isEmpty,
+      );
+    }
+  });
+
   test('a relink or any malformed table rejects the complete snapshot', () {
     expect(
       OfficialPlayerSection.parse(

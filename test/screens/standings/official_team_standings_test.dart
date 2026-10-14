@@ -91,6 +91,36 @@ void main() {
     final rows = buildOfficialTeamStandings(info: info(data), players: []);
     expect(rows!.map((t) => t.rank), [1, 1, 3]);
   });
+  test('preserves published skipped team ranks', () {
+    final data = snapshot();
+    (data['teams'] as List)[1]['rank'] = 3;
+    final rows = buildOfficialTeamStandings(info: info(data), players: []);
+    expect(rows, isNotNull);
+    expect(rows!.map((t) => t.rank), [1, 3, 3]);
+  });
+
+  test(
+    'rejects ranks outside membership, descending ranks and missing first',
+    () {
+      for (final ranks in [
+        [2, 2, 3],
+        [1, 4, 4],
+        [1, 3, 2],
+        [1, 0, 3],
+      ]) {
+        final data = snapshot();
+        final teams = data['teams'] as List;
+        for (var i = 0; i < ranks.length; i++) {
+          teams[i]['rank'] = ranks[i];
+        }
+        expect(
+          buildOfficialTeamStandings(info: info(data), players: []),
+          isNull,
+        );
+      }
+    },
+  );
+
   test('does not use another event snapshot', () {
     expect(
       buildOfficialTeamStandings(

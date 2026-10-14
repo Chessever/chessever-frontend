@@ -390,6 +390,7 @@ class OfficialPlayerSection {
         return const [];
       }
       final players = <TournamentPlayer>[];
+      // An official section owns its ranks, including skipped knockout places.
       var previousRank = 0;
       final identities = <String>{};
       for (final row in section['players'] as List) {
@@ -404,7 +405,8 @@ class OfficialPlayerSection {
         final rank = row['rank'] as int;
         if (rank < 1 ||
             rank < previousRank ||
-            (rank != previousRank && rank != players.length + 1) ||
+            (players.isEmpty && rank != 1) ||
+            rank > (section['players'] as List).length ||
             !(row['score'] as num).isFinite ||
             (row['score'] as num) < 0 ||
             (row['played'] as int) < 0) {
