@@ -1,3 +1,4 @@
+import 'package:chessever2/screens/standings/widgets/published_player_tiebreaks.dart';
 import 'package:chessever2/screens/standings/player_standing_section_select.dart';
 import 'package:chessever2/providers/favorite_players_provider.dart';
 import 'package:chessever2/repository/favorites/models/favorite_player.dart';
@@ -239,6 +240,12 @@ class _StandingsList extends ConsumerWidget {
                         rank: player.overallRank,
                         isFavorite: isFav,
                         showFavoriteButton: false,
+                        detailWidget:
+                            player.tiebreaks.isEmpty
+                                ? null
+                                : PublishedPlayerTiebreaks(
+                                  values: player.tiebreaks,
+                                ),
                         onTap: openScorecard,
                         onLongPress:
                             (_) => _showStandingMenu(

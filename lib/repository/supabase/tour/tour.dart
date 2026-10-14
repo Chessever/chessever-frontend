@@ -1,3 +1,4 @@
+import 'package:chessever2/repository/supabase/tour/published_tiebreak.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_app_bar_view_model.dart';
 import 'package:intl/intl.dart';
 
@@ -19,6 +20,7 @@ class TournamentPlayer {
   /// client-side). When every player in a tour has this, downstream code
   /// MUST trust the input order — see [PlayerTourScreenNotifier].
   final int? rank;
+  final List<PublishedTiebreak> tiebreaks;
 
   TournamentPlayer({
     this.federation,
@@ -32,6 +34,7 @@ class TournamentPlayer {
     this.performance,
     this.team,
     this.rank,
+    this.tiebreaks = const [],
   });
 
   /// Creates a TournamentPlayer from JSON map.
@@ -59,6 +62,7 @@ class TournamentPlayer {
           _parseInt(json['performance']) ?? _firstNumber(json['performances']),
       team: json['team'] as String?,
       rank: _parseInt(json['rank']),
+      tiebreaks: PublishedTiebreak.parse(json['tiebreaks']),
     );
   }
 
@@ -102,6 +106,9 @@ class TournamentPlayer {
     if (performance != null) data['performance'] = performance;
     if (team != null) data['team'] = team;
     if (rank != null) data['rank'] = rank;
+    if (tiebreaks.isNotEmpty) {
+      data['tiebreaks'] = tiebreaks.map((t) => t.toJson()).toList();
+    }
 
     return data;
   }
@@ -197,7 +204,9 @@ class TournamentPlayer {
         other.ratingDiff == ratingDiff &&
         other.score == score &&
         other.performance == performance &&
-        other.rank == rank;
+        other.rank == rank &&
+        other.team == team &&
+        PublishedTiebreak.same(other.tiebreaks, tiebreaks);
   }
 
   @override
@@ -212,7 +221,8 @@ class TournamentPlayer {
         score.hashCode ^
         performance.hashCode ^
         team.hashCode ^
-        rank.hashCode;
+        rank.hashCode ^
+        Object.hashAll(tiebreaks);
   }
 
   /// Creates a copy of this player with updated fields
@@ -228,6 +238,7 @@ class TournamentPlayer {
     int? performance,
     String? team,
     int? rank,
+    List<PublishedTiebreak>? tiebreaks,
   }) {
     return TournamentPlayer(
       federation: federation ?? this.federation,
@@ -241,6 +252,7 @@ class TournamentPlayer {
       performance: performance ?? this.performance,
       team: team ?? this.team,
       rank: rank ?? this.rank,
+      tiebreaks: tiebreaks ?? this.tiebreaks,
     );
   }
 }
