@@ -29,6 +29,8 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'support/contrast_audit.dart';
 
+import 'support/board_feature_teaching_store.dart';
+
 /// The live board screen in light mode, audited as the user sees it: every
 /// text run and icon glyph against the surface it is painted on, then the
 /// game switcher opened and audited the same way.
@@ -67,6 +69,9 @@ void main() {
 
     final container = ProviderContainer(
       overrides: [
+        boardFeatureTeachingTrackerProvider.overrideWith(
+          (_) => BoardFeatureTeachingTracker(QuietBoardTeachingStore()),
+        ),
         effectiveCountryProvider.overrideWithValue(const AsyncValue.loading()),
         gamesLocalStorage.overrideWith(
           (ref) => _FullCacheGamesLocalStorage(ref, {'tour-1': raws}),

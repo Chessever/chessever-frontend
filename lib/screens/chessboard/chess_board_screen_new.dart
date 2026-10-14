@@ -69,6 +69,8 @@ import 'package:chessever2/screens/chessboard/widgets/smooth_sheet_config.dart';
 import 'package:chessever2/screens/chessboard/widgets/save_analysis_sheet.dart';
 import 'package:chessever2/screens/chessboard/widgets/nag_display.dart';
 import 'package:chessever2/screens/chessboard/utils/chess_board_teaching_eligibility.dart';
+import 'package:chessever2/screens/chessboard/utils/board_feature_teaching_tracker.dart';
+import 'package:chessever2/screens/chessboard/widgets/board_feature_teaching_host.dart';
 import 'package:chessever2/screens/group_event/providers/countryman_games_tour_screen_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/event_no_spoilers_provider.dart';
@@ -1400,6 +1402,9 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
   late Animation<double> _swipeScaleAnimation;
   late Animation<double> _swipeMoveAnimation;
   final GlobalKey<_SwipeTutorialOverlayState> _tutorialOverlayKey = GlobalKey();
+  // Loading/data branches reparent the route's scope. Retain one teaching
+  // host so that transition cannot count a second visit or reset engagement.
+  final GlobalKey _featureTeachingHostKey = GlobalKey();
   late final LikeFlightAnchor _likeFlightAnchor;
 
   // Step 2/2 ("Pinch to Resize") — chained after the Swipe step via
@@ -1529,6 +1534,9 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
       setState(() {
         _showTutorialOverlay = true;
       });
+      unawaited(
+        ref.read(boardFeatureTeachingTrackerProvider).recordOtherTeaching(),
+      );
 
       // Play animation 1 time
       int count = 0;
@@ -1646,8 +1654,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
     }
 
     final prefs = ref.read(sharedPreferencesRepository);
-    final dontShow =
-        await prefs.getBool(kPinchWalkthroughDontShowKey) ?? false;
+    final dontShow = await prefs.getBool(kPinchWalkthroughDontShowKey) ?? false;
     if (dontShow || !mounted) return;
 
     // Show once: if it's ever been seen, don't show it again.
@@ -1657,6 +1664,9 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
 
     _showPinchTutorial = true;
     _insertPinchTutorialOverlay();
+    unawaited(
+      ref.read(boardFeatureTeachingTrackerProvider).recordOtherTeaching(),
+    );
 
     await prefs.setBool(kPinchWalkthroughShownKey, true);
   }
@@ -1699,6 +1709,52 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
         ?.game;
 
     return shouldShowChessBoardTeachingsForGame(providerGame ?? fallbackGame);
+  }
+
+  Set<BoardTeachingFeature> _eligibleFeatureTeachings() {
+    if (_isRouteCovered ||
+        _isLifecycleBackgrounded ||
+        _showTutorialOverlay ||
+        _showPinchTutorial ||
+        _gameSwitcher.isOpen ||
+        _gameReviewTarget.value != null ||
+        !_canShowTeachingsForCurrentGame()) {
+      return {};
+    }
+    final index = _currentPageIndex.clamp(0, widget.games.length - 1);
+    final game = _resolveGameForIndex(index);
+    final params = _createParams(game, index);
+    final state = ref.read(chessBoardScreenProviderNew(params)).valueOrNull;
+    if (state == null ||
+        state.isPlaying ||
+        state.analysisState.allMoves.length < 6 ||
+        state.analysisState.currentMoveIndex < 3 ||
+        state.game.gameStatus == GameStatus.ongoing ||
+        ref.read(likeNudgeOfferProvider(index)) != null) {
+      return {};
+    }
+
+    final features = <BoardTeachingFeature>{
+      if (!ref.read(boardExplorerPanelVisibleProvider))
+        BoardTeachingFeature.notationSwipe,
+    };
+    final likes = ref.read(likedGamesProvider).valueOrNull;
+    final saved = ref
+        .read(chessBoardScreenProviderNew(params).notifier)
+        .savedAnalysisData;
+    final ownDatabase =
+        state.game.source == GameSource.savedAnalysis &&
+        saved?.analysisId != null &&
+        (ref.read(likedGamesFolderProvider).valueOrNull?.id == null ||
+            saved!.folderId !=
+                ref.read(likedGamesFolderProvider).valueOrNull?.id);
+    if (ref.read(currentUserProvider) != null &&
+        likes != null &&
+        likes.isEmpty &&
+        !ownDatabase) {
+      features.add(BoardTeachingFeature.like);
+    }
+    return features;
   }
 
   GamesTourModel _preferFresherGameSnapshot({
@@ -3154,7 +3210,12 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
             child: GameReviewSheetScope(
               target: _gameReviewTarget,
               anchorPixels: _gameReviewAnchor,
-              child: child,
+              child: BoardFeatureTeachingHost(
+                key: _featureTeachingHostKey,
+                isEligibleVisit: _canShowTeachingsForCurrentGame,
+                eligibleFeatures: _eligibleFeatureTeachings,
+                child: child,
+              ),
             ),
           ),
         ),
@@ -10259,8 +10320,21 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
       );
       if (!shouldAsk || !mounted || !_isLikeNudgeEligible) return;
 
-      setState(() => _likeNudgeVisible = true);
-      _syncLikeNudgeOffer();
+      final displayed = await ref
+          .read(boardFeatureTeachingTrackerProvider)
+          .tryShowLikeReminder(() {
+            if (!mounted ||
+                !_isLikeNudgeEligible ||
+                ModalRoute.of(context)?.isCurrent != true ||
+                WidgetsBinding.instance.lifecycleState !=
+                    AppLifecycleState.resumed) {
+              return false;
+            }
+            setState(() => _likeNudgeVisible = true);
+            _syncLikeNudgeOffer();
+            return true;
+          });
+      if (!displayed || !mounted || !_likeNudgeVisible) return;
       // Belt-and-braces: the reminder normally leaves when the user leaves the
       // final position or the game, but it must never camp on the notation.
       _likeNudgeSafetyTimer?.cancel();
@@ -11043,6 +11117,7 @@ class _AnalysisSwipePanels extends ConsumerStatefulWidget {
 class _AnalysisSwipePanelsState extends ConsumerState<_AnalysisSwipePanels> {
   late final PageController _pageController;
   int _currentPage = 0;
+  bool _userPanelDrag = false;
 
   @override
   void initState() {
@@ -11097,17 +11172,35 @@ class _AnalysisSwipePanelsState extends ConsumerState<_AnalysisSwipePanels> {
       });
     }
 
-    return PageView(
-      controller: _pageController,
-      dragStartBehavior: DragStartBehavior.down,
-      physics: const ClampingScrollPhysics(),
-      onPageChanged: (page) {
-        _currentPage = page;
-        // Only the active game publishes chrome/arrow ownership. Preloaded
-        // adjacent games must not steal the visible game's focused card.
-        if (widget.isActivePage) _publishPanelVisibility();
+    return NotificationListener<ScrollStartNotification>(
+      onNotification: (notification) {
+        if (notification.depth == 0 &&
+            notification.metrics.axis == Axis.horizontal) {
+          _userPanelDrag = notification.dragDetails != null;
+        }
+        return false;
       },
-      children: [widget.movesDisplay, widget.gamebaseDisplay],
+      child: PageView(
+        controller: _pageController,
+        dragStartBehavior: DragStartBehavior.down,
+        physics: const ClampingScrollPhysics(),
+        onPageChanged: (page) {
+          _currentPage = page;
+          // Only the active game publishes chrome/arrow ownership. Preloaded
+          // adjacent games must not steal the visible game's focused card.
+          if (widget.isActivePage) {
+            _publishPanelVisibility();
+            if (_userPanelDrag) {
+              unawaited(
+                ref
+                    .read(boardFeatureTeachingTrackerProvider)
+                    .markLearned(BoardTeachingFeature.notationSwipe),
+              );
+            }
+          }
+        },
+        children: [widget.movesDisplay, widget.gamebaseDisplay],
+      ),
     );
   }
 }
