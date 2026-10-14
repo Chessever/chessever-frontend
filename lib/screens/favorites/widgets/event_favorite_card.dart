@@ -11,6 +11,8 @@ import '../../../repository/supabase/group_broadcast/group_broadcast.dart';
 import '../../../widgets/alert_dialog/alert_modal.dart';
 import '../../../widgets/event_card/event_context_menu.dart';
 import 'package:chessever2/widgets/auth/auth_upgrade_sheet.dart';
+import 'package:chessever2/repository/supabase/group_broadcast/group_tour_repository.dart';
+import 'package:chessever2/widgets/paywall/past_event_access.dart';
 
 class EventFavoriteCard extends ConsumerWidget {
   final Map<String, dynamic> eventData;
@@ -182,7 +184,11 @@ class EventFavoriteCard extends ConsumerWidget {
                 },
                 child: Container(
                   padding: EdgeInsets.all(8.sp),
-                  child: Icon(Icons.star, size: 20.ic, color: context.colors.accentText),
+                  child: Icon(
+                    Icons.star,
+                    size: 20.ic,
+                    color: context.colors.accentText,
+                  ),
                 ),
               ),
             ],
@@ -197,17 +203,29 @@ class EventFavoriteCard extends ConsumerWidget {
       final eventId = eventData['id'] as String?;
       if (eventId == null) return;
 
-      // Create a GroupBroadcast object from the event data
-      final groupBroadcast = GroupBroadcast(
+      // Favorites keep presentation data, so resolve the event's actual dates
+      // before deciding whether opening it needs Premium.
+      var groupBroadcast = GroupBroadcast(
         id: eventId,
         createdAt: DateTime.now(),
         name: eventData['title'] as String? ?? 'Unknown Event',
         search: [eventData['title'] as String? ?? 'Unknown Event'],
         timeControl: eventData['timeControl'] as String?,
         maxAvgElo: eventData['maxAvgElo'] as int?,
-        dateStart: null, // Could parse from eventData if needed
-        dateEnd: null, // Could parse from eventData if needed
       );
+      try {
+        groupBroadcast = await ref
+            .read(groupBroadcastRepositoryProvider)
+            .getGroupBroadcastById(eventId);
+      } catch (e) {
+        debugPrint('[EventFavoriteCard] event $eventId resolve failed: $e');
+      }
+
+      if (!context.mounted ||
+          !await ensurePastEventAccess(context, broadcast: groupBroadcast) ||
+          !context.mounted) {
+        return;
+      }
 
       // Set the selected broadcast model
       ref.read(selectedBroadcastModelProvider.notifier).state = groupBroadcast;

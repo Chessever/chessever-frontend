@@ -52,6 +52,7 @@ import 'package:chessever2/widgets/event_card/event_context_menu.dart'
     show kEventTabQueryParam;
 import 'package:chessever2/widgets/game_filter/game_filter_model.dart';
 import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
+import 'package:chessever2/widgets/paywall/past_event_access.dart';
 import 'package:dartchess/dartchess.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -231,21 +232,24 @@ Future<bool> _openVirtualEvent(
   BuildContext context,
   WidgetRef ref,
   String virtualId,
-) {
+) async {
   final key = virtualEventKeyFromId(virtualId);
-  if (key == null) return Future.value(false);
-  if (!context.mounted) return Future.value(true);
-  ref
-      .read(selectedBroadcastModelProvider.notifier)
-      .state = virtualGroupBroadcastForEvent(
+  if (key == null) return false;
+  final broadcast = virtualGroupBroadcastForEvent(
     key.eventName,
     site: key.site,
     slug: key.slug,
   );
+  if (!context.mounted ||
+      !await ensurePastEventAccess(context, broadcast: broadcast) ||
+      !context.mounted) {
+    return true;
+  }
+  ref.read(selectedBroadcastModelProvider.notifier).state = broadcast;
   ref.read(selectedTourModeProvider.notifier).state =
       TournamentDetailScreenMode.games;
   unawaited(Navigator.of(context).pushNamed('/tournament_detail_screen'));
-  return Future.value(true);
+  return true;
 }
 
 Future<bool> _openCalendarEvent(BuildContext context, SpaceShortcut s) async {

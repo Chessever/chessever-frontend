@@ -17,6 +17,7 @@ import 'package:chessever2/utils/pgn_link_rebrand.dart';
 import 'package:chessever2/utils/pgn_export_utils.dart';
 import 'package:chessever2/widgets/app_snack.dart';
 import 'package:chessever2/widgets/auth/auth_upgrade_sheet.dart';
+import 'package:chessever2/widgets/paywall/pgn_copy_access.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -534,6 +535,14 @@ Future<void> _copyEventPgn({
   required WidgetRef ref,
   required GroupEventCardModel model,
 }) async {
+  if (!await ensurePgnCopyAccess(
+        context,
+        featureId: 'copy_event_pgn',
+        returnTo: 'events/event_card',
+      ) ||
+      !context.mounted) {
+    return;
+  }
   final messenger = ScaffoldMessenger.of(context);
   final cardBox = context.findRenderObject() as RenderBox?;
   final shareOrigin = cardBox != null

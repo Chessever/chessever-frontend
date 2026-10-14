@@ -12,6 +12,7 @@ import 'package:chessever2/screens/calendar/provider/calendar_search_isolate.dar
 import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart';
 import 'package:chessever2/screens/group_event/providers/live_group_broadcast_id_provider.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_mode_provider.dart';
+import 'package:chessever2/widgets/paywall/past_event_access.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -329,6 +330,11 @@ class _CalendarDetailScreenController
           .read(groupBroadcastRepositoryProvider)
           .getGroupBroadcastById(id);
 
+      if (!context.mounted ||
+          !await ensurePastEventAccess(context, broadcast: selectedBroadcast) ||
+          !context.mounted) {
+        return;
+      }
       ref.read(selectedBroadcastModelProvider.notifier).state =
           selectedBroadcast;
 

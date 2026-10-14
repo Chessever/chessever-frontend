@@ -20,6 +20,7 @@ import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/alert_dialog/alert_modal.dart';
 import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
+import 'package:chessever2/widgets/paywall/past_game_access.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -211,9 +212,8 @@ class GamebaseSearchGameCard extends ConsumerWidget {
     List<GamesTourModel> allGames,
     int gameIndex,
   ) async {
-    // Premium guard - show paywall if not subscribed
-    final hasPremium = await requirePremiumGuard(context, ref);
-    if (!hasPremium) return;
+    final allowed = await ensurePastGameAccess(context, game: game);
+    if (!allowed || !context.mounted) return;
 
     ref.read(chessboardViewFromProviderNew.notifier).state = viewSource;
 

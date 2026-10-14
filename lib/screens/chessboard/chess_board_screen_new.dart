@@ -148,6 +148,8 @@ import 'package:chessever2/repository/local_storage/local_storage_repository.dar
 import 'package:chessever2/services/lichess_move_annotations_service.dart';
 import 'package:chessever2/main.dart' show routeObserver, pageRouteObserver;
 import 'package:chessever2/screens/chessboard/utils/legible_ink.dart';
+import 'package:chessever2/widgets/paywall/pgn_copy_access.dart';
+import 'package:chessever2/widgets/paywall/past_event_access.dart';
 
 const Color kGameEndingRedColor = Color(0xCCF53236);
 
@@ -4709,6 +4711,10 @@ class _AppBarState extends ConsumerState<_AppBar> {
   }
 
   void copyPgnBtnClicked() async {
+    if (!await ensurePgnCopyAccess(context, returnTo: 'chessboard') ||
+        !mounted) {
+      return;
+    }
     try {
       final resolved = await _resolveAppBarShareData();
       if (resolved.pgn.trim().isEmpty) {
@@ -16622,7 +16628,11 @@ class _EventInfoSheet extends ConsumerWidget {
       );
     }
 
-    if (!context.mounted) return;
+    if (!context.mounted ||
+        !await ensurePastEventAccess(context, broadcast: groupBroadcast) ||
+        !context.mounted) {
+      return;
+    }
 
     ref.read(selectedBroadcastModelProvider.notifier).state = groupBroadcast;
 

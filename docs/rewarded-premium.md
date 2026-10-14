@@ -290,3 +290,37 @@ Device check: on a free account, tap a recent like and Smart Event games in
 list/board/grid modes, including the scorecard route. Dismiss Watch ad / Upgrade
 and verify no board opens. Complete an ad and verify the selected game opens;
 paid subscribers should bypass the popup.
+
+## Past events and PGN copying (36.8.12)
+
+Past events stay browsable in every list, but opening one requires paid or
+active rewarded access: a card on Events → Past, a past result in Search or a
+completed event in Smart Event, and past events from Countrymen, Calendar,
+Favorites, For You, My Space, collections and a player profile. Current and
+Upcoming cards open as before. Games inside a past event are gated however
+the event was reached (favourite, My Space,
+link): list, board, grid and match cards, team rounds, the knockout bracket,
+and a standings score card. Membership in `group_broadcasts_current`, the
+SQL view behind Events → Current, overrides local past dates: those events
+and their games open freely on every surface. A failed membership lookup
+does not classify an event as past. Outside Current, past detection retains
+the final-day grace period and the week-after-start fallback for unknown ends.
+Database-only events use their event metadata dates too.
+
+Mixed Games tabs in Favorites, Countrymen, Player Profile and For You resolve
+the tapped game's own event. A free board stays within that event so its game
+switcher cannot bypass access by crossing into a past event. Other event games
+remain visible in the source list and raise the chooser when tapped. Paid and
+rewarded viewers retain the complete navigation list. Collection content
+entitlements and bulk/save allowances keep their existing rules.
+
+Every Copy PGN requires the same access, including in debug: the board menu,
+the Explorer menu, saved and archive game menus, and an event card's Copy PGN
+(the whole event). Copy FEN is unchanged.
+
+Device check: on a free account, tap a Past card, a game inside a past event
+opened from Search, and each Copy PGN. Dismiss Watch ad / Upgrade and verify
+nothing opens or copies. Complete an ad and verify each action runs once.
+Current-view events and every one of their games must open without the popup,
+including events whose stored dates look old. Check all game-card layouts and
+try a mixed history list from a player profile, Favorites and Countrymen.

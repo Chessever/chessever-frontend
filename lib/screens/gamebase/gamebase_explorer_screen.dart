@@ -63,6 +63,7 @@ import 'package:chessever2/widgets/app_snack.dart';
 import 'package:chessever2/widgets/auth/auth_upgrade_sheet.dart';
 import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
 import 'package:chessever2/screens/chessboard/utils/legible_ink.dart';
+import 'package:chessever2/widgets/paywall/pgn_copy_access.dart';
 
 /// Main screen for exploring the Gamebase opening database.
 /// Displays a chess board, move statistics, and navigation controls.
@@ -946,6 +947,10 @@ class _GamebaseExplorerScreenState extends ConsumerState<GamebaseExplorerScreen>
     final pgn = _currentExplorerPgn();
     if (pgn == null) {
       if (mounted) showAppSnack(context, 'No PGN to copy');
+      return;
+    }
+    if (!await ensurePgnCopyAccess(context, returnTo: 'gamebase/explorer') ||
+        !mounted) {
       return;
     }
     await Clipboard.setData(ClipboardData(text: pgn));

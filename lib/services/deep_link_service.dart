@@ -59,6 +59,7 @@ import 'package:chessever2/services/pgn_file_intake_service.dart';
 import 'package:chessever2/widgets/event_card/event_context_menu.dart'
     show kEventTabQueryParam;
 import 'package:chessever2/widgets/paywall/premium_game_access.dart';
+import 'package:chessever2/widgets/paywall/past_event_access.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:sentry_flutter/sentry_flutter.dart';
@@ -1779,6 +1780,17 @@ class DeepLinkService {
       final broadcast = await broadcastRepo
           .getGroupBroadcastById(routeContext.groupBroadcastId)
           .timeout(_fetchTimeout);
+
+      if (preserveCurrentRoute) {
+        final context = navigatorKey.currentState?.context;
+        if (context == null ||
+            !context.mounted ||
+            !await ensurePastEventAccess(context, broadcast: broadcast) ||
+            !context.mounted) {
+          // Dismissing access handles a valid shortcut without opening it.
+          return true;
+        }
+      }
 
       await _preselectTourAndRound(
         ref,

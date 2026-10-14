@@ -35,6 +35,7 @@ import 'package:chessever2/screens/group_event/smart_event/smart_event_builder_s
     show smartEventCardSummary, watchSmartEventLive;
 import 'package:chessever2/widgets/generic_error_widget.dart';
 import 'package:chessever2/widgets/skeleton_widget.dart';
+import 'package:chessever2/widgets/paywall/past_game_access.dart';
 import 'package:flutter/material.dart';
 // Stable Flutter's material.dart does not export this type (only newer SDKs
 // do), so it is imported explicitly, as in lib/utils/scroll_cache.dart.
@@ -68,6 +69,26 @@ LiveGamesBatchKey _forYouLiveBatchKey({
     scopeId: 'for_you:$eventId:$tourId',
     gameIds: games.where(shouldSubscribeToLiveGame).map((game) => game.gameId),
   );
+}
+
+Future<void> _openForYouGame(
+  BuildContext context,
+  WidgetRef ref,
+  List<GamesTourModel> games,
+  int index,
+) async {
+  if (index < 0 || index >= games.length || !context.mounted) return;
+  final allowed = await ensurePastGameAccess(context, game: games[index]);
+  if (!allowed || !context.mounted) return;
+  ref
+      .read(gameCardWrapperProvider)
+      .navigateToChessBoard(
+        context: context,
+        orderedGames: games,
+        gameIndex: index,
+        onReturnFromChessboard: (_) {},
+        viewSource: ChessboardView.forYou,
+      );
 }
 
 /// For You tab widget - displays events with their top 4 games
@@ -1152,16 +1173,8 @@ class _TabletGameCard extends ConsumerWidget {
       allowStockfishFallback: true,
       streamEnabled: true,
       viewSource: ChessboardView.forYou,
-      onChangedWithLiveGames:
-          (updatedGames) => ref
-              .read(gameCardWrapperProvider)
-              .navigateToChessBoard(
-                context: context,
-                orderedGames: updatedGames,
-                gameIndex: index,
-                onReturnFromChessboard: (_) {},
-                viewSource: ChessboardView.forYou,
-              ),
+      onChangedWithLiveGames: (updatedGames) =>
+          _openForYouGame(context, ref, updatedGames, index),
       pinnedIds: pinnedIds,
       onPinToggle:
           (_) => ref
@@ -1288,16 +1301,8 @@ class _ForYouEventGames extends ConsumerWidget {
                   allowStockfishFallback: true,
                   streamEnabled: true,
                   viewSource: ChessboardView.forYou,
-                  onChangedWithLiveGames:
-                      (updatedGames) => ref
-                          .read(gameCardWrapperProvider)
-                          .navigateToChessBoard(
-                            context: context,
-                            orderedGames: updatedGames,
-                            gameIndex: i,
-                            onReturnFromChessboard: (_) {},
-                            viewSource: ChessboardView.forYou,
-                          ),
+                  onChangedWithLiveGames: (updatedGames) =>
+                      _openForYouGame(context, ref, updatedGames, i),
                   pinnedIds: pinnedIds,
                   onPinToggle:
                       (_) => ref
@@ -1322,16 +1327,8 @@ class _ForYouEventGames extends ConsumerWidget {
                           allowStockfishFallback: true,
                           streamEnabled: true,
                           viewSource: ChessboardView.forYou,
-                          onChangedWithLiveGames:
-                              (updatedGames) => ref
-                                  .read(gameCardWrapperProvider)
-                                  .navigateToChessBoard(
-                                    context: context,
-                                    orderedGames: updatedGames,
-                                    gameIndex: i + 1,
-                                    onReturnFromChessboard: (_) {},
-                                    viewSource: ChessboardView.forYou,
-                                  ),
+                          onChangedWithLiveGames: (updatedGames) =>
+                              _openForYouGame(context, ref, updatedGames, i + 1),
                           pinnedIds: pinnedIds,
                           onPinToggle:
                               (_) => ref
@@ -1437,6 +1434,7 @@ class _ForYouGameCard extends ConsumerWidget {
         liveBatchKey: liveBatchKey,
         allowStockfishFallback: true,
         streamEnabled: true,
+        onBeforeOpen: () => ensurePastGameAccess(context, game: game),
         onPinToggle:
             (_) => ref
                 .read(forYouPinActionProvider)

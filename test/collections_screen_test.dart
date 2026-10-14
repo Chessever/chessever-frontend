@@ -14,6 +14,7 @@ import 'package:chessever2/providers/engine_settings_provider.dart';
 import 'package:chessever2/repository/gamebase/gamebase_repository.dart';
 import 'package:chessever2/repository/lichess/cloud_eval/cloud_eval.dart';
 import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
+import 'package:chessever2/services/rewarded_premium/rewarded_access_provider.dart';
 import 'package:chessever2/screens/chessboard/provider/current_eval_provider.dart';
 import 'package:chessever2/screens/chessboard/chess_board_screen_new.dart';
 import 'package:chessever2/screens/collections/collections_data.dart';
@@ -298,6 +299,7 @@ Future<void> _pump(
   Widget? home,
   CollectionsRepository Function()? repositoryFactory,
   NavigatorObserver? navigationObserver,
+  bool? premium,
 }) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1;
@@ -311,6 +313,7 @@ Future<void> _pump(
         (_) => repositoryFactory?.call() ?? repo,
       ),
       subscriptionProvider.overrideWith((ref) => _Subscription()),
+      if (premium != null) premiumAccessProvider.overrideWithValue(premium),
       boardSettingsProviderNew.overrideWith(_BoardSettings.new),
       gamesListViewModeProvider.overrideWithValue(viewMode),
       engineSettingsProviderNew.overrideWith(_EngineSettings.new),
@@ -516,7 +519,8 @@ void main() {
       searchResult: (_) => [third, first],
     );
     final observer = _BookNavigationObserver();
-    await _pump(tester, repo, navigationObserver: observer);
+    // Rewarded access admits these archived games without a paid subscription.
+    await _pump(tester, repo, navigationObserver: observer, premium: true);
     await tester.enterText(
       find.byKey(const ValueKey('collection_games_search')),
       '[White "Nimzowitsch"]',

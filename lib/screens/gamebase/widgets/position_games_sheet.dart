@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:chessever2/repository/gamebase/gamebase_repository.dart';
+import 'package:chessever2/services/rewarded_premium/rewarded_access_provider.dart';
 import 'package:chessever2/widgets/app_snack.dart';
 import 'package:dartchess/dartchess.dart';
 import 'package:chessever2/screens/chessboard/chess_board_screen_new.dart';
@@ -21,7 +22,7 @@ import 'package:chessever2/utils/logger/logger.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/user_error_message.dart';
 import 'package:chessever2/widgets/alert_dialog/alert_modal.dart';
-import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
+import 'package:chessever2/widgets/paywall/past_game_access.dart';
 import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -1014,7 +1015,7 @@ typedef GamebaseGameOpener =
       String? initialFen,
     );
 
-/// Opens a gamebase game into the full board screen: premium guard → loading
+/// Opens a gamebase game into the full board screen: event access → loading
 /// modal → PGN fetch → [ChessBoardScreenNew]. Shared by [PositionGamesSheet]
 /// and the explorer's inline games section.
 Future<void> openGamebaseGame(
@@ -1030,10 +1031,8 @@ Future<void> openGamebaseGame(
   // underneath them; the board must still open the game that was tapped.
   final games = List<GamesTourModel>.of(allGames);
 
-  // Premium guard - show paywall if not subscribed
-  final hasPremium = await requirePremiumGuard(context, ref);
-  if (!hasPremium) return;
-  if (!context.mounted) return;
+  final allowed = await ensurePastGameAccess(context, game: game);
+  if (!allowed || !context.mounted) return;
 
   // Any lingering explorer-card focus must not hijack the pushed board
   // screen's arrows (Trello #984).
@@ -1096,13 +1095,18 @@ Future<void> openGamebaseGame(
       currentIndex: currentIndex,
       pgn: pgn,
     );
+    final navigation = gameNavigationForAccess(
+      games: boardGames,
+      index: safeIndex,
+      premium: ref.read(premiumAccessProvider),
+    );
 
     Navigator.of(context).push(
       MaterialPageRoute(
         builder:
             (_) => ChessBoardScreenNew(
-              games: boardGames,
-              currentIndex: safeIndex,
+              games: navigation.games,
+              currentIndex: navigation.index,
               viewSource: ChessboardView.tour,
               playerProfileDataSource: PlayerProfileDataSource.twic,
               disableGamebaseOverlayByDefault: true,

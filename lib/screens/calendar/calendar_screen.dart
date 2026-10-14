@@ -29,6 +29,7 @@ import 'package:chessever2/widgets/simple_search_bar.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/widgets/event_card/event_card.dart';
+import 'package:chessever2/widgets/paywall/past_event_access.dart';
 
 /// Filter mode for the calendar view
 enum CalendarFilterMode { all, upcoming, favorites }
@@ -910,9 +911,12 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
       final broadcast = await ref
           .read(groupBroadcastRepositoryProvider)
           .getGroupBroadcastById(event.id);
-      ref.read(selectedBroadcastModelProvider.notifier).state = broadcast;
-
       if (!mounted) return;
+      if (!await ensurePastEventAccess(context, broadcast: broadcast) ||
+          !mounted) {
+        return;
+      }
+      ref.read(selectedBroadcastModelProvider.notifier).state = broadcast;
       if (ref.read(selectedBroadcastModelProvider) != null) {
         Navigator.pushNamed(context, '/tournament_detail_screen');
       }

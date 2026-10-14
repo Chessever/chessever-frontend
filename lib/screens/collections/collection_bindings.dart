@@ -13,6 +13,7 @@ import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/app_snack.dart';
 import 'package:chessever2/widgets/auth/auth_upgrade_sheet.dart';
 import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
+import 'package:chessever2/widgets/paywall/past_event_access.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -334,11 +335,18 @@ Future<void> openCollectionEvent(
   if (open == null) return;
   HapticFeedbackService.cardTap();
 
-  void pushTournament(GroupBroadcast broadcast) {
+  Future<bool> pushTournament(GroupBroadcast broadcast) async {
+    if (!context.mounted) return false;
+    if (!await ensurePastEventAccess(context, broadcast: broadcast)) {
+      // Dismissing the offer still handled the tap; the event is available.
+      return true;
+    }
+    if (!context.mounted) return true;
     ref.read(selectedBroadcastModelProvider.notifier).state = broadcast;
     ref.read(selectedTourModeProvider.notifier).state =
         TournamentDetailScreenMode.games;
     unawaited(Navigator.of(context).pushNamed('/tournament_detail_screen'));
+    return true;
   }
 
   var opened = false;
@@ -354,18 +362,21 @@ Future<void> openCollectionEvent(
             .read(groupBroadcastRepositoryProvider)
             .getGroupBroadcastBySlug(open.slug!);
         if (broadcast != null && context.mounted) {
-          pushTournament(broadcast);
-          opened = true;
+          opened = await pushTournament(broadcast);
         }
       } catch (e) {
         debugPrint('[Collections] event ${open.slug} unavailable: $e');
       }
     case CollectionEventOpenKind.database:
       if (context.mounted) {
-        pushTournament(
-          virtualGroupBroadcastForEvent(open.eventName!, site: open.site),
+        opened = await pushTournament(
+          virtualGroupBroadcastForEvent(
+            open.eventName!,
+            site: open.site,
+            dateStart: event.dateStart,
+            dateEnd: event.dateEnd,
+          ),
         );
-        opened = true;
       }
     case CollectionEventOpenKind.collection:
       if (context.mounted) {

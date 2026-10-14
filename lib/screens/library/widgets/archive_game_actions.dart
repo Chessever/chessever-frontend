@@ -10,6 +10,7 @@ import 'package:chessever2/utils/pgn_export_utils.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/alert_dialog/alert_modal.dart';
 import 'package:chessever2/widgets/app_snack.dart';
+import 'package:chessever2/widgets/paywall/pgn_copy_access.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -119,7 +120,11 @@ Future<void> copyArchiveGamePgn({
   required BuildContext context,
   required WidgetRef ref,
   required GamesTourModel game,
-}) {
+}) async {
+  if (!await ensurePgnCopyAccess(context, returnTo: 'library/archive_game') ||
+      !context.mounted) {
+    return;
+  }
   return _withPgn(
     context,
     ref,

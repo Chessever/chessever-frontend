@@ -24,6 +24,7 @@ import 'package:flutter/cupertino.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:chessever2/repository/supabase/group_broadcast/group_tour_repository.dart';
 import 'package:chessever2/screens/tour_detail/player_tour/player_tour_screen_provider.dart';
+import 'package:chessever2/widgets/paywall/past_event_access.dart';
 
 export 'package:chessever2/screens/group_event/widget/filter_popup/event_filter_matching.dart'
     show filterBroadcastsByPopupState;
@@ -171,6 +172,19 @@ class TournamentNavigationController {
         .read(groupBroadcastRepositoryProvider)
         .getGroupBroadcastById(id);
 
+    if (!context.mounted) return;
+
+    // A Past card always asks; a search hit asks when its dates are past.
+    // Current and Upcoming open as before.
+    if ((category == GroupEventCategory.past ||
+            category == GroupEventCategory.search) &&
+        !await ensurePastEventAccess(
+          context,
+          broadcast: selectedBroadcast,
+          past: category == GroupEventCategory.past,
+        )) {
+      return;
+    }
     if (!context.mounted) return;
 
     ref.read(selectedBroadcastModelProvider.notifier).state = selectedBroadcast;
@@ -646,11 +660,22 @@ class _GroupEventScreenController
   void onSelectPlayer({
     required BuildContext context,
     required SearchPlayer player,
-  }) {
+  }) async {
+    if (!context.mounted || _groupBroadcastList.isEmpty) return;
     final selectedBroadcast = _groupBroadcastList.firstWhere(
       (broadcast) => broadcast.id == player.tournamentId,
       orElse: () => _groupBroadcastList.first,
     );
+
+    if (!await ensurePastEventAccess(
+          context,
+          broadcast: selectedBroadcast,
+          past: tourEventCategory == GroupEventCategory.past,
+        ) ||
+        !context.mounted ||
+        !mounted) {
+      return;
+    }
 
     ref.read(selectedBroadcastModelProvider.notifier).state = selectedBroadcast;
 

@@ -1,4 +1,4 @@
-import 'package:chessever2/widgets/paywall/premium_game_access.dart';
+import 'package:chessever2/widgets/paywall/past_game_access.dart';
 import 'dart:async';
 
 import 'package:chessever2/main.dart' show routeObserver;
@@ -1720,7 +1720,7 @@ class _GamesTabState extends ConsumerState<_GamesTab>
                   onReturnFromChessboard: (_) {},
                   liveBatchKey: liveBatchKeyByGameId[game.gameId],
                   allowStockfishFallback: allowStockfishFallback,
-                  onBeforeOpen: () => _guardGameOpen(context),
+                  onBeforeOpen: () => _guardGameOpen(context, game),
                 ),
               );
             },
@@ -1840,13 +1840,8 @@ class _GamesTabState extends ConsumerState<_GamesTab>
     };
   }
 
-  Future<bool> _guardGameOpen(BuildContext context) async {
-    return ensurePremiumGameAccess(
-      context,
-      featureId: 'smart_event_games',
-      returnTo: 'smart_event/games',
-    );
-  }
+  Future<bool> _guardGameOpen(BuildContext context, GamesTourModel game) =>
+      ensurePastGameAccess(context, game: game);
 
   Widget _buildGridGame(
     GamesTourModel game,
@@ -1873,7 +1868,7 @@ class _GamesTabState extends ConsumerState<_GamesTab>
               .read(gamesTourScreenProvider.notifier)
               .togglePinGame(g.gameId, sourceTourId: g.tourId),
       onChangedWithLiveGames: (updatedGames) async {
-        final allowed = await _guardGameOpen(context);
+        final allowed = await _guardGameOpen(context, updatedGames[safeIndex]);
         if (!allowed || !mounted) return;
         ref
             .read(gameCardWrapperProvider)
@@ -2549,13 +2544,8 @@ class _EventsTabState extends ConsumerState<_EventsTab>
     ref.read(smartAggregateEventRepositoryProvider(query).notifier).loadMore();
   }
 
-  Future<bool> _guardGameOpen(BuildContext context) async {
-    return ensurePremiumGameAccess(
-      context,
-      featureId: 'smart_event_games',
-      returnTo: 'smart_event/games',
-    );
-  }
+  Future<bool> _guardGameOpen(BuildContext context, GamesTourModel game) =>
+      ensurePastGameAccess(context, game: game);
 
   Widget _buildGridGame({
     required GamesTourModel game,
@@ -2581,7 +2571,7 @@ class _EventsTabState extends ConsumerState<_EventsTab>
               .read(gamesTourScreenProvider.notifier)
               .togglePinGame(updated.gameId, sourceTourId: updated.tourId),
       onChangedWithLiveGames: (updatedGames) async {
-        final allowed = await _guardGameOpen(context);
+        final allowed = await _guardGameOpen(context, updatedGames[safeIndex]);
         if (!allowed || !mounted) return;
         ref
             .read(gameCardWrapperProvider)
@@ -2776,7 +2766,7 @@ class _EventsTabState extends ConsumerState<_EventsTab>
                       liveBatchKey: liveBatchKeyByGameId[game.gameId],
                       allowStockfishFallback: true,
                       streamEnabled: streamEnabled,
-                      onBeforeOpen: () => _guardGameOpen(context),
+                      onBeforeOpen: () => _guardGameOpen(context, game),
                     ),
                   );
                 },

@@ -17,7 +17,7 @@ import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrap
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/grid_game_card_wrapper_widget.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/live_game_card_provider.dart';
 import 'package:chessever2/theme/app_colors.dart';
-import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
+import 'package:chessever2/widgets/paywall/past_game_access.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/scroll_cache.dart';
 import 'package:chessever2/utils/foreground_task_scheduler.dart';
@@ -868,8 +868,8 @@ class _CountrymenGamesTabState extends ConsumerState<CountrymenGamesTab>
           onAdd: () => _showAddToFolderSheet(context, entry.game),
           onLiveAdd: (liveGame) => _showAddToFolderSheet(context, liveGame),
           onLiveTap: (liveGame, updatedGames, liveIndex) async {
-            final hasPremium = await requirePremiumGuard(context, ref);
-            if (!hasPremium) return;
+            final allowed = await ensurePastGameAccess(context, game: liveGame);
+            if (!allowed || !mounted) return;
             _navigateToChessBoard(liveGame, updatedGames, liveIndex);
           },
         ),
@@ -930,10 +930,11 @@ class _CountrymenGamesTabState extends ConsumerState<CountrymenGamesTab>
       // from the card without going through [navigateToChessBoard].
       viewSource: ChessboardView.countryman,
       onChangedWithLiveGames: (updatedGames) async {
-        // Premium guard - show paywall if not subscribed
-        final hasPremium = await requirePremiumGuard(context, ref);
-        if (!hasPremium) return;
-        if (!mounted) return;
+        final allowed = await ensurePastGameAccess(
+          context,
+          game: updatedGames[gameIndex],
+        );
+        if (!allowed || !mounted) return;
 
         ref
             .read(gameCardWrapperProvider)
@@ -1343,7 +1344,7 @@ class _DateHeader extends StatelessWidget {
   }
 }
 
-/// Adds premium guard for navigation while allowing offscreen live streams to
+/// Checks event access for navigation while allowing offscreen live streams to
 /// auto-dispose.
 class _CountrymenLiveBoardGameCard extends ConsumerStatefulWidget {
   const _CountrymenLiveBoardGameCard({
@@ -1375,10 +1376,11 @@ class _CountrymenLiveBoardGameCard extends ConsumerStatefulWidget {
 class _CountrymenLiveBoardGameCardState
     extends ConsumerState<_CountrymenLiveBoardGameCard> {
   Future<void> _handleNavigate(List<GamesTourModel> updatedGames) async {
-    // Premium guard - show paywall if not subscribed
-    final hasPremium = await requirePremiumGuard(context, ref);
-    if (!hasPremium) return;
-    if (!mounted) return;
+    final allowed = await ensurePastGameAccess(
+      context,
+      game: updatedGames[widget.gameIndex],
+    );
+    if (!allowed || !mounted) return;
 
     ref
         .read(gameCardWrapperProvider)
@@ -1412,7 +1414,7 @@ class _CountrymenLiveBoardGameCardState
       updatedGames[widget.gameIndex] = liveGame;
     }
 
-    // Use ChessBoardFromFENNew directly with premium-guarded navigation
+    // Use ChessBoardFromFENNew directly with event access checked on navigation.
     final card = Padding(
       padding: EdgeInsets.only(bottom: widget.isLast ? 16.h : 12.h),
       child: ChessBoardFromFENNew(

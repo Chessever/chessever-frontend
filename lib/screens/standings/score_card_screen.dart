@@ -1,4 +1,4 @@
-import 'package:chessever2/widgets/paywall/premium_game_access.dart';
+import 'package:chessever2/widgets/paywall/past_game_access.dart';
 import 'dart:io' as io;
 import 'dart:math' as math;
 import 'package:chessever2/e2e/e2e_ids.dart';
@@ -65,6 +65,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:chessever2/utils/share_card.dart';
 import 'package:chessever2/widgets/screenshot_share_nudge.dart';
 import 'package:chessever2/widgets/player_name_share_target.dart';
+import 'package:chessever2/widgets/paywall/past_event_access.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:motor/motor.dart';
@@ -1078,11 +1079,17 @@ class _ScoreCardPage extends ConsumerWidget {
                       final result = _getPlayerResult(game, isWhite);
 
                       Future<void> openGame() async {
-                        if (ref.read(chessboardViewFromProviderNew) == ChessboardView.smartEvent) {
-                          final allowed = await ensurePremiumGameAccess(
+                        if (ref.read(chessboardViewFromProviderNew) ==
+                            ChessboardView.smartEvent) {
+                          final allowed = await ensurePastGameAccess(
                             context,
-                            featureId: 'smart_event_games',
-                            returnTo: 'smart_event/games',
+                            game: game,
+                          );
+                          if (!allowed || !context.mounted) return;
+                        } else if (hasEventContext) {
+                          final allowed = await ensureEventGameAccess(
+                            context,
+                            tourId: game.tourId,
                           );
                           if (!allowed || !context.mounted) return;
                         }

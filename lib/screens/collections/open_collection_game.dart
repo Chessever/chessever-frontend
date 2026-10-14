@@ -3,8 +3,10 @@ import 'package:chessever2/screens/chessboard/chess_board_screen_new.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
 import 'package:chessever2/screens/collections/collections_data.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
+import 'package:chessever2/services/rewarded_premium/rewarded_access_provider.dart';
 import 'package:chessever2/widgets/app_snack.dart';
 import 'package:chessever2/widgets/paywall/premium_game_access.dart';
+import 'package:chessever2/widgets/paywall/past_game_access.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -64,13 +66,28 @@ Future<void> openCollectionGame(
       stillCurrent: current,
     );
     if (games == null || !context.mounted || !current()) return;
+    if (!await ensurePastGameAccess(
+          context,
+          game: games[index],
+          publishedEventGame: true,
+        ) ||
+        !context.mounted ||
+        !current()) {
+      return;
+    }
+    final navigation = gameNavigationForAccess(
+      games: games,
+      index: index,
+      premium: ref.read(premiumAccessProvider),
+      publishedEventGame: true,
+    );
     ref.read(chessboardViewFromProviderNew.notifier).state =
         ChessboardView.tour;
     await Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (_) => ChessBoardScreenNew(
-          currentIndex: index,
-          games: games,
+          currentIndex: navigation.index,
+          games: navigation.games,
           viewSource: ChessboardView.tour,
           showGamebaseButton: false,
           disableGamebaseOverlayByDefault: true,

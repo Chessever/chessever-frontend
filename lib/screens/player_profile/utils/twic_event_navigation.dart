@@ -5,6 +5,7 @@ import 'package:chessever2/screens/player_profile/utils/twic_event_identity.dart
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_mode_provider.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/widgets/app_snack.dart';
+import 'package:chessever2/widgets/paywall/past_event_access.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -38,8 +39,12 @@ Future<void> openProfileEvent({
     if (trimmed.isEmpty) return false;
     try {
       final broadcast = await repo.getGroupBroadcastById(trimmed);
+      if (!context.mounted ||
+          !await ensurePastEventAccess(context, broadcast: broadcast) ||
+          !context.mounted) {
+        return true;
+      }
       ref.read(selectedBroadcastModelProvider.notifier).state = broadcast;
-      if (!context.mounted) return true;
       ref.read(selectedTourModeProvider.notifier).state =
           TournamentDetailScreenMode.games;
       Navigator.pushNamed(context, '/tournament_detail_screen');
@@ -86,8 +91,12 @@ Future<void> openProfileEvent({
     try {
       final broadcast = await repo.getGroupBroadcastBySlug(candidate);
       if (broadcast != null) {
+        if (!context.mounted ||
+            !await ensurePastEventAccess(context, broadcast: broadcast) ||
+            !context.mounted) {
+          return;
+        }
         ref.read(selectedBroadcastModelProvider.notifier).state = broadcast;
-        if (!context.mounted) return;
         ref.read(selectedTourModeProvider.notifier).state =
             TournamentDetailScreenMode.games;
         Navigator.pushNamed(context, '/tournament_detail_screen');
@@ -102,9 +111,7 @@ Future<void> openProfileEvent({
   // TournamentDetailScreen shell as broadcast events, backed by virtual tours
   // and games synthesized from /api/event.
   if (!context.mounted) return;
-  ref
-      .read(selectedBroadcastModelProvider.notifier)
-      .state = virtualGroupBroadcastForEvent(
+  final broadcast = virtualGroupBroadcastForEvent(
     eventName.trim(),
     site: site,
     slug:
@@ -114,6 +121,11 @@ Future<void> openProfileEvent({
             ? rawBroadcastSlug
             : siteSlug,
   );
+  if (!await ensurePastEventAccess(context, broadcast: broadcast) ||
+      !context.mounted) {
+    return;
+  }
+  ref.read(selectedBroadcastModelProvider.notifier).state = broadcast;
   ref.read(selectedTourModeProvider.notifier).state =
       TournamentDetailScreenMode.games;
   Navigator.pushNamed(context, '/tournament_detail_screen');
