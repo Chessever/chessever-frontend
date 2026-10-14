@@ -132,6 +132,8 @@ class GamebaseExplorerScreen extends ConsumerStatefulWidget {
 class _GamebaseExplorerScreenState extends ConsumerState<GamebaseExplorerScreen>
     with RouteAware, WidgetsBindingObserver {
   bool _isFlipped = false;
+
+  void _toggleFlip() => setState(() => _isFlipped = !_isFlipped);
   bool _routeActive = true;
   bool _appIsResumed = true;
   final _backwardMoveHold = MoveHoldRepeater();
@@ -473,7 +475,7 @@ class _GamebaseExplorerScreenState extends ConsumerState<GamebaseExplorerScreen>
           appBar: _buildAppBar(context),
           bottomNavigationBar: ChessBoardBottomNavBar(
             gameIndex: 0,
-            onFlip: () => setState(() => _isFlipped = !_isFlipped),
+            onFlip: _toggleFlip,
             toggleEngineVisibility: _toggleEngineAnalysis,
             onEngineSettingsLongPress: () {
               requireFullAuthGuard(context).then((allowed) {
@@ -591,6 +593,7 @@ class _GamebaseExplorerScreenState extends ConsumerState<GamebaseExplorerScreen>
                     fen: boardFen,
                     boardSize: boardSize,
                     isFlipped: _isFlipped,
+                    onFlip: _toggleFlip,
                     isPreviewing: preview != null,
                     lastMove: preview?.currentMove,
                   ),
@@ -669,6 +672,7 @@ class _GamebaseExplorerScreenState extends ConsumerState<GamebaseExplorerScreen>
                       fen: boardFen,
                       boardSize: boardSize,
                       isFlipped: _isFlipped,
+                      onFlip: _toggleFlip,
                       isPreviewing: preview != null,
                       lastMove: preview?.currentMove,
                     ),
@@ -745,6 +749,7 @@ class _GamebaseExplorerScreenState extends ConsumerState<GamebaseExplorerScreen>
                       fen: boardFen,
                       boardSize: boardSize,
                       isFlipped: _isFlipped,
+                      onFlip: _toggleFlip,
                       isPreviewing: preview != null,
                       lastMove: preview?.currentMove,
                     ),
@@ -1114,6 +1119,7 @@ class _GamebaseChessBoard extends ConsumerStatefulWidget {
     required this.fen,
     required this.boardSize,
     required this.isPreviewing,
+    required this.onFlip,
     this.lastMove,
     this.isFlipped = false,
   });
@@ -1121,6 +1127,7 @@ class _GamebaseChessBoard extends ConsumerStatefulWidget {
   final String fen;
   final double boardSize;
   final bool isFlipped;
+  final VoidCallback onFlip;
   final bool isPreviewing;
   final Move? lastMove;
 
@@ -1129,7 +1136,8 @@ class _GamebaseChessBoard extends ConsumerStatefulWidget {
       _GamebaseChessBoardState();
 }
 
-class _GamebaseChessBoardState extends ConsumerState<_GamebaseChessBoard> {
+class _GamebaseChessBoardState extends ConsumerState<_GamebaseChessBoard>
+    with SingleTickerProviderStateMixin {
   // We used to bump a _selectionEpoch and re-key the Chessboard on every
   // external FEN change to clear chessground's tap-selection — but the
   // resulting widget remount made chessground's didUpdateWidget never run,
@@ -1141,9 +1149,33 @@ class _GamebaseChessBoardState extends ConsumerState<_GamebaseChessBoard> {
   // positions via [updatePosition] whenever the external fen changes.
   late final ChessboardController _boardController;
 
+  // Swipe-to-flip, mirroring the game board (`_AnalysisBoardState` in
+  // chess_board_screen_new.dart): a vertical drag turns the board about its
+  // X axis, and the orientation swaps at the invisible edge-on midpoint.
+  // Progress is in units of π; ±0.5 is edge-on.
+  static const double _flipMaxProgress = 0.5;
+  static const double _flipCommitProgressThreshold = 0.18;
+  static const double _flipCommitVelocityThreshold = 600.0;
+  static const Duration _flipPhaseFullDuration = Duration(milliseconds: 220);
+  static const Duration _flipPhaseMinDuration = Duration(milliseconds: 90);
+
+  late final AnimationController _flipCommitCtrl;
+  final ValueNotifier<double> _flipProgress = ValueNotifier<double>(0.0);
+  double _flipPhaseFrom = 0.0;
+  double _flipPhaseTo = 0.0;
+  bool _flipDragActive = false;
+  bool _flipCommitting = false;
+  // Bumped on every drag start and commit so a new gesture can preempt an
+  // in-flight commit without leaving _flipCommitting stuck true.
+  int _flipCommitToken = 0;
+
   @override
   void initState() {
     super.initState();
+    _flipCommitCtrl = AnimationController(
+      vsync: this,
+      duration: _flipPhaseFullDuration,
+    )..addListener(_drivePhaseFromController);
     _boardController = ChessboardController(
       game: _gameDataFor(
         widget.fen,
@@ -1156,6 +1188,18 @@ class _GamebaseChessBoardState extends ConsumerState<_GamebaseChessBoard> {
   @override
   void didUpdateWidget(covariant _GamebaseChessBoard oldWidget) {
     super.didUpdateWidget(oldWidget);
+    // External flip (bottom-nav button): swing in from edge-on so the new
+    // orientation doesn't snap.
+    if (widget.isFlipped != oldWidget.isFlipped &&
+        !_flipDragActive &&
+        !_flipCommitting &&
+        _flipProgress.value == 0) {
+      _flipPhaseFrom = _flipMaxProgress;
+      _flipPhaseTo = 0.0;
+      _flipProgress.value = _flipPhaseFrom;
+      _flipCommitCtrl.duration = _flipPhaseFullDuration;
+      _flipCommitCtrl.forward(from: 0.0);
+    }
     if (oldWidget.fen != widget.fen ||
         oldWidget.isPreviewing != widget.isPreviewing ||
         oldWidget.lastMove != widget.lastMove) {
@@ -1172,7 +1216,137 @@ class _GamebaseChessBoardState extends ConsumerState<_GamebaseChessBoard> {
   @override
   void dispose() {
     _boardController.dispose();
+    _flipCommitCtrl.dispose();
+    _flipProgress.dispose();
     super.dispose();
+  }
+
+  void _drivePhaseFromController() {
+    final t = Curves.easeInOutCubic.transform(_flipCommitCtrl.value);
+    _flipProgress.value = _flipPhaseFrom + (_flipPhaseTo - _flipPhaseFrom) * t;
+  }
+
+  Duration _scaledPhaseDuration(double phaseDistance) {
+    final normalized = (phaseDistance / _flipMaxProgress).clamp(0.0, 1.0);
+    final scaledMs = (_flipPhaseFullDuration.inMilliseconds * normalized)
+        .round();
+    final minMs = _flipPhaseMinDuration.inMilliseconds;
+    return Duration(milliseconds: scaledMs < minMs ? minMs : scaledMs);
+  }
+
+  void _onFlipDragStart(DragStartDetails details) {
+    _flipCommitToken++;
+    _flipCommitting = false;
+    _flipDragActive = true;
+    _flipCommitCtrl.stop();
+    _flipProgress.value = _flipProgress.value.clamp(
+      -_flipMaxProgress,
+      _flipMaxProgress,
+    );
+  }
+
+  void _onFlipDragUpdate(DragUpdateDetails details) {
+    if (!_flipDragActive) return;
+    final delta = details.primaryDelta ?? 0.0;
+    if (delta == 0.0 || widget.boardSize <= 0) return;
+    final progressDelta = (delta / widget.boardSize) * _flipMaxProgress;
+    _flipProgress.value = (_flipProgress.value + progressDelta).clamp(
+      -_flipMaxProgress,
+      _flipMaxProgress,
+    );
+  }
+
+  void _onFlipDragEnd(DragEndDetails details) {
+    if (!_flipDragActive) return;
+    _flipDragActive = false;
+    final v = _flipProgress.value;
+    final velocity = details.primaryVelocity ?? 0.0;
+    final pastThreshold = v.abs() >= _flipCommitProgressThreshold;
+    final hasFlingVelocity = velocity.abs() >= _flipCommitVelocityThreshold;
+    if (hasFlingVelocity || pastThreshold) {
+      final commitSign = hasFlingVelocity
+          ? (velocity > 0 ? 1.0 : -1.0)
+          : (v >= 0 ? 1.0 : -1.0);
+      _commitFlip(commitSign);
+    } else {
+      _animateToFlat();
+    }
+  }
+
+  void _onFlipDragCancel() {
+    if (!_flipDragActive) return;
+    _flipDragActive = false;
+    if (_flipCommitting) return;
+    _animateToFlat();
+  }
+
+  void _animateToFlat() {
+    _flipPhaseFrom = _flipProgress.value;
+    _flipPhaseTo = 0.0;
+    _flipCommitCtrl.duration = _scaledPhaseDuration(
+      (_flipPhaseTo - _flipPhaseFrom).abs(),
+    );
+    _flipCommitCtrl.forward(from: 0.0);
+  }
+
+  /// Turns to edge-on, swaps orientation while the board is invisible, then
+  /// turns back to flat from the opposite edge.
+  Future<void> _commitFlip(double sign) async {
+    final token = ++_flipCommitToken;
+    _flipCommitting = true;
+    try {
+      _flipPhaseFrom = _flipProgress.value;
+      _flipPhaseTo = sign * _flipMaxProgress;
+      _flipCommitCtrl.duration = _scaledPhaseDuration(
+        (_flipPhaseTo - _flipPhaseFrom).abs(),
+      );
+      await _flipCommitCtrl.forward(from: 0.0);
+      if (!mounted || token != _flipCommitToken) return;
+
+      widget.onFlip();
+      HapticFeedback.lightImpact();
+
+      _flipPhaseFrom = -sign * _flipMaxProgress;
+      _flipPhaseTo = 0.0;
+      _flipProgress.value = _flipPhaseFrom;
+      _flipCommitCtrl.duration = _flipPhaseFullDuration;
+      await _flipCommitCtrl.forward(from: 0.0);
+      if (!mounted || token != _flipCommitToken) return;
+      _flipProgress.value = 0.0;
+    } finally {
+      if (mounted && token == _flipCommitToken) {
+        _flipCommitting = false;
+      }
+    }
+  }
+
+  /// Vertical drags flip the board. A tap has no drag, so the recognizer loses
+  /// the arena and chessground's pointer-based tap-to-move stays intact.
+  Widget _wrapWithFlipGesture(Widget child) {
+    return GestureDetector(
+      behavior: HitTestBehavior.deferToChild,
+      onVerticalDragStart: _onFlipDragStart,
+      onVerticalDragUpdate: _onFlipDragUpdate,
+      onVerticalDragEnd: _onFlipDragEnd,
+      onVerticalDragCancel: _onFlipDragCancel,
+      child: ValueListenableBuilder<double>(
+        valueListenable: _flipProgress,
+        child: child,
+        builder: (context, progress, c) {
+          if (progress == 0.0) return c!;
+          final rotation = progress * math.pi;
+          final scale = 1.0 - 0.06 * math.sin(rotation.abs());
+          return Transform(
+            alignment: Alignment.center,
+            transform: Matrix4.identity()
+              ..setEntry(3, 2, 0.0014)
+              ..rotateX(rotation)
+              ..scaleByDouble(scale, scale, scale, 1.0),
+            child: c,
+          );
+        },
+      ),
+    );
   }
 
   /// Builds chessground [GameData] from a fen. Falls back to a non-interactive
@@ -1240,78 +1414,83 @@ class _GamebaseChessBoardState extends ConsumerState<_GamebaseChessBoard> {
       position = null;
     }
 
-    return Container(
-      height: widget.boardSize,
-      width: widget.boardSize,
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(4.br),
-        boxShadow: [
-          context.isLightTheme
-              ? BoxShadow(
-                  color: context.colors.shadow,
-                  blurRadius: 3,
-                  offset: const Offset(0, 1),
+    return _wrapWithFlipGesture(
+      Container(
+        height: widget.boardSize,
+        width: widget.boardSize,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(4.br),
+          boxShadow: [
+            context.isLightTheme
+                ? BoxShadow(
+                    color: context.colors.shadow,
+                    blurRadius: 3,
+                    offset: const Offset(0, 1),
+                  )
+                : BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.3),
+                    blurRadius: 8,
+                    offset: const Offset(0, 4),
+                  ),
+          ],
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(4.br),
+          child: position == null
+              ? StaticChessboard(
+                  size: widget.boardSize,
+                  settings: StaticChessboardSettings(
+                    enableCoordinates: boardSettings.showCoordinates,
+                    colorScheme: boardSettings.colorScheme,
+                    pieceAssets: boardSettings.pieceAssets,
+                  ),
+                  orientation: widget.isFlipped ? Side.black : Side.white,
+                  fen: widget.fen,
+                  shapes: engineShapes,
                 )
-              : BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.3),
-                  blurRadius: 8,
-                  offset: const Offset(0, 4),
-                ),
-        ],
-      ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(4.br),
-        child: position == null
-            ? StaticChessboard(
-                size: widget.boardSize,
-                settings: StaticChessboardSettings(
-                  enableCoordinates: boardSettings.showCoordinates,
-                  colorScheme: boardSettings.colorScheme,
-                  pieceAssets: boardSettings.pieceAssets,
-                ),
-                orientation: widget.isFlipped ? Side.black : Side.white,
-                fen: widget.fen,
-                shapes: engineShapes,
-              )
-            : Chessboard(
-                size: widget.boardSize,
-                controller: _boardController,
-                settings: ChessboardSettings(
-                  enableCoordinates: boardSettings.showCoordinates,
-                  animationDuration: const Duration(milliseconds: 200),
-                  colorScheme: boardSettings.colorScheme,
-                  pieceAssets: boardSettings.pieceAssets,
-                  pieceShiftMethod: PieceShiftMethod.tapTwoSquares,
-                  autoQueenPromotionOnPremove: false,
-                  enablePremoves: false,
-                ),
-                orientation: widget.isFlipped ? Side.black : Side.white,
-                shapes: engineShapes,
-                // chessground v10: promotion is resolved inside the board,
-                // so onMove receives the fully-resolved move (promotion role
-                // already set) and lives on the widget, not GameData.
-                onMove: (Move move, {bool? viaDragAndDrop}) async {
-                  if (ref.read(explorerEvalProvider).pvPreview != null) {
-                    return;
-                  }
-                  // Playing this move would land past the free-tier
-                  // boundary: ask for Premium before advancing.
-                  // Chessground snaps the piece back when state doesn't
-                  // change.
-                  if (!kDebugMode &&
-                      !ref.read(featureAccessStateProvider).isSubscribed) {
-                    final currentMoveNumber = ref
-                        .read(gamebaseExplorerProvider.notifier)
-                        .effectiveMoveNumber;
-                    if (currentMoveNumber >= kFreeExplorerMoveNumberLimit) {
-                      if (!context.mounted) return;
-                      final unlocked = await requirePremiumGuard(context, ref);
-                      if (!unlocked) return;
+              : Chessboard(
+                  size: widget.boardSize,
+                  controller: _boardController,
+                  settings: ChessboardSettings(
+                    enableCoordinates: boardSettings.showCoordinates,
+                    animationDuration: const Duration(milliseconds: 200),
+                    colorScheme: boardSettings.colorScheme,
+                    pieceAssets: boardSettings.pieceAssets,
+                    pieceShiftMethod: PieceShiftMethod.tapTwoSquares,
+                    autoQueenPromotionOnPremove: false,
+                    enablePremoves: false,
+                  ),
+                  orientation: widget.isFlipped ? Side.black : Side.white,
+                  shapes: engineShapes,
+                  // chessground v10: promotion is resolved inside the board,
+                  // so onMove receives the fully-resolved move (promotion role
+                  // already set) and lives on the widget, not GameData.
+                  onMove: (Move move, {bool? viaDragAndDrop}) async {
+                    if (ref.read(explorerEvalProvider).pvPreview != null) {
+                      return;
                     }
-                  }
-                  notifier.makeMove(move.uci);
-                },
-              ),
+                    // Playing this move would land past the free-tier
+                    // boundary: ask for Premium before advancing.
+                    // Chessground snaps the piece back when state doesn't
+                    // change.
+                    if (!kDebugMode &&
+                        !ref.read(featureAccessStateProvider).isSubscribed) {
+                      final currentMoveNumber = ref
+                          .read(gamebaseExplorerProvider.notifier)
+                          .effectiveMoveNumber;
+                      if (currentMoveNumber >= kFreeExplorerMoveNumberLimit) {
+                        if (!context.mounted) return;
+                        final unlocked = await requirePremiumGuard(
+                          context,
+                          ref,
+                        );
+                        if (!unlocked) return;
+                      }
+                    }
+                    notifier.makeMove(move.uci);
+                  },
+                ),
+        ),
       ),
     );
   }
