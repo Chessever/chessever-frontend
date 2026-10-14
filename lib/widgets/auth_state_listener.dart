@@ -9,7 +9,10 @@ import 'package:chessever2/providers/favorite_events_provider.dart';
 import 'package:chessever2/providers/favorite_players_provider.dart';
 import 'package:chessever2/providers/guest_session_provider.dart';
 import 'package:chessever2/providers/pending_favorite_players_provider.dart';
+import 'package:chessever2/e2e/e2e_config.dart';
+import 'package:chessever2/screens/onboarding/notification_permission_step.dart';
 import 'package:chessever2/screens/onboarding/player_selection_screen.dart';
+import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/repository/local_storage/country_man/country_man_repository.dart';
 import 'package:chessever2/repository/local_storage/onboarding/onboarding_repository.dart';
 import 'package:chessever2/repository/local_storage/sesions_manager/session_manager.dart';
@@ -242,10 +245,16 @@ class AuthStateListener extends ConsumerWidget {
                 .read(onboardingRepositoryProvider)
                 .hasSeenOnboarding(userId: currentUserId);
 
-            final targetRoute =
-                hasSeenOnboarding ? '/home_screen' : '/onboarding';
+            final targetRoute = hasSeenOnboarding
+                ? '/home_screen'
+                : '/onboarding';
             navigator.pushNamedAndRemoveUntil(targetRoute, (route) => false);
             ref.read(authScreenProvider.notifier).reset();
+            // Signing in from the welcome page skips onboarding's notification
+            // step; ask here instead when this install never has.
+            if (hasSeenOnboarding && !E2eConfig.suppressInterruptivePrompts) {
+              unawaited(_offerNotificationsAfterSignIn(navigator));
+            }
           }
         } else if (authState.status == AppAuthStatus.unauthenticated) {
           // Clear the sync tracking when user logs out
@@ -276,10 +285,9 @@ class AuthStateListener extends ConsumerWidget {
             await ref.read(sessionManagerProvider).clearLocalStorage();
 
             // Check if onboarding was seen - if not, go to onboarding, otherwise auth
-            final hasSeenOnboarding =
-                await ref
-                    .read(onboardingRepositoryProvider)
-                    .hasSeenOnboarding();
+            final hasSeenOnboarding = await ref
+                .read(onboardingRepositoryProvider)
+                .hasSeenOnboarding();
 
             navigator.pushNamedAndRemoveUntil(
               hasSeenOnboarding ? '/auth_screen' : '/onboarding',
@@ -292,4 +300,32 @@ class AuthStateListener extends ConsumerWidget {
 
     return child;
   }
+}
+
+/// Shows onboarding's notification step over home after a sign-in that
+/// skipped it, so a reinstall or cleared app data does not leave a returning
+/// user with notifications quietly off.
+Future<void> _offerNotificationsAfterSignIn(NavigatorState navigator) async {
+  final service = PushNotificationsService.instance;
+  if (!await service.shouldOfferPermissionPrompt()) return;
+  if (!navigator.mounted) return;
+  await navigator.push(
+    MaterialPageRoute<void>(
+      fullscreenDialog: true,
+      builder: (context) {
+        final padding = MediaQuery.paddingOf(context);
+        return Scaffold(
+          backgroundColor: context.colors.background,
+          body: NotificationPermissionStep(
+            topPadding: padding.top,
+            bottomPadding: padding.bottom,
+            onContinue: () async {
+              await service.requestPermissionIfNotGranted();
+              if (context.mounted) Navigator.of(context).pop();
+            },
+          ),
+        );
+      },
+    ),
+  );
 }

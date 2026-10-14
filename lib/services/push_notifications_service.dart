@@ -240,6 +240,29 @@ class PushNotificationsService {
     }
   }
 
+  /// Whether this install still owes the user the one notification ask.
+  ///
+  /// The onboarding step is the only other place it is raised, and "I already
+  /// have an account" skips it. After a reinstall or cleared app data the OS
+  /// permission is reset too, so without this a returning user signed straight
+  /// back in with notifications silently off. True only when the prompt was
+  /// never shown here, permission is not granted, and the OS can still ask.
+  Future<bool> shouldOfferPermissionPrompt() async {
+    await _waitForInitializeIfPending();
+    if (!_initialized) return false;
+    try {
+      if (await AppDatabase.instance.getBool(_notificationsPromptedKey) ==
+          true) {
+        return false;
+      }
+      if (await _isPermissionGranted()) return false;
+      return await OneSignal.Notifications.canRequest();
+    } catch (_) {
+      // An unreadable state is not a reason to interrupt the user.
+      return false;
+    }
+  }
+
   Future<void> setPushEnabled(bool enabled) async {
     await _persistLocalEnabled(enabled);
     await _syncPreferenceToSupabase(enabled);
