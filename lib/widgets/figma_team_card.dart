@@ -1,3 +1,4 @@
+import 'package:chessever2/screens/standings/widgets/published_player_tiebreaks.dart';
 import 'package:chessever2/screens/standings/team_standing_model.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/app_typography.dart';
@@ -52,112 +53,129 @@ class FigmaTeamCard extends StatelessWidget {
         ),
       ),
       padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 12.h),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
         children: [
-          // Card body → team score card.
-          Expanded(
-            child: GestureDetector(
-              onTap: onTeamTap,
-              behavior: HitTestBehavior.opaque,
-              child: Row(
-                children: [
-                  SizedBox(
-                    width: 24.w,
-                    child: Text(
-                      rank.toString(),
-                      style: AppTypography.textSmMedium.copyWith(
-                        color: context.colors.textTertiary,
+          Row(
+            children: [
+              // Card body → team score card.
+              Expanded(
+                child: GestureDetector(
+                  onTap: onTeamTap,
+                  behavior: HitTestBehavior.opaque,
+                  child: Row(
+                    children: [
+                      SizedBox(
+                        width: 24.w,
+                        child: Text(
+                          rank.toString(),
+                          style: AppTypography.textSmMedium.copyWith(
+                            color: context.colors.textTertiary,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
                       ),
-                      textAlign: TextAlign.center,
-                    ),
-                  ),
-                  SizedBox(width: 12.w),
-                  TeamCrestAvatar(
-                    teamName: team.teamName,
-                    size: 56.w,
-                    borderRadius: 8.br,
-                  ),
-                  SizedBox(width: 12.w),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          team.teamName,
-                          style: AppTypography.textSmBold.copyWith(
+                      SizedBox(width: 12.w),
+                      TeamCrestAvatar(
+                        teamName: team.teamName,
+                        size: 56.w,
+                        borderRadius: 8.br,
+                      ),
+                      SizedBox(width: 12.w),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              team.teamName,
+                              style: AppTypography.textSmBold.copyWith(
+                                color: context.colors.textPrimary,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            SizedBox(height: 4.h),
+                            RichText(
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              text: TextSpan(
+                                style: AppTypography.textSmRegular.copyWith(
+                                  color: context.colors.textSecondary,
+                                ),
+                                children: [
+                                  TextSpan(
+                                    text: '${team.gamePointsLabel} pts · ',
+                                  ),
+                                  TextSpan(
+                                    text: '${team.matchesWon}',
+                                    style: AppTypography.textSmMedium.copyWith(
+                                      color: context.colors.accentText,
+                                    ),
+                                  ),
+                                  const TextSpan(text: ' · '),
+                                  TextSpan(
+                                    text: '${team.matchesDrawn}',
+                                    style: AppTypography.textSmMedium.copyWith(
+                                      // #9AA0A6 is 2.5:1 on paper.
+                                      color: context.isLightTheme
+                                          ? context.colors.textSecondary
+                                          : _drawGrey,
+                                    ),
+                                  ),
+                                  const TextSpan(text: ' · '),
+                                  TextSpan(
+                                    text: '${team.matchesLost}',
+                                    style: AppTypography.textSmMedium.copyWith(
+                                      color: context.colors.danger,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Padding(
+                        padding: EdgeInsets.only(left: 8.w),
+                        child: Text(
+                          team.matchPointsLabel,
+                          style: AppTypography.textMdMedium.copyWith(
                             color: context.colors.textPrimary,
                           ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
                         ),
-                        SizedBox(height: 4.h),
-                        RichText(
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          text: TextSpan(
-                            style: AppTypography.textSmRegular.copyWith(
-                              color: context.colors.textSecondary,
-                            ),
-                            children: [
-                              TextSpan(text: '${team.gamePointsLabel} pts · '),
-                              TextSpan(
-                                text: '${team.matchesWon}',
-                                style: AppTypography.textSmMedium.copyWith(
-                                  color: context.colors.accentText,
-                                ),
-                              ),
-                              const TextSpan(text: ' · '),
-                              TextSpan(
-                                text: '${team.matchesDrawn}',
-                                style: AppTypography.textSmMedium.copyWith(
-                                  // #9AA0A6 is 2.5:1 on paper.
-                                  color: context.isLightTheme
-                                      ? context.colors.textSecondary
-                                      : _drawGrey,
-                                ),
-                              ),
-                              const TextSpan(text: ' · '),
-                              TextSpan(
-                                text: '${team.matchesLost}',
-                                style: AppTypography.textSmMedium.copyWith(
-                                  color: context.colors.danger,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  Padding(
-                    padding: EdgeInsets.only(left: 8.w),
-                    child: Text(
-                      team.matchPointsLabel,
-                      style: AppTypography.textMdMedium.copyWith(
-                        color: context.colors.textPrimary,
                       ),
-                    ),
+                    ],
                   ),
-                ],
+                ),
+              ),
+              // Chevron → expand/collapse only.
+              GestureDetector(
+                onTap: onToggle,
+                behavior: HitTestBehavior.opaque,
+                child: Padding(
+                  padding: EdgeInsets.only(left: 4.w),
+                  child: Icon(
+                    isExpanded
+                        ? Icons.keyboard_arrow_up
+                        : Icons.keyboard_arrow_down,
+                    size: 24.ic,
+                    color: context.colors.textTertiary,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          if (team.tiebreaks.isNotEmpty)
+            Padding(
+              padding: EdgeInsets.only(top: 8.h),
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: onTeamTap,
+                child: PublishedPlayerTiebreaks(values: team.tiebreaks),
               ),
             ),
-          ),
-          // Chevron → expand/collapse only.
-          GestureDetector(
-            onTap: onToggle,
-            behavior: HitTestBehavior.opaque,
-            child: Padding(
-              padding: EdgeInsets.only(left: 4.w),
-              child: Icon(
-                isExpanded
-                    ? Icons.keyboard_arrow_up
-                    : Icons.keyboard_arrow_down,
-                size: 24.ic,
-                color: context.colors.textTertiary,
-              ),
-            ),
-          ),
         ],
       ),
     );

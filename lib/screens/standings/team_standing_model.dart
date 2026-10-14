@@ -1,3 +1,4 @@
+import 'package:chessever2/repository/supabase/tour/published_tiebreak.dart';
 import 'package:chessever2/screens/standings/player_standing_model.dart';
 
 /// One row in the team-event "Standings" tab: a team's collected score plus its
@@ -24,12 +25,16 @@ class TeamStandingModel {
   /// Finished boards contributing to [gamePoints]; for display/debug.
   final int boardsPlayed;
 
+  /// Values and priority copied from the organizer, never recomputed.
+  final List<PublishedTiebreak> tiebreaks;
+
   final List<PlayerStandingModel> players;
 
   const TeamStandingModel({
     required this.teamName,
     required this.rank,
     this.officialRound,
+    this.tiebreaks = const [],
     required this.matchPoints,
     required this.gamePoints,
     required this.matchesWon,
