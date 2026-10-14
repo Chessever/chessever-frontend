@@ -5,6 +5,7 @@ import 'package:chessever2/screens/library/widgets/folder_card.dart';
 import 'package:chessever2/screens/library/widgets/library_context_menu.dart';
 import 'package:chessever2/screens/my_prep/data/prep_favorites.dart';
 import 'package:chessever2/screens/my_prep/models/prep_models.dart';
+import 'package:chessever2/screens/my_prep/prep_access.dart';
 import 'package:chessever2/screens/my_prep/prep_actions.dart';
 import 'package:chessever2/screens/my_prep/prep_profile_screen.dart';
 import 'package:chessever2/screens/my_prep/providers/prep_providers.dart';
@@ -154,8 +155,6 @@ class PrepProfileTreeTarget extends GameTreeTarget {
   @override
   bool get playerScope => true;
   @override
-  bool get requiresPremium => false;
-  @override
   String? get country => profile.country;
   @override
   String? get playerTitle => profile.title;
@@ -192,8 +191,6 @@ class PrepAccountTreeTarget extends GameTreeTarget {
   String get title => '${profile.name} · ${account.source.label}';
   @override
   bool get playerScope => true;
-  @override
-  bool get requiresPremium => false;
   @override
   String? get country => profile.country;
   @override
@@ -418,11 +415,20 @@ class _DatabaseCard extends ConsumerWidget {
         leading: account == null
             ? null
             : PrepSourceMark(source: account.source, size: 36.h),
-        onTap: () => PrepLibraryDatabaseScreen.open(
-          context,
-          profileId: profile.id,
-          accountKey: account?.key,
-        ),
+        // A database is its games, which open as Prep's Games tab does.
+        onTap: () async {
+          if (!await ensurePrepAccess(context, feature: 'prep_games') ||
+              !context.mounted) {
+            return;
+          }
+          unawaited(
+            PrepLibraryDatabaseScreen.open(
+              context,
+              profileId: profile.id,
+              accountKey: account?.key,
+            ),
+          );
+        },
         menuActions: (_) => [
           if (account != null)
             LibraryMenuAction(

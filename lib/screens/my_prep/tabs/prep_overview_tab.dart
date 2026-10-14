@@ -16,6 +16,7 @@ import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:motor/motor.dart';
 
 /// The player profile's quiet summary, with secondary analysis on demand.
@@ -40,6 +41,7 @@ class PrepOverviewTab extends StatefulWidget {
     this.arriving = false,
     this.onFilterChanged,
     this.onSources,
+    this.onUnlockDetails,
   });
 
   final PrepProfile profile;
@@ -77,6 +79,10 @@ class PrepOverviewTab extends StatefulWidget {
   /// Takes [filter] with one choice taken or given up.
   final ValueChanged<PrepFilter>? onFilterChanged;
   final VoidCallback? onSources;
+
+  /// Asked before a closed statistics panel opens, while the statistics
+  /// are locked. Null lets every panel open.
+  final Future<bool> Function()? onUnlockDetails;
 
   @override
   State<PrepOverviewTab> createState() => _PrepOverviewTabState();
@@ -157,6 +163,7 @@ class _PrepOverviewTabState extends State<PrepOverviewTab> {
                         onFilterChanged: widget.stale
                             ? null
                             : widget.onFilterChanged,
+                        onUnlock: widget.onUnlockDetails,
                       ),
                     ),
                   ),
@@ -666,12 +673,16 @@ class _Statistics extends StatelessWidget {
     required this.stats,
     required this.filter,
     this.onFilterChanged,
+    this.onUnlock,
   });
 
   final PrepProfile profile;
   final PrepStats stats;
   final PrepFilter filter;
   final ValueChanged<PrepFilter>? onFilterChanged;
+
+  /// Asked before a panel opens; see [_DetailsPanel.onUnlock].
+  final Future<bool> Function()? onUnlock;
 
   /// The source every rating figure is on the scale of, named as far as the
   /// profile needs: its site, and its username where the profile holds two
@@ -713,6 +724,7 @@ class _Statistics extends StatelessWidget {
         ),
         SizedBox(height: 20.h),
         _DetailsPanel(
+          onUnlock: onUnlock,
           title: 'Performance by colour',
           children: [
             for (final side in [PrepSide.white, PrepSide.black]) ...[
@@ -735,6 +747,7 @@ class _Statistics extends StatelessWidget {
         if (s.whiteOpenings.isNotEmpty || s.blackOpenings.isNotEmpty) ...[
           SizedBox(height: 12.h),
           _DetailsPanel(
+            onUnlock: onUnlock,
             title: 'Opening repertoire',
             children: [
               for (final side in [PrepSide.white, PrepSide.black])
@@ -768,6 +781,7 @@ class _Statistics extends StatelessWidget {
         if (s.clocks.isNotEmpty) ...[
           SizedBox(height: 12.h),
           _DetailsPanel(
+            onUnlock: onUnlock,
             title: 'Time controls',
             children: [
               _ClockShare(
@@ -784,6 +798,7 @@ class _Statistics extends StatelessWidget {
         if (s.ratingHistory.length >= 2) ...[
           SizedBox(height: 12.h),
           _DetailsPanel(
+            onUnlock: onUnlock,
             // Whose rating it is, wherever the profile has more than one.
             title: [
               'Rating history',
@@ -795,6 +810,7 @@ class _Statistics extends StatelessWidget {
         ],
         SizedBox(height: 12.h),
         _DetailsPanel(
+          onUnlock: onUnlock,
           title: 'More statistics',
           children: [
             PrepStatStrip(
@@ -1177,14 +1193,60 @@ class _SummaryValue extends StatelessWidget {
 }
 
 /// Uses the platform expansion control; details never crowd the first view.
-class _DetailsPanel extends StatelessWidget {
-  const _DetailsPanel({required this.title, required this.children});
+class _DetailsPanel extends StatefulWidget {
+  /// Keyed by [title], so a panel keeps its own state and remembered
+  /// opening as the panels before it come and go.
+  _DetailsPanel({required this.title, required this.children, this.onUnlock})
+    : super(key: PageStorageKey<String>(title));
   final String title;
   final List<Widget> children;
+
+  /// Asked before the panel opens, while the statistics are locked: it
+  /// opens once this allows it. Null lets it open at once.
+  final Future<bool> Function()? onUnlock;
+
+  @override
+  State<_DetailsPanel> createState() => _DetailsPanelState();
+}
+
+class _DetailsPanelState extends State<_DetailsPanel> {
+  final _controller = ExpansibleController();
+  bool _asking = false;
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  /// A locked panel that starts to open closes in the same tap, before a
+  /// frame shows it move, and opens once access is granted. One restored
+  /// open while it is built was opened with access, and stays so.
+  void _changed(bool open) {
+    final unlock = widget.onUnlock;
+    if (!open || unlock == null || _asking) return;
+    if (SchedulerBinding.instance.schedulerPhase ==
+        SchedulerPhase.persistentCallbacks) {
+      return;
+    }
+    _controller.collapse();
+    unawaited(_ask(unlock));
+  }
+
+  Future<void> _ask(Future<bool> Function() unlock) async {
+    _asking = true;
+    try {
+      if (await unlock() && mounted) _controller.expand();
+    } finally {
+      _asking = false;
+    }
+  }
+
   @override
   Widget build(BuildContext context) => ExpansionTile(
-    key: PageStorageKey(title),
-    title: Text(title, style: AppTypography.textSmMedium),
+    controller: _controller,
+    onExpansionChanged: _changed,
+    title: Text(widget.title, style: AppTypography.textSmMedium),
     backgroundColor: context.colors.surface,
     collapsedBackgroundColor: context.colors.surface,
     textColor: context.colors.textPrimary,
@@ -1200,7 +1262,7 @@ class _DetailsPanel extends StatelessWidget {
     children: [
       Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: children,
+        children: widget.children,
       ),
     ],
   );

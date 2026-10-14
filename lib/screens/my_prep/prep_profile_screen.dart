@@ -18,6 +18,7 @@ import 'package:chessever2/screens/my_prep/tabs/prep_overview_tab.dart';
 import 'package:chessever2/screens/my_prep/widgets/prep_common.dart';
 import 'package:chessever2/screens/my_prep/widgets/prep_filters.dart';
 import 'package:chessever2/services/game_tree/game_tree_service.dart';
+import 'package:chessever2/services/rewarded_premium/rewarded_access_provider.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
@@ -64,6 +65,11 @@ class PrepProfileScreen extends ConsumerStatefulWidget {
 
 class _PrepProfileScreenState extends ConsumerState<PrepProfileScreen> {
   static const _tabs = ['About', 'Games', 'Build Tree'];
+
+  /// What each tab asks Premium or a watched ad for. About's summary is
+  /// free; its statistics open with [_kStatistics].
+  static const _tabFeatures = [null, 'prep_games', 'build_tree'];
+  static const _kStatistics = 'prep_statistics';
   int _tab = 0;
   late final PageController _pages = PageController();
   final _gamesController = PrepGamesController();
@@ -148,11 +154,24 @@ class _PrepProfileScreenState extends ConsumerState<PrepProfileScreen> {
   }
 
   /// Takes a choice made on About. It stays on About, which narrows to it;
-  /// Games follows, and its tab says how many games that is.
-  void _choose(PrepFilter filter) => setState(() {
-    _filter = filter;
-    _cue = true;
-  });
+  /// Games follows, and its tab says how many games that is. Narrowing is
+  /// reading the statistics, so it asks for access; giving the last choice
+  /// up never does.
+  Future<void> _choose(PrepFilter filter) async {
+    if (filter.narrows &&
+        !await ensurePrepAccess(context, feature: _kStatistics)) {
+      return;
+    }
+    if (!mounted) return;
+    setState(() {
+      _filter = filter;
+      _cue = true;
+    });
+  }
+
+  /// Opens About's statistics panels, or null once they may simply open.
+  Future<bool> Function()? _unlockStatistics(bool unlocked) =>
+      unlocked ? null : () => ensurePrepAccess(context, feature: _kStatistics);
 
   @override
   void dispose() {
@@ -181,8 +200,15 @@ class _PrepProfileScreenState extends ConsumerState<PrepProfileScreen> {
             : PrepRepository.gamesFileName(account),
       );
 
-  void _select(int index) {
+  Future<void> _select(int index) async {
     if (index == _tab) return;
+    final feature = _tabFeatures[index];
+    if (feature != null && !hasPrepAccess(ref)) {
+      // The tabs stay on the current one while access is asked for.
+      setState(() {});
+      if (!await ensurePrepAccess(context, feature: feature)) return;
+      if (!mounted || index == _tab) return;
+    }
     setState(() {
       _tab = index;
       if (index == 1) _cue = false;
@@ -203,7 +229,7 @@ class _PrepProfileScreenState extends ConsumerState<PrepProfileScreen> {
     if (_checkedFreshness) return;
     _checkedFreshness = true;
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted || !hasPrepAccess(ref)) return;
+      if (!mounted) return;
       ref.read(prepSyncProvider.notifier).refreshStale([profile]);
     });
   }
@@ -234,8 +260,9 @@ class _PrepProfileScreenState extends ConsumerState<PrepProfileScreen> {
     PrepProfile profile,
     PrepAccount? account,
     AutoDisposeFutureProvider<PrepAnalysis> provider,
-    int? indexing,
-  ) {
+    int? indexing, {
+    required bool unlocked,
+  }) {
     final analysis = ref.watch(provider);
     // A refresh keeps what it had on screen; only a first read waits.
     final reading =
@@ -315,6 +342,7 @@ class _PrepProfileScreenState extends ConsumerState<PrepProfileScreen> {
             ),
       onSources: () => PrepSourcesScreen.open(context, profile.id),
       onFilterChanged: _choose,
+      onUnlockDetails: _unlockStatistics(unlocked),
     );
   }
 
@@ -373,12 +401,14 @@ class _PrepProfileScreenState extends ConsumerState<PrepProfileScreen> {
     final analysis = ref.watch(analysisProvider);
     final indexing = indexingOf(_filter.accountKey);
     final games = analysis.valueOrNull?.games ?? const <PrepGame>[];
+    final unlocked = ref.watch(premiumAccessProvider);
     // Built first: the Games tab names what About's choices come to.
     final about = _about(
       profile,
       account,
       analysisOf(account?.key),
       indexingOf(account?.key),
+      unlocked: unlocked,
     );
     final cue = _cue && _tab != 1 && _filter.narrows && _matching > 0
         ? _matching
@@ -434,6 +464,11 @@ class _PrepProfileScreenState extends ConsumerState<PrepProfileScreen> {
                   children: [
                     PageView(
                       controller: _pages,
+                      // Without access the tabs ask before Games or Build
+                      // Tree opens, so a swipe cannot slide one in.
+                      physics: unlocked
+                          ? null
+                          : const NeverScrollableScrollPhysics(),
                       onPageChanged: (i) {
                         if (i == _tab) return;
                         setState(() {

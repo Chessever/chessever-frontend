@@ -10,7 +10,6 @@ import 'package:chessever2/screens/my_prep/services/prep_repository.dart';
 import 'package:chessever2/services/game_tree/game_tree_registry.dart';
 import 'package:chessever2/services/game_tree/game_tree_service.dart';
 import 'package:chessever2/services/game_tree/game_tree_store.dart';
-import 'package:chessever2/services/rewarded_premium/rewarded_access_provider.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/widgets.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -409,13 +408,12 @@ class PrepSyncController extends StateNotifier<Map<String, PrepSyncStatus>> {
 /// does: a little after launch, and whenever the app comes back to the
 /// foreground, stale accounts fetch only their new games (yours every
 /// [kPrepMineRefreshEvery], opponents every [kPrepOthersRefreshEvery]).
-/// Watch it from the home shell; it does nothing without Premium.
+/// Watch it from the home shell.
 final prepKeepFreshProvider = Provider<void>((ref) {
   var launched = false;
   void check() {
     final profiles = ref.read(prepProfilesProvider).valueOrNull;
     if (profiles == null || profiles.isEmpty) return;
-    if (!ref.read(premiumAccessProvider)) return;
     ref
         .read(prepSyncProvider.notifier)
         .refreshStale(profiles.where((p) => p.kind != PrepKind.favorite));

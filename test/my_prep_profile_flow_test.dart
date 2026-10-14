@@ -9,6 +9,8 @@ import 'package:chessever2/repository/supabase/chess_player/chess_player_reposit
 import 'package:chessever2/screens/favorites/rankings/ranking_filters.dart';
 import 'package:chessever2/screens/my_prep/models/prep_models.dart';
 import 'package:chessever2/screens/my_prep/my_prep_home_screen.dart';
+import 'package:chessever2/screens/my_prep/library/prep_library.dart';
+import 'package:chessever2/screens/my_prep/prep_access.dart';
 import 'package:chessever2/screens/my_prep/prep_profile_screen.dart';
 import 'package:chessever2/screens/my_prep/prep_actions.dart';
 import 'package:chessever2/screens/my_prep/prep_source_actions.dart';
@@ -161,9 +163,16 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   late Directory directory;
   late _PickerRepository repo;
+
+  /// What Prep asked Premium for, with whether the ad unlock was offered,
+  /// and what the stand-in sheet answers.
+  late List<(String, bool)> asked;
+  late bool grant;
   setUp(() {
     directory = Directory.systemTemp.createTempSync('prep_flow_');
     repo = _PickerRepository();
+    asked = [];
+    grant = false;
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(
           const MethodChannel('plugins.flutter.io/path_provider'),
@@ -346,6 +355,16 @@ void main() {
       overrides: [
         prepRepositoryProvider.overrideWithValue(repo),
         premiumAccessProvider.overrideWithValue(premium),
+        // A Premium fixture is a subscriber: no limit applies either.
+        prepUnlimitedProvider.overrideWithValue(premium),
+        prepPremiumPromptProvider.overrideWithValue((
+          _,
+          feature, {
+          required rewarded,
+        }) async {
+          asked.add((feature, rewarded));
+          return grant;
+        }),
         favoritePlayersProviderNew.overrideWith(() => _Follows(follows)),
         spaceShortcutsProvider.overrideWith(_SpaceShortcuts.new),
         ...overrides,
@@ -966,6 +985,50 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('the add sheet asks before an account past a limit joins', (
+    tester,
+  ) async {
+    final asks = <int>[];
+    await pump(
+      tester,
+      Scaffold(
+        body: Builder(
+          builder: (context) => TextButton(
+            onPressed: () => showPrepSourcePicker(
+              context,
+              kind: PrepKind.mine,
+              multiple: true,
+              // Room for one more account only.
+              mayAdd: (chosen) async {
+                asks.add(chosen);
+                return chosen < 1;
+              },
+            ),
+            child: const Text('Start'),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.text('Start'));
+    await tester.pumpAndSettle();
+    for (final source in [PrepSource.lichess, PrepSource.chesscom]) {
+      await tester.tap(find.text(source.label));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const ValueKey('prep_source_query')),
+        'ClubPlayer',
+      );
+      await tester.pump(const Duration(milliseconds: 450));
+      await tester.pump();
+      await tester.tap(find.text('Club Player'));
+      await tester.pumpAndSettle();
+    }
+    expect(asks, [0, 1]);
+    expect(find.text('Attach account'), findsOneWidget);
+    expect(find.text('Attach 2 accounts'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('the add sheet rests on the bottom edge and back steps a page', (
     tester,
   ) async {
@@ -1544,6 +1607,175 @@ void main() {
     },
   );
 
+  testWidgets('without a subscription Profiles holds one opponent and My '
+      'Games three of your own accounts', (tester) async {
+    final container = await pump(tester, const MyPrepHomeScreen());
+    await tester.pumpAndSettle();
+    await tester.runAsync(() async {
+      final profiles = container.read(prepProfilesProvider.notifier);
+      profiles.create(kind: PrepKind.opponent, name: 'Rival', accounts: []);
+      profiles.create(
+        kind: PrepKind.mine,
+        name: 'Me',
+        accounts: const [
+          PrepAccount(source: PrepSource.lichess, username: 'mine-one'),
+          PrepAccount(source: PrepSource.lichess, username: 'mine-two'),
+          PrepAccount(source: PrepSource.chesscom, username: 'mine-three'),
+        ],
+      );
+      await profiles.debugDrainWrites();
+    });
+    await tester.pumpAndSettle();
+    final fab = find.byKey(const ValueKey('prep_add_floating'));
+
+    // A fourth account of your own asks for the subscription, not an ad.
+    await tester.tap(fab);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Lichess').last);
+    await tester.pumpAndSettle();
+    expect(asked, [('prep_own_accounts', false)]);
+    expect(find.text('Attach your usernames'), findsNothing);
+
+    // So does a second opponent.
+    await tester.tap(find.text('Profiles'));
+    await tester.pumpAndSettle();
+    expect(find.text('Rival'), findsOneWidget);
+    await tester.tap(fab);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Chess.com').last);
+    await tester.pumpAndSettle();
+    expect(asked.last, ('prep_opponents', false));
+    expect(find.text('Add an opponent'), findsNothing);
+
+    // Subscribed, the sheet opens.
+    grant = true;
+    await tester.tap(fab);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Chess.com').last);
+    await tester.pumpAndSettle();
+    expect(find.text('Add an opponent'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('prep_source_cancel')));
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('a free reader watches an ad or subscribes before statistics, '
+      'Games and Build Tree open', (tester) async {
+    const account = PrepAccount(
+      source: PrepSource.lichess,
+      username: 'ClubPlayer',
+    );
+    const profile = PrepProfile(
+      id: 'p',
+      kind: PrepKind.opponent,
+      name: 'Club Player',
+      createdAtMs: 1,
+      accounts: [account],
+    );
+    final games = [
+      for (var i = 0; i < 3; i++)
+        PrepGame(
+          index: i,
+          source: account.source,
+          sourcePath: PrepRepository.gamesFileName(account),
+          white: 'ClubPlayer',
+          black: 'Opponent $i',
+          result: i == 0 ? '0-1' : '1-0',
+          plies: 4,
+          speed: PrepTimeControl.rapid,
+          playerIsWhite: true,
+        ),
+    ];
+    await pump(
+      tester,
+      const PrepProfileScreen(profileId: 'p'),
+      overrides: [
+        prepProfileProvider.overrideWith((ref, id) => profile),
+        prepAnalysisProvider.overrideWith(
+          (ref, id) async => PrepAnalysis(profileId: id, games: games),
+        ),
+      ],
+    );
+    await tester.pumpAndSettle();
+    // The summary is free to read.
+    expect(find.text('Games analyzed'), findsOneWidget);
+
+    // Declined, each stays as it was.
+    await tester.tap(find.text('Wins'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('prep_filter_banner')), findsNothing);
+    await tester.tap(find.text('Performance by colour'));
+    await tester.pumpAndSettle();
+    expect(find.text('Their White'), findsNothing);
+    await tester.tap(find.text('Games'));
+    await tester.pumpAndSettle();
+    expect(find.byType(PrepGamesTab), findsNothing);
+    await tester.tap(find.text('Build Tree'));
+    await tester.pumpAndSettle();
+    expect(find.text('Opening trees'), findsNothing);
+    expect(asked, [
+      ('prep_statistics', true),
+      ('prep_statistics', true),
+      ('prep_games', true),
+      ('build_tree', true),
+    ]);
+    // Nor can a swipe slide Games in.
+    await tester.drag(find.text('Games analyzed'), const Offset(-280, 0));
+    await tester.pumpAndSettle();
+    expect(find.text('Games analyzed'), findsOneWidget);
+    expect(find.byType(PrepGamesTab), findsNothing);
+
+    // An ad watched, each opens.
+    grant = true;
+    await tester.tap(find.text('Performance by colour'));
+    await tester.pumpAndSettle();
+    expect(find.text('Their White'), findsOneWidget);
+    await tester.tap(find.text('Wins'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('prep_filter_banner')), findsOneWidget);
+    // The tab names the two wins the choice leaves.
+    await tester.tap(find.text('Games 2'));
+    await tester.pumpAndSettle();
+    expect(find.byType(PrepGamesTab), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('a free reader is asked before a Prep database in the Library '
+      'lists its games', (tester) async {
+    const account = PrepAccount(
+      source: PrepSource.lichess,
+      username: 'ClubPlayer',
+    );
+    const profile = PrepProfile(
+      id: 'p',
+      kind: PrepKind.opponent,
+      name: 'Club Player',
+      createdAtMs: 1,
+      accounts: [account],
+    );
+    await pump(
+      tester,
+      const PrepLibraryFolderScreen(profileId: 'p'),
+      overrides: [
+        prepProfileProvider.overrideWith((ref, id) => profile),
+        prepAnalysisProvider.overrideWith(
+          (ref, id) async => PrepAnalysis(profileId: id, games: const []),
+        ),
+      ],
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Combined'));
+    await tester.pumpAndSettle();
+    expect(asked, [('prep_games', true)]);
+    expect(find.byType(PrepLibraryDatabaseScreen), findsNothing);
+
+    grant = true;
+    await tester.tap(find.text('Combined'));
+    await tester.pumpAndSettle();
+    expect(find.byType(PrepLibraryDatabaseScreen), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('Build Tree remains usable when games analysis fails', (
     tester,
   ) async {
@@ -1556,6 +1788,7 @@ void main() {
     await pump(
       tester,
       const PrepProfileScreen(profileId: 'p'),
+      premium: true,
       overrides: [
         prepProfileProvider.overrideWith((ref, id) => profile),
         prepAnalysisProvider.overrideWith(
@@ -1714,6 +1947,7 @@ void main() {
           const PrepProfileScreen(profileId: 'p'),
           light: light,
           scale: 2,
+          premium: true,
           overrides: [
             prepProfileProvider.overrideWith((ref, id) => profile),
             prepAnalysisProvider.overrideWith(
@@ -1857,6 +2091,7 @@ void main() {
           // Opened from a source's popup, a profile starts on that source.
           PrepProfileScreen(profileId: 'p', accountKey: other.key),
           light: light,
+          premium: true,
           overrides: [
             prepProfileProvider.overrideWith((ref, id) => profile),
             prepAnalysisProvider.overrideWith(

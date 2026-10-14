@@ -7,6 +7,7 @@ import 'package:chessever2/screens/library/widgets/gamebase_search_game_card.dar
 import 'package:chessever2/screens/library/widgets/import_pgn_to_folder_sheet.dart';
 import 'package:chessever2/screens/library/widgets/library_context_menu.dart'
     show LibraryMenuAction;
+import 'package:chessever2/screens/my_prep/prep_access.dart';
 import 'package:chessever2/screens/my_prep/prep_actions.dart';
 import 'package:chessever2/screens/my_prep/services/prep_analysis.dart';
 import 'package:chessever2/screens/my_prep/widgets/prep_common.dart'
@@ -445,10 +446,13 @@ class _PrepGamesTabState extends ConsumerState<PrepGamesTab>
       ref.read(prepGameCardProvider((analysis: widget.analysis, game: game)));
 
   /// Opens [game] on the board among its neighbours in [order], the games
-  /// as the list shows them.
-  void _open(List<PrepGame> order, PrepGame game) {
+  /// as the list shows them, with Premium or a watched ad.
+  Future<void> _open(List<PrepGame> order, PrepGame game) async {
     final index = order.indexOf(game);
     if (index < 0) return;
+    if (!await ensurePrepAccess(context, feature: 'prep_games') || !mounted) {
+      return;
+    }
     // The board swipes through neighbours; a window keeps that instant
     // without building thousands of games up front.
     final start = (index - 25).clamp(0, order.length);
@@ -893,7 +897,6 @@ class _PrepGameCard extends ConsumerWidget {
         showGamebaseButton: false,
         onAdd:
             pick ?? () => showAddToFolderSheet(context: context, game: model),
-        // Downloaded games stay readable, so opening one asks for nothing.
         onTap: pick ?? onOpen,
       ),
       _CardKind.board => BoardGameCardWrapperWidget(

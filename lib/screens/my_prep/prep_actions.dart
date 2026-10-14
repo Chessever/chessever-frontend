@@ -25,17 +25,21 @@ import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 /// Adds the reader's own accounts to My Games. They all live on one
-/// profile, so their games read together as "me".
+/// profile, so their games read together as "me". Without a paid
+/// subscription it holds [kFreePrepOwnAccounts] of them.
 Future<void> prepAddMine(
   BuildContext context,
   WidgetRef ref, {
   PrepSource? source,
 }) async {
   HapticFeedbackService.buttonPress();
-  if (!await ensurePrepAccess(context) || !context.mounted) return;
   final profiles = ref.read(prepProfilesProvider.notifier);
   final mine = ref.read(prepProfilesOfKindProvider(PrepKind.mine)) ?? const [];
   final existing = mine.isEmpty ? null : mine.first;
+  final held = existing?.accounts.length ?? 0;
+  if (!await prepMayHoldOwnAccounts(context, held + 1) || !context.mounted) {
+    return;
+  }
   final result = await showPrepSourcePicker(
     context,
     kind: PrepKind.mine,
@@ -44,6 +48,7 @@ Future<void> prepAddMine(
     attaching: existing != null,
     multiple: true,
     lockedFideId: existing?.fideId,
+    mayAdd: (chosen) => prepMayHoldOwnAccounts(context, held + chosen + 1),
   );
   if (result == null || !context.mounted) return;
   await _releaseFromFavorites(ref, result.accounts);
@@ -72,7 +77,8 @@ Future<void> prepAddMine(
 }
 
 /// Adds an opponent with every account the reader typed. They stay on the
-/// list, where the new card reports its download.
+/// list, where the new card reports its download. Without a paid
+/// subscription Profiles holds [kFreePrepOpponents].
 Future<void> prepAddOpponent(
   BuildContext context,
   WidgetRef ref, {
@@ -86,7 +92,7 @@ Future<void> _prepAddPlayer(
   PrepSource? source,
 ) async {
   HapticFeedbackService.buttonPress();
-  if (!await ensurePrepAccess(context) || !context.mounted) return;
+  if (!await prepMayAddOpponent(context) || !context.mounted) return;
   await _prepPickPlayer(context, ref, kind, only: source);
 }
 
@@ -133,13 +139,17 @@ Future<PrepProfile?> _prepPickPlayer(
 }
 
 /// Attaches a database player or online account to an existing profile.
+/// My Games keeps to [kFreePrepOwnAccounts] without a paid subscription.
 Future<void> prepAddAccountTo(
   BuildContext context,
   WidgetRef ref,
   PrepProfile profile, {
   PrepSource? source,
 }) async {
-  if (!await ensurePrepAccess(context) || !context.mounted) return;
+  final mine = profile.kind == PrepKind.mine;
+  final held = profile.accounts.length;
+  if (mine && !await prepMayHoldOwnAccounts(context, held + 1)) return;
+  if (!context.mounted) return;
   final result = await showPrepSourcePicker(
     context,
     kind: profile.kind,
@@ -148,6 +158,9 @@ Future<void> prepAddAccountTo(
     multiple: true,
     lockedFideId: profile.fideId,
     existingKeys: {for (final a in profile.accounts) a.key},
+    mayAdd: mine
+        ? (chosen) => prepMayHoldOwnAccounts(context, held + chosen + 1)
+        : null,
   );
   if (result == null || !context.mounted) return;
   await _releaseFromFavorites(ref, result.accounts);
@@ -198,7 +211,6 @@ Future<void> prepAddFavorite(
   HapticFeedbackService.buttonPress();
   final existing = _favoriteProfile(ref, '${player.fideid}');
   if (existing != null) {
-    if (!await ensurePrepAccess(context) || !context.mounted) return;
     await _moveToOpponents(
       context,
       ref,
@@ -224,7 +236,6 @@ Future<void> _addRanked(
   VoidCallback? onResolved,
 }) async {
   final fide = '${player.fideid}';
-  if (!await ensurePrepAccess(context) || !context.mounted) return;
   final sources = await _favoriteSources(ref, player);
   if (!context.mounted) return;
   if (sources.known.isEmpty) {
@@ -240,6 +251,7 @@ Future<void> _addRanked(
     }
     return;
   }
+  if (!await prepMayAddOpponent(context) || !context.mounted) return;
   onResolved?.call();
   final profile = await _prepPickPlayer(
     context,
@@ -264,7 +276,6 @@ Future<void> prepMoveFavoriteToOpponents(
   PrepProfile profile,
 ) async {
   HapticFeedbackService.buttonPress();
-  if (!await ensurePrepAccess(context) || !context.mounted) return;
   await _moveToOpponents(
     context,
     ref,
@@ -292,6 +303,7 @@ Future<void> _moveToOpponents(
     }
     return;
   }
+  if (!await prepMayAddOpponent(context) || !context.mounted) return;
   ref
       .read(prepProfilesProvider.notifier)
       .edit(profile.id, (p) => p.copyWith(kind: PrepKind.opponent));
@@ -473,7 +485,6 @@ List<LibraryMenuAction> prepProfileMenu(
       label: 'Refresh games',
       prominent: true,
       onSelected: () async {
-        if (!await ensurePrepAccess(context)) return;
         final error = await sync.syncProfile(profile.id, force: true);
         if (messenger == null) return;
         showAppSnackOn(
@@ -505,7 +516,8 @@ List<LibraryMenuAction> prepProfileMenu(
         icon: Icons.person_add_alt_1_rounded,
         label: 'Add to Profiles',
         prominent: true,
-        onSelected: () {
+        onSelected: () async {
+          if (!await prepMayAddOpponent(context)) return;
           ref
               .read(prepProfilesProvider.notifier)
               .edit(profile.id, (p) => p.copyWith(kind: PrepKind.opponent));
@@ -573,7 +585,7 @@ Future<bool> prepConfirmRemove(
   return true;
 }
 
-/// A reader-requested refresh of one account, behind the Premium gate.
+/// A reader-requested refresh of one account.
 Future<void> prepRefreshAccount(
   BuildContext context,
   WidgetRef ref,
@@ -581,7 +593,6 @@ Future<void> prepRefreshAccount(
   PrepAccount account,
 ) async {
   HapticFeedbackService.buttonPress();
-  if (!await ensurePrepAccess(context) || !context.mounted) return;
   final messenger = ScaffoldMessenger.maybeOf(context);
   final error = await ref
       .read(prepSyncProvider.notifier)
@@ -597,7 +608,6 @@ Future<void> prepRefreshProfile(
   WidgetRef ref,
   String profileId,
 ) async {
-  if (!await ensurePrepAccess(context) || !context.mounted) return;
   final messenger = ScaffoldMessenger.maybeOf(context);
   final error = await ref
       .read(prepSyncProvider.notifier)

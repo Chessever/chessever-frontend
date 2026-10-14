@@ -60,7 +60,6 @@ Future<void> prepEditDownloadOptions(
   PrepAccount account, {
   bool download = false,
 }) async {
-  if (!await ensurePrepAccess(context) || !context.mounted) return;
   final options = await showPrepDownloadOptionsDialog(
     context,
     account: account,
@@ -183,7 +182,6 @@ Future<void> prepChangeAccount(
   PrepProfile profile,
   PrepAccount account,
 ) async {
-  if (!await ensurePrepAccess(context) || !context.mounted) return;
   final result = await showPrepSourcePicker(
     context,
     kind: profile.kind,
@@ -239,7 +237,6 @@ Future<void> prepReinstallSource(
   PrepProfile profile,
   PrepAccount account,
 ) async {
-  if (!await ensurePrepAccess(context) || !context.mounted) return;
   final messenger = ScaffoldMessenger.maybeOf(context);
   final error = await ref
       .read(prepSyncProvider.notifier)
@@ -334,12 +331,18 @@ int _exportCombined((String, List<String>) input) =>
     writeCombinedPrepGames(path: input.$1, sources: input.$2);
 
 /// Manual sources use an explicit PGN player name, so their side is never guessed.
+/// Each imported file is a source, so My Games counts it towards
+/// [kFreePrepOwnAccounts].
 Future<void> prepImportSource(
   BuildContext context,
   WidgetRef ref,
   PrepProfile profile,
 ) async {
-  if (!await ensurePrepAccess(context) || !context.mounted) return;
+  final mine = profile.kind == PrepKind.mine;
+  final held = profile.accounts.length;
+  if (mine && !await prepMayHoldOwnAccounts(context, held + 1)) return;
+  if (!context.mounted) return;
+  final container = ProviderScope.containerOf(context, listen: false);
   final repo = ref.read(prepRepositoryProvider);
   final profiles = ref.read(prepProfilesProvider.notifier);
   await showPrepImportDialog(
@@ -360,6 +363,15 @@ Future<void> prepImportSource(
           withData: false,
         );
         if (files == null || files.files.isEmpty) return false;
+        if (mine &&
+            held + files.files.length > kFreePrepOwnAccounts &&
+            !container.read(prepUnlimitedProvider)) {
+          final room = kFreePrepOwnAccounts - held;
+          throw PrepException(
+            'Games keeps $kFreePrepOwnAccounts of your sources without '
+            'Premium. ${room == 1 ? 'Choose one file.' : 'Choose up to $room files.'}',
+          );
+        }
         for (final file in files.files) {
           if (file.size > kPrepImportMaxBytes) {
             throw PrepException('${file.name} is larger than 64 MB.');

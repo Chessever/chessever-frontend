@@ -4,7 +4,6 @@ import 'package:chessever2/repository/supabase/chess_player/chess_player_reposit
     show ChessPlayer;
 import 'package:chessever2/screens/my_prep/data/prep_favorites.dart';
 import 'package:chessever2/screens/my_prep/models/prep_models.dart';
-import 'package:chessever2/screens/my_prep/prep_access.dart';
 import 'package:chessever2/screens/my_prep/prep_actions.dart';
 import 'package:chessever2/screens/my_prep/prep_profile_screen.dart';
 import 'package:chessever2/screens/my_prep/prep_sources_screen.dart';
@@ -93,7 +92,7 @@ class _MyPrepHomeScreenState extends ConsumerState<MyPrepHomeScreen> {
     if (_refreshedOnOpen) return;
     _refreshedOnOpen = true;
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted || !hasPrepAccess(ref)) return;
+      if (!mounted) return;
       ref
           .read(prepSyncProvider.notifier)
           .refreshStale(profiles.where((p) => p.kind != PrepKind.favorite));
