@@ -19,7 +19,6 @@ import 'package:chessever2/screens/feed/providers/feed_provider.dart';
 import 'package:chessever2/screens/for_you/discovery/models/report_game_type.dart';
 import 'package:chessever2/screens/feed/puzzles/feed_puzzle.dart';
 import 'package:chessever2/screens/feed/widgets/feed_live_board.dart';
-import 'package:chessever2/screens/feed/widgets/feed_glyphs.dart';
 import 'package:chessever2/screens/feed/widgets/feed_layout.dart';
 import 'package:chessever2/screens/feed/widgets/feed_move_sound.dart';
 import 'package:chessever2/screens/feed/widgets/feed_scrub.dart';
@@ -91,7 +90,10 @@ void main() {
         tester.element(find.byType(FeedScreen)),
         listen: false,
       );
-      expect(container.read(feedCurrentEntryKeyProvider), contains('feed-test-game'));
+      expect(
+        container.read(feedCurrentEntryKeyProvider),
+        contains('feed-test-game'),
+      );
       completion.complete(unlock);
       for (var i = 0; i < 6; i++) {
         await tester.pump(const Duration(milliseconds: 100));
@@ -118,30 +120,40 @@ void main() {
     });
   }
 
-  testWidgets('slider playback control stops and resumes the game', (
+  testWidgets('the speed button steps 1x to 2x and round, and plays faster', (
     tester,
   ) async {
     final feed = await _pumpFeed(tester);
-    final toggle = find.byKey(const ValueKey('feed_scrub_play_toggle'));
-    expect(find.byKey(const ValueKey('feed_scrub_counter')), findsNothing);
+    final button = find.byKey(const ValueKey('feed_speed_button'));
+    final label = find.byKey(const ValueKey('feed_speed_label'));
     final trackY =
         tester.getRect(find.byType(FeedScrubStrip)).top +
         FeedLayout.scrubTrackCenter;
-    final glyph = find.descendant(of: toggle, matching: find.byType(FeedGlyph));
-    expect(tester.getRect(glyph).center.dy, closeTo(trackY, 0.01));
-    expect(tester.getSize(toggle).height, 44);
-    expect(find.bySemanticsLabel('Stop'), findsOneWidget);
-    await tester.tap(toggle);
-    await tester.pump();
-    final stoppedAt = feed.sound.played.length;
-    expect(find.bySemanticsLabel('Play'), findsOneWidget);
-    expect(tester.getRect(glyph).center.dy, closeTo(trackY, 0.01));
-    await tester.pump(const Duration(seconds: 2));
-    expect(feed.sound.played.length, stoppedAt);
-    await tester.tap(toggle);
-    await tester.pump(const Duration(milliseconds: 700));
-    expect(feed.sound.played.length, greaterThan(stoppedAt));
-    expect(find.bySemanticsLabel('Stop'), findsOneWidget);
+    expect(tester.getRect(label).center.dy, closeTo(trackY, 0.5));
+    expect(tester.getSize(button), const Size.square(44));
+    String shown() => tester.widget<Text>(label).data!;
+    expect(shown(), '1×');
+    for (final next in ['1.25×', '1.5×', '1.75×', '2×', '1×', '1.25×']) {
+      await tester.tap(button);
+      await tester.pump();
+      expect(shown(), next);
+      // The figure never outgrows its slot.
+      expect(tester.getRect(label).width, lessThanOrEqualTo(44.01));
+    }
+    // A speed change never stops the clip.
+    expect(find.byKey(const ValueKey('feed_paused')), findsNothing);
+    for (final _ in [1, 2, 3]) {
+      await tester.tap(button);
+      await tester.pump();
+    }
+    expect(shown(), '2×');
+
+    // At 2x the 650ms beat is 325ms: three moves in a little over a second
+    // after the first.
+    await tester.pump(const Duration(milliseconds: 260));
+    final from = feed.sound.played.length;
+    await tester.pump(const Duration(milliseconds: 1000));
+    expect(feed.sound.played.length - from, greaterThanOrEqualTo(3));
     await _tearDown(tester);
   });
 
@@ -201,21 +213,31 @@ void main() {
         1,
       );
 
-      // Paused means paused: time passes, the move does not. The pause
-      // confirmation fades away on its own, leaving the board clean.
+      // Paused means paused: time passes, the move does not, and the play
+      // control waits for the viewer.
+      double overlay() => tester
+          .widget<AnimatedOpacity>(find.byKey(const ValueKey('feed_paused')))
+          .opacity;
       final pausedAt = feed.sound.played.length;
       await tester.pump(const Duration(seconds: 2));
       expect(feed.sound.played.length, pausedAt);
-      expect(find.byKey(const ValueKey('feed_paused')), findsOneWidget);
-      expect(
-        tester
-            .widget<AnimatedOpacity>(find.byKey(const ValueKey('feed_paused')))
-            .opacity,
-        0,
-      );
+      expect(overlay(), 1);
 
-      // Tap again → resumes and moves on.
-      await tester.tapAt(board);
+      // A tap away from the triangle takes the control down; still paused.
+      final rect = tester.getRect(find.byType(FeedLiveBoard));
+      await tester.tapAt(_squareCenter(rect, 'a5'));
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(overlay(), 0);
+      await tester.pump(const Duration(seconds: 2));
+      expect(feed.sound.played.length, pausedAt);
+
+      // The next tap brings it back.
+      await tester.tapAt(_squareCenter(rect, 'a5'));
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(overlay(), 1);
+
+      // The triangle plays on.
+      await tester.tap(find.byKey(const ValueKey('feed_paused_play')));
       await tester.pump(const Duration(milliseconds: 300));
       expect(find.byKey(const ValueKey('feed_paused')), findsNothing);
       await tester.pump(const Duration(milliseconds: 700));
@@ -330,11 +352,19 @@ void main() {
       expect(find.byKey(const ValueKey('feed_back_to_game')), findsOneWidget);
       expect(find.text('Your line'), findsOneWidget);
 
-      // A stray tap on an empty square does not throw the line away.
+      // A stray tap on an empty square does not throw the line away: it
+      // puts the play control up, and the next one takes it down.
+      double overlay() => tester
+          .widget<AnimatedOpacity>(find.byKey(const ValueKey('feed_paused')))
+          .opacity;
+      expect(overlay(), 0);
       await tester.tapAt(_squareCenter(board, 'a5'));
       await tester.pump(const Duration(milliseconds: 400));
       expect(find.byKey(const ValueKey('feed_back_to_game')), findsOneWidget);
-      expect(find.byKey(const ValueKey('feed_paused')), findsNothing);
+      expect(overlay(), 1);
+      await tester.tapAt(_squareCenter(board, 'a5'));
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(overlay(), 0);
 
       // The line steps like the game does: back to the fork, then on to
       // the viewer's move again; "Your line" is the fork itself.
@@ -498,11 +528,17 @@ void main() {
       await tester.pump(const Duration(milliseconds: 100));
       expect(feed.sound.played, [('e4', null), ('e5', null)]);
 
-      // Stepped by hand: autoplay waits for a board tap.
+      // Stepped by hand: autoplay waits. A board tap puts the play control
+      // up, and the control plays on.
       await tester.pump(const Duration(seconds: 2));
       expect(feed.sound.played, hasLength(2));
       final board = tester.getRect(find.byType(FeedLiveBoard));
       await tester.tapAt(_squareCenter(board, 'a5'));
+      await tester.pump(const Duration(milliseconds: 300));
+      await tester.pump(const Duration(milliseconds: 700));
+      expect(feed.sound.played, hasLength(2));
+      expect(find.byKey(const ValueKey('feed_paused')), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('feed_paused_play')));
       await tester.pump(const Duration(milliseconds: 300));
       await tester.pump(const Duration(milliseconds: 700));
       expect(feed.sound.played, hasLength(3));

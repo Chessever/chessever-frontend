@@ -382,7 +382,7 @@ void main() {
       final feed = await _pump(tester, games: 1);
       final strip = tester.getRect(find.byType(FeedScrubStrip));
       final counter = tester.getRect(
-        find.byKey(const ValueKey('feed_scrub_play_toggle')),
+        find.byKey(const ValueKey('feed_speed_button')),
       );
       // The track runs from the board's left edge to just before the
       // counter; its middle is ply 4 of 7 (2... Nc6).
@@ -439,7 +439,7 @@ void main() {
       await _pump(tester, games: 1);
       final strip = tester.getRect(find.byType(FeedScrubStrip));
       final counter = tester.getRect(
-        find.byKey(const ValueKey('feed_scrub_play_toggle')),
+        find.byKey(const ValueKey('feed_speed_button')),
       );
       final left = strip.left + 16;
       final right =
@@ -470,7 +470,7 @@ void main() {
       final top = tester.getRect(_pages).top;
       final strip = tester.getRect(find.byType(FeedScrubStrip).first);
       final counter = tester.getRect(
-        find.byKey(const ValueKey('feed_scrub_play_toggle')).first,
+        find.byKey(const ValueKey('feed_speed_button')).first,
       );
       final runLeft = strip.left + 16 + FeedScrubStrip.thumbInset;
       final runRight =
@@ -555,10 +555,12 @@ void main() {
       }
     });
 
-    testWidgets('a tap on Stop leaves the game where it is', (tester) async {
+    testWidgets('a tap on the speed button never scrubs the game', (
+      tester,
+    ) async {
       final feed = await _pump(tester, games: 1);
       final counter = tester.getRect(
-        find.byKey(const ValueKey('feed_scrub_play_toggle')),
+        find.byKey(const ValueKey('feed_speed_button')),
       );
       final strip = tester.getRect(find.byType(FeedScrubStrip));
       await tester.tapAt(Offset(counter.center.dx, strip.center.dy));
@@ -571,6 +573,7 @@ void main() {
       );
       expect(find.text('4/4'), findsNothing);
       expect(feed.sound.played, isEmpty);
+      expect(find.text('1.25×'), findsOneWidget);
       await _tearDown(tester);
     });
 
@@ -943,7 +946,7 @@ void main() {
       await _pump(tester, games: 1);
       final strip = tester.getRect(find.byType(FeedScrubStrip));
       final counter = tester.getRect(
-        find.byKey(const ValueKey('feed_scrub_play_toggle')),
+        find.byKey(const ValueKey('feed_speed_button')),
       );
       final left = strip.left + 16;
       final right =

@@ -80,15 +80,19 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 ///   piece stands the tipped king back up
 /// * once the viewer has the board (paused, stepping, at the end, or in
 ///   their own line) pieces also drag, and the feed holds still under them
-/// * tap anywhere else: pause / resume (resolved after the double-tap
-///   window); once the clip has ended, it moves the result card off the
-///   board and back
+/// * tap anywhere else: stop, with a play control centred on the dimmed
+///   board (resolved after the double-tap window). The control plays on; a
+///   tap elsewhere takes it down so the board is clear to play, and the next
+///   tap brings it back. In the viewer's own line the control returns to the
+///   game and plays on. Once the clip has ended, a tap moves the result card
+///   off the board and back
 /// * double-tap: like, with the board screen's heart burst flying into Like
 ///   (the Like button plays the same heart, and the heartbreak to unlike)
 /// * hold the right third 280ms: 2x while held
 /// * long-press the rest of the board: Open game / Share / My Space menu
 /// * the evaluation graph: tap to choose a move
-/// * drag the bottom line: scrub, with the report chart when evals exist
+/// * drag the bottom line: scrub, with the report chart when evals exist;
+///   the button at its end steps the playback speed (1× to 2×)
 ///
 /// While the clip plays, a swipe always belongs to the feed's PageView: a
 /// swipe that starts on a piece puts it back down. Holding 2x locks the feed
@@ -325,6 +329,10 @@ class _FeedClipState extends ConsumerState<FeedClip>
   /// or tapped the card (or the board) to see what lies under it.
   bool _cardAside = false;
 
+  /// The play control is up over the viewer's own line (a tap on the board
+  /// toggles it; its triangle returns to the game).
+  bool _lineControls = false;
+
   String? _pushedKey;
   bool _pushingBoard = false;
   bool _boardDirty = false;
@@ -375,7 +383,7 @@ class _FeedClipState extends ConsumerState<FeedClip>
       item: _item,
       sfx: ref.read(feedSfxProvider),
       moveSound: _moveSound,
-    );
+    )..setSpeed(ref.read(feedPlaybackSpeedProvider));
     // Back on Feed from another tab: the settled clip carries on where the
     // viewer left it, before the board is first drawn.
     final resumed = widget.isCurrent ? _resume.take(_entryKey) : null;
@@ -469,6 +477,7 @@ class _FeedClipState extends ConsumerState<FeedClip>
     if (widget.isCurrent != oldWidget.isCurrent) {
       _cancelGestures();
       _line = null;
+      _lineControls = false;
       _landingClass = null;
       _kingUp = false;
       _cardAside = false;
@@ -844,6 +853,7 @@ class _FeedClipState extends ConsumerState<FeedClip>
       }
       final (next, played) = result;
       _line = next;
+      _lineControls = false;
       _landingClass = null;
       // Their own moves are unclassified: the board's ordinary sounds.
       feedSfxSafely(() => _moveSound.play(san: played.san));
@@ -859,6 +869,7 @@ class _FeedClipState extends ConsumerState<FeedClip>
     if (_line == null) return;
     HapticFeedbackService.buttonPress();
     _line = null;
+    _lineControls = false;
     _landingClass = null;
     // A line from the final position returns to the ending as it was: the
     // king back down, the result card back up.
@@ -888,6 +899,14 @@ class _FeedClipState extends ConsumerState<FeedClip>
     if (_item.plies.isEmpty) return;
     HapticFeedbackService.selection();
     _playback.stepTo(ply);
+  }
+
+  /// The speed button: the next step, for this clip and every one after it.
+  void _cycleSpeed() {
+    HapticFeedbackService.selection();
+    ref.read(feedPlaybackSpeedProvider.notifier).state = FeedPlayback.nextSpeed(
+      _playback.speed,
+    );
   }
 
   void _togglePlay() {
@@ -972,6 +991,13 @@ class _FeedClipState extends ConsumerState<FeedClip>
       // Play on the final position takes the board: the result card steps
       // aside until a plain tap brings it back.
       if (_playback.isEnded) _setCardAside(true);
+      // Play on a stopped board takes the play control down, as a tap away
+      // from it would.
+      _playback.dismissGlyph();
+      if (_lineControls) {
+        _lineControls = false;
+        _rebuild();
+      }
       // A piece in hand on a board the viewer has may be dragged: the feed
       // holds still under it, the same lock the 2x hold uses.
       if (_dragAllowed && _boardSelection != null && !_dragLock) {
@@ -1058,9 +1084,13 @@ class _FeedClipState extends ConsumerState<FeedClip>
     _singleTap = Timer(_doubleTapWindow, () {
       _singleTap = null;
       if (!mounted) return;
-      // A stray tap never throws away the viewer's own line; that is what
-      // "Back to game" is for.
-      if (_line != null) return;
+      // A stray tap never throws away the viewer's own line; it puts up (or
+      // takes down) the play control, whose triangle returns to the game.
+      if (_line != null) {
+        HapticFeedbackService.selection();
+        setState(() => _lineControls = !_lineControls);
+        return;
+      }
       if (_playback.isEnded) {
         // Nothing left to pause: the tap moves the result card off the
         // board, so the whole final position can be seen and played, or
@@ -1073,7 +1103,7 @@ class _FeedClipState extends ConsumerState<FeedClip>
         _setCardAside(!_cardAside);
         return;
       }
-      _playback.togglePause();
+      _playback.boardTap();
     });
   }
 
@@ -2022,6 +2052,11 @@ class _FeedClipState extends ConsumerState<FeedClip>
       );
     }
 
+    // Every clip plays at the speed last chosen, including the ones already
+    // built either side of this one.
+    ref.listen(feedPlaybackSpeedProvider, (_, speed) {
+      _playback.setSpeed(speed);
+    });
     final colors = context.colors;
     final likedStored = ref.watch(isGameLikedProvider(_game.likeId));
     _likedAtOpen ??= likedStored;
@@ -2157,11 +2192,28 @@ class _FeedClipState extends ConsumerState<FeedClip>
                       ),
                     ),
                   ),
-                // Mounted for the whole pause so its fade runs once per
-                // pause; hidden while a piece is in hand or a scrub runs.
-                if (p.isUserPaused && !p.isEnded && !p.isManual && !exploring)
+                // Mounted for the whole stop so it fades in and out as it is
+                // taken down and brought back; hidden while a piece is in
+                // hand or a scrub runs.
+                if (exploring)
                   Positioned.fill(
-                    child: FeedPausedOverlay(visible: p.showsPauseGlyph),
+                    child: FeedPausedOverlay(
+                      visible: _lineControls && !p.isHeld && !p.isScrubbing,
+                      onPlay: () {
+                        _consumeZoneTap();
+                        _backToGame();
+                      },
+                    ),
+                  )
+                else if (p.isUserPaused && !p.isEnded && !p.isManual)
+                  Positioned.fill(
+                    child: FeedPausedOverlay(
+                      visible: p.showsPauseGlyph,
+                      onPlay: () {
+                        _consumeZoneTap();
+                        _togglePlay();
+                      },
+                    ),
                   ),
                 if (p.isFast && !p.isScrubbing)
                   const Positioned.fill(child: FeedFastOverlay()),
@@ -2353,18 +2405,15 @@ class _FeedClipState extends ConsumerState<FeedClip>
                     ),
                     Padding(
                       padding: EdgeInsets.only(right: l.contentLeft),
-                      child: FeedStepButton(
-                        key: const ValueKey('feed_scrub_play_toggle'),
-                        glyphOffset: const Offset(
+                      child: FeedSpeedButton(
+                        key: const ValueKey('feed_speed_button'),
+                        labelOffset: const Offset(
                           0,
                           FeedLayout.scrubTrackCenter -
                               FeedLayout.scrubHeight / 2,
                         ),
-                        glyph: p.isPlaying
-                            ? FeedGlyphs.stop
-                            : FeedGlyphs.playSmall,
-                        semanticsLabel: p.isPlaying ? 'Stop' : 'Play',
-                        onTap: exploring ? _backToGame : _togglePlay,
+                        speed: p.speed,
+                        onTap: _cycleSpeed,
                       ),
                     ),
                   ],

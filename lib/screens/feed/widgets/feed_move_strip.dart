@@ -333,6 +333,90 @@ class _FeedStepButtonState extends State<FeedStepButton> {
   }
 }
 
+/// The playback speed, in the transport's 44pt slot: each tap steps to the
+/// next of 1×, 1.25×, 1.5×, 1.75×, 2× and round again. The figure itself is
+/// the control, set in tabular figures so it does not shift as it changes;
+/// presses read as a dim, never a jump.
+class FeedSpeedButton extends StatefulWidget {
+  const FeedSpeedButton({
+    required this.speed,
+    required this.onTap,
+    this.size = 44,
+    this.labelOffset = Offset.zero,
+    super.key,
+  });
+
+  final double speed;
+  final VoidCallback onTap;
+  final double size;
+
+  /// Position the figure without moving its full tap target.
+  final Offset labelOffset;
+
+  /// "1×", "1.25×", "1.5×".
+  static String label(double speed) {
+    final whole = speed == speed.roundToDouble();
+    return '${whole ? speed.toInt() : speed}×';
+  }
+
+  @override
+  State<FeedSpeedButton> createState() => _FeedSpeedButtonState();
+}
+
+class _FeedSpeedButtonState extends State<FeedSpeedButton> {
+  bool _pressed = false;
+
+  void _setPressed(bool value) {
+    if (_pressed != value) setState(() => _pressed = value);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final ink = context.colors.textPrimary;
+    final label = FeedSpeedButton.label(widget.speed);
+    return Semantics(
+      button: true,
+      label: 'Playback speed',
+      value: label,
+      hint: 'change speed',
+      excludeSemantics: true,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTapDown: (_) => _setPressed(true),
+        onTapCancel: () => _setPressed(false),
+        onTapUp: (_) => _setPressed(false),
+        onTap: widget.onTap,
+        child: SizedBox.square(
+          dimension: widget.size,
+          child: Center(
+            child: Transform.translate(
+              offset: widget.labelOffset,
+              // At a large text size the figure shrinks to its slot rather
+              // than spilling out of it.
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text(
+                  label,
+                  key: const ValueKey('feed_speed_label'),
+                  maxLines: 1,
+                  softWrap: false,
+                  style: AppTypography.textXsBold.copyWith(
+                    fontSize: 13,
+                    height: 1,
+                    fontWeight: FontWeight.w600,
+                    color: ink.withValues(alpha: _pressed ? 0.5 : 0.92),
+                    fontFeatures: const [FontFeature.tabularFigures()],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 /// "Back to game": leaves the viewer's own line for the game where it was.
 /// A plain, solid control, never a pill. Its press is [FeedPressable]'s, the
 /// one every Feed button shares: it gives a little and dims, on a spring.

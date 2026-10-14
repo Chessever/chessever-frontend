@@ -183,27 +183,29 @@ class _FeedFallenKingState extends State<FeedFallenKing> {
   }
 }
 
-/// Dim + bare play glyph shown when the viewer pauses the clip. No disc
-/// behind it: the triangle stands on the board by itself, lifted by a tight
-/// shadow cast straight down (the same one [FeedCaption] uses).
+/// Dim + bare play control shown while the viewer has stopped the clip. No
+/// disc behind it: the triangle stands on the board by itself, lifted by a
+/// tight shadow cast straight down (the same one [FeedCaption] uses).
 ///
-/// It is a confirmation, not a state: it shows for [hold], then fades away
-/// and leaves the board clean, so a paused board reads as "yours now" and
-/// the pieces can be played without a dim over them. The scrub row's play
-/// toggle keeps saying the clip is paused. Each pause mounts a fresh
-/// overlay, so every pause confirms itself once; [visible] hides it at once
-/// for as long as the paused board is otherwise busy (a piece in hand, a
-/// scrub) without starting the confirmation over when that ends.
+/// It stays until the viewer answers it: a tap on the triangle plays on
+/// ([onPlay]); a tap anywhere else on the board takes it down so the pieces
+/// can be played clear of the dim, and the next tap brings it back. [visible]
+/// fades it out and lets taps through to the board while it is down.
 class FeedPausedOverlay extends StatefulWidget {
-  const FeedPausedOverlay({this.visible = true, super.key});
+  const FeedPausedOverlay({
+    required this.onPlay,
+    this.visible = true,
+    super.key,
+  });
 
+  final VoidCallback onPlay;
   final bool visible;
 
-  /// How long the glyph stays before it fades.
-  static const Duration hold = Duration(milliseconds: 1500);
+  /// The fade in and out.
+  static const Duration fade = Duration(milliseconds: 200);
 
-  /// The fade itself.
-  static const Duration fade = Duration(milliseconds: 280);
+  /// The triangle's tap target, larger than the mark itself.
+  static const double target = 72;
 
   // 26x30 viewBox, drawn larger now that no disc frames it.
   static const double _glyphWidth = 30;
@@ -214,73 +216,87 @@ class FeedPausedOverlay extends StatefulWidget {
 }
 
 class _FeedPausedOverlayState extends State<FeedPausedOverlay> {
-  bool _shown = true;
-  Timer? _timer;
+  bool _pressed = false;
 
-  @override
-  void initState() {
-    super.initState();
-    _timer = Timer(FeedPausedOverlay.hold, () {
-      if (mounted) setState(() => _shown = false);
-    });
-  }
-
-  @override
-  void dispose() {
-    _timer?.cancel();
-    super.dispose();
+  void _setPressed(bool value) {
+    if (_pressed != value) setState(() => _pressed = value);
   }
 
   @override
   Widget build(BuildContext context) {
     const glyphWidth = FeedPausedOverlay._glyphWidth;
     const glyphHeight = FeedPausedOverlay._glyphHeight;
-    return IgnorePointer(
-      child: AnimatedOpacity(
-        key: const ValueKey('feed_paused'),
-        opacity: _shown && widget.visible ? 1 : 0,
-        // Reduced motion: it simply goes, no fade.
-        duration: MediaQuery.disableAnimationsOf(context)
-            ? Duration.zero
-            : FeedPausedOverlay.fade,
-        curve: Curves.easeOut,
-        // Screen readers keep hearing "Paused" after the glyph has gone.
-        alwaysIncludeSemantics: true,
-        child: Stack(
-          children: [
-            const Positioned.fill(child: ColoredBox(color: kFeedOnBoardScrim)),
-            Center(
+    return AnimatedOpacity(
+      key: const ValueKey('feed_paused'),
+      opacity: widget.visible ? 1 : 0,
+      // Reduced motion: it simply comes and goes, no fade.
+      duration: MediaQuery.disableAnimationsOf(context)
+          ? Duration.zero
+          : FeedPausedOverlay.fade,
+      curve: Curves.easeOut,
+      child: Stack(
+        children: [
+          const Positioned.fill(
+            child: IgnorePointer(child: ColoredBox(color: kFeedOnBoardScrim)),
+          ),
+          // Only the triangle takes a tap; the rest of the board answers its
+          // own (a piece, or the tap that takes the control down).
+          Center(
+            child: IgnorePointer(
+              ignoring: !widget.visible,
               child: Semantics(
-                label: 'Paused',
-                // The glyph's viewBox already carries the triangle's optical
-                // offset, so it is centred as-is.
-                child: Stack(
-                  clipBehavior: Clip.none,
-                  children: [
-                    Transform.translate(
-                      offset: const Offset(0, 1),
-                      child: ImageFiltered(
-                        imageFilter: ImageFilter.blur(sigmaX: 1.5, sigmaY: 1.5),
-                        child: const FeedGlyph(
-                          FeedGlyphs.play,
-                          width: glyphWidth,
-                          height: glyphHeight,
-                          color: Color(0x73000000),
+                button: true,
+                label: 'Play',
+                excludeSemantics: true,
+                child: GestureDetector(
+                  key: const ValueKey('feed_paused_play'),
+                  behavior: HitTestBehavior.opaque,
+                  onTapDown: (_) => _setPressed(true),
+                  onTapCancel: () => _setPressed(false),
+                  onTapUp: (_) => _setPressed(false),
+                  onTap: widget.onPlay,
+                  child: SizedBox.square(
+                    dimension: FeedPausedOverlay.target,
+                    // The glyph's viewBox already carries the triangle's
+                    // optical offset, so it is centred as-is.
+                    child: Center(
+                      child: AnimatedOpacity(
+                        opacity: _pressed ? 0.6 : 1,
+                        duration: const Duration(milliseconds: 90),
+                        child: Stack(
+                          clipBehavior: Clip.none,
+                          children: [
+                            Transform.translate(
+                              offset: const Offset(0, 1),
+                              child: ImageFiltered(
+                                imageFilter: ImageFilter.blur(
+                                  sigmaX: 1.5,
+                                  sigmaY: 1.5,
+                                ),
+                                child: const FeedGlyph(
+                                  FeedGlyphs.play,
+                                  width: glyphWidth,
+                                  height: glyphHeight,
+                                  color: Color(0x73000000),
+                                ),
+                              ),
+                            ),
+                            const FeedGlyph(
+                              FeedGlyphs.play,
+                              width: glyphWidth,
+                              height: glyphHeight,
+                              color: kFeedOnBoardInk,
+                            ),
+                          ],
                         ),
                       ),
                     ),
-                    const FeedGlyph(
-                      FeedGlyphs.play,
-                      width: glyphWidth,
-                      height: glyphHeight,
-                      color: kFeedOnBoardInk,
-                    ),
-                  ],
+                  ),
                 ),
               ),
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
