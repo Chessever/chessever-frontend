@@ -1,0 +1,24 @@
+ChessEver campaign links - local validation
+Mobile commit: 1089e21b (stable), version 36.6.3+3606
+Admin commit: 6f49044c, feat/campaign-deeplinks
+Admin worktree: ../chessever-web-campaign-links
+
+Changed-path flutter analyze: no issues.
+Targeted mobile tests: all passed (Inbox actions, Premium gate ordering/cancel,
+paid access, collection metadata, Nudge parsing/paging/See, old campaigns,
+large text/light/dark, whole marker text and narrow-control circle fallback).
+Admin: TypeScript and Oxlint clean; 4 Nudge contract tests passed.
+Real browser clicks: add/remove, 5-message limit, Unicode text limits,
+preview previous/next and the current See destination passed.
+No horizontal overflow at 320, 393 and 1100 pixels; no browser console errors.
+
+Full mobile suite: 4956 passed, 4 skipped, 48 failed.
+All 48 failures reproduced on unchanged baseline 9e210046 across the same
+failing files. None is a changed-path failure.
+Full web suite: 2341 passed, 77 failed. Unchanged baseline ebc6a624 has
+75 matching failures. Two extra concurrent historical-profile JSON-read
+failures passed on isolated rerun (3 tests passed).
+
+No mobile app run/build, backend publication, deployment or push performed.
+User-owned device check: docs/discovery_nudges.md.
+Concurrent Prep edits and its pending version 36.6.4+3607 were preserved.
