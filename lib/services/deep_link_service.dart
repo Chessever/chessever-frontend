@@ -3,6 +3,7 @@ import 'package:chessever2/providers/event_video_provider.dart';
 import 'dart:io' show Platform;
 
 import 'package:app_links/app_links.dart';
+import 'package:chessever2/providers/auth_state_provider.dart';
 import 'package:chessever2/repository/authentication/auth_repository.dart';
 import 'package:chessever2/repository/authentication/model/auth_state.dart';
 import 'package:chessever2/repository/supabase/chess_player/chess_player_repository.dart';
@@ -23,6 +24,7 @@ import 'package:chessever2/screens/collections/collections_screen.dart'
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
 import 'package:chessever2/screens/chessboard/utils/game_share_utils.dart'
     show kGamebaseShareSourceParam, kGamebaseShareSourceValue;
+import 'package:chessever2/screens/inbox/inbox_provider.dart';
 import 'package:chessever2/screens/inbox/inbox_screen.dart';
 import 'package:chessever2/screens/library/book_preview_screen.dart';
 import 'package:chessever2/screens/library/folder_contents_screen.dart';
@@ -52,6 +54,7 @@ import 'package:chessever2/screens/player_profile/player_profile_screen.dart'
 import 'package:chessever2/screens/streaks/models/streak_models.dart';
 import 'package:chessever2/screens/streaks/streak_player_screen.dart';
 import 'package:chessever2/screens/streaks/streaks_screen.dart';
+import 'package:chessever2/services/app_destination_service.dart';
 import 'package:chessever2/services/pgn_file_intake_service.dart';
 import 'package:chessever2/widgets/event_card/event_context_menu.dart'
     show kEventTabQueryParam;
@@ -156,6 +159,7 @@ class DeepLinkService {
   bool _isNavigating = false;
   String? _lastHandledGameId;
   DateTime? _lastHandledTime;
+  int _destinationGeneration = 0;
 
   // Debounce duration to prevent duplicate link events
   static const _debounceDuration = Duration(milliseconds: 500);
@@ -224,6 +228,7 @@ class DeepLinkService {
   }
 
   void detachNotificationRouter() {
+    _destinationGeneration++;
     _routerNavigatorKey = null;
     _routerRef = null;
   }
@@ -461,6 +466,19 @@ class DeepLinkService {
     WidgetRef ref,
   ) {
     debugPrint('DeepLinkService: Received link: $uri');
+
+    final appDestination = parseAppDestination(uri.toString());
+    if (appDestination != null) {
+      unawaited(
+        _navigateToAppDestination(
+          appDestination,
+          navigatorKey,
+          ref,
+          generation: ++_destinationGeneration,
+        ),
+      );
+      return;
+    }
 
     // iOS "Open in ChessEver" delivers `.pgn` as a file:// URI through
     // app_links (SceneDelegate forwards the URL). With
@@ -1318,6 +1336,40 @@ class DeepLinkService {
     GlobalKey<NavigatorState> navigatorKey,
     WidgetRef ref,
   ) {
+    final generation = ++_destinationGeneration;
+    final configuredRoute = _asNonEmptyString(data['route']);
+    final inboxMessageId = _asNonEmptyString(data['inbox_message_id']);
+    final destination = configuredRoute == null
+        ? null
+        : parseAppDestination(configuredRoute);
+    if (destination != null) {
+      unawaited(
+        _navigateToAppDestination(
+          destination,
+          navigatorKey,
+          ref,
+          generation: generation,
+          fallbackInboxMessageId: inboxMessageId,
+        ),
+      );
+      return;
+    }
+    if (configuredRoute != null) {
+      _addBreadcrumb('unsupported notification destination');
+    }
+    // An Inbox publication owns its tap unless an explicit destination is set.
+    // Its article action URL is deliberately unrelated to the push destination.
+    if (inboxMessageId != null) {
+      unawaited(
+        _navigateToInbox(
+          navigatorKey,
+          ref,
+          messageId: inboxMessageId,
+          generation: generation,
+        ),
+      );
+      return;
+    }
     final portalUrl = Uri.tryParse(data['url'] is String ? data['url'] as String : '');
     if (portalUrl != null && portalUrl.scheme == 'https' &&
         const ['chessever.com', 'www.chessever.com'].contains(portalUrl.host)) {
@@ -1450,18 +1502,6 @@ class DeepLinkService {
           return;
         }
 
-        // An announcement that also sits in the Inbox opens there, over home,
-        // so Back lands on the app rather than leaving it.
-        if (_asNonEmptyString(data['inbox_message_id']) != null) {
-          _addBreadcrumb('notification opens inbox', data: {'type': type});
-          final navigator = navigatorKey.currentState;
-          navigator?.pushNamedAndRemoveUntil('/home_screen', (route) => false);
-          navigator?.push(
-            MaterialPageRoute<void>(builder: (_) => const InboxScreen()),
-          );
-          return;
-        }
-
         // call_to_action and any unknown types — open the app to home
         _navigateToHome(
           navigatorKey,
@@ -1470,6 +1510,135 @@ class DeepLinkService {
         );
         return;
     }
+  }
+
+  Future<void> _navigateToAppDestination(
+    AppDestination destination,
+    GlobalKey<NavigatorState> navigatorKey,
+    WidgetRef ref, {
+    required int generation,
+    String? fallbackInboxMessageId,
+  }) async {
+    await _appReadyCompleter.future;
+    final navigator = navigatorKey.currentState;
+    bool isCurrent() =>
+        generation == _destinationGeneration &&
+        navigator != null &&
+        navigator.mounted;
+    if (!isCurrent()) return;
+    try {
+      if (!await _awaitDestinationSession(ref, isCurrent: isCurrent)) return;
+      if (!navigator!.mounted) return;
+      if (destination.kind == AppDestinationKind.inbox) {
+        await _navigateToInbox(
+          navigatorKey,
+          ref,
+          messageId: destination.id,
+          generation: generation,
+        );
+        return;
+      }
+      // Every configured destination starts above a usable app root on a cold
+      // launch too. Existing content resolvers keep their auth/access guards.
+      navigator.pushNamedAndRemoveUntil('/home_screen', (route) => false);
+      final opened = await openAppDestination(
+        navigator.context,
+        ref,
+        destination,
+        isCurrent: isCurrent,
+        openLegacyLink: (link) async {
+          if (!isCurrent()) return true;
+          handleDeepLink(Uri.parse(link), navigatorKey, ref);
+          return true;
+        },
+        openInboxMessage: (messageId) => _navigateToInbox(
+          navigatorKey,
+          ref,
+          messageId: messageId,
+          generation: generation,
+        ),
+      );
+      if (opened) return;
+    } catch (error, stackTrace) {
+      _captureDeepLinkException(
+        error,
+        stackTrace,
+        stage: 'notification_app_destination',
+      );
+    }
+    if (!isCurrent()) return;
+    if (fallbackInboxMessageId != null) {
+      await _navigateToInbox(
+        navigatorKey,
+        ref,
+        messageId: fallbackInboxMessageId,
+        generation: generation,
+      );
+    } else {
+      _navigateToHome(navigatorKey, reason: 'app_destination_unavailable');
+    }
+  }
+
+  /// Startup may finish while the restored guest/account is still loading.
+  /// If restoration fails, retain the existing auth screen rather than replacing
+  /// it with Home. No notification destination grants a session of its own.
+  Future<bool> _awaitDestinationSession(
+    WidgetRef ref, {
+    required bool Function() isCurrent,
+  }) async {
+    if (!isCurrent()) return false;
+    if (ref.read(currentUserProvider) != null) return true;
+    if (ref.read(authStateProvider).isLoading) {
+      try {
+        await ref.read(authStateProvider.future).timeout(kAuthRestoreTimeout);
+      } catch (_) {
+        return false;
+      }
+    }
+    return isCurrent() && ref.read(currentUserProvider) != null;
+  }
+
+  /// Restores the Inbox stack after startup, then opens this exact publication.
+  /// The detail observes the account-scoped controller while it refreshes, so
+  /// a cold cache or an offline failure never marks a different message read.
+  Future<bool> _navigateToInbox(
+    GlobalKey<NavigatorState> navigatorKey,
+    WidgetRef ref, {
+    String? messageId,
+    required int generation,
+  }) async {
+    await _appReadyCompleter.future;
+    final navigator = navigatorKey.currentState;
+    if (navigator == null ||
+        !navigator.mounted ||
+        generation != _destinationGeneration) {
+      return false;
+    }
+    if (!await _awaitDestinationSession(
+      ref,
+      isCurrent: () =>
+          navigator.mounted && generation == _destinationGeneration,
+    )) {
+      return false;
+    }
+    final messageOwner = ref.read(inboxProvider).ownerId;
+    navigator.pushNamedAndRemoveUntil('/home_screen', (route) => false);
+    navigator.push(
+      MaterialPageRoute<void>(
+        settings: const RouteSettings(name: '/app/inbox'),
+        builder: (_) => const InboxScreen(),
+      ),
+    );
+    if (messageId != null && messageOwner != null) {
+      navigator.push(
+        MaterialPageRoute<void>(
+          settings: RouteSettings(name: '/app/inbox/$messageId'),
+          builder: (_) =>
+              InboxMessageScreen(ownerId: messageOwner, messageId: messageId),
+        ),
+      );
+    }
+    return true;
   }
 
   /// Navigate to home screen — the fallback when a tap can't be resolved to a
@@ -2359,6 +2528,7 @@ class DeepLinkService {
 
   /// Dispose of resources
   void dispose() {
+    _destinationGeneration++;
     _subscription?.cancel();
     _subscription = null;
     _isInitialized = false;

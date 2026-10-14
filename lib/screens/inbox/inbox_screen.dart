@@ -411,9 +411,16 @@ class _InboxMessageScreenState extends ConsumerState<InboxMessageScreen> {
       });
     }
     if (message == null) {
+      if (state.ownerId == widget.ownerId &&
+          (state.loading || state.refreshing)) {
+        return _inboxShell(child: const _InboxSkeleton());
+      }
       return _inboxShell(
         child: GenericErrorWidget(
-          message: 'This message is unavailable for this account.',
+          message: state.ownerId == widget.ownerId
+              ? state.syncError ??
+                    'This message is unavailable for this account.'
+              : 'This message is unavailable for this account.',
           onRetry: controller.refresh,
         ),
       );

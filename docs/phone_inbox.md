@@ -44,6 +44,23 @@ on top of the contract below. Where the two disagree, this section is current.
   `mutable_content`. **iOS shows a push picture only with a notification service
   extension, which the app does not have yet**; until then iPhones get the text.
 
+## Notification destinations
+
+- An Inbox push with `data.inbox_message_id` opens that exact message, with
+  Home and the Inbox list beneath it for Back navigation. This waits for app
+  startup and uses the current account's Inbox cache and server refresh.
+- Loading and failed fetches do not mark a message read. A failed refresh keeps
+  a Retry action; an unavailable publication never opens a different message.
+- An explicit `data.route` overrides the default Inbox destination, including
+  for standalone notifications. The message's `action_url` remains the action
+  inside its article and never implicitly changes the push destination.
+- See [mobile app routes](mobile-app-routes.md) for supported paths, nested
+  destinations, parameters, and fallback behavior. Routes travel as notification
+  data, without a native browser launch URL.
+- The current publisher for `admin.chessever.com` lives in the companion
+  `chessever-admin-portal` repository. This implementation does not publish
+  messages, send pushes, deploy the admin, or release the mobile app.
+
 ## Data and access contract
 
 Migration: `supabase/migrations/20261010120000_editorial_inbox.sql`.
