@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:math' as math;
 
+import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
 import 'package:chessever2/screens/feed/models/feed_entry.dart';
 import 'package:chessever2/screens/feed/providers/feed_entries_provider.dart';
 import 'package:chessever2/screens/feed/widgets/feed_layout.dart';
@@ -86,7 +87,10 @@ class _FeedAdPageState extends ConsumerState<FeedAdPage> {
   }
 
   Future<void> _load(_Slot slot) async {
-    if (!FeedAdsConfig.available || ref.read(premiumAccessProvider)) return;
+    if (!FeedAdsConfig.available ||
+        ref.read(subscriptionProvider).isSubscribed) {
+      return;
+    }
     final shown = _ad;
     if (shown != null) {
       // Out of the tree first: an ad is never disposed under its AdWidget.
@@ -103,7 +107,11 @@ class _FeedAdPageState extends ConsumerState<FeedAdPage> {
           .read(rewardedAccessProvider.notifier)
           .ads
           .prepareConsent(context);
-      if (!mounted || _slot != slot || ref.read(premiumAccessProvider)) return;
+      if (!mounted ||
+          _slot != slot ||
+          ref.read(subscriptionProvider).isSubscribed) {
+        return;
+      }
       final ad = BannerAd(
         adUnitId: FeedAdsConfig.unitId,
         size: AdSize.getInlineAdaptiveBannerAdSize(slot.width, slot.height),

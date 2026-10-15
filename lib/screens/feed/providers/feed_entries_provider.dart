@@ -5,7 +5,6 @@ import 'package:chessever2/screens/feed/models/feed_entry.dart';
 import 'package:chessever2/screens/feed/news/feed_news.dart';
 import 'package:chessever2/screens/feed/providers/feed_provider.dart';
 import 'package:chessever2/services/feed_ads_config.dart';
-import 'package:chessever2/services/rewarded_premium/rewarded_access_provider.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -87,8 +86,8 @@ class FeedEntriesNotifier extends Notifier<List<FeedEntry>> {
   }
 }
 
-/// Feed's pages: [feedEntriesProvider]'s posts with an ad page after every
-/// [kFeedAdEvery]th for a viewer who sees ads ([feedAdsVisibleProvider]).
+/// Feed's pages: posts with ads at positions 3, 8, 13… for viewers
+/// who see ads ([feedAdsVisibleProvider]).
 /// Ads sit at fixed places among the posts, so the frozen pages keep theirs.
 final feedPagesProvider = Provider<List<FeedEntry>>((ref) {
   final entries = ref.watch(feedEntriesProvider);
@@ -96,8 +95,13 @@ final feedPagesProvider = Provider<List<FeedEntry>>((ref) {
   return withFeedAds(entries, withdrawn: ref.watch(feedAdWithdrawnProvider));
 });
 
+/// Platform/configuration availability, separate from subscriber eligibility.
+final feedAdsAvailableProvider = Provider<bool>(
+  (ref) => FeedAdsConfig.available,
+);
+
 /// Whether Feed shows ads between its posts: on Android and iOS, to a viewer
-/// without Premium access (a subscription, or an active rewarded session),
+/// without a paid subscription (even with temporary rewarded Premium access),
 /// once the subscription has first been checked. Later checks (a purchase,
 /// a restore) do not take the ads away while they run.
 final feedAdsVisibleProvider = NotifierProvider<FeedAdsVisibleNotifier, bool>(
@@ -109,12 +113,13 @@ class FeedAdsVisibleNotifier extends Notifier<bool> {
 
   @override
   bool build() {
-    if (!FeedAdsConfig.available) return false;
+    if (!ref.watch(feedAdsAvailableProvider)) return false;
     final loading = ref.watch(
       subscriptionProvider.select((state) => state.isLoading),
     );
     _checked = _checked || !loading;
-    return _checked && !ref.watch(premiumAccessProvider);
+    return _checked &&
+        !ref.watch(subscriptionProvider.select((state) => state.isSubscribed));
   }
 }
 

@@ -1,9 +1,9 @@
 # Feed ads
 
-Discovery › Feed shows an ad on a page of its own after every fifth post
-(`kFeedAdEvery`), swiped past like any post. Only viewers without paid or
-active rewarded access see it, on Android and iOS, once the subscription has
-first been checked. Nothing gates scrolling: the old Watch ad / Upgrade prompt
+Discovery › Feed shows a non-rewarded ad on a page of its own at positions
+3, 8, 13, 18… (`kFeedAdEvery` counts pages, including ads), swiped past like
+any post. Only viewers without a paid subscription see it, on Android and iOS,
+once the subscription has first been checked. Nothing gates scrolling: the old Watch ad / Upgrade prompt
 between posts is gone.
 
 Each ad page carries the ad surfaces' shared frame (`ad_disclosure.dart`):
@@ -41,11 +41,10 @@ placement off. New units can take up to an hour to start serving.
 
 ## Device checks
 
-- Free account: an ad page after the fifth post, with both lines; swiping on
+- Guest or free account: ad pages at positions 3, 8, 13…, with both lines; swiping on
   and back works over the ad; tapping the ad opens it; Remove Ads opens the
   paywall without a Watch ad option.
 - Subscribe from Remove Ads: the ad pages leave, the post on screen stays.
-- Rewarded access active: no ad pages; when it ends, they return without
-  moving the viewer.
+- Rewarded access active without a paid subscription: ad pages still appear.
 - Airplane mode or declined consent: no ad pages, no blank pages.
 - Phone and tablet, light and dark, portrait and landscape.

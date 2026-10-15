@@ -54,24 +54,26 @@ final class FeedAdEntry extends FeedEntry {
   String get key => 'ad:$after';
 }
 
-/// An ad page follows every this many posts.
+/// Distance between planned ad pages, counting ads as pages.
 const int kFeedAdEvery = 5;
 
-/// [entries] with an ad page after every [every]th post, only ever between
-/// two posts: never first, and never last (the tail follows the last post).
-/// Ads in [withdrawn] (by [FeedAdEntry.key]) are left out.
+/// [entries] with ads at positions 3, 8, 13… (one-based), only between
+/// two posts. [every] counts planned pages, including ads. Withdrawn ads
+/// are omitted without moving subsequent planned slots to different posts.
 List<FeedEntry> withFeedAds(
   List<FeedEntry> entries, {
   int every = kFeedAdEvery,
   Set<String> withdrawn = const {},
 }) {
-  if (every <= 0 || entries.length <= every) return entries;
+  if (every <= 1 || entries.length <= 2) return entries;
   final out = <FeedEntry>[];
   for (var i = 0; i < entries.length; i++) {
     final entry = entries[i];
     out.add(entry);
     final posts = i + 1;
-    if (posts % every == 0 && posts < entries.length) {
+    if (posts >= 2 &&
+        (posts - 2) % (every - 1) == 0 &&
+        posts < entries.length) {
       final ad = FeedAdEntry(entry.key);
       if (!withdrawn.contains(ad.key)) out.add(ad);
     }

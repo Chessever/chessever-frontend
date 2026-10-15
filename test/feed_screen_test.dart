@@ -43,7 +43,7 @@ const _pgn = '1. e4 e5 2. Bc4 Nc6 3. Qh5 Nf6 4. Qxf7# 1-0';
 final _testFeedAccess = StateProvider<bool>((ref) => false);
 
 void main() {
-  testWidgets('a free viewer swipes on past the first post, no prompt', (
+  testWidgets('a free viewer swipes past the second post, no prompt', (
     tester,
   ) async {
     await _pumpFeed(
@@ -79,18 +79,42 @@ void main() {
       listen: false,
     );
     expect(container.read(feedCurrentEntryKeyProvider), contains('g2'));
+    tester.widget<PageView>(pages).controller!.jumpToPage(2);
+    for (var i = 0; i < 4; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+    expect(container.read(feedCurrentEntryKeyProvider), contains('g3'));
+    expect(find.text('Keep exploring Feed'), findsNothing);
+    expect(find.text('Unlock Premium'), findsNothing);
     expect(tester.takeException(), isNull);
     await _tearDown(tester);
   });
 
+  testWidgets('temporary Premium access still shows Feed ads', (tester) async {
+    await _pumpFeed(
+      tester,
+      games: [for (var i = 1; i <= 3; i++) _scholarsMate(id: 'g$i')],
+      accessOverrides: [
+        premiumAccessProvider.overrideWithValue(true),
+        feedAdsAvailableProvider.overrideWithValue(true),
+      ],
+    );
+    final container = ProviderScope.containerOf(
+      tester.element(find.byType(FeedScreen)),
+      listen: false,
+    );
+    expect(container.read(feedPagesProvider)[2], isA<FeedAdEntry>());
+    await _tearDown(tester);
+  });
+
   testWidgets('ads stand between posts, and the viewer keeps their post as '
-      'Premium takes them away and gives them back', (tester) async {
+      'subscription changes remove and restore them', (tester) async {
     await _pumpFeed(
       tester,
       games: [for (var i = 1; i <= 7; i++) _scholarsMate(id: 'g$i')],
       accessOverrides: [
         premiumAccessProvider.overrideWith((ref) => ref.watch(_testFeedAccess)),
-        feedAdsVisibleProvider.overrideWith(_TestFeedAdsVisible.new),
+        feedAdsAvailableProvider.overrideWithValue(true),
       ],
     );
     final container = ProviderScope.containerOf(
@@ -108,28 +132,29 @@ void main() {
       }
     }
 
-    // After the fifth post, never before the first nor after the last.
+    // Planned positions 3 and 8, never after the last post.
     final posts = keys();
-    expect(posts, hasLength(8));
-    expect(posts[5], 'ad:${posts[4]}');
+    expect(posts, hasLength(9));
+    expect(posts[2], 'ad:${posts[1]}');
+    expect(posts[7], 'ad:${posts[6]}');
     expect(
       tester.widget<PageView>(pages).childrenDelegate.estimatedChildCount,
-      9,
+      10,
     );
 
-    controller.jumpToPage(5);
+    controller.jumpToPage(2);
     await settle();
     expect(find.text(AdDisclosureLine.text), findsOneWidget);
     expect(find.text(RemoveAdsButton.label), findsOneWidget);
     expect(find.byKey(const ValueKey('feed_ad_placeholder')), findsOneWidget);
     // An ad page is never the place Feed brings the viewer back to.
-    expect(container.read(feedCurrentEntryKeyProvider), posts[4]);
+    expect(container.read(feedCurrentEntryKeyProvider), posts[1]);
 
     controller.jumpToPage(6);
     await settle();
     expect(container.read(feedCurrentEntryKeyProvider), posts[6]);
 
-    // Premium: the ad leaves from before the viewer, who stays on the post.
+    // Subscribed: the ad leaves from before the viewer, who stays on the post.
     container.read(_testFeedAccess.notifier).state = true;
     await settle();
     expect(keys(), hasLength(7));
@@ -155,7 +180,7 @@ void main() {
       games: [for (var i = 1; i <= 7; i++) _scholarsMate(id: 'g$i')],
       accessOverrides: [
         premiumAccessProvider.overrideWithValue(false),
-        feedAdsVisibleProvider.overrideWith(_TestFeedAdsVisible.new),
+        feedAdsAvailableProvider.overrideWithValue(true),
       ],
     );
     final container = ProviderScope.containerOf(
@@ -166,10 +191,10 @@ void main() {
         .widget<PageView>(find.byKey(const ValueKey('feed_pages')))
         .controller!;
     final before = container.read(feedPagesProvider);
-    final ad = before[5];
+    final ad = before[2];
     expect(ad, isA<FeedAdEntry>());
 
-    controller.jumpToPage(5);
+    controller.jumpToPage(2);
     for (var i = 0; i < 4; i++) {
       await tester.pump(const Duration(milliseconds: 100));
     }
@@ -178,10 +203,10 @@ void main() {
       await tester.pump(const Duration(milliseconds: 100));
     }
     final after = container.read(feedPagesProvider);
-    expect(after.whereType<FeedAdEntry>(), isEmpty);
-    expect(controller.page, 5);
-    expect(after[5].key, before[6].key);
-    expect(container.read(feedCurrentEntryKeyProvider), before[6].key);
+    expect(after.whereType<FeedAdEntry>(), hasLength(1));
+    expect(controller.page, 2);
+    expect(after[2].key, before[3].key);
+    expect(container.read(feedCurrentEntryKeyProvider), before[3].key);
     expect(find.text(AdDisclosureLine.text), findsNothing);
     expect(tester.takeException(), isNull);
     await _tearDown(tester);
@@ -1040,7 +1065,9 @@ Future<_Feed> _pumpFeed(
         likedGamesProvider.overrideWith(_NoLikes.new),
         spaceShortcutsProvider.overrideWith(_NoShortcuts.new),
         currentUserProvider.overrideWithValue(null),
-        subscriptionProvider.overrideWith((ref) => _FreeSubscription()),
+        subscriptionProvider.overrideWith(
+          (ref) => _FreeSubscription(subscribed: ref.watch(_testFeedAccess)),
+        ),
         engineSettingsProviderNew.overrideWith(
           () => _TestEngineSettings(engineSettings),
         ),
@@ -1289,19 +1316,14 @@ class _NoShortcuts extends SpaceShortcutsNotifier {
   Future<List<SpaceShortcut>> build() async => const [];
 }
 
-/// Ads shown exactly while the viewer has no Premium access: the switch
-/// itself, with the platform and subscription checks taken as passed.
-class _TestFeedAdsVisible extends FeedAdsVisibleNotifier {
-  @override
-  bool build() => !ref.watch(premiumAccessProvider);
-}
-
 class _FreeSubscription extends SubscriptionNotifier {
-  _FreeSubscription() : super() {
+  _FreeSubscription({this.subscribed = false}) : super() {
     state = SubscriptionState(isSubscribed: false, isLoading: false);
   }
 
+  final bool subscribed;
+
   @override
   set state(SubscriptionState value) =>
-      super.state = value.copyWith(isSubscribed: false, isLoading: false);
+      super.state = value.copyWith(isSubscribed: subscribed, isLoading: false);
 }
