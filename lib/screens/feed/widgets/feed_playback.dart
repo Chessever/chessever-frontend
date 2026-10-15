@@ -25,14 +25,19 @@ final feedPlaybackSpeedProvider = StateProvider<double>(
 /// Every move that lands — autoplay, scrub or a step — sounds through
 /// [moveSound] with the ply's class, so a classified move plays its own sound
 /// instead of the ordinary one.
+///
+/// A clip opens on [startPly], the position after the game's last book move,
+/// and plays on from there; the scrub line still reaches back to move one.
 class FeedPlayback extends ChangeNotifier {
-  FeedPlayback({
-    required this.item,
-    required this.sfx,
-    required this.moveSound,
-  });
+  FeedPlayback({required this.item, required this.sfx, required this.moveSound})
+    : startPly = item.startPly,
+      _ply = item.startPly,
+      _scrubPly = item.startPly;
 
   final FeedItem item;
+
+  /// Where the clip opens and every replay starts: see [FeedItem.startPly].
+  final int startPly;
 
   /// Result stinger and the speaker state.
   final FeedSfx sfx;
@@ -45,8 +50,8 @@ class FeedPlayback extends ChangeNotifier {
   /// What the speed button steps through, one per tap, then round again.
   static const List<double> speeds = [1, 1.25, 1.5, 1.75, 2];
 
-  int _ply = 0;
-  int _scrubPly = 0;
+  int _ply;
+  int _scrubPly;
   bool _userPaused = false;
   bool _suspended = true;
   bool _fast = false;
@@ -67,8 +72,8 @@ class FeedPlayback extends ChangeNotifier {
   /// only while the hand is on the board; releasing it resumes where it was.
   bool _held = false;
 
-  /// True from [restart] until the first move plays, so the opening beat is
-  /// short however the clip was resumed.
+  /// True from [restart] until the first move plays, so the beat off
+  /// [startPly] is short however the clip was resumed.
   bool _freshStart = false;
   Timer? _timer;
   bool _disposed = false;
@@ -119,10 +124,11 @@ class FeedPlayback extends ChangeNotifier {
     _reschedule();
   }
 
-  /// Starts the clip from its first position.
+  /// Starts the clip from [startPly]. Silent: that position is set up, not
+  /// played.
   void restart() {
-    _ply = 0;
-    _scrubPly = 0;
+    _ply = startPly;
+    _scrubPly = startPly;
     _ended = false;
     _userPaused = false;
     _manual = false;
@@ -150,7 +156,7 @@ class FeedPlayback extends ChangeNotifier {
     _manual = manual;
     _fast = false;
     _scrubbing = false;
-    _freshStart = _ply == 0;
+    _freshStart = _ply == startPly;
     _notify();
     _reschedule();
   }
@@ -329,7 +335,7 @@ class FeedPlayback extends ChangeNotifier {
     _timer?.cancel();
     _timer = null;
     if (_disposed || !isPlaying) return;
-    final beat = _delayFor(_ply, first: _freshStart && _ply == 0);
+    final beat = _delayFor(_ply, first: _freshStart && _ply == startPly);
     final delay = Duration(
       microseconds: (beat.inMicroseconds / _speed).round(),
     );
