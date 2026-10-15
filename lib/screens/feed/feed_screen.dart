@@ -1,5 +1,3 @@
-import 'package:chessever2/services/rewarded_premium/rewarded_access_provider.dart';
-import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
 import 'dart:async';
 import 'dart:math' as math;
 
@@ -14,6 +12,7 @@ import 'package:chessever2/screens/feed/providers/feed_entries_provider.dart';
 import 'package:chessever2/screens/feed/providers/feed_provider.dart';
 import 'package:chessever2/screens/feed/puzzles/feed_puzzle.dart';
 import 'package:chessever2/screens/feed/widgets/feed_action_row.dart';
+import 'package:chessever2/screens/feed/widgets/feed_ad_page.dart';
 import 'package:chessever2/screens/feed/widgets/feed_clip.dart';
 import 'package:chessever2/screens/feed/widgets/feed_glyphs.dart';
 import 'package:chessever2/screens/feed/widgets/feed_layout.dart';
@@ -35,7 +34,8 @@ import 'package:motor/motor.dart';
 
 /// Feed: finished games that replay themselves on a playable board, one per
 /// page, picked by [FeedRanker], with a ChessEver News article now and then
-/// ([feedEntriesProvider]).
+/// ([feedEntriesProvider]) and, for viewers who see ads, an ad between posts
+/// ([feedPagesProvider]).
 ///
 /// Swipe for the next page, pull down on the first one for a fresh draw;
 /// everything else happens on the board (see [FeedClip] for the gesture
@@ -54,6 +54,10 @@ import 'package:motor/motor.dart';
 /// frame ([FeedLayout]), with nothing of the next post showing under it.
 /// After the last post stands one more page ([FeedTail]): the next post's
 /// skeleton while more can load, the end of the feed once nothing is left.
+///
+/// Feed is open to everyone. A viewer without Premium access gets an ad page
+/// after every few posts ([feedPagesProvider], [FeedAdPage]) and swipes past
+/// it like any post: no prompt ever stands between them and the next one.
 class FeedScreen extends ConsumerStatefulWidget {
   const FeedScreen({super.key});
 
@@ -73,17 +77,9 @@ class FeedScreen extends ConsumerStatefulWidget {
 /// built anew on every visit; this puts the viewer back on that page rather
 /// than on the first game again.
 /// Held by identity, not position: if the entries were rebuilt (a refresh)
-/// and the page is gone, Feed starts from the top.
+/// and the page is gone, Feed starts from the top. Only posts are held: an
+/// ad page is never the place to come back to.
 final feedCurrentEntryKeyProvider = StateProvider<String?>((ref) => null);
-
-final feedAccessPromptProvider = Provider<Future<bool> Function(BuildContext)>(
-  (ref) =>
-      (context) => showPremiumPaywallSheet(
-        context: context,
-        featureId: 'feed_scroll',
-        returnTo: 'feed',
-      ),
-);
 
 class _FeedScreenState extends ConsumerState<FeedScreen>
     with WidgetsBindingObserver, RouteAware {
@@ -106,7 +102,6 @@ class _FeedScreenState extends ConsumerState<FeedScreen>
   bool _appResumed = true;
   bool _routeCurrent = true;
   bool _scrollLocked = false;
-  bool _accessPromptOpen = false;
   bool _announcedFirst = false;
   ModalRoute<void>? _route;
   late final StateController<bool> _open;
@@ -156,7 +151,7 @@ class _FeedScreenState extends ConsumerState<FeedScreen>
     });
     // Warms up when the board's Sound setting is (or turns) on; see
     // [_warmUpSoundsIfAudible].
-    ref.listenManual<List<FeedEntry>>(feedEntriesProvider, _onEntriesChanged);
+    ref.listenManual<List<FeedEntry>>(feedPagesProvider, _onPagesChanged);
     ref.listenManual<bool>(
       boardSettingsProviderNew.select(
         (settings) => settings.valueOrNull?.soundEnabled == true,
@@ -170,10 +165,9 @@ class _FeedScreenState extends ConsumerState<FeedScreen>
 
   /// The page to open on: the one the viewer left, when it is still there.
   int _restoredIndex() {
-    if (!ref.read(premiumAccessProvider)) return 0;
     final key = ref.read(feedCurrentEntryKeyProvider);
     if (key == null) return 0;
-    final index = ref.read(feedEntriesProvider).indexWhere((e) => e.key == key);
+    final index = ref.read(feedPagesProvider).indexWhere((e) => e.key == key);
     return index < 0 ? 0 : index;
   }
 
@@ -329,14 +323,10 @@ class _FeedScreenState extends ConsumerState<FeedScreen>
     }
   }
 
-  void _onPageChanged(int index, List<FeedEntry> entries) {
+  void _onPageChanged(int index, List<FeedEntry> pages) {
     if (_homing) return;
-    if (index > 0 && !ref.read(premiumAccessProvider)) {
-      unawaited(_unlockScrolling());
-      return;
-    }
     if (index == _index) {
-      _reportHomeIfPending(index, entries);
+      _reportHomeIfPending(index, pages);
       return;
     }
     _homeUnreported = false;
@@ -344,44 +334,33 @@ class _FeedScreenState extends ConsumerState<FeedScreen>
       _index = index;
       _scrollLocked = false;
     });
-    // Only posts are remembered: the tail has no key of its own to return
-    // to, and the last post stays the place to come back to.
-    if (index < entries.length) {
-      ref.read(feedCurrentEntryKeyProvider.notifier).state = entries[index].key;
-    }
+    _remember(index, pages);
     if (_seen.value) feedSfxSafely(ref.read(feedSfxProvider).playSwipe);
-    _reportVisible(index, entries);
+    _reportVisible(index, pages);
   }
 
-  Future<void> _unlockScrolling() async {
-    if (_accessPromptOpen || !mounted) return;
-    _accessPromptOpen = true;
-    try {
-      // Page changes can arrive during layout; open the modal after this frame.
-      await WidgetsBinding.instance.endOfFrame;
-      if (!mounted) return;
-      final allowed = await ref.read(feedAccessPromptProvider)(context);
-      if (!mounted || !_pages.hasClients) return;
-      if (allowed && ref.read(premiumAccessProvider)) {
-        setState(() {});
-        await WidgetsBinding.instance.endOfFrame;
-        if (mounted) _onPageChanged(1, ref.read(feedEntriesProvider));
-      } else {
-        _pages.jumpToPage(0);
-      }
-    } finally {
-      _accessPromptOpen = false;
-    }
+  /// Only posts are remembered: the tail has no key of its own to return to
+  /// (the last post stays the place to come back to), and an ad page is no
+  /// place to return to (the post it follows stands for it).
+  void _remember(int index, List<FeedEntry> pages) {
+    if (index >= pages.length) return;
+    final page = pages[index];
+    ref.read(feedCurrentEntryKeyProvider.notifier).state = page is FeedAdEntry
+        ? page.after
+        : page.key;
   }
 
   /// Freezes the pages the viewer has reached and keeps games coming: the
-  /// games notifier pages by game, so the page index is translated. On the
-  /// tail, that is the last post's game, and the next page is asked for.
-  void _reportVisible(int index, List<FeedEntry> entries) {
-    ref.read(feedEntriesProvider.notifier).markSeen(index);
+  /// arrangement freezes by post and the games notifier pages by game, so
+  /// the page index is translated for each. On the tail, that is the last
+  /// post's game, and the next page is asked for.
+  void _reportVisible(int index, List<FeedEntry> pages) {
+    ref
+        .read(feedEntriesProvider.notifier)
+        .markSeen(feedPostIndexAt(pages, index));
     final notifier = ref.read(feedProvider.notifier);
-    notifier.onVisible(math.max(0, feedGameIndexAt(entries, index)));
-    if (index >= entries.length - 3) unawaited(_loadMore());
+    notifier.onVisible(math.max(0, feedGameIndexAt(pages, index)));
+    if (index >= pages.length - 3) unawaited(_loadMore());
   }
 
   /// Asks for the next page and, once the load it joined has finished,
@@ -424,25 +403,75 @@ class _FeedScreenState extends ConsumerState<FeedScreen>
     _reportVisible(0, entries);
   }
 
-  /// Posts arrived while the viewer sat on the tail: the skeleton they were
-  /// looking at is now a post, in place. It becomes the current page (its
-  /// key remembered, the pages after it asked for) as if swiped onto.
-  void _onEntriesChanged(List<FeedEntry>? previous, List<FeedEntry> next) {
-    final before = previous?.length ?? 0;
-    if (_index < before || _index >= next.length) return;
+  /// The pages changed under the viewer. The page they are on stays theirs:
+  ///
+  /// * Posts arrived while they sat on the tail: the skeleton they were
+  ///   looking at is now a page, in place, and becomes the current one (its
+  ///   key remembered, the pages after it asked for) as if swiped onto.
+  /// * An ad page joined or left before them (Premium access began or
+  ///   ended, an ad found no fill): Feed moves with their page, so it
+  ///   neither slides away nor is visited anew.
+  /// * The ad page they were on was withdrawn: the post after it takes its
+  ///   place, as the current page.
+  ///
+  /// A post that left is a new arrangement (a refresh), which settles the
+  /// viewer itself.
+  void _onPagesChanged(List<FeedEntry>? previous, List<FeedEntry> next) {
+    if (_homing) return;
+    final before = previous ?? const <FeedEntry>[];
+    int? target;
+    if (_index >= before.length) {
+      if (_index < next.length) target = _index;
+    } else {
+      for (var i = _index; i < before.length; i++) {
+        final found = next.indexWhere((page) => page.key == before[i].key);
+        if (found >= 0) {
+          target = found;
+          break;
+        }
+        if (before[i] is! FeedAdEntry) break;
+      }
+    }
+    if (target == null) return;
+    final index = target;
+    final was = _index < before.length ? before[_index].key : null;
+    final arrived = next[index].key != was;
+    if (index != _index) _settleOn(index);
+    if (!arrived) return;
     SchedulerBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      final entries = ref.read(feedEntriesProvider);
-      if (_index >= entries.length) return;
-      ref.read(feedCurrentEntryKeyProvider.notifier).state =
-          entries[_index].key;
-      _reportVisible(_index, entries);
+      if (!mounted || _index != index) return;
+      final pages = ref.read(feedPagesProvider);
+      if (index >= pages.length) return;
+      _remember(index, pages);
+      _reportVisible(index, pages);
     });
+  }
+
+  /// Puts the viewer on page [index] at once, without the page change
+  /// counting as a visit (it is the same page, moved).
+  void _settleOn(int index) {
+    void apply() {
+      if (!mounted || !_pages.hasClients) return;
+      setState(() {
+        _index = index;
+        _scrollLocked = false;
+      });
+      _pages.jumpToPage(index);
+    }
+
+    _index = index;
+    // A jump during build would report a page change mid-build.
+    if (SchedulerBinding.instance.schedulerPhase ==
+        SchedulerPhase.persistentCallbacks) {
+      SchedulerBinding.instance.addPostFrameCallback((_) => apply());
+    } else {
+      apply();
+    }
   }
 
   void _goNext() {
     if (!mounted || !_pages.hasClients) return;
-    final entries = ref.read(feedEntriesProvider);
+    final entries = ref.read(feedPagesProvider);
     // On the tail already: nothing to move on to until more arrives.
     if (_index >= entries.length) {
       unawaited(_loadMore());
@@ -469,7 +498,7 @@ class _FeedScreenState extends ConsumerState<FeedScreen>
   /// shown, a real fresh draw).
   void _onTitleTap() {
     if (!mounted || !_pages.hasClients || _homing) return;
-    final entries = ref.read(feedEntriesProvider);
+    final entries = ref.read(feedPagesProvider);
     if (entries.isEmpty) return;
     final page = _pages.page ?? _index.toDouble();
     final onFirst = _index == 0 && page.abs() < 0.01;
@@ -516,7 +545,7 @@ class _FeedScreenState extends ConsumerState<FeedScreen>
     }
     if (!mounted || !_pages.hasClients) return;
     if ((_pages.page ?? 0).abs() < 0.01) {
-      _reportVisible(0, ref.read(feedEntriesProvider));
+      _reportVisible(0, ref.read(feedPagesProvider));
     } else {
       // A touch took over on the way: the page it comes to rest on is
       // reported then, the first post included.
@@ -557,7 +586,7 @@ class _FeedScreenState extends ConsumerState<FeedScreen>
       _endedUnder = null;
     });
     if (_pages.hasClients) _pages.jumpToPage(0);
-    final entries = ref.read(feedEntriesProvider);
+    final entries = ref.read(feedPagesProvider);
     ref.read(feedCurrentEntryKeyProvider.notifier).state = entries.isEmpty
         ? null
         : entries.first.key;
@@ -604,23 +633,13 @@ class _FeedScreenState extends ConsumerState<FeedScreen>
     await ref.read(boardSettingsProviderNew.notifier).toggleSound(true);
   }
 
-  /// Page [i]: a post, then the tail ([FeedTail]).
+  /// Page [i]: a post or an ad, then the tail ([FeedTail]).
   Widget _page(
     int i, {
     required List<FeedEntry> entries,
     required FeedMore more,
     required bool visible,
   }) {
-    if (i > 0 && !ref.read(premiumAccessProvider)) {
-      return FeedMessage(
-        key: const ValueKey('feed_premium_gate'),
-        title: 'Keep exploring Feed',
-        body:
-            'Watch an ad for 10 minutes of Premium access, or upgrade to keep scrolling.',
-        actionLabel: 'Unlock Premium',
-        onAction: () => unawaited(_unlockScrolling()),
-      );
-    }
     if (i >= entries.length) {
       return FeedTail(
         key: _tailKey,
@@ -660,22 +679,14 @@ class _FeedScreenState extends ConsumerState<FeedScreen>
         isVisible: visible,
         onRequestNext: _goNext,
       ),
+      FeedAdEntry() => FeedAdPage(key: ValueKey(entry.key), entry: entry),
     };
   }
 
   @override
   Widget build(BuildContext context) {
-    final hasAccess = ref.watch(premiumAccessProvider);
-    ref.listen<bool>(premiumAccessProvider, (previous, next) {
-      if (previous == true && !next) {
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (!mounted || !_pages.hasClients) return;
-          _pages.jumpToPage(0);
-        });
-      }
-    });
     final feed = ref.watch(feedProvider);
-    final entries = ref.watch(feedEntriesProvider);
+    final entries = ref.watch(feedPagesProvider);
     final visible = _isSeen;
     final more = ref.read(feedProvider.notifier).more;
     _builtMore = more;
@@ -700,7 +711,7 @@ class _FeedScreenState extends ConsumerState<FeedScreen>
       final games = entries.whereType<FeedGameEntry>().length;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
-        _reportVisible(_index, ref.read(feedEntriesProvider));
+        _reportVisible(_index, ref.read(feedPagesProvider));
         if (games <= 3) unawaited(_loadMore());
       });
     }
@@ -726,8 +737,8 @@ class _FeedScreenState extends ConsumerState<FeedScreen>
                 ? const NeverScrollableScrollPhysics(parent: feedPagePhysics)
                 : feedPagePhysics,
             onPageChanged: (i) => _onPageChanged(i, entries),
-            // One page more than there are posts: the tail.
-            itemCount: hasAccess ? entries.length + 1 : 2,
+            // One page more than there are posts and ads: the tail.
+            itemCount: entries.length + 1,
             // Pages keep their state by identity, not position, so an entry
             // that is recaptioned (or a list that grows) never restarts a
             // clip.

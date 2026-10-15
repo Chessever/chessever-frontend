@@ -267,16 +267,15 @@ With ten saved games, a new single or bulk save must request a subscription.
 
 ## Feed scrolling
 
-Free viewers can open Feed and view its first post. Swiping or tapping Next
-shows the Watch ad / Upgrade chooser before revealing subsequent posts.
-Dismissal returns to the first post; confirmed paid or rewarded access continues
-to the next post and allows scrolling. Free visits start on the first post
-rather than restoring a previously unlocked position. Expiry returns scrolling
-to the first-post allowance.
+Feed is open to every viewer: no Watch ad / Upgrade chooser stands between
+posts, and free visits restore the last post like any other. Viewers without
+paid or active rewarded access see an ad page after every fifth post instead
+(see `docs/feed-ads.md`). Feed features that need Premium inside a post keep
+their own gates.
 
-Device check: swipe after the first post and dismiss the chooser; the second
-post must stay hidden. Try again and complete an ad; verify the second post
-appears and further swipes work. Also verify a subscriber never sees the gate.
+Device check: on a free account, swipe through ten posts; no chooser opens and
+an ad page follows the fifth. Subscribe and verify the ad pages leave without
+moving the post on screen.
 
 ## Smart Events and My Likes game access
 

@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'package:chessever2/services/rewarded_premium/rewarded_access_provider.dart';
 import 'package:chessever2/providers/auth_state_provider.dart';
 import 'package:chessever2/providers/board_settings_provider_new.dart';
@@ -14,6 +13,7 @@ import 'package:chessever2/screens/feed/feed_screen.dart';
 import 'package:chessever2/screens/feed/models/feed_entry.dart';
 import 'package:chessever2/screens/feed/models/feed_models.dart';
 import 'package:chessever2/screens/feed/news/feed_news.dart';
+import 'package:chessever2/screens/feed/providers/feed_entries_provider.dart';
 import 'package:chessever2/screens/feed/providers/feed_eval_provider.dart';
 import 'package:chessever2/screens/feed/providers/feed_provider.dart';
 import 'package:chessever2/screens/for_you/discovery/models/report_game_type.dart';
@@ -29,6 +29,7 @@ import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_mode
 import 'package:chessever2/screens/tour_detail/games_tour/providers/event_no_spoilers_provider.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/app_typography.dart';
+import 'package:chessever2/widgets/ads/ad_disclosure.dart';
 import 'package:chessever2/widgets/destination_title.dart';
 import 'package:chessground/chessground.dart';
 import 'package:dartchess/dartchess.dart';
@@ -42,83 +43,149 @@ const _pgn = '1. e4 e5 2. Bc4 Nc6 3. Qh5 Nf6 4. Qxf7# 1-0';
 final _testFeedAccess = StateProvider<bool>((ref) => false);
 
 void main() {
-  for (final unlock in [false, true]) {
-    testWidgets('free feed swipe prompts and unlock=$unlock', (tester) async {
-      final completion = Completer<bool>();
-      var prompts = 0;
-      await _pumpFeed(
-        tester,
-        games: [
-          _scholarsMate(),
-          _scholarsMate(id: 'g2'),
-          _scholarsMate(id: 'g3'),
-        ],
-        accessOverrides: [
-          premiumAccessProvider.overrideWith(
-            (ref) => ref.watch(_testFeedAccess),
-          ),
-          feedAccessPromptProvider.overrideWithValue((context) async {
-            prompts++;
-            final allowed = await completion.future;
-            if (allowed && context.mounted) {
-              ProviderScope.containerOf(
-                context,
-                listen: false,
-              ).read(_testFeedAccess.notifier).state = true;
-            }
-            return allowed;
-          }),
-        ],
-      );
-      final pages = find.byKey(const ValueKey('feed_pages'));
-      expect(
-        tester.widget<PageView>(pages).childrenDelegate.estimatedChildCount,
-        2,
-      );
-      final board = tester.getRect(find.byType(FeedLiveBoard).first);
-      await tester.flingFrom(
-        _squareCenter(board, 'd2'),
-        const Offset(0, -240),
-        1500,
-      );
-      for (var i = 0; i < 10; i++) {
+  testWidgets('a free viewer swipes on past the first post, no prompt', (
+    tester,
+  ) async {
+    await _pumpFeed(
+      tester,
+      games: [
+        _scholarsMate(),
+        _scholarsMate(id: 'g2'),
+        _scholarsMate(id: 'g3'),
+      ],
+      accessOverrides: [premiumAccessProvider.overrideWithValue(false)],
+    );
+    final pages = find.byKey(const ValueKey('feed_pages'));
+    // Every post and the tail: nothing stands in for the posts after the
+    // first.
+    expect(
+      tester.widget<PageView>(pages).childrenDelegate.estimatedChildCount,
+      4,
+    );
+    final board = tester.getRect(find.byType(FeedLiveBoard).first);
+    await tester.flingFrom(
+      _squareCenter(board, 'd2'),
+      const Offset(0, -240),
+      1500,
+    );
+    for (var i = 0; i < 10; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+    expect(tester.widget<PageView>(pages).controller!.page, 1);
+    expect(find.text('Keep exploring Feed'), findsNothing);
+    expect(find.text('Unlock Premium'), findsNothing);
+    final container = ProviderScope.containerOf(
+      tester.element(find.byType(FeedScreen)),
+      listen: false,
+    );
+    expect(container.read(feedCurrentEntryKeyProvider), contains('g2'));
+    expect(tester.takeException(), isNull);
+    await _tearDown(tester);
+  });
+
+  testWidgets('ads stand between posts, and the viewer keeps their post as '
+      'Premium takes them away and gives them back', (tester) async {
+    await _pumpFeed(
+      tester,
+      games: [for (var i = 1; i <= 7; i++) _scholarsMate(id: 'g$i')],
+      accessOverrides: [
+        premiumAccessProvider.overrideWith((ref) => ref.watch(_testFeedAccess)),
+        feedAdsVisibleProvider.overrideWith(_TestFeedAdsVisible.new),
+      ],
+    );
+    final container = ProviderScope.containerOf(
+      tester.element(find.byType(FeedScreen)),
+      listen: false,
+    );
+    final pages = find.byKey(const ValueKey('feed_pages'));
+    final controller = tester.widget<PageView>(pages).controller!;
+    List<String> keys() => [
+      for (final page in container.read(feedPagesProvider)) page.key,
+    ];
+    Future<void> settle() async {
+      for (var i = 0; i < 4; i++) {
         await tester.pump(const Duration(milliseconds: 100));
       }
-      expect(prompts, 1);
-      expect(find.byKey(const ValueKey('feed_premium_gate')), findsOneWidget);
-      final container = ProviderScope.containerOf(
-        tester.element(find.byType(FeedScreen)),
-        listen: false,
-      );
-      expect(
-        container.read(feedCurrentEntryKeyProvider),
-        contains('feed-test-game'),
-      );
-      completion.complete(unlock);
-      for (var i = 0; i < 6; i++) {
-        await tester.pump(const Duration(milliseconds: 100));
-      }
-      final controller = tester.widget<PageView>(pages).controller!;
-      expect(controller.page, unlock ? 1 : 0);
-      expect(
-        tester.widget<PageView>(pages).childrenDelegate.estimatedChildCount,
-        unlock ? 4 : 2,
-      );
-      expect(prompts, 1);
-      if (unlock) {
-        controller.jumpToPage(2);
-        await tester.pump();
-        container.read(_testFeedAccess.notifier).state = false;
-        for (var i = 0; i < 4; i++) {
-          await tester.pump(const Duration(milliseconds: 100));
-        }
-        expect(controller.page, 0);
-        expect(prompts, 1, reason: 'Expiry must not show another swipe prompt');
-      }
-      expect(tester.takeException(), isNull);
-      await _tearDown(tester);
-    });
-  }
+    }
+
+    // After the fifth post, never before the first nor after the last.
+    final posts = keys();
+    expect(posts, hasLength(8));
+    expect(posts[5], 'ad:${posts[4]}');
+    expect(
+      tester.widget<PageView>(pages).childrenDelegate.estimatedChildCount,
+      9,
+    );
+
+    controller.jumpToPage(5);
+    await settle();
+    expect(find.text(AdDisclosureLine.text), findsOneWidget);
+    expect(find.text(RemoveAdsButton.label), findsOneWidget);
+    expect(find.byKey(const ValueKey('feed_ad_placeholder')), findsOneWidget);
+    // An ad page is never the place Feed brings the viewer back to.
+    expect(container.read(feedCurrentEntryKeyProvider), posts[4]);
+
+    controller.jumpToPage(6);
+    await settle();
+    expect(container.read(feedCurrentEntryKeyProvider), posts[6]);
+
+    // Premium: the ad leaves from before the viewer, who stays on the post.
+    container.read(_testFeedAccess.notifier).state = true;
+    await settle();
+    expect(keys(), hasLength(7));
+    expect(controller.page, 5);
+    expect(keys()[5], posts[6]);
+    expect(container.read(feedCurrentEntryKeyProvider), posts[6]);
+
+    // Access ends: the ad comes back before them, and they stay put.
+    container.read(_testFeedAccess.notifier).state = false;
+    await settle();
+    expect(keys(), posts);
+    expect(controller.page, 6);
+    expect(container.read(feedCurrentEntryKeyProvider), posts[6]);
+    expect(tester.takeException(), isNull);
+    await _tearDown(tester);
+  });
+
+  testWidgets('an ad that does not come gives its page to the next post', (
+    tester,
+  ) async {
+    await _pumpFeed(
+      tester,
+      games: [for (var i = 1; i <= 7; i++) _scholarsMate(id: 'g$i')],
+      accessOverrides: [
+        premiumAccessProvider.overrideWithValue(false),
+        feedAdsVisibleProvider.overrideWith(_TestFeedAdsVisible.new),
+      ],
+    );
+    final container = ProviderScope.containerOf(
+      tester.element(find.byType(FeedScreen)),
+      listen: false,
+    );
+    final controller = tester
+        .widget<PageView>(find.byKey(const ValueKey('feed_pages')))
+        .controller!;
+    final before = container.read(feedPagesProvider);
+    final ad = before[5];
+    expect(ad, isA<FeedAdEntry>());
+
+    controller.jumpToPage(5);
+    for (var i = 0; i < 4; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+    container.read(feedAdWithdrawnProvider.notifier).state = {ad.key};
+    for (var i = 0; i < 4; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+    final after = container.read(feedPagesProvider);
+    expect(after.whereType<FeedAdEntry>(), isEmpty);
+    expect(controller.page, 5);
+    expect(after[5].key, before[6].key);
+    expect(container.read(feedCurrentEntryKeyProvider), before[6].key);
+    expect(find.text(AdDisclosureLine.text), findsNothing);
+    expect(tester.takeException(), isNull);
+    await _tearDown(tester);
+  });
 
   testWidgets('the speed button steps 1x to 2x and round, and plays faster', (
     tester,
@@ -1220,6 +1287,13 @@ class _NoLikes extends LikedGamesNotifier {
 class _NoShortcuts extends SpaceShortcutsNotifier {
   @override
   Future<List<SpaceShortcut>> build() async => const [];
+}
+
+/// Ads shown exactly while the viewer has no Premium access: the switch
+/// itself, with the platform and subscription checks taken as passed.
+class _TestFeedAdsVisible extends FeedAdsVisibleNotifier {
+  @override
+  bool build() => !ref.watch(premiumAccessProvider);
 }
 
 class _FreeSubscription extends SubscriptionNotifier {
