@@ -15,6 +15,7 @@ import 'package:chessever2/repository/supabase/group_broadcast/group_broadcast.d
 import 'package:chessever2/repository/supabase/group_broadcast/group_tour_repository.dart';
 import 'package:chessever2/screens/for_you/providers/for_you_tab_provider.dart';
 import 'package:chessever2/screens/group_event/providers/live_group_broadcast_id_provider.dart';
+import 'package:chessever2/screens/group_event/smart_event/smart_aggregate_event_provider.dart';
 import 'package:chessever2/screens/group_event/widget/for_you_games_widget.dart';
 import 'package:chessever2/screens/group_event/widget/premium_collection_cards.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_list_view_mode_provider.dart';
@@ -22,6 +23,7 @@ import 'package:chessever2/screens/tour_detail/games_tour/providers/live_rounds_
 import 'package:chessever2/screens/tour_detail/games_tour/providers/live_tour_id_provider.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/widgets/event_card/event_card.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -85,8 +87,11 @@ class _FavoritePlayers extends FavoritePlayersNotifierNew {
 }
 
 class _FavoriteEvents extends FavoriteEventsNotifier {
+  _FavoriteEvents(this.favorites);
+  final List<FavoriteEvent> favorites;
+
   @override
-  Future<List<FavoriteEvent>> build() async => [];
+  Future<List<FavoriteEvent>> build() async => favorites;
 }
 
 class _Database implements AppDatabase {
@@ -157,6 +162,7 @@ ProviderContainer _container({
   required _GameRepository games,
   required _WallClock clock,
   List<Override> extra = const [],
+  List<FavoriteEvent> favoriteEvents = const [],
 }) => ProviderContainer(
   overrides: [
     ...extra,
@@ -173,7 +179,7 @@ ProviderContainer _container({
     liveRoundsIdProvider.overrideWith((ref) => const Stream.empty()),
     liveTourIdProvider.overrideWith((ref) => const Stream.empty()),
     favoritePlayersProviderNew.overrideWith(_FavoritePlayers.new),
-    favoriteEventsProvider.overrideWith(_FavoriteEvents.new),
+    favoriteEventsProvider.overrideWith(() => _FavoriteEvents(favoriteEvents)),
   ],
 );
 
@@ -486,6 +492,99 @@ void main() {
       container.read(forYouTopGamesSnapshotCacheProvider)['event-1']?.hasGames,
       isFalse,
     );
+    expect(find.text('No events available'), findsOneWidget);
+  });
+
+  testWidgets(
+    'Today left mid-request for hours shows its events after resume',
+    (tester) async {
+      // The first feed request never answers: iOS suspended the app with it
+      // in flight.
+      final broadcasts = _BroadcastRepository()
+        ..responses.add(Completer<List<GroupBroadcast>>().future);
+      final clock = _WallClock();
+      final container = _container(
+        broadcasts: broadcasts,
+        games: _GameRepository(),
+        clock: clock,
+        extra: _todayVisible(),
+      );
+
+      await _pumpToday(tester, container);
+      await tester.pump(const Duration(seconds: 1));
+      expect(container.read(forYouEventsProvider).isLoading, isTrue);
+
+      for (final state in [
+        AppLifecycleState.inactive,
+        AppLifecycleState.hidden,
+        AppLifecycleState.paused,
+      ]) {
+        tester.binding.handleAppLifecycleStateChanged(state);
+      }
+      await tester.pump();
+      // Hours in the background; the suspended app's timers do not run.
+      clock.now = clock.now.add(const Duration(hours: 6));
+      for (final state in [
+        AppLifecycleState.hidden,
+        AppLifecycleState.inactive,
+        AppLifecycleState.resumed,
+      ]) {
+        tester.binding.handleAppLifecycleStateChanged(state);
+      }
+      // The resume refresh runs after the first resumed frame.
+      await tester.pump(const Duration(milliseconds: 800));
+      await tester.pump();
+      await tester.pump();
+
+      expect(broadcasts.calls, 2);
+      final resumed = container.read(forYouEventsProvider);
+      expect(resumed.isLoading, isFalse);
+      expect(resumed.error, isNull);
+      expect(find.byType(EventCard), findsOneWidget);
+      expect(find.text('Retry'), findsNothing);
+      expect(await _paintedBelowCollectionCards(tester), greaterThan(10000));
+
+      // The abandoned request's timeout stays silent.
+      await tester.pump(const Duration(seconds: 15));
+      expect(container.read(forYouEventsProvider).error, isNull);
+      expect(find.byType(EventCard), findsOneWidget);
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      container.dispose();
+      await tester.pump(const Duration(seconds: 1));
+    },
+  );
+
+  testWidgets('Today with no events and a dismissed smart card is not blank', (
+    tester,
+  ) async {
+    final smart = FavoriteEvent(
+      id: 'smart-favorite',
+      userId: 'user',
+      eventId: 'smart_event:elite',
+      eventName: 'Elite',
+      metadata: const {'type': 'smart_event', 'minElo': 2600},
+      createdAt: DateTime.utc(2026, 10, 1),
+      updatedAt: DateTime.utc(2026, 10, 1),
+    );
+    final container = _container(
+      broadcasts: _BroadcastRepository()..responses.add(Future.value([])),
+      games: _GameRepository(),
+      clock: _WallClock(),
+      favoriteEvents: [smart],
+      extra: [
+        ..._todayVisible(),
+        dismissedSmartEventCardKeysProvider.overrideWith(
+          (ref) => {SmartEventRequest.fromFavoriteEvent(smart).cardDismissKey},
+        ),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    await _pumpToday(tester, container);
+    await tester.pump(const Duration(milliseconds: 200));
+
+    expect(container.read(forYouEventsProvider).events, isEmpty);
     expect(find.text('No events available'), findsOneWidget);
   });
 }
