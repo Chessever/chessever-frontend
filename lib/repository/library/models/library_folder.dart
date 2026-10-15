@@ -45,12 +45,25 @@ class LibraryFolder with LibraryFolderMappable {
     this.isLikedGames = false,
   });
 
+  /// Old builds seeded every account with "My Database" holding
+  /// "My Subdatabase"; the backend later promoted the parent to a folder.
+  /// Show those untouched seed names with today's Folder/Database wording.
+  /// Display only: the stored row keeps its name until the user edits it.
+  static String _relabelLegacySeedName(String name, String nodeType) {
+    if (nodeType == nodeTypeFolder && name == 'My Database') return 'My Folder';
+    if (nodeType == nodeTypeDatabase && name == 'My Subdatabase') {
+      return 'Database';
+    }
+    return name;
+  }
+
   /// Convert Supabase JSON to LibraryFolder
   factory LibraryFolder.fromSupabase(Map<String, dynamic> json) {
+    final nodeType = json['node_type'] as String? ?? nodeTypeDatabase;
     return LibraryFolder(
       id: json['id'] as String,
       userId: json['user_id'] as String,
-      name: json['name'] as String,
+      name: _relabelLegacySeedName(json['name'] as String, nodeType),
       color: json['color'] as String? ?? '#0FB4E5',
       icon: json['icon'] as String? ?? 'folder',
       orderIndex: json['order_index'] as int? ?? 0,
@@ -58,7 +71,7 @@ class LibraryFolder with LibraryFolderMappable {
       updatedAt: DateTime.parse(json['updated_at'] as String),
       shareToken: json['share_token'] as String?,
       parentId: json['parent_id'] as String?,
-      nodeType: json['node_type'] as String? ?? nodeTypeDatabase,
+      nodeType: nodeType,
       isLikedGames: (json['is_liked_games'] as bool?) ?? false,
     );
   }
