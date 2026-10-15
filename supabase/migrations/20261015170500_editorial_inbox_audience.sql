@@ -1,26 +1,30 @@
--- Audiences for Inbox messages and Nudges, kept private.
+-- Audiences for Inbox messages and Nudges, kept private. ADDITIVE ONLY.
+--
+-- This migration creates new objects and adds one nullable column. It drops,
+-- replaces, updates and deletes nothing that already exists, and grants no new
+-- schema access. Every existing message keeps audience_id null, which the new
+-- checks treat exactly as today: visible to everyone, readable by everyone.
 --
 -- An audience is the admin portal's filters (Premium/free, platform, sign-in
--- method, guest/registered, country, followed player or event, announcements,
--- chosen user ids, a name search). It may name people, so it is stored only in
+-- method, guest/registered, country, followed player or event, chosen user
+-- ids, a name search). It may name people, so it is stored only in
 -- editorial_private.audiences, which no app role can read. Messages and Nudges
 -- refer to an audience by a random id that says nothing about it: a hash of
 -- the filters could be confirmed by hashing a guess ("is it this user?"). The
--- private filters_hash stores equal filters once, so a retried save reuses
--- the same id.
--- No audience (null) means everyone, so existing messages keep today's
--- behaviour.
+-- private filters_hash stores equal filters once, so a retried save reuses the
+-- same id.
 --
--- The row-level policy decides who can read a published message: both list
--- RPCs run as the reader, so every app version, and the unread badge built from
--- the list, follows the audience. Nudges live in Remote Config, which every
--- install can read, so a targeted Nudge there carries only its audience id; the
--- phone asks match_editorial_audiences which ids include the signed-in person.
+-- Who may read a message is narrowed by two RESTRICTIVE policies, added next
+-- to the existing permissive one (which is left untouched). Both list RPCs run
+-- as the reader, so every app version, and the unread badge built from the
+-- list, follows the audience. A trigger keeps a live message's audience fixed,
+-- and another refuses read receipts for messages outside the reader's
+-- audience. Nudges live in Remote Config, which every install can read, so a
+-- targeted Nudge there carries only its audience id; the phone asks
+-- match_editorial_audiences which ids include the signed-in person.
 --
 -- Matching a person calls admin_portal.includes() from the admin portal
--- migration 20261015170000_shared_audiences.sql. PL/pgSQL resolves it when it
--- runs, so this file applies without it; it is needed once a message or Nudge
--- has an audience, and only the admin portal writes those.
+-- migration 20261015170000_shared_audiences.sql. Apply that one first.
 begin;
 set local lock_timeout = '5s';
 
@@ -34,7 +38,7 @@ create table editorial_private.audiences (
 comment on table editorial_private.audiences is
   'Admin portal audience filters behind Inbox messages and Nudges. Private: filters can list user ids.';
 alter table editorial_private.audiences enable row level security;
-revoke all on table editorial_private.audiences from public, anon, authenticated;
+revoke all on table editorial_private.audiences from public, anon, authenticated, service_role;
 
 -- Stores filters once and returns their id; null for everyone. User ids are
 -- lower-cased, de-duplicated and sorted first, so their order never matters.
@@ -67,8 +71,9 @@ begin
 end; $$;
 revoke all on function editorial_private.audience_id(jsonb) from public, anon, authenticated, service_role;
 
--- True when the signed-in reader is in the audience. Everyone (null) includes
--- readers without a session, as before. An unknown id includes nobody.
+-- True when the signed-in reader is in the audience; true for everyone (null).
+-- An unknown id includes nobody. Signed-out callers never reach it: their
+-- policy below admits only messages for everyone.
 create function editorial_private.viewer_in_audience(p_audience_id text)
 returns boolean language plpgsql stable security definer set search_path = '' as $$
 declare v_filters jsonb;
@@ -79,8 +84,7 @@ begin
   return coalesce(admin_portal.includes(auth.uid(), v_filters), false);
 end; $$;
 revoke all on function editorial_private.viewer_in_audience(text) from public, anon, authenticated, service_role;
-grant execute on function editorial_private.viewer_in_audience(text) to anon, authenticated, service_role;
-grant usage on schema editorial_private to anon;
+grant execute on function editorial_private.viewer_in_audience(text) to authenticated, service_role;
 
 -- For the admin portal (service role only): an id for filters, and filters for ids.
 create function public.editorial_audience_id(p_filters jsonb) returns text
@@ -97,50 +101,53 @@ $$;
 revoke all on function public.editorial_audience_filters(text[]) from public, anon, authenticated, service_role;
 grant execute on function public.editorial_audience_filters(text[]) to service_role;
 
+-- Nullable, no default: existing rows stay null (everyone) and the table is not rewritten.
 alter table public.editorial_inbox_messages
   add column audience_id text references editorial_private.audiences(id);
 comment on column public.editorial_inbox_messages.audience_id is
   'Who can read it: editorial_private.audiences id, null for everyone. Part of the content: take the message back, or revise it, to change it.';
 
-drop policy editorial_inbox_visible_messages on public.editorial_inbox_messages;
-create policy editorial_inbox_visible_messages
-  on public.editorial_inbox_messages for select to anon, authenticated
-  using (published_at is not null and published_at <= now()
-    and (audience_id is null or editorial_private.viewer_in_audience(audience_id)));
+-- Restrictive policies are ANDed with the existing permissive policy
+-- editorial_inbox_visible_messages, which stays as it is.
+create policy editorial_inbox_audience_signed_out
+  on public.editorial_inbox_messages as restrictive for select to anon
+  using (audience_id is null);
+create policy editorial_inbox_audience_members
+  on public.editorial_inbox_messages as restrictive for select to authenticated
+  using (audience_id is null or editorial_private.viewer_in_audience(audience_id));
 
-create or replace function public.guard_editorial_inbox_message()
+-- A live message's audience changes only by taking it back or revising it
+-- (which unpublishes and republishes in one transaction).
+create function editorial_private.guard_inbox_audience()
 returns trigger language plpgsql set search_path = '' as $$
 begin
-  if tg_op = 'UPDATE' then
-    if new.id is distinct from old.id or new.created_at is distinct from old.created_at then
-      raise exception 'Editorial message identity is immutable' using errcode = '55000';
-    end if;
-    if old.published_at is not null and
-      row(new.title,new.body,new.body_format,new.image_url,new.action_label,new.action_url,new.audience_id)
-      is distinct from row(old.title,old.body,old.body_format,old.image_url,old.action_label,old.action_url,old.audience_id) then
-      raise exception 'Take back the message before editing' using errcode = '55000';
-    end if;
-    new.revision := old.revision + 1;
-    new.publication_count := old.publication_count;
-  else
-    new.revision := 0;
-    new.publication_count := 0;
+  if old.published_at is not null and new.audience_id is distinct from old.audience_id then
+    raise exception 'Take back the message before editing' using errcode = '55000';
   end if;
-  if new.published_at is not null and
-    (tg_op = 'INSERT' or new.published_at is distinct from old.published_at) then
-    new.published_at := clock_timestamp();
-    if tg_op = 'UPDATE' and old.published_at is not null then
-      new.published_at := greatest(new.published_at, old.published_at + interval '1 microsecond');
-    end if;
-    new.publication_count := new.publication_count + 1;
-    new.publication_id := coalesce(new.publication_id,new.id);
-  end if;
-  if tg_op='UPDATE' and new.published_at is not distinct from old.published_at then
-    new.publication_id:=old.publication_id;
-  end if;
-  new.updated_at := clock_timestamp();
   return new;
 end; $$;
+revoke all on function editorial_private.guard_inbox_audience() from public, anon, authenticated, service_role;
+create trigger editorial_inbox_audience_guard
+  before update of audience_id on public.editorial_inbox_messages
+  for each row execute function editorial_private.guard_inbox_audience();
+
+-- Read receipts only for messages the signed-in reader is meant to see.
+-- Writes without a session (service role, maintenance) are unaffected.
+create function editorial_private.guard_inbox_read_audience()
+returns trigger language plpgsql security definer set search_path = '' as $$
+declare v_target text;
+begin
+  if auth.uid() is null then return new; end if;
+  select audience_id into v_target from public.editorial_inbox_messages where id = new.message_id;
+  if v_target is not null and not editorial_private.viewer_in_audience(v_target) then
+    raise exception 'Message unavailable' using errcode = 'P0002';
+  end if;
+  return new;
+end; $$;
+revoke all on function editorial_private.guard_inbox_read_audience() from public, anon, authenticated, service_role;
+create trigger editorial_inbox_read_audience_guard
+  before insert or update on public.editorial_inbox_reads
+  for each row execute function editorial_private.guard_inbox_read_audience();
 
 create function editorial_private.save_draft_v4(
   p_id uuid, p_expected_revision bigint, p_title text, p_body text,
@@ -177,7 +184,7 @@ grant execute on function public.save_editorial_inbox_draft_v4(uuid,bigint,text,
 
 -- Publishes new content for a live message in one transaction: readers see
 -- the old edition until the new one replaces it, unread, under a new reading
--- identity. A push still pending for the old edition is skipped.
+-- identity. An everyone-push still pending for the old edition is skipped.
 create function editorial_private.revise_edition(
   p_id uuid, p_expected_revision bigint, p_title text, p_body text,
   p_body_format text, p_image_url text, p_action_label text, p_action_url text, p_audience jsonb
@@ -211,25 +218,6 @@ create function public.revise_editorial_inbox(p_id uuid,p_expected_revision bigi
 language sql security invoker set search_path='' as $$ select editorial_private.revise_edition(p_id,p_expected_revision,p_title,p_body,p_body_format,p_image_url,p_action_label,p_action_url,p_audience); $$;
 revoke all on function public.revise_editorial_inbox(uuid,bigint,text,text,text,text,text,text,jsonb) from public,anon,authenticated,service_role;
 grant execute on function public.revise_editorial_inbox(uuid,bigint,text,text,text,text,text,text,jsonb) to service_role;
-
--- Reading receipts only for messages the reader is meant to see.
-create or replace function editorial_private.mark_read(p_message_id uuid,p_expected_published_at timestamptz)
-returns timestamptz language plpgsql security definer set search_path = '' as $$
-declare owner uuid:=auth.uid(); publication timestamptz; result timestamptz; record_id uuid; target text;
-begin
-  if owner is null then raise exception 'Sign in required' using errcode='28000'; end if;
-  select id,published_at,audience_id into record_id,publication,target from public.editorial_inbox_messages
-    where coalesce(publication_id,id)=p_message_id and published_at is not null and published_at<=now() for share;
-  if not found or not editorial_private.viewer_in_audience(target) then
-    raise exception 'Message unavailable' using errcode='P0002';
-  end if;
-  if publication is distinct from p_expected_published_at then raise exception 'Message republished; read the new version' using errcode='55000'; end if;
-  insert into public.editorial_inbox_reads(user_id,message_id,read_at)
-    values(owner,record_id,clock_timestamp()) on conflict(user_id,message_id) do update
-    set read_at=excluded.read_at where editorial_inbox_reads.read_at<publication;
-  select read_at into result from public.editorial_inbox_reads where user_id=owner and message_id=record_id;
-  return result;
-end; $$;
 
 -- Targeted Nudges ship in Remote Config under "targeted" with an audience id.
 -- The phone sends {nudge id: audience id} and shows the nudge ids returned.
