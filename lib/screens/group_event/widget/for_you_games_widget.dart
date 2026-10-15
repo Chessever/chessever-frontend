@@ -42,6 +42,7 @@ import 'package:flutter/material.dart';
 // ignore: unnecessary_import
 import 'package:flutter/rendering.dart' show ScrollCacheExtent;
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:skeletonizer/skeletonizer.dart' show Bone;
 import 'package:chessever2/screens/chessboard/provider/game_pgn_stream_provider.dart';
 
 // Cache ~1.5 viewports for the compact card feed and ~1 viewport for the
@@ -342,10 +343,6 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
       );
     }
 
-    if (events.isEmpty && savedSmartData.isEmpty) {
-      return _buildEmptyState();
-    }
-
     // The smart "Convergence" event only materialises when an ELO/tier filter
     // is applied — it gathers the strongest live games across every broadcast
     // into one card, pinned top-most.
@@ -377,6 +374,23 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
                       ),
                 )
                 .toList(growable: false);
+
+    // Each event section hides itself once its boards resolve empty, and a
+    // dismissed smart card is skipped. When nothing is left to draw and no
+    // further page can follow, the list would hold only the collection cards
+    // above a blank page; say there is nothing instead.
+    final everyEventHidden = ref.watch(
+      forYouTopGamesSnapshotCacheProvider.select(
+        (snapshots) =>
+            events.every((event) => snapshots[event.id]?.hasGames == false),
+      ),
+    );
+    if (everyEventHidden &&
+        (events.isEmpty || !state.hasMore) &&
+        smartData == null &&
+        visibleSavedSmartData.isEmpty) {
+      return _buildEmptyState();
+    }
 
     return RefreshIndicator(
       onRefresh: () async {
@@ -790,16 +804,9 @@ class _TabletColumnSkeleton extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       children: [
         // Event card skeleton
-        SkeletonWidget(
-          child: AspectRatio(
-            aspectRatio: eventCardAspectRatio,
-            child: Container(
-              decoration: BoxDecoration(
-                color: context.colors.surfaceRecessed,
-                borderRadius: BorderRadius.circular(12.br),
-              ),
-            ),
-          ),
+        AspectRatio(
+          aspectRatio: eventCardAspectRatio,
+          child: _SkeletonBlock(radius: 12.br),
         ),
         SizedBox(height: 10.sp),
         // Game card skeletons (2 rows of 2 = 4 total, matching actual content)
@@ -808,31 +815,9 @@ class _TabletColumnSkeleton extends StatelessWidget {
             padding: EdgeInsets.only(bottom: 8.sp),
             child: Row(
               children: [
-                Expanded(
-                  child: SkeletonWidget(
-                    ignoreContainers: true,
-                    child: Container(
-                      height: 72.sp,
-                      decoration: BoxDecoration(
-                        color: context.colors.surfaceRecessed,
-                        borderRadius: BorderRadius.circular(8.br),
-                      ),
-                    ),
-                  ),
-                ),
+                Expanded(child: _SkeletonBlock(height: 72.sp)),
                 SizedBox(width: 8.sp),
-                Expanded(
-                  child: SkeletonWidget(
-                    ignoreContainers: true,
-                    child: Container(
-                      height: 72.sp,
-                      decoration: BoxDecoration(
-                        color: context.colors.surfaceRecessed,
-                        borderRadius: BorderRadius.circular(8.br),
-                      ),
-                    ),
-                  ),
-                ),
+                Expanded(child: _SkeletonBlock(height: 72.sp)),
               ],
             ),
           );
@@ -1110,31 +1095,9 @@ class _ForYouTabletColumnGames extends StatelessWidget {
           padding: EdgeInsets.only(bottom: 8.sp),
           child: Row(
             children: [
-              Expanded(
-                child: SkeletonWidget(
-                  ignoreContainers: true,
-                  child: Container(
-                    height: 72.sp,
-                    decoration: BoxDecoration(
-                      color: context.colors.surfaceRecessed,
-                      borderRadius: BorderRadius.circular(8.br),
-                    ),
-                  ),
-                ),
-              ),
+              Expanded(child: _SkeletonBlock(height: 72.sp)),
               SizedBox(width: 8.sp),
-              Expanded(
-                child: SkeletonWidget(
-                  ignoreContainers: true,
-                  child: Container(
-                    height: 72.sp,
-                    decoration: BoxDecoration(
-                      color: context.colors.surfaceRecessed,
-                      borderRadius: BorderRadius.circular(8.br),
-                    ),
-                  ),
-                ),
-              ),
+              Expanded(child: _SkeletonBlock(height: 72.sp)),
             ],
           ),
         );
@@ -1359,9 +1322,9 @@ class _ForYouEventGames extends ConsumerWidget {
             padding: EdgeInsets.only(bottom: 12.sp),
             child: Row(
               children: [
-                Expanded(child: _GameSkeletonBox(height: 72.sp)),
+                Expanded(child: _SkeletonBlock(height: 72.sp)),
                 SizedBox(width: 12.sp),
-                Expanded(child: _GameSkeletonBox(height: 72.sp)),
+                Expanded(child: _SkeletonBlock(height: 72.sp)),
               ],
             ),
           );
@@ -1373,28 +1336,32 @@ class _ForYouEventGames extends ConsumerWidget {
       children: List.generate(kGamesPerEvent, (index) {
         return Padding(
           padding: EdgeInsets.only(bottom: 12.sp),
-          child: _GameSkeletonBox(height: 72.sp),
+          child: _SkeletonBlock(height: 72.sp),
         );
       }),
     );
   }
 }
 
-class _GameSkeletonBox extends StatelessWidget {
-  const _GameSkeletonBox({required this.height});
+/// One placeholder block of the Today skeleton.
+///
+/// Drawn as a skeletonizer [Bone] because [SkeletonWidget] ignores
+/// containers: a decorated `Container` inside it paints nothing at all, which
+/// left the loading feed blank below the collection cards.
+class _SkeletonBlock extends StatelessWidget {
+  /// A null [height] fills the parent, e.g. an [AspectRatio].
+  const _SkeletonBlock({this.height, this.radius});
 
-  final double height;
+  final double? height;
+  final double? radius;
 
   @override
   Widget build(BuildContext context) {
     return SkeletonWidget(
-      ignoreContainers: true,
-      child: Container(
+      child: Bone(
+        width: double.infinity,
         height: height,
-        decoration: BoxDecoration(
-          color: context.colors.surfaceRecessed,
-          borderRadius: BorderRadius.circular(8.br),
-        ),
+        borderRadius: BorderRadius.circular(radius ?? 8.br),
       ),
     );
   }
@@ -1461,20 +1428,14 @@ class _ForYouEventSkeleton extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         // Event card skeleton
-        SkeletonWidget(
-          child: Container(
-            margin: EdgeInsets.only(top: isFirst ? 0 : 16.sp, bottom: 12.sp),
-            height: 80.sp,
-            decoration: BoxDecoration(
-              color: context.colors.surfaceRecessed,
-              borderRadius: BorderRadius.circular(8.br),
-            ),
-          ),
+        Padding(
+          padding: EdgeInsets.only(top: isFirst ? 0 : 16.sp, bottom: 12.sp),
+          child: _SkeletonBlock(height: 80.sp),
         ),
         ...List.generate(kGamesPerEvent, (index) {
           return Padding(
             padding: EdgeInsets.only(bottom: 12.sp),
-            child: _GameSkeletonBox(height: 72.sp),
+            child: _SkeletonBlock(height: 72.sp),
           );
         }),
       ],
