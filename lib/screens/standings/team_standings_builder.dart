@@ -14,7 +14,9 @@ import 'package:chessever2/utils/team_scoring_rules.dart';
 /// - **Match:** the set of games in one round between one unordered team pair,
 ///   keyed by `(roundId, sorted team pair)`.
 /// - **Match points (MP):** counted only for a *completed* match (every present
-///   board finished): more board points → 2, equal → 1, fewer → 0. A match with
+///   board finished): more board points → 2, equal → 1, fewer → 0. Published
+///   double forfeits complete the board with zero points for both sides; an
+///   entirely forfeited match is a loss for both teams. A match with
 ///   any ongoing board contributes GP but no MP yet — provisional-safe and
 ///   aligned with how chess-results / lichess post team results.
 /// - **Rank:** MP desc → GP desc → team name asc.
@@ -43,9 +45,13 @@ List<TeamStandingModel> buildTeamStandings({
     bSide.total++;
 
     final status = g.gameStatus;
-    if (!status.isFinished) continue; // ongoing/unknown: no GP, no board count
+    if (!status.isFinished && !g.isDoubleForfeit) continue;
     wSide.finished++;
     bSide.finished++;
+    if (g.isDoubleForfeit) {
+      wSide.forfeited++;
+      bSide.forfeited++;
+    }
     final pts = _boardPoints(g, scoring);
     wSide.points += pts.white;
     bSide.points += pts.black;
@@ -61,17 +67,24 @@ List<TeamStandingModel> buildTeamStandings({
 
     agg.putIfAbsent(aName, () => _TeamAgg())
       ..gamePoints += a.points
-      ..boardsPlayed += a.finished;
+      ..boardsPlayed += a.finished - a.forfeited;
     agg.putIfAbsent(bName, () => _TeamAgg())
       ..gamePoints += b.points
-      ..boardsPlayed += b.finished;
+      ..boardsPlayed += b.finished - b.forfeited;
 
     // Match points only when the match is fully decided.
     final complete =
         a.total > 0 && a.finished == a.total && b.finished == b.total;
     if (!complete) continue;
     final aAgg = agg[aName]!, bAgg = agg[bName]!;
-    if (a.points > b.points) {
+    if (a.forfeited == a.total && b.forfeited == b.total) {
+      aAgg
+        ..mp += scoring.matchLoss
+        ..lost += 1;
+      bAgg
+        ..mp += scoring.matchLoss
+        ..lost += 1;
+    } else if (a.points > b.points) {
       aAgg
         ..mp += scoring.matchWin
         ..won += 1;
@@ -203,6 +216,10 @@ class TeamMatch {
 
   TeamMatchResult get result {
     if (!complete) return TeamMatchResult.ongoing;
+    if (boardGames.isNotEmpty &&
+        boardGames.every((board) => board.game.isDoubleForfeit)) {
+      return TeamMatchResult.loss;
+    }
     if (ourPoints > opponentPoints) return TeamMatchResult.win;
     if (ourPoints < opponentPoints) return TeamMatchResult.loss;
     return TeamMatchResult.draw;
@@ -269,7 +286,9 @@ List<TeamMatch> buildTeamMatches({
     final ourCard = isWhiteOurs ? g.whitePlayer : g.blackPlayer;
     final oppCard = isWhiteOurs ? g.blackPlayer : g.whitePlayer;
     final status = g.gameStatus;
-    final boardResult = _boardResultFor(status, isWhiteOurs);
+    final boardResult = g.isDoubleForfeit
+        ? TeamMatchResult.loss
+        : _boardResultFor(status, isWhiteOurs);
     boardsOf
         .putIfAbsent(key, () => <TeamBoardGame>[])
         .add(
@@ -286,7 +305,7 @@ List<TeamMatch> buildTeamMatches({
           ),
         );
 
-    if (!status.isFinished) continue;
+    if (!status.isFinished && !g.isDoubleForfeit) continue;
     ours.finished++;
     theirs.finished++;
     final pts = _boardPoints(g, scoring);
@@ -385,6 +404,7 @@ String _half(double v) =>
   GamesTourModel g,
   TeamScoringRules scoring,
 ) {
+  if (g.isDoubleForfeit) return (white: 0, black: 0);
   final status = g.gameStatus;
   final standardWhite = standardResultValueForSide(status, isWhite: true);
   final standardBlack = standardResultValueForSide(status, isWhite: false);
@@ -425,6 +445,7 @@ class _TeamAgg {
 }
 
 class _MatchSide {
+  int forfeited = 0;
   double points = 0; // finished-board points for this team in this match
   int finished = 0; // finished boards
   int total = 0; // present boards
