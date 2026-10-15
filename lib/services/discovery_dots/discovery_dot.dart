@@ -134,7 +134,8 @@ List<DiscoveryDot> parseDiscoveryDots(String raw) {
   return dots;
 }
 
-/// The admin console's audience ids: SHA-256 hex of the stored filters.
+/// The admin console's audience ids: 64 random hex characters, saying
+/// nothing about who the audience is.
 final _discoveryAudienceId = RegExp(r'^[0-9a-f]{64}$');
 
 DiscoveryDot? _readDot(

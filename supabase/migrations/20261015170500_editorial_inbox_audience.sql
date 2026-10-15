@@ -4,8 +4,10 @@
 -- method, guest/registered, country, followed player or event, announcements,
 -- chosen user ids, a name search). It may name people, so it is stored only in
 -- editorial_private.audiences, which no app role can read. Messages and Nudges
--- refer to an audience by its id: the SHA-256 of the normalised filters, so the
--- same filters always get the same id and a retried save stores nothing new.
+-- refer to an audience by a random id that says nothing about it: a hash of
+-- the filters could be confirmed by hashing a guess ("is it this user?"). The
+-- private filters_hash stores equal filters once, so a retried save reuses
+-- the same id.
 -- No audience (null) means everyone, so existing messages keep today's
 -- behaviour.
 --
@@ -26,6 +28,7 @@ create table editorial_private.audiences (
   id text primary key constraint editorial_audience_id check (id ~ '^[0-9a-f]{64}$'),
   filters jsonb not null constraint editorial_audience_filters
     check (jsonb_typeof(filters) = 'object' and filters <> '{}'::jsonb),
+  filters_hash bytea not null unique,
   created_at timestamptz not null default now()
 );
 comment on table editorial_private.audiences is
@@ -37,7 +40,7 @@ revoke all on table editorial_private.audiences from public, anon, authenticated
 -- lower-cased, de-duplicated and sorted first, so their order never matters.
 create function editorial_private.audience_id(p_filters jsonb)
 returns text language plpgsql security definer set search_path = '' as $$
-declare v_id text;
+declare v_id text; v_hash bytea;
 begin
   if p_filters is null or p_filters = '{}'::jsonb then return null; end if;
   if jsonb_typeof(p_filters) <> 'object' then
@@ -51,8 +54,15 @@ begin
       select coalesce(jsonb_agg(v order by v), '[]'::jsonb)
       from (select distinct lower(value) as v from jsonb_array_elements_text(p_filters->'userIds')) ids));
   end if;
-  v_id := encode(sha256(convert_to(p_filters::text, 'UTF8')), 'hex');
-  insert into editorial_private.audiences(id, filters) values (v_id, p_filters) on conflict (id) do nothing;
+  v_hash := sha256(convert_to(p_filters::text, 'UTF8'));
+  select id into v_id from editorial_private.audiences where filters_hash = v_hash;
+  if found then return v_id; end if;
+  insert into editorial_private.audiences(id, filters, filters_hash)
+    values (replace(gen_random_uuid()::text || gen_random_uuid()::text, '-', ''), p_filters, v_hash)
+    on conflict (filters_hash) do nothing returning id into v_id;
+  if v_id is null then
+    select id into v_id from editorial_private.audiences where filters_hash = v_hash;
+  end if;
   return v_id;
 end; $$;
 revoke all on function editorial_private.audience_id(jsonb) from public, anon, authenticated, service_role;
