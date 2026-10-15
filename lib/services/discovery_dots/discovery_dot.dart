@@ -58,6 +58,7 @@ class DiscoveryDot {
     this.message,
     this.label,
     this.messages = const [],
+    this.audienceId,
   });
 
   /// Stable name of the campaign. Dismissals are remembered against it.
@@ -77,6 +78,13 @@ class DiscoveryDot {
   final String? label;
   final List<DiscoveryNudgeMessage> messages;
 
+  /// Who the dot is for: the id of an admin console audience, null for
+  /// everyone. The filters behind it stay on the server, since they can list
+  /// people; see `match_editorial_audiences`.
+  final String? audienceId;
+
+  bool get targeted => audienceId != null;
+
   List<DiscoveryNudgeMessage> get tooltipMessages => messages.isNotEmpty
       ? messages
       : message == null
@@ -87,6 +95,11 @@ class DiscoveryDot {
 /// Reads the Remote Config value. Anything malformed is dropped entry by
 /// entry, so one bad row published from the console never hides the others
 /// and never throws into the UI.
+///
+/// Dots for everyone are under `dots`. Dots for an audience are under
+/// `targeted`, each with an `audience_id`; builds before audiences never read
+/// it, so they never show a dot meant for someone else. A targeted row without
+/// a readable audience id is damaged and dropped, never shown to everyone.
 List<DiscoveryDot> parseDiscoveryDots(String raw) {
   if (raw.trim().isEmpty) return const [];
   final Object? decoded;
@@ -95,51 +108,84 @@ List<DiscoveryDot> parseDiscoveryDots(String raw) {
   } on FormatException {
     return const [];
   }
-  final rows = decoded is Map<String, dynamic> ? decoded['dots'] : null;
-  if (rows is! List) return const [];
-
+  if (decoded is! Map<String, dynamic>) return const [];
   final dots = <DiscoveryDot>[];
   final ids = <String>{};
-  for (final row in rows) {
-    if (row is! Map<String, dynamic>) continue;
-    final id = row['id'];
-    final target = row['target'];
-    final rev = row['rev'];
-    if (id is! String || id.isEmpty || id.contains('@')) continue;
-    if (target is! String || target.isEmpty) continue;
-    if (rev is! int || rev < 1) continue;
-    if (row['enabled'] == false) continue;
-    if (!ids.add(id)) continue;
-    final trail = row['trail'];
-    final message = row['message'];
-    final rawMessages = row['messages'];
-    final messages = rawMessages is List
-        ? [
-            for (final raw in rawMessages.take(discoveryNudgeMessagesMax))
-              if (_readMessage(raw) case final parsed?) parsed,
-          ]
-        : <DiscoveryNudgeMessage>[];
-    dots.add(
-      DiscoveryDot(
-        id: id,
-        rev: rev,
-        target: target,
-        trail: trail is List
-            ? [
-                for (final hop in trail)
-                  if (hop is String && hop.isNotEmpty && hop != target) hop,
-              ]
-            : const [],
-        message: message is String && message.trim().isNotEmpty
-            ? message.trim()
-            : null,
-        label: discoveryNudgeLabel(row['label']),
-        messages: messages,
-      ),
-    );
+  void read(Object? rows, {required bool targeted}) {
+    if (rows is! List) return;
+    for (final row in rows) {
+      if (row is! Map<String, dynamic>) continue;
+      final audienceId = row['audience_id'];
+      if (targeted &&
+          (audienceId is! String ||
+              !_discoveryAudienceId.hasMatch(audienceId))) {
+        continue;
+      }
+      final dot = _readDot(
+        row,
+        audienceId: targeted ? audienceId as String : null,
+      );
+      if (dot != null && ids.add(dot.id)) dots.add(dot);
+    }
   }
+
+  read(decoded['dots'], targeted: false);
+  read(decoded['targeted'], targeted: true);
   return dots;
 }
+
+/// The admin console's audience ids: SHA-256 hex of the stored filters.
+final _discoveryAudienceId = RegExp(r'^[0-9a-f]{64}$');
+
+DiscoveryDot? _readDot(
+  Map<String, dynamic> row, {
+  required String? audienceId,
+}) {
+  final id = row['id'];
+  final target = row['target'];
+  final rev = row['rev'];
+  if (id is! String || id.isEmpty || id.contains('@')) return null;
+  if (target is! String || target.isEmpty) return null;
+  if (rev is! int || rev < 1) return null;
+  if (row['enabled'] == false) return null;
+  final trail = row['trail'];
+  final message = row['message'];
+  final rawMessages = row['messages'];
+  final messages = rawMessages is List
+      ? [
+          for (final raw in rawMessages.take(discoveryNudgeMessagesMax))
+            if (_readMessage(raw) case final parsed?) parsed,
+        ]
+      : <DiscoveryNudgeMessage>[];
+  return DiscoveryDot(
+    id: id,
+    rev: rev,
+    target: target,
+    trail: trail is List
+        ? [
+            for (final hop in trail)
+              if (hop is String && hop.isNotEmpty && hop != target) hop,
+          ]
+        : const [],
+    message: message is String && message.trim().isNotEmpty
+        ? message.trim()
+        : null,
+    label: discoveryNudgeLabel(row['label']),
+    messages: messages,
+    audienceId: audienceId,
+  );
+}
+
+/// The dots this person sees: every dot for everyone, and the targeted dots
+/// whose ids the server matched. Unknown membership ([matched] null) shows
+/// no targeted dot.
+List<DiscoveryDot> visibleDiscoveryDots(
+  List<DiscoveryDot> dots,
+  Set<String>? matched,
+) => [
+  for (final dot in dots)
+    if (!dot.targeted || (matched?.contains(dot.id) ?? false)) dot,
+];
 
 /// Key under which passing one hop of a trail is remembered. The dot's own id
 /// (no `@`) is the key for having reached the target.

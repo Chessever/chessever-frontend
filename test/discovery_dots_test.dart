@@ -39,7 +39,23 @@ class _MemoryStore implements DiscoveryDotsSeenStore {
   Future<void> write(Map<String, int> value) async => seen = value;
 }
 
-String _config(List<Map<String, Object?>> dots) => jsonEncode({'dots': dots});
+String _config(
+  List<Map<String, Object?>> dots, [
+  List<Map<String, Object?>> targeted = const [],
+]) => jsonEncode({'dots': dots, if (targeted.isNotEmpty) 'targeted': targeted});
+
+class _FakeMatcher implements DiscoveryAudienceMatcher {
+  _FakeMatcher(this.answer);
+
+  Set<String> Function(Map<String, String> audiences) answer;
+  final asked = <Map<String, String>>[];
+
+  @override
+  Future<Set<String>> match(Map<String, String> audiences) async {
+    asked.add(audiences);
+    return answer(audiences);
+  }
+}
 
 const _feed = {
   'id': 'feed',
@@ -507,6 +523,144 @@ void main() {
         expect(rects(), bare);
       }
       expect(tester.takeException(), isNull);
+    });
+  });
+
+  group('audiences', () {
+    final premiumAudience = 'a' * 64;
+    final androidAudience = 'b' * 64;
+    final premium = {
+      'id': 'premium-reports',
+      'rev': 1,
+      'target': 'discovery.tile.reports',
+      'audience_id': premiumAudience,
+    };
+    final android = {
+      'id': 'android-prep',
+      'rev': 1,
+      'target': 'my_space.tile.my_prep',
+      'audience_id': androidAudience,
+    };
+
+    test('targeted rows carry their audience id; damaged ones are dropped', () {
+      final dots = parseDiscoveryDots(
+        _config(
+          [_feed],
+          [
+            premium,
+            {...android, 'audience_id': ''},
+            {...android, 'id': 'no-audience', 'audience_id': null},
+            {...android, 'id': 'short-id', 'audience_id': 'premium'},
+            {
+              ...android,
+              'id': 'inline-filters',
+              'audience_id': null,
+              'audience': {'platform': 'android'},
+            },
+            {...premium, 'target': 'duplicate.id'},
+          ],
+        ),
+      );
+      expect(dots.map((d) => d.id), ['feed', 'premium-reports']);
+      expect(dots.first.targeted, isFalse);
+      expect(dots.last.audienceId, premiumAudience);
+    });
+
+    test('a targeted dot shows only once the server matched it', () {
+      final dots = parseDiscoveryDots(_config([_feed], [premium, android]));
+      ids(Set<String>? matched) =>
+          visibleDiscoveryDots(dots, matched).map((d) => d.id);
+      expect(ids(null), ['feed']);
+      expect(ids({}), ['feed']);
+      expect(ids({'premium-reports'}), ['feed', 'premium-reports']);
+    });
+
+    Future<(ProviderContainer, _FakeSource, _FakeMatcher)> load({
+      required String? viewer,
+      required Set<String> Function(Map<String, String>) answer,
+      List<Map<String, Object?>>? targeted,
+    }) async {
+      targeted ??= [premium, android];
+      final source = _FakeSource(_config([_feed], targeted));
+      final matcher = _FakeMatcher(answer);
+      final container = ProviderContainer(
+        overrides: [
+          discoveryDotsSourceProvider.overrideWithValue(source),
+          discoveryDotsSeenStoreProvider.overrideWithValue(_MemoryStore()),
+          discoveryAudienceMatcherProvider.overrideWithValue(matcher),
+          discoveryAudienceViewerProvider.overrideWith((ref) => viewer),
+        ],
+      );
+      addTearDown(container.dispose);
+      container.listen(discoveryDotsProvider, (_, _) {});
+      await pumpEventQueue();
+      return (container, source, matcher);
+    }
+
+    test(
+      'lights the targeted dots the server matched for this person',
+      () async {
+        final (container, _, matcher) = await load(
+          viewer: 'user-1',
+          answer: (_) => {'premium-reports'},
+        );
+        final lit = container.read(discoveryDotsProvider).lit;
+        expect(lit, contains('discovery.tile.reports'));
+        expect(lit, isNot(contains('my_space.tile.my_prep')));
+        expect(lit, contains('home.tab.discovery'));
+        expect(matcher.asked.last, {
+          'premium-reports': premiumAudience,
+          'android-prep': androidAudience,
+        });
+        // The cached and fetched config are the same: one question, not two.
+        expect(matcher.asked, hasLength(1));
+      },
+    );
+
+    test('hides targeted dots with no account or a failed check', () async {
+      final signedOut = await load(
+        viewer: null,
+        answer: (_) => {'premium-reports'},
+      );
+      expect(signedOut.$3.asked, isEmpty);
+      expect(
+        signedOut.$1.read(discoveryDotsProvider).lit,
+        isNot(contains('discovery.tile.reports')),
+      );
+      final failing = await load(
+        viewer: 'user-1',
+        answer: (_) => throw StateError('offline'),
+      );
+      expect(failing.$1.read(discoveryDotsProvider).lit, {
+        'home.tab.discovery',
+        'home.nav.home',
+      });
+    });
+
+    test('asks again when the published audiences change', () async {
+      final (container, source, matcher) = await load(
+        viewer: 'user-1',
+        answer: (audiences) => audiences.keys.toSet(),
+      );
+      expect(
+        container.read(discoveryDotsProvider).lit,
+        containsAll(['discovery.tile.reports', 'my_space.tile.my_prep']),
+      );
+      matcher.answer = (_) => {};
+      source.controller.add(
+        _config(
+          [_feed],
+          [
+            {...premium, 'audience_id': 'c' * 64},
+          ],
+        ),
+      );
+      await pumpEventQueue();
+      expect(matcher.asked, hasLength(2));
+      expect(
+        container.read(discoveryDotsProvider).lit,
+        isNot(contains('discovery.tile.reports')),
+      );
     });
   });
 }

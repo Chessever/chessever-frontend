@@ -2,9 +2,17 @@
 
 ## Scope and audience
 
-- Editorial plain-text messages from the ChessEver team to **everyone**, including
+- Editorial messages from the ChessEver team to **everyone** by default, including
   existing Supabase `signInAnonymously` guests. This is not an account-sign-in gate,
-  a reply/chat system, a recipient list, Premium targeting or a push subscription.
+  a reply/chat system or a push subscription.
+- A message may have an **audience** (`20261015170500_editorial_inbox_audience.sql`):
+  the admin portal's audience filters (Premium/free, platform, sign-in method,
+  guest/registered, country, followed player or event, specific user ids). The
+  filters live in `editorial_private.audiences`, which no app role can read; a
+  message carries only `audience_id`. The row-level policy applies it, so
+  `list_editorial_inbox` (v1 and v2), the unread badge built from the list, and
+  read receipts follow it on every app version with no client change.
+  Membership is checked on each fetch, not frozen at publication.
 - Publication makes one shared message visible in Inbox; **no push, email,
   OneSignal call, send queue or per-recipient fan-out** is implemented.
 - A read means that this exact message was opened and the server successfully
