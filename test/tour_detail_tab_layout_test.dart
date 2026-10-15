@@ -14,11 +14,12 @@ void main() {
       ]);
     });
 
-    test('individual knockouts hide Standings', () {
+    test('individual knockouts retain Standings alongside Bracket', () {
       expect(knockoutTournamentDetailModes, const [
         TournamentDetailScreenMode.about,
         TournamentDetailScreenMode.games,
         TournamentDetailScreenMode.bracket,
+        TournamentDetailScreenMode.standings,
       ]);
     });
 
@@ -44,11 +45,15 @@ void main() {
           knockoutTournamentDetailModes,
           TournamentDetailScreenMode.standings,
         ),
-        1,
+        3,
       );
       expect(
         tournamentDetailModeForPage(knockoutTournamentDetailModes, 2),
         TournamentDetailScreenMode.bracket,
+      );
+      expect(
+        tournamentDetailModeForPage(knockoutTournamentDetailModes, 3),
+        TournamentDetailScreenMode.standings,
       );
       expect(
         tournamentDetailModeForPage(teamTournamentDetailModes, 2),
@@ -95,6 +100,32 @@ void main() {
           TournamentDetailScreenMode.standings,
         ),
         TournamentDetailLayout.regular,
+      );
+    });
+
+    test('a Standings deep link survives resolved knockout detection', () {
+      final tracker = TournamentDetailLayoutTracker();
+      final selectedMode = tournamentDetailModeFromTabQuery('standings')!;
+      tracker.resolve(
+        tourId: 'ranked-knockout',
+        isDetectionPending: true,
+        unresolvedLayout: provisionalTournamentDetailLayoutForMode(
+          selectedMode,
+        ),
+      );
+      final layout = tracker.resolve(
+        tourId: 'ranked-knockout',
+        isKnockout: true,
+      );
+      final modes = tournamentDetailModesFor(layout);
+
+      expect(normalizeTournamentDetailMode(modes, selectedMode), selectedMode);
+      expect(
+        tournamentDetailModeForPage(
+          modes,
+          tournamentDetailPageForMode(modes, selectedMode),
+        ),
+        selectedMode,
       );
     });
   });
@@ -310,6 +341,17 @@ void main() {
       expect(
         tournamentDetailSearchVisibility(knockoutTournamentDetailModes, 2),
         0,
+      );
+    });
+
+    test('search returns when moving from Bracket to Standings', () {
+      expect(
+        tournamentDetailSearchVisibility(knockoutTournamentDetailModes, 2.5),
+        0.5,
+      );
+      expect(
+        tournamentDetailSearchVisibility(knockoutTournamentDetailModes, 3),
+        1,
       );
     });
 
