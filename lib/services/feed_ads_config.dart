@@ -4,7 +4,7 @@ import 'package:chessever2/config/app_environment.dart';
 import 'package:flutter/foundation.dart';
 
 /// Feed's in-feed ad: an inline adaptive banner on a page of its own between
-/// posts, for viewers without Premium access. See docs/feed-ads.md.
+/// posts, for viewers without a paid subscription. See docs/feed-ads.md.
 abstract final class FeedAdsConfig {
   static const enabled = bool.fromEnvironment(
     'FEED_ADS_ENABLED',

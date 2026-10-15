@@ -269,13 +269,13 @@ With ten saved games, a new single or bulk save must request a subscription.
 
 Feed is open to every viewer: no Watch ad / Upgrade chooser stands between
 posts, and free visits restore the last post like any other. Viewers without
-paid or active rewarded access see an ad page after every fifth post instead
+a paid subscription see non-rewarded ads at positions 3, 8, 13… instead
 (see `docs/feed-ads.md`). Feed features that need Premium inside a post keep
 their own gates.
 
 Device check: on a free account, swipe through ten posts; no chooser opens and
-an ad page follows the fifth. Subscribe and verify the ad pages leave without
-moving the post on screen.
+ads appear at positions 3 and 8. Temporary rewarded access keeps Feed ads.
+Subscribe and verify the ad pages leave without moving the post on screen.
 
 ## Smart Events and My Likes game access
 

@@ -55,8 +55,8 @@ import 'package:motor/motor.dart';
 /// After the last post stands one more page ([FeedTail]): the next post's
 /// skeleton while more can load, the end of the feed once nothing is left.
 ///
-/// Feed is open to everyone. A viewer without Premium access gets an ad page
-/// after every few posts ([feedPagesProvider], [FeedAdPage]) and swipes past
+/// Feed is open to everyone. A viewer without a paid subscription gets an ad page
+/// at positions 3, 8, 13… ([feedPagesProvider], [FeedAdPage]) and swipes past
 /// it like any post: no prompt ever stands between them and the next one.
 class FeedScreen extends ConsumerStatefulWidget {
   const FeedScreen({super.key});
@@ -408,7 +408,7 @@ class _FeedScreenState extends ConsumerState<FeedScreen>
   /// * Posts arrived while they sat on the tail: the skeleton they were
   ///   looking at is now a page, in place, and becomes the current one (its
   ///   key remembered, the pages after it asked for) as if swiped onto.
-  /// * An ad page joined or left before them (Premium access began or
+  /// * An ad page joined or left before them (a subscription began or
   ///   ended, an ad found no fill): Feed moves with their page, so it
   ///   neither slides away nor is visited anew.
   /// * The ad page they were on was withdrawn: the post after it takes its
