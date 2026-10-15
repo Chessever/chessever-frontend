@@ -1,5 +1,7 @@
 import 'dart:async';
 
+import 'package:chessever2/chat/botvinnik_inbox_section.dart';
+
 import 'package:chessever2/chat/botvinnik_icon.dart';
 import 'package:chessever2/chat/chat_api.dart';
 import 'package:chessever2/chat/botvinnik_provider.dart';
@@ -124,6 +126,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   bool _loading = true;
   bool _sending = false;
   bool _upgradeOpen = false;
+  bool _drawerOpen = false;
   final Set<String> _feedbackPending = {};
   String? _appVersion;
   String? _buildNumber;
@@ -630,6 +633,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     );
     return Scaffold(
       key: _scaffoldKey,
+      onDrawerChanged: (open) => setState(() => _drawerOpen = open),
       drawer: _ConversationDrawer(
         conversations: _conversations,
         selectedId: _selected?.id,
@@ -702,68 +706,75 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       ),
       body: ColoredBox(
         color: Theme.of(context).colorScheme.surface,
-        child: Column(
-          children: [
-            if (_error != null)
-              MaterialBanner(
-                content: Text(_error!),
-                actions: [
-                  TextButton(
-                    onPressed: () => setState(() => _error = null),
-                    child: const Text('Dismiss'),
-                  ),
-                ],
+        child: LayoutBuilder(
+          builder: (context, constraints) => Column(
+            children: [
+              BotvinnikInboxSection(
+                maxHeight: constraints.maxHeight * 0.35,
+                exposed: !_drawerOpen,
               ),
-            Expanded(
-              child: _loading
-                  ? Center(
-                      child: CircularProgressIndicator(
-                        color: context.colors.accentText,
-                      ),
-                    )
-                  : _messages.isEmpty
-                  ? _EmptyChat(
-                      suggestions: chatSuggestionsForScreen(
-                        widget.screenContext?.screen,
-                      ),
-                      isTournamentContext:
-                          widget.screenContext?.screen == 'tournament' ||
-                          widget.screenContext?.screen == 'event',
-                      onSuggestionPressed: _sendSuggestion,
-                    )
-                  : ListView.builder(
-                      controller: _scrollController,
-                      keyboardDismissBehavior:
-                          ScrollViewKeyboardDismissBehavior.onDrag,
-                      padding: const EdgeInsets.fromLTRB(16, 20, 16, 24),
-                      itemCount: _messages.length,
-                      itemBuilder: (context, index) => ChatMessageBubble(
-                        key: ValueKey(_messages[index].id),
-                        message: _messages[index],
-                        isStreaming: _sending && index == _messages.length - 1,
-                        feedbackPending: _feedbackPending.contains(
-                          _messages[index].id,
-                        ),
-                        onReferencePressed: _openReference,
-                        onFeedbackPressed: _setFeedback,
-                      ),
+              if (_error != null)
+                MaterialBanner(
+                  content: Text(_error!),
+                  actions: [
+                    TextButton(
+                      onPressed: () => setState(() => _error = null),
+                      child: const Text('Dismiss'),
                     ),
-            ),
-            switch (composerAccess) {
-              ChatComposerAccess.signedOut => _ChatLoginGate(
-                onSignIn: _showLogin,
+                  ],
+                ),
+              Expanded(
+                child: _loading
+                    ? Center(
+                        child: CircularProgressIndicator(
+                          color: context.colors.accentText,
+                        ),
+                      )
+                    : _messages.isEmpty
+                    ? _EmptyChat(
+                        suggestions: chatSuggestionsForScreen(
+                          widget.screenContext?.screen,
+                        ),
+                        isTournamentContext:
+                            widget.screenContext?.screen == 'tournament' ||
+                            widget.screenContext?.screen == 'event',
+                        onSuggestionPressed: _sendSuggestion,
+                      )
+                    : ListView.builder(
+                        controller: _scrollController,
+                        keyboardDismissBehavior:
+                            ScrollViewKeyboardDismissBehavior.onDrag,
+                        padding: const EdgeInsets.fromLTRB(16, 20, 16, 24),
+                        itemCount: _messages.length,
+                        itemBuilder: (context, index) => ChatMessageBubble(
+                          key: ValueKey(_messages[index].id),
+                          message: _messages[index],
+                          isStreaming:
+                              _sending && index == _messages.length - 1,
+                          feedbackPending: _feedbackPending.contains(
+                            _messages[index].id,
+                          ),
+                          onReferencePressed: _openReference,
+                          onFeedbackPressed: _setFeedback,
+                        ),
+                      ),
               ),
-              ChatComposerAccess.exhausted => const _ChatDailyLimitNotice(),
-              // An account with no allowance keeps the composer: _send opens
-              // the Premium popup when the message is sent.
-              ChatComposerAccess.upgradeRequired ||
-              ChatComposerAccess.enabled => _ChatComposer(
-                controller: _controller,
-                sending: _sending,
-                onSend: _send,
-              ),
-            },
-          ],
+              switch (composerAccess) {
+                ChatComposerAccess.signedOut => _ChatLoginGate(
+                  onSignIn: _showLogin,
+                ),
+                ChatComposerAccess.exhausted => const _ChatDailyLimitNotice(),
+                // An account with no allowance keeps the composer: _send opens
+                // the Premium popup when the message is sent.
+                ChatComposerAccess.upgradeRequired ||
+                ChatComposerAccess.enabled => _ChatComposer(
+                  controller: _controller,
+                  sending: _sending,
+                  onSend: _send,
+                ),
+              },
+            ],
+          ),
         ),
       ),
     );

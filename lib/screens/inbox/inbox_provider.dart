@@ -362,3 +362,12 @@ final inboxAvailableProvider = Provider<bool>(
     ),
   ),
 );
+
+/// One shared count for every Botvinnik launcher, based on confirmed reads.
+final inboxUnreadCountProvider = Provider<int>(
+  (ref) => ref.watch(
+    inboxProvider.select(
+      (state) => state.messages.where((message) => message.isUnread).length,
+    ),
+  ),
+);

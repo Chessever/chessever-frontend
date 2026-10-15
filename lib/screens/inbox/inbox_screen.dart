@@ -425,9 +425,56 @@ class _InboxMessageScreenState extends ConsumerState<InboxMessageScreen> {
         ),
       );
     }
+    return _inboxShell(
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: _readingWidth),
+          child: SingleChildScrollView(
+            padding: EdgeInsets.only(
+              top: 12.h,
+              bottom: MediaQuery.viewPaddingOf(context).bottom + 40.h,
+            ),
+            child: InboxMessageContent(
+              message: message,
+              onLink: _openLink,
+              markError: state.markErrors[message.id],
+              cacheError: state.cacheError,
+              onRetryRead: () => controller.markOpened(message.id),
+              onRetryCache: controller.refresh,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// The same full editorial content in Inbox details and temporary chat notices.
+class InboxMessageContent extends StatelessWidget {
+  const InboxMessageContent({
+    super.key,
+    required this.message,
+    required this.onLink,
+    this.bodyKey,
+    this.markError,
+    this.cacheError,
+    this.onRetryRead,
+    this.onRetryCache,
+  });
+
+  final InboxMessage message;
+  final Future<void> Function(Uri) onLink;
+  final Key? bodyKey;
+  final String? markError;
+  final String? cacheError;
+  final VoidCallback? onRetryRead;
+  final VoidCallback? onRetryCache;
+
+  @override
+  Widget build(BuildContext context) {
     final colors = context.colors;
-    final markError = state.markErrors[message.id];
-    final cacheError = state.cacheError;
+    final markError = this.markError;
+    final cacheError = this.cacheError;
     final side = EdgeInsets.symmetric(horizontal: discoveryGutter);
     final picture = inboxImageUri(message.imageUrl);
     // The button's link: http(s) only, a ChessEver page opening in the app.
@@ -437,122 +484,108 @@ class _InboxMessageScreenState extends ConsumerState<InboxMessageScreen> {
         (MediaQuery.sizeOf(context).width.clamp(0, _readingWidth) *
                 MediaQuery.devicePixelRatioOf(context))
             .round();
-    return _inboxShell(
-      child: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: _readingWidth),
-          child: ListView(
-            padding: EdgeInsets.only(
-              top: 12.h,
-              bottom: MediaQuery.viewPaddingOf(context).bottom + 40.h,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: side,
+          child: Text(
+            message.title,
+            style: AppTypography.displayXsBold.copyWith(
+              color: colors.textPrimary,
             ),
-            children: [
-              Padding(
-                padding: side,
-                child: Text(
-                  message.title,
-                  style: AppTypography.displayXsBold.copyWith(
-                    color: colors.textPrimary,
-                  ),
-                ),
-              ),
-              SizedBox(height: 6.h),
-              Padding(
-                padding: side,
-                child: Text(
-                  _date(context, message.publishedAt),
-                  style: discoveryType(
-                    context,
-                    DiscoveryType.meta,
-                    tabular: true,
-                  ),
-                ),
-              ),
-              SizedBox(height: 20.h),
-              if (picture != null) ...[
-                Padding(
-                  padding: side,
-                  child: ExcludeSemantics(
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(8.br),
-                      child: NewsNetworkImage(
-                        key: const ValueKey('inbox-image'),
-                        url: picture.toString(),
-                        pixelWidth: pictureWidth > 0 ? pictureWidth : null,
-                        fit: BoxFit.fitWidth,
-                        width: double.infinity,
-                        placeholder: (context, _) => AspectRatio(
-                          aspectRatio: 16 / 9,
-                          child: ColoredBox(color: colors.surface),
-                        ),
-                        errorWidget: (context, _, _) => const SizedBox.shrink(),
-                      ),
-                    ),
-                  ),
-                ),
-                SizedBox(height: 20.h),
-              ],
-              Padding(
-                padding: side,
-                child: message.isMarkdown
-                    // Markdown only, in the article reader's own renderer:
-                    // raw HTML is never interpreted.
-                    ? KeyedSubtree(
-                        key: const ValueKey('inbox-full-text'),
-                        child: NewsMarkdown(
-                          markdown: sanitizeNewsMarkdown(message.body),
-                          onLink: _openLink,
-                        ),
-                      )
-                    // Plain text is shown exactly as written.
-                    : SelectableText(
-                        message.body,
-                        key: const ValueKey('inbox-full-text'),
-                        style: AppTypography.textMdRegular.copyWith(
-                          color: colors.textPrimary,
-                          height: 1.6,
-                        ),
-                      ),
-              ),
-              if (actionLabel != null && actionUri != null) ...[
-                SizedBox(height: 24.h),
-                Padding(
-                  padding: side,
-                  child: Semantics(
-                    button: true,
-                    label: actionLabel,
-                    excludeSemantics: true,
-                    child: AppButton(
-                      key: const ValueKey('inbox-action'),
-                      text: actionLabel,
-                      icon: SpaceGlyph(
-                        SpaceGlyphKind.arrowUpRight,
-                        size: 14.sp,
-                        ink: colors.textInverse,
-                      ),
-                      onPressed: () => _openLink(actionUri),
-                    ),
-                  ),
-                ),
-              ],
-              if (markError != null || cacheError != null)
-                SizedBox(height: 12.h),
-              if (markError != null)
-                DiscoveryNotice(
-                  text: markError,
-                  actionLabel: 'Retry',
-                  onAction: () => controller.markOpened(message.id),
-                ),
-              if (cacheError != null)
-                DiscoveryNotice(
-                  text: cacheError,
-                  actionLabel: 'Retry',
-                  onAction: controller.refresh,
-                ),
-            ],
           ),
         ),
-      ),
+        SizedBox(height: 6.h),
+        Padding(
+          padding: side,
+          child: Text(
+            _date(context, message.publishedAt),
+            style: discoveryType(context, DiscoveryType.meta, tabular: true),
+          ),
+        ),
+        SizedBox(height: 20.h),
+        if (picture != null) ...[
+          Padding(
+            padding: side,
+            child: ExcludeSemantics(
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(8.br),
+                child: NewsNetworkImage(
+                  key: const ValueKey('inbox-image'),
+                  url: picture.toString(),
+                  pixelWidth: pictureWidth > 0 ? pictureWidth : null,
+                  fit: BoxFit.fitWidth,
+                  width: double.infinity,
+                  placeholder: (context, _) => AspectRatio(
+                    aspectRatio: 16 / 9,
+                    child: ColoredBox(color: colors.surface),
+                  ),
+                  errorWidget: (context, _, _) => const SizedBox.shrink(),
+                ),
+              ),
+            ),
+          ),
+          SizedBox(height: 20.h),
+        ],
+        Padding(
+          padding: side,
+          key: bodyKey,
+          child: message.isMarkdown
+              // Markdown only, in the article reader's own renderer:
+              // raw HTML is never interpreted.
+              ? KeyedSubtree(
+                  key: const ValueKey('inbox-full-text'),
+                  child: NewsMarkdown(
+                    markdown: sanitizeNewsMarkdown(message.body),
+                    onLink: onLink,
+                  ),
+                )
+              // Plain text is shown exactly as written.
+              : SelectableText(
+                  message.body,
+                  key: const ValueKey('inbox-full-text'),
+                  style: AppTypography.textMdRegular.copyWith(
+                    color: colors.textPrimary,
+                    height: 1.6,
+                  ),
+                ),
+        ),
+        if (actionLabel != null && actionUri != null) ...[
+          SizedBox(height: 24.h),
+          Padding(
+            padding: side,
+            child: Semantics(
+              button: true,
+              label: actionLabel,
+              excludeSemantics: true,
+              child: AppButton(
+                key: const ValueKey('inbox-action'),
+                text: actionLabel,
+                icon: SpaceGlyph(
+                  SpaceGlyphKind.arrowUpRight,
+                  size: 14.sp,
+                  ink: colors.textInverse,
+                ),
+                onPressed: () => onLink(actionUri),
+              ),
+            ),
+          ),
+        ],
+        if (markError != null || cacheError != null) SizedBox(height: 12.h),
+        if (markError != null)
+          DiscoveryNotice(
+            text: markError,
+            actionLabel: 'Retry',
+            onAction: onRetryRead,
+          ),
+        if (cacheError != null)
+          DiscoveryNotice(
+            text: cacheError,
+            actionLabel: 'Retry',
+            onAction: onRetryCache,
+          ),
+      ],
     );
   }
 }
