@@ -6,10 +6,8 @@ import 'package:chessever2/services/rewarded_premium/rewarded_access_provider.da
 import 'package:chessever2/widgets/ads/today_native_ad.dart';
 
 import 'package:chessever2/main.dart' show pageRouteObserver;
-import 'package:chessever2/providers/favorite_events_provider.dart';
 import 'package:chessever2/providers/for_you_games_logic.dart';
 import 'package:chessever2/providers/for_you_games_provider.dart';
-import 'package:chessever2/repository/favorites/models/favorite_event.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
 import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart';
 import 'package:chessever2/screens/for_you/open_for_you_event.dart';
@@ -321,11 +319,9 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
         events.length >= 2 &&
         !ref.watch(subscriptionProvider.select((s) => s.isLoading)) &&
         !ref.watch(premiumAccessProvider);
-    final favoriteEvents = ref.watch(favoriteEventsProvider).valueOrNull ?? [];
     final dismissedSmartEventCardKeys = ref.watch(
       dismissedSmartEventCardKeysProvider,
     );
-    final savedSmartData = _savedSmartCards(favoriteEvents);
 
     if (state.isLoading && events.isEmpty) {
       return _buildLoadingState();
@@ -345,7 +341,8 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
 
     // The smart "Convergence" event only materialises when an ELO/tier filter
     // is applied — it gathers the strongest live games across every broadcast
-    // into one card, pinned top-most.
+    // into one card, pinned top-most. Starred smart events are never listed
+    // here: My Space is their only home.
     final smartData = visibleSmartEventCardData(
       SmartEventCardData.fromState(
         filter: ref.watch(forYouAppliedFilterProvider),
@@ -354,26 +351,6 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
       ),
       dismissedSmartEventCardKeys,
     );
-    final visibleSavedSmartData =
-        smartData == null
-            ? savedSmartData
-                .where(
-                  (saved) =>
-                      !dismissedSmartEventCardKeys.contains(
-                        saved.request.cardDismissKey,
-                      ),
-                )
-                .toList(growable: false)
-            : savedSmartData
-                .where(
-                  (saved) =>
-                      saved.request.favoriteEventId !=
-                          smartData.request.favoriteEventId &&
-                      !dismissedSmartEventCardKeys.contains(
-                        saved.request.cardDismissKey,
-                      ),
-                )
-                .toList(growable: false);
 
     // Each event section hides itself once its boards resolve empty, and a
     // dismissed smart card is skipped. When nothing is left to draw and no
@@ -387,15 +364,14 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
     );
     if (everyEventHidden &&
         (events.isEmpty || !state.hasMore) &&
-        smartData == null &&
-        visibleSavedSmartData.isEmpty) {
+        smartData == null) {
       return _buildEmptyState();
     }
 
     return RefreshIndicator(
       onRefresh: () async {
-        // Saved smart cards resolve their membership server-side — refresh
-        // them together with the feed.
+        // The smart card resolves its membership server-side — refresh it
+        // together with the feed.
         ref.invalidate(smartEventResolvedEventsProvider);
         await ref.read(forYouEventsProvider.notifier).refresh();
       },
@@ -407,36 +383,8 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
         viewMode: viewMode,
         showLoadingMore: state.hasMore && !state.isLoading,
         smartData: smartData,
-        savedSmartData: visibleSavedSmartData,
       ),
     );
-  }
-
-  List<SmartEventCardData> _savedSmartCards(
-    List<FavoriteEvent> favoriteEvents,
-  ) {
-    final cards = <SmartEventCardData>[];
-    final seenCriteriaKeys = <String>{};
-    for (final favorite in favoriteEvents) {
-      if (!isSmartFavoriteEvent(favorite)) continue;
-      final request = SmartEventRequest.fromFavoriteEvent(favorite);
-      // One card per criteria — duplicate legacy rows collapse here (and get
-      // merged server-side by the snapshot refresher).
-      if (!seenCriteriaKeys.add(request.criteriaKey)) continue;
-      cards.add(
-        SmartEventCardData(
-          request: request,
-          eventCount: request.events.length,
-          avgElo: _eventsAvgElo(request.events),
-        ),
-      );
-    }
-    cards.sort((a, b) {
-      final ad = a.request.savedAt ?? DateTime(0);
-      final bd = b.request.savedAt ?? DateTime(0);
-      return bd.compareTo(ad);
-    });
-    return cards;
   }
 
   static int _eventsAvgElo(List<GroupEventCardModel> events) {
@@ -512,7 +460,6 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
     required GamesListViewMode viewMode,
     bool showLoadingMore = false,
     SmartEventCardData? smartData,
-    List<SmartEventCardData> savedSmartData = const [],
   }) {
     // On tablet, use a beautiful grid layout
     if (ResponsiveHelper.isTablet) {
@@ -522,7 +469,6 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
         viewMode: viewMode,
         showLoadingMore: showLoadingMore,
         smartData: smartData,
-        savedSmartData: savedSmartData,
       );
     }
 
@@ -530,11 +476,7 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
     final horizontalPadding = 16.sp;
 
     // Pinned right under the premium cards, above the first event.
-    final smartCards = <SmartEventCardData>[
-      ...savedSmartData,
-      if (smartData != null) smartData,
-    ];
-    final smartOffset = smartCards.length;
+    final smartOffset = smartData == null ? 0 : 1;
 
     // +1 for premium cards, +smartOffset for the smart card, +1 for loading.
     final itemCount =
@@ -560,11 +502,10 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
           return const PremiumCollectionCards();
         }
 
-        if (index > 0 && index <= smartCards.length) {
-          final cardData = smartCards[index - 1];
+        if (smartData != null && index == 1) {
           return Padding(
             padding: EdgeInsets.only(bottom: 16.sp),
-            child: _buildSmartEventCard(cardData),
+            child: _buildSmartEventCard(smartData),
           );
         }
 
@@ -672,15 +613,10 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
     required GamesListViewMode viewMode,
     bool showLoadingMore = false,
     SmartEventCardData? smartData,
-    List<SmartEventCardData> savedSmartData = const [],
   }) {
     final horizontalPadding = ResponsiveHelper.isLandscape ? 32.sp : 24.sp;
     final columnSpacing = 16.sp;
-    final smartCards = <SmartEventCardData>[
-      ...savedSmartData,
-      if (smartData != null) smartData,
-    ];
-    final smartOffset = smartCards.length;
+    final smartOffset = smartData == null ? 0 : 1;
 
     // Number of event-pair rows (ceil division)
     final rowCount = showNativeAd
@@ -710,11 +646,10 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
           return const PremiumCollectionCards();
         }
 
-        if (index > 0 && index <= smartCards.length) {
-          final cardData = smartCards[index - 1];
+        if (smartData != null && index == 1) {
           return Padding(
             padding: EdgeInsets.only(bottom: 16.sp),
-            child: _buildSmartEventCard(cardData),
+            child: _buildSmartEventCard(smartData),
           );
         }
 

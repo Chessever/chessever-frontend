@@ -29,7 +29,8 @@ FavoriteEvent? smartEventNotifiableFavorite(
 /// Stars or unstars [request]: the one path behind every smart event star.
 ///
 /// A star is the smart event's favorites row (`smart_event:v2:<criteria>`),
-/// the row For You lists it from. Starring fills the star at once and then
+/// the row My Space lists it from (its only home: Today never lists starred
+/// smart events). Starring fills the star at once and then
 /// asks whether it should also notify; the answer is written onto the row
 /// once the row itself has landed.
 Future<void> toggleSmartEventFavorite({

@@ -15,7 +15,6 @@ import 'package:chessever2/repository/supabase/group_broadcast/group_broadcast.d
 import 'package:chessever2/repository/supabase/group_broadcast/group_tour_repository.dart';
 import 'package:chessever2/screens/for_you/providers/for_you_tab_provider.dart';
 import 'package:chessever2/screens/group_event/providers/live_group_broadcast_id_provider.dart';
-import 'package:chessever2/screens/group_event/smart_event/smart_aggregate_event_provider.dart';
 import 'package:chessever2/screens/group_event/widget/for_you_games_widget.dart';
 import 'package:chessever2/screens/group_event/widget/premium_collection_cards.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_list_view_mode_provider.dart';
@@ -24,6 +23,7 @@ import 'package:chessever2/screens/tour_detail/games_tour/providers/live_tour_id
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/event_card/event_card.dart';
+import 'package:chessever2/widgets/event_card/smart_event_card.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -555,9 +555,8 @@ void main() {
     },
   );
 
-  testWidgets('Today with no events and a dismissed smart card is not blank', (
-    tester,
-  ) async {
+  testWidgets('Today never lists a starred smart event', (tester) async {
+    // Starred from My Space, its only home.
     final smart = FavoriteEvent(
       id: 'smart-favorite',
       userId: 'user',
@@ -572,12 +571,7 @@ void main() {
       games: _GameRepository(),
       clock: _WallClock(),
       favoriteEvents: [smart],
-      extra: [
-        ..._todayVisible(),
-        dismissedSmartEventCardKeysProvider.overrideWith(
-          (ref) => {SmartEventRequest.fromFavoriteEvent(smart).cardDismissKey},
-        ),
-      ],
+      extra: _todayVisible(),
     );
     addTearDown(container.dispose);
 
@@ -585,6 +579,7 @@ void main() {
     await tester.pump(const Duration(milliseconds: 200));
 
     expect(container.read(forYouEventsProvider).events, isEmpty);
+    expect(find.byType(SmartEventCard), findsNothing);
     expect(find.text('No events available'), findsOneWidget);
   });
 }
