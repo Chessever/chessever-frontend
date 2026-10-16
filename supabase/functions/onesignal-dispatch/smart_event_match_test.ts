@@ -10,6 +10,7 @@ import {
   smartEventsNeedGameAverages,
   smartEventSubscribersForRound,
   type SmartEventSubscription,
+  smartEventTimeControlOf,
 } from "./smart_event_match.ts";
 
 function sub(
@@ -191,4 +192,40 @@ Deno.test("sections share a start slot the way the producer keys it: by the roun
   );
   assertEquals(sameRoundStartSlot(null, "2026-10-16T15:30:00Z"), false);
   assertEquals(sameRoundStartSlot("not a date", "not a date"), false);
+});
+
+Deno.test("time control is the event's bucket, read as the app's smart event query reads it", () => {
+  assertEquals(smartEventTimeControlOf("standard"), "classical");
+  assertEquals(smartEventTimeControlOf(" Classical "), "classical");
+  assertEquals(smartEventTimeControlOf("Rapid"), "rapid");
+  assertEquals(smartEventTimeControlOf("blitz"), "blitz");
+  assertEquals(smartEventTimeControlOf("bullet"), "blitz");
+  assertEquals(smartEventTimeControlOf(null), null);
+  assertEquals(smartEventTimeControlOf("90 min + 30 sec / move"), null);
+});
+
+Deno.test("a standard event's blitz section reaches a Classical smart event, not a Blitz one", () => {
+  // Group bucket "standard", section clock 3+2: the app lists these games
+  // under the Classical smart event, so its round must notify there.
+  const timeControl = smartEventTimeControlOf("standard");
+  const classical = sub({ user_id: "c", formats: ["standard", "live"] });
+  const blitz = sub({ user_id: "b", formats: ["blitz", "live"] });
+  assertEquals(
+    smartEventSubscribersForRound(
+      [classical, blitz],
+      round({ timeControl, phase: "start" }),
+    ),
+    ["c"],
+  );
+});
+
+Deno.test("an event with no bucket reaches only smart events with no time control", () => {
+  const timeControl = smartEventTimeControlOf(null);
+  assertEquals(
+    smartEventSubscribersForRound(
+      [sub({ user_id: "any" }), sub({ user_id: "rapid", formats: ["rapid"] })],
+      round({ timeControl }),
+    ),
+    ["any"],
+  );
 });

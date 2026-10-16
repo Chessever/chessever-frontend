@@ -17,6 +17,7 @@ import {
   smartEventsNeedGameAverages,
   type SmartEventSubscription,
   smartEventSubscribersForRound,
+  smartEventTimeControlOf,
 } from "./smart_event_match.ts";
 import {
   describeError,
@@ -1705,6 +1706,11 @@ async function resolveSmartEventSubscribers(args: {
     }
 
     const needAverages = smartEventsNeedGameAverages(subscriptions);
+    // The event's bucket, as the app gathers a smart event's games: the same
+    // for every section, whatever each section's own clock says.
+    const timeControl = smartEventTimeControlOf(
+      await fetchGroupTimeControl(args.groupBroadcastId),
+    );
     const audience = new Set(
       subscriptions.map((row) => row.user_id).filter(Boolean),
     );
@@ -1724,10 +1730,7 @@ async function resolveSmartEventSubscribers(args: {
         if (sectionAverage > 0) gameAverages = [sectionAverage];
       }
       const round: SmartEventRound = {
-        timeControl: await resolveGameTimeControl({
-          groupBroadcastId: args.groupBroadcastId,
-          tourId: section.tourId,
-        }),
+        timeControl,
         gameAverages: gameAverages ?? [],
         phase,
       };
@@ -1747,6 +1750,29 @@ async function resolveSmartEventSubscribers(args: {
     );
     return [];
   }
+}
+
+/** `group_broadcasts.time_control` of [groupBroadcastId]; null if unknown. */
+async function fetchGroupTimeControl(
+  groupBroadcastId: string | null,
+): Promise<string | null> {
+  if (!groupBroadcastId) return null;
+  const { data, error } = await runQuerySettled<
+    { time_control: string | null }
+  >("Smart event group time-control lookup", () =>
+    supabase
+      .from("group_broadcasts")
+      .select("time_control")
+      .eq("id", groupBroadcastId)
+      .maybeSingle());
+  if (error) {
+    // Unknown: smart events with no time control still match.
+    console.warn(
+      `[onesignal-dispatch] Smart event group time-control lookup failed for ${groupBroadcastId}: ${error.message}`,
+    );
+    return null;
+  }
+  return data?.time_control ?? null;
 }
 
 /** Each board's two-player average in [roundId] (0 = unrated). */

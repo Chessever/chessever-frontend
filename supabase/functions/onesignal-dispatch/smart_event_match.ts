@@ -25,7 +25,10 @@ export type SmartEventSubscription = {
 };
 
 export type SmartEventRound = {
-  /** The round's time control; null when it could not be told. */
+  /**
+   * The event's time control as the app files it (see
+   * [smartEventTimeControlOf]); null when the event carries none.
+   */
   timeControl: TimeControlBucket | null;
   /** Two-player average of each board in the round (0 = unrated). */
   gameAverages: number[];
@@ -78,6 +81,24 @@ function bucketOf(token: string): TimeControlBucket | null {
   if (token === "rapid") return "rapid";
   if (token === "blitz") return "blitz";
   return null;
+}
+
+/**
+ * The bucket a smart event files an event's games under: the event's own
+ * `group_broadcasts.time_control`, read as the app's
+ * `get_current_smart_event_day` does (`lower(btrim(time_control))` against
+ * standard/classical, rapid, blitz/bullet). Never a section's `tours.info.tc`:
+ * a "standard" event's 3+2 blitz section is in a Classical smart event, so
+ * its round must reach that smart event's subscribers. Null when the event
+ * carries no bucket, which a smart event with a time control never gathers.
+ */
+export function smartEventTimeControlOf(
+  groupTimeControl: string | null | undefined,
+): TimeControlBucket | null {
+  if (typeof groupTimeControl !== "string") return null;
+  const token = groupTimeControl.trim().toLowerCase();
+  if (token === "bullet") return "blitz";
+  return bucketOf(token);
 }
 
 /** Whether [subscription] would gather [round]. */
