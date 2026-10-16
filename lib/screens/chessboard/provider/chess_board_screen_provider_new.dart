@@ -1127,8 +1127,7 @@ class ChessBoardScreenNotifierNew
     required bool goToTail,
   }) {
     final navigator = _analysisNavigator;
-    final currentGame = navigator?.state.game ?? _analysisGame;
-    if (navigator == null || currentGame == null) return;
+    if (navigator == null) return;
 
     final clock = clockTime.trim();
     final appendedMove = ChessMove(
@@ -1142,11 +1141,16 @@ class ChessBoardScreenNotifierNew
               : ChessColor.black,
       clockTime: clock.isEmpty ? null : clock,
     );
-    final latestGame = currentGame.copyWith(
-      mainline: <ChessMove>[...currentGame.mainline, appendedMove],
+    // `_analysisGame` is the navigator provider's family key (ChessGame has
+    // identity equality). Reassigning it here pointed every later read at a
+    // fresh navigator nobody listens to, parked on the starting position: the
+    // reader's moves then failed the sync check and the notation stopped
+    // taking live moves. Keep the key; update the navigator in place.
+    navigator.appendLiveMove(
+      appendedMove,
+      fromFen: previousFinalPosition.fen,
+      goToTail: goToTail,
     );
-    _analysisGame = latestGame;
-    navigator.updateWithLatestGame(latestGame, goToTail: goToTail);
   }
 
   void _setupPgnStreamListener() {
@@ -3906,6 +3910,13 @@ class ChessBoardScreenNotifierNew
     final navigator = ref.read(
       chessGameNavigatorProvider(_analysisGame!).notifier,
     );
+    // Built straight from the broadcast PGN, so its mainline is the broadcast's
+    // own: the first live correction can then drop a retracted move instead of
+    // keeping it as a variation. Saved analysis may carry a promoted line, so
+    // it never seeds this.
+    if (savedAnalysisData == null && _analysisGame!.isLiveGame) {
+      navigator.noteBroadcastMainline(_analysisGame!.mainline);
+    }
 
     // Determine the initial move position
     // Priority: savedAnalysisData.movePointer > savedAnalysisData.lastViewedPosition > currentState.currentMoveIndex

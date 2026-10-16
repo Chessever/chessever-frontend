@@ -1191,6 +1191,42 @@ class ChessGameNavigator extends StateNotifier<ChessGameNavigatorState> {
     );
   }
 
+  /// The mainline the broadcast itself last published. A live merge reads it
+  /// to tell a move the broadcast retracted (dropped) from a line the reader
+  /// built or promoted (kept). Null until a broadcast game has been seen, and
+  /// then every divergent line is kept: losing the reader's work is worse than
+  /// showing a corrected move as a variation.
+  ChessLine? _broadcastMainline;
+
+  /// Records [mainline] as the broadcast's own moves. Call it only with a game
+  /// parsed from the broadcast PGN, never with saved or edited analysis.
+  void noteBroadcastMainline(ChessLine mainline) {
+    _broadcastMainline = List<ChessMove>.unmodifiable(mainline);
+  }
+
+  /// Appends the broadcast's next [move] played from [fromFen], when the stream
+  /// moves ahead of its PGN column. It extends the broadcast's mainline, not
+  /// the reader's: after a Promote the local mainline is the reader's line,
+  /// and appending there would hang the game's real move off a move nobody
+  /// played. Returns false when [move] does not follow the known broadcast
+  /// position; the next full PGN then merges it.
+  bool appendLiveMove(
+    ChessMove move, {
+    required String fromFen,
+    bool goToTail = false,
+  }) {
+    final base = _broadcastMainline ?? state.game.mainline;
+    final baseFen = base.isEmpty ? state.game.startingFen : base.last.fen;
+    if (_positionKey(baseFen) != _positionKey(fromFen)) return false;
+    updateWithLatestGame(
+      state.game.copyWith(mainline: <ChessMove>[...base, move]),
+      goToTail: goToTail,
+    );
+    return true;
+  }
+
+  /// Merges the broadcast's [latestGame] into the tree. The broadcast owns the
+  /// mainline; the reader's branches and position survive it.
   void updateWithLatestGame(ChessGame latestGame, {bool goToTail = false}) {
     // Realtime broadcast rows can briefly replay a header-only or otherwise
     // truncated PGN. A live mainline is monotonic: accepting a shorter replay
@@ -1202,39 +1238,26 @@ class ChessGameNavigator extends StateNotifier<ChessGameNavigatorState> {
       return;
     }
 
-    final newMainline = <ChessMove>[];
-    final newPointer = List.of(state.movePointer);
+    final previousBroadcast = _broadcastMainline;
+    _broadcastMainline = List<ChessMove>.unmodifiable(latestGame.mainline);
 
-    for (var i = 0; i < latestGame.mainline.length; i++) {
-      if (i < state.game.mainline.length) {
-        if (state.game.mainline[i].uci != latestGame.mainline[i].uci) {
-          final localMove = state.game.mainline[i];
-          final liveMove = latestGame.mainline[i];
-
-          final updatedMove = liveMove.copyWith(
-            variations: [
-              state.game.mainline.sublist(i),
-              ...localMove.variations ?? const [],
-            ],
-          );
-
-          newMainline.add(updatedMove);
-          newMainline.addAll(latestGame.mainline.sublist(i + 1));
-
-          if (newPointer.isNotEmpty && newPointer.first >= i) {
-            newPointer
-              ..clear()
-              ..addAll([i, 0, state.movePointer.first - i]);
-          }
-
-          break;
-        }
-
-        newMainline.add(state.game.mainline[i]);
-      } else {
-        newMainline.add(latestGame.mainline[i]);
-      }
-    }
+    // The local mainline stops matching the broadcast when the broadcast
+    // corrects a move (a DGT misread) or the reader promoted their own line.
+    // Either way the old pointer indexes a different tree, so it is re-found
+    // by the moves that reach it; reusing the indices pointed into nothing
+    // and dropped the board to the starting position.
+    var diverged = false;
+    final newMainline = _mergeLiveLine(
+      state.game.mainline,
+      latestGame.mainline,
+      ply: 0,
+      broadcast: previousBroadcast,
+      onDiverged: () => diverged = true,
+      keepLocalRemainder: false,
+    );
+    final newPointer = diverged
+        ? _pointerAfterMerge(state, newMainline)
+        : List.of(state.movePointer);
 
     final nextGame = latestGame.copyWith(
       mainline: newMainline,
@@ -1271,6 +1294,213 @@ class ChessGameNavigator extends StateNotifier<ChessGameNavigatorState> {
     state = newState;
   }
 
+  /// Merges [live] into [local], two lines that start on the same ply [ply].
+  /// Matching moves keep the local node with everything the reader hung off
+  /// it. Where they part, the local continuation becomes a variation beside
+  /// the live move, unless it is only moves the broadcast has since retracted.
+  /// If the reader had demoted the live move earlier (a Promote), that branch
+  /// is lifted back so its notes carry on with the game.
+  ///
+  /// [keepLocalRemainder] keeps local moves past the end of [live] as a branch
+  /// off the last live move. Off at the root, where a shorter non-live game
+  /// truncates as it always has.
+  ChessLine _mergeLiveLine(
+    ChessLine local,
+    ChessLine live, {
+    required int ply,
+    required ChessLine? broadcast,
+    required void Function() onDiverged,
+    bool keepLocalRemainder = true,
+  }) {
+    final merged = <ChessMove>[];
+    var i = 0;
+    while (i < live.length && i < local.length && local[i].uci == live[i].uci) {
+      merged.add(local[i]);
+      i++;
+    }
+
+    if (i == live.length) {
+      if (keepLocalRemainder && i < local.length && merged.isNotEmpty) {
+        final last = merged.last;
+        merged[merged.length - 1] = last.copyWith(
+          variations: <ChessLine>[...?last.variations, local.sublist(i)],
+          overrideVariations: true,
+        );
+      }
+      return merged;
+    }
+    if (i == local.length) {
+      merged.addAll(live.sublist(i));
+      return merged;
+    }
+
+    onDiverged();
+    final next = live[i];
+    var divergent = local.sublist(i);
+    ChessLine base = const <ChessMove>[];
+
+    // Alternatives to a move hang off the move before it; a branch whose
+    // first move has the same mover as its host is an alternative TO the host,
+    // the only form a first move can take (see [fullMovePath]).
+    if (i > 0) {
+      final junction = merged.last;
+      final variations = List<ChessLine>.of(junction.variations ?? const []);
+      final lifted = variations.indexWhere(
+        (line) =>
+            line.isNotEmpty &&
+            line.first.uci == next.uci &&
+            !_isAlternativeTo(line.first, junction),
+      );
+      if (lifted >= 0) base = variations.removeAt(lifted);
+      if (_isLocalWork(divergent, ply + i, broadcast)) {
+        variations.add(divergent);
+      }
+      merged[merged.length - 1] = junction.copyWith(
+        variations: variations.isEmpty ? null : variations,
+        overrideVariations: true,
+      );
+      merged.addAll(
+        _mergeLiveLine(
+          base,
+          live.sublist(i),
+          ply: ply + i,
+          broadcast: broadcast,
+          onDiverged: onDiverged,
+        ),
+      );
+      return merged;
+    }
+
+    final head = divergent.first;
+    final headVariations = List<ChessLine>.of(head.variations ?? const []);
+    final lifted = headVariations.indexWhere(
+      (line) =>
+          line.isNotEmpty &&
+          line.first.uci == next.uci &&
+          _isAlternativeTo(line.first, head),
+    );
+    if (lifted >= 0) {
+      base = headVariations.removeAt(lifted);
+      divergent = <ChessMove>[
+        head.copyWith(
+          variations: headVariations.isEmpty ? null : headVariations,
+          overrideVariations: true,
+        ),
+        ...divergent.skip(1),
+      ];
+    }
+    final rest = _mergeLiveLine(
+      base,
+      live,
+      ply: ply,
+      broadcast: broadcast,
+      onDiverged: onDiverged,
+    );
+    if (_isLocalWork(divergent, ply, broadcast)) {
+      final first = rest.first;
+      rest[0] = first.copyWith(
+        variations: <ChessLine>[...?first.variations, divergent],
+        overrideVariations: true,
+      );
+    }
+    return rest;
+  }
+
+  /// Whether [line], starting on [ply], holds anything beyond moves the
+  /// broadcast published there: a move of the reader's, or a branch they hung
+  /// off one. Reader comments and NAGs live outside the tree (keyed by
+  /// pointer), so they cannot be weighed here.
+  bool _isLocalWork(ChessLine line, int ply, ChessLine? broadcast) {
+    if (broadcast == null) return true;
+    for (var k = 0; k < line.length; k++) {
+      final move = line[k];
+      if (move.variations?.isNotEmpty ?? false) return true;
+      final at = ply + k;
+      if (at >= broadcast.length || broadcast[at].uci != move.uci) return true;
+    }
+    return false;
+  }
+
+  /// Re-finds [previous]'s position in a merged tree by the moves that reach
+  /// it. When the broadcast retracted the move the reader stood on, a mainline
+  /// reader stays on the same ply of the corrected game.
+  ChessMovePointer _pointerAfterMerge(
+    ChessGameNavigatorState previous,
+    ChessLine mainline,
+  ) {
+    final path = [for (final move in previous.fullMovePath) move.uci];
+    final (pointer, matched) = _pointerAlongPath(mainline, path);
+    if (matched == path.length) return pointer;
+    final old = previous.movePointer;
+    if (old.length == 1 && mainline.isNotEmpty) {
+      return <Number>[old.first.clamp(0, mainline.length - 1).toInt()];
+    }
+    return pointer;
+  }
+
+  /// Walks [path] (UCI moves from the start) through [mainline], preferring
+  /// the line's own next move, then a branch. Returns the deepest pointer
+  /// reached and how many moves of [path] it covers.
+  (ChessMovePointer, int) _pointerAlongPath(
+    ChessLine mainline,
+    List<String> path,
+  ) {
+    final pointer = <Number>[];
+    void setLast(int index) {
+      if (pointer.isEmpty) {
+        pointer.add(index);
+      } else {
+        pointer[pointer.length - 1] = index;
+      }
+    }
+
+    var line = mainline;
+    var index = -1;
+    var matched = 0;
+    for (final uci in path) {
+      if (index + 1 < line.length && line[index + 1].uci == uci) {
+        index++;
+        setLast(index);
+        matched++;
+        continue;
+      }
+
+      var host = -1;
+      var branch = -1;
+      if (index >= 0) {
+        final variations = line[index].variations ?? const <ChessLine>[];
+        branch = variations.indexWhere(
+          (v) =>
+              v.isNotEmpty &&
+              v.first.uci == uci &&
+              !_isAlternativeTo(v.first, line[index]),
+        );
+        if (branch >= 0) host = index;
+      }
+      if (host < 0 && index + 1 < line.length) {
+        final variations = line[index + 1].variations ?? const <ChessLine>[];
+        branch = variations.indexWhere(
+          (v) =>
+              v.isNotEmpty &&
+              v.first.uci == uci &&
+              _isAlternativeTo(v.first, line[index + 1]),
+        );
+        if (branch >= 0) host = index + 1;
+      }
+      if (host < 0) break;
+
+      final branchLine = line[host].variations![branch];
+      setLast(host);
+      pointer
+        ..add(branch)
+        ..add(0);
+      line = branchLine;
+      index = 0;
+      matched++;
+    }
+    return (pointer, matched);
+  }
+
   ChessMovePointer? _nextPointerFrom(ChessMovePointer pointer) =>
       _nextPointerInGame(state.game, pointer);
 
@@ -1291,6 +1521,16 @@ String _fenSideToMove(String fen) {
   final parts = fen.trim().split(RegExp(r'\s+'));
   return parts.length > 1 ? parts[1] : '';
 }
+
+/// True when [branchHead] is played by the same side as [host], making its
+/// branch an alternative TO [host] rather than to the move after it.
+bool _isAlternativeTo(ChessMove branchHead, ChessMove host) =>
+    _fenSideToMove(branchHead.fen) == _fenSideToMove(host.fen);
+
+/// Board, side, castling and en passant: the FEN fields that identify a
+/// position, without the move clocks.
+String _positionKey(String fen) =>
+    fen.trim().split(RegExp(r'\s+')).take(4).join(' ');
 
 ChessLine? _lineForPointerInGame(ChessGame game, ChessMovePointer pointer) {
   ChessLine? line = game.mainline;
