@@ -1671,8 +1671,8 @@ class _SavedSmartEvent extends ConsumerWidget {
   final SpaceShortcut shortcut;
   final bool stacked;
 
-  /// The card's star, the Events list's own in its place; off in Edit,
-  /// where a tap selects.
+  /// The card's star, where an event card has its own; off in Edit, where a
+  /// tap selects.
   final bool disclosure;
 
   @override
@@ -1712,9 +1712,8 @@ class _SavedSmartEvent extends ConsumerWidget {
       live: watchSmartEventLive(ref, request),
       spaceDraft: smartEventSpaceDraft(request),
       disclosure: disclosure,
-      // The smart event's own star: starring here is starring it in the
-      // Events list, notifications question included. The shortcut stays
-      // either way.
+      // The smart event's own star (its favorites row), notifications
+      // question included. The shortcut stays either way.
       starRequest: disclosure ? request : null,
       onTap: () => openSpaceShortcut(context, ref, shortcut),
     );

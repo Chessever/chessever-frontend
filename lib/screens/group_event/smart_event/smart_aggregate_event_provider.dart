@@ -417,13 +417,6 @@ class SmartEventRequest {
 
   String get scopeId => criteriaKey;
 
-  /// Source- and event-independent key for hiding the generated smart card.
-  ///
-  /// The For You and Current tabs build separate [SmartEventRequest] instances
-  /// from the same applied filters. Dismissing the card should therefore apply
-  /// to the filter configuration, not to one tab's source or current event set.
-  String get cardDismissKey => 'smart_event_card:$criteriaKey';
-
   /// The same request carrying a different (freshly resolved) event set.
   SmartEventRequest withEvents(List<GroupEventCardModel> newEvents) {
     return SmartEventRequest(
@@ -701,8 +694,8 @@ class SmartEventCardData {
 }
 
 /// The Smart Event a set of Events filters describes, named and captioned
-/// exactly as the Events screens' generated card names it, with no events
-/// attached (members resolve from the criteria when it opens). Null when no
+/// by [SmartEventCardData.fromState], with no events attached (members
+/// resolve from the criteria when it opens). Null when no
 /// filter is set. Every path that turns filters into a Smart Event goes
 /// through here, so none of them can drift.
 SmartEventRequest? smartEventRequestFromFilterState(FilterPopupState filter) {
@@ -723,19 +716,6 @@ SmartEventRequest? smartEventRequestFromFilterState(FilterPopupState filter) {
     events: const [placeholder],
     source: SmartEventSource.forYou,
   )?.request.withEvents(const []);
-}
-
-final dismissedSmartEventCardKeysProvider = StateProvider<Set<String>>(
-  (ref) => const <String>{},
-);
-
-SmartEventCardData? visibleSmartEventCardData(
-  SmartEventCardData? data,
-  Set<String> dismissedKeys,
-) {
-  if (data == null) return null;
-  if (dismissedKeys.contains(data.request.cardDismissKey)) return null;
-  return data;
 }
 
 /// Shared by card generation and tier re-keying so both produce identical

@@ -24,13 +24,7 @@ import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/foreground_task_scheduler.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/user_error_message.dart';
-import 'package:chessever2/screens/group_event/smart_event/smart_aggregate_event_provider.dart';
-import 'package:chessever2/screens/group_event/smart_event/smart_event_screen.dart';
-import 'package:chessever2/screens/group_event/widget/filter_popup/filter_popup_provider.dart';
 import 'package:chessever2/widgets/event_card/event_card.dart';
-import 'package:chessever2/widgets/event_card/smart_event_card.dart';
-import 'package:chessever2/screens/group_event/smart_event/smart_event_builder_sheet.dart'
-    show smartEventCardSummary, watchSmartEventLive;
 import 'package:chessever2/widgets/generic_error_widget.dart';
 import 'package:chessever2/widgets/skeleton_widget.dart';
 import 'package:chessever2/widgets/paywall/past_game_access.dart';
@@ -319,9 +313,6 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
         events.length >= 2 &&
         !ref.watch(subscriptionProvider.select((s) => s.isLoading)) &&
         !ref.watch(premiumAccessProvider);
-    final dismissedSmartEventCardKeys = ref.watch(
-      dismissedSmartEventCardKeysProvider,
-    );
 
     if (state.isLoading && events.isEmpty) {
       return _buildLoadingState();
@@ -339,42 +330,25 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
       );
     }
 
-    // The smart "Convergence" event only materialises when an ELO/tier filter
-    // is applied — it gathers the strongest live games across every broadcast
-    // into one card, pinned top-most. Starred smart events are never listed
-    // here: My Space is their only home.
-    final smartData = visibleSmartEventCardData(
-      SmartEventCardData.fromState(
-        filter: ref.watch(forYouAppliedFilterProvider),
-        events: events,
-        source: SmartEventSource.forYou,
-      ),
-      dismissedSmartEventCardKeys,
-    );
+    // Smart events never appear on Today, starred or filtered: My Space is
+    // their only home.
 
-    // Each event section hides itself once its boards resolve empty, and a
-    // dismissed smart card is skipped. When nothing is left to draw and no
-    // further page can follow, the list would hold only the collection cards
-    // above a blank page; say there is nothing instead.
+    // Each event section hides itself once its boards resolve empty. When
+    // nothing is left to draw and no further page can follow, the list would
+    // hold only the collection cards above a blank page; say there is nothing
+    // instead.
     final everyEventHidden = ref.watch(
       forYouTopGamesSnapshotCacheProvider.select(
         (snapshots) =>
             events.every((event) => snapshots[event.id]?.hasGames == false),
       ),
     );
-    if (everyEventHidden &&
-        (events.isEmpty || !state.hasMore) &&
-        smartData == null) {
+    if (everyEventHidden && (events.isEmpty || !state.hasMore)) {
       return _buildEmptyState();
     }
 
     return RefreshIndicator(
-      onRefresh: () async {
-        // The smart card resolves its membership server-side — refresh it
-        // together with the feed.
-        ref.invalidate(smartEventResolvedEventsProvider);
-        await ref.read(forYouEventsProvider.notifier).refresh();
-      },
+      onRefresh: () => ref.read(forYouEventsProvider.notifier).refresh(),
       color: context.colors.accentText,
       backgroundColor: context.colors.surface,
       child: _buildEventsList(
@@ -382,16 +356,8 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
         showNativeAd: showNativeAd,
         viewMode: viewMode,
         showLoadingMore: state.hasMore && !state.isLoading,
-        smartData: smartData,
       ),
     );
-  }
-
-  static int _eventsAvgElo(List<GroupEventCardModel> events) {
-    final elos =
-        events.map((event) => event.maxAvgElo).where((elo) => elo > 0).toList();
-    if (elos.isEmpty) return 0;
-    return (elos.reduce((a, b) => a + b) / elos.length).round();
   }
 
   Widget _buildLoadingState() {
@@ -459,7 +425,6 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
     bool showNativeAd = false,
     required GamesListViewMode viewMode,
     bool showLoadingMore = false,
-    SmartEventCardData? smartData,
   }) {
     // On tablet, use a beautiful grid layout
     if (ResponsiveHelper.isTablet) {
@@ -468,19 +433,14 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
         showNativeAd: showNativeAd,
         viewMode: viewMode,
         showLoadingMore: showLoadingMore,
-        smartData: smartData,
       );
     }
 
     // Phone: vertical list layout
     final horizontalPadding = 16.sp;
 
-    // Pinned right under the premium cards, above the first event.
-    final smartOffset = smartData == null ? 0 : 1;
-
-    // +1 for premium cards, +smartOffset for the smart card, +1 for loading.
-    final itemCount =
-        events.length + 1 + smartOffset + (showLoadingMore ? 1 : 0);
+    // +1 for premium cards, +1 for loading.
+    final itemCount = events.length + 1 + (showLoadingMore ? 1 : 0);
 
     return ListView.builder(
       key: const PageStorageKey<String>('for_you_events_list'),
@@ -502,20 +462,13 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
           return const PremiumCollectionCards();
         }
 
-        if (smartData != null && index == 1) {
-          return Padding(
-            padding: EdgeInsets.only(bottom: 16.sp),
-            child: _buildSmartEventCard(smartData),
-          );
-        }
-
         // Loading indicator at bottom
         if (showLoadingMore && index == itemCount - 1) {
           return _buildLoadingMoreIndicator();
         }
 
-        final event = events[index - 1 - smartOffset];
-        if (showNativeAd && index == 1 + smartOffset) {
+        final event = events[index - 1];
+        if (showNativeAd && index == 1) {
           return Column(
             key: ValueKey('event_${event.id}'),
             children: [
@@ -527,64 +480,9 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
         return _ForYouEventSection(
           key: ValueKey('event_${event.id}'),
           event: event,
-          isFirst: index == 1 + smartOffset,
+          isFirst: index == 1,
         );
       },
-    );
-  }
-
-  Widget _buildSmartEventCard(SmartEventCardData smartData) {
-    // SERVER-FRESH face: count / Ø resolve from the criteria against the
-    // current broadcasts every build, so a saved smart event never shows the
-    // membership it happened to have at save time. The stored snapshot only
-    // covers the frames before the first resolution (and offline).
-    final resolvedAsync = ref.watch(
-      smartEventResolvedEventsProvider(smartData.request.criteria),
-    );
-    final resolvedEvents = resolvedAsync.valueOrNull;
-    final events = resolvedEvents ?? smartData.request.events;
-    final request =
-        resolvedEvents == null
-            ? smartData.request
-            : smartData.request.withEvents(resolvedEvents);
-
-    // Keep the saved row's server-side snapshot in step with what resolved
-    // (also migrates legacy v1 rows to the criteria-keyed v2 identity).
-    if (resolvedEvents != null) {
-      final savedFavorite = ref.watch(
-        smartEventSavedFavoriteProvider(smartData.request.criteriaKey),
-      );
-      if (savedFavorite != null) {
-        unawaited(
-          refreshSavedSmartEventSnapshot(
-            ref: ref,
-            favorite: savedFavorite,
-            resolvedEvents: resolvedEvents,
-          ),
-        );
-      }
-    }
-
-    return SmartEventCard(
-      tierLabel: request.tierLabel,
-      minElo: request.minElo,
-      liveCount: events.length,
-      avgElo: _eventsAvgElo(events),
-      titleSuffix: request.titleSuffix,
-      caption: request.caption,
-      countSingular: request.countSingular,
-      countPlural: request.countPlural,
-      formatsAndStates: request.formatsAndStates,
-      summary: smartEventCardSummary(request),
-      live: watchSmartEventLive(ref, request),
-      spaceDraft: smartEventSpaceDraft(request),
-      starRequest: request,
-      onTap:
-          () => Navigator.of(context).push(
-            MaterialPageRoute(
-              builder: (_) => SmartEventScreen(request: request),
-            ),
-          ),
     );
   }
 
@@ -612,19 +510,16 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
     bool showNativeAd = false,
     required GamesListViewMode viewMode,
     bool showLoadingMore = false,
-    SmartEventCardData? smartData,
   }) {
     final horizontalPadding = ResponsiveHelper.isLandscape ? 32.sp : 24.sp;
     final columnSpacing = 16.sp;
-    final smartOffset = smartData == null ? 0 : 1;
 
     // Number of event-pair rows (ceil division)
     final rowCount = showNativeAd
         ? 1 + events.length ~/ 2
         : (events.length + 1) ~/ 2;
-    // +1 for premium cards at top, +smartOffset for the smart card,
-    // +1 for loading indicator if showing.
-    final itemCount = rowCount + 1 + smartOffset + (showLoadingMore ? 1 : 0);
+    // +1 for premium cards at top, +1 for loading indicator if showing.
+    final itemCount = rowCount + 1 + (showLoadingMore ? 1 : 0);
 
     return ListView.builder(
       key: const PageStorageKey<String>('for_you_events_tablet_grid'),
@@ -646,19 +541,12 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
           return const PremiumCollectionCards();
         }
 
-        if (smartData != null && index == 1) {
-          return Padding(
-            padding: EdgeInsets.only(bottom: 16.sp),
-            child: _buildSmartEventCard(smartData),
-          );
-        }
-
         // Loading indicator at bottom
         if (showLoadingMore && index == itemCount - 1) {
           return _buildLoadingMoreIndicator();
         }
 
-        final rowIndex = index - 1 - smartOffset;
+        final rowIndex = index - 1;
         if (showNativeAd && rowIndex == 0) {
           return Column(
             key: ValueKey('native_first_event_${events.first.id}'),

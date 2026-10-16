@@ -2169,8 +2169,8 @@ class _DateHeader extends StatelessWidget {
 
 /// Opens one of a smart event's included tournaments.
 ///
-/// SmartEventScreen is mostly reached from For You (Today cards, Discovery,
-/// My Space shortcuts), where the Events screen is not mounted. Going through
+/// SmartEventScreen is mostly reached from My Space shortcuts, where the
+/// Events screen is not mounted. Going through
 /// the shared tournament navigator avoids spinning up a throwaway Events
 /// controller (which would load a whole Events tab just to borrow its tap
 /// handler) and surfaces a failed open as a snack. The analytics category

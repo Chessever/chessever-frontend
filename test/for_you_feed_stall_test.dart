@@ -15,6 +15,8 @@ import 'package:chessever2/repository/supabase/group_broadcast/group_broadcast.d
 import 'package:chessever2/repository/supabase/group_broadcast/group_tour_repository.dart';
 import 'package:chessever2/screens/for_you/providers/for_you_tab_provider.dart';
 import 'package:chessever2/screens/group_event/providers/live_group_broadcast_id_provider.dart';
+import 'package:chessever2/screens/group_event/widget/filter_popup/filter_popup_provider.dart';
+import 'package:chessever2/screens/group_event/widget/filter_popup/filter_popup_state.dart';
 import 'package:chessever2/screens/group_event/widget/for_you_games_widget.dart';
 import 'package:chessever2/screens/group_event/widget/premium_collection_cards.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_list_view_mode_provider.dart';
@@ -581,5 +583,36 @@ void main() {
     expect(container.read(forYouEventsProvider).events, isEmpty);
     expect(find.byType(SmartEventCard), findsNothing);
     expect(find.text('No events available'), findsOneWidget);
+  });
+
+  testWidgets('Today never draws a smart event for its own Elo filter', (
+    tester,
+  ) async {
+    final container = _container(
+      broadcasts: _BroadcastRepository(),
+      games: _GameRepository(),
+      clock: _WallClock(),
+      extra: [
+        ..._todayVisible(),
+        eventAppliedFilterProvider.overrideWith(
+          (ref) => const FilterPopupState(
+            formatsAndStates: {},
+            eloRange: RangeValues(2600, kFilterMaxElo),
+          ),
+        ),
+      ],
+    );
+
+    await _pumpToday(tester, container);
+    await tester.pump(const Duration(milliseconds: 200));
+
+    expect(find.byType(EventCard), findsOneWidget);
+    expect(find.byType(SmartEventCard), findsNothing);
+
+    // Outlasts the local database's two 8 s init attempts the cards start.
+    await tester.pump(const Duration(seconds: 20));
+    await tester.pumpWidget(const SizedBox.shrink());
+    container.dispose();
+    await tester.pump(const Duration(seconds: 1));
   });
 }

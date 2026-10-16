@@ -158,9 +158,6 @@ class GroupEventScreen extends HookConsumerWidget {
     final searchQuery = ref.watch(searchTabQueryProvider);
     final hasActiveSearch = searchQuery.trim().isNotEmpty;
     final appliedFilterState = ref.watch(eventAppliedFilterProvider);
-    final dismissedSmartEventCardKeys = ref.watch(
-      dismissedSmartEventCardKeysProvider,
-    );
 
     int activeFilterCount(FilterPopupState state) {
       return state.formatsAndStates.length +
@@ -510,8 +507,6 @@ class GroupEventScreen extends HookConsumerWidget {
                       }
                       final currentCategory = visibleCategories[index];
                       final isPast = currentCategory == GroupEventCategory.past;
-                      final isCurrent =
-                          currentCategory == GroupEventCategory.current;
                       final isUpcoming =
                           currentCategory == GroupEventCategory.upcoming;
                       final isSearch =
@@ -603,18 +598,6 @@ class GroupEventScreen extends HookConsumerWidget {
                                       favoriteTimestamps: favoriteTimestamps,
                                     );
                               }
-                              final smartData =
-                                  isCurrent
-                                      ? visibleSmartEventCardData(
-                                        SmartEventCardData.fromState(
-                                          filter: appliedFilterState,
-                                          events: finalEvents,
-                                          source: SmartEventSource.current,
-                                        ),
-                                        dismissedSmartEventCardKeys,
-                                      )
-                                      : null;
-
                               return RefreshIndicator(
                                 onRefresh:
                                     ref.read(homeScreenProvider).onPullRefresh,
@@ -642,7 +625,6 @@ class GroupEventScreen extends HookConsumerWidget {
                                         )
                                         : AllEventsTabWidget(
                                           filteredEvents: finalEvents,
-                                          smartData: smartData,
                                           onSelect:
                                               (tourEventCardModel) => ref
                                                   .read(
