@@ -2,6 +2,7 @@ import 'package:chessever2/repository/supabase/tour/published_tiebreak.dart';
 import 'package:chessever2/repository/supabase/tour/info64_source.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_app_bar_view_model.dart';
 import 'package:intl/intl.dart';
+import 'package:flutter/foundation.dart';
 
 class TournamentPlayer {
   final String? federation;
@@ -50,9 +51,9 @@ class TournamentPlayer {
   /// is populated (Lichess only fills the bucket matching the tour TC).
   factory TournamentPlayer.fromJson(Map<String, dynamic> json) {
     return TournamentPlayer(
-      federation: json['fed'] as String?,
-      name: json['name'] as String? ?? '',
-      title: json['title'] as String?,
+      federation: _text(json['fed']),
+      name: _text(json['name']) ?? '',
+      title: _text(json['title']),
       fideId: _parseInt(json['fideId']),
       played: _parseInt(json['played']) ?? 0,
       rating: _parseInt(json['rating']),
@@ -61,7 +62,7 @@ class TournamentPlayer {
       score: _parseScore(json['score']), // Handle both int and double
       performance:
           _parseInt(json['performance']) ?? _firstNumber(json['performances']),
-      team: json['team'] as String?,
+      team: _text(json['team']),
       rank: _parseInt(json['rank']),
       tiebreaks: PublishedTiebreak.parse(json['tiebreaks']),
     );
@@ -262,9 +263,17 @@ class TournamentPlayer {
 
 /// Parses a list of tournament players from JSON
 List<TournamentPlayer> parsePlayersFromJson(List<dynamic> jsonList) {
-  return jsonList
-      .map((json) => TournamentPlayer.fromJson(json as Map<String, dynamic>))
-      .toList();
+  return [
+    for (final json in jsonList)
+      if (json is Map)
+        TournamentPlayer.fromJson(Map<String, dynamic>.from(json)),
+  ];
+}
+
+String? _text(dynamic value) {
+  if (value is String) return value;
+  if (value is num) return value.toString();
+  return null;
 }
 
 int? _parseInt(dynamic value) {
@@ -504,17 +513,21 @@ class TourInfo {
     this.officialPlayerStandingsSections,
   });
 
+  /// Every field is read leniently: `tours.info` is free-form JSON written by
+  /// several tools, and one wrongly-typed value (e.g. `players: 171` on the
+  /// 2026 Russian Rapid/Blitz tours) must never make the whole event fail to
+  /// load. Wrong types degrade to a string or null instead of throwing.
   factory TourInfo.fromJson(Map<String, dynamic> json) {
     return TourInfo(
-      tc: json['tc'] as String?,
-      fideTc: json['fideTc'] as String?,
-      format: json['format'] as String?,
-      players: json['players'] as String?,
-      website: json['website'] as String?,
-      location: json['location'] as String?,
-      timeZone: json['timeZone'] as String?,
-      standings: json['standings'] as String?,
-      standingsSource: json['standingsSource'] as String?,
+      tc: _asText(json['tc']),
+      fideTc: _asText(json['fideTc']),
+      format: _asText(json['format']),
+      players: _asText(json['players']),
+      website: _asText(json['website']),
+      location: _asText(json['location']),
+      timeZone: _asText(json['timeZone']),
+      standings: _asText(json['standings']),
+      standingsSource: _asText(json['standingsSource']),
       standingsUpdatedAt: _parseTimestamp(json['standingsUpdatedAt']),
       teamTable: json['teamTable'] is bool ? json['teamTable'] as bool : null,
       customScoring: _asStringKeyMap(json['customScoring']),
@@ -524,6 +537,20 @@ class TourInfo {
         json['officialPlayerStandingsSections'],
       ),
     );
+  }
+
+  static String? _asText(dynamic value) {
+    if (value == null) return null;
+    if (value is String) return value;
+    if (value is num || value is bool) return value.toString();
+    if (value is List) {
+      final parts = value
+          .where((e) => e is String || e is num)
+          .map((e) => e.toString())
+          .toList();
+      return parts.isEmpty ? null : parts.join(', ');
+    }
+    return null;
   }
 
   static Map<String, dynamic>? _asStringKeyMap(dynamic value) {
@@ -649,19 +676,53 @@ class Tour {
       id: json['id'] as String,
       name: json['name'] as String,
       slug: json['slug'] as String,
-      info: TourInfo.fromJson(json['info'] as Map<String, dynamic>),
-      createdAt: DateTime.parse(json['created_at'] as String),
-      url: json['url'] as String,
+      info: TourInfo.fromJson(
+        TourInfo._asStringKeyMap(json['info']) ?? const <String, dynamic>{},
+      ),
+      createdAt:
+          DateTime.tryParse(json['created_at']?.toString() ?? '') ??
+          DateTime.fromMillisecondsSinceEpoch(0),
+      url: json['url']?.toString() ?? '',
       tier: _parseInt(json['tier']) ?? 0,
-      dates: (json['dates'] as List)
-          .map((date) => DateTime.parse(date as String))
-          .toList(),
-      image: json['image'] as String?,
+      dates: [
+        for (final date in json['dates'] is List ? json['dates'] as List : [])
+          ?DateTime.tryParse(date?.toString() ?? ''),
+      ],
+      image: json['image'] is String ? json['image'] as String : null,
       players: parsePlayersFromJson(playersList),
-      search: (json['search'] as List?)?.map((e) => e as String).toList(),
-      groupBroadcastId: json['group_broadcast_id'] as String?,
+      search: json['search'] is List
+          ? [
+              for (final e in json['search'] as List)
+                if (e is String) e,
+            ]
+          : null,
+      groupBroadcastId: json['group_broadcast_id'] is String
+          ? json['group_broadcast_id'] as String
+          : null,
       avgElo: _parseInt(json['avg_elo']),
     );
+  }
+
+  /// Parses a PostgREST row list, skipping (and logging) any row that still
+  /// cannot be read, so one malformed tour never blanks a whole event.
+  static List<Tour> listFromJson(dynamic rows) {
+    if (rows is! List) return const [];
+    final tours = <Tour>[];
+    for (final row in rows) {
+      final tour = tryFromJson(row);
+      if (tour != null) tours.add(tour);
+    }
+    return tours;
+  }
+
+  static Tour? tryFromJson(dynamic row) {
+    if (row is! Map) return null;
+    try {
+      return Tour.fromJson(Map<String, dynamic>.from(row));
+    } catch (e, st) {
+      debugPrint('Tour.fromJson skipped ${row['id']}: $e\n$st');
+      return null;
+    }
   }
 
   Map<String, dynamic> toJson() {

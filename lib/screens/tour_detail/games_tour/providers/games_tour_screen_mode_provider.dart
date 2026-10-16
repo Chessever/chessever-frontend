@@ -20,7 +20,7 @@ final gamesTourScreenModeProvider = StateNotifierProvider((ref) {
   }
 
   if (tourDetailAsync.hasError) {
-    return _GamesTourScreenModeNotifier.error(ref);
+    return _GamesTourScreenModeNotifier.error(ref, tourDetailAsync.error!);
   }
 
   final aboutTourModel = tourDetailAsync.aboutTourModel;
@@ -42,7 +42,10 @@ class _GamesTourScreenModeNotifier
 
   _GamesTourScreenModeNotifier.loading(this.ref) : super(AsyncValue.loading());
 
-  _GamesTourScreenModeNotifier.error(this.ref) : super(AsyncValue.loading());
+  // Must surface the error: mapping it to loading left the Games tab on an
+  // endless shimmer whenever the event failed to load.
+  _GamesTourScreenModeNotifier.error(this.ref, Object error)
+    : super(AsyncValue.error(error, StackTrace.current));
 
   final Ref ref;
 

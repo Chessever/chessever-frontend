@@ -492,7 +492,10 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
   ) {
     return Column(
       children: [
-        _LoadingAppBarWithTitle(title: userFacingError(error)),
+        _LoadingAppBarWithTitle(
+          title: userFacingError(error),
+          loading: false,
+        ),
         SizedBox(height: 8.h),
         _buildSegmentedSwitcher(
           selectedTourMode,
@@ -677,12 +680,23 @@ class _TourDetailDropDownAppBar extends ConsumerWidget {
 }
 
 class _LoadingAppBarWithTitle extends StatelessWidget {
-  const _LoadingAppBarWithTitle({required this.title});
+  const _LoadingAppBarWithTitle({required this.title, this.loading = true});
 
   final String title;
 
+  /// False for the error bar, which must read as text, not a shimmer.
+  final bool loading;
+
   @override
   Widget build(BuildContext context) {
+    final text = Text(
+      title,
+      maxLines: 2,
+      overflow: TextOverflow.ellipsis,
+      style: AppTypography.textMdRegular.copyWith(
+        color: context.colors.textPrimary,
+      ),
+    );
     return Row(
       children: [
         SizedBox(width: 20.ic),
@@ -699,14 +713,7 @@ class _LoadingAppBarWithTitle extends StatelessWidget {
           icon: Icon(Icons.arrow_back_ios_new_outlined, size: 24.ic),
         ),
         SizedBox(width: 44.w),
-        SkeletonWidget(
-          child: Text(
-            title,
-            style: AppTypography.textMdRegular.copyWith(
-              color: context.colors.textPrimary,
-            ),
-          ),
-        ),
+        Flexible(child: loading ? SkeletonWidget(child: text) : text),
         SizedBox(width: 44.w),
       ],
     );
