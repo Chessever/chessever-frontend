@@ -1,3 +1,4 @@
+import 'package:chessever2/screens/inbox/inbox_provider.dart';
 import 'package:chessever2/chat/botvinnik_icon.dart';
 import 'package:chessever2/chat/botvinnik_provider.dart';
 import 'package:chessever2/chat/chat_api.dart';
@@ -53,6 +54,7 @@ class BotvinnikChatButton extends ConsumerWidget {
     return Hero(
       tag: heroTag,
       child: _BotvinnikLauncher(
+        unreadCount: ref.watch(inboxUnreadCountProvider),
         onPressed:
             onPressed ??
             () => ChatScreen.show(
@@ -71,7 +73,12 @@ class BotvinnikChatButton extends ConsumerWidget {
 bool _launcherSessionEntered = false;
 
 class _BotvinnikLauncher extends StatefulWidget {
-  const _BotvinnikLauncher({required this.onPressed});
+  const _BotvinnikLauncher({
+    required this.onPressed,
+    required this.unreadCount,
+  });
+
+  final int unreadCount;
 
   final VoidCallback onPressed;
 
@@ -174,7 +181,9 @@ class _BotvinnikLauncherState extends State<_BotvinnikLauncher> {
       child: Semantics(
         container: true,
         button: true,
-        label: BotvinnikChatButton.label,
+        label: widget.unreadCount > 0
+            ? '${BotvinnikChatButton.label}, ${widget.unreadCount} unread Inbox messages'
+            : BotvinnikChatButton.label,
         child: FocusableActionDetector(
           mouseCursor: SystemMouseCursors.click,
           onShowFocusHighlight: (value) {
@@ -198,7 +207,48 @@ class _BotvinnikLauncherState extends State<_BotvinnikLauncher> {
             child: GestureDetector(
               behavior: HitTestBehavior.opaque,
               onTap: _activate,
-              child: SizedBox.square(dimension: side, child: visual),
+              child: SizedBox.square(
+                dimension: side,
+                child: Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    Positioned.fill(child: visual),
+                    if (widget.unreadCount > 0)
+                      Positioned(
+                        top: -4,
+                        right: -4,
+                        child: ExcludeSemantics(
+                          child: Container(
+                            key: const ValueKey('botvinnik-unread-badge'),
+                            constraints: const BoxConstraints(
+                              minWidth: 22,
+                              minHeight: 22,
+                            ),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 5,
+                              vertical: 2,
+                            ),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFD32F2F),
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                            alignment: Alignment.center,
+                            child: Text(
+                              widget.unreadCount > 99
+                                  ? '99+'
+                                  : '${widget.unreadCount}',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
             ),
           ),
         ),

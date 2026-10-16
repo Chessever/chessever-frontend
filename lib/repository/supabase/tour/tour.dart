@@ -509,7 +509,8 @@ class TourInfo {
       tc: json['tc'] as String?,
       fideTc: json['fideTc'] as String?,
       format: json['format'] as String?,
-      players: json['players'] as String?,
+      // Imported events may provide a numeric count instead of display text.
+      players: json['players']?.toString(),
       website: json['website'] as String?,
       location: json['location'] as String?,
       timeZone: json['timeZone'] as String?,
