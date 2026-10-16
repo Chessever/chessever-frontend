@@ -273,34 +273,9 @@ class _MyGamesTab extends ConsumerWidget {
           if (profile.gameCount > 0)
             Padding(
               padding: EdgeInsets.fromLTRB(_gutter, 8.h, _gutter, 0),
-              child: FilledButton(
+              child: _OpenProfileButton(
                 key: const ValueKey('prep_mine_open'),
-                onPressed: () {
-                  HapticFeedbackService.cardTap();
-                  PrepProfileScreen.open(context, profile.id);
-                },
-                style: FilledButton.styleFrom(
-                  minimumSize: const Size.fromHeight(48),
-                  backgroundColor: context.colors.textPrimary,
-                  foregroundColor: context.colors.textInverse,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12.br),
-                  ),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Flexible(
-                      child: Text(
-                        'Open profile',
-                        textAlign: TextAlign.center,
-                        style: AppTypography.textSmBold,
-                      ),
-                    ),
-                    SizedBox(width: 8.w),
-                    Icon(Icons.arrow_forward_rounded, size: 18.sp),
-                  ],
-                ),
+                profileId: profile.id,
               ),
             ),
         ],
@@ -434,9 +409,59 @@ class _ProfileSources extends StatelessWidget {
                   child: PrepAccountRow(profile: profile, account: account),
                 ),
               ),
+          // The profile's own door, as on My Games, once there is anything
+          // to open.
+          if (profile.gameCount > 0)
+            Padding(
+              padding: EdgeInsets.fromLTRB(12.w, 8.h, 8.w, 8.h),
+              child: _OpenProfileButton(
+                key: ValueKey('prep_profile_open_${profile.id}'),
+                profileId: profile.id,
+              ),
+            ),
           // With the last card's own gap, as far from the rule below as the
           // profile card is from it when folded.
           SizedBox(height: 4.h),
+        ],
+      ),
+    );
+  }
+}
+
+/// Opens a profile from beneath its sources: My Games, and an unfolded
+/// opponent.
+class _OpenProfileButton extends StatelessWidget {
+  const _OpenProfileButton({super.key, required this.profileId});
+
+  final String profileId;
+
+  @override
+  Widget build(BuildContext context) {
+    return FilledButton(
+      onPressed: () {
+        HapticFeedbackService.cardTap();
+        PrepProfileScreen.open(context, profileId);
+      },
+      style: FilledButton.styleFrom(
+        minimumSize: const Size.fromHeight(48),
+        backgroundColor: context.colors.textPrimary,
+        foregroundColor: context.colors.textInverse,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12.br),
+        ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Flexible(
+            child: Text(
+              'Open profile',
+              textAlign: TextAlign.center,
+              style: AppTypography.textSmBold,
+            ),
+          ),
+          SizedBox(width: 8.w),
+          Icon(Icons.arrow_forward_rounded, size: 18.sp),
         ],
       ),
     );
