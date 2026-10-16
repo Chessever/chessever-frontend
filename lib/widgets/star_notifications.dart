@@ -15,14 +15,23 @@ import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 /// The flag a starred smart event or collection carries in its favorites
-/// row's `metadata` once its owner has said yes to notifications. The
-/// dispatcher sends to these rows only when it is `true`, so a star made
-/// before the question existed stays quiet until it is asked.
+/// row's `metadata` once its owner has answered whether it notifies. The
+/// dispatcher reads it the way [starNotificationsEnabled] does.
 const String kStarNotificationsKey = 'notificationsEnabled';
 
 /// Whether the starred row [favorite] sends notifications.
-bool starNotificationsEnabled(FavoriteEvent favorite) =>
-    favorite.metadata[kStarNotificationsKey] == true;
+///
+/// A collection's star does unless its owner turned that off: starring one
+/// is asking to hear about its new games (Trello #1225), and a star made
+/// before the question, on the desktop app or on an older build never
+/// answered it. A smart event's star stays quiet until its owner says yes:
+/// a broad one can match every round of every event.
+bool starNotificationsEnabled(FavoriteEvent favorite) {
+  final flag = favorite.metadata[kStarNotificationsKey];
+  if (flag is bool) return flag;
+  return favorite.eventId.startsWith('collection:') ||
+      favorite.metadata['kind'] == 'collection';
+}
 
 /// Asks, right after a star, whether it should also send notifications.
 /// [message] says what would arrive ("Get an alert when a round starts or

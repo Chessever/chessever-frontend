@@ -194,8 +194,48 @@ void main() {
 
     expect(store.added, ['collection:candidates-2026']);
     expect(store.removed, isEmpty);
-    expect(store.patches, isEmpty);
     expect(_unstar, findsOneWidget);
+    // "Not now" is written down: a collection star with no answer notifies.
+    final (patchedId, patch) = store.patches.single;
+    expect(patchedId, 'collection:candidates-2026');
+    expect(patch, {kStarNotificationsKey: false});
+  });
+
+  test('a collection star notifies unless its owner said no; a smart event '
+      'star only after a yes (Trello #1225)', () {
+    // Starred before the question, on the desktop app or an older build.
+    expect(
+      starNotificationsEnabled(_row('collection:candidates-2026')),
+      isTrue,
+    );
+    expect(
+      starNotificationsEnabled(
+        _row('legacy-id', metadata: {'kind': 'collection', 'slug': 'x'}),
+      ),
+      isTrue,
+    );
+    expect(
+      starNotificationsEnabled(
+        _row(
+          'collection:candidates-2026',
+          metadata: {kStarNotificationsKey: false},
+        ),
+      ),
+      isFalse,
+    );
+    expect(
+      starNotificationsEnabled(_row('smart_event:v2:minElo=2700')),
+      isFalse,
+    );
+    expect(
+      starNotificationsEnabled(
+        _row(
+          'smart_event:v2:minElo=2700',
+          metadata: {kStarNotificationsKey: true},
+        ),
+      ),
+      isTrue,
+    );
   });
 
   testWidgets('unstarring a collection removes its own row and asks nothing', (

@@ -303,7 +303,9 @@ bool collectionIsFavorited(Iterable<FavoriteEvent> favorites, Collection c) =>
 /// star, so each writes the same row and the same analytics event.
 ///
 /// Starring fills the star at once and then asks whether new games should
-/// notify; the answer is written onto the row once the row has landed.
+/// notify; the answer, yes or no, is written onto the row once the row has
+/// landed. A star with no answer notifies (see [starNotificationsEnabled]),
+/// so a "Not now" has to be written down to keep it quiet.
 Future<void> toggleCollectionFavorite({
   required BuildContext context,
   required Collection collection,
@@ -374,12 +376,11 @@ Future<void> toggleCollectionFavorite({
   );
   if (!await added) return;
   settled(true);
-  if (!wantsAlerts) return;
   await setStarNotifications(
     container: container,
     messenger: messenger,
     eventId: eventId,
-    enabled: true,
+    enabled: wantsAlerts,
     surface: 'collection',
   );
 }
@@ -594,10 +595,8 @@ class _CollectionStar extends ConsumerWidget {
           ? 'Unstar ${collection.title}'
           : 'Star ${collection.title}',
       child: InkWell(
-        onTap: () => toggleCollectionFavorite(
-          context: context,
-          collection: collection,
-        ),
+        onTap: () =>
+            toggleCollectionFavorite(context: context, collection: collection),
         child: collection.kind == CollectionKind.book
             ? SizedBox(
                 width: 48,

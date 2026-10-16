@@ -6,6 +6,7 @@ import {
   favoriteNamesForBoard,
   groupFavoriteBoardCopy,
 } from "./favorite_copy.ts";
+import { collectionStarRecipients } from "./collection_subscribers.ts";
 import { collectFavoriteMatches } from "./favorite_match.ts";
 import { filterGameStartedPlayerRecipients } from "./player_game_recipients.ts";
 import { chunk, packForUrlBudget } from "./postgrest_in.ts";
@@ -2434,27 +2435,23 @@ async function resolveRecursiveBookSubscribers(
 }
 
 /**
- * The users who starred the collection `slug` and turned its notifications
- * on. A star is a favorites row keyed `collection:<slug>`; a star made
- * before the question existed carries no flag and stays quiet.
+ * The users who starred the collection `slug`, except those who turned its
+ * notifications off (see collection_subscribers.ts).
  */
 async function resolveCollectionSubscribers(slug: string): Promise<string[]> {
-  const rows = await fetchAllPages<{ user_id: string | null }>(
+  const rows = await fetchAllPages<
+    { user_id: string | null; notifications: unknown }
+  >(
     "Collection subscription lookup",
     (from, to) =>
       supabase
         .from("user_favorite_events")
-        .select("user_id")
+        .select("user_id, notifications:metadata->notificationsEnabled")
         .eq("event_id", `collection:${slug}`)
-        .eq("metadata->>notificationsEnabled", "true")
         .order("id")
         .range(from, to),
   );
-  return [
-    ...new Set(
-      rows.map((row) => row.user_id).filter((id): id is string => !!id),
-    ),
-  ];
+  return collectionStarRecipients(rows);
 }
 
 /** A starred collection is a starred event to the settings: same switch. */
