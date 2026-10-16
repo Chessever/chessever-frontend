@@ -22,6 +22,10 @@ const Duration kPrepMineRefreshEvery = Duration(hours: 8);
 /// checks for new ones.
 const Duration kPrepOthersRefreshEvery = Duration(hours: 24);
 
+/// How long a failed background refresh waits before launch or a return to
+/// the app tries it again.
+const Duration kPrepBackgroundRetryAfter = Duration(minutes: 15);
+
 final prepRepositoryProvider = Provider<PrepRepository>((ref) {
   final repo = PrepRepository(ref.read(gamebaseRepositoryProvider));
   ref.onDispose(repo.dispose);
@@ -270,6 +274,9 @@ class PrepSyncController extends StateNotifier<Map<String, PrepSyncStatus>> {
 
   final Map<String, Completer<void>> _running = {};
 
+  /// When each account's failed background refresh may run again.
+  final Map<String, DateTime> _backgroundRetryAt = {};
+
   Future<void> cancelAndWait(PrepAccount account) async {
     cancel(account);
     await _running[account.key]?.future;
@@ -278,11 +285,16 @@ class PrepSyncController extends StateNotifier<Map<String, PrepSyncStatus>> {
   bool isSyncing(PrepAccount account) => state.containsKey(account.key);
 
   /// Downloads new games for one account. Returns the error text, or null.
+  ///
+  /// A [background] refresh was not asked for by the reader, so its failure
+  /// is never stored on the account: the games already downloaded stay as
+  /// they were, and a later launch or return to the app tries again.
   Future<String?> syncAccount(
     String profileId,
     PrepAccount account, {
     bool force = false,
     bool reinstall = false,
+    bool background = false,
   }) async {
     if (isSyncing(account)) return null;
     final profiles = _ref.read(prepProfilesProvider.notifier);
@@ -330,15 +342,26 @@ class PrepSyncController extends StateNotifier<Map<String, PrepSyncStatus>> {
           ),
         );
       });
+      _backgroundRetryAt.remove(account.key);
       return null;
     } on DioException catch (error) {
       if (CancelToken.isCancel(error)) return null;
-      return _fail(profileId, account, 'Could not download games. Try again.');
+      return _fail(
+        profileId,
+        account,
+        'Could not download games. Try again.',
+        background: background,
+      );
     } on PrepException catch (error) {
-      return _fail(profileId, account, error.message);
+      return _fail(profileId, account, error.message, background: background);
     } catch (error) {
       debugPrint('[MyPrep] sync failed: $error');
-      return _fail(profileId, account, 'Could not download games. Try again.');
+      return _fail(
+        profileId,
+        account,
+        'Could not download games. Try again.',
+        background: background,
+      );
     } finally {
       if (mounted) state = {...state}..remove(account.key);
       _running.remove(account.key);
@@ -346,7 +369,19 @@ class PrepSyncController extends StateNotifier<Map<String, PrepSyncStatus>> {
     }
   }
 
-  String _fail(String profileId, PrepAccount account, String message) {
+  String _fail(
+    String profileId,
+    PrepAccount account,
+    String message, {
+    required bool background,
+  }) {
+    if (background) {
+      debugPrint('[MyPrep] background refresh failed: $message');
+      _backgroundRetryAt[account.key] = DateTime.now().add(
+        kPrepBackgroundRetryAfter,
+      );
+      return message;
+    }
     _ref
         .read(prepProfilesProvider.notifier)
         .edit(
@@ -375,8 +410,12 @@ class PrepSyncController extends StateNotifier<Map<String, PrepSyncStatus>> {
 
   /// Brings stale profiles of [kinds] up to date in the background: the
   /// reader's own accounts every [kPrepMineRefreshEvery], the rest daily.
+  /// A failure stays out of sight and is tried again after
+  /// [kPrepBackgroundRetryAfter]; an account still carrying an earlier
+  /// failure is tried too, so a success clears it.
   void refreshStale(Iterable<PrepProfile> profiles) {
-    final now = DateTime.now().millisecondsSinceEpoch;
+    final clock = DateTime.now();
+    final now = clock.millisecondsSinceEpoch;
     for (final profile in profiles) {
       final every = profile.kind == PrepKind.mine
           ? kPrepMineRefreshEvery
@@ -389,9 +428,10 @@ class PrepSyncController extends StateNotifier<Map<String, PrepSyncStatus>> {
         if (last == null) continue;
         final stale =
             now - last >= every.inMilliseconds ||
-            account.syncedScope != account.downloadScope(DateTime.now());
-        if (stale && account.error == null) {
-          unawaited(syncAccount(profile.id, account));
+            account.syncedScope != account.downloadScope(clock);
+        final retryAt = _backgroundRetryAt[account.key];
+        if (stale && (retryAt == null || !clock.isBefore(retryAt))) {
+          unawaited(syncAccount(profile.id, account, background: true));
         }
       }
     }

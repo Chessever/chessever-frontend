@@ -288,6 +288,11 @@ class PrepAccount {
   final int gameCount;
   final String? error;
 
+  /// [error], while it left the account without games. A failed refresh
+  /// keeps every stored game, so the account goes on showing them; the
+  /// source popup still names the failure.
+  String? get downloadError => gameCount == 0 ? error : null;
+
   /// The selection the stored games should hold this month. ChessEver's
   /// whole-player export keeps the scope it had before it could be narrowed.
   String downloadScope(DateTime now) => source != PrepSource.chessever

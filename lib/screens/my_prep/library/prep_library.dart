@@ -374,7 +374,7 @@ class PrepLibraryFolderScreen extends ConsumerWidget {
                           account: account,
                           subtitle: sync.containsKey(account.key)
                               ? sync[account.key]!.message
-                              : account.error ??
+                              : account.downloadError ??
                                     (account.lastSyncAtMs == null
                                         ? 'Not downloaded yet'
                                         : '${prepGamesLabel(account.gameCount)} · '

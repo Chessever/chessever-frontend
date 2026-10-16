@@ -81,6 +81,9 @@ class _PickerRepository extends PrepRepository {
 
   bool deferSync = false;
   int syncCalls = 0;
+
+  /// What every download throws while set, as a dropped connection would.
+  PrepException? syncFailure;
   final syncStarted = Completer<void>();
   @override
   Future<PrepAccount> sync(
@@ -92,6 +95,7 @@ class _PickerRepository extends PrepRepository {
     bool reinstall = false,
   }) async {
     syncCalls++;
+    if (syncFailure case final failure?) throw failure;
     if (deferSync) {
       syncStarted.complete();
       throw await cancelToken!.whenCancel;
@@ -2862,6 +2866,85 @@ void main() {
     sync.refreshStale([profiles.byId(profile.id)!]);
     await Future<void>.delayed(Duration.zero);
     expect(repo.syncCalls, 1);
+    await profiles.debugDrainWrites();
+  });
+
+  test('a failed background refresh never marks downloaded games as failed, '
+      'and a reader-started one still says why', () async {
+    final container = ProviderContainer(
+      overrides: [prepRepositoryProvider.overrideWithValue(repo)],
+    );
+    addTearDown(container.dispose);
+    await _loaded(container);
+    final profiles = container.read(prepProfilesProvider.notifier);
+    final sync = container.read(prepSyncProvider.notifier);
+    const offline = 'Could not reach ChessEver (offline). Try again shortly.';
+    PrepAccount live(String id) => profiles.byId(id)!.accounts.single;
+
+    // Downloaded long ago, so launch finds it stale; the connection drops.
+    final mine = profiles.create(
+      kind: PrepKind.mine,
+      name: 'Me',
+      accounts: [
+        const PrepAccount(
+          source: PrepSource.lichess,
+          username: 'me',
+          lastSyncAtMs: 1,
+          gameCount: 120,
+        ),
+      ],
+    );
+    repo.syncFailure = const PrepException(offline);
+    sync.refreshStale([profiles.byId(mine.id)!]);
+    await Future<void>.delayed(Duration.zero);
+    expect(repo.syncCalls, 1);
+    expect(live(mine.id).error, isNull);
+    expect(live(mine.id).gameCount, 120);
+    expect(live(mine.id).lastSyncAtMs, 1);
+
+    // Returning to the app straight away does not hammer the failure.
+    sync.refreshStale([profiles.byId(mine.id)!]);
+    await Future<void>.delayed(Duration.zero);
+    expect(repo.syncCalls, 1);
+
+    // An account that kept an earlier failure is retried, and a success
+    // clears it.
+    final earlier = profiles.create(
+      kind: PrepKind.opponent,
+      name: 'Rival',
+      accounts: [
+        const PrepAccount(
+          source: PrepSource.chesscom,
+          username: 'rival',
+          lastSyncAtMs: 1,
+          gameCount: 40,
+          error: offline,
+        ),
+      ],
+    );
+    expect(live(earlier.id).downloadError, isNull);
+    repo.syncFailure = null;
+    sync.refreshStale([profiles.byId(earlier.id)!]);
+    await Future<void>.delayed(Duration.zero);
+    expect(repo.syncCalls, 2);
+    expect(live(earlier.id).error, isNull);
+
+    // A download the reader starts still reports its failure; it reads as
+    // failed only while there are no games to show instead.
+    repo.syncFailure = const PrepException(offline);
+    expect(
+      await sync.syncAccount(mine.id, live(mine.id), force: true),
+      offline,
+    );
+    expect(live(mine.id).error, offline);
+    expect(live(mine.id).downloadError, isNull);
+    final first = profiles.create(
+      kind: PrepKind.opponent,
+      name: 'New',
+      accounts: [const PrepAccount(source: PrepSource.lichess, username: 'n')],
+    );
+    await sync.syncAccount(first.id, live(first.id));
+    expect(live(first.id).downloadError, offline);
     await profiles.debugDrainWrites();
   });
 
