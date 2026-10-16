@@ -456,6 +456,7 @@ class InboxMessageContent extends StatelessWidget {
     required this.message,
     required this.onLink,
     this.bodyKey,
+    this.compact = false,
     this.markError,
     this.cacheError,
     this.onRetryRead,
@@ -465,6 +466,7 @@ class InboxMessageContent extends StatelessWidget {
   final InboxMessage message;
   final Future<void> Function(Uri) onLink;
   final Key? bodyKey;
+  final bool compact;
   final String? markError;
   final String? cacheError;
   final VoidCallback? onRetryRead;
@@ -475,7 +477,15 @@ class InboxMessageContent extends StatelessWidget {
     final colors = context.colors;
     final markError = this.markError;
     final cacheError = this.cacheError;
-    final side = EdgeInsets.symmetric(horizontal: discoveryGutter);
+    final side = compact
+        ? EdgeInsets.zero
+        : EdgeInsets.symmetric(horizontal: discoveryGutter);
+    final bodyStyle = compact
+        ? Theme.of(context).textTheme.bodyMedium?.copyWith(height: 1.45)
+        : AppTypography.textMdRegular.copyWith(
+            color: colors.textPrimary,
+            height: 1.6,
+          );
     final picture = inboxImageUri(message.imageUrl);
     // The button's link: http(s) only, a ChessEver page opening in the app.
     final actionLabel = message.actionLabel;
@@ -491,20 +501,27 @@ class InboxMessageContent extends StatelessWidget {
           padding: side,
           child: Text(
             message.title,
-            style: AppTypography.displayXsBold.copyWith(
-              color: colors.textPrimary,
+            style: compact
+                ? Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
+                    height: 1.45,
+                  )
+                : AppTypography.displayXsBold.copyWith(
+                    color: colors.textPrimary,
+                  ),
+          ),
+        ),
+        if (!compact) ...[
+          SizedBox(height: 6.h),
+          Padding(
+            padding: side,
+            child: Text(
+              _date(context, message.publishedAt),
+              style: discoveryType(context, DiscoveryType.meta, tabular: true),
             ),
           ),
-        ),
-        SizedBox(height: 6.h),
-        Padding(
-          padding: side,
-          child: Text(
-            _date(context, message.publishedAt),
-            style: discoveryType(context, DiscoveryType.meta, tabular: true),
-          ),
-        ),
-        SizedBox(height: 20.h),
+        ],
+        SizedBox(height: compact ? 8 : 20.h),
         if (picture != null) ...[
           Padding(
             padding: side,
@@ -538,6 +555,7 @@ class InboxMessageContent extends StatelessWidget {
                   key: const ValueKey('inbox-full-text'),
                   child: NewsMarkdown(
                     markdown: sanitizeNewsMarkdown(message.body),
+                    bodyStyle: compact ? bodyStyle : null,
                     onLink: onLink,
                   ),
                 )
@@ -545,10 +563,7 @@ class InboxMessageContent extends StatelessWidget {
               : SelectableText(
                   message.body,
                   key: const ValueKey('inbox-full-text'),
-                  style: AppTypography.textMdRegular.copyWith(
-                    color: colors.textPrimary,
-                    height: 1.6,
-                  ),
+                  style: bodyStyle,
                 ),
         ),
         if (actionLabel != null && actionUri != null) ...[

@@ -1,3 +1,6 @@
+import 'package:chessever2/chat/chat_assistant_bubble.dart';
+import 'package:chessever2/chat/chat_api.dart';
+import 'package:chessever2/chat/chat_screen.dart';
 import 'dart:async';
 
 import 'package:chessever2/chat/botvinnik_inbox_section.dart';
@@ -56,10 +59,13 @@ class _Harness {
               return Scaffold(
                 body: Column(
                   children: [
-                    BotvinnikInboxSection(
-                      key: sectionKey,
-                      maxHeight: maxHeight,
-                      exposed: exposed,
+                    SizedBox(
+                      height: maxHeight,
+                      child: BotvinnikInboxTimeline(
+                        key: sectionKey,
+                        emptyState: const SizedBox.shrink(),
+                        exposed: exposed,
+                      ),
                     ),
                     const Expanded(
                       child: Center(child: Text('Conversation stays separate')),
@@ -100,6 +106,93 @@ Future<_Harness> _pump(
 }
 
 void main() {
+  for (final light in [false, true]) {
+    for (final width in [360.0, 800.0]) {
+      testWidgets(
+        'notices align with assistant replies: light=$light width=$width',
+        (tester) async {
+          tester.view.physicalSize = Size(width, 852);
+          tester.view.devicePixelRatio = 1;
+          addTearDown(tester.view.resetPhysicalSize);
+          addTearDown(tester.view.resetDevicePixelRatio);
+          final source = FakeInboxSource();
+          source.rows[inboxOwnerA] = [
+            InboxMessage(
+              id: inboxIdA,
+              title: 'Did you try ChessEver desktop?',
+              body:
+                  'Follow tournaments, understand games with Game Report, and build your preparation in one desktop workspace.',
+              publishedAt: DateTime.utc(2026, 9, 30),
+            ),
+          ];
+          final harness = _Harness(source);
+          addTearDown(harness.container.dispose);
+          await tester.pumpWidget(
+            UncontrolledProviderScope(
+              container: harness.container,
+              child: MaterialApp(
+                theme: light ? AppTheme.lightTheme : AppTheme.darkTheme,
+                home: Builder(
+                  builder: (context) {
+                    ResponsiveHelper.init(context);
+                    return MediaQuery(
+                      data: MediaQuery.of(
+                        context,
+                      ).copyWith(textScaler: const TextScaler.linear(1.3)),
+                      child: Scaffold(
+                        body: BotvinnikInboxTimeline(
+                          emptyState: const Text('How can I help?'),
+                          conversationItemCount: 1,
+                          conversationItemBuilder: (_, _) => ChatMessageBubble(
+                            message: const ChatMessage(
+                              id: 'answer',
+                              role: 'assistant',
+                              content: 'Your tournament starts tomorrow.',
+                            ),
+                            isStreaming: false,
+                            feedbackPending: false,
+                            onReferencePressed: (_) {},
+                            onFeedbackPressed: (_, _) {},
+                          ),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ),
+          );
+          await tester.pumpAndSettle();
+          expect(tester.takeException(), isNull);
+          expect(find.text('Inbox'), findsNothing);
+          expect(find.text('How can I help?'), findsNothing);
+          expect(find.byType(ListView), findsOneWidget);
+          expect(find.byType(ChatAssistantBubble), findsNWidgets(2));
+          final notice = find.byType(ChatAssistantBubble).first;
+          final response = find.byType(ChatAssistantBubble).last;
+          expect(tester.getTopLeft(notice).dx, 16);
+          expect(tester.getSize(notice).width, width - 32);
+          expect(tester.getTopLeft(response).dx, tester.getTopLeft(notice).dx);
+          expect(tester.getSize(response).width, tester.getSize(notice).width);
+          final title = find.text('Did you try ChessEver desktop?');
+          final body = find.byKey(const ValueKey('inbox-full-text'));
+          expect(tester.getTopLeft(title).dx, tester.getTopLeft(body).dx);
+          expect(
+            tester.getTopLeft(title).dx,
+            tester.getTopLeft(find.text('BOTVINNIK').first).dx,
+          );
+          final titleText = tester.widget<Text>(title);
+          final theme = Theme.of(tester.element(title));
+          expect(
+            titleText.style!.fontSize,
+            theme.textTheme.bodyMedium!.fontSize,
+          );
+          await harness.close(tester);
+        },
+      );
+    }
+  }
+
   testWidgets(
     'only visible bodies mark read, retained until chat is reopened',
     (tester) async {
@@ -112,7 +205,7 @@ void main() {
 
       final scrollable = find
           .descendant(
-            of: find.byType(BotvinnikInboxSection),
+            of: find.byType(BotvinnikInboxTimeline),
             matching: find.byType(Scrollable),
           )
           .first;
@@ -225,7 +318,7 @@ void main() {
     final source = FakeInboxSource();
     source.rows[inboxOwnerA] = [inboxFixture(inboxIdA)];
     final harness = await _pump(tester, source, exposed: false);
-    await tester.pumpWidget(harness.host(maxHeight: 90));
+    await tester.pumpWidget(harness.host(maxHeight: 60));
     await tester.pumpAndSettle();
     expect(find.text(inboxFixture(inboxIdA).title), findsOneWidget);
     expect(source.marks, isEmpty);

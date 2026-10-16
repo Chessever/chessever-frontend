@@ -24,18 +24,26 @@ const double _radius = 4;
 
 /// One run of article prose, rendered as markdown in the app's type.
 class NewsMarkdown extends StatelessWidget {
-  const NewsMarkdown({super.key, required this.markdown, required this.onLink});
+  const NewsMarkdown({
+    super.key,
+    required this.markdown,
+    required this.onLink,
+    this.bodyStyle,
+  });
 
   final String markdown;
   final NewsLinkHandler onLink;
+  final TextStyle? bodyStyle;
 
   @override
   Widget build(BuildContext context) {
     final colors = context.colors;
-    final body = AppTypography.textMdRegular.copyWith(
-      color: colors.textPrimary,
-      height: 1.6,
-    );
+    final body =
+        bodyStyle ??
+        AppTypography.textMdRegular.copyWith(
+          color: colors.textPrimary,
+          height: 1.6,
+        );
     final small = AppTypography.textSmRegular.copyWith(
       color: colors.textPrimary,
       height: 1.45,

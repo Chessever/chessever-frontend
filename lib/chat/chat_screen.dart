@@ -1,5 +1,7 @@
 import 'dart:async';
 
+import 'package:chessever2/chat/chat_assistant_bubble.dart';
+
 import 'package:chessever2/chat/botvinnik_inbox_section.dart';
 
 import 'package:chessever2/chat/botvinnik_icon.dart';
@@ -557,7 +559,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
   void _scrollToEnd({bool animate = true}) {
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!_scrollController.hasClients) return;
+      if (_messages.isEmpty || !_scrollController.hasClients) return;
       final end = _scrollController.position.maxScrollExtent;
       if (!animate) {
         _scrollController.jumpTo(end);
@@ -706,32 +708,29 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       ),
       body: ColoredBox(
         color: Theme.of(context).colorScheme.surface,
-        child: LayoutBuilder(
-          builder: (context, constraints) => Column(
-            children: [
-              BotvinnikInboxSection(
-                maxHeight: constraints.maxHeight * 0.35,
-                exposed: !_drawerOpen,
+        child: Column(
+          children: [
+            if (_error != null)
+              MaterialBanner(
+                content: Text(_error!),
+                actions: [
+                  TextButton(
+                    onPressed: () => setState(() => _error = null),
+                    child: const Text('Dismiss'),
+                  ),
+                ],
               ),
-              if (_error != null)
-                MaterialBanner(
-                  content: Text(_error!),
-                  actions: [
-                    TextButton(
-                      onPressed: () => setState(() => _error = null),
-                      child: const Text('Dismiss'),
-                    ),
-                  ],
-                ),
-              Expanded(
-                child: _loading
+            Expanded(
+              child: BotvinnikInboxTimeline(
+                exposed: !_drawerOpen,
+                scrollController: _scrollController,
+                emptyState: _loading
                     ? Center(
                         child: CircularProgressIndicator(
                           color: context.colors.accentText,
                         ),
                       )
-                    : _messages.isEmpty
-                    ? _EmptyChat(
+                    : _EmptyChat(
                         suggestions: chatSuggestionsForScreen(
                           widget.screenContext?.screen,
                         ),
@@ -739,42 +738,35 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                             widget.screenContext?.screen == 'tournament' ||
                             widget.screenContext?.screen == 'event',
                         onSuggestionPressed: _sendSuggestion,
-                      )
-                    : ListView.builder(
-                        controller: _scrollController,
-                        keyboardDismissBehavior:
-                            ScrollViewKeyboardDismissBehavior.onDrag,
-                        padding: const EdgeInsets.fromLTRB(16, 20, 16, 24),
-                        itemCount: _messages.length,
-                        itemBuilder: (context, index) => ChatMessageBubble(
-                          key: ValueKey(_messages[index].id),
-                          message: _messages[index],
-                          isStreaming:
-                              _sending && index == _messages.length - 1,
-                          feedbackPending: _feedbackPending.contains(
-                            _messages[index].id,
-                          ),
-                          onReferencePressed: _openReference,
-                          onFeedbackPressed: _setFeedback,
-                        ),
                       ),
+                conversationItemCount: _loading ? 0 : _messages.length,
+                conversationItemBuilder: (context, index) => ChatMessageBubble(
+                  key: ValueKey(_messages[index].id),
+                  message: _messages[index],
+                  isStreaming: _sending && index == _messages.length - 1,
+                  feedbackPending: _feedbackPending.contains(
+                    _messages[index].id,
+                  ),
+                  onReferencePressed: _openReference,
+                  onFeedbackPressed: _setFeedback,
+                ),
               ),
-              switch (composerAccess) {
-                ChatComposerAccess.signedOut => _ChatLoginGate(
-                  onSignIn: _showLogin,
-                ),
-                ChatComposerAccess.exhausted => const _ChatDailyLimitNotice(),
-                // An account with no allowance keeps the composer: _send opens
-                // the Premium popup when the message is sent.
-                ChatComposerAccess.upgradeRequired ||
-                ChatComposerAccess.enabled => _ChatComposer(
-                  controller: _controller,
-                  sending: _sending,
-                  onSend: _send,
-                ),
-              },
-            ],
-          ),
+            ),
+            switch (composerAccess) {
+              ChatComposerAccess.signedOut => _ChatLoginGate(
+                onSignIn: _showLogin,
+              ),
+              ChatComposerAccess.exhausted => const _ChatDailyLimitNotice(),
+              // An account with no allowance keeps the composer: _send opens
+              // the Premium popup when the message is sent.
+              ChatComposerAccess.upgradeRequired ||
+              ChatComposerAccess.enabled => _ChatComposer(
+                controller: _controller,
+                sending: _sending,
+                onSend: _send,
+              ),
+            },
+          ],
         ),
       ),
     );
@@ -1572,90 +1564,79 @@ class _ChatMessageBubbleState extends State<ChatMessageBubble> {
       normalizeChatMarkdown(message.content),
       message.references,
     ).markdown;
-    final bubble = Container(
-      constraints: BoxConstraints(maxWidth: isUser ? 420 : double.infinity),
-      padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 12),
-      decoration: BoxDecoration(
-        color: isUser
-            ? colorScheme.primaryContainer
-            : colorScheme.surfaceContainerHigh,
-        borderRadius: BorderRadius.only(
-          topLeft: const Radius.circular(18),
-          topRight: const Radius.circular(18),
-          bottomLeft: Radius.circular(isUser ? 18 : 5),
-          bottomRight: Radius.circular(isUser ? 5 : 18),
-        ),
-        border: isUser ? null : Border.all(color: colorScheme.outlineVariant),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          if (!isUser) ...[
-            Text(
-              'BOTVINNIK',
-              style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                color: context.colors.accentText,
-                fontWeight: FontWeight.w700,
-                letterSpacing: 0.7,
+    final content = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (message.content.isEmpty && isStreaming)
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              SizedBox.square(
+                dimension: 16,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: context.colors.accentText,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                'Thinking…',
+                style: TextStyle(color: colorScheme.onSurfaceVariant),
+              ),
+            ],
+          )
+        else if (isUser)
+          _CopyableMessageContent(
+            text: message.content,
+            child: Text(
+              message.content,
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: colorScheme.onPrimaryContainer,
+                height: 1.4,
               ),
             ),
-            const SizedBox(height: 7),
-          ],
-          if (message.content.isEmpty && isStreaming)
-            Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                SizedBox.square(
-                  dimension: 16,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    color: context.colors.accentText,
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Text(
-                  'Thinking…',
-                  style: TextStyle(color: colorScheme.onSurfaceVariant),
-                ),
-              ],
-            )
-          else if (isUser)
-            _CopyableMessageContent(
-              text: message.content,
-              child: Text(
-                message.content,
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: colorScheme.onPrimaryContainer,
-                  height: 1.4,
-                ),
-              ),
-            )
-          else
-            _CopyableMessageContent(
-              text: message.content,
-              child: MarkdownBody(
-                data: linkedContent,
-                softLineBreak: true,
-                onTapLink: (text, href, title) {
-                  final reference = chatReferenceForHref(
-                    href,
-                    message.references,
-                  );
-                  if (reference != null) {
-                    widget.onReferencePressed(reference);
-                    return;
-                  }
-                  final uri = safeChatSourceUri(href);
-                  if (uri != null) {
-                    unawaited(launchUrl(uri, mode: LaunchMode.platformDefault));
-                  }
-                },
-                styleSheet: _styleSheetFor(theme),
-              ),
+          )
+        else
+          _CopyableMessageContent(
+            text: message.content,
+            child: MarkdownBody(
+              data: linkedContent,
+              softLineBreak: true,
+              onTapLink: (text, href, title) {
+                final reference = chatReferenceForHref(
+                  href,
+                  message.references,
+                );
+                if (reference != null) {
+                  widget.onReferencePressed(reference);
+                  return;
+                }
+                final uri = safeChatSourceUri(href);
+                if (uri != null) {
+                  unawaited(launchUrl(uri, mode: LaunchMode.platformDefault));
+                }
+              },
+              styleSheet: _styleSheetFor(theme),
             ),
-        ],
-      ),
+          ),
+      ],
     );
+    final bubble = isUser
+        ? Container(
+            constraints: const BoxConstraints(maxWidth: 420),
+            padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 12),
+            decoration: BoxDecoration(
+              color: colorScheme.primaryContainer,
+              borderRadius: const BorderRadius.only(
+                topLeft: Radius.circular(18),
+                topRight: Radius.circular(18),
+                bottomLeft: Radius.circular(18),
+                bottomRight: Radius.circular(5),
+              ),
+            ),
+            child: content,
+          )
+        : ChatAssistantBubble(child: content);
 
     final feedbackActions = Row(
       mainAxisSize: MainAxisSize.min,

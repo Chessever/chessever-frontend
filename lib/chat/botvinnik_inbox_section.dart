@@ -1,5 +1,7 @@
 import 'dart:async';
 
+import 'package:chessever2/chat/chat_assistant_bubble.dart';
+
 import 'package:chessever2/screens/inbox/inbox_provider.dart';
 import 'package:chessever2/screens/inbox/inbox_screen.dart';
 import 'package:chessever2/services/editorial_link_service.dart';
@@ -9,24 +11,30 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 /// A view of Inbox, never a chat message or part of a conversation's payload.
 /// Only identities are retained here: the shared Inbox remains the source of
 /// both content and receipts, including changes from the other reader.
-class BotvinnikInboxSection extends ConsumerStatefulWidget {
-  const BotvinnikInboxSection({
+class BotvinnikInboxTimeline extends ConsumerStatefulWidget {
+  const BotvinnikInboxTimeline({
     super.key,
-    required this.maxHeight,
+    required this.emptyState,
+    this.scrollController,
+    this.conversationItemCount = 0,
+    this.conversationItemBuilder,
     this.exposed = true,
   });
 
-  final double maxHeight;
+  final Widget emptyState;
+  final ScrollController? scrollController;
+  final int conversationItemCount;
+  final IndexedWidgetBuilder? conversationItemBuilder;
   final bool exposed;
 
   @override
-  ConsumerState<BotvinnikInboxSection> createState() =>
-      _BotvinnikInboxSectionState();
+  ConsumerState<BotvinnikInboxTimeline> createState() =>
+      _BotvinnikInboxTimelineState();
 }
 
-class _BotvinnikInboxSectionState extends ConsumerState<BotvinnikInboxSection>
+class _BotvinnikInboxTimelineState extends ConsumerState<BotvinnikInboxTimeline>
     with WidgetsBindingObserver {
-  final _scroll = ScrollController();
+  late final ScrollController _scroll;
   final _viewport = GlobalKey();
   final _bodyKeys = <(String, DateTime), GlobalKey>{};
   final _retained = <(String, DateTime)>{};
@@ -37,6 +45,7 @@ class _BotvinnikInboxSectionState extends ConsumerState<BotvinnikInboxSection>
   @override
   void initState() {
     super.initState();
+    _scroll = widget.scrollController ?? ScrollController();
     WidgetsBinding.instance.addObserver(this);
     _scroll.addListener(_scheduleVisibilityCheck);
   }
@@ -44,7 +53,8 @@ class _BotvinnikInboxSectionState extends ConsumerState<BotvinnikInboxSection>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    _scroll.dispose();
+    _scroll.removeListener(_scheduleVisibilityCheck);
+    if (widget.scrollController == null) _scroll.dispose();
     super.dispose();
   }
 
@@ -125,66 +135,54 @@ class _BotvinnikInboxSectionState extends ConsumerState<BotvinnikInboxSection>
           (message) => _retained.contains((message.id, message.publishedAt)),
         )
         .toList();
-    if (messages.isEmpty || widget.maxHeight < 64) {
-      return const SizedBox.shrink();
+    if (messages.isEmpty && widget.conversationItemCount == 0) {
+      return widget.emptyState;
     }
     _scheduleVisibilityCheck();
-    return SizedBox(
-      height: widget.maxHeight.clamp(0, 280).toDouble(),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          const Padding(
-            padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            child: Text('Inbox', style: TextStyle(fontWeight: FontWeight.w700)),
-          ),
-          Expanded(
-            child: ClipRect(
-              key: _viewport,
-              child: NotificationListener<SizeChangedLayoutNotification>(
-                onNotification: (_) {
-                  _scheduleVisibilityCheck();
-                  return false;
-                },
-                child: ListView.builder(
-                  key: ValueKey(('botvinnik-inbox', _owner)),
-                  controller: _scroll,
-                  padding: const EdgeInsets.symmetric(vertical: 8),
-                  itemCount: messages.length,
-                  itemBuilder: (context, index) {
-                    final message = messages[index];
-                    final identity = (message.id, message.publishedAt);
-                    return SizeChangedLayoutNotifier(
-                      key: ValueKey(identity),
-                      child: Padding(
-                        padding: const EdgeInsets.only(bottom: 24),
-                        child: InboxMessageContent(
-                          message: message,
-                          bodyKey: _bodyKeys.putIfAbsent(
-                            identity,
-                            GlobalKey.new,
-                          ),
-                          onLink: (uri) => ref.read(
-                            editorialLinkOpenerProvider,
-                          )(context, uri),
-                          markError: state.markErrors[message.id],
-                          cacheError: state.cacheError,
-                          onRetryRead: () => ref
-                              .read(inboxProvider.notifier)
-                              .markOpened(message.id),
-                          onRetryCache: ref
-                              .read(inboxProvider.notifier)
-                              .refresh,
-                        ),
-                      ),
-                    );
-                  },
+    return ClipRect(
+      key: _viewport,
+      child: NotificationListener<SizeChangedLayoutNotification>(
+        onNotification: (_) {
+          _scheduleVisibilityCheck();
+          return false;
+        },
+        child: ListView.builder(
+          key: ValueKey(('botvinnik-timeline', _owner)),
+          controller: _scroll,
+          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+          padding: const EdgeInsets.fromLTRB(16, 20, 16, 24),
+          itemCount: messages.length + widget.conversationItemCount,
+          itemBuilder: (context, index) {
+            if (index >= messages.length) {
+              return widget.conversationItemBuilder!(
+                context,
+                index - messages.length,
+              );
+            }
+            final message = messages[index];
+            final identity = (message.id, message.publishedAt);
+            return SizeChangedLayoutNotifier(
+              key: ValueKey(identity),
+              child: Padding(
+                padding: const EdgeInsets.only(bottom: 18),
+                child: ChatAssistantBubble(
+                  child: InboxMessageContent(
+                    compact: true,
+                    message: message,
+                    bodyKey: _bodyKeys.putIfAbsent(identity, GlobalKey.new),
+                    onLink: (uri) =>
+                        ref.read(editorialLinkOpenerProvider)(context, uri),
+                    markError: state.markErrors[message.id],
+                    cacheError: state.cacheError,
+                    onRetryRead: () =>
+                        ref.read(inboxProvider.notifier).markOpened(message.id),
+                    onRetryCache: ref.read(inboxProvider.notifier).refresh,
+                  ),
                 ),
               ),
-            ),
-          ),
-          const Divider(height: 1),
-        ],
+            );
+          },
+        ),
       ),
     );
   }
