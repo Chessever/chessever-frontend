@@ -342,6 +342,10 @@ Future<void> prepImportSource(
   final held = profile.accounts.length;
   if (mine && !await prepMayHoldOwnAccounts(context, held + 1)) return;
   if (!context.mounted) return;
+  // Already at the limit, the check above only let the reader on through a
+  // subscription, which may not have reached the subscription state yet:
+  // the files are not counted against the free limit then.
+  final subscribedPastLimit = held >= kFreePrepOwnAccounts;
   final container = ProviderScope.containerOf(context, listen: false);
   final repo = ref.read(prepRepositoryProvider);
   final profiles = ref.read(prepProfilesProvider.notifier);
@@ -364,6 +368,7 @@ Future<void> prepImportSource(
         );
         if (files == null || files.files.isEmpty) return false;
         if (mine &&
+            !subscribedPastLimit &&
             held + files.files.length > kFreePrepOwnAccounts &&
             !container.read(prepUnlimitedProvider)) {
           final room = kFreePrepOwnAccounts - held;

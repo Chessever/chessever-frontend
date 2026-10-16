@@ -81,6 +81,15 @@ class _PickerRepository extends PrepRepository {
 
   bool deferSync = false;
   int syncCalls = 0;
+
+  /// What every download throws while set, as a dropped connection would.
+  PrepException? syncFailure;
+
+  /// Holds every download until completed, so overlap can be seen.
+  Completer<void>? syncGate;
+
+  /// Usernames in the order their downloads started.
+  final synced = <String>[];
   final syncStarted = Completer<void>();
   @override
   Future<PrepAccount> sync(
@@ -92,6 +101,9 @@ class _PickerRepository extends PrepRepository {
     bool reinstall = false,
   }) async {
     syncCalls++;
+    synced.add(account.username);
+    if (syncGate case final gate?) await gate.future;
+    if (syncFailure case final failure?) throw failure;
     if (deferSync) {
       syncStarted.complete();
       throw await cancelToken!.whenCancel;
@@ -2862,6 +2874,259 @@ void main() {
     sync.refreshStale([profiles.byId(profile.id)!]);
     await Future<void>.delayed(Duration.zero);
     expect(repo.syncCalls, 1);
+    await profiles.debugDrainWrites();
+  });
+
+  test('the retry schedule grows fourfold to a day, spread by a fifth', () {
+    Duration at(int failures, {double roll = 0.5}) =>
+        prepRetryDelay(failures, roll: roll);
+    expect(at(1), const Duration(minutes: 2));
+    expect(at(2), const Duration(minutes: 8));
+    expect(at(3), const Duration(minutes: 32));
+    expect(at(4), const Duration(minutes: 128));
+    expect(at(5), const Duration(minutes: 512));
+    expect(at(6), kPrepRetryMax);
+    expect(at(60), kPrepRetryMax);
+    expect(at(1, roll: 0), const Duration(seconds: 96));
+    expect(at(1, roll: 0.999), lessThan(const Duration(seconds: 144)));
+    expect(at(6, roll: 0.999), kPrepRetryMax);
+    expect(prepRetryDelay(1, permanent: true, roll: 0.5), kPrepRetryMax);
+    expect(
+      prepRetryDelay(1, retryAfter: const Duration(minutes: 10), roll: 0.5),
+      const Duration(minutes: 10),
+    );
+    expect(
+      prepRetryDelay(3, retryAfter: const Duration(seconds: 30), roll: 0.5),
+      const Duration(minutes: 32),
+    );
+  });
+
+  test('a failed background refresh never marks downloaded games as failed, '
+      'waits across a restart, and recovers by itself', () async {
+    var container = ProviderContainer(
+      overrides: [prepRepositoryProvider.overrideWithValue(repo)],
+    );
+    addTearDown(() => container.dispose());
+    await _loaded(container);
+    var profiles = container.read(prepProfilesProvider.notifier);
+    var sync = container.read(prepSyncProvider.notifier);
+    const offline = 'Could not reach ChessEver (offline). Try again shortly.';
+    PrepAccount live(String id) => profiles.byId(id)!.accounts.single;
+
+    // Downloaded long ago, so launch finds it stale; the connection drops.
+    final mine = profiles.create(
+      kind: PrepKind.mine,
+      name: 'Me',
+      accounts: [
+        const PrepAccount(
+          source: PrepSource.lichess,
+          username: 'me',
+          lastSyncAtMs: 1,
+          gameCount: 120,
+        ),
+      ],
+    );
+    repo.syncFailure = const PrepException(offline);
+    final before = DateTime.now().millisecondsSinceEpoch;
+    sync.refreshStale([profiles.byId(mine.id)!]);
+    await Future<void>.delayed(Duration.zero);
+    expect(repo.syncCalls, 1);
+    expect(live(mine.id).error, isNull);
+    expect(live(mine.id).gameCount, 120);
+    expect(live(mine.id).lastSyncAtMs, 1);
+    expect(live(mine.id).failedAttempts, 1);
+    final wait = live(mine.id).retryAtMs! - before;
+    expect(
+      wait,
+      greaterThanOrEqualTo(const Duration(seconds: 95).inMilliseconds),
+    );
+    expect(
+      wait,
+      lessThanOrEqualTo(const Duration(seconds: 145).inMilliseconds),
+    );
+
+    // Coming back straight away, or reopening the app, waits it out.
+    sync.refreshStale([profiles.byId(mine.id)!]);
+    await Future<void>.delayed(Duration.zero);
+    expect(repo.syncCalls, 1);
+    await profiles.debugDrainWrites();
+    container.dispose();
+    container = ProviderContainer(
+      overrides: [prepRepositoryProvider.overrideWithValue(repo)],
+    );
+    await _loaded(container);
+    profiles = container.read(prepProfilesProvider.notifier);
+    sync = container.read(prepSyncProvider.notifier);
+    expect(live(mine.id).failedAttempts, 1);
+    sync.refreshStale([profiles.byId(mine.id)!]);
+    await Future<void>.delayed(Duration.zero);
+    expect(repo.syncCalls, 1);
+
+    // A second failure waits four times longer.
+    profiles.edit(
+      mine.id,
+      (p) => p.replaceAccount(p.accounts.single.copyWith(retryAtMs: 1)),
+    );
+    sync.refreshStale([profiles.byId(mine.id)!]);
+    await Future<void>.delayed(Duration.zero);
+    expect(repo.syncCalls, 2);
+    expect(live(mine.id).failedAttempts, 2);
+    expect(
+      live(mine.id).retryAtMs! - DateTime.now().millisecondsSinceEpoch,
+      greaterThan(const Duration(minutes: 6).inMilliseconds),
+    );
+
+    // Once its wait is over and the server answers, it recovers by itself.
+    repo.syncFailure = null;
+    profiles.edit(
+      mine.id,
+      (p) => p.replaceAccount(p.accounts.single.copyWith(retryAtMs: 1)),
+    );
+    sync.refreshStale([profiles.byId(mine.id)!]);
+    await Future<void>.delayed(Duration.zero);
+    expect(repo.syncCalls, 3);
+    expect(live(mine.id).failedAttempts, 0);
+    expect(live(mine.id).retryAtMs, isNull);
+    expect(live(mine.id).error, isNull);
+
+    // An account that kept an earlier failure is retried, and a success
+    // clears it.
+    final earlier = profiles.create(
+      kind: PrepKind.opponent,
+      name: 'Rival',
+      accounts: [
+        const PrepAccount(
+          source: PrepSource.chesscom,
+          username: 'rival',
+          lastSyncAtMs: 1,
+          gameCount: 40,
+          error: offline,
+        ),
+      ],
+    );
+    expect(live(earlier.id).downloadError, isNull);
+    sync.refreshStale([profiles.byId(earlier.id)!]);
+    await Future<void>.delayed(Duration.zero);
+    expect(repo.syncCalls, 4);
+    expect(live(earlier.id).error, isNull);
+    await profiles.debugDrainWrites();
+  });
+
+  test('a download the reader starts never waits, and says why it failed; '
+      'what asking again cannot fix waits a day', () async {
+    final container = ProviderContainer(
+      overrides: [prepRepositoryProvider.overrideWithValue(repo)],
+    );
+    addTearDown(container.dispose);
+    await _loaded(container);
+    final profiles = container.read(prepProfilesProvider.notifier);
+    final sync = container.read(prepSyncProvider.notifier);
+    PrepAccount live(String id) => profiles.byId(id)!.accounts.single;
+    final day = kPrepRetryMax.inMilliseconds;
+
+    final rival = profiles.create(
+      kind: PrepKind.opponent,
+      name: 'Rival',
+      accounts: [
+        PrepAccount(
+          source: PrepSource.lichess,
+          username: 'rival',
+          lastSyncAtMs: 1,
+          gameCount: 40,
+          failedAttempts: 3,
+          retryAtMs: DateTime.now().millisecondsSinceEpoch + day,
+        ),
+      ],
+    );
+    const missing = PrepException(
+      'Lichess has no account "rival".',
+      permanent: true,
+    );
+    repo.syncFailure = missing;
+    expect(
+      await sync.syncAccount(rival.id, live(rival.id), force: true),
+      missing.message,
+    );
+    expect(repo.syncCalls, 1);
+    expect(live(rival.id).error, missing.message);
+    expect(live(rival.id).downloadError, isNull);
+    expect(live(rival.id).failedAttempts, 4);
+    expect(
+      live(rival.id).retryAtMs! - DateTime.now().millisecondsSinceEpoch,
+      greaterThan((day * 0.75).round()),
+    );
+
+    // A busy server's own wait is honoured.
+    repo.syncFailure = const PrepException(
+      'Lichess is limiting downloads. Try again in a minute.',
+      retryAfter: Duration(hours: 3),
+    );
+    final busy = profiles.create(
+      kind: PrepKind.opponent,
+      name: 'Busy',
+      accounts: [
+        const PrepAccount(
+          source: PrepSource.lichess,
+          username: 'busy',
+          lastSyncAtMs: 1,
+          gameCount: 9,
+        ),
+      ],
+    );
+    sync.refreshStale([profiles.byId(busy.id)!]);
+    await Future<void>.delayed(Duration.zero);
+    expect(
+      live(busy.id).retryAtMs! - DateTime.now().millisecondsSinceEpoch,
+      greaterThan(const Duration(minutes: 170).inMilliseconds),
+    );
+
+    // A first download with nothing to show reads as failed.
+    final first = profiles.create(
+      kind: PrepKind.opponent,
+      name: 'New',
+      accounts: [const PrepAccount(source: PrepSource.lichess, username: 'n')],
+    );
+    await sync.syncAccount(first.id, live(first.id));
+    expect(live(first.id).downloadError, isNotNull);
+    await profiles.debugDrainWrites();
+  });
+
+  test('background refreshes download one account at a time', () async {
+    final container = ProviderContainer(
+      overrides: [prepRepositoryProvider.overrideWithValue(repo)],
+    );
+    addTearDown(container.dispose);
+    await _loaded(container);
+    final profiles = container.read(prepProfilesProvider.notifier);
+    final mine = profiles.create(
+      kind: PrepKind.mine,
+      name: 'Me',
+      accounts: [
+        for (final name in ['one', 'two', 'three'])
+          PrepAccount(
+            source: PrepSource.lichess,
+            username: name,
+            lastSyncAtMs: 1,
+            gameCount: 5,
+          ),
+      ],
+    );
+    final sync = container.read(prepSyncProvider.notifier);
+    // Each download holds the gate that was current when it started.
+    var gate = repo.syncGate = Completer<void>();
+    sync.refreshStale([profiles.byId(mine.id)!]);
+    for (final (i, name) in ['one', 'two', 'three'].indexed) {
+      await Future<void>.delayed(Duration.zero);
+      expect(repo.synced, hasLength(i + 1));
+      expect(repo.synced.last, name);
+      expect(container.read(prepSyncProvider), hasLength(1));
+      final held = gate;
+      gate = repo.syncGate = Completer<void>();
+      held.complete();
+    }
+    await Future<void>.delayed(Duration.zero);
+    expect(container.read(prepSyncProvider), isEmpty);
+    expect(repo.synced, ['one', 'two', 'three']);
     await profiles.debugDrainWrites();
   });
 

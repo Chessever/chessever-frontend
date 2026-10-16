@@ -26,6 +26,8 @@ import 'package:chessever2/screens/my_space/providers/space_home_card_size_provi
 import 'package:chessever2/screens/my_space/providers/space_edit_mode_provider.dart';
 import 'package:chessever2/screens/collections/collections_data.dart'
     show collectionsProvider;
+import 'package:chessever2/screens/collections/collections_screen.dart'
+    show CollectionCard;
 import 'package:chessever2/screens/my_space/providers/space_hub_providers.dart';
 import 'package:chessever2/screens/my_space/providers/space_game_card_provider.dart'
     show spaceGameCardProvider;
@@ -73,6 +75,8 @@ import 'package:chessever2/screens/my_space/widgets/space_edit_tutorial.dart';
 import 'package:chessever2/screens/chessboard/widgets/switch_views_tutorial_overlay.dart'
     show TutorialStepIndicator;
 import 'package:chessever2/widgets/event_card/smart_event_card.dart';
+import 'package:chessever2/widgets/event_card/smart_event_star.dart'
+    show SmartEventStar;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show RenderParagraph;
 import 'package:flutter_test/flutter_test.dart';
@@ -2953,6 +2957,78 @@ void main() {
     await tester.tap(find.byKey(const ValueKey<String>('space_edit')));
     await _settleEdit(tester);
     expect(chevrons(), findsNothing);
+    expect(tester.takeException(), isNull);
+    await _drain(tester);
+  });
+
+  testWidgets('a My Space smart event ends in its own star, not the chevron, '
+      'on the home and its See all; Edit hides it (Trello #1225)', (
+    tester,
+  ) async {
+    final smart = _pin(_smartDraft(2700), 'se1', 1);
+    final collection = _pin(
+      SpaceShortcut.draft(
+        kind: SpaceShortcutKind.collection,
+        targetId: 'c',
+        title: 'Annotated games',
+        params: {
+          'slug': 'annotated-games',
+          'collectionKind': 'event',
+          'gameCount': 12,
+        },
+      ),
+      'c',
+      2,
+    );
+    final seed = [smart];
+    Finder chevrons(Finder of) => find.descendant(
+      of: of,
+      matching: find.byIcon(Icons.chevron_right_rounded),
+    );
+    final card = find.byKey(ValueKey<String>('space_smart_${smart.key}'));
+
+    await _pumpSpace(
+      tester,
+      [smart, collection],
+      extra: [
+        _noSmartMembers,
+        collectionsProvider.overrideWith((ref) async => []),
+      ],
+    );
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(
+      find.descendant(of: card, matching: find.byType(SmartEventStar)),
+      findsOneWidget,
+    );
+    expect(chevrons(card), findsNothing);
+    // A collection already wore its own star in My Space; it still does.
+    expect(
+      find.descendant(
+        of: find.byType(CollectionCard),
+        matching: find.byWidgetPredicate(
+          (w) => w.runtimeType.toString() == '_CollectionStar',
+        ),
+      ),
+      findsOneWidget,
+    );
+    await _drain(tester);
+
+    await _openSeeAll(
+      tester,
+      seed,
+      SpaceSection.smartEvents,
+      extra: [_noSmartMembers],
+    );
+    final page = find.byType(SpaceSectionScreen);
+    expect(
+      find.descendant(of: page, matching: find.byType(SmartEventStar)),
+      findsOneWidget,
+    );
+    expect(chevrons(page), findsNothing);
+    await tester.tap(find.byKey(const ValueKey<String>('space_edit')));
+    await _settleEdit(tester);
+    expect(find.byType(SmartEventStar), findsNothing);
+    expect(chevrons(page), findsNothing);
     expect(tester.takeException(), isNull);
     await _drain(tester);
   });

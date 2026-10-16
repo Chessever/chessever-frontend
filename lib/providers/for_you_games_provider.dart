@@ -38,6 +38,18 @@ const int kGamesPerEvent = 4;
 const int _kPageSize = 20;
 const Duration _kForYouStaleThreshold = Duration(minutes: 5);
 
+/// Upper bound for one feed or board RPC. Both answer in well under a second;
+/// without a bound, a request that never settles (a dead connection, or one
+/// iOS froze while the app was suspended) leaves the feed loading forever,
+/// and every later refresh queues behind it.
+const Duration _kForYouRequestTimeout = Duration(seconds: 15);
+
+/// A page fetch is at most two timed requests. One still in flight after
+/// longer than that, by the wall clock, spent the gap suspended, and its
+/// timeout timer may not have caught up yet; the next resume or refresh
+/// replaces it rather than waiting.
+const Duration _kForYouStalledFetchAge = Duration(seconds: 30);
+
 enum ForYouVisibilityRefresh { topGames, fullFeed }
 
 @visibleForTesting
@@ -146,8 +158,13 @@ class ForYouState {
 
 class ForYouNotifier extends StateNotifier<ForYouState> {
   final Ref ref;
+  final DateTime Function() _now;
   int _offset = 0;
   bool _isFetching = false;
+  // Bumped per page fetch; a fetch whose number is no longer current was
+  // abandoned and must not publish anything when it finally settles.
+  int _fetchGeneration = 0;
+  DateTime? _fetchStartedAt;
   bool _queuedFeedRefresh = false;
   DateTime? _lastRefreshAt;
   final Map<String, int> _sessionEventOrder = <String, int>{};
@@ -160,7 +177,9 @@ class ForYouNotifier extends StateNotifier<ForYouState> {
   bool _resumeRefreshPending = false;
   final Set<String> _handledFinishedTopGameRefreshes = <String>{};
 
-  ForYouNotifier(this.ref) : super(const ForYouState(isLoading: true)) {
+  ForYouNotifier(this.ref, {DateTime Function()? now})
+    : _now = now ?? DateTime.now,
+      super(const ForYouState(isLoading: true)) {
     _setupListeners();
     _loadInitial();
   }
@@ -345,6 +364,7 @@ class ForYouNotifier extends StateNotifier<ForYouState> {
   }
 
   Future<void> refresh() async {
+    _abandonStalledFetch();
     if (_isFetching) {
       _queuedFeedRefresh = true;
       return;
@@ -371,12 +391,33 @@ class ForYouNotifier extends StateNotifier<ForYouState> {
   Future<void> refreshIfStale({
     Duration maxAge = _kForYouStaleThreshold,
   }) async {
+    if (_abandonStalledFetch()) {
+      await refresh();
+      return;
+    }
     if (_isFetching || state.isLoading) return;
     final lastRefreshAt = _lastRefreshAt;
-    if (lastRefreshAt == null ||
-        DateTime.now().difference(lastRefreshAt) >= maxAge) {
+    if (lastRefreshAt == null || _now().difference(lastRefreshAt) >= maxAge) {
       await refresh();
     }
+  }
+
+  /// Drops a page fetch that has been in flight past [_kForYouStalledFetchAge]
+  /// so the caller can start a fresh one. Returns whether one was dropped.
+  ///
+  /// The wall clock keeps running while iOS suspends the app, so this catches
+  /// a request frozen across a suspension even before its own timeout fires.
+  /// Without it, a feed that began loading before a suspension stayed on its
+  /// loading state, and every later refresh waited behind it.
+  bool _abandonStalledFetch() {
+    final startedAt = _fetchStartedAt;
+    if (!_isFetching || startedAt == null) return false;
+    if (_now().difference(startedAt) < _kForYouStalledFetchAge) return false;
+    _fetchGeneration++;
+    _isFetching = false;
+    _fetchStartedAt = null;
+    _queuedFeedRefresh = false;
+    return true;
   }
 
   Future<void> loadMore() async {
@@ -390,6 +431,10 @@ class ForYouNotifier extends StateNotifier<ForYouState> {
   Future<void> refreshForVisibility({
     Duration maxFeedAge = _kForYouStaleThreshold,
   }) async {
+    if (_abandonStalledFetch()) {
+      await this.refresh();
+      return;
+    }
     if (_isFetching ||
         state.isLoading ||
         _liveFeedRefreshPending ||
@@ -399,7 +444,7 @@ class ForYouNotifier extends StateNotifier<ForYouState> {
 
     final refresh = resolveForYouVisibilityRefresh(
       lastFeedRefreshAt: _lastRefreshAt,
-      now: DateTime.now(),
+      now: _now(),
       maxFeedAge: maxFeedAge,
     );
     if (refresh == ForYouVisibilityRefresh.fullFeed) {
@@ -515,6 +560,12 @@ class ForYouNotifier extends StateNotifier<ForYouState> {
   Future<void> _fetchPage({required bool isInitial}) async {
     if (_isFetching) return;
     _isFetching = true;
+    final startedAt = _now();
+    _fetchStartedAt = startedAt;
+    final generation = ++_fetchGeneration;
+    // False once the notifier is disposed (hot restart, a filter change) or
+    // this fetch was abandoned as stalled; such a fetch publishes nothing.
+    bool isCurrent() => mounted && generation == _fetchGeneration;
 
     try {
       // Read filter state
@@ -542,15 +593,17 @@ class ForYouNotifier extends StateNotifier<ForYouState> {
       // Query Supabase with filters
       final repo = ref.read(groupBroadcastRepositoryProvider);
 
-      final filteredBroadcasts = await repo.getForYouGroupBroadcasts(
-        limit: _kPageSize,
-        offset: _offset,
-        timeControlFilters: formatFilters.isNotEmpty ? formatFilters : null,
-        minElo: hasEloFilter ? minElo : null,
-        maxElo: hasEloFilter ? maxElo : null,
-        statusFilters: statusFilters.isNotEmpty ? statusFilters : null,
-      );
-      if (!mounted) return;
+      final filteredBroadcasts = await repo
+          .getForYouGroupBroadcasts(
+            limit: _kPageSize,
+            offset: _offset,
+            timeControlFilters: formatFilters.isNotEmpty ? formatFilters : null,
+            minElo: hasEloFilter ? minElo : null,
+            maxElo: hasEloFilter ? maxElo : null,
+            statusFilters: statusFilters.isNotEmpty ? statusFilters : null,
+          )
+          .timeout(_kForYouRequestTimeout);
+      if (!isCurrent()) return;
       final dbHasMore = filteredBroadcasts.length >= _kPageSize;
       _offset += filteredBroadcasts.length;
 
@@ -572,12 +625,14 @@ class ForYouNotifier extends StateNotifier<ForYouState> {
       final gamesByEventId = await _prefetchTopGames(
         models,
         replace: isInitial,
+        isCurrent: isCurrent,
       );
 
       // Bail out if the notifier was disposed while we were awaiting (e.g.
-      // hot restart, or the tab/provider being torn down mid-fetch). Writing
-      // `state` after dispose throws "used after dispose".
-      if (!mounted) return;
+      // hot restart, or the tab/provider being torn down mid-fetch) or this
+      // fetch was replaced. Writing `state` after dispose throws "used after
+      // dispose"; a replaced fetch would overwrite the newer page.
+      if (!isCurrent()) return;
 
       // Live IDs may have arrived while the board RPC was pending. Publish
       // their latest categories rather than overwriting them with the earlier
@@ -603,7 +658,7 @@ class ForYouNotifier extends StateNotifier<ForYouState> {
           isLoading: false,
           hasMore: dbHasMore,
         );
-        _lastRefreshAt = DateTime.now();
+        _lastRefreshAt = _now();
         _maybeFinalizePendingFavoritePlayerOrder();
         unawaited(
           ref
@@ -630,17 +685,28 @@ class ForYouNotifier extends StateNotifier<ForYouState> {
         _maybeFinalizePendingFavoritePlayerOrder();
       }
     } catch (e, stack) {
+      if (!isCurrent()) return;
+      // The timeout of a request frozen while the app was suspended fires on
+      // resume. Nothing failed from the user's side, so fetch again instead
+      // of flashing the error page before the resume refresh.
+      if (e is TimeoutException &&
+          _now().difference(startedAt) >= _kForYouStalledFetchAge) {
+        _queuedFeedRefresh = true;
+        return;
+      }
       debugPrint('[ForYou] Error: $e');
       debugPrint('[ForYou] Stack: $stack');
       _logErrorToSentry(e, stack);
-      if (mounted) {
-        state = state.copyWith(isLoading: false, error: e.toString());
-      }
+      state = state.copyWith(isLoading: false, error: e.toString());
     } finally {
-      _isFetching = false;
-      if (_queuedFeedRefresh && mounted) {
-        _queuedFeedRefresh = false;
-        Future.microtask(refresh);
+      // An abandoned fetch no longer owns the flags; its replacement does.
+      if (generation == _fetchGeneration) {
+        _isFetching = false;
+        _fetchStartedAt = null;
+        if (_queuedFeedRefresh && mounted) {
+          _queuedFeedRefresh = false;
+          Future.microtask(refresh);
+        }
       }
     }
   }
@@ -697,6 +763,7 @@ class ForYouNotifier extends StateNotifier<ForYouState> {
     List<GroupEventCardModel> models, {
     required bool replace,
     bool refreshFavoritePlayerCounts = true,
+    bool Function()? isCurrent,
   }) async {
     final notifier = ref.read(forYouTopGamesSnapshotCacheProvider.notifier);
 
@@ -726,11 +793,15 @@ class ForYouNotifier extends StateNotifier<ForYouState> {
       );
     }
 
-    final gamesByEventId = await gameRepository.getForYouTopGamesByEventIds(
-      eventIds: eventIds,
-      boardsPerEvent: kGamesPerEvent,
-    );
-    if (!mounted) return gamesByEventId;
+    final gamesByEventId = await gameRepository
+        .getForYouTopGamesByEventIds(
+          eventIds: eventIds,
+          boardsPerEvent: kGamesPerEvent,
+        )
+        .timeout(_kForYouRequestTimeout);
+    if (!mounted || (isCurrent != null && !isCurrent())) {
+      return gamesByEventId;
+    }
 
     final snapshots = <String, ForYouEventGamesSnapshot>{
       for (final model in models)

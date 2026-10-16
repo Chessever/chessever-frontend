@@ -19,8 +19,15 @@ const _userAgent =
 
 /// A lookup or download failure worth showing the reader as written.
 class PrepException implements Exception {
-  const PrepException(this.message);
+  const PrepException(this.message, {this.retryAfter, this.permanent = false});
   final String message;
+
+  /// How long the server asked to be left alone, when it said.
+  final Duration? retryAfter;
+
+  /// Whether asking again cannot help until something changes: the
+  /// username, the download options or the server.
+  final bool permanent;
 
   @override
   String toString() => message;
@@ -28,6 +35,13 @@ class PrepException implements Exception {
 
 /// What a sync reports while it waits on the server.
 typedef PrepProgress = void Function(String message);
+
+/// The wait a `Retry-After` header asks for, in seconds; HTTP dates are
+/// rare enough here to fall back to the retry schedule.
+Duration? prepRetryAfter(Headers? headers) {
+  final seconds = int.tryParse(headers?.value('retry-after')?.trim() ?? '');
+  return seconds == null || seconds <= 0 ? null : Duration(seconds: seconds);
+}
 
 /// Lichess and Chess.com profile lookups, and the server-cached game
 /// downloads desktop Prep uses, stored as one PGN file per account.
@@ -266,7 +280,9 @@ class PrepRepository {
     if (account.source == PrepSource.chessever) {
       final now = DateTime.now();
       final prefs = account.preferences;
-      if (prefs.validationError case final error?) throw PrepException(error);
+      if (prefs.validationError case final error?) {
+        throw PrepException(error, permanent: true);
+      }
       onProgress?.call('Downloading ChessEver games…');
       final export = await _gamebase.getPlayerGamesPgn(
         playerId: account.externalId!,
@@ -277,6 +293,7 @@ class PrepRepository {
           (export.pgn.trim().isEmpty && export.gameCount > 0)) {
         throw const PrepException(
           'ChessEver game export is unavailable. Try again.',
+          permanent: true,
         );
       }
       if (cancelToken?.isCancelled ?? false) throw cancelToken!.cancelError!;
@@ -304,7 +321,9 @@ class PrepRepository {
     }
     final now = DateTime.now();
     final prefs = account.preferences;
-    if (prefs.validationError case final error?) throw PrepException(error);
+    if (prefs.validationError case final error?) {
+      throw PrepException(error, permanent: true);
+    }
     final scope = prefs.scopeKey(now);
     final file = await gamesFile(account);
     final sameScope =
@@ -359,17 +378,20 @@ class PrepRepository {
         if (code == 404) {
           throw PrepException(
             '${account.source.label} has no account "${account.username}".',
+            permanent: true,
           );
         }
         if (code == 413) {
           throw const PrepException(
             'That selection is too large. Choose fewer time controls or a '
             'shorter period.',
+            permanent: true,
           );
         }
         if (code == 429) {
           throw PrepException(
             '${account.source.label} is limiting downloads. Try again in a minute.',
+            retryAfter: prepRetryAfter(error.response?.headers),
           );
         }
         throw PrepException(
@@ -378,12 +400,16 @@ class PrepRepository {
       }
     }
     if (export == null) {
-      throw const PrepException('Game downloads are not available right now.');
+      throw const PrepException(
+        'Game downloads are not available right now.',
+        permanent: true,
+      );
     }
     if (prefs.isFiltered && export.filterVersion != '1') {
       throw const PrepException(
         'Download options need a server update. Choose All time controls and '
         'All time for now.',
+        permanent: true,
       );
     }
 

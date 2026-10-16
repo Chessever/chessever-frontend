@@ -384,6 +384,7 @@ class _FeedClipState extends ConsumerState<FeedClip>
       sfx: ref.read(feedSfxProvider),
       moveSound: _moveSound,
     )..setSpeed(ref.read(feedPlaybackSpeedProvider));
+    _lastShown = _playback.shownPly;
     // Back on Feed from another tab: the settled clip carries on where the
     // viewer left it, before the board is first drawn.
     final resumed = widget.isCurrent ? _resume.take(_entryKey) : null;
@@ -412,7 +413,7 @@ class _FeedClipState extends ConsumerState<FeedClip>
     // clip before its next timer, not at the next frame.
     _seen = FeedSeen.maybeOf(context)?..addListener(_onSeenChanged);
     _syncing = true;
-    if (widget.isCurrent && resumed == null) _playback.restart();
+    if (widget.isCurrent && resumed == null) _restartPlayback();
     _syncSuspended();
     _syncing = false;
   }
@@ -486,7 +487,7 @@ class _FeedClipState extends ConsumerState<FeedClip>
         // behind no longer applies.
         _resume.clear();
         _countdown.value = 0;
-        _playback.restart();
+        _restartPlayback();
       }
     }
     _syncSuspended();
@@ -609,6 +610,14 @@ class _FeedClipState extends ConsumerState<FeedClip>
     _cardAside = value;
     _syncCountdown();
     _rebuild();
+  }
+
+  /// Plays the clip again from [FeedPlayback.startPly]. The clip opens on
+  /// that position rather than playing its move, so the move gets no landing.
+  void _restartPlayback() {
+    _landingClass = null;
+    _lastShown = _playback.startPly;
+    _playback.restart();
   }
 
   /// A classified game move that just arrived (autoplay, a step, a scrub
@@ -913,7 +922,7 @@ class _FeedClipState extends ConsumerState<FeedClip>
     HapticFeedbackService.buttonPress();
     if (_playback.isEnded) {
       _countdown.value = 0;
-      _playback.restart();
+      _restartPlayback();
     } else if (_playback.isHeld) {
       // A piece in hand holds the clip and the button shows Play: the piece
       // goes back down and the game plays on.
@@ -2240,7 +2249,7 @@ class _FeedClipState extends ConsumerState<FeedClip>
                           _consumeZoneTap();
                           HapticFeedbackService.buttonPress();
                           _countdown.value = 0;
-                          _playback.restart();
+                          _restartPlayback();
                         },
                         onNext: widget.hasNext
                             ? () {

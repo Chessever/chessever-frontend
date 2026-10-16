@@ -245,6 +245,8 @@ class PrepAccount {
     this.syncedScope,
     this.gameCount = 0,
     this.error,
+    this.failedAttempts = 0,
+    this.retryAtMs,
     this.externalId,
     this.fideId,
     this.playerAliases = const [],
@@ -288,6 +290,19 @@ class PrepAccount {
   final int gameCount;
   final String? error;
 
+  /// [error], while it left the account without games. A failed refresh
+  /// keeps every stored game, so the account goes on showing them; the
+  /// source popup still names the failure.
+  String? get downloadError => gameCount == 0 ? error : null;
+
+  /// Downloads that failed in a row since the last one that worked.
+  final int failedAttempts;
+
+  /// When a refresh the reader did not ask for may try again, after
+  /// [failedAttempts]. Kept with the account, so reopening the app does not
+  /// start the wait over.
+  final int? retryAtMs;
+
   /// The selection the stored games should hold this month. ChessEver's
   /// whole-player export keeps the scope it had before it could be narrowed.
   String downloadScope(DateTime now) => source != PrepSource.chessever
@@ -324,6 +339,9 @@ class PrepAccount {
     int? gameCount,
     String? error,
     bool clearError = false,
+    int? failedAttempts,
+    int? retryAtMs,
+    bool clearRetry = false,
     List<String>? playerAliases,
   }) => PrepAccount(
     source: source,
@@ -341,6 +359,8 @@ class PrepAccount {
     syncedScope: syncedScope ?? this.syncedScope,
     gameCount: gameCount ?? this.gameCount,
     error: clearError ? null : (error ?? this.error),
+    failedAttempts: clearRetry ? 0 : (failedAttempts ?? this.failedAttempts),
+    retryAtMs: clearRetry ? null : (retryAtMs ?? this.retryAtMs),
   );
 
   Map<String, Object?> toJson() => {
@@ -359,6 +379,8 @@ class PrepAccount {
     'syncedScope': syncedScope,
     'gameCount': gameCount,
     'error': error,
+    'failedAttempts': failedAttempts,
+    'retryAtMs': retryAtMs,
   };
 
   static PrepAccount? fromJson(Object? raw) {
@@ -397,6 +419,10 @@ class PrepAccount {
       syncedScope: _text(raw['syncedScope']),
       gameCount: raw['gameCount'] is int ? raw['gameCount'] as int : 0,
       error: _text(raw['error']),
+      failedAttempts: raw['failedAttempts'] is int
+          ? raw['failedAttempts'] as int
+          : 0,
+      retryAtMs: raw['retryAtMs'] is int ? raw['retryAtMs'] as int : null,
     );
   }
 }

@@ -15,7 +15,7 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 typedef TrackPersist = void Function(Future<void> future);
 
-/// Board + Auto-Pin settings as a non-scaffolded body widget.
+/// Board settings as a non-scaffolded body widget.
 /// Persist futures are reported via [trackPersist] so the host can await them
 /// in a PopScope before navigation.
 class BoardSettingsBody extends ConsumerWidget {
@@ -57,11 +57,6 @@ class BoardSettingsBody extends ConsumerWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        SectionLabel(title: 'Auto Pin'),
-        SizedBox(height: 12.h),
-        _AutoPinSection(trackPersist: trackPersist),
-
-        SizedBox(height: 24.h),
         SectionLabel(title: 'Board'),
         SizedBox(height: 12.h),
 
@@ -294,8 +289,9 @@ class BoardSettingsBody extends ConsumerWidget {
   }
 }
 
-class _AutoPinSection extends ConsumerWidget {
-  const _AutoPinSection({required this.trackPersist});
+/// Existing auto-pin controls, hosted under Settings > Customization.
+class AutoPinSettingsBody extends ConsumerWidget {
+  const AutoPinSettingsBody({super.key, required this.trackPersist});
 
   final TrackPersist trackPersist;
 

@@ -133,7 +133,7 @@ class LibraryRepository extends BaseRepository {
 
     final rootFolder = await createFolder(name: 'My Folder');
     await createFolder(
-      name: 'My Database',
+      name: 'Database',
       parentId: rootFolder.id,
       nodeType: LibraryFolder.nodeTypeDatabase,
     );

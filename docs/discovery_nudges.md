@@ -28,6 +28,19 @@ again or Remove. Example (illustrative, not published):
 {"dots":[{"id":"feature-launch","rev":1,"target":"home.tab.discovery","trail":["home.nav.home"],"label":"NEW","message":"Read the Feed.","messages":[{"body":"Read the Feed.","action_url":"https://chessever.com/feed"},{"body":"See your game reports.","action_url":"https://chessever.com/reports"}],"enabled":true,"name":"Feature launch"}]}
 ```
 
+## Audiences
+
+A Nudge for everyone is published under `dots`. A Nudge with an audience is
+published under `targeted`, each row carrying only `"audience_id"`: the id of
+the admin portal's audience filters in `editorial_private.audiences`. Filters
+can list chosen user ids, and every install can read Remote Config, so they
+never leave the database. Builds before 36.9.6 read only `dots`, so they never
+show a targeted Nudge. Newer builds send `{dot id: audience_id}` to
+`match_editorial_audiences`, which checks the signed-in account only, and light
+the ids it returns. No account, no answer, an unknown id or an error shows no
+targeted Nudge; Nudges for everyone are unaffected. The check repeats when the
+account or the published audiences change.
+
 ## Floating only: no layout change
 
 A Nudge never moves, resizes, remounts or re-hit-tests the app. Every anchor is

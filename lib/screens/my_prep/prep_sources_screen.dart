@@ -190,7 +190,7 @@ class PrepAccountRow extends ConsumerWidget {
                     )
                   else
                     Text(
-                      account.error != null
+                      account.downloadError != null
                           ? 'Download failed · Tap for details'
                           : account.source != PrepSource.manual &&
                                 account.lastSyncAtMs == null &&
@@ -198,7 +198,7 @@ class PrepAccountRow extends ConsumerWidget {
                           ? 'Ready to download'
                           : prepGamesLabel(account.gameCount),
                       style: AppTypography.textXsRegular.copyWith(
-                        color: account.error != null
+                        color: account.downloadError != null
                             ? colors.danger
                             : colors.textSecondary,
                       ),

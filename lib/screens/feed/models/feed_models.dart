@@ -190,6 +190,19 @@ class FeedItem {
 
   int get plyCount => plies.length - 1;
 
+  /// The ply a clip opens on: the position after the game's last book move,
+  /// so Feed plays from where the players left theory instead of replaying
+  /// the opening. 0 when the PGN marks no book move. Never the final
+  /// position: a game that was theory to the end still plays its last move.
+  int get startPly {
+    for (var i = plies.length - 1; i > 0; i--) {
+      if (plies[i].moveClass == MoveClass.book) {
+        return i < plyCount ? i : plyCount - 1;
+      }
+    }
+    return 0;
+  }
+
   /// Per-move clock displays in the board screen's `moveTimes` shape: index
   /// 0 is the first move, moves without a clock hold the `-:--:--`
   /// placeholder.

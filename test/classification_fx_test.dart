@@ -477,9 +477,10 @@ void main() {
       // moves are 325 ms apart).
       final playback = _playback(
         _item('½-½', [
+          // The clip opens after the book, so its move never sounds.
+          _ply('Nf3', verdict: MoveClass.book),
           _ply('e4'),
           _ply('a3', moment: FeedMomentType.inaccuracy),
-          _ply('Nc3', verdict: MoveClass.book),
           _ply(
             'Qxb7',
             moment: FeedMomentType.mistake,
@@ -500,7 +501,6 @@ void main() {
       expect(output.calls, [
         'ordinary:move', // an unclassified move still sounds at 2x
         'class:nagInaccuracy/move', // a severity-1 verdict too
-        'class:nagBook/move', // the report's verdicts sound as themselves
         'class:nagBest/takeover', // the PGN's verdict wins over the moment
         'ordinary:draw',
       ]);

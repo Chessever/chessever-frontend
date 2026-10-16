@@ -117,8 +117,9 @@ class SmartEventCard extends StatelessWidget {
   final bool disclosure;
 
   /// When set, the card ends in this smart event's star instead of the
-  /// chevron, as an event card does in the Events lists. My Space leaves it
-  /// null: its cards are shortcuts and never show a favorite star.
+  /// chevron, as an event card does in the Events lists, and its focus menu
+  /// gains the notifications row. My Space sets it too (Trello #1225), but
+  /// not in Edit, where a tap selects.
   final SmartEventRequest? starRequest;
   final bool stacked;
 
