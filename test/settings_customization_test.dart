@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:chessever2/chat/botvinnik_provider.dart';
 import 'package:chessever2/providers/auto_pin_preferences_provider.dart';
 import 'package:chessever2/providers/board_settings_provider_new.dart';
 import 'package:chessever2/providers/engine_settings_provider.dart';
@@ -13,6 +14,7 @@ import 'package:chessever2/screens/for_you/providers/for_you_tab_provider.dart';
 import 'package:chessever2/screens/home/widget/bottom_nav_bar.dart';
 import 'package:chessever2/screens/settings/settings_page.dart';
 import 'package:chessever2/screens/settings/widgets/board_settings_body.dart';
+import 'package:chessever2/screens/settings/widgets/botvinnik_settings_body.dart';
 import 'package:chessever2/screens/settings/widgets/start_screen_settings_body.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/theme/theme_provider.dart';
@@ -79,11 +81,25 @@ class _AutoPin extends AutoPinPreferencesNotifier {
   }
 }
 
+class _Botvinnik extends BotvinnikEnabledNotifier {
+  final calls = <bool>[];
+
+  @override
+  Future<bool> build() async => true;
+
+  @override
+  Future<void> setEnabled(bool enabled) async {
+    calls.add(enabled);
+    state = AsyncData(enabled);
+  }
+}
+
 Future<ProviderContainer> _pumpSettings(
   WidgetTester tester, {
   SettingsSection? initiallyExpanded,
   bool light = false,
   _AutoPin? autoPin,
+  _Botvinnik? botvinnik,
   bool viaRoute = false,
 }) async {
   tester.view.physicalSize = const Size(393, 852);
@@ -98,6 +114,7 @@ Future<ProviderContainer> _pumpSettings(
       notificationPermissionProvider.overrideWith((_) => _Permission()),
       subscriptionProvider.overrideWith((_) => _Subscription()),
       autoPinPreferencesProvider.overrideWith(() => autoPin ?? _AutoPin()),
+      botvinnikEnabledProvider.overrideWith(() => botvinnik ?? _Botvinnik()),
     ],
   );
   addTearDown(container.dispose);
@@ -199,6 +216,7 @@ void main() {
           'Auto Pin',
           'Favorite Players',
           'Countrymen',
+          'Botvinnik',
         ]) {
           expect(find.text(label), findsOneWidget);
         }
@@ -207,6 +225,7 @@ void main() {
           'Start section',
           'Home page',
           'Auto Pin',
+          'Botvinnik',
         ];
         for (var i = 1; i < ordered.length; i++) {
           expect(
@@ -224,6 +243,7 @@ void main() {
           SettingsAppearanceSection,
           StartScreenSettingsBody,
           AutoPinSettingsBody,
+          BotvinnikSettingsBody,
         ]) {
           expect(
             find.descendant(of: customization, matching: find.byType(type)),
@@ -237,8 +257,6 @@ void main() {
         );
         expect(find.text('Dark'), findsOneWidget);
         expect(find.text('Light'), findsOneWidget);
-        // Botvinnik no longer has a Settings section.
-        expect(find.textContaining('Botvinnik'), findsNothing);
         await _tap(tester, find.text('Customization'));
         await _tap(tester, find.text('Board Settings'));
         expect(
@@ -267,31 +285,65 @@ void main() {
     );
   }
 
-  testWidgets('moved auto-pin switches keep callbacks and state', (
+  testWidgets('moved switches keep callbacks, state and Botvinnik expansion', (
     tester,
   ) async {
     final autoPin = _AutoPin();
+    final botvinnik = _Botvinnik();
     final container = await _pumpSettings(
       tester,
       initiallyExpanded: SettingsSection.customization,
       autoPin: autoPin,
+      botvinnik: botvinnik,
     );
     await _tap(tester, _switchIn(AutoPinSettingsBody, 0));
     await _tap(tester, _switchIn(AutoPinSettingsBody, 1));
     expect(autoPin.calls, ['favorite:false', 'countrymen:true']);
-    final prefs = container.read(autoPinPreferencesProvider).requireValue;
-    expect(prefs.favoritePlayersAutoPinEnabled, isFalse);
-    expect(prefs.countrymenAutoPinEnabled, isTrue);
+    expect(
+      container
+          .read(autoPinPreferencesProvider)
+          .requireValue
+          .favoritePlayersAutoPinEnabled,
+      isFalse,
+    );
+    expect(
+      container
+          .read(autoPinPreferencesProvider)
+          .requireValue
+          .countrymenAutoPinEnabled,
+      isTrue,
+    );
+    await _tap(tester, find.text('Botvinnik'));
+    await _tap(tester, _switchIn(BotvinnikSettingsBody, 0));
+    expect(botvinnik.calls, [false]);
+    expect(container.read(botvinnikEnabledProvider).requireValue, isFalse);
     await _tap(tester, find.text('Customization'));
     expect(find.text('Appearance').hitTestable(), findsNothing);
     await _tap(tester, find.text('Customization'));
-    await tester.ensureVisible(_switchIn(AutoPinSettingsBody, 0));
+    await tester.ensureVisible(_switchIn(BotvinnikSettingsBody, 0));
     await tester.pumpAndSettle();
+    expect(_switchIn(BotvinnikSettingsBody, 0).hitTestable(), findsOneWidget);
     expect(
-      tester.widget<Switch>(_switchIn(AutoPinSettingsBody, 0)).value,
+      tester.widget<Switch>(_switchIn(BotvinnikSettingsBody, 0)).value,
       isFalse,
     );
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('initial Botvinnik destination expands both parent and child', (
+    tester,
+  ) async {
+    await _pumpSettings(tester, initiallyExpanded: SettingsSection.botvinnik);
+    expect(find.text('Light').hitTestable(), findsOneWidget);
+    await tester.ensureVisible(_switchIn(BotvinnikSettingsBody, 0));
+    await tester.pumpAndSettle();
+    expect(_switchIn(BotvinnikSettingsBody, 0).hitTestable(), findsOneWidget);
+    await _tap(tester, find.text('Botvinnik'));
+    expect(_switchIn(BotvinnikSettingsBody, 0).hitTestable(), findsNothing);
+    await _tap(tester, find.text('Botvinnik'));
+    await tester.ensureVisible(_switchIn(BotvinnikSettingsBody, 0));
+    await tester.pumpAndSettle();
+    expect(_switchIn(BotvinnikSettingsBody, 0).hitTestable(), findsOneWidget);
   });
 
   testWidgets(

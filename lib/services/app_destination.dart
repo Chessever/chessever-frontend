@@ -206,7 +206,6 @@ AppDestination? _parseAppDestination(String raw) {
           const {
             'board',
             'engine',
-            // Retired section; links already sent still open Settings.
             'botvinnik',
             'notifications',
             'customization',

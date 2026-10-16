@@ -1,5 +1,7 @@
+import 'package:chessever2/chat/botvinnik_icon.dart';
 import 'package:chessever2/e2e/e2e_ids.dart';
 import 'package:chessever2/screens/settings/widgets/board_settings_body.dart';
+import 'package:chessever2/screens/settings/widgets/botvinnik_settings_body.dart';
 import 'package:chessever2/screens/settings/widgets/engine_settings_body.dart';
 import 'package:chessever2/screens/settings/widgets/notification_settings_body.dart';
 import 'package:chessever2/screens/settings/widgets/settings_primitives.dart';
@@ -19,7 +21,7 @@ import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:motor/motor.dart';
 
-enum SettingsSection { customization, board, engine, notification }
+enum SettingsSection { botvinnik, board, engine, notification, customization }
 
 class SettingsPage extends ConsumerStatefulWidget {
   const SettingsPage({super.key, this.initiallyExpanded});
@@ -39,6 +41,7 @@ class SettingsPage extends ConsumerStatefulWidget {
 class _SettingsPageState extends ConsumerState<SettingsPage> {
   final Set<Future<void>> _pendingPersists = {};
   SettingsSection? _expanded;
+  bool _botvinnikExpanded = false;
 
   // Used to scroll the Picture-in-Picture card into view when the page is opened
   // straight to the notification section.
@@ -47,7 +50,10 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   @override
   void initState() {
     super.initState();
-    _expanded = widget.initiallyExpanded;
+    _botvinnikExpanded = widget.initiallyExpanded == SettingsSection.botvinnik;
+    _expanded = _botvinnikExpanded
+        ? SettingsSection.customization
+        : widget.initiallyExpanded;
     if (widget.initiallyExpanded == SettingsSection.notification) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _scrollToLiveWidgets();
@@ -152,6 +158,22 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                       const SectionLabel(title: 'Auto Pin'),
                       SizedBox(height: 12.h),
                       AutoPinSettingsBody(trackPersist: _trackPersist),
+                      SizedBox(height: 18.h),
+                      _CollapsibleSection(
+                        title: 'Botvinnik',
+                        // Keep the icon's own theme-aware tint.
+                        leading: BotvinnikIcon(size: 24.ic),
+                        expanded: _botvinnikExpanded,
+                        onTap: () {
+                          HapticFeedbackService.selection();
+                          setState(() {
+                            _botvinnikExpanded = !_botvinnikExpanded;
+                          });
+                        },
+                        child: BotvinnikSettingsBody(
+                          trackPersist: _trackPersist,
+                        ),
+                      ),
                     ],
                   ),
                 ),
