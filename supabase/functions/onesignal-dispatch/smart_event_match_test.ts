@@ -3,6 +3,7 @@
  */
 import { assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import {
+  sameRoundStartSlot,
   smartEventAverageRating,
   smartEventMatchesRound,
   type SmartEventRound,
@@ -166,4 +167,28 @@ Deno.test("the round's boards are only needed when a level is set", () => {
     true,
   );
   assertEquals(smartEventsNeedGameAverages([sub({ max_elo: 2400 })]), true);
+});
+
+Deno.test("sections share a start slot the way the producer keys it: by the rounded second", () => {
+  assertEquals(
+    sameRoundStartSlot(
+      "2026-10-16T15:32:31.387+00:00",
+      "2026-10-16T15:32:31.112+00:00",
+    ),
+    true,
+  );
+  assertEquals(
+    sameRoundStartSlot("2026-10-16T15:32:31.000Z", "2026-10-16T17:32:31+02:00"),
+    true,
+  );
+  assertEquals(
+    sameRoundStartSlot("2026-10-16T15:32:31.387Z", "2026-10-16T15:32:32.600Z"),
+    false,
+  );
+  assertEquals(
+    sameRoundStartSlot("2026-10-16T15:30:00Z", "2026-10-16T16:30:00Z"),
+    false,
+  );
+  assertEquals(sameRoundStartSlot(null, "2026-10-16T15:30:00Z"), false);
+  assertEquals(sameRoundStartSlot("not a date", "not a date"), false);
 });

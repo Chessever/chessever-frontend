@@ -11,6 +11,7 @@ import { filterGameStartedPlayerRecipients } from "./player_game_recipients.ts";
 import { chunk, packForUrlBudget } from "./postgrest_in.ts";
 import { pushImageUrl } from "./push_image.ts";
 import {
+  sameRoundStartSlot,
   smartEventAverageRating,
   type SmartEventRound,
   smartEventsNeedGameAverages,
@@ -1276,6 +1277,7 @@ async function buildContext(item: OutboxItem) {
   let eventName: string | null = null;
   let groupBroadcastId = item.group_broadcast_id ?? null;
   let groupSectionCount = 0;
+  let groupTourIds: string[] = [];
 
   // Every lookup here fails loud. They used to discard `error` and carry on
   // with a null row, so one dropped HTTP/2 stream on the games read turned a
@@ -1338,6 +1340,7 @@ async function buildContext(item: OutboxItem) {
     );
     groupSectionCount = (groupedTours ?? [])
       .filter((row) => !isCombinedTour(row as TourRow)).length;
+    groupTourIds = (groupedTours ?? []).map((row) => row.id);
   }
 
   const displayEventName = buildRoundEventDisplayName(
@@ -1391,7 +1394,9 @@ async function buildContext(item: OutboxItem) {
     ? await resolveSmartEventSubscribers({
       item,
       roundId: item.round_id,
+      roundStartsAt: round?.starts_at ?? null,
       groupBroadcastId,
+      groupTourIds,
       tourId,
       gameAverages: roundGameAverages,
     })
@@ -1630,7 +1635,9 @@ async function fetchRoundPlayers(roundId: string) {
 async function resolveSmartEventSubscribers(args: {
   item: OutboxItem;
   roundId: string;
+  roundStartsAt: string | null;
   groupBroadcastId: string | null;
+  groupTourIds: string[];
   tourId: string | null;
   gameAverages: number[] | null;
 }): Promise<string[]> {
@@ -1652,30 +1659,86 @@ async function resolveSmartEventSubscribers(args: {
     )) as SmartEventSubscription[];
     if (subscriptions.length === 0) return [];
 
-    let gameAverages = args.gameAverages;
-    if (!gameAverages && smartEventsNeedGameAverages(subscriptions)) {
-      const boards = await fetchAllPages<{ players: unknown }>(
-        "Smart event round boards lookup",
+    const phase = args.item.event_type === "round_finished"
+      ? "finish"
+      : "start";
+    const sections = [{
+      roundId: args.roundId,
+      tourId: args.tourId,
+      gameAverages: args.gameAverages,
+    }];
+    // A round start or heads-up is queued once per event and start time
+    // (`<type>:<group>:<epoch>`), carrying whichever section's round won the
+    // insert, and that one push reaches an event's starrers for every
+    // section. Match smart events against every section starting then too:
+    // otherwise a 2650+ smart event misses the Masters start whenever the
+    // Challengers round is the one queued. Results stay per round, since
+    // each section sends its own.
+    const startMs = Date.parse(args.roundStartsAt ?? "");
+    if (
+      phase === "start" && !Number.isNaN(startMs) &&
+      args.groupTourIds.length > 1
+    ) {
+      const siblings = await fetchAllPages<
+        { id: string; tour_id: string | null; starts_at: string | null }
+      >(
+        "Smart event section rounds lookup",
         (from, to) =>
           supabase
-            .from("games")
-            .select("id,players")
-            .eq("round_id", args.roundId)
+            .from("rounds")
+            .select("id,tour_id,starts_at")
+            .in("tour_id", args.groupTourIds)
+            .gte("starts_at", new Date(startMs - 1000).toISOString())
+            .lte("starts_at", new Date(startMs + 1000).toISOString())
             .order("id")
             .range(from, to),
       );
-      gameAverages = boards.map((row) => smartEventAverageRating(row.players));
+      for (const row of siblings) {
+        if (row.id === args.roundId) continue;
+        if (!sameRoundStartSlot(row.starts_at, args.roundStartsAt)) continue;
+        sections.push({
+          roundId: row.id,
+          tourId: row.tour_id,
+          gameAverages: null,
+        });
+      }
     }
 
-    const round: SmartEventRound = {
-      timeControl: await resolveGameTimeControl({
-        groupBroadcastId: args.groupBroadcastId,
-        tourId: args.tourId,
-      }),
-      gameAverages: gameAverages ?? [],
-      phase: args.item.event_type === "round_finished" ? "finish" : "start",
-    };
-    return smartEventSubscribersForRound(subscriptions, round);
+    const needAverages = smartEventsNeedGameAverages(subscriptions);
+    const audience = new Set(
+      subscriptions.map((row) => row.user_id).filter(Boolean),
+    );
+    const userIds = new Set<string>();
+    for (const section of sections) {
+      let gameAverages = section.gameAverages;
+      if (!gameAverages && needAverages) {
+        gameAverages = await fetchRoundGameAverages(section.roundId);
+      }
+      // A heads-up can run before the pairings are up, when the section has
+      // no board to rate: its players' average stands in for them.
+      if (
+        needAverages && section.tourId &&
+        !(gameAverages ?? []).some((average) => average > 0)
+      ) {
+        const sectionAverage = await fetchTourAverageElo(section.tourId);
+        if (sectionAverage > 0) gameAverages = [sectionAverage];
+      }
+      const round: SmartEventRound = {
+        timeControl: await resolveGameTimeControl({
+          groupBroadcastId: args.groupBroadcastId,
+          tourId: section.tourId,
+        }),
+        gameAverages: gameAverages ?? [],
+        phase,
+      };
+      for (
+        const userId of smartEventSubscribersForRound(subscriptions, round)
+      ) {
+        userIds.add(userId);
+      }
+      if (userIds.size >= audience.size) break;
+    }
+    return Array.from(userIds);
   } catch (error) {
     console.error(
       `[onesignal-dispatch] smart event subscribers failed for ${args.item.event_type} ${args.roundId}; event stars still used: ${
@@ -1684,6 +1747,37 @@ async function resolveSmartEventSubscribers(args: {
     );
     return [];
   }
+}
+
+/** Each board's two-player average in [roundId] (0 = unrated). */
+async function fetchRoundGameAverages(roundId: string): Promise<number[]> {
+  const boards = await fetchAllPages<{ players: unknown }>(
+    "Smart event round boards lookup",
+    (from, to) =>
+      supabase
+        .from("games")
+        .select("id,players")
+        .eq("round_id", roundId)
+        .order("id")
+        .range(from, to),
+  );
+  return boards.map((row) => smartEventAverageRating(row.players));
+}
+
+/** A section's player average (`tours.avg_elo`); 0 when unknown. */
+async function fetchTourAverageElo(tourId: string): Promise<number> {
+  const { data, error } = await runQuerySettled<{ avg_elo: unknown }>(
+    "Tour average rating lookup",
+    () =>
+      supabase
+        .from("tours")
+        .select("avg_elo")
+        .eq("id", tourId)
+        .maybeSingle(),
+  );
+  if (error) return 0;
+  const average = Number(data?.avg_elo);
+  return Number.isFinite(average) && average > 0 ? Math.floor(average) : 0;
 }
 
 /** Calendar-card favorite id: cal_event_<sanitized name> (matches Flutter). */

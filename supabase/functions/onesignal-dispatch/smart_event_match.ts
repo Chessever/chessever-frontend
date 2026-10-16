@@ -122,6 +122,22 @@ export function smartEventMatchesRound(
   );
 }
 
+/**
+ * Whether two round start times share one queued slot. The producer keys a
+ * grouped round start and heads-up on `<group>:<epoch seconds>`, from
+ * `EXTRACT(EPOCH FROM starts_at)::bigint`, which rounds: sections whose
+ * starts differ by milliseconds share one row.
+ */
+export function sameRoundStartSlot(
+  a: string | null | undefined,
+  b: string | null | undefined,
+): boolean {
+  const aMs = Date.parse(a ?? "");
+  const bMs = Date.parse(b ?? "");
+  if (Number.isNaN(aMs) || Number.isNaN(bMs)) return false;
+  return Math.round(aMs / 1000) === Math.round(bMs / 1000);
+}
+
 /** True when any of [subscriptions] needs the round's boards to decide. */
 export function smartEventsNeedGameAverages(
   subscriptions: SmartEventSubscription[],
