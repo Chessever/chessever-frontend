@@ -645,13 +645,15 @@ class _ExpandableFolderTile extends ConsumerWidget {
           onTap: folder.isDatabase ? onToggleSelect : onToggleExpand,
           trailing:
               hasChildren
-                  ? IconButton(
-                    onPressed: onToggleExpand,
-                    icon: Icon(
+                  ? GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: onToggleExpand,
+                    child: Icon(
                       isExpanded
                           ? Icons.keyboard_arrow_up_rounded
                           : Icons.keyboard_arrow_down_rounded,
                       color: context.textInk(0.5),
+                      size: 24.sp,
                     ),
                   )
                   : null,
@@ -692,6 +694,11 @@ class _FolderSelectionTile extends StatelessWidget {
   final VoidCallback onTap;
   final Widget? trailing;
   final bool isSmall;
+
+  Widget _trailingSlot(Widget child) => SizedBox.square(
+    dimension: isSmall ? 20.sp : 24.sp,
+    child: Center(child: child),
+  );
 
   @override
   Widget build(BuildContext context) {
@@ -755,18 +762,22 @@ class _FolderSelectionTile extends StatelessWidget {
                     ),
               ),
             ),
-            if (trailing != null) trailing!,
-            SizedBox(width: 8.w),
+            // Chevron and radio share one fixed slot so every row ends on
+            // the same right edge at the same height.
+            if (trailing != null) _trailingSlot(trailing!),
+            if (trailing != null && folder.isDatabase) SizedBox(width: 8.w),
             if (folder.isDatabase)
-              Icon(
-                selected
-                    ? Icons.check_circle_rounded
-                    : Icons.radio_button_unchecked_rounded,
-                color:
-                    selected
-                        ? context.colors.accentText
-                        : context.textInk(0.35),
-                size: isSmall ? 18.sp : 20.sp,
+              _trailingSlot(
+                Icon(
+                  selected
+                      ? Icons.check_circle_rounded
+                      : Icons.radio_button_unchecked_rounded,
+                  color:
+                      selected
+                          ? context.colors.accentText
+                          : context.textInk(0.35),
+                  size: isSmall ? 18.sp : 22.sp,
+                ),
               ),
           ],
         ),
