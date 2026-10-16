@@ -699,11 +699,15 @@ class _LoadingAppBarWithTitle extends StatelessWidget {
           icon: Icon(Icons.arrow_back_ios_new_outlined, size: 24.ic),
         ),
         SizedBox(width: 44.w),
-        SkeletonWidget(
-          child: Text(
-            title,
-            style: AppTypography.textMdRegular.copyWith(
-              color: context.colors.textPrimary,
+        Expanded(
+          child: SkeletonWidget(
+            child: Text(
+              title,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: AppTypography.textMdRegular.copyWith(
+                color: context.colors.textPrimary,
+              ),
             ),
           ),
         ),
