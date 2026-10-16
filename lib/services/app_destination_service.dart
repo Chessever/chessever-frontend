@@ -182,7 +182,6 @@ Future<bool> openAppDestination(
             initiallyExpanded: switch (destination.section) {
               'board' => SettingsSection.board,
               'engine' => SettingsSection.engine,
-              'botvinnik' => SettingsSection.botvinnik,
               'notifications' => SettingsSection.notification,
               'customization' => SettingsSection.customization,
               _ => null,

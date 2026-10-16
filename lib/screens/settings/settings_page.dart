@@ -1,9 +1,8 @@
-import 'package:chessever2/chat/botvinnik_icon.dart';
 import 'package:chessever2/e2e/e2e_ids.dart';
 import 'package:chessever2/screens/settings/widgets/board_settings_body.dart';
-import 'package:chessever2/screens/settings/widgets/botvinnik_settings_body.dart';
 import 'package:chessever2/screens/settings/widgets/engine_settings_body.dart';
 import 'package:chessever2/screens/settings/widgets/notification_settings_body.dart';
+import 'package:chessever2/screens/settings/widgets/settings_primitives.dart';
 import 'package:chessever2/screens/settings/widgets/start_screen_settings_body.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
@@ -20,7 +19,7 @@ import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:motor/motor.dart';
 
-enum SettingsSection { botvinnik, board, engine, notification, customization }
+enum SettingsSection { customization, board, engine, notification }
 
 class SettingsPage extends ConsumerStatefulWidget {
   const SettingsPage({super.key, this.initiallyExpanded});
@@ -134,16 +133,27 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                 bottom: 16.sp + bottomPadding,
               ),
               children: [
-                const SettingsAppearanceSection(),
-                SizedBox(height: 14.h),
                 _CollapsibleSection(
-                  title: 'Botvinnik',
-                  // BotvinnikIcon picks its own tint per theme (paperTint on
-                  // light); an accent-text override drowns the face.
-                  leading: BotvinnikIcon(size: 24.ic),
-                  expanded: _expanded == SettingsSection.botvinnik,
-                  onTap: () => _toggle(SettingsSection.botvinnik),
-                  child: BotvinnikSettingsBody(trackPersist: _trackPersist),
+                  title: 'Customization',
+                  leading: Icon(
+                    Icons.tune_rounded,
+                    color: context.colors.iconPrimary,
+                    size: 22.ic,
+                  ),
+                  expanded: _expanded == SettingsSection.customization,
+                  onTap: () => _toggle(SettingsSection.customization),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      const SettingsAppearanceSection(),
+                      SizedBox(height: 18.h),
+                      const StartScreenSettingsBody(),
+                      SizedBox(height: 24.h),
+                      const SectionLabel(title: 'Auto Pin'),
+                      SizedBox(height: 12.h),
+                      AutoPinSettingsBody(trackPersist: _trackPersist),
+                    ],
+                  ),
                 ),
                 SizedBox(height: 14.h),
                 _CollapsibleSection(
@@ -184,18 +194,6 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                     trackPersist: _trackPersist,
                     liveWidgetsKey: _liveWidgetsKey,
                   ),
-                ),
-                SizedBox(height: 14.h),
-                _CollapsibleSection(
-                  title: 'Customization',
-                  leading: Icon(
-                    Icons.tune_rounded,
-                    color: context.colors.iconPrimary,
-                    size: 22.ic,
-                  ),
-                  expanded: _expanded == SettingsSection.customization,
-                  onTap: () => _toggle(SettingsSection.customization),
-                  child: const StartScreenSettingsBody(),
                 ),
                 SizedBox(height: 24.h),
                 _DeleteAccountRow(
@@ -242,7 +240,8 @@ class SettingsAppearanceSection extends ConsumerWidget {
       key: const ValueKey('settings_appearance_card'),
       decoration: BoxDecoration(
         color: context.colors.surface,
-        borderRadius: BorderRadius.circular(20.br),
+        // Nested in Customization beside SettingCards, so it shares their 18.
+        borderRadius: BorderRadius.circular(18.br),
         border: Border.all(
           color: context.colors.divider.withValues(alpha: 0.4),
         ),
