@@ -87,15 +87,24 @@ class ReviewPromptService {
       // Feedback should still be deliverable when package metadata is absent.
     }
 
+    FeedbackSender? sender;
+    try {
+      sender = FeedbackSender.fromUser(
+        Supabase.instance.client.auth.currentUser,
+      );
+    } catch (_) {
+      // Feedback should still be deliverable when auth is unavailable.
+    }
+
     debugPrint('[Feedback] relaying direct feedback to Telegram');
     unawaited(
       TelegramNotificationService.instance.sendDirectFeedbackNotification(
         feedback: result.feedback,
         source: ReviewPromptTrigger.sidebar.name,
-        appVersion:
-            packageInfo == null
-                ? null
-                : '${packageInfo.version} (${packageInfo.buildNumber})',
+        sender: sender,
+        appVersion: packageInfo == null
+            ? null
+            : '${packageInfo.version} (${packageInfo.buildNumber})',
         platform: Platform.operatingSystem,
         pictureBytes: result.picture?.bytes,
         pictureFileName: result.picture?.fileName,
