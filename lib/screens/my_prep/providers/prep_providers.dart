@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math' as math;
 
 import 'package:chessever2/repository/gamebase/gamebase_repository.dart';
 import 'package:chessever2/screens/my_prep/models/prep_models.dart';
@@ -22,9 +23,51 @@ const Duration kPrepMineRefreshEvery = Duration(hours: 8);
 /// checks for new ones.
 const Duration kPrepOthersRefreshEvery = Duration(hours: 24);
 
-/// How long a failed background refresh waits before launch or a return to
-/// the app tries it again.
-const Duration kPrepBackgroundRetryAfter = Duration(minutes: 15);
+/// The first wait after a failed download. Each further failure in a row
+/// waits four times longer, up to [kPrepRetryMax]: 2 min, 8 min, 32 min,
+/// about 2 h, about 8.5 h, then a day.
+const Duration kPrepRetryFirst = Duration(minutes: 2);
+
+/// The longest wait between background tries. A failure that asking again
+/// cannot fix (a missing account, a too-large selection) waits this long at
+/// once, so it still recovers by itself once the cause goes away.
+const Duration kPrepRetryMax = Duration(hours: 24);
+
+/// How often the open app looks for refreshes that have come due. The look
+/// itself is local; only a due account reaches the server.
+const Duration kPrepFreshnessTick = Duration(minutes: 2);
+
+/// How long a background refresh waits after [failures] downloads failed in
+/// a row (1 for the first). [roll] in [0, 1) spreads it by ±20%, so phones
+/// that failed together during an outage do not all come back together.
+/// The server's [retryAfter] is a floor.
+Duration prepRetryDelay(
+  int failures, {
+  bool permanent = false,
+  Duration? retryAfter,
+  double? roll,
+}) {
+  final steps = (failures < 1 ? 1 : failures) - 1;
+  final base = permanent
+      ? kPrepRetryMax
+      : Duration(
+          milliseconds: math
+              .min(
+                kPrepRetryFirst.inMilliseconds *
+                    math.pow(4, math.min(steps, 8)),
+                kPrepRetryMax.inMilliseconds.toDouble(),
+              )
+              .round(),
+        );
+  final spread = 0.8 + 0.4 * (roll ?? math.Random().nextDouble());
+  final delay = Duration(
+    milliseconds: math.min(
+      (base.inMilliseconds * spread).round(),
+      kPrepRetryMax.inMilliseconds,
+    ),
+  );
+  return retryAfter != null && retryAfter > delay ? retryAfter : delay;
+}
 
 final prepRepositoryProvider = Provider<PrepRepository>((ref) {
   final repo = PrepRepository(ref.read(gamebaseRepositoryProvider));
@@ -274,8 +317,11 @@ class PrepSyncController extends StateNotifier<Map<String, PrepSyncStatus>> {
 
   final Map<String, Completer<void>> _running = {};
 
-  /// When each account's failed background refresh may run again.
-  final Map<String, DateTime> _backgroundRetryAt = {};
+  /// Background refreshes waiting their turn, as (profile id, account key).
+  /// They run one at a time, so a launch with many stale accounts sends
+  /// one download after another instead of all of them at once.
+  final List<(String, String)> _queue = [];
+  bool _draining = false;
 
   Future<void> cancelAndWait(PrepAccount account) async {
     cancel(account);
@@ -286,9 +332,10 @@ class PrepSyncController extends StateNotifier<Map<String, PrepSyncStatus>> {
 
   /// Downloads new games for one account. Returns the error text, or null.
   ///
-  /// A [background] refresh was not asked for by the reader, so its failure
-  /// is never stored on the account: the games already downloaded stay as
-  /// they were, and a later launch or return to the app tries again.
+  /// Every failure pushes the account's next background try out along
+  /// [prepRetryDelay]; a success resets it. A [background] refresh was not
+  /// asked for by the reader, so its failure is never shown on the account:
+  /// the games already downloaded stay as they were.
   Future<String?> syncAccount(
     String profileId,
     PrepAccount account, {
@@ -339,21 +386,40 @@ class PrepSyncController extends StateNotifier<Map<String, PrepSyncStatus>> {
                 : 'stale',
             gameCount: synced.gameCount,
             clearError: true,
+            clearRetry: true,
           ),
         );
       });
-      _backgroundRetryAt.remove(account.key);
       return null;
     } on DioException catch (error) {
       if (CancelToken.isCancel(error)) return null;
+      final code = error.response?.statusCode;
       return _fail(
         profileId,
         account,
         'Could not download games. Try again.',
         background: background,
+        // A refused request stays refused; a timeout, a dropped connection
+        // or a server error may pass.
+        permanent:
+            code != null &&
+            code >= 400 &&
+            code < 500 &&
+            code != 408 &&
+            code != 429,
+        retryAfter: code == 429
+            ? prepRetryAfter(error.response?.headers)
+            : null,
       );
     } on PrepException catch (error) {
-      return _fail(profileId, account, error.message, background: background);
+      return _fail(
+        profileId,
+        account,
+        error.message,
+        background: background,
+        permanent: error.permanent,
+        retryAfter: error.retryAfter,
+      );
     } catch (error) {
       debugPrint('[MyPrep] sync failed: $error');
       return _fail(
@@ -374,24 +440,30 @@ class PrepSyncController extends StateNotifier<Map<String, PrepSyncStatus>> {
     PrepAccount account,
     String message, {
     required bool background,
+    bool permanent = false,
+    Duration? retryAfter,
   }) {
-    if (background) {
-      debugPrint('[MyPrep] background refresh failed: $message');
-      _backgroundRetryAt[account.key] = DateTime.now().add(
-        kPrepBackgroundRetryAfter,
+    if (background) debugPrint('[MyPrep] background refresh failed: $message');
+    final now = DateTime.now().millisecondsSinceEpoch;
+    _ref.read(prepProfilesProvider.notifier).edit(profileId, (p) {
+      // Detached while it ran: nothing to record.
+      final live = p.accounts.where((a) => a.key == account.key).firstOrNull;
+      if (live == null) return p;
+      final failures = live.failedAttempts + 1;
+      return p.replaceAccount(
+        live.copyWith(
+          error: background ? null : message,
+          failedAttempts: failures,
+          retryAtMs:
+              now +
+              prepRetryDelay(
+                failures,
+                permanent: permanent,
+                retryAfter: retryAfter,
+              ).inMilliseconds,
+        ),
       );
-      return message;
-    }
-    _ref
-        .read(prepProfilesProvider.notifier)
-        .edit(
-          profileId,
-          (p) => p.replaceAccount(
-            (p.accounts.where((a) => a.key == account.key).firstOrNull ??
-                    account)
-                .copyWith(error: message),
-          ),
-        );
+    });
     return message;
   }
 
@@ -408,32 +480,66 @@ class PrepSyncController extends StateNotifier<Map<String, PrepSyncStatus>> {
     return firstError;
   }
 
-  /// Brings stale profiles of [kinds] up to date in the background: the
-  /// reader's own accounts every [kPrepMineRefreshEvery], the rest daily.
-  /// A failure stays out of sight and is tried again after
-  /// [kPrepBackgroundRetryAfter]; an account still carrying an earlier
-  /// failure is tried too, so a success clears it.
+  /// Brings stale profiles up to date in the background: the reader's own
+  /// accounts every [kPrepMineRefreshEvery], the rest daily. They download
+  /// one at a time. A failed one waits out its [PrepAccount.retryAtMs]
+  /// first; an account still carrying an earlier failure is tried as well,
+  /// so a success clears it.
   void refreshStale(Iterable<PrepProfile> profiles) {
-    final clock = DateTime.now();
-    final now = clock.millisecondsSinceEpoch;
+    final now = DateTime.now();
     for (final profile in profiles) {
-      final every = profile.kind == PrepKind.mine
-          ? kPrepMineRefreshEvery
-          : kPrepOthersRefreshEvery;
       for (final account in profile.accounts) {
-        if (account.source == PrepSource.manual) continue;
-        final last = account.lastSyncAtMs;
-        // Connecting fetches metadata only. The first download is explicit,
-        // as on desktop; freshness applies once the reader has downloaded.
-        if (last == null) continue;
-        final stale =
-            now - last >= every.inMilliseconds ||
-            account.syncedScope != account.downloadScope(clock);
-        final retryAt = _backgroundRetryAt[account.key];
-        if (stale && (retryAt == null || !clock.isBefore(retryAt))) {
-          unawaited(syncAccount(profile.id, account, background: true));
+        final entry = (profile.id, account.key);
+        if (!_due(profile, account, now) ||
+            isSyncing(account) ||
+            _queue.contains(entry)) {
+          continue;
         }
+        _queue.add(entry);
       }
+    }
+    unawaited(_drain());
+  }
+
+  /// Whether a background refresh should fetch [account] at [now].
+  static bool _due(PrepProfile profile, PrepAccount account, DateTime now) {
+    if (account.source == PrepSource.manual) return false;
+    final last = account.lastSyncAtMs;
+    // Connecting fetches metadata only. The first download is explicit,
+    // as on desktop; freshness applies once the reader has downloaded.
+    if (last == null) return false;
+    final at = now.millisecondsSinceEpoch;
+    if (account.retryAtMs case final retryAt? when at < retryAt) return false;
+    final every = profile.kind == PrepKind.mine
+        ? kPrepMineRefreshEvery
+        : kPrepOthersRefreshEvery;
+    return at - last >= every.inMilliseconds ||
+        account.syncedScope != account.downloadScope(now);
+  }
+
+  Future<void> _drain() async {
+    if (_draining) return;
+    _draining = true;
+    try {
+      while (mounted && _queue.isNotEmpty) {
+        final (profileId, key) = _queue.removeAt(0);
+        final profile = _ref
+            .read(prepProfilesProvider.notifier)
+            .byId(profileId);
+        final account = profile?.accounts
+            .where((a) => a.key == key)
+            .firstOrNull;
+        // Looked at again: since it was queued it may have been refreshed
+        // by the reader, detached, or failed.
+        if (profile == null ||
+            account == null ||
+            !_due(profile, account, DateTime.now())) {
+          continue;
+        }
+        await syncAccount(profileId, account, background: true);
+      }
+    } finally {
+      _draining = false;
     }
   }
 
@@ -445,13 +551,18 @@ class PrepSyncController extends StateNotifier<Map<String, PrepSyncStatus>> {
 // ------------------------------------------------------------------ freshness
 
 /// Keeps prepared players' games current while the app runs, as desktop
-/// does: a little after launch, and whenever the app comes back to the
-/// foreground, stale accounts fetch only their new games (yours every
-/// [kPrepMineRefreshEvery], opponents every [kPrepOthersRefreshEvery]).
-/// Watch it from the home shell.
+/// does: a little after launch, whenever the app comes back to the
+/// foreground, and every [kPrepFreshnessTick] while it stays open, stale
+/// accounts fetch only their new games (yours every [kPrepMineRefreshEvery],
+/// opponents every [kPrepOthersRefreshEvery]). The tick is what lets a
+/// failed refresh recover on its own once its wait is over. Watch it from
+/// the home shell.
 final prepKeepFreshProvider = Provider<void>((ref) {
   var launched = false;
   void check() {
+    // Never from the background: the system would cut the download off.
+    final lifecycle = WidgetsBinding.instance.lifecycleState;
+    if (lifecycle != null && lifecycle != AppLifecycleState.resumed) return;
     final profiles = ref.read(prepProfilesProvider).valueOrNull;
     if (profiles == null || profiles.isEmpty) return;
     ref
@@ -459,10 +570,12 @@ final prepKeepFreshProvider = Provider<void>((ref) {
         .refreshStale(profiles.where((p) => p.kind != PrepKind.favorite));
   }
 
+  Timer? tick;
   // Not on the first frame: launch has enough to do already.
-  final timer = Timer(const Duration(seconds: 10), () {
+  final launch = Timer(const Duration(seconds: 10), () {
     launched = true;
     check();
+    tick = Timer.periodic(kPrepFreshnessTick, (_) => check());
   });
   final lifecycle = AppLifecycleListener(
     onResume: () {
@@ -470,7 +583,8 @@ final prepKeepFreshProvider = Provider<void>((ref) {
     },
   );
   ref.onDispose(() {
-    timer.cancel();
+    launch.cancel();
+    tick?.cancel();
     lifecycle.dispose();
   });
 });
