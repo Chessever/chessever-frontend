@@ -13,8 +13,6 @@ import 'package:chessever2/screens/group_event/group_event_screen.dart'
 import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart';
 import 'package:chessever2/screens/group_event/widget/appbar_icons_widget.dart';
 import 'package:chessever2/screens/group_event/smart_event/smart_aggregate_event_provider.dart';
-import 'package:chessever2/screens/group_event/widget/filter_popup/filter_popup_provider.dart';
-import 'package:chessever2/screens/group_event/widget/filter_popup/filter_popup_state.dart';
 import 'package:chessever2/screens/library/widgets/library_context_menu.dart';
 import 'package:chessever2/screens/my_space/actions/space_menu_action.dart';
 import 'package:chessever2/screens/my_space/models/space_shortcut.dart';
@@ -224,30 +222,13 @@ class _SmartEventScreenState extends ConsumerState<SmartEventScreen> {
     setState(() => _filter = filter);
   }
 
-  /// Persists the overridden config: writes it back into the tabs' filter
-  /// popup state — the smart event IS a projection of that state, so the
-  /// generated cards on For You / Current rename and regenerate — and, when
-  /// this smart event is saved, rewrites the favorite row to the re-keyed
-  /// request (identity embeds the Elo floor, and even an identity-stable
-  /// change must refresh the stored criteria metadata).
+  /// Persists the overridden config: when this smart event is saved,
+  /// rewrites the favorite row to the re-keyed request (identity embeds the
+  /// Elo floor, and even an identity-stable change must refresh the stored
+  /// criteria metadata). The Today and Current filters are the reader's own
+  /// and stay as they are: no smart event is drawn from them any more.
   Future<void> _applyConfigChanges() async {
     final updated = _effectiveRequest;
-
-    final filter = ref.read(eventAppliedFilterProvider);
-    ref.read(eventAppliedFilterProvider.notifier).state = filter.copyWith(
-      formatsAndStates: updated.formatsAndStates,
-      eco: updated.eco,
-      eloRange: RangeValues(
-        updated.minElo
-            .toDouble()
-            .clamp(kFilterMinElo, kFilterMaxElo)
-            .toDouble(),
-        updated.maxElo
-            .toDouble()
-            .clamp(kFilterMinElo, kFilterMaxElo)
-            .toDouble(),
-      ),
-    );
 
     // Criteria-based lookup so legacy (v1, event-set-keyed) rows are found
     // and rewritten to the criteria-keyed v2 identity.
@@ -788,12 +769,6 @@ class _AppBar extends ConsumerWidget {
     await ref
         .read(favoriteEventsProvider.notifier)
         .removeFavorite(savedFavorite.eventId);
-    // Removing the saved smart event must also wipe the applied
-    // filter that generates its card on home — otherwise the
-    // generated card lingers even though the favorite is gone.
-    ref.read(eventAppliedFilterProvider.notifier).state =
-        defaultFilterPopupState;
-    ref.read(filterPopupProvider.notifier).setState(defaultFilterPopupState);
     if (context.mounted) Navigator.of(context).pop();
   }
 }
