@@ -129,7 +129,7 @@ class FolderCard extends ConsumerWidget {
       );
     }
     if (folder.isDatabase) {
-      return _ChessDatabaseGlyph(color: context.colors.iconPrimary, size: size);
+      return ChessDatabaseGlyph(color: context.colors.iconPrimary, size: size);
     }
     return SvgWidget(
       SvgAsset.folderOutline,
@@ -921,8 +921,12 @@ class _PressableMotionCardState extends State<_PressableMotionCard> {
 
 /// Chess-database glyph: a database cylinder with a tiny 2x2 chessboard,
 /// ported from the desktop app to mark database nodes in the library.
-class _ChessDatabaseGlyph extends StatelessWidget {
-  const _ChessDatabaseGlyph({required this.color, required this.size});
+class ChessDatabaseGlyph extends StatelessWidget {
+  const ChessDatabaseGlyph({
+    super.key,
+    required this.color,
+    required this.size,
+  });
 
   final Color color;
   final double size;

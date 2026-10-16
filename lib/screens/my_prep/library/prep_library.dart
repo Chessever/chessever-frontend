@@ -15,6 +15,7 @@ import 'package:chessever2/screens/my_prep/services/prep_repository.dart';
 import 'package:chessever2/screens/my_prep/tabs/prep_games_tab.dart';
 import 'package:chessever2/screens/my_prep/widgets/prep_common.dart';
 import 'package:chessever2/screens/my_prep/widgets/prep_filters.dart';
+import 'package:chessever2/screens/my_prep/widgets/prep_open_profile_button.dart';
 import 'package:chessever2/services/game_tree/game_tree_service.dart';
 import 'package:chessever2/services/game_tree/game_tree_store.dart';
 import 'package:chessever2/theme/app_colors.dart';
@@ -380,6 +381,14 @@ class PrepLibraryFolderScreen extends ConsumerWidget {
                                         : '${prepGamesLabel(account.gameCount)} · '
                                               '${prepSyncedAgo(account.lastSyncAtMs)}'),
                         ),
+                      if (profile.gameCount > 0)
+                        Padding(
+                          padding: EdgeInsets.only(top: 8.h),
+                          child: PrepOpenProfileButton(
+                            key: const ValueKey('prep_library_open_profile'),
+                            profileId: profile.id,
+                          ),
+                        ),
                     ],
                   ),
                 ),
@@ -412,8 +421,10 @@ class _DatabaseCard extends ConsumerWidget {
         folder: _databaseNode(profile, account),
         isExpanded: true,
         subtitle: subtitle,
+        // Combined wears the database glyph bare at the marks' size, so all
+        // the cards lead with the same weight.
         leading: account == null
-            ? null
+            ? ChessDatabaseGlyph(color: context.colors.iconPrimary, size: 36.h)
             : PrepSourceMark(source: account.source, size: 36.h),
         // A database is its games, which open as Prep's Games tab does.
         onTap: () async {
