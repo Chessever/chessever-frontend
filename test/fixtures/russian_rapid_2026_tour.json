@@ -1,0 +1,78 @@
+{
+  "id": "yv058ZKo",
+  "url": "https://lichess.org/broadcast/russian-rapid-championship-2026/yv058ZKo",
+  "info": {
+    "tc": "15 min + 10 sec / move",
+    "venue": "Krasnodar region, Sochi, st. Chernomorskaya, 3",
+    "fideTC": "rapid",
+    "fideTc": "rapid",
+    "format": "11-round Swiss",
+    "players": 158,
+    "section": "Open",
+    "website": "https://clck.ru/3VkpWR",
+    "location": "Sochi",
+    "timeZone": "Europe/Moscow",
+    "standings": "https://s2.chess-results.com/tnr1494532.aspx?lan=11&art=0&turdet=YES&SNode=S0",
+    "roundCount": 11,
+    "description": "Russian Rapid Open Championship, 14–15 October 2026 in Sochi, Russia. An 11-round Swiss with 15 minutes plus a 10-second increment from move 1. Tournament director: Tereschenko, Valerij. Chief arbiter: IA Vatlin, Aleksandr (FIDE ID 24168467). Official starting list: 158 participants. FIDE-rated Rapid event.",
+    "fideEventId": 495656,
+    "standingsSource": "chess-results",
+    "standingsUpdatedAt": "2026-10-16T00:28:02.371698+00:00",
+    "participantRosterSource": "https://s2.chess-results.com/tnr1494532.aspx?lan=11&art=0&turdet=YES&SNode=S0",
+    "participantRatingTimeControl": "rapid"
+  },
+  "name": "Russian Rapid Championship 2026",
+  "slug": "russian-rapid-championship-2026",
+  "tier": 5,
+  "dates": [
+    "2026-10-14T11:00:00+00:00",
+    "2026-10-15T16:50:00+00:00"
+  ],
+  "image": "https://image.lichess1.org/display?fmt=png&h=400&op=thumbnail&path=cA3wA_78Mj9U.png&w=800&sig=4eea2a68ca0c5962839e2fdfc498827e6905e398",
+  "avg_elo": 2542,
+  "players": [
+    {
+      "fed": "RUS",
+      "name": "Dubov, Daniil",
+      "rank": 1,
+      "score": 8.5,
+      "title": "GM",
+      "fideId": 24126055,
+      "played": 11,
+      "rating": 2654,
+      "tiebreaks": [
+        {
+          "points": 79.5,
+          "description": "Buchholz Tie-Break Variable (2026) (Gamepoints)",
+          "extendedCode": "TB1"
+        },
+        {
+          "points": 75,
+          "description": "Buchholz Tie-Break Variable (2026) (Gamepoints, Cut1)",
+          "extendedCode": "TB2"
+        },
+        {
+          "points": 7,
+          "description": "Number of wins including byes (WIN) (Gamepoints, Forfeited games count)",
+          "extendedCode": "TB3"
+        },
+        {
+          "points": 0,
+          "description": "Direct Encounter (DE)",
+          "extendedCode": "TB4"
+        }
+      ],
+      "ratingsMap": {
+        "rapid": 2654
+      },
+      "ratingDiffs": {
+        "rapid": 5
+      },
+      "performances": {
+        "rapid": 2682
+      }
+    }
+  ],
+  "created_at": "2026-10-14T00:24:33.196+00:00",
+  "group_broadcast_id": "russian_rapid_championship_2026"
+}
