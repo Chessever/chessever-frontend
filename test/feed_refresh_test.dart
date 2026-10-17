@@ -444,6 +444,7 @@ class _Games implements GameRepository {
     bool decisiveOnly = false,
     int limit = 60,
     int offset = 0,
+    bool overTheBoardOnly = false,
   }) async {
     reads++;
     final stall = stallNext;

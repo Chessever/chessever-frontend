@@ -138,6 +138,22 @@ const String _gameListSelectColumns = '''
 
 /// [_gameListSelectColumns] without `pgn` and `search`: what the Feed ranks
 /// on. Movetext is fetched afterwards for the games it picks.
+/// Tour slugs of online series, for [GameRepository.getFeedCandidateGames]'s
+/// over-the-board read. The Feed's `feedIsOnlineEvent` is the full rule and
+/// still runs on every row; this only keeps the bulk off the wire.
+const List<String> _onlineTourSlugPatterns = [
+  '%titled-tuesday%',
+  '%freestyle%',
+  '%thursday%',
+  '%collegiate-chess-league%',
+  '%online%',
+  '%bullet%',
+  '%brawl%',
+  '%titled-arena%',
+  '%chess-com%',
+  '%lichess%',
+];
+
 const String _feedCandidateSelectColumns = '''
           id,
           round_id,
@@ -719,8 +735,9 @@ class GameRepository extends BaseRepository {
           .eq('round_id', roundId)
           .order('id', ascending: true);
 
-      final games =
-          (response as List).map((json) => Games.fromJson(json)).toList();
+      final games = (response as List)
+          .map((json) => Games.fromJson(json))
+          .toList();
       return _deduplicateGames(games);
     });
   }
@@ -787,8 +804,10 @@ class GameRepository extends BaseRepository {
       Object? snapshotError;
       StackTrace? snapshotStack;
       void hydrateFallbacks(List<Games> page) {
-        final requiredIds =
-            page.where(tourIndexNeedsPgn).map((g) => g.id).toList();
+        final requiredIds = page
+            .where(tourIndexNeedsPgn)
+            .map((g) => g.id)
+            .toList();
         for (final chunk in _chunks(requiredIds, 100)) {
           final lane = nextLane++ % lanes.length;
           lanes[lane] = lanes[lane].then((_) async {
@@ -881,8 +900,8 @@ class GameRepository extends BaseRepository {
       while (true) {
         final pageSize =
             remaining == null || remaining > _tourGamesFetchPageSize
-                ? _tourGamesFetchPageSize
-                : remaining;
+            ? _tourGamesFetchPageSize
+            : remaining;
         if (pageSize <= 0) {
           break;
         }
@@ -1002,8 +1021,11 @@ class GameRepository extends BaseRepository {
 
   Future<Games> getGameWithPGN(String gameId) async {
     return handleApiCall(() async {
-      final response =
-          await supabase.from('games').select().eq('id', gameId).single();
+      final response = await supabase
+          .from('games')
+          .select()
+          .eq('id', gameId)
+          .single();
 
       return Games.fromJson(response);
     });
@@ -1013,12 +1035,11 @@ class GameRepository extends BaseRepository {
   Future<Games> getGameById(String id) async {
     debugPrint('Fetching game by ID: $id');
     return handleApiCall(() async {
-      final response =
-          await supabase
-              .from('games')
-              .select(_gameListSelectColumns)
-              .eq('id', id)
-              .single();
+      final response = await supabase
+          .from('games')
+          .select(_gameListSelectColumns)
+          .eq('id', id)
+          .single();
 
       return Games.fromJson(response);
     });
@@ -1028,12 +1049,11 @@ class GameRepository extends BaseRepository {
   Future<Games> getGameByLichessId(String lichessId) async {
     debugPrint('Fetching game by Lichess ID: $lichessId');
     return handleApiCall(() async {
-      final response =
-          await supabase
-              .from('games')
-              .select(_gameListSelectColumns)
-              .eq('lichess_id', lichessId)
-              .single();
+      final response = await supabase
+          .from('games')
+          .select(_gameListSelectColumns)
+          .eq('lichess_id', lichessId)
+          .single();
 
       return Games.fromJson(response);
     });
@@ -1091,8 +1111,9 @@ class GameRepository extends BaseRepository {
       );
       final response = await query;
 
-      final jsonList =
-          (response as List).map((item) => json.encode(item)).toList();
+      final jsonList = (response as List)
+          .map((item) => json.encode(item))
+          .toList();
 
       final games = await compute(_decodeGamesInIsolate, jsonList);
 
@@ -1118,8 +1139,9 @@ class GameRepository extends BaseRepository {
           .order('time_start', ascending: false)
           .range(offset, offset + limit - 1);
 
-      final jsonList =
-          (response as List).map((item) => json.encode(item)).toList();
+      final jsonList = (response as List)
+          .map((item) => json.encode(item))
+          .toList();
 
       final games = await compute(_decodeGamesInIsolate, jsonList);
 
@@ -1163,8 +1185,9 @@ class GameRepository extends BaseRepository {
       debugPrint(
         '===== GameRepository: Received ${(response as List).length} games =====',
       );
-      final games =
-          (response as List).map((json) => Games.fromJson(json)).toList();
+      final games = (response as List)
+          .map((json) => Games.fromJson(json))
+          .toList();
       return _deduplicateGames(games);
     });
   }
@@ -1189,8 +1212,9 @@ class GameRepository extends BaseRepository {
           .order('time_start', ascending: false)
           .range(offset, offset + limit - 1);
 
-      final jsonList =
-          (response as List).map((item) => json.encode(item)).toList();
+      final jsonList = (response as List)
+          .map((item) => json.encode(item))
+          .toList();
 
       final games = await compute(_decodeGamesInIsolate, jsonList);
 
@@ -1200,8 +1224,11 @@ class GameRepository extends BaseRepository {
 
   Future<String?> getGamePgn(String gameId) async {
     return handleApiCall(() async {
-      final response =
-          await supabase.from('games').select('pgn').eq('id', gameId).single();
+      final response = await supabase
+          .from('games')
+          .select('pgn')
+          .eq('id', gameId)
+          .single();
 
       return response['pgn'] as String?;
     });
@@ -1217,8 +1244,9 @@ class GameRepository extends BaseRepository {
           .contains('player_feds', [normalizedCode])
           .order('id', ascending: true);
 
-      final jsonList =
-          (response as List).map((item) => json.encode(item)).toList();
+      final jsonList = (response as List)
+          .map((item) => json.encode(item))
+          .toList();
 
       final games = await compute(_decodeGamesInIsolate, jsonList);
 
@@ -1251,8 +1279,9 @@ class GameRepository extends BaseRepository {
           .order('last_move_time', ascending: false, nullsFirst: false)
           .range(offset, offset + limit - 1);
 
-      final jsonList =
-          (response as List).map((item) => json.encode(item)).toList();
+      final jsonList = (response as List)
+          .map((item) => json.encode(item))
+          .toList();
 
       final games = await compute(_decodeGamesInIsolate, jsonList);
 
@@ -1287,8 +1316,9 @@ class GameRepository extends BaseRepository {
           .order('last_move_time', ascending: false, nullsFirst: false)
           .range(offset, offset + limit - 1);
 
-      final jsonList =
-          (response as List).map((item) => json.encode(item)).toList();
+      final jsonList = (response as List)
+          .map((item) => json.encode(item))
+          .toList();
 
       final games = await compute(_decodeGamesInIsolate, jsonList);
 
@@ -1321,8 +1351,9 @@ class GameRepository extends BaseRepository {
           .order('last_move_time', ascending: false, nullsFirst: false)
           .range(offset, offset + limit - 1);
 
-      final jsonList =
-          (response as List).map((item) => json.encode(item)).toList();
+      final jsonList = (response as List)
+          .map((item) => json.encode(item))
+          .toList();
 
       final games = await compute(_decodeGamesInIsolate, jsonList);
 
@@ -1343,6 +1374,9 @@ class GameRepository extends BaseRepository {
   /// runs on the server against the indexed `player_max_rating`, so a page
   /// is a few kilobytes however strong the day was. [tourIds] narrows to
   /// those tours (the events running now); null reads every tour.
+  /// [overTheBoardOnly] leaves out the online series by tour slug (Titled
+  /// Tuesday, Freestyle, 3+0 Thursday...), whose evenings otherwise fill
+  /// every page.
   Future<List<Games>> getFeedCandidateGames({
     required DateTime since,
     List<String>? tourIds,
@@ -1350,6 +1384,7 @@ class GameRepository extends BaseRepository {
     bool decisiveOnly = false,
     int limit = 60,
     int offset = 0,
+    bool overTheBoardOnly = false,
   }) async {
     return handleApiCall(() async {
       if (tourIds != null && tourIds.isEmpty) return <Games>[];
@@ -1367,6 +1402,11 @@ class GameRepository extends BaseRepository {
           )
           .gte('last_move_time', since.toUtc().toIso8601String());
       if (tourIds != null) query = query.inFilter('tour_id', tourIds);
+      if (overTheBoardOnly) {
+        for (final pattern in _onlineTourSlugPatterns) {
+          query = query.not('tour_slug', 'ilike', pattern);
+        }
+      }
       final response = await query
           .order('last_move_time', ascending: false, nullsFirst: false)
           .range(offset, offset + limit - 1);
@@ -1480,20 +1520,20 @@ class GameRepository extends BaseRepository {
 
       final response = await query;
 
-      final jsonList =
-          (response as List).map((item) => json.encode(item)).toList();
+      final jsonList = (response as List)
+          .map((item) => json.encode(item))
+          .toList();
 
       var games = await compute(_decodeGamesInIsolate, jsonList);
 
       // Filter games where at least one player has ELO >= minElo
-      games =
-          games
-              .where((game) {
-                if (game.players == null || game.players!.isEmpty) return false;
-                return game.players!.any((player) => player.rating >= minElo);
-              })
-              .take(limit)
-              .toList();
+      games = games
+          .where((game) {
+            if (game.players == null || game.players!.isEmpty) return false;
+            return game.players!.any((player) => player.rating >= minElo);
+          })
+          .take(limit)
+          .toList();
 
       debugPrint(
         '===== GameRepository: Fetched ${games.length} high ELO games (>= $minElo) =====',
@@ -1518,8 +1558,9 @@ class GameRepository extends BaseRepository {
           .order('last_move_time', ascending: false, nullsFirst: false)
           .range(offset, offset + limit - 1);
 
-      final jsonList =
-          (response as List).map((item) => json.encode(item)).toList();
+      final jsonList = (response as List)
+          .map((item) => json.encode(item))
+          .toList();
 
       final games = await compute(_decodeGamesInIsolate, jsonList);
 
@@ -1564,8 +1605,9 @@ class GameRepository extends BaseRepository {
       final rawCount = (response as List).length;
       debugPrint('===== GameRepository: Raw response count: $rawCount =====');
 
-      final jsonList =
-          (response as List).map((item) => json.encode(item)).toList();
+      final jsonList = (response as List)
+          .map((item) => json.encode(item))
+          .toList();
 
       final games = await compute(_decodeGamesInIsolate, jsonList);
 
@@ -1615,8 +1657,9 @@ class GameRepository extends BaseRepository {
           .order('last_move_time', ascending: false, nullsFirst: false)
           .limit(limit);
 
-      final jsonList =
-          (response as List).map((item) => json.encode(item)).toList();
+      final jsonList = (response as List)
+          .map((item) => json.encode(item))
+          .toList();
 
       final games = await compute(_decodeGamesInIsolate, jsonList);
 
@@ -1650,8 +1693,9 @@ class GameRepository extends BaseRepository {
           .order('last_move_time', ascending: false, nullsFirst: false)
           .limit(limit);
 
-      final jsonList =
-          (response as List).map((item) => json.encode(item)).toList();
+      final jsonList = (response as List)
+          .map((item) => json.encode(item))
+          .toList();
 
       final games = await compute(_decodeGamesInIsolate, jsonList);
 
@@ -1686,8 +1730,9 @@ class GameRepository extends BaseRepository {
           ) // Lower board number = higher boards
           .limit(limit * 3); // Fetch extra for filtering
 
-      final jsonList =
-          (response as List).map((item) => json.encode(item)).toList();
+      final jsonList = (response as List)
+          .map((item) => json.encode(item))
+          .toList();
 
       var games = await compute(_decodeGamesInIsolate, jsonList);
 
@@ -1733,11 +1778,10 @@ class GameRepository extends BaseRepository {
     String? status,
   }) async {
     return handleApiCall(() async {
-      final normalizedTerms =
-          terms
-              .map((t) => t.trim().toLowerCase())
-              .where((t) => t.isNotEmpty)
-              .toList();
+      final normalizedTerms = terms
+          .map((t) => t.trim().toLowerCase())
+          .where((t) => t.isNotEmpty)
+          .toList();
 
       if (normalizedTerms.isEmpty) return <Games>[];
 
@@ -1758,8 +1802,9 @@ class GameRepository extends BaseRepository {
           .order('last_move_time', ascending: false, nullsFirst: false)
           .range(offset, offset + limit - 1);
 
-      final jsonList =
-          (response as List).map((item) => json.encode(item)).toList();
+      final jsonList = (response as List)
+          .map((item) => json.encode(item))
+          .toList();
 
       final games = await compute(_decodeGamesInIsolate, jsonList);
       return games;
@@ -1836,10 +1881,9 @@ class GameRepository extends BaseRepository {
         '[GameRepository] searchCountrymenGames: country=$normalizedCode, query=$query, filter=${filter?.hasActiveFilters == true}',
       );
 
-      final selectCols =
-          tcDb != null
-              ? _gameListPreviewSelectColumnsInnerTc
-              : _gameListPreviewSelectColumns;
+      final selectCols = tcDb != null
+          ? _gameListPreviewSelectColumnsInnerTc
+          : _gameListPreviewSelectColumns;
 
       var dbQuery = supabase.from('games').select(selectCols).contains(
         'player_feds',
@@ -1898,10 +1942,9 @@ class GameRepository extends BaseRepository {
       final tcDb = _timeControlDbValue(
         filter?.timeControl ?? GameTimeControlFilter.all,
       );
-      final selectCols =
-          tcDb != null
-              ? _gameListPreviewSelectColumnsInnerTc
-              : _gameListPreviewSelectColumns;
+      final selectCols = tcDb != null
+          ? _gameListPreviewSelectColumnsInnerTc
+          : _gameListPreviewSelectColumns;
 
       var dbQuery = supabase
           .from('games')
@@ -1930,8 +1973,9 @@ class GameRepository extends BaseRepository {
         '[GameRepository] searchFavoritesGames: results = ${(response as List).length}',
       );
 
-      final jsonList =
-          (response as List).map((item) => json.encode(item)).toList();
+      final jsonList = (response as List)
+          .map((item) => json.encode(item))
+          .toList();
       final games = await compute(_decodeGamesInIsolate, jsonList);
 
       return _hydratePgnForSecondaryPeriodGames(games);
@@ -2028,10 +2072,9 @@ class GameRepository extends BaseRepository {
   }) {
     if (offset >= cap) return null;
     final remaining = cap - offset;
-    final size =
-        remaining < _currentSmartGamesPageSize
-            ? remaining
-            : _currentSmartGamesPageSize;
+    final size = remaining < _currentSmartGamesPageSize
+        ? remaining
+        : _currentSmartGamesPageSize;
     return (from: offset, to: offset + size - 1);
   }
 
@@ -2066,37 +2109,36 @@ class GameRepository extends BaseRepository {
         .toList(growable: false);
     if (timeControls.isEmpty) return null;
 
-    final candidateRows = await _readAllRows(
-      (from, to) {
-        final query = supabase
-            .from('games')
-            .select("""
+    final candidateRows = await _readAllRows((from, to) {
+      final query = supabase
+          .from('games')
+          .select("""
               tour_id,
               tours!games_tour_id_fkey(
                 group_broadcasts!tours_group_broadcast_id_fkey(time_control)
               ),
               rounds!games_round_id_fkey!inner(starts_at)
             """)
-            .eq('game_day', formatSmartEventDay(day));
-        return _applyCurrentSmartEventPredicates(
-          query,
-          liveOnly: liveOnly,
-          completedOnly: completedOnly,
-          minGameAverageElo: minGameAverageElo,
-          searchQuery: searchQuery,
-          extraFilter: extraFilter,
-        ).order('id', ascending: true).range(from, to);
-      },
-      label: 'smart-event candidate tours on ${formatSmartEventDay(day)}',
-    );
+          .eq('game_day', formatSmartEventDay(day));
+      return _applyCurrentSmartEventPredicates(
+        query,
+        liveOnly: liveOnly,
+        completedOnly: completedOnly,
+        minGameAverageElo: minGameAverageElo,
+        searchQuery: searchQuery,
+        extraFilter: extraFilter,
+      ).order('id', ascending: true).range(from, to);
+    }, label: 'smart-event candidate tours on ${formatSmartEventDay(day)}');
     final tourIds = <String>{};
     for (final row in candidateRows) {
       final tourId = row['tour_id'] as String?;
       final tour = row['tours'] as Map?;
       final broadcast = tour?['group_broadcasts'] as Map?;
-      if (tourId != null && tourId.isNotEmpty &&
+      if (tourId != null &&
+          tourId.isNotEmpty &&
           broadcastMatchesTimeControlFilter(
-            broadcast?['time_control'] as String?, timeControls,
+            broadcast?['time_control'] as String?,
+            timeControls,
           )) {
         tourIds.add(tourId);
       }
@@ -2123,8 +2165,9 @@ class GameRepository extends BaseRepository {
     );
 
     if (liveOnly) {
-      final liveCutoffIso =
-          now.subtract(_currentSmartLiveMaxAge).toIso8601String();
+      final liveCutoffIso = now
+          .subtract(_currentSmartLiveMaxAge)
+          .toIso8601String();
       scoped = scoped
           .inFilter('status', smartEventLiveGameStatuses)
           .not('last_move', 'is', null)
@@ -2178,10 +2221,9 @@ class GameRepository extends BaseRepository {
     String? searchQuery,
     GameFilter? extraFilter,
   }) async {
-    final chunks =
-        tourIds == null
-            ? <List<String>?>[null]
-            : _chunks(tourIds, _smartEventInFilterChunkSize).toList();
+    final chunks = tourIds == null
+        ? <List<String>?>[null]
+        : _chunks(tourIds, _smartEventInFilterChunkSize).toList();
     if (chunks.isEmpty) return const [];
 
     final rows = <dynamic>[];
@@ -2392,39 +2434,34 @@ class GameRepository extends BaseRepository {
       if (eventTimeControls != null &&
           eventTimeControls.isNotEmpty &&
           tourIds == null) {
-        games =
-            games
-                .where(
-                  (game) => broadcastMatchesTimeControlFilter(
-                    game.timeControl,
-                    eventTimeControls,
-                  ),
-                )
-                .toList();
+        games = games
+            .where(
+              (game) => broadcastMatchesTimeControlFilter(
+                game.timeControl,
+                eventTimeControls,
+              ),
+            )
+            .toList();
       }
 
       if (completedOnly) {
-        games =
-            games
-                .where((game) => smartEventGameStatusIsCompleted(game.status))
-                .toList();
+        games = games
+            .where((game) => smartEventGameStatusIsCompleted(game.status))
+            .toList();
       }
 
       if (minGameAverageElo != null) {
-        games =
-            games
-                .where(
-                  (game) =>
-                      gameStructuredAverageRating(game) >= minGameAverageElo,
-                )
-                .toList();
+        games = games
+            .where(
+              (game) => gameStructuredAverageRating(game) >= minGameAverageElo,
+            )
+            .toList();
       }
       if (maxGameAverageElo != null) {
-        games =
-            games.where((game) {
-              final avg = gameStructuredAverageRating(game);
-              return avg > 0 && avg <= maxGameAverageElo;
-            }).toList();
+        games = games.where((game) {
+          final avg = gameStructuredAverageRating(game);
+          return avg > 0 && avg <= maxGameAverageElo;
+        }).toList();
       }
 
       final result = _deduplicateGames(games);
@@ -2468,8 +2505,9 @@ class GameRepository extends BaseRepository {
       final tcDb = _timeControlDbValue(
         filter?.timeControl ?? GameTimeControlFilter.all,
       );
-      final baseCols =
-          tcDb != null ? _gameListSelectColumnsInnerTc : _gameListSelectColumns;
+      final baseCols = tcDb != null
+          ? _gameListSelectColumnsInnerTc
+          : _gameListSelectColumns;
       // Inner-join rounds so the .or() below evicts parent games whose round
       // hasn't started — mirrors the home Current/For You contract that the
       // most up-to-date row a query may return is a live game, never a
@@ -2484,10 +2522,9 @@ class GameRepository extends BaseRepository {
       var remaining = limit;
 
       while (remaining > 0) {
-        final pageSize =
-            remaining > _tourGamesFetchPageSize
-                ? _tourGamesFetchPageSize
-                : remaining;
+        final pageSize = remaining > _tourGamesFetchPageSize
+            ? _tourGamesFetchPageSize
+            : remaining;
 
         dynamic dbQuery = supabase
             .from('games')
@@ -2836,8 +2873,9 @@ class GameRepository extends BaseRepository {
 
       final games = <Games>[];
       if (gamesResponse.isNotEmpty) {
-        final jsonList =
-            gamesResponse.map((item) => json.encode(item)).toList();
+        final jsonList = gamesResponse
+            .map((item) => json.encode(item))
+            .toList();
         games.addAll(await compute(_decodeGamesInIsolate, jsonList));
       }
 
@@ -2860,8 +2898,9 @@ class GameRepository extends BaseRepository {
           .order('last_move_time', ascending: false, nullsFirst: false)
           .limit(limit);
 
-      final jsonList =
-          (response as List).map((item) => json.encode(item)).toList();
+      final jsonList = (response as List)
+          .map((item) => json.encode(item))
+          .toList();
 
       final games = await compute(_decodeGamesInIsolate, jsonList);
       return games;
@@ -2955,10 +2994,9 @@ class GameRepository extends BaseRepository {
 
       // Switch to !inner embedding when filtering by time control so the
       // PostgREST query narrows on tours.group_broadcasts.time_control.
-      final selectCols =
-          tcDb != null
-              ? _gameListPreviewSelectColumnsInnerTc
-              : _gameListPreviewSelectColumns;
+      final selectCols = tcDb != null
+          ? _gameListPreviewSelectColumnsInnerTc
+          : _gameListPreviewSelectColumns;
 
       var dbQuery = supabase
           .from('games')
@@ -2979,8 +3017,9 @@ class GameRepository extends BaseRepository {
         nullsFirst: false,
       );
 
-      final jsonList =
-          (response as List).map((item) => json.encode(item)).toList();
+      final jsonList = (response as List)
+          .map((item) => json.encode(item))
+          .toList();
 
       final games = await compute(_decodeGamesInIsolate, jsonList);
 
@@ -3012,10 +3051,9 @@ class GameRepository extends BaseRepository {
 
       final mergedParams = _gameFilterRpcParams(filter)
         ..remove('p_min_rating'); // folded into min_elo for country RPC
-      final effectiveMinElo =
-          (filter == null)
-              ? minElo
-              : (minElo > filter.minRating ? minElo : filter.minRating);
+      final effectiveMinElo = (filter == null)
+          ? minElo
+          : (minElo > filter.minRating ? minElo : filter.minRating);
 
       final response = await supabase.rpc(
         'get_distinct_dates_for_country',
@@ -3089,18 +3127,16 @@ class GameRepository extends BaseRepository {
       final tcDb = _timeControlDbValue(
         filter?.timeControl ?? GameTimeControlFilter.all,
       );
-      final effectiveMinElo =
-          filter == null
-              ? minElo
-              : (minElo > filter.minRating ? minElo : filter.minRating);
+      final effectiveMinElo = filter == null
+          ? minElo
+          : (minElo > filter.minRating ? minElo : filter.minRating);
       debugPrint(
         '[GameRepository] getGamesByCountryAndDate: countryCode=$normalizedCode, date=$dateStr, filter=${filter?.hasActiveFilters == true}',
       );
 
-      final selectCols =
-          tcDb != null
-              ? _gameListPreviewSelectColumnsInnerTc
-              : _gameListPreviewSelectColumns;
+      final selectCols = tcDb != null
+          ? _gameListPreviewSelectColumnsInnerTc
+          : _gameListPreviewSelectColumns;
 
       var dbQuery = supabase
           .from('games')
@@ -3122,8 +3158,9 @@ class GameRepository extends BaseRepository {
         nullsFirst: false,
       );
 
-      final jsonList =
-          (response as List).map((item) => json.encode(item)).toList();
+      final jsonList = (response as List)
+          .map((item) => json.encode(item))
+          .toList();
 
       final games = await compute(_decodeGamesInIsolate, jsonList);
 
@@ -3240,9 +3277,9 @@ class GameRepository extends BaseRepository {
     final filterMinRating = filter?.minRating ?? GameFilter.defaultMinRating;
     final safeMinRating =
         minAverageEloForPrefilter != null &&
-                minAverageEloForPrefilter > filterMinRating
-            ? minAverageEloForPrefilter
-            : filterMinRating;
+            minAverageEloForPrefilter > filterMinRating
+        ? minAverageEloForPrefilter
+        : filterMinRating;
     if (safeMinRating > GameFilter.defaultMinRating) {
       query = query.gte('player_max_rating', safeMinRating);
     }
@@ -3252,11 +3289,10 @@ class GameRepository extends BaseRepository {
 }
 
 List<Games> _decodeGamesInIsolate(List<String> gameJsonList) {
-  final games =
-      gameJsonList.map((e) {
-        final decoded = json.decode(e) as Map<String, dynamic>;
-        return Games.fromJson(decoded);
-      }).toList();
+  final games = gameJsonList.map((e) {
+    final decoded = json.decode(e) as Map<String, dynamic>;
+    return Games.fromJson(decoded);
+  }).toList();
   return _deduplicateGames(games);
 }
 

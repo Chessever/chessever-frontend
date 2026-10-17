@@ -197,6 +197,13 @@ class FeedNotifier extends AsyncNotifier<List<FeedItem>> {
   /// Extra pages a page load may read looking for those events.
   static const int _varietyReads = 3;
 
+  /// Below this many distinct over-the-board events in the pool, the
+  /// over-the-board backfill is read: on a week of online series the 2550+
+  /// listing can hold only three or four, too few for the online quota.
+  static const int _poolMinOtbEvents = 5;
+  static const int _backfillMinRating = 2450;
+  static const int _backfillLimit = 40;
+
   /// Shown game ids remembered across launches (newest kept).
   static const int _shownMemory = 400;
 
@@ -269,6 +276,8 @@ class FeedNotifier extends AsyncNotifier<List<FeedItem>> {
   int _favoriteOffset = 0;
   bool _favoritesExhausted = false;
   bool _likedExhausted = false;
+  int _backfillOffset = 0;
+  bool _backfillExhausted = false;
 
   /// Ready for the next pull; see [_prepareReserve].
   _FeedReserve? _reserve;
@@ -716,12 +725,62 @@ class FeedNotifier extends AsyncNotifier<List<FeedItem>> {
   /// Reads the sources again while the pool is short of games or of
   /// distinct events, up to [_varietyReads] times, and while any source has
   /// more.
+  ///
+  /// Short of over-the-board events, it reads the over-the-board backfill
+  /// ([_fetchBackfill]) instead: more pages of the same online evening would
+  /// not help.
   Future<void> _refillForVariety(int generation) async {
     for (var read = 0; read < _varietyReads; read++) {
-      if (generation != _generation || _allSourcesExhausted) return;
-      final events = {for (final c in _pool.values) c.signals.eventKey};
-      if (_pool.length >= _poolLow && events.length >= _poolMinEvents) return;
-      await _refillAll(generation).all;
+      if (generation != _generation) return;
+      final events = <String?>{};
+      final otbEvents = <String?>{};
+      for (final c in _pool.values) {
+        events.add(c.signals.eventKey);
+        if (!c.signals.online) otbEvents.add(c.signals.eventKey);
+      }
+      final short = _pool.length < _poolLow || events.length < _poolMinEvents;
+      final fewOtb = otbEvents.length < _poolMinOtbEvents;
+      if (fewOtb && !_backfillExhausted) {
+        await _fetchBackfill(
+          generation,
+        ).timeout(_sourceTimeout, onTimeout: () {});
+      } else if (short && !_allSourcesExhausted) {
+        await _refillAll(generation).all;
+      } else {
+        return;
+      }
+    }
+  }
+
+  /// Over-the-board games from this week a step below [_topMinRating], the
+  /// floor of [feedMeetsQualityFloor] still applying: the supply of other
+  /// events when the strong listing is one online series deep.
+  Future<void> _fetchBackfill(int generation) async {
+    final offset = _backfillOffset;
+    _backfillOffset += _backfillLimit;
+    try {
+      final rows = await ref
+          .read(gameRepositoryProvider)
+          .getFeedCandidateGames(
+            since: DateTime.now().subtract(_topAge),
+            minRating: _backfillMinRating,
+            limit: _backfillLimit,
+            offset: offset,
+            overTheBoardOnly: true,
+          );
+      if (generation != _generation) return;
+      if (rows.length < _backfillLimit) _backfillExhausted = true;
+      for (final row in rows) {
+        final game = _tourModel(row);
+        if (game == null || feedIsOnlineEvent(game.tourSlug)) continue;
+        _offer(
+          _FeedCandidate(game: game, signals: _signalsOf(game, FeedPool.top)),
+        );
+      }
+    } catch (error) {
+      if (generation != _generation) return;
+      debugPrint('[Feed] over-the-board backfill failed: $error');
+      _backfillExhausted = true;
     }
   }
 
@@ -1329,6 +1388,8 @@ class FeedNotifier extends AsyncNotifier<List<FeedItem>> {
     _favoriteOffset = 0;
     _favoritesExhausted = false;
     _likedExhausted = false;
+    _backfillOffset = 0;
+    _backfillExhausted = false;
     _publicSourceFailures = 0;
     _lastFailure = null;
   }
