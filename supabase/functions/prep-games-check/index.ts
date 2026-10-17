@@ -1,23 +1,19 @@
 /**
- * Once a day, in each owner's evening, tells them which starred My Prep
- * players have new online games. pg_cron starts it hourly
- * (kick_prep_games_check); due_prep_profile_watches picks the owners whose
- * local clock has reached the check hour. counts.ts explains the counting.
+ * Tells owners of starred My Prep players, the same day and while they are
+ * awake, that the player is playing online. pg_cron starts it hourly
+ * (kick_prep_games_check). Each run reads every starred account's game
+ * totals (counts.ts), records them (record_prep_watch_checks adds any growth
+ * to the owner's day), then queue_prep_games_pushes sends at most one push
+ * per owner: twice a day at most, four hours apart, never at night.
  *
  * Authenticates with the dispatcher's stream token, so it stays behind
  * `verify_jwt = false` like every function here.
- *
- * Order matters: the outbox rows are queued before the new totals are
- * recorded. A run that dies in between leaves the totals as they were, the
- * next hour counts the same games again, and the outbox's dedupe key (one
- * per profile per local day) keeps the push from going out twice.
  */
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import {
   chessComTotals,
   lichessReadings,
-  outboxRow,
   planChecks,
   type Reading,
   type WatchRow,
@@ -35,16 +31,11 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
   auth: { persistSession: false },
 });
 
-/** The owner's local hour from which the day's games are announced. */
-const LOCAL_HOUR = (() => {
-  const hour = Number(Deno.env.get("PREP_GAMES_LOCAL_HOUR") ?? "19");
-  return Number.isInteger(hour) && hour >= 0 && hour <= 23 ? hour : 19;
-})();
-const PROFILES_PER_RUN = 500;
+const ACCOUNTS_PER_RUN = 2000;
 /** Sites are read one request at a time; what is left waits an hour. */
 const READ_BUDGET_MS = 90_000;
 const LICHESS_BATCH = 300;
-const USER_AGENT = "ChessEver/1.0 (+https://chessever.com; daily prep check)";
+const USER_AGENT = "ChessEver/1.0 (+https://chessever.com; prep check)";
 const jsonHeaders = { "Content-Type": "application/json" };
 
 let tokenCache: { token: string; expiresAtMs: number } | null = null;
@@ -73,13 +64,12 @@ Deno.serve(async (req) => {
     return new Response("Unauthorized", { status: 401 });
   }
 
-  const { data, error } = await supabase.rpc("due_prep_profile_watches", {
-    p_local_hour: LOCAL_HOUR,
-    p_limit: PROFILES_PER_RUN,
+  const { data, error } = await supabase.rpc("prep_watches_to_check", {
+    p_limit: ACCOUNTS_PER_RUN,
   });
   if (error) {
-    console.error(`[prep-games-check] due lookup failed: ${error.message}`);
-    return json({ error: "due_lookup_failed" }, 500);
+    console.error(`[prep-games-check] watch lookup failed: ${error.message}`);
+    return json({ error: "watch_lookup_failed" }, 500);
   }
   const rows = (data ?? []) as WatchRow[];
   if (rows.length === 0) return json({ accounts: 0 });
@@ -94,27 +84,13 @@ Deno.serve(async (req) => {
   ];
   const lichess = await readLichess(names("lichess"), deadline);
   const chesscom = await readChessCom(names("chesscom"), deadline);
-  const { checks, notices } = planChecks(
+  const checks = planChecks(
     rows,
     (row) =>
       (row.source === "lichess" ? lichess : chesscom).get(
         row.username.toLowerCase(),
       ),
   );
-
-  if (notices.length > 0) {
-    const { error: queueError } = await supabase
-      .from("notification_outbox")
-      .upsert(notices.map(outboxRow), {
-        onConflict: "dedupe_key",
-        ignoreDuplicates: true,
-      });
-    if (queueError) {
-      // Totals stay as they were: the next hour counts these games again.
-      console.error(`[prep-games-check] queue failed: ${queueError.message}`);
-      return json({ error: "queue_failed" }, 500);
-    }
-  }
 
   let recorded = 0;
   if (checks.length > 0) {
@@ -126,16 +102,26 @@ Deno.serve(async (req) => {
       console.error(
         `[prep-games-check] record failed: ${recordError.message}`,
       );
-      return json({ error: "record_failed", queued: notices.length }, 500);
+      return json({ error: "record_failed" }, 500);
     }
     recorded = typeof count === "number" ? count : 0;
+  }
+
+  // Also sends what earlier runs found while the owner slept or waited out
+  // the four hours, so it runs even when this hour found nothing new.
+  const { data: queued, error: queueError } = await supabase.rpc(
+    "queue_prep_games_pushes",
+  );
+  if (queueError) {
+    console.error(`[prep-games-check] queue failed: ${queueError.message}`);
+    return json({ error: "queue_failed", recorded }, 500);
   }
 
   return json({
     accounts: rows.length,
     read: lichess.size + chesscom.size,
-    queued: notices.length,
     recorded,
+    queued: typeof queued === "number" ? queued : 0,
   });
 });
 

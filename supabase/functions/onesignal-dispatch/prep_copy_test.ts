@@ -5,25 +5,91 @@ import {
   assert,
   assertEquals,
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
-import { prepGamesAddedCopy } from "./prep_copy.ts";
+import {
+  prepGamesAddedCopy,
+  type PrepGamesPush,
+  prepGamesPushFromPayload,
+} from "./prep_copy.ts";
 
-Deno.test("the push never says how many games", () => {
-  for (const added of [1, 2, 3, 4, 5, 7, 12, 19, 20, 21, 64, 150]) {
-    const { title, body } = prepGamesAddedCopy("Hikaru", added);
-    assert(!`${title} ${body}`.includes(String(added)), `${added}: ${title}`);
-    assert(title.startsWith("Hikaru "));
-  }
-});
+function push(overrides: Partial<PrepGamesPush>): PrepGamesPush {
+  return {
+    profileName: "Vasif Durarbayli",
+    profileTitle: "GM",
+    accounts: [{ source: "lichess", username: "durarbayli" }],
+    slot: 1,
+    localHour: 15,
+    otherPlayers: 0,
+    ...overrides,
+  };
+}
 
-Deno.test("more games, stronger words", () => {
-  assertEquals(prepGamesAddedCopy("Hikaru", 2).title, "Hikaru played today");
-  assertEquals(prepGamesAddedCopy("Hikaru", 8).title, "Hikaru had a busy day");
+Deno.test("names the player, the account and when", () => {
+  assertEquals(prepGamesAddedCopy(push({})), {
+    title: "GM Vasif Durarbayli played this afternoon",
+    body: "New games from durarbayli on Lichess. Tap to see.",
+  });
   assertEquals(
-    prepGamesAddedCopy("Hikaru", 40).title,
-    "Hikaru could not stop playing",
+    prepGamesAddedCopy(push({ localHour: 10 })).title,
+    "GM Vasif Durarbayli played this morning",
+  );
+  assertEquals(
+    prepGamesAddedCopy(push({ localHour: 21 })).title,
+    "GM Vasif Durarbayli played this evening",
   );
 });
 
-Deno.test("a blank name still reads", () => {
-  assertEquals(prepGamesAddedCopy("  ", 1).title, "Your player played today");
+Deno.test("the day's second push says they kept playing", () => {
+  assertEquals(prepGamesAddedCopy(push({ slot: 2 })), {
+    title: "GM Vasif Durarbayli is still playing",
+    body: "More new games from durarbayli on Lichess. Tap to see.",
+  });
+});
+
+Deno.test("two accounts, and the other players who played", () => {
+  const copy = prepGamesAddedCopy(push({
+    accounts: [
+      { source: "chesscom", username: "Hikaru" },
+      { source: "lichess", username: "DrNykterstein" },
+    ],
+    profileName: "Hikaru Nakamura",
+    otherPlayers: 2,
+  }));
+  assertEquals(
+    copy.body,
+    "New games from Hikaru on Chess.com and DrNykterstein on Lichess. 2 more of your players played too. Tap to see.",
+  );
+});
+
+Deno.test("never says how many games", () => {
+  const copy = prepGamesAddedCopy(push({ otherPlayers: 1 }));
+  assert(!/\d/.test(copy.title), copy.title);
+  assertEquals(
+    copy.body,
+    "New games from durarbayli on Lichess. Another of your players played too. Tap to see.",
+  );
+});
+
+Deno.test("no title, or a name that already carries it, is not doubled", () => {
+  assertEquals(
+    prepGamesAddedCopy(push({ profileTitle: null })).title,
+    "Vasif Durarbayli played this afternoon",
+  );
+  assertEquals(
+    prepGamesAddedCopy(push({ profileName: "GM Vasif Durarbayli" })).title,
+    "GM Vasif Durarbayli played this afternoon",
+  );
+});
+
+Deno.test("the payload is read defensively", () => {
+  const read = prepGamesPushFromPayload({
+    profile_name: "Vasif Durarbayli",
+    profile_title: "GM",
+    accounts: [{ source: "lichess", username: "durarbayli" }, { bad: 1 }, null],
+    slot: "2",
+    local_hour: 30,
+  });
+  assertEquals(read.accounts, [{ source: "lichess", username: "durarbayli" }]);
+  assertEquals(read.slot, 2);
+  assertEquals(read.localHour, 23);
+  assertEquals(read.otherPlayers, 0);
 });

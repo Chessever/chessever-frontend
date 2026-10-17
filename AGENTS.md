@@ -165,10 +165,12 @@ chessever_frontend_desktop_oss/scripts/which_repo_owns_function.sh <slug>
   subscription. Undo restores only My Space state.
 - Keep deletion, unfavoriting, unliking, and unsubscribe actions on their source
   screens. My Space cards offer `Remove from My Space` instead.
-- Exception, by product decision (Trello #1225): smart event and collection
-  cards in My Space end in their own star, the same star as the Events list and
-  Discovery, because starring is how their notifications are turned on. The
-  star is the thing's own favorite; the shortcut stays when it is unstarred.
+- Exception, by product decision (Trello #1225): smart event, collection and
+  Prep player cards in My Space end in their own star, the same star as the
+  Events list, Discovery and the Prep profile, because starring is how their
+  notifications are turned on (unstarring turns them off; smart events and
+  Prep players have no separate switch). The star is the thing's own
+  favorite; the shortcut stays when it is unstarred.
 
 ## Local commit preference
 

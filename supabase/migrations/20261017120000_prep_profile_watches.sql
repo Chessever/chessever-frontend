@@ -1,15 +1,21 @@
--- Starred My Prep profiles, mirrored so the server can tell their owners once
--- a day, in the owner's own evening, that the player has new online games.
+-- Starred My Prep profiles: tell the owner, the same day and while they are
+-- awake, that the player is playing online.
 --
 -- My Prep keeps its profiles on the device. Starring one sends its Lichess
--- and Chess.com accounts here. Every hour `prep-games-check` looks at the
--- owners whose local time has reached the check hour, reads each player's
--- game totals (one small JSON per account, never the games) and compares
--- them with the totals it saw the day before. A higher total queues one
--- `prep_games_added` outbox row per profile; onesignal-dispatch sends it.
+-- and Chess.com accounts here. Every hour `prep-games-check` reads each
+-- starred player's game totals (one small JSON per account, never the games)
+-- and records any growth against the owner's local day
+-- (record_prep_watch_checks). Then queue_prep_games_pushes sends what was
+-- recorded, but never while the owner sleeps (23:00-08:59 local), never
+-- about a previous day, at most twice a day and at least four hours apart:
+-- one push per owner, about the player with the most new games, naming the
+-- account ("GM Vasif Durarbayli played this afternoon" / "New games from
+-- durarbayli on Lichess"). onesignal-dispatch sends it.
 --
--- Additive: one new table, its functions and one cron job. Nothing existing
--- is changed.
+-- Unstarring is the opt-out: the rows go, and so do the pushes.
+--
+-- Additive: two new tables, their functions and one cron job. Nothing
+-- existing is changed.
 
 begin;
 
@@ -19,6 +25,8 @@ create table public.prep_profile_watches (
   -- PrepProfile.id: the profile lives on the owner's device.
   profile_id text not null,
   profile_name text not null,
+  -- "GM", "IM", ... when the profile has one.
+  profile_title text,
   source text not null,
   username text not null,
   -- The PrepTimeControl names the account downloads. Empty means every clock.
@@ -29,8 +37,11 @@ create table public.prep_profile_watches (
   -- the first check, and again when the clocks change: a total over other
   -- clocks says nothing about new games.
   baseline_games integer,
-  -- The owner's local date of the last daily check.
-  checked_on date,
+  -- New games found since the owner's last push, on pending_day (the
+  -- owner's local date when they were found). A new day starts from zero.
+  pending_games integer not null default 0,
+  pending_day date,
+  last_new_at timestamptz,
   checked_at timestamptz,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
@@ -46,6 +57,9 @@ create table public.prep_profile_watches (
   constraint prep_profile_watches_name_length check (
     char_length(profile_name) between 1 and 120
   ),
+  constraint prep_profile_watches_title_length check (
+    profile_title is null or char_length(profile_title) between 1 and 8
+  ),
   -- UTC-14:00 to UTC+14:00.
   constraint prep_profile_watches_offset_range check (
     utc_offset_minutes between -840 and 840
@@ -53,7 +67,7 @@ create table public.prep_profile_watches (
 );
 
 comment on table public.prep_profile_watches is
-  'Online accounts of starred My Prep profiles. Written by the app through set_prep_profile_watch / clear_prep_profile_watch; checked daily by the prep-games-check Edge Function.';
+  'Online accounts of starred My Prep profiles. Written by the app through set_prep_profile_watch / clear_prep_profile_watch; checked hourly by the prep-games-check Edge Function.';
 
 -- Both sites treat names without case.
 create unique index prep_profile_watches_account_key
@@ -71,17 +85,31 @@ revoke all on public.prep_profile_watches from public, anon, authenticated;
 grant select on public.prep_profile_watches to authenticated;
 grant select, insert, update, delete on public.prep_profile_watches to service_role;
 
+-- How many Prep pushes each owner had today: two a day at most, four hours
+-- apart. Service only.
+create table public.prep_watch_pushes (
+  user_id uuid primary key references auth.users(id) on delete cascade,
+  local_day date not null,
+  pushes smallint not null default 0,
+  last_push_at timestamptz not null
+);
+
+alter table public.prep_watch_pushes enable row level security;
+revoke all on public.prep_watch_pushes from public, anon, authenticated;
+grant select, insert, update, delete on public.prep_watch_pushes to service_role;
+
 -- Stars [p_profile_id] with its online accounts, or brings a starred one up
 -- to date: a source detached since is dropped, a renamed profile renamed.
 -- [p_accounts] is [{source, username, time_controls: [...]}]; entries the
 -- table cannot hold are left out rather than failing the star. Every row of
--- the caller takes [p_utc_offset_minutes], so the check follows them across
+-- the caller takes [p_utc_offset_minutes], so the pushes follow them across
 -- time zones and clock changes. Returns how many accounts are watched.
 create or replace function public.set_prep_profile_watch(
   p_profile_id text,
   p_profile_name text,
   p_accounts jsonb,
-  p_utc_offset_minutes integer
+  p_utc_offset_minutes integer,
+  p_profile_title text default null
 )
 returns integer
 language plpgsql
@@ -92,6 +120,7 @@ declare
   v_user uuid := auth.uid();
   v_profile text := btrim(coalesce(p_profile_id, ''));
   v_name text := left(btrim(coalesce(p_profile_name, '')), 120);
+  v_title text := nullif(left(btrim(coalesce(p_profile_title, '')), 8), '');
   v_offset smallint := greatest(-840, least(840, coalesce(p_utc_offset_minutes, 0)));
   v_accounts jsonb := case
     when jsonb_typeof(p_accounts) = 'array' then p_accounts
@@ -120,13 +149,14 @@ begin
      );
 
   insert into public.prep_profile_watches as w (
-    user_id, profile_id, profile_name, source, username, time_controls,
-    utc_offset_minutes
+    user_id, profile_id, profile_name, profile_title, source, username,
+    time_controls, utc_offset_minutes
   )
   select distinct on (a.source, lower(a.username))
          v_user,
          v_profile,
          v_name,
+         v_title,
          a.source,
          a.username,
          coalesce(
@@ -156,6 +186,7 @@ begin
    limit 12
   on conflict (user_id, profile_id, source, lower(username)) do update
      set profile_name = excluded.profile_name,
+         profile_title = excluded.profile_title,
          username = excluded.username,
          utc_offset_minutes = excluded.utc_offset_minutes,
          time_controls = excluded.time_controls,
@@ -194,73 +225,40 @@ as $$
      and profile_id = btrim(coalesce(p_profile_id, ''));
 $$;
 
-revoke execute on function public.set_prep_profile_watch(text, text, jsonb, integer) from public, anon;
+revoke execute on function public.set_prep_profile_watch(text, text, jsonb, integer, text) from public, anon;
 revoke execute on function public.clear_prep_profile_watch(text) from public, anon;
-grant execute on function public.set_prep_profile_watch(text, text, jsonb, integer) to authenticated;
+grant execute on function public.set_prep_profile_watch(text, text, jsonb, integer, text) to authenticated;
 grant execute on function public.clear_prep_profile_watch(text) to authenticated;
 
--- The profiles prep-games-check should look at now, every account of each.
--- `daily`: the owner's clock has reached [p_local_hour] and today's check has
--- not run, so new games are announced. An account with no total yet is due
--- at any hour, to set the total the next check compares with; one the sites
--- could not answer for waits six hours before it is asked again. A profile's
--- accounts come together, so it gets one push however many it has.
-create or replace function public.due_prep_profile_watches(
-  p_local_hour integer default 19,
-  p_limit integer default 500
+-- Every starred account, the longest unchecked first: prep-games-check reads
+-- them all each hour, as far as its time allows.
+create or replace function public.prep_watches_to_check(
+  p_limit integer default 2000
 )
 returns table (
   id uuid,
-  user_id uuid,
-  profile_id text,
-  profile_name text,
   source text,
   username text,
   time_controls text[],
-  baseline_games integer,
-  local_date date,
-  daily boolean
+  baseline_games integer
 )
 language sql
 stable
 security definer
 set search_path = public
 as $$
-  with timed as (
-    select w.*,
-           (now() at time zone 'utc')
-             + make_interval(mins => w.utc_offset_minutes::integer) as local_now
-      from public.prep_profile_watches w
-  ), flagged as (
-    select t.*,
-           (
-             extract(hour from t.local_now) >= p_local_hour
-             and (t.checked_on is null or t.checked_on < t.local_now::date)
-           ) as is_daily,
-           (
-             t.baseline_games is null
-             and (t.checked_at is null or t.checked_at < now() - interval '6 hours')
-           ) as needs_total
-      from timed t
-  ), due as (
-    select f.user_id, f.profile_id
-      from flagged f
-     group by f.user_id, f.profile_id
-    having bool_or(f.is_daily or f.needs_total)
-     order by min(f.checked_at) nulls first
-     limit greatest(1, least(coalesce(p_limit, 500), 5000))
-  )
-  select f.id, f.user_id, f.profile_id, f.profile_name, f.source, f.username,
-         f.time_controls, f.baseline_games, f.local_now::date, f.is_daily
-    from flagged f
-    join due d on d.user_id = f.user_id and d.profile_id = f.profile_id;
+  select w.id, w.source, w.username, w.time_controls, w.baseline_games
+    from public.prep_profile_watches w
+   order by w.checked_at nulls first, w.id
+   limit greatest(1, least(coalesce(p_limit, 2000), 20000));
 $$;
 
--- Records what prep-games-check read: [{id, games, checked_on, time_controls}].
--- `games` null keeps the total (the account could not be read); `checked_on`
--- null keeps the date (a total taken outside the daily check). A row whose
--- clocks changed since it was read is left alone: its count is of the old
--- clocks. Returns how many rows took the result.
+-- Records what prep-games-check read: [{id, games, time_controls}]. `games`
+-- null keeps the total (the account could not be read). A first total only
+-- sets what the next check compares with; growth adds to the owner's games
+-- of the day (a new local day starts from zero); a total that fell (a site
+-- recounting) only moves the baseline. A row whose clocks changed since it
+-- was read is left alone. Returns how many rows took the result.
 create or replace function public.record_prep_watch_checks(p_checks jsonb)
 returns integer
 language sql
@@ -271,18 +269,133 @@ as $$
     select *
       from jsonb_to_recordset(
         case when jsonb_typeof(p_checks) = 'array' then p_checks else '[]'::jsonb end
-      ) as x(id uuid, games integer, checked_on date, time_controls text[])
+      ) as x(id uuid, games integer, time_controls text[])
+  ), calc as (
+    select w.id,
+           c.games,
+           ((now() at time zone 'utc')
+             + make_interval(mins => w.utc_offset_minutes::integer))::date as today,
+           w.baseline_games is not null and c.games > w.baseline_games as grew,
+           c.games - w.baseline_games as growth
+      from public.prep_profile_watches w
+      join c on c.id = w.id
+     where w.time_controls = coalesce(c.time_controls, '{}')
   ), updated as (
     update public.prep_profile_watches w
-       set baseline_games = coalesce(c.games, w.baseline_games),
-           checked_on = coalesce(c.checked_on, w.checked_on),
+       set baseline_games = coalesce(calc.games, w.baseline_games),
+           pending_games = case
+             when calc.grew then
+               (case when w.pending_day = calc.today then w.pending_games else 0 end)
+                 + calc.growth
+             else w.pending_games
+           end,
+           pending_day = case when calc.grew then calc.today else w.pending_day end,
+           last_new_at = case when calc.grew then now() else w.last_new_at end,
            checked_at = now()
-      from c
-     where w.id = c.id
-       and w.time_controls = coalesce(c.time_controls, '{}')
+      from calc
+     where w.id = calc.id
     returning 1
   )
   select count(*)::integer from updated;
+$$;
+
+-- Sends what record_prep_watch_checks found: one push per owner who
+--   * has new games found today (their local date) on a starred profile,
+--   * is awake (09:00-22:59 local),
+--   * had fewer than two Prep pushes today and none in the last four hours.
+-- The push is about the profile with the most new games today, naming the
+-- accounts they came from, and says how many other starred players played.
+-- What it announces is cleared, so the next push is about newer games.
+-- Returns how many pushes were queued.
+create or replace function public.queue_prep_games_pushes()
+returns integer
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_queued integer;
+begin
+  with timed as (
+    select w.*,
+           (now() at time zone 'utc')
+             + make_interval(mins => w.utc_offset_minutes::integer) as local_now
+      from public.prep_profile_watches w
+  ), profiles as (
+    select t.user_id,
+           t.profile_id,
+           max(t.profile_name) as profile_name,
+           max(t.profile_title) as profile_title,
+           sum(t.pending_games)::integer as games,
+           jsonb_agg(
+             jsonb_build_object('source', t.source, 'username', t.username)
+             order by t.pending_games desc, t.source, lower(t.username)
+           ) as accounts,
+           max(t.local_now) as local_now
+      from timed t
+     where t.pending_games > 0
+       and t.pending_day = t.local_now::date
+     group by t.user_id, t.profile_id
+  ), ranked as (
+    select p.*,
+           row_number() over (
+             partition by p.user_id order by p.games desc, p.profile_name
+           ) as pick,
+           count(*) over (partition by p.user_id) as players
+      from profiles p
+  ), due as (
+    select r.*,
+           r.local_now::date as local_day,
+           case when s.local_day = r.local_now::date then s.pushes else 0 end + 1
+             as slot
+      from ranked r
+      left join public.prep_watch_pushes s on s.user_id = r.user_id
+     where r.pick = 1
+       and extract(hour from r.local_now) between 9 and 22
+       and (s.user_id is null
+            or s.local_day <> r.local_now::date
+            or s.pushes < 2)
+       and (s.user_id is null or s.last_push_at <= now() - interval '4 hours')
+  ), queued as (
+    insert into public.notification_outbox (event_type, payload, dedupe_key)
+    select 'prep_games_added',
+           jsonb_build_object(
+             'user_id', d.user_id,
+             'profile_id', d.profile_id,
+             'profile_name', d.profile_name,
+             'profile_title', d.profile_title,
+             'accounts', d.accounts,
+             'added', d.games,
+             'other_players', d.players - 1,
+             'slot', d.slot,
+             'local_hour', extract(hour from d.local_now)::integer,
+             'local_date', d.local_day
+           ),
+           'prep_games_added:' || d.user_id || ':' || d.local_day || ':' || d.slot
+      from due d
+    on conflict (dedupe_key) do nothing
+    returning (payload->>'user_id')::uuid as user_id,
+              (payload->>'local_date')::date as local_day,
+              (payload->>'slot')::smallint as slot
+  ), logged as (
+    insert into public.prep_watch_pushes as s (user_id, local_day, pushes, last_push_at)
+    select q.user_id, q.local_day, q.slot, now() from queued q
+    on conflict (user_id) do update
+       set local_day = excluded.local_day,
+           pushes = excluded.pushes,
+           last_push_at = excluded.last_push_at
+    returning s.user_id
+  ), cleared as (
+    -- Every data-modifying step runs to completion, read or not.
+    update public.prep_profile_watches w
+       set pending_games = 0
+      from logged l
+     where w.user_id = l.user_id
+    returning 1
+  )
+  select count(*)::integer into v_queued from logged;
+  return v_queued;
+end;
 $$;
 
 -- Starts prep-games-check, which authenticates with the dispatcher's stream
@@ -324,15 +437,16 @@ begin
 end;
 $$;
 
-revoke execute on function public.due_prep_profile_watches(integer, integer) from public, anon, authenticated;
+revoke execute on function public.prep_watches_to_check(integer) from public, anon, authenticated;
 revoke execute on function public.record_prep_watch_checks(jsonb) from public, anon, authenticated;
+revoke execute on function public.queue_prep_games_pushes() from public, anon, authenticated;
 revoke execute on function public.kick_prep_games_check() from public, anon, authenticated;
-grant execute on function public.due_prep_profile_watches(integer, integer) to service_role;
+grant execute on function public.prep_watches_to_check(integer) to service_role;
 grant execute on function public.record_prep_watch_checks(jsonb) to service_role;
+grant execute on function public.queue_prep_games_pushes() to service_role;
 grant execute on function public.kick_prep_games_check() to service_role;
 
--- Hourly, so each time zone is checked in its own evening. Off the top of
--- the hour, where the other jobs bunch up.
+-- Hourly, off the top of the hour where the other jobs bunch up.
 select cron.schedule(
   'prep-games-check',
   '7 * * * *',

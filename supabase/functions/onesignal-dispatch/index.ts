@@ -7,7 +7,7 @@ import {
   groupFavoriteBoardCopy,
 } from "./favorite_copy.ts";
 import { collectionStarRecipients } from "./collection_subscribers.ts";
-import { prepGamesAddedCopy } from "./prep_copy.ts";
+import { prepGamesAddedCopy, prepGamesPushFromPayload } from "./prep_copy.ts";
 import {
   smartEventDigestCopy,
   smartEventDigestFromPayload,
@@ -781,21 +781,19 @@ async function processItem(item: OutboxItem) {
         return { id: item.id, status: "skipped", reason: "no_recipients" };
       }
 
-      const added = typeof item.payload?.added === "number"
-        ? Math.max(1, Math.trunc(item.payload.added as number))
-        : 1;
-      const copy = prepGamesAddedCopy(
-        optionalPayloadString(item.payload, "profile_name") ?? "",
-        added,
-      );
+      const added = Number(item.payload?.added);
+      const copy = prepGamesAddedCopy(prepGamesPushFromPayload(item.payload));
       await sendOneSignal(eligible, {
         title: copy.title,
         body: copy.body,
         url: null,
+        // Strings only: FCM data carries nothing else.
         data: {
           type: "prep_games_added",
           prep_profile_id: profileId,
-          added,
+          added: String(
+            Number.isFinite(added) && added > 0 ? Math.trunc(added) : 1,
+          ),
         },
         androidChannelId: channelForEvent("prep_games_added"),
       });

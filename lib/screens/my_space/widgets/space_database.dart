@@ -32,7 +32,9 @@ import 'package:chessever2/screens/my_space/actions/space_player_actions.dart';
 import 'package:chessever2/screens/my_space/library/space_library_bridge.dart';
 import 'package:chessever2/screens/my_space/models/space_shortcut.dart';
 import 'package:chessever2/screens/my_prep/providers/prep_providers.dart';
+import 'package:chessever2/screens/my_prep/services/prep_watch.dart';
 import 'package:chessever2/screens/my_prep/widgets/prep_common.dart';
+import 'package:chessever2/screens/my_prep/widgets/prep_watch_star.dart';
 import 'package:chessever2/screens/my_space/my_prep_screen.dart';
 import 'package:chessever2/screens/my_space/navigation/space_shortcut_navigator.dart';
 import 'package:chessever2/screens/my_space/providers/space_game_card_provider.dart';
@@ -66,6 +68,7 @@ import 'package:chessever2/screens/group_event/smart_event/smart_event_builder_s
     show smartEventCardSummary, watchSmartEventLive;
 import 'package:chessever2/widgets/hub_tile.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:motor/motor.dart';
 
@@ -2411,6 +2414,8 @@ class SpaceSavedRow extends ConsumerWidget {
     final prep = shortcut.kind == SpaceShortcutKind.prepProfile
         ? ref.watch(prepProfileProvider(shortcut.targetId))
         : null;
+    // A Prep player it can watch: the row ends in the player's own star.
+    final starrable = disclosure && prep != null && prepCanWatch(prep);
     if (shortcut.kind == SpaceShortcutKind.collection) {
       final collections = ref.watch(collectionsProvider).asData?.value;
       Collection? collection;
@@ -2521,7 +2526,12 @@ class SpaceSavedRow extends ConsumerWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             SizedBox(width: 4.w),
-            if (disclosure) ...[
+            // The Prep player's own star, the one on its profile: starring
+            // is how its "playing now" push is turned on. The shortcut
+            // stays either way.
+            if (starrable)
+              PrepWatchStar(profileId: prep.id)
+            else if (disclosure) ...[
               Icon(
                 Icons.chevron_right_rounded,
                 size: 20.ic,
@@ -2540,6 +2550,14 @@ class SpaceSavedRow extends ConsumerWidget {
       label: '${prep?.name ?? shortcut.title}, $saved',
       excludeSemantics: true,
       onTap: () => _open(context, ref),
+      // The row speaks as one button, so its star is an action of it.
+      customSemanticsActions: starrable
+          ? {
+              CustomSemanticsAction(
+                label: prep.watching ? 'Unstar' : 'Star',
+              ): () => togglePrepWatch(context, prep),
+            }
+          : null,
       child: TappableScale(
         onTap: () => _open(context, ref),
         child: CardContextMenu(
