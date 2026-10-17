@@ -162,7 +162,7 @@ class FeedItem {
     this.reportType,
     this.likeable = true,
     this.exportable = true,
-    this.likeGame,
+    this.boardGame,
   });
 
   final GamesTourModel game;
@@ -200,10 +200,11 @@ class FeedItem {
   /// board that keeps its PGN in (licensed collection content).
   final bool exportable;
 
-  /// What a Like saves, when not [game]: Watch keeps the board's own model,
-  /// the game as published, as a like on the board saves it. [game] carries
-  /// the reader's analysis PGN, which only Share and Save hand out.
-  final GamesTourModel? likeGame;
+  /// The board's own model, for a post Watch made: the game as the board
+  /// holds it, which a Like saves and the share link is built from, as the
+  /// board's own Like and Share do. [game] carries the PGN Share and Save
+  /// hand out (the reader's analysis, its links rebranded).
+  final GamesTourModel? boardGame;
 
   int get plyCount => plies.length - 1;
 
@@ -239,7 +240,7 @@ class FeedItem {
     reportType: reportType,
     likeable: likeable,
     exportable: exportable,
-    likeGame: likeGame,
+    boardGame: boardGame,
   );
 
   /// Plies Feed should linger on (headline moments).

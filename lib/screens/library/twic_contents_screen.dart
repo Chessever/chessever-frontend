@@ -1,5 +1,6 @@
 import 'package:chessever2/e2e/e2e_ids.dart';
 import 'dart:async';
+import 'package:chessever2/main.dart' show routeObserver;
 
 import 'package:chessever2/utils/number_format_utils.dart';
 import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart';
@@ -47,8 +48,16 @@ class TwicContentsScreen extends ConsumerStatefulWidget {
   ConsumerState<TwicContentsScreen> createState() => _TwicContentsScreenState();
 }
 
-class _TwicContentsScreenState extends ConsumerState<TwicContentsScreen> {
+class _TwicContentsScreenState extends ConsumerState<TwicContentsScreen>
+    with RouteAware {
   final TextEditingController _searchController = TextEditingController();
+  ModalRoute<void>? _route;
+
+  /// The search, event and filter this screen showed when a route covered
+  /// it. Every database screen shares them, so one opened over this one (an
+  /// event tapped on a game opened from here, or from its Watch post)
+  /// changes them under it; they come back with this screen.
+  ({String query, String? event, GamebaseFilter filter})? _covered;
   final FocusNode _searchFocusNode = FocusNode();
   final ScrollController _scrollController = ScrollController();
   final ScrollController _chipScrollController = ScrollController();
@@ -86,7 +95,50 @@ class _TwicContentsScreenState extends ConsumerState<TwicContentsScreen> {
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final route = ModalRoute.of(context);
+    if (route != _route) {
+      if (_route != null) routeObserver.unsubscribe(this);
+      _route = route;
+      if (route != null) routeObserver.subscribe(this, route);
+    }
+  }
+
+  @override
+  void didPushNext() {
+    _covered = (
+      query: ref.read(librarySearchQueryProvider),
+      event: ref.read(twicSelectedEventProvider),
+      filter: ref.read(gamebaseFilterProvider),
+    );
+  }
+
+  @override
+  void didPopNext() {
+    final covered = _covered;
+    _covered = null;
+    if (covered == null) return;
+    // After the frame: a provider must not change while the tree is built.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (ref.read(gamebaseFilterProvider) != covered.filter) {
+        ref.read(gamebaseFilterProvider.notifier).state = covered.filter;
+      }
+      if (ref.read(twicSelectedEventProvider) != covered.event) {
+        ref.read(twicSelectedEventProvider.notifier).state = covered.event;
+      }
+      if (ref.read(librarySearchQueryProvider) != covered.query) {
+        _debounceTimer?.cancel();
+        _searchController.text = covered.query;
+        ref.read(librarySearchQueryProvider.notifier).state = covered.query;
+      }
+    });
+  }
+
+  @override
   void dispose() {
+    if (_route != null) routeObserver.unsubscribe(this);
     _debounceTimer?.cancel();
     _scrollController.removeListener(_onScroll);
     _chipScrollController.removeListener(_onChipScroll);

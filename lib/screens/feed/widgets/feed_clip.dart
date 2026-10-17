@@ -1409,7 +1409,7 @@ class _FeedClipState extends ConsumerState<FeedClip>
   /// post being paged away.
   void _writeLike({required bool liked}) {
     final notifier = ref.read(likedGamesProvider.notifier);
-    final game = _item.likeGame ?? _game;
+    final game = _item.boardGame ?? _game;
     final messenger = ScaffoldMessenger.maybeOf(context);
     setState(() => _likeIntent = liked);
     _likeWritesOut++;
@@ -1539,12 +1539,25 @@ class _FeedClipState extends ConsumerState<FeedClip>
   }
 
   /// Whether the header's event opens somewhere: a broadcast or an archive
-  /// game. A game Watch brought from the user's own analysis or the board
-  /// editor names an event in its PGN with no page behind it.
+  /// game, or a saved copy of a broadcast game (a like keeps its tour id). A
+  /// game Watch brought from the user's own analysis or the board editor
+  /// names an event in its PGN with no page behind it.
   bool get _opensEvent => switch (_game.source) {
     GameSource.supabase || GameSource.gamebase || GameSource.twic => true,
+    GameSource.savedAnalysis => _savedFromTour,
     _ => false,
   };
+
+  /// A saved analysis whose tourId is a broadcast tour's id rather than the
+  /// event name it falls back to.
+  bool get _savedFromTour =>
+      _game.source == GameSource.savedAnalysis &&
+      _tourIdPattern.hasMatch(_game.tourId.trim());
+
+  static final RegExp _tourIdPattern = RegExp(
+    r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$',
+    caseSensitive: false,
+  );
 
   /// The event the game was played in: a broadcast opens its event page, an
   /// archive game (a miniature) opens the ChessEver Database on that event.
@@ -1552,10 +1565,11 @@ class _FeedClipState extends ConsumerState<FeedClip>
     _note(FeedAction.event);
     HapticFeedbackService.navigation();
     final game = _game;
-    if (game.source == GameSource.supabase) {
+    if (game.source == GameSource.supabase || _savedFromTour) {
       final opened = await DeepLinkService.instance.openEventForShortcut(
         tourId: game.tourId,
-        roundId: game.roundId,
+        // A saved copy's round is its PGN's Round text, not a round id.
+        roundId: game.source == GameSource.supabase ? game.roundId : null,
       );
       if (!opened && mounted) {
         showAppSnack(

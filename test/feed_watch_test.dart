@@ -44,8 +44,8 @@ void main() {
       // board's own model, as a like on the board does.
       expect(item.game.pgn, _pgn);
       expect(item.game.isPgnDeferred, isFalse);
-      expect(item.likeGame?.pgn, isNull);
-      expect(item.likeGame?.gameId, 'w1');
+      expect(item.boardGame?.pgn, isNull);
+      expect(item.boardGame?.gameId, 'w1');
     });
 
     test('a live game plays up to its last move, with no result', () {
@@ -57,6 +57,19 @@ void main() {
       expect(item.result, isNull);
     });
 
+    test('an archive game with no event in its PGN names the one the board '
+        'shows', () {
+      final item = feedWatchItem(
+        _game(
+          'a1',
+          source: GameSource.gamebase,
+          tourId: 'Tata Steel Masters 2026',
+        ),
+        '[Result "1-0"]\n\n1. e4 e5 2. Bc4 Nc6 3. Qh5 Nf6 4. Qxf7# 1-0',
+      )!;
+      expect(item.eventLabel, 'Tata Steel Masters 2026');
+    });
+
     test('a game with no move has nothing to watch', () {
       expect(
         feedWatchItem(
@@ -66,6 +79,29 @@ void main() {
         isNull,
       );
       expect(feedWatchItem(_game('w1'), ''), isNull);
+    });
+  });
+
+  group('feedRecordedPgn', () {
+    const recorded = '[Result "1-0"]\n\n1. e4 e5 2. Bc4 Nc6 1-0';
+    test("moves the reader played past the game's end are not the game", () {
+      expect(
+        feedRecordedPgn(
+          recorded,
+          '[Result "1-0"]\n\n1. e4 e5 2. Bc4 Nc6 3. Qh5 *',
+        ),
+        recorded,
+      );
+    });
+    test("a changed move, the same moves, or no recorded moves keep the "
+        'board\'s', () {
+      const changed = '[Result "*"]\n\n1. e4 e5 2. Nf3 Nc6 3. Bb5 *';
+      expect(feedRecordedPgn(recorded, changed), changed);
+      const same = '[Result "1-0"]\n\n1. e4 e5 2. Bc4 {!} Nc6 1-0';
+      expect(feedRecordedPgn(recorded, same), same);
+      const setUp = '[Result "*"]\n\n*';
+      expect(feedRecordedPgn(setUp, changed), changed);
+      expect(feedRecordedPgn(null, changed), changed);
     });
   });
 
@@ -273,7 +309,7 @@ void main() {
     expect(feed.refreshes, 1);
     expect(leadPage, findsNothing);
     final post = tester.widget<FeedClip>(_page('w1'));
-    expect(post.item.plyCount, 7);
+    expect(post.item.plyCount, 9);
     expect(post.isCurrent, isTrue);
     expect(identical(tester.state(_page('w1')), leadState), isFalse);
     await _tearDown(tester);
@@ -345,6 +381,78 @@ void main() {
       tester.widget<PageView>(_pages).childrenDelegate.estimatedChildCount,
       4,
     );
+    await _tearDown(tester);
+  });
+
+  testWidgets("an archive copy of Feed's game hides Feed's own by its moves", (
+    tester,
+  ) async {
+    final feed = _FakeFeed(() async => [_post('g0'), _post('g1'), _post('g2')]);
+    final archive = feedWatchItem(
+      _game('arch-1', source: GameSource.gamebase, tourId: 'Test Open 2026'),
+      _pgnFor('g1'),
+    )!;
+    await _pump(tester, feed, lead: archive);
+    // The lead, g0, g2, then the tail: g1 is the same game.
+    expect(
+      tester.widget<PageView>(_pages).childrenDelegate.estimatedChildCount,
+      4,
+    );
+    expect(_page('g1'), findsNothing);
+    await _tearDown(tester);
+  });
+
+  testWidgets('Watch closed over Feed leaves none of its playback for the Feed '
+      'under it to resume', (tester) async {
+    final feed = _FakeFeed(
+      () async => [_post('g0'), _post('g1'), _post('g2'), _post('g3')],
+    );
+    await _pump(tester, feed);
+    for (var i = 0; i < 3; i++) {
+      await _fling(tester, up: true);
+    }
+    expect(_currentKey(tester), 'game:g3');
+    final store = _read(tester, feedClipResumeProvider);
+
+    final navigator = tester.state<NavigatorState>(find.byType(Navigator));
+    unawaited(FeedScreen.watch(navigator.context, _post('w1')));
+    await _settle(tester);
+    await _fling(tester, up: true);
+    expect(tester.widget<FeedClip>(_page('g0').last).isCurrent, isTrue);
+    navigator.pop();
+    await _settle(tester);
+
+    // Watch's g0 is no place the Feed underneath returns to.
+    expect(store.take('game:g0'), isNull);
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 1));
+  });
+
+  testWidgets("after a refresh, Analyze on Feed's own copy of the watched game "
+      'goes back to the board too', (tester) async {
+    final feed = _FakeFeed(
+      () async => [_post('g0')],
+      fresh: [_post('w1'), _post('fresh1')],
+    );
+    await _pump(tester, feed, home: const _Home());
+    final navigator = tester.state<NavigatorState>(find.byType(Navigator));
+    unawaited(FeedScreen.watch(navigator.context, _post('w1')));
+    await _settle(tester);
+    await tester.tap(_title);
+    await _settle(tester);
+    expect(feed.refreshes, 1);
+    expect(tester.widget<FeedClip>(_page('w1')).isCurrent, isTrue);
+
+    await tester.tap(
+      find.descendant(
+        of: _page('w1'),
+        matching: find.byKey(const ValueKey('feed_analyze_button')),
+      ),
+    );
+    await _settle(tester);
+    expect(find.byType(FeedScreen), findsNothing);
+    expect(find.byType(_Home), findsOneWidget);
     await _tearDown(tester);
   });
 
@@ -460,7 +568,12 @@ const _pgn =
     '[Event "Test Open 2026"]\n[Result "1-0"]\n\n'
     '1. e4 e5 2. Bc4 Nc6 3. Qh5 Nf6 4. Qxf7# 1-0';
 
-GamesTourModel _game(String id, {GameStatus status = GameStatus.whiteWins}) {
+GamesTourModel _game(
+  String id, {
+  GameStatus status = GameStatus.whiteWins,
+  GameSource source = GameSource.supabase,
+  String tourId = 'tour-1',
+}) {
   PlayerCard player(String name, int rating) => PlayerCard(
     name: name,
     federation: '',
@@ -471,6 +584,7 @@ GamesTourModel _game(String id, {GameStatus status = GameStatus.whiteWins}) {
   );
   return GamesTourModel(
     gameId: id,
+    source: source,
     whitePlayer: player('Carlsen, Magnus', 2830),
     blackPlayer: player('Nakamura, Hikaru', 2802),
     whiteTimeDisplay: '--:--',
@@ -479,14 +593,28 @@ GamesTourModel _game(String id, {GameStatus status = GameStatus.whiteWins}) {
     blackClockCentiseconds: 0,
     gameStatus: status,
     roundId: 'round-1',
-    tourId: 'tour-1',
+    tourId: tourId,
     eco: 'C20',
     openingName: "King's Pawn Game",
   );
 }
 
-/// A finished game as Feed or Watch would hold it.
-FeedItem _post(String id) => feedWatchItem(_game(id), _pgn)!;
+/// A finished game as Feed or Watch would hold it. Each id plays its own
+/// moves: Watch tells Feed's copy of its game by them too.
+FeedItem _post(String id) => feedWatchItem(_game(id), _pgnFor(id))!;
+
+const _openers = ['a3', 'a4', 'b3', 'h3', 'h4', 'Na3'];
+const _replies = ['a6', 'a5', 'h6', 'b6'];
+final Map<String, int> _postOrder = {};
+
+/// A scholar's mate after a quiet first move pair of its own, per [id].
+String _pgnFor(String id) {
+  final i = _postOrder.putIfAbsent(id, () => _postOrder.length);
+  final opener = _openers[i % _openers.length];
+  final reply = _replies[(i ~/ _openers.length) % _replies.length];
+  return '[Event "Test Open 2026"]\n[Result "1-0"]\n\n'
+      '1. $opener $reply 2. e4 e5 3. Bc4 Nc6 4. Qh5 Nf6 5. Qxf7# 1-0';
+}
 
 /// A feed whose first page is [_load], recording the games the screen
 /// reports reached and the pages it asks for. A refresh deals [fresh] (two

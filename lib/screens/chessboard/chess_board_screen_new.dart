@@ -49,7 +49,7 @@ import 'package:chessever2/screens/library/widgets/library_context_menu.dart';
 import 'package:chessever2/screens/my_space/actions/space_menu_action.dart';
 import 'package:chessever2/screens/feed/feed_screen.dart';
 import 'package:chessever2/screens/feed/providers/feed_provider.dart'
-    show feedWatchItem;
+    show feedRecordedPgn, feedWatchItem;
 import 'package:chessever2/screens/my_space/providers/space_shortcuts_provider.dart';
 import 'package:chessever2/widgets/space_shortcut_drafts.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/utils/game_space_shortcut.dart';
@@ -4834,9 +4834,14 @@ class _AppBarState extends ConsumerState<_AppBar> {
       // The board is still what the viewer sees: Feed's Analyze comes back
       // to the route under it, which must be this board.
       if (!mounted || !(route?.isCurrent ?? false)) return;
+      // A board-editor game takes the reader's moves past its end into its
+      // mainline; those are not the game.
+      final extendable =
+          game.source == GameSource.boardEditor ||
+          game.roundId == 'board_editor';
       final lead = feedWatchItem(
         game,
-        resolved.pgn,
+        extendable ? feedRecordedPgn(game.pgn, resolved.pgn) : resolved.pgn,
         likeable: likeable,
         exportable: exportable,
       );

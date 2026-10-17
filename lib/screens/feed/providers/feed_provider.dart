@@ -12,6 +12,7 @@ import 'package:chessever2/repository/supabase/game/games.dart';
 import 'package:chessever2/screens/feed/audio/feed_sfx.dart';
 import 'package:chessever2/screens/feed/logic/feed_codec.dart';
 import 'package:chessever2/screens/feed/logic/feed_moments.dart';
+import 'package:chessever2/screens/feed/logic/feed_pgn.dart';
 import 'package:chessever2/screens/feed/logic/feed_ranker.dart';
 import 'package:chessever2/screens/feed/logic/feed_report.dart';
 import 'package:chessever2/screens/feed/logic/feed_taste.dart';
@@ -1688,12 +1689,13 @@ FeedItem? feedWatchItem(
     game: game.copyWith(pgn: pgn, isPgnDeferred: false),
     plies: clip.plies,
     reason: '',
-    eventLabel: clip.event ?? _prettySlug(game.tourSlug),
+    eventLabel:
+        clip.event ?? _archiveEventOf(game) ?? _prettySlug(game.tourSlug),
     result: clip.result ?? _resultOf(game.gameStatus),
     hasEvals: clip.hasEvals,
     likeable: likeable,
     exportable: exportable,
-    likeGame: game,
+    boardGame: game,
   );
 }
 
@@ -1719,6 +1721,37 @@ String? _resultOf(GameStatus status) => switch (status) {
   GameStatus.draw => '½-½',
   _ => null,
 };
+
+/// [exported], or [recorded] when [exported] only adds moves past the end
+/// of [recorded]'s mainline. A board that lets the reader extend a game's
+/// mainline (board-editor games: imported, prep and collection games)
+/// exports their moves after the last one as the game's own; Watch plays
+/// the game as it was recorded. A changed move, or a recorded PGN with no
+/// moves (a position set up in the editor), keeps [exported].
+String feedRecordedPgn(String? recorded, String exported) {
+  final own = recorded == null ? null : parseFlowPgn(recorded);
+  if (own == null || own.moves.isEmpty) return exported;
+  final shown = parseFlowPgn(exported);
+  if (shown == null || shown.moves.length <= own.moves.length) return exported;
+  for (var i = 0; i < own.moves.length; i++) {
+    if (shown.moves[i].uci != own.moves[i].uci) return exported;
+  }
+  return recorded!;
+}
+
+/// The event an archive game names in its tourId (the gamebase event, as
+/// the board shows it), when its PGN gives none Feed can read. Null for
+/// other sources, and for the archive's placeholder names.
+String? _archiveEventOf(GamesTourModel game) {
+  if (game.source != GameSource.gamebase && game.source != GameSource.twic) {
+    return null;
+  }
+  final event = game.tourId.trim();
+  if (event.isEmpty || event == 'Miniatures' || event == 'Gamebase') {
+    return null;
+  }
+  return event;
+}
 
 String? _prettySlug(String? slug) {
   final value = slug?.trim();

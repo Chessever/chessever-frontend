@@ -123,6 +123,7 @@ class _FeedScreenState extends ConsumerState<FeedScreen>
   ModalRoute<void>? _route;
   late final StateController<bool> _open;
   late final FeedScreenCount _screens;
+  late final FeedClipResumeStore _resume;
 
   /// This screen is in [_screens]' count (from its first frame).
   bool _counted = false;
@@ -167,13 +168,17 @@ class _FeedScreenState extends ConsumerState<FeedScreen>
     final state = WidgetsBinding.instance.lifecycleState;
     _appResumed = state == null || state == AppLifecycleState.resumed;
     final lead = widget.lead;
-    if (lead != null) _lead = FeedGameEntry(lead);
+    if (lead != null) {
+      _lead = FeedGameEntry(lead);
+      _watched = lead;
+    }
     _index = _restoredIndex();
     _pages = PageController(initialPage: _index);
     // Written after the frame: a provider must not change while the tree
     // that mounts this screen is still building.
     _open = ref.read(feedScreenOpenProvider.notifier);
     _screens = ref.read(feedScreenCountProvider);
+    _resume = ref.read(feedClipResumeProvider);
     _sfx = ref.read(feedSfxProvider);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
@@ -210,14 +215,10 @@ class _FeedScreenState extends ConsumerState<FeedScreen>
   List<FeedEntry> _pagesOf(List<FeedEntry> feed) {
     final lead = _lead;
     if (lead == null) return feed;
-    final id = lead.item.game.gameId;
-    final likeId = lead.item.game.likeId;
     final pages = <FeedEntry>[
       lead,
       for (final page in feed)
-        if (page is! FeedGameEntry ||
-            (page.item.game.gameId != id && page.item.game.likeId != likeId))
-          page,
+        if (page is! FeedGameEntry || !_isWatchedGame(page.item)) page,
     ];
     // An ad stands only between two posts ([withFeedAds]); one left last by
     // the hidden copy waits for the post that comes after it.
@@ -226,6 +227,35 @@ class _FeedScreenState extends ConsumerState<FeedScreen>
   }
 
   List<FeedEntry> _currentPages() => _pagesOf(ref.read(feedPagesProvider));
+
+  /// The game Watch opened on, kept after a refresh drops its page: Feed's
+  /// own copy of it is the game the board under this screen holds.
+  FeedItem? _watched;
+
+  /// Whether [item] is Feed's copy of the game Watch opened on: the same id,
+  /// or the same moves (an archive copy of a broadcast game has its own id).
+  bool _isWatchedGame(FeedItem item) {
+    final watched = _watched;
+    if (watched == null) return false;
+    if (item.game.gameId == watched.game.gameId ||
+        item.game.likeId == watched.game.likeId) {
+      return true;
+    }
+    if (item.plies.length != watched.plies.length ||
+        _movesOf(item) != _movesOf(watched)) {
+      return false;
+    }
+    // The same moves by other players is another game.
+    final white = item.game.whitePlayer.fideId;
+    final watchedWhite = watched.game.whitePlayer.fideId;
+    return white == null || watchedWhite == null || white == watchedWhite;
+  }
+
+  static final Expando<String> _moves = Expando<String>('feedMoves');
+
+  /// [item]'s moves as one string, worked out once per item.
+  static String _movesOf(FeedItem item) =>
+      _moves[item] ??= [for (final ply in item.plies) ply.uci ?? ''].join(' ');
 
   /// The key a page is built under. The lead's is its own: after a refresh
   /// Feed's copy of the game may stand where the lead stood, and it must be
@@ -323,6 +353,11 @@ class _FeedScreenState extends ConsumerState<FeedScreen>
     final open = _open;
     final screens = _screens;
     if (_counted) screens.value--;
+    // A Feed still on the stack under this one (Watch, closed) keeps its own
+    // clip mounted: the playback this one's clips just saved (children
+    // dispose first) is no place it returns to, and must not resurface on
+    // the next post it builds as current.
+    if (screens.value > 0) _resume.clear();
     Future.microtask(() {
       if (open.mounted && screens.value <= 0) open.state = false;
     });
@@ -856,7 +891,11 @@ class _FeedScreenState extends ConsumerState<FeedScreen>
         // The lead is not a place in Feed: it neither takes nor leaves the
         // playback Feed keeps for its return.
         keepsPlace: !identical(entry, _lead),
-        onOpenGame: identical(entry, _lead) ? _backToBoard : null,
+        // The board under Watch holds this game: Analyze goes back to it,
+        // from the lead and, after a refresh, from Feed's own copy.
+        onOpenGame: identical(entry, _lead) || _isWatchedGame(item)
+            ? _backToBoard
+            : null,
       ),
       FeedPuzzleEntry(:final puzzle) => FeedPuzzlePage(
         key: ValueKey(entry.key),
