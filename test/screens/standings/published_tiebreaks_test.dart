@@ -62,4 +62,24 @@ void main() {
       expect(row.toJson()['tiebreaks'], isNull);
     }
   });
+
+  test('Chess-Results start number and club survive every copy', () {
+    final json = {...publishedPlayer(), 'startNumber': 12, 'club': 'Hull'};
+    final roster = TournamentPlayer.fromJson(json);
+    expect(roster.toJson()['startNumber'], 12);
+    expect(roster.toJson()['club'], 'Hull');
+    final cached = PlayerStandingModel.fromJson(
+      PlayerStandingModel.fromPlayer(roster).copyWith(overallRank: 2).toJson(),
+    );
+    expect((cached.startNumber, cached.club), (12, 'Hull'));
+    expect(
+      PlayerStandingModel.fromPlayer(
+        TournamentPlayer.fromJson({...json, 'club': 'York'}),
+      ),
+      isNot(PlayerStandingModel.fromPlayer(roster)),
+    );
+    final blank = TournamentPlayer.fromJson(publishedPlayer());
+    expect((blank.startNumber, blank.club), (null, null));
+    expect(blank.toJson().containsKey('startNumber'), isFalse);
+  });
 }

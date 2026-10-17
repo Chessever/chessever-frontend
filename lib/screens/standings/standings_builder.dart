@@ -395,6 +395,9 @@ List<TournamentPlayer> mergeTournamentRosterWithGamePlayers({
       rank: existing.rank ?? player.rank,
       performance: existing.performance ?? player.performance,
       ratingDiff: existing.ratingDiff ?? player.ratingDiff,
+      startNumber:
+          _positive(existing.startNumber) ?? _positive(player.startNumber),
+      club: _nonEmpty(existing.club) ?? _nonEmpty(player.club),
       // Team scores use game labels; official scores still come from the roster.
       team: fromGame
           ? _nonEmpty(player.team)?.trim() ?? _nonEmpty(existing.team)
