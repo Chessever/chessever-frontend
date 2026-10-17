@@ -42,136 +42,188 @@ void main() {
 
   tearDownAll(GameAnalysisReportStore.debugResetInstance);
 
-  testWidgets('arrow holds still work after swiping the notation panel', (
-    tester,
-  ) async {
-    // The explorer cards overflow under the test font; that layout noise is
-    // not what this test covers.
-    final defaultOnError = FlutterError.onError;
-    FlutterError.onError = (details) {
-      if (details.exceptionAsString().contains('overflowed')) return;
-      defaultOnError?.call(details);
-    };
-    tester.view.physicalSize = const Size(393 * 3, 852 * 3);
-    tester.view.devicePixelRatio = 3;
-    addTearDown(tester.view.reset);
-    final raws = [_rawGame(id: 'game-0', tourId: 'tour-1', board: 1)];
-    final games = raws.map(GamesTourModel.fromGame).toList();
+  for (final showGamebaseButton in [false, true]) {
+    testWidgets(
+      'arrow holds survive notation swipes (explorer button: $showGamebaseButton)',
+      (tester) async {
+        // The explorer cards overflow under the test font; that layout noise is
+        // not what this test covers.
+        final defaultOnError = FlutterError.onError;
+        FlutterError.onError = (details) {
+          if (details.exceptionAsString().contains('overflowed')) return;
+          defaultOnError?.call(details);
+        };
+        tester.view.physicalSize = const Size(393 * 3, 852 * 3);
+        tester.view.devicePixelRatio = 3;
+        addTearDown(tester.view.reset);
+        final raws = [_rawGame(id: 'game-0', tourId: 'tour-1', board: 1)];
+        final games = raws.map(GamesTourModel.fromGame).toList();
 
-    final container = ProviderContainer(
-      overrides: [
-        boardFeatureTeachingTrackerProvider.overrideWith(
-          (_) => BoardFeatureTeachingTracker(QuietBoardTeachingStore()),
-        ),
-        effectiveCountryProvider.overrideWithValue(const AsyncValue.loading()),
-        gamesLocalStorage.overrideWith(
-          (ref) => _FullCacheGamesLocalStorage(ref, {'tour-1': raws}),
-        ),
-        gameRepositoryProvider.overrideWithValue(
-          _ImmediateGameRepository({for (final g in raws) g.id: g}),
-        ),
-        gamebaseRepositoryProvider.overrideWithValue(_FakeGamebaseRepository()),
-        gameStreamRepositoryProvider.overrideWithValue(
-          _FakeGameStreamRepository(),
-        ),
-        localEvalCacheProvider.overrideWith(_FakeLocalEvalCache.new),
-        engineSettingsProviderNew.overrideWith(_FakeEngineSettingsNotifier.new),
-        gamebaseOverlayEnabledProvider.overrideWith(
-          _FakeGamebaseOverlayNotifier.new,
-        ),
-        eventNoSpoilersProvider.overrideWith(
-          (ref, tourId) =>
-              _FakeEventNoSpoilersController(ref: ref, tourId: tourId),
-        ),
-        chessBoardPersistenceEnabledProvider.overrideWithValue(false),
-      ],
-    );
-    addTearDown(container.dispose);
+        final container = ProviderContainer(
+          overrides: [
+            boardFeatureTeachingTrackerProvider.overrideWith(
+              (_) => BoardFeatureTeachingTracker(QuietBoardTeachingStore()),
+            ),
+            effectiveCountryProvider.overrideWithValue(
+              const AsyncValue.loading(),
+            ),
+            gamesLocalStorage.overrideWith(
+              (ref) => _FullCacheGamesLocalStorage(ref, {'tour-1': raws}),
+            ),
+            gameRepositoryProvider.overrideWithValue(
+              _ImmediateGameRepository({for (final g in raws) g.id: g}),
+            ),
+            gamebaseRepositoryProvider.overrideWithValue(
+              _FakeGamebaseRepository(),
+            ),
+            gameStreamRepositoryProvider.overrideWithValue(
+              _FakeGameStreamRepository(),
+            ),
+            localEvalCacheProvider.overrideWith(_FakeLocalEvalCache.new),
+            engineSettingsProviderNew.overrideWith(
+              _FakeEngineSettingsNotifier.new,
+            ),
+            gamebaseOverlayEnabledProvider.overrideWith(
+              _FakeGamebaseOverlayNotifier.new,
+            ),
+            eventNoSpoilersProvider.overrideWith(
+              (ref, tourId) =>
+                  _FakeEventNoSpoilersController(ref: ref, tourId: tourId),
+            ),
+            chessBoardPersistenceEnabledProvider.overrideWithValue(false),
+          ],
+        );
+        addTearDown(container.dispose);
 
-    await tester.pumpWidget(
-      UncontrolledProviderScope(
-        container: container,
-        child: MaterialApp(
-          theme: ThemeData.dark().copyWith(extensions: const [AppColors.dark]),
-          home: Builder(
-            builder: (context) {
-              ResponsiveHelper.init(context);
-              return ChessBoardScreenNew(
-                currentIndex: 0,
-                games: games,
-                viewSource: ChessboardView.tour,
-              );
-            },
+        await tester.pumpWidget(
+          UncontrolledProviderScope(
+            container: container,
+            child: MaterialApp(
+              theme: ThemeData.dark().copyWith(
+                extensions: const [AppColors.dark],
+              ),
+              home: Builder(
+                builder: (context) {
+                  ResponsiveHelper.init(context);
+                  return ChessBoardScreenNew(
+                    currentIndex: 0,
+                    games: games,
+                    viewSource: ChessboardView.tour,
+                    showGamebaseButton: showGamebaseButton,
+                  );
+                },
+              ),
+            ),
           ),
-        ),
-      ),
+        );
+        Future<void> settle([int frames = 10]) async {
+          for (var i = 0; i < frames; i++) {
+            await tester.pump(const Duration(milliseconds: 100));
+          }
+        }
+
+        await settle();
+        final params = ChessBoardProviderParams(game: games.first, index: 0);
+        ChessBoardStateNew state() =>
+            container.read(chessBoardScreenProviderNew(params)).requireValue;
+
+        final back = find.byKey(e2eKey(E2eIds.boardMoveBack)).first;
+        final forward = find.byKey(e2eKey(E2eIds.boardMoveForward)).first;
+
+        Future<void> hold(Finder f) async {
+          final g = await tester.startGesture(tester.getCenter(f));
+          // Render the settling swipe before the long-press deadline. One 700 ms
+          // pump fires the hold before the toolbar rebuild and hides cancellation.
+          for (var i = 0; i < 44; i++) {
+            await tester.pump(const Duration(milliseconds: 16));
+          }
+          await g.up();
+          await settle(5);
+        }
+
+        ScrollPosition notationPosition() {
+          final scrollables = tester.stateList<ScrollableState>(
+            find.byType(Scrollable),
+          );
+          return scrollables
+              .map((s) => s.position)
+              .firstWhere(
+                (p) => p.axis == Axis.vertical && p.maxScrollExtent > 0,
+              );
+        }
+
+        await hold(back);
+        expect(state().analysisState.movePointer, isEmpty);
+        await hold(forward);
+
+        // Swipe the notation to the explorer and back.
+        final panels = find.byKey(const ValueKey('analysis_panels_game-0'));
+        expect(panels, findsOneWidget);
+        final panelController = tester
+            .widget<PageView>(
+              find.descendant(of: panels, matching: find.byType(PageView)),
+            )
+            .controller!;
+
+        // Start each hold before the fling crosses into the destination panel.
+        await tester.fling(panels, const Offset(-120, 0), 1500);
+        expect(panelController.page, lessThan(0.5));
+        expect(panelController.position.isScrollingNotifier.value, isTrue);
+        await hold(back);
+        expect(
+          state().analysisState.movePointer,
+          isEmpty,
+          reason:
+              'A hold started while the explorer swipe settles must survive.',
+        );
+        expect(container.read(boardExplorerPanelVisibleProvider), isTrue);
+        await tester.fling(panels, const Offset(120, 0), 1500);
+        expect(panelController.page, greaterThan(0.5));
+        expect(panelController.position.isScrollingNotifier.value, isTrue);
+        await hold(forward);
+        expect(state().analysisState.movePointer, [
+          159,
+        ], reason: 'A hold started while notation returns must reach the end.');
+        expect(container.read(boardExplorerPanelVisibleProvider), isFalse);
+        // Partial drags that settle back, both directions.
+        await tester.drag(panels, const Offset(-80, 0));
+        await settle();
+        await tester.drag(panels, const Offset(80, 0));
+        await settle();
+        await hold(back);
+        await hold(forward);
+        // Open explorer, hold there, come back.
+        await tester.fling(panels, const Offset(-300, 0), 1500);
+        await settle();
+        await hold(back);
+        await hold(forward);
+        await tester.fling(panels, const Offset(300, 0), 1500);
+        await settle();
+
+        await hold(back);
+        expect(state().analysisState.movePointer, isEmpty);
+        expect(notationPosition().pixels, 0);
+
+        await hold(forward);
+        final pos = notationPosition();
+        expect(state().analysisState.movePointer, [159]);
+        expect(pos.pixels, greaterThan(0));
+
+        // Taps retain their single-step behavior after the same panel round trip.
+        await tester.tap(back);
+        await settle(5);
+        expect(state().analysisState.movePointer, [158]);
+        await tester.tap(forward);
+        await settle(5);
+        expect(state().analysisState.movePointer, [159]);
+
+        await tester.pumpWidget(const SizedBox.shrink());
+        await tester.pump();
+        container.dispose();
+        FlutterError.onError = defaultOnError;
+      },
     );
-    Future<void> settle([int frames = 10]) async {
-      for (var i = 0; i < frames; i++) {
-        await tester.pump(const Duration(milliseconds: 100));
-      }
-    }
-
-    await settle();
-    final params = ChessBoardProviderParams(game: games.first, index: 0);
-    ChessBoardStateNew state() =>
-        container.read(chessBoardScreenProviderNew(params)).requireValue;
-
-    final back = find.byKey(e2eKey(E2eIds.boardMoveBack)).first;
-    final forward = find.byKey(e2eKey(E2eIds.boardMoveForward)).first;
-
-    Future<void> hold(Finder f) async {
-      final g = await tester.startGesture(tester.getCenter(f));
-      await tester.pump(const Duration(milliseconds: 700));
-      await g.up();
-      await settle(5);
-    }
-
-    ScrollPosition notationPosition() {
-      final scrollables = tester.stateList<ScrollableState>(
-        find.byType(Scrollable),
-      );
-      return scrollables
-          .map((s) => s.position)
-          .firstWhere((p) => p.axis == Axis.vertical && p.maxScrollExtent > 0);
-    }
-
-    await hold(back);
-    expect(state().analysisState.movePointer, isEmpty);
-    await hold(forward);
-
-    // Swipe the notation to the explorer and back.
-    final panels = find.byKey(const ValueKey('analysis_panels_game-0'));
-    expect(panels, findsOneWidget);
-    // Partial drags that settle back, both directions.
-    await tester.drag(panels, const Offset(-80, 0));
-    await settle();
-    await tester.drag(panels, const Offset(80, 0));
-    await settle();
-    await hold(back);
-    await hold(forward);
-    // Open explorer, hold there, come back.
-    await tester.fling(panels, const Offset(-300, 0), 1500);
-    await settle();
-    await hold(back);
-    await hold(forward);
-    await tester.fling(panels, const Offset(300, 0), 1500);
-    await settle();
-
-    await hold(back);
-    expect(state().analysisState.movePointer, isEmpty);
-    expect(notationPosition().pixels, 0);
-
-    await hold(forward);
-    final pos = notationPosition();
-    expect(state().analysisState.movePointer, isNotEmpty);
-    expect(pos.pixels, greaterThan(0));
-
-    await tester.pumpWidget(const SizedBox.shrink());
-    await tester.pump();
-    container.dispose();
-    FlutterError.onError = defaultOnError;
-  });
+  }
 }
 
 Games _rawGame({

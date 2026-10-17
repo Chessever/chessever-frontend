@@ -7836,7 +7836,9 @@ class _BottomNavBar extends ConsumerWidget {
     final hasVideo = video != null && video.isActive(game.gameId);
 
     return ChessBoardBottomNavBar(
-      key: ValueKey('bottom_nav_gamebase_$isGamebaseActive'),
+      // Panel visibility updates this bar in place. Replacing it while a swipe
+      // settles disposes the arrow recognizers and cancels an in-flight hold.
+      key: ValueKey('bottom_nav_${game.gameId}_$index'),
       onVideoToggle: hasVideo
           ? () => EventVideoScope.sessionOf(context)?.toggle()
           : null,
