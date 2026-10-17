@@ -21,18 +21,19 @@ class PublishedPlayerTiebreaks extends StatelessWidget {
     String? club,
   }) =>
       values.isNotEmpty ||
-      startNumber != null ||
+      (startNumber != null && startNumber > 0) ||
       (club != null && club.trim().isNotEmpty);
 
   @override
   Widget build(BuildContext context) {
     final style = TextStyle(color: context.colors.textSecondary, fontSize: 12);
     final clubName = club?.trim();
+    final sno = startNumber;
     return Wrap(
       spacing: 12,
       runSpacing: 4,
       children: [
-        if (startNumber != null) Text('SNo $startNumber', style: style),
+        if (sno != null && sno > 0) Text('SNo $sno', style: style),
         if (clubName != null && clubName.isNotEmpty)
           Text(
             clubName,
