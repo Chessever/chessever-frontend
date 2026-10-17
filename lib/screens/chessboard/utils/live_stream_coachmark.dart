@@ -7,16 +7,18 @@ abstract class LiveStreamCoachmarkStore {
 }
 
 class AppDatabaseLiveStreamCoachmarkStore implements LiveStreamCoachmarkStore {
-  AppDatabaseLiveStreamCoachmarkStore(this._database);
+  AppDatabaseLiveStreamCoachmarkStore(this._database, {this.key = storageKey});
 
   static const String storageKey = 'live_stream_toggle_coachmark_v1';
+  static const String restoreStorageKey = 'live_stream_restore_coachmark_v1';
   final AppDatabase _database;
+  final String key;
 
   @override
-  Future<bool> hasSeen() async => await _database.getBool(storageKey) ?? false;
+  Future<bool> hasSeen() async => await _database.getBool(key) ?? false;
 
   @override
-  Future<void> markSeen() => _database.setBool(storageKey, true);
+  Future<void> markSeen() => _database.setBool(key, true);
 }
 
 /// Ensures the live-stream camera coachmark is claimed by at most one board
@@ -63,4 +65,12 @@ class LiveStreamCoachmarkTracker {
 
 final liveStreamCoachmarkTracker = LiveStreamCoachmarkTracker(
   AppDatabaseLiveStreamCoachmarkStore(AppDatabase.instance),
+);
+
+// Existing users who saw the hide hint still learn how to restore the video.
+final liveStreamRestoreCoachmarkTracker = LiveStreamCoachmarkTracker(
+  AppDatabaseLiveStreamCoachmarkStore(
+    AppDatabase.instance,
+    key: AppDatabaseLiveStreamCoachmarkStore.restoreStorageKey,
+  ),
 );

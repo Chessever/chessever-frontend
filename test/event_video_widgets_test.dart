@@ -131,9 +131,12 @@ List<EventVideoStream> manyVideos(int count) => [
     ),
 ];
 
-/// Taps a picker tile and lets the entry fade finish.
+/// Ensure the fixture's stream is selected for playback/layout tests. A tap on
+/// the already selected chip now hides video, covered by selected_stream_hide.
 Future<void> chooseStream(WidgetTester tester, String id) async {
-  await tester.tap(find.byKey(ValueKey('video_stream_$id')));
+  final tile = find.byKey(ValueKey('video_stream_$id'));
+  final session = EventVideoScope.sessionOf(tester.element(tile))!;
+  if (session.selected?.id != id) await tester.tap(tile);
   await tester.pump();
   await tester.pump(const Duration(milliseconds: 400));
 }
