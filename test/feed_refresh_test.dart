@@ -402,7 +402,7 @@ class _Games implements GameRepository {
           Player(
             name: 'White $i',
             title: 'GM',
-            rating: i < _strong ? 2860 : 2260,
+            rating: i < _strong ? 2860 : 2420,
             fideId: 1000 + i,
             fed: 'NOR',
             clock: 0,
@@ -411,7 +411,7 @@ class _Games implements GameRepository {
           Player(
             name: 'Black $i',
             title: 'GM',
-            rating: i < _strong ? 2840 : 2240,
+            rating: i < _strong ? 2840 : 2400,
             fideId: 5000 + i,
             fed: 'USA',
             clock: 0,

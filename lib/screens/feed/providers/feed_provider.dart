@@ -191,6 +191,11 @@ class FeedNotifier extends AsyncNotifier<List<FeedItem>> {
   /// Shown game ids remembered across launches (newest kept).
   static const int _shownMemory = 400;
 
+  /// Candidates one event may hold in the pool at a time; the best are
+  /// kept. Online events finish hundreds of games an evening, and a pool
+  /// full of one of them leaves the ranker nothing else to draw.
+  static const int _poolPerEvent = 6;
+
   static const int _currentMinEventElo = 2300;
   static const int _currentMinRating = 2300;
   static const int _currentLimit = 60;
@@ -456,10 +461,10 @@ class FeedNotifier extends AsyncNotifier<List<FeedItem>> {
             continue;
           }
           if (!game.gameStatus.isFinished) continue;
-          slice[game.gameId] = _FeedCandidate(
-            game: game,
-            signals: _signalsOf(game, FeedPool.top),
-          );
+          final signals = _signalsOf(game, FeedPool.top);
+          if (!feedMeetsQualityFloor(signals)) continue;
+          slice[game.gameId] = _FeedCandidate(game: game, signals: signals);
+          _capEvent(slice, signals.eventKey, _poolPerEvent);
         }
       }
       // Some of the pool's own flavour: current events, followed players,
@@ -889,6 +894,8 @@ class FeedNotifier extends AsyncNotifier<List<FeedItem>> {
           if (key(player).isNotEmpty) key(player),
       },
       openingKey: game.eco?.trim().isNotEmpty == true ? game.eco!.trim() : null,
+      freestyle: feedIsFreestyleEvent(game.tourSlug),
+      online: feedIsOnlineEvent(game.tourSlug),
     );
   }
 
@@ -902,9 +909,11 @@ class FeedNotifier extends AsyncNotifier<List<FeedItem>> {
     final id = candidate.game.gameId;
     if (candidate.game.source != GameSource.supabase) return;
     if (_seen.contains(id) || !candidate.game.gameStatus.isFinished) return;
+    if (!feedMeetsQualityFloor(candidate.signals)) return;
     final existing = _pool[id];
     if (existing == null) {
       _pool[id] = candidate;
+      _capEvent(_pool, candidate.signals.eventKey, _poolPerEvent);
       return;
     }
     final keep =
@@ -920,6 +929,27 @@ class FeedNotifier extends AsyncNotifier<List<FeedItem>> {
             pgn: other.pgn,
             hint: keep.hint,
           );
+  }
+
+  /// Keeps at most [limit] candidates of [event] in [pool], dropping the
+  /// least interesting.
+  static void _capEvent(
+    Map<String, _FeedCandidate> pool,
+    String? event,
+    int limit,
+  ) {
+    if (event == null) return;
+    final same = [
+      for (final c in pool.values)
+        if (c.signals.eventKey == event) c,
+    ];
+    if (same.length <= limit) return;
+    same.sort(
+      (a, b) => feedInterest(b.signals).compareTo(feedInterest(a.signals)),
+    );
+    for (final c in same.skip(limit)) {
+      pool.remove(c.game.gameId);
+    }
   }
 
   /// Previews up to three times [count] games, fetches the PGNs they still
@@ -938,7 +968,9 @@ class FeedNotifier extends AsyncNotifier<List<FeedItem>> {
     final pool = from ?? _pool;
     final draw = ranker ?? _ranker;
     // Preview a wider shortlist without committing rejected games to history.
-    final shortlist = FeedRanker(_newSeed());
+    // It follows the feed's recent picks, so it does not fill up with the
+    // kind of game the feed's quotas will not take next.
+    final shortlist = FeedRanker.following(draw, _newSeed());
     // History may have loaded after a candidate was offered; read it now.
     final signals = [
       for (final c in pool.values)
@@ -1003,6 +1035,12 @@ class FeedNotifier extends AsyncNotifier<List<FeedItem>> {
           _shownBefore.contains(candidate.game.gameId),
           reportInterest: feedReportInterest(clip!, type: type),
           reportType: type,
+          // The moves settle it where the event name did not.
+          freestyle: candidate.signals.freestyle || feedPgnIsFreestyle(pgn),
+          online:
+              candidate.signals.online ||
+              feedIsOnlineEvent(null, clip.event) ||
+              feedPgnIsOnline(pgn),
         ),
       );
       // Keep eligible runners-up ready for the next page, with their PGNs.
@@ -1120,23 +1158,6 @@ class FeedNotifier extends AsyncNotifier<List<FeedItem>> {
     return null;
   }
 
-  /// The streak ledger's online rule on event names
-  /// (`player_streak_is_online`), applied to the tour slug and the PGN
-  /// `[Event]`. Not [GamesTourModel.isOnline]: that only means the game
-  /// carries a Lichess id, which every relayed OTB broadcast game does.
-  static final RegExp _onlineEventName = RegExp(
-    r'(titled tuesday|\bonline\b|chess\.com|\bchesscom\b|\blichess\b'
-    r'|\bbullet\b|speed chess championship|champions chess tour|\bcct\b'
-    r'|freestyle friday|\d\+\d\s*thursday|\binternet\b|\bvirtual\b'
-    r'|titled arena|\btornelo\b|\bchess24\b|\be-?sports\b)',
-    caseSensitive: false,
-  );
-
-  static bool _isOnlineEvent(GamesTourModel game, String? event) {
-    final slug = game.tourSlug?.replaceAll(RegExp(r'[-_]+'), ' ') ?? '';
-    return _onlineEventName.hasMatch('$slug ${event ?? ''}');
-  }
-
   static DateTime? _dayOf(String? raw) {
     final parsed = DateTime.tryParse(raw ?? '');
     return parsed == null
@@ -1178,7 +1199,7 @@ class FeedNotifier extends AsyncNotifier<List<FeedItem>> {
         !passesStreakFloor(run)) {
       return null;
     }
-    if (_isOnlineEvent(game, event)) return null;
+    if (feedIsOnlineEvent(game.tourSlug, event)) return null;
 
     // Only a win after the loss that anchors the run is part of it. The
     // ledger orders a day's games by time, which the wall does not carry, so
