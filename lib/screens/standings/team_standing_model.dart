@@ -53,6 +53,32 @@ class TeamStandingModel {
       ? gamePoints.toInt().toString()
       : gamePoints.toStringAsFixed(1);
 
+  /// [tiebreaks] without the published match-point and game-point columns
+  /// (Chess-Results TB1/TB2, Info64 MP/GP) when they repeat the [matchPoints]
+  /// and [gamePoints] the row already shows. Derived tiebreaks such as BH:MP
+  /// or EMMSB stay.
+  List<PublishedTiebreak> get extraTiebreaks => [
+    for (final tiebreak in tiebreaks)
+      if (!_repeatsShownPoints(tiebreak)) tiebreak,
+  ];
+
+  bool _repeatsShownPoints(PublishedTiebreak tiebreak) {
+    final description = tiebreak.description;
+    final code = tiebreak.extendedCode;
+    if (tiebreak.points == matchPoints &&
+        (description == 'MP' ||
+            code == 'MP' ||
+            _publishedMatchPoints.hasMatch(description))) {
+      return true;
+    }
+    return tiebreak.points == gamePoints &&
+        (description == 'GP' ||
+            code == 'GP' ||
+            description == 'points (game-points)');
+  }
+
+  static final _publishedMatchPoints = RegExp(r'^Matchpoints \(\d+ for wins');
+
   /// "W · D · L" record over completed matches.
   String get recordLabel => '$matchesWon · $matchesDrawn · $matchesLost';
 

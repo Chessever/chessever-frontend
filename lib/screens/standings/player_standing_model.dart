@@ -139,7 +139,7 @@ class PlayerStandingModel {
       team: json['team'] as String?,
       overallRank: json['overallRank'] as int?,
       tiebreaks: PublishedTiebreak.parse(json['tiebreaks']),
-      startNumber: json['startNumber'] as int?,
+      startNumber: (json['startNumber'] as num?)?.toInt(),
       club: json['club'] as String?,
     );
   }
