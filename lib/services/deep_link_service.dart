@@ -26,7 +26,7 @@ import 'package:chessever2/screens/collections/collections_screen.dart'
 import 'package:chessever2/screens/group_event/smart_event/smart_aggregate_event_provider.dart'
     show smartEventRequestFromPushData;
 import 'package:chessever2/screens/group_event/smart_event/smart_event_screen.dart'
-    show SmartEventScreen;
+    show SmartEventScreen, smartEventGamesTab;
 import 'package:chessever2/screens/my_prep/models/prep_models.dart'
     show PrepProfile;
 import 'package:chessever2/screens/my_prep/my_prep_home_screen.dart'
@@ -870,9 +870,9 @@ class DeepLinkService {
     }
   }
 
-  /// Opens the smart event a four-hour "new games" push was sent for: the
-  /// reader's own starred row once favorites have loaded, else one rebuilt
-  /// from the criteria the push carries.
+  /// Opens the smart event an evening "new games" push was sent for, on its
+  /// Games tab: the reader's own starred row once favorites have loaded, else
+  /// one rebuilt from the criteria the push carries.
   Future<void> _navigateToSmartEvent(
     Map<String, dynamic> data,
     GlobalKey<NavigatorState> navigatorKey,
@@ -916,7 +916,10 @@ class DeepLinkService {
       if (request == null) return;
       navigator.push(
         MaterialPageRoute<void>(
-          builder: (_) => SmartEventScreen(request: request),
+          builder: (_) => SmartEventScreen(
+            request: request,
+            initialTab: smartEventGamesTab,
+          ),
         ),
       );
     } finally {

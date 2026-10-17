@@ -19,26 +19,19 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 /// the way [starNotificationsEnabled] does.
 const String kStarNotificationsKey = 'notificationsEnabled';
 
-/// Set on a starred smart event when its owner turns its pushes off, and
-/// cleared when they turn them back on. [kStarNotificationsKey] cannot say
-/// that for smart events: older builds saved every new smart star with it
-/// false. The four-hour "new games" push
-/// (`queue_smart_event_digests`) reads this key alone.
-const String kStarMutedKey = 'notificationsMuted';
-
-bool _isSmartEventStar(String eventId, Map<String, dynamic> metadata) =>
-    eventId.startsWith('smart_event:') || metadata['type'] == 'smart_event';
-
 /// Whether the starred row [favorite] sends notifications.
 ///
-/// A smart event's star does unless its owner muted it: starring one is
-/// subscribing to its new games. So does a collection's, unless its owner
-/// turned that off: starring one is asking to hear about its new games
-/// (Trello #1225), and a star made before the question, on the desktop app
-/// or on an older build never answered it.
+/// A smart event's star always does: starring one is subscribing to its
+/// evening "new games" push and unstarring is the only opt-out, so it has no
+/// switch (and older builds' `notificationsEnabled: false` means nothing).
+/// A collection's star does unless its owner turned that off: starring one
+/// is asking to hear about its new games (Trello #1225), and a star made
+/// before the question, on the desktop app or on an older build never
+/// answered it.
 bool starNotificationsEnabled(FavoriteEvent favorite) {
-  if (_isSmartEventStar(favorite.eventId, favorite.metadata)) {
-    return favorite.metadata[kStarMutedKey] != true;
+  if (favorite.eventId.startsWith('smart_event:') ||
+      favorite.metadata['type'] == 'smart_event') {
+    return true;
   }
   final flag = favorite.metadata[kStarNotificationsKey];
   if (flag is bool) return flag;
@@ -85,12 +78,10 @@ Future<void> setStarNotifications({
   }
 
   try {
-    await container
-        .read(favoriteEventsProvider.notifier)
-        .updateMetadata(eventId, {
-          kStarNotificationsKey: enabled,
-          if (_isSmartEventStar(eventId, const {})) kStarMutedKey: !enabled,
-        });
+    await container.read(favoriteEventsProvider.notifier).updateMetadata(
+      eventId,
+      {kStarNotificationsKey: enabled},
+    );
   } catch (error) {
     snack(
       userFacingError(
@@ -113,7 +104,7 @@ Future<void> setStarNotifications({
   if (reachable && confirm) snack('Notifications turned on');
 }
 
-/// Makes a new smart event star's four-hour push reachable: starring one
+/// Makes a new smart event star's evening push reachable: starring one
 /// turns its pushes on, with no question. Sent under starred-event alerts.
 Future<bool> makeSmartEventStarReachable({
   required ProviderContainer container,

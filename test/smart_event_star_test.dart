@@ -209,32 +209,29 @@ void main() {
     expect(store.added.single.eventId, request.favoriteEventId);
     expect(store.added.single.metadata['type'], 'smart_event');
     expect(starNotificationsEnabled(store.added.single), isTrue);
-    expect(store.added.single.metadata.containsKey(kStarMutedKey), isFalse);
     expect(_question, findsNothing);
     expect(store.patches, isEmpty);
     expect(tester.takeException(), isNull);
   });
 
-  test('a smart star notifies until its owner mutes it, whatever the old '
-      'flag says', () {
+  test('a smart star always notifies: there is no switch, whatever an old '
+      'build saved', () {
     final saved = _starred(_request());
-    FavoriteEvent withMetadata(Map<String, dynamic> patch) => FavoriteEvent(
-      id: saved.id,
-      userId: saved.userId,
-      eventId: saved.eventId,
-      eventName: saved.eventName,
-      metadata: {...saved.metadata, ...patch},
-      createdAt: _stamp,
-      updatedAt: _stamp,
-    );
-
-    // Builds before the four-hour push saved every new star with it false.
+    expect(starNotificationsEnabled(saved), isTrue);
     expect(
-      starNotificationsEnabled(withMetadata({kStarNotificationsKey: false})),
+      starNotificationsEnabled(
+        FavoriteEvent(
+          id: saved.id,
+          userId: saved.userId,
+          eventId: saved.eventId,
+          eventName: saved.eventName,
+          metadata: {...saved.metadata, kStarNotificationsKey: false},
+          createdAt: _stamp,
+          updatedAt: _stamp,
+        ),
+      ),
       isTrue,
     );
-    expect(starNotificationsEnabled(withMetadata({kStarMutedKey: true})), isFalse);
-    expect(starNotificationsEnabled(withMetadata({kStarMutedKey: false})), isTrue);
   });
 
   testWidgets('unstarring removes the row and asks nothing', (tester) async {

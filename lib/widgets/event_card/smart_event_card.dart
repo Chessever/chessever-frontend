@@ -19,7 +19,6 @@ import 'package:chessever2/widgets/game_filter/rating_tier_filter.dart';
 import 'package:chessever2/widgets/event_card/smart_event_deck.dart';
 import 'package:chessever2/widgets/event_card/smart_event_star.dart';
 import 'package:chessever2/widgets/hub_tile.dart' show kHubTileInk;
-import 'package:chessever2/widgets/star_notifications.dart';
 import 'package:chessever2/widgets/time_control_glyph.dart';
 import 'package:flutter/material.dart';
 import 'package:chessever2/widgets/card_plate_layout.dart';
@@ -158,12 +157,6 @@ class SmartEventCard extends StatelessWidget {
                       label: 'Open smart event',
                       onSelected: onTap!,
                     ),
-                    if (starRequest case final star?)
-                      starNotificationsMenuAction(
-                        context: context,
-                        favorite: smartEventNotifiableFavorite(ref, star),
-                        surface: 'smart_event',
-                      ),
                     spaceMenuAction(context: context, ref: ref, draft: draft),
                   ],
                 ),

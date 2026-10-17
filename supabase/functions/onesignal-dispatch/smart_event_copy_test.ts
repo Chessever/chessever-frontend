@@ -28,6 +28,7 @@ function digest(overrides: Partial<SmartEventDigest>): SmartEventDigest {
     topBlack: "Artemiev, Vladislav",
     topStatus: "*",
     topAverage: 2689,
+    otherSmartEvents: 0,
     ...overrides,
   };
 }
@@ -43,7 +44,7 @@ Deno.test("an opening smart event names its opening and the count", () => {
     topAverage: 2551,
   }));
   assertEquals(copy.kind, "opening:played");
-  assertEquals(copy.title, "Sicilian: Najdorf played in 8 games");
+  assertEquals(copy.title, "Sicilian: Najdorf played in 8 games today");
   assertEquals(copy.body, "Yakubboev beat Godart (2551 avg). Tap to see.");
 });
 
@@ -86,11 +87,11 @@ Deno.test("level, time control and state read as one line", () => {
   );
   assertEquals(
     smartEventDigestCopy(digest({ minElo: 2450, formats: ["standard"] })).title,
-    "6 Classical games played at 2450+",
+    "6 Classical games played today at 2450+",
   );
   assertEquals(
     smartEventDigestCopy(digest({ minElo: 2200, maxElo: 2400 })).title,
-    "6 games played at 2200–2400",
+    "6 games played today at 2200–2400",
   );
   assertEquals(
     smartEventDigestCopy(
@@ -109,7 +110,7 @@ Deno.test("a finished batch says how it went", () => {
     draws: 38,
   }));
   assertEquals(copy.kind, "time:finished");
-  assertEquals(copy.title, "180 Rapid results are in");
+  assertEquals(copy.title, "180 Rapid results today");
   assertEquals(copy.body, "White won 75, Black 67, 38 draws. Tap to see.");
 });
 
@@ -122,7 +123,7 @@ Deno.test("all three time controls, or none, is every time control", () => {
   }
   assertEquals(
     smartEventDigestCopy(digest({ formats: ["blitz", "rapid"] })).title,
-    "6 Rapid & Blitz games just played",
+    "6 Rapid & Blitz games played today",
   );
 });
 
@@ -130,7 +131,19 @@ Deno.test("the full 0-3200 scale is no level", () => {
   assertEquals(smartEventDigestCopy(digest({})).kind, "all:played");
   assertEquals(
     smartEventDigestCopy(digest({})).title,
-    "6 games played in the last 4 hours",
+    "6 games played today",
+  );
+});
+
+Deno.test("other smart events that caught games are mentioned", () => {
+  assertEquals(
+    smartEventDigestCopy(digest({ otherSmartEvents: 2, topStatus: "1-0" }))
+      .body,
+    "Grischuk beat Artemiev (2689 avg). 2 more of your smart events had new games too. Tap to see.",
+  );
+  assertEquals(
+    smartEventDigestCopy(digest({ otherSmartEvents: 1 })).body,
+    "Top game: Grischuk vs Artemiev (2689 avg). Another of your smart events had new games too. Tap to see.",
   );
 });
 

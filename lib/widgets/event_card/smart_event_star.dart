@@ -1,5 +1,4 @@
 import 'package:chessever2/providers/favorite_events_provider.dart';
-import 'package:chessever2/repository/favorites/models/favorite_event.dart';
 import 'package:chessever2/screens/group_event/smart_event/smart_aggregate_event_provider.dart';
 import 'package:chessever2/services/analytics/analytics_service.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
@@ -11,21 +10,14 @@ import 'package:chessever2/widgets/svg_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
-/// The starred row of [request], for the focus menu's notifications row
-/// (see [starNotificationsMenuAction]); null while it is not starred.
-FavoriteEvent? smartEventNotifiableFavorite(
-  WidgetRef ref,
-  SmartEventRequest request,
-) => ref.read(smartEventSavedFavoriteProvider(request.criteriaKey));
-
 /// Stars or unstars [request]: the one path behind every smart event star.
 ///
 /// A star is the smart event's favorites row (`smart_event:v2:<criteria>`),
 /// the row My Space lists it from (its only home: Today never lists starred
-/// smart events). Starring is subscribing: every four hours its owner hears
-/// how many new games it caught (`queue_smart_event_digests`), until they
-/// mute it from the menu. So starring asks nothing; it only makes sure the
-/// push can arrive.
+/// smart events). Starring is subscribing: each evening, in their own
+/// timezone, its owner hears how many new games it caught
+/// (`queue_smart_event_digests`). Unstarring is the only opt-out, so starring
+/// asks nothing; it only makes sure the push can arrive.
 Future<void> toggleSmartEventFavorite({
   required BuildContext context,
   required SmartEventRequest request,

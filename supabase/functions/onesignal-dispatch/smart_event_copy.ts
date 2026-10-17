@@ -1,8 +1,9 @@
 /**
- * The words of a starred smart event's four-hour push.
+ * The words of a starred smart event's evening push.
  *
  * A smart event is a filter over games, so its push is about games: how many
- * the filter caught since the last push, then the strongest of them. Each mix
+ * the filter caught today (the 24 hours since the reader's last evening
+ * push), then the strongest of them. Each mix
  * of filters (an opening, a rating band, time controls, live or finished)
  * gets its own line, named by [smartEventDigestKind] — a Najdorf star hears
  * about the Najdorf, a GM Blitz star about GM-level blitz.
@@ -27,6 +28,8 @@ export type SmartEventDigest = {
   topBlack: string | null;
   topStatus: string | null;
   topAverage: number;
+  /** The reader's other smart events that caught games today too. */
+  otherSmartEvents: number;
 };
 
 export type SmartEventDigestState = "played" | "live" | "finished";
@@ -141,28 +144,28 @@ export function smartEventDigestTitle(
   if (opening) {
     switch (state) {
       case "played":
-        return `${opening} played in ${games(n, tc)}${at}`;
+        return `${opening} played in ${games(n, tc)}${at} today`;
       case "live":
         return n === 1
           ? `${opening} is live in 1 ${tc ? `${tc} ` : ""}game${at}`
           : `${opening} is live on ${n} ${tc ? `${tc} ` : ""}boards${at}`;
       case "finished":
-        return `${opening}: ${games(n, tc)}${at} just finished`;
+        return `${opening}: ${games(n, tc)}${at} finished today`;
     }
   }
 
   switch (state) {
     case "played":
-      if (level) return `${games(n, tc)} played ${level}`;
-      if (tc) return `${games(n, tc)} just played`;
-      return `${games(n)} played in the last 4 hours`;
+      if (level) return `${games(n, tc)} played today ${level}`;
+      if (tc) return `${games(n, tc)} played today`;
+      return `${games(n)} played today`;
     case "live":
       if (level) return `${games(n, tc)} live now ${level}`;
       return `${games(n, tc)} live right now`;
     case "finished":
-      if (level) return `${games(n, tc)} ${level} just finished`;
-      if (tc) return `${n} ${tc} ${n === 1 ? "result is" : "results are"} in`;
-      return `${games(n)} just finished`;
+      if (level) return `${games(n, tc)} ${level} finished today`;
+      if (tc) return `${n} ${tc} ${n === 1 ? "result" : "results"} today`;
+      return `${games(n)} finished today`;
   }
 }
 
@@ -184,25 +187,34 @@ export function smartEventDigestBody(
   shape: SmartEventDigestShape,
   digest: SmartEventDigest,
 ): string {
+  const n = digest.otherSmartEvents;
+  const others = n === 1
+    ? " Another of your smart events had new games too."
+    : n > 1
+    ? ` ${n} more of your smart events had new games too.`
+    : "";
+  return `${smartEventDigestHighlight(shape, digest)}.${others} Tap to see.`;
+}
+
+function smartEventDigestHighlight(
+  shape: SmartEventDigestShape,
+  digest: SmartEventDigest,
+): string {
   const white = smartEventPlayerName(digest.topWhite);
   const black = smartEventPlayerName(digest.topBlack);
   const rated = digest.topAverage > 0 ? ` (${digest.topAverage} avg)` : "";
 
   if (shape.state === "finished" && digest.games > 1) {
     const draws = digest.draws === 1 ? "1 draw" : `${digest.draws} draws`;
-    return `White won ${digest.whiteWins}, Black ${digest.blackWins}, ${draws}. Tap to see.`;
+    return `White won ${digest.whiteWins}, Black ${digest.blackWins}, ${draws}`;
   }
-  if (digest.topStatus === "1-0") {
-    return `${white} beat ${black}${rated}. Tap to see.`;
-  }
-  if (digest.topStatus === "0-1") {
-    return `${black} beat ${white}${rated}. Tap to see.`;
-  }
+  if (digest.topStatus === "1-0") return `${white} beat ${black}${rated}`;
+  if (digest.topStatus === "0-1") return `${black} beat ${white}${rated}`;
   if (digest.topStatus === "1/2-1/2" || digest.topStatus === "½-½") {
-    return `${white} drew ${black}${rated}. Tap to see.`;
+    return `${white} drew ${black}${rated}`;
   }
   const lead = digest.games === 1 ? "" : "Top game: ";
-  return `${lead}${white} vs ${black}${rated}. Tap to see.`;
+  return `${lead}${white} vs ${black}${rated}`;
 }
 
 export function smartEventDigestCopy(
@@ -253,5 +265,6 @@ export function smartEventDigestFromPayload(
     topBlack: toText(p.top_black),
     topStatus: toText(p.top_status),
     topAverage: toInt(p.top_average, 0),
+    otherSmartEvents: Math.max(0, toInt(p.other_smart_events, 0)),
   };
 }

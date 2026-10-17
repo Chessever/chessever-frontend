@@ -40,7 +40,6 @@ import 'package:chessever2/widgets/auth/auth_upgrade_sheet.dart';
 import 'package:chessever2/widgets/alert_dialog/alert_modal.dart';
 import 'package:chessever2/widgets/event_card/event_card.dart';
 import 'package:chessever2/widgets/event_card/smart_event_star.dart';
-import 'package:chessever2/widgets/star_notifications.dart';
 import 'package:chessever2/widgets/fluid_shimmer_painter.dart';
 import 'package:chessever2/widgets/game_filter/game_filter_dialog.dart';
 import 'package:chessever2/widgets/game_filter/game_filter_model.dart';
@@ -58,6 +57,9 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:intl/intl.dart';
 
 const smartEventTabLabels = <String>['About', 'Games', 'Events'];
+
+/// Index of Games in [smartEventTabLabels].
+const smartEventGamesTab = 1;
 
 /// My Space shortcut for a smart event.
 ///
@@ -106,9 +108,17 @@ SmartEventRequest? smartEventRequestFromSpaceShortcut(SpaceShortcut shortcut) {
 /// at a time ([smartAggregateEventRepositoryProvider]) so first paint is the
 /// newest day rather than a multi-thousand-row fetch.
 class SmartEventScreen extends ConsumerStatefulWidget {
-  const SmartEventScreen({required this.request, super.key});
+  const SmartEventScreen({
+    required this.request,
+    this.initialTab = smartEventGamesTab,
+    super.key,
+  });
 
   final SmartEventRequest request;
+
+  /// The tab it opens on, an index into [smartEventTabLabels]. A smart event
+  /// push names it so its tap always lands on the games it counted.
+  final int initialTab;
 
   @override
   ConsumerState<SmartEventScreen> createState() => _SmartEventScreenState();
@@ -119,7 +129,7 @@ class _SmartEventScreenState extends ConsumerState<SmartEventScreen> {
   static const _validTiers = <String>{'GM', 'IM', 'FM', 'CM', 'All'};
 
   // Default to Games because this surface is opened from a generated games card.
-  int _index = 1;
+  late int _index = widget.initialTab.clamp(0, _tabs.length - 1);
   late final PageController _page = PageController(initialPage: _index);
 
   // Search lives on the screen (not the Games tab) so the field can sit
@@ -248,12 +258,7 @@ class _SmartEventScreenState extends ConsumerState<SmartEventScreen> {
       eventId: updated.favoriteEventId,
       eventName: updated.displayName,
       maxAvgElo: updated.minElo > 0 ? updated.minElo : null,
-      extraMetadata: {
-        ...updated.toFavoriteMetadata(),
-        // The owner's answer about notifications outlives a re-key.
-        kStarNotificationsKey: starNotificationsEnabled(savedFavorite),
-        kStarMutedKey: !starNotificationsEnabled(savedFavorite),
-      },
+      extraMetadata: updated.toFavoriteMetadata(),
     );
   }
 
@@ -712,11 +717,6 @@ class _AppBar extends ConsumerWidget {
                             request: request,
                           ),
                         ),
-                      starNotificationsMenuAction(
-                        context: context,
-                        favorite: savedFavorite,
-                        surface: 'smart_event',
-                      ),
                       if (savedFavorite != null)
                         LibraryMenuAction(
                           icon: isDirty

@@ -202,7 +202,7 @@ void main() {
   });
 
   test('a collection star notifies unless its owner said no; a smart event '
-      'star until its owner mutes it (Trello #1225)', () {
+      'star until it is unstarred (Trello #1225)', () {
     // Starred before the question, on the desktop app or an older build.
     expect(
       starNotificationsEnabled(_row('collection:candidates-2026')),
@@ -223,7 +223,7 @@ void main() {
       ),
       isFalse,
     );
-    // A smart event star is subscribed from the start; only a mute stops it.
+    // A smart event star is the subscription itself: only unstarring stops it.
     expect(
       starNotificationsEnabled(
         _row(
@@ -232,12 +232,6 @@ void main() {
         ),
       ),
       isTrue,
-    );
-    expect(
-      starNotificationsEnabled(
-        _row('smart_event:v2:minElo=2700', metadata: {kStarMutedKey: true}),
-      ),
-      isFalse,
     );
   });
 

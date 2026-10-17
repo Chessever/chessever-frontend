@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:chessever2/providers/favorite_events_provider.dart';
 import 'package:chessever2/repository/favorites/models/favorite_event.dart';
@@ -17,7 +18,6 @@ import 'package:chessever2/utils/eco_openings.dart';
 import 'package:chessever2/widgets/game_filter/game_filter_model.dart';
 import 'package:chessever2/widgets/game_filter/rating_tier_filter.dart';
 import 'package:chessever2/widgets/search/opening_search_suggestion.dart';
-import 'package:chessever2/widgets/star_notifications.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart' show RangeValues;
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -498,8 +498,8 @@ class SmartEventRequest {
       'minElo': minElo,
       'maxElo': maxElo,
       'caption': caption,
-      // Starring a smart event subscribes to its four-hour "new games" push;
-      // only turning that off writes [kStarMutedKey].
+      // Starring a smart event subscribes to its evening "new games" push and
+      // unstarring is the opt-out: there is no separate switch.
       'notificationsEnabled': true,
       'countSingular': countSingular,
       'countPlural': countPlural,
@@ -1122,20 +1122,42 @@ SmartEventRequest? smartEventRequestFromPushData(
       return SmartEventRequest.fromFavoriteEvent(favorite);
     }
   }
-  final ecoCode = data['eco_code']?.toString().trim() ?? '';
-  final label = data['label']?.toString().trim() ?? '';
+  // FCM carries strings only: the formats arrive as "blitz,live" (or JSON
+  // text), a missing value as "null". OneSignal keeps the JSON as sent.
+  String text(Object? value) {
+    final string = value?.toString().trim() ?? '';
+    return string == 'null' ? '' : string;
+  }
+
+  List<Object?> list(Object? raw) {
+    if (raw is List) return raw;
+    final string = text(raw);
+    if (!string.startsWith('[')) return string.split(',');
+    try {
+      final decoded = jsonDecode(string);
+      return decoded is List ? decoded : const [];
+    } on FormatException {
+      return const [];
+    }
+  }
+
+  final formats = [
+    for (final value in list(data['formats'])) text(value),
+  ]..removeWhere((value) => value.isEmpty);
+  final ecoCode = text(data['eco_code']);
+  final label = text(data['label']);
   final now = DateTime.now();
   return SmartEventRequest.fromFavoriteEvent(
     FavoriteEvent(
       id: id,
       userId: '',
       eventId: id,
-      eventName: data['smart_event_name']?.toString() ?? '',
+      eventName: text(data['smart_event_name']),
       metadata: {
         'type': 'smart_event',
-        'minElo': data['min_elo'],
-        'maxElo': data['max_elo'],
-        if (data['formats'] is List) 'formatsAndStates': data['formats'],
+        'minElo': text(data['min_elo']),
+        'maxElo': text(data['max_elo']),
+        'formatsAndStates': formats,
         if (ecoCode.isNotEmpty) 'ecoCode': ecoCode,
         if (label.isNotEmpty) 'tierLabel': label,
       },
@@ -1226,12 +1248,7 @@ Future<void> refreshSavedSmartEventSnapshot({
           eventId: fresh.favoriteEventId,
           eventName: fresh.displayName,
           maxAvgElo: fresh.minElo > 0 ? fresh.minElo : null,
-          extraMetadata: {
-            ...fresh.toFavoriteMetadata(),
-            // Carry user-owned flags the rebuild would otherwise reset.
-            kStarNotificationsKey: starNotificationsEnabled(favorite),
-            kStarMutedKey: !starNotificationsEnabled(favorite),
-          },
+          extraMetadata: fresh.toFavoriteMetadata(),
         );
       }
       return;

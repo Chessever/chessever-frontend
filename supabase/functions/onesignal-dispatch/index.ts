@@ -12,6 +12,7 @@ import {
   smartEventDigestCopy,
   smartEventDigestFromPayload,
 } from "./smart_event_copy.ts";
+import { timezoneFromOneSignalUser } from "./user_timezone.ts";
 import { collectFavoriteMatches } from "./favorite_match.ts";
 import { filterGameStartedPlayerRecipients } from "./player_game_recipients.ts";
 import { chunk, packForUrlBudget } from "./postgrest_in.ts";
@@ -297,6 +298,10 @@ async function processItem(item: OutboxItem) {
     // A smart event's push is about its own games, never a tournament's.
     if (item.event_type === "smart_event_digest") {
       return await sendSmartEventDigest(item, sendOneSignal);
+    }
+    // Sends nothing: caches readers' timezones for the evening push above.
+    if (item.event_type === "user_timezone_refresh") {
+      return await refreshUserTimezones(item);
     }
 
     const context = await buildContext(item);
@@ -2331,8 +2336,8 @@ async function sendSmartEventDigest(
     return { id: item.id, status: "skipped", reason: "no_games" };
   }
 
-  // The star may have come off, or been muted, since the row was queued.
-  if (!await isSmartEventStarNotifying(userId, smartEventId)) {
+  // Unstarring is the opt-out: the star may have come off since the queue.
+  if (!await isSmartEventStarred(userId, smartEventId)) {
     await markSkipped(item.id, "not_starred");
     return { id: item.id, status: "skipped", reason: "not_starred" };
   }
@@ -2345,22 +2350,29 @@ async function sendSmartEventDigest(
 
   const copy = smartEventDigestCopy(digest);
   const topGameId = optionalPayloadString(item.payload, "top_game_id");
+  const smartEventName = optionalPayloadString(
+    item.payload,
+    "smart_event_name",
+  );
   await send(eligible, {
     title: copy.title,
     body: copy.body,
     url: null,
+    // Strings only, like every other push: FCM data carries nothing else
+    // (the notification service JSON-encodes anything that is not one).
     data: {
       type: "smart_event_games",
       smart_event_id: smartEventId,
-      smart_event_name: optionalPayloadString(item.payload, "smart_event_name"),
       smart_event_kind: copy.kind,
-      games: digest.games,
+      games: String(digest.games),
       // The criteria, so the app can open a smart event it no longer lists.
-      min_elo: digest.minElo,
-      max_elo: digest.maxElo,
-      formats: digest.formats,
-      eco_code: digest.ecoCode,
-      label: digest.label,
+      min_elo: String(digest.minElo),
+      max_elo: String(digest.maxElo),
+      formats: digest.formats.join(","),
+      ...(digest.ecoCode ? { eco_code: digest.ecoCode } : {}),
+      ...(digest.label ? { label: digest.label } : {}),
+      ...(smartEventName ? { smart_event_name: smartEventName } : {}),
+      // Builds without the smart event route open this game instead.
       ...(topGameId ? { game_id: topGameId } : {}),
     },
     androidChannelId: channelForEvent("smart_event_digest"),
@@ -2370,23 +2382,106 @@ async function sendSmartEventDigest(
   return { id: item.id, status: "sent", recipients: eligible.length };
 }
 
-/** Whether [userId] still stars [smartEventId] with its pushes on. */
-async function isSmartEventStarNotifying(
+/** Whether [userId] still stars [smartEventId]. */
+async function isSmartEventStarred(
   userId: string,
   smartEventId: string,
 ): Promise<boolean> {
-  const rows = await runQuery<Array<{ muted: unknown }>>(
+  const rows = await runQuery<Array<{ id: string }>>(
     "Smart event star lookup",
     () =>
       supabase
         .from("user_favorite_events")
-        .select("muted:metadata->notificationsMuted")
+        .select("id")
         .eq("user_id", userId)
         .eq("event_id", smartEventId)
         .limit(1),
   );
-  const row = (rows ?? [])[0];
-  return row !== undefined && row.muted !== true && row.muted !== "true";
+  return (rows ?? []).length > 0;
+}
+
+const USER_ID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Looks up each reader's timezone in OneSignal and stores it in
+ * `user_timezones` (null when OneSignal has none). A lookup that fails is
+ * not stored, so the next run asks again. Sends no push.
+ */
+async function refreshUserTimezones(item: OutboxItem) {
+  const raw = Array.isArray(item.payload?.user_ids)
+    ? item.payload.user_ids as unknown[]
+    : [];
+  const userIds = raw.filter((id): id is string =>
+    typeof id === "string" && USER_ID_PATTERN.test(id)
+  );
+  if (userIds.length === 0) {
+    await markSkipped(item.id, "no_users");
+    return { id: item.id, status: "skipped", reason: "no_users" };
+  }
+
+  const found: { user_id: string; timezone: string | null }[] = [];
+  let failed = 0;
+  for (const batch of chunk(userIds, 5)) {
+    if (remainingInvocationMs() < STOP_CLAIMING_WITH_MS) break;
+    const results = await Promise.all(batch.map(async (userId) => {
+      try {
+        const res = await fetch(
+          `https://api.onesignal.com/apps/${ONESIGNAL_APP_ID}/users/by/external_id/${userId}`,
+          { headers: { Authorization: `Key ${ONESIGNAL_REST_API_KEY}` } },
+        );
+        if (res.status === 404) {
+          await res.body?.cancel();
+          return { user_id: userId, timezone: null };
+        }
+        if (!res.ok) {
+          await res.body?.cancel();
+          throw new Error(`OneSignal ${res.status}`);
+        }
+        return {
+          user_id: userId,
+          timezone: timezoneFromOneSignalUser(await res.json()),
+        };
+      } catch (error) {
+        console.warn(
+          `[onesignal-dispatch] timezone lookup failed for ${userId}: ${
+            describeError(error)
+          }`,
+        );
+        return null;
+      }
+    }));
+    for (const result of results) {
+      if (result) found.push(result);
+      else failed++;
+    }
+  }
+
+  if (found.length > 0) {
+    const checkedAt = new Date().toISOString();
+    await runQuery("User timezone upsert", () =>
+      supabase.from("user_timezones").upsert(
+        found.map((row) => ({
+          ...row,
+          source: "onesignal",
+          checked_at: checkedAt,
+        })),
+        { onConflict: "user_id" },
+      ));
+  }
+
+  const known = found.filter((row) => row.timezone !== null).length;
+  console.log(
+    `[onesignal-dispatch] timezones: ${known} known, ${
+      found.length - known
+    } unknown, ${failed} failed of ${userIds.length}`,
+  );
+  await markSent(item.id);
+  return {
+    id: item.id,
+    status: "sent",
+    timezones: { known, unknown: found.length - known, failed },
+  };
 }
 
 /** Whether [userId] still stars the My Prep profile [profileId]. */
