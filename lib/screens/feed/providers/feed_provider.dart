@@ -4,6 +4,7 @@ import 'dart:math' as math;
 
 import 'package:chessever2/config/feature_flags.dart';
 import 'package:chessever2/providers/board_settings_provider_new.dart';
+import 'package:chessever2/providers/country_dropdown_provider.dart';
 import 'package:chessever2/providers/favorite_players_provider.dart';
 import 'package:chessever2/repository/sqlite/app_database.dart';
 import 'package:chessever2/repository/supabase/game/game_repository.dart';
@@ -13,6 +14,7 @@ import 'package:chessever2/screens/feed/logic/feed_codec.dart';
 import 'package:chessever2/screens/feed/logic/feed_moments.dart';
 import 'package:chessever2/screens/feed/logic/feed_ranker.dart';
 import 'package:chessever2/screens/feed/logic/feed_report.dart';
+import 'package:chessever2/screens/feed/logic/feed_taste.dart';
 import 'package:chessever2/screens/feed/models/feed_models.dart';
 import 'package:chessever2/screens/for_you/discovery/data/discovery_repository.dart';
 import 'package:chessever2/screens/for_you/discovery/models/discovery_models.dart';
@@ -21,6 +23,7 @@ import 'package:chessever2/screens/standings/providers/player_utils_provider.dar
 import 'package:chessever2/screens/streaks/models/streak_models.dart';
 import 'package:chessever2/screens/streaks/providers/streak_providers.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
+import 'package:chessever2/utils/country_utils.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -232,6 +235,16 @@ class FeedNotifier extends AsyncNotifier<List<FeedItem>> {
 
   static const Duration _currentAge = Duration(days: 4);
   static const Duration _topAge = Duration(days: 7);
+
+  /// How far back the strong listing and the backfill read. Each widens
+  /// once the window before it is read to its end, so the Feed never runs
+  /// out: this week first, then the month, the season, the year.
+  static const List<Duration> _horizons = [
+    _topAge,
+    Duration(days: 30),
+    Duration(days: 120),
+    Duration(days: 365),
+  ];
   static const Duration _favoriteAge = Duration(days: 14);
   static const Duration _favoriteGrace = Duration(milliseconds: 400);
   static const Duration _sourceTimeout = Duration(seconds: 6);
@@ -243,6 +256,26 @@ class FeedNotifier extends AsyncNotifier<List<FeedItem>> {
 
   int _generation = 0;
   FeedRanker _ranker = FeedRanker(0);
+
+  /// What this viewer enjoys, learned from every visit and kept across
+  /// sessions and refreshes (see [FeedTaste]).
+  final FeedTaste _taste = FeedTaste();
+  static const String _tasteKey = 'flow_feed_taste_v1';
+  bool _tasteLoaded = false;
+  Timer? _tasteWrite;
+
+  /// Signals of every game handed to the screen, for learning from its
+  /// visit.
+  final Map<String, FeedSignals> _postSignals = {};
+
+  /// The post on screen and what has happened on it so far.
+  String? _visitId;
+  DateTime? _visitStart;
+  double _visitProgress = 0;
+  final Set<FeedAction> _visitActions = {};
+
+  int _topHorizon = 0;
+  int _backfillHorizon = 0;
 
   /// Every game already in the list (or picked for it) this generation.
   final Set<String> _seen = <String>{};
@@ -298,7 +331,7 @@ class FeedNotifier extends AsyncNotifier<List<FeedItem>> {
   Future<List<FeedItem>> build() async {
     final generation = ++_generation;
     _resetPaging();
-    _ranker = FeedRanker(_newSeed());
+    _ranker = _newRanker();
     _bindBoardSound();
 
     // Warm the streak wall so winners on a run can say so in their caption.
@@ -317,7 +350,11 @@ class FeedNotifier extends AsyncNotifier<List<FeedItem>> {
 
     // The sources start now, alongside the disk reads, not after them.
     final sources = _refillAll(generation);
-    final (cachedRaw, _) = await (_readCache(), _loadShown()).wait;
+    final (cachedRaw, _, _) = await (
+      _readCache(),
+      _loadShown(),
+      _loadTaste(),
+    ).wait;
     if (generation != _generation) return const [];
     final cached = cachedRaw.map(_withStreakReason).toList();
     if (cached.isNotEmpty) {
@@ -395,7 +432,7 @@ class FeedNotifier extends AsyncNotifier<List<FeedItem>> {
       return;
     }
 
-    _ranker = FeedRanker(_newSeed());
+    _ranker = _newRanker();
     final first = await _loadFirstPage(generation, _refillAll(generation))
         .timeout(
           _refreshTimeout,
@@ -498,7 +535,7 @@ class FeedNotifier extends AsyncNotifier<List<FeedItem>> {
       }
       if (slice.isEmpty) return;
 
-      final ranker = FeedRanker(_newSeed());
+      final ranker = _newRanker();
       final items = await _materialize(
         generation,
         _reserveSize,
@@ -574,11 +611,69 @@ class FeedNotifier extends AsyncNotifier<List<FeedItem>> {
     if (items == null) return;
     if (index >= 0 && index < items.length) {
       _remember(items[index].game.gameId);
+      _visit(items[index].game.gameId);
     }
     if (items.length - 1 - index <= _prefetchAhead + 1) {
       unawaited(loadMore());
     }
     _redrawStaleReserve();
+  }
+
+  /// How much of [gameId]'s clip has played (0..1), as the clip reports it.
+  void noteProgress(String gameId, double fraction) {
+    if (gameId != _visitId) return;
+    if (fraction > _visitProgress) _visitProgress = fraction;
+  }
+
+  /// Something the viewer did with [gameId]'s post.
+  void noteAction(String gameId, FeedAction action) {
+    if (gameId == _visitId) _visitActions.add(action);
+  }
+
+  /// The viewer moved to [gameId]: what they did on the post before it is
+  /// learned from, and the next pages are drawn with it.
+  void _visit(String gameId) {
+    if (gameId == _visitId) return;
+    _closeVisit();
+    _visitId = gameId;
+    _visitStart = DateTime.now();
+    _visitProgress = 0;
+    _visitActions.clear();
+  }
+
+  /// Signals for a post handed out before this feed's bookkeeping began (the
+  /// cached first page, a refresh's reserve): read off the post itself.
+  FeedSignals? _signalsOnScreen(String id) {
+    for (final item in state.valueOrNull ?? const <FeedItem>[]) {
+      if (item.game.gameId != id) continue;
+      final base = _signalsOf(item.game, FeedPool.top);
+      final pgn = item.game.pgn ?? '';
+      return base.withSeenBefore(
+        false,
+        reportType: item.reportType,
+        freestyle: base.freestyle || feedPgnIsFreestyle(pgn),
+        online: base.online || feedPgnIsOnline(pgn),
+      );
+    }
+    return null;
+  }
+
+  void _closeVisit() {
+    final id = _visitId;
+    final start = _visitStart;
+    final signals = id == null
+        ? null
+        : _postSignals[id] ?? _signalsOnScreen(id);
+    if (signals == null || start == null) return;
+    _taste.learn(
+      signals,
+      FeedVisit(
+        dwell: DateTime.now().difference(start),
+        progress: _visitProgress,
+        actions: {..._visitActions},
+      ),
+    );
+    _scheduleTasteWrite();
   }
 
   /// A reserve the viewer has scrolled past [reserveMaxAge] with is drawn
@@ -604,6 +699,10 @@ class FeedNotifier extends AsyncNotifier<List<FeedItem>> {
   @protected
   @visibleForTesting
   DateTime now() => DateTime.now();
+
+  /// What the feed has learned about the viewer.
+  @visibleForTesting
+  FeedTaste get taste => _taste;
 
   /// The games of the ready reserve, if there is one.
   @visibleForTesting
@@ -762,14 +861,20 @@ class FeedNotifier extends AsyncNotifier<List<FeedItem>> {
       final rows = await ref
           .read(gameRepositoryProvider)
           .getFeedCandidateGames(
-            since: DateTime.now().subtract(_topAge),
+            since: DateTime.now().subtract(_horizons[_backfillHorizon]),
             minRating: _backfillMinRating,
             limit: _backfillLimit,
             offset: offset,
             overTheBoardOnly: true,
           );
       if (generation != _generation) return;
-      if (rows.length < _backfillLimit) _backfillExhausted = true;
+      if (rows.length < _backfillLimit) {
+        if (_backfillHorizon < _horizons.length - 1) {
+          _backfillHorizon++;
+        } else {
+          _backfillExhausted = true;
+        }
+      }
       for (final row in rows) {
         final game = _tourModel(row);
         if (game == null || feedIsOnlineEvent(game.tourSlug)) continue;
@@ -845,13 +950,21 @@ class FeedNotifier extends AsyncNotifier<List<FeedItem>> {
       final rows = await ref
           .read(gameRepositoryProvider)
           .getFeedCandidateGames(
-            since: DateTime.now().subtract(_topAge),
+            since: DateTime.now().subtract(_horizons[_topHorizon]),
             minRating: _topMinRating,
             limit: _topLimit,
             offset: offset,
           );
       if (generation != _generation) return;
-      if (rows.length < _topLimit) _topExhausted = true;
+      // Newest first either way, so the same offset carries on into a
+      // wider window where this one ended.
+      if (rows.length < _topLimit) {
+        if (_topHorizon < _horizons.length - 1) {
+          _topHorizon++;
+        } else {
+          _topExhausted = true;
+        }
+      }
       for (final row in rows) {
         final game = _tourModel(row);
         if (game == null) continue;
@@ -878,6 +991,7 @@ class FeedNotifier extends AsyncNotifier<List<FeedItem>> {
           if ((favorite.fideId ?? '').trim().isNotEmpty)
             favorite.fideId!.trim(),
       };
+      _taste.seed(players: fideIds, country: _viewerFed());
       if (fideIds.isEmpty) {
         _favoritesExhausted = true;
         return;
@@ -980,6 +1094,12 @@ class FeedNotifier extends AsyncNotifier<List<FeedItem>> {
       openingKey: game.eco?.trim().isNotEmpty == true ? game.eco!.trim() : null,
       freestyle: feedIsFreestyleEvent(game.tourSlug),
       online: feedIsOnlineEvent(game.tourSlug),
+      countries: {
+        for (final player in [game.whitePlayer, game.blackPlayer])
+          if (player.countryCode.trim().isNotEmpty)
+            player.countryCode.trim().toUpperCase(),
+      },
+      timeClass: game.timeControl?.trim().toLowerCase(),
     );
   }
 
@@ -1150,6 +1270,7 @@ class FeedNotifier extends AsyncNotifier<List<FeedItem>> {
       }
       pool.remove(next.id);
       _seen.add(next.id);
+      _postSignals[next.id] = next;
       items.add(playable[next.id]!);
     }
     return items;
@@ -1390,11 +1511,58 @@ class FeedNotifier extends AsyncNotifier<List<FeedItem>> {
     _likedExhausted = false;
     _backfillOffset = 0;
     _backfillExhausted = false;
+    _topHorizon = 0;
+    _backfillHorizon = 0;
+    _postSignals.clear();
     _publicSourceFailures = 0;
     _lastFailure = null;
   }
 
   static int _newSeed() => math.Random().nextInt(1 << 31);
+
+  FeedRanker _newRanker() => FeedRanker(_newSeed(), taste: _taste);
+
+  /// The viewer's taste from earlier sessions, and what the app knows about
+  /// them: their country now, their followed players when that source reads.
+  Future<void> _loadTaste() async {
+    if (_tasteLoaded) return;
+    try {
+      _taste.seed(country: _viewerFed());
+      final entry = await AppDatabase.instance.getCache(
+        key: _tasteKey,
+        userId: _userId,
+        maxAge: const Duration(days: 180),
+      );
+      if (entry != null) _taste.restore(entry.value, DateTime.now());
+    } catch (error) {
+      debugPrint('[Feed] taste unreadable: $error');
+    } finally {
+      _tasteLoaded = true;
+    }
+  }
+
+  /// The viewer's federation (FIDE code, as games carry it), once known.
+  String? _viewerFed() {
+    final iso = ref.read(countryDropdownProvider).valueOrNull?.countryCode;
+    return iso == null || iso.isEmpty ? null : CountryUtils.toFideCode(iso);
+  }
+
+  /// Coalesces a run of swipes into one small write.
+  void _scheduleTasteWrite() {
+    if (!_tasteLoaded) return;
+    _tasteWrite?.cancel();
+    _tasteWrite = Timer(const Duration(seconds: 5), () async {
+      try {
+        await AppDatabase.instance.setCache(
+          key: _tasteKey,
+          userId: _userId,
+          value: _taste.encode(DateTime.now()),
+        );
+      } catch (error) {
+        debugPrint('[Feed] taste write failed: $error');
+      }
+    });
+  }
 
   /// Notes [id] as shown to this viewer, for this and later sessions.
   void _remember(String id) {

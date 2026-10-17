@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 
+import 'package:chessever2/screens/feed/logic/feed_taste.dart';
 import 'package:chessever2/screens/for_you/discovery/models/report_game_type.dart';
 import 'package:flutter/foundation.dart';
 
@@ -43,6 +44,8 @@ class FeedSignals {
     this.openingKey,
     this.freestyle = false,
     this.online = false,
+    this.countries = const {},
+    this.timeClass,
   });
 
   final String id;
@@ -85,6 +88,12 @@ class FeedSignals {
   /// must not be drowned by them.
   final bool online;
 
+  /// The players' countries (ISO codes), for the viewer's countrymen.
+  final Set<String> countries;
+
+  /// `standard`, `rapid` or `blitz`, when the event says.
+  final String? timeClass;
+
   bool get decisive => result == '1-0' || result == '0-1';
 
   FeedSignals withSeenBefore(
@@ -117,6 +126,8 @@ class FeedSignals {
           openingKey: openingKey,
           freestyle: freestyle ?? this.freestyle,
           online: online ?? this.online,
+          countries: countries,
+          timeClass: timeClass,
         );
 
   int get averageElo {
@@ -240,149 +251,72 @@ double feedInterest(FeedSignals s) {
   score += 1.8 * math.exp(-hours.clamp(0, 24 * 30) / 48);
 
   score += s.reportInterest.clamp(0.0, 3.0);
-  // Held back a little on their own; the ranker's quotas do the rest.
-  if (s.freestyle) score -= 0.4;
-  if (s.online) score -= 0.25;
   if (s.seenBefore) score -= 2.5;
   return score;
 }
 
 /// Picks the Feed's next game from a pool of candidates, one at a time.
 ///
-/// Not a sort. A sorted feed shows the same five games to everyone, in the
-/// same order, every launch; this is a weighted draw, so every session is
-/// its own:
+/// Not a sort, and no fixed rules about what may follow what. Each
+/// candidate's appeal is three things the feed knows at that moment:
 ///
-/// * **Softmax draw.** Each candidate's chance is `exp(interest / T)`: the
-///   best games come up most, but anything decent can. Candidates far below
-///   the best one on offer ([qualityBand]) are not drawn at all, so a deep
-///   pool of weak games cannot win on sheer numbers.
-/// * **Variety.** The draw is damped for a candidate that repeats the pool,
-///   event, players or drawn result of the last few picks, so the feed never
-///   runs one kind of game for long; three games in a row from one event
-///   never happen while anything else is left.
-/// * **Quotas.** Over any [window] consecutive picks: at most
-///   [freestylePerWindow] Freestyle game, [eventPerWindow] games of one
-///   event, [onlinePerWindow] online games and [playerPerWindow] games of one
-///   player, while anything else is left. A running event that dumps
-///   hundreds of games an evening gets its share of the feed, not the feed.
-/// * **Jackpots.** Every 3 to 5 picks (the gap itself is random) the draw is
-///   skipped and the single best remaining game is served: a variable-ratio
-///   reward, the rhythm that makes one more swipe feel worth it. The very
-///   first pick is always one.
-/// * **Exploration.** Occasional draws within the promising quality band let
-///   an unknown player's report highlight surface without a weak random pick.
+/// * **Quality** ([feedInterest]): strength, result, report highlights,
+///   freshness.
+/// * **Taste** ([FeedTaste]): what this viewer has enjoyed, sampled rather
+///   than averaged, so uncertain interests get probed now and then.
+/// * **Fatigue** ([FeedFatigue]): what the last picks already showed. An
+///   event that dumps hundreds of games an evening tires after a game or
+///   two and comes back a few posts later; a kind of game the viewer
+///   swipes away (Freestyle, say) tires harder than one they love.
+///
+/// The pick is a softmax draw over appeal, except:
+///
+/// * **Jackpots.** Every 3 to 5 picks (the gap itself is random) the best
+///   game on offer is served outright: a variable-ratio reward, the rhythm
+///   that makes one more swipe feel worth it. The very first pick is one.
+/// * **Exploration** is built in: taste is sampled, so an interest the
+///   feed is unsure of is sometimes sampled high and gets its chance, and
+///   one the viewer has turned down stays down.
+/// * **Quality band.** Games far below the best on offer
+///   ([qualityBand]) are not drawn, whatever the viewer's taste; a deep pool
+///   of weak games cannot win on numbers.
 ///
 /// Seeded, so one session's order is stable and a test can replay it; a new
 /// session (or a pull-to-refresh) brings a new seed.
 class FeedRanker {
-  FeedRanker(int seed) : _random = math.Random(seed) {
+  FeedRanker(int seed, {FeedTaste? taste})
+    : _random = math.Random(seed),
+      taste = taste ?? FeedTaste(),
+      _fatigue = FeedFatigue() {
     _jackpotIn = 0; // the first pick is the hook
   }
 
-  /// A ranker that starts from [feed]'s recent picks, for previewing a
-  /// shortlist: its draws respect the quotas the feed has already used up,
-  /// so the shortlist is not all of the one kind the feed may not show.
+  /// A ranker that starts from [feed]'s taste and fatigue, for previewing a
+  /// shortlist: it does not fill up with what the feed is tired of.
   FeedRanker.following(FeedRanker feed, int seed)
-    : _random = math.Random(seed) {
-    _history.addAll(feed._history);
+    : _random = math.Random(seed),
+      taste = feed.taste,
+      _fatigue = FeedFatigue.copy(feed._fatigue) {
     _jackpotIn = 0;
   }
 
   final math.Random _random;
 
-  /// The most recent picks, newest last, at most [window].
-  final List<FeedSignals> _history = [];
+  /// Shared with the feed that owns it: learning lands in every ranker.
+  final FeedTaste taste;
+  final FeedFatigue _fatigue;
   late int _jackpotIn;
 
   static const double temperature = 0.7;
-  static const double explore = 0.08;
 
   /// Interest below the best candidate on offer past which a game is not
   /// drawn: at [temperature] 0.7 it had a 1.4% weight against the best.
   static const double qualityBand = 3.0;
 
-  /// The span the quotas count over.
-  static const int window = 10;
-  static const int freestylePerWindow = 1;
-  static const int eventPerWindow = 3;
-  static const int onlinePerWindow = 4;
-  static const int playerPerWindow = 2;
-
-  /// The recent picks the soft variety damping looks at.
-  static const int _recentSize = 4;
-
-  Iterable<FeedSignals> get _recent => _history.length <= _recentSize
-      ? _history
-      : _history.sublist(_history.length - _recentSize);
-
-  int _count(bool Function(FeedSignals) test) => _history.where(test).length;
-
-  /// How much a candidate is held back for echoing the recent picks: 1 is
-  /// not at all.
+  /// Quality, taste and fatigue together; see the class doc.
   @visibleForTesting
-  double varietyFactor(FeedSignals s) {
-    if (_history.isEmpty) return 1;
-    var factor = 1.0;
-    final last = _history.last;
-    if (last.pool == s.pool) {
-      factor *= 0.6;
-      if (_history.length >= 2 &&
-          _history[_history.length - 2].pool == s.pool) {
-        factor *= 0.4;
-      }
-    }
-    if (s.eventKey != null) {
-      // One more game of an event just shown is fine, held back a little;
-      // [next] never allows a third in a row.
-      if (s.eventKey == last.eventKey) factor *= 0.3;
-      // And the more of the window it already has, the less it gets more.
-      final shown = _count((h) => h.eventKey == s.eventKey);
-      for (var i = 0; i < shown; i++) {
-        factor *= 0.6;
-      }
-    }
-    for (final h in _recent) {
-      if (h.playerKeys.any(s.playerKeys.contains)) {
-        factor *= 0.25;
-        break;
-      }
-    }
-    if (s.freestyle && _history.any((h) => h.freestyle)) factor *= 0.2;
-    if (s.online && last.online) factor *= 0.6;
-    if (!last.decisive && !s.decisive) factor *= 0.5;
-    if (s.reportType != null && s.reportType == last.reportType) factor *= 0.45;
-    if (s.openingKey != null && s.openingKey == last.openingKey) factor *= 0.65;
-    return factor;
-  }
-
-  /// Whether [s] would break a quota of the current window. [eligible]
-  /// candidates that do are passed over while any that does not is left.
-  @visibleForTesting
-  bool breaksQuota(FeedSignals s) => _quotas.any((quota) => quota(s));
-
-  late final List<bool Function(FeedSignals)> _quotas = [
-    (s) => s.freestyle && _count((h) => h.freestyle) >= freestylePerWindow,
-    (s) =>
-        s.eventKey != null &&
-        _count((h) => h.eventKey == s.eventKey) >= eventPerWindow,
-    (s) => s.online && _count((h) => h.online) >= onlinePerWindow,
-    (s) => s.playerKeys.any(
-      (p) => _count((h) => h.playerKeys.contains(p)) >= playerPerWindow,
-    ),
-  ];
-
-  /// [options] narrowed by [keep], unless that leaves nothing.
-  static List<FeedSignals> _prefer(
-    List<FeedSignals> options,
-    bool Function(FeedSignals) keep,
-  ) {
-    final kept = [
-      for (final s in options)
-        if (keep(s)) s,
-    ];
-    return kept.isEmpty ? options : kept;
-  }
+  double appeal(FeedSignals s, {FeedTasteDraw? draw}) =>
+      feedInterest(s) + taste.score(s, draw: draw) - _fatigue.penalty(s, taste);
 
   /// Takes the next pick out of [pool] (and returns it), or null when no
   /// candidate passes [eligible].
@@ -390,62 +324,40 @@ class FeedRanker {
     List<FeedSignals> pool, {
     bool Function(FeedSignals)? eligible,
   }) {
-    var options = [
+    final all = [
       for (final s in pool)
         if (eligible == null || eligible(s)) s,
     ];
-    if (options.isEmpty) return null;
+    if (all.isEmpty) return null;
 
-    // Hard rules behind the soft penalties, most important first; each one
-    // gives way only when nothing else is left. A rule that would empty the
-    // options is skipped, never the ones before it.
-    for (final quota in _quotas) {
-      options = _prefer(options, (s) => !quota(s));
-    }
-    if (_history.length >= 2) {
-      final before = _history[_history.length - 2];
-      // Never a third game in a row from one event...
-      final event = _history.last.eventKey;
-      if (event != null && before.eventKey == event) {
-        options = _prefer(options, (s) => s.eventKey != event);
-      }
-      // ...nor a third story of one kind.
-      final type = _history.last.reportType;
-      if (type != null && before.reportType == type) {
-        options = _prefer(options, (s) => s.reportType != type);
-      }
-    }
+    final interest = {for (final s in all) s: feedInterest(s)};
+    final best = interest.values.reduce(math.max);
+    final options = [
+      for (final s in all)
+        if (interest[s]! >= best - qualityBand) s,
+    ];
+    final draw = taste.draw(_random);
 
     final FeedSignals pick;
     if (_jackpotIn <= 0) {
-      pick = _best(options);
+      // A jackpot is a sure thing: taste as expected, not as sampled.
+      pick = _top(options, null);
       _jackpotIn = 3 + _random.nextInt(3);
-    } else if (_random.nextDouble() < explore) {
-      // Explore within a quality band instead of randomly serving the weakest
-      // or oldest game merely because it survived eligibility.
-      final best = options.map(feedInterest).reduce(math.max);
-      final promising = [
-        for (final s in options)
-          if (feedInterest(s) >= best - 1.5) s,
-      ];
-      pick = promising[_random.nextInt(promising.length)];
-      _jackpotIn--;
     } else {
-      pick = _draw(options);
+      pick = _softmax(options, (s) => appeal(s, draw: draw));
       _jackpotIn--;
     }
 
     pool.remove(pick);
-    _history.add(pick);
-    if (_history.length > window) _history.removeAt(0);
+    _fatigue.picked(pick);
     return pick;
   }
 
-  FeedSignals _best(List<FeedSignals> options) {
+  FeedSignals _top(List<FeedSignals> options, FeedTasteDraw? draw) {
     FeedSignals? best;
     var bestScore = double.negativeInfinity;
     for (final s in options) {
-      final score = feedInterest(s) + math.log(varietyFactor(s));
+      final score = appeal(s, draw: draw);
       if (score > bestScore) {
         best = s;
         bestScore = score;
@@ -454,21 +366,14 @@ class FeedRanker {
     return best!;
   }
 
-  FeedSignals _draw(List<FeedSignals> all) {
-    final interest = [for (final s in all) feedInterest(s)];
-    final best = interest.reduce(math.max);
-    final options = <FeedSignals>[];
-    final scores = <double>[];
-    for (var i = 0; i < all.length; i++) {
-      if (interest[i] < best - qualityBand) continue;
-      options.add(all[i]);
-      // Shifted by the top score so exp never overflows.
-      scores.add((interest[i] - best) / temperature);
-    }
-    final weights = [
-      for (var i = 0; i < options.length; i++)
-        math.exp(scores[i]) * varietyFactor(options[i]),
-    ];
+  FeedSignals _softmax(
+    List<FeedSignals> options,
+    double Function(FeedSignals) score,
+  ) {
+    final scores = [for (final s in options) score(s) / temperature];
+    // Shifted by the top score so exp never overflows.
+    final top = scores.reduce(math.max);
+    final weights = [for (final x in scores) math.exp(x - top)];
     final total = weights.fold<double>(0, (a, b) => a + b);
     var roll = _random.nextDouble() * total;
     for (var i = 0; i < options.length; i++) {

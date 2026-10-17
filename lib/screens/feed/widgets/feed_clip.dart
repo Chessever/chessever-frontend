@@ -31,6 +31,8 @@ import 'package:chessever2/screens/feed/widgets/feed_playback.dart';
 import 'package:chessever2/screens/feed/widgets/feed_post_header.dart';
 import 'package:chessever2/screens/feed/widgets/feed_save.dart';
 import 'package:chessever2/screens/feed/widgets/feed_scrub.dart';
+import 'package:chessever2/screens/feed/logic/feed_taste.dart';
+import 'package:chessever2/screens/feed/providers/feed_provider.dart';
 import 'package:chessever2/screens/feed/widgets/feed_sfx_provider.dart';
 import 'package:chessever2/screens/feed/widgets/feed_share.dart';
 import 'package:chessever2/screens/feed/widgets/feed_states.dart';
@@ -553,6 +555,24 @@ class _FeedClipState extends ConsumerState<FeedClip>
     _trackLanding();
     _pushBoard();
     _rebuild();
+    _noteProgress();
+  }
+
+  /// Tells the Feed how much of the game has played, for learning what the
+  /// viewer enjoys: watched from where the clip opens to the end is 1.
+  void _noteProgress() {
+    final span = _playback.lastPly - _playback.startPly;
+    if (span <= 0) return;
+    final played = (_playback.shownPly - _playback.startPly) / span;
+    // Never builds the Feed: a clip shown anywhere else has no one to tell.
+    if (!ref.exists(feedProvider)) return;
+    ref.read(feedProvider.notifier).noteProgress(_game.gameId, played);
+  }
+
+  /// Tells the Feed what the viewer did with this post.
+  void _note(FeedAction action) {
+    if (!ref.exists(feedProvider)) return;
+    ref.read(feedProvider.notifier).noteAction(_game.gameId, action);
   }
 
   /// setState, unless a rebuild is already coming (initState and
@@ -861,6 +881,7 @@ class _FeedClipState extends ConsumerState<FeedClip>
         return;
       }
       final (next, played) = result;
+      if (_line == null) _note(FeedAction.explore);
       _line = next;
       _lineControls = false;
       _landingClass = null;
@@ -1245,7 +1266,10 @@ class _FeedClipState extends ConsumerState<FeedClip>
     // A fresh like fills the button when the heart lands on it, not before.
     final inbound = !wasLiked && !reduceMotion && from != null;
     if (inbound != _heartInbound) setState(() => _heartInbound = inbound);
-    if (!unlike) HapticFeedbackService.medium();
+    if (!unlike) {
+      HapticFeedbackService.medium();
+      _note(FeedAction.like);
+    }
 
     _burst.spawn(
       position: at,
@@ -1416,6 +1440,7 @@ class _FeedClipState extends ConsumerState<FeedClip>
       gameSpaceShortcutDraft(_game, subtitle: _item.eventLabel);
 
   void _openGame() {
+    _note(FeedAction.analyze);
     final snapshot = feedAnalysisSnapshot(
       item: _item,
       shownPly: _playback.shownPly,
@@ -1443,6 +1468,7 @@ class _FeedClipState extends ConsumerState<FeedClip>
   /// board. In the viewer's own line the game is shared where the line left
   /// it (the board's pixels show the line, so they are not reused then).
   void _share() {
+    _note(FeedAction.share);
     HapticFeedbackService.buttonPress();
     final line = _line;
     final shown = line?.forkPly ?? _playback.shownPly;
@@ -1463,6 +1489,7 @@ class _FeedClipState extends ConsumerState<FeedClip>
   /// closed, then plays on where it was.
   Future<void> _save() async {
     if (_saveOpen) return;
+    _note(FeedAction.save);
     HapticFeedbackService.buttonPress();
     setState(() => _saveOpen = true);
     _syncSuspended();
@@ -1487,12 +1514,14 @@ class _FeedClipState extends ConsumerState<FeedClip>
   }
 
   Future<void> _toggleSpace(SpaceShortcut draft) async {
+    _note(FeedAction.mySpace);
     await toggleSpaceShortcut(context: context, ref: ref, draft: draft);
   }
 
   /// The event the game was played in: a broadcast opens its event page, an
   /// archive game (a miniature) opens the ChessEver Database on that event.
   Future<void> _openEvent() async {
+    _note(FeedAction.event);
     HapticFeedbackService.navigation();
     final game = _game;
     if (game.source == GameSource.supabase) {
@@ -1579,6 +1608,7 @@ class _FeedClipState extends ConsumerState<FeedClip>
   void _onScrubStart(double f) {
     if (_item.plyCount <= 0) return;
     _cancelGestures();
+    _note(FeedAction.explore);
     // Scrubbing is the game line; the viewer's own line gives way.
     _line = null;
     final target = (f * _item.plyCount).round();
