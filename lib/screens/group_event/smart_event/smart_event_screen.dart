@@ -252,6 +252,7 @@ class _SmartEventScreenState extends ConsumerState<SmartEventScreen> {
         ...updated.toFavoriteMetadata(),
         // The owner's answer about notifications outlives a re-key.
         kStarNotificationsKey: starNotificationsEnabled(savedFavorite),
+        kStarMutedKey: !starNotificationsEnabled(savedFavorite),
       },
     );
   }
@@ -713,9 +714,7 @@ class _AppBar extends ConsumerWidget {
                         ),
                       starNotificationsMenuAction(
                         context: context,
-                        favorite: smartEventCanNotify(request)
-                            ? savedFavorite
-                            : null,
+                        favorite: savedFavorite,
                         surface: 'smart_event',
                       ),
                       if (savedFavorite != null)

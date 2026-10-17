@@ -17,6 +17,7 @@ import 'package:chessever2/utils/eco_openings.dart';
 import 'package:chessever2/widgets/game_filter/game_filter_model.dart';
 import 'package:chessever2/widgets/game_filter/rating_tier_filter.dart';
 import 'package:chessever2/widgets/search/opening_search_suggestion.dart';
+import 'package:chessever2/widgets/star_notifications.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart' show RangeValues;
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -497,7 +498,9 @@ class SmartEventRequest {
       'minElo': minElo,
       'maxElo': maxElo,
       'caption': caption,
-      'notificationsEnabled': false,
+      // Starring a smart event subscribes to its four-hour "new games" push;
+      // only turning that off writes [kStarMutedKey].
+      'notificationsEnabled': true,
       'countSingular': countSingular,
       'countPlural': countPlural,
       'formatsAndStates': (formatsAndStates.toList(growable: false)..sort()),
@@ -1103,6 +1106,45 @@ List<SmartEventGameGroup> groupSmartEventGames({
   return groups;
 }
 
+/// The smart event a four-hour "new games" push was sent for (push data
+/// `type: smart_event_games`): the reader's own saved row when [favorites]
+/// holds it, otherwise one rebuilt from the criteria the push carries, so a
+/// smart event unstarred since the push still opens. Null when [data] names
+/// no smart event.
+SmartEventRequest? smartEventRequestFromPushData(
+  Map<String, dynamic> data, {
+  Iterable<FavoriteEvent> favorites = const [],
+}) {
+  final id = data['smart_event_id']?.toString().trim() ?? '';
+  if (!id.startsWith('smart_event:')) return null;
+  for (final favorite in favorites) {
+    if (favorite.eventId == id) {
+      return SmartEventRequest.fromFavoriteEvent(favorite);
+    }
+  }
+  final ecoCode = data['eco_code']?.toString().trim() ?? '';
+  final label = data['label']?.toString().trim() ?? '';
+  final now = DateTime.now();
+  return SmartEventRequest.fromFavoriteEvent(
+    FavoriteEvent(
+      id: id,
+      userId: '',
+      eventId: id,
+      eventName: data['smart_event_name']?.toString() ?? '',
+      metadata: {
+        'type': 'smart_event',
+        'minElo': data['min_elo'],
+        'maxElo': data['max_elo'],
+        if (data['formats'] is List) 'formatsAndStates': data['formats'],
+        if (ecoCode.isNotEmpty) 'ecoCode': ecoCode,
+        if (label.isNotEmpty) 'tierLabel': label,
+      },
+      createdAt: now,
+      updatedAt: now,
+    ),
+  );
+}
+
 /// The saved favorite (if any) whose smart event matches [criteriaKey]
 /// ([SmartEventRequest.criteriaKey]). Matching parses each smart favorite and
 /// compares criteria — never row eventIds — so legacy v1 rows (whose ids
@@ -1187,8 +1229,8 @@ Future<void> refreshSavedSmartEventSnapshot({
           extraMetadata: {
             ...fresh.toFavoriteMetadata(),
             // Carry user-owned flags the rebuild would otherwise reset.
-            'notificationsEnabled':
-                favorite.metadata['notificationsEnabled'] ?? false,
+            kStarNotificationsKey: starNotificationsEnabled(favorite),
+            kStarMutedKey: !starNotificationsEnabled(favorite),
           },
         );
       }

@@ -4,8 +4,10 @@ import 'dart:io' show Platform;
 
 import 'package:app_links/app_links.dart';
 import 'package:chessever2/providers/auth_state_provider.dart';
+import 'package:chessever2/providers/favorite_events_provider.dart';
 import 'package:chessever2/repository/authentication/auth_repository.dart';
 import 'package:chessever2/repository/authentication/model/auth_state.dart';
+import 'package:chessever2/repository/favorites/models/favorite_event.dart';
 import 'package:chessever2/repository/supabase/chess_player/chess_player_repository.dart';
 import 'package:chessever2/repository/supabase/game/games.dart';
 import 'package:chessever2/repository/supabase/game/game_repository.dart';
@@ -21,6 +23,10 @@ import 'package:chessever2/screens/collections/collections_data.dart'
     show Collection, collectionsRepositoryProvider;
 import 'package:chessever2/screens/collections/collections_screen.dart'
     show CollectionScreen;
+import 'package:chessever2/screens/group_event/smart_event/smart_aggregate_event_provider.dart'
+    show smartEventRequestFromPushData;
+import 'package:chessever2/screens/group_event/smart_event/smart_event_screen.dart'
+    show SmartEventScreen;
 import 'package:chessever2/screens/my_prep/models/prep_models.dart'
     show PrepProfile;
 import 'package:chessever2/screens/my_prep/my_prep_home_screen.dart'
@@ -864,6 +870,60 @@ class DeepLinkService {
     }
   }
 
+  /// Opens the smart event a four-hour "new games" push was sent for: the
+  /// reader's own starred row once favorites have loaded, else one rebuilt
+  /// from the criteria the push carries.
+  Future<void> _navigateToSmartEvent(
+    Map<String, dynamic> data,
+    GlobalKey<NavigatorState> navigatorKey,
+    WidgetRef ref,
+  ) async {
+    if (_isNavigating) return;
+    _isNavigating = true;
+
+    try {
+      try {
+        await _appReadyCompleter.future.timeout(const Duration(seconds: 30));
+      } catch (_) {
+        debugPrint(
+          'DeepLinkService: Timed out waiting for app ready, proceeding',
+        );
+      }
+
+      final loaded = Completer<List<FavoriteEvent>?>();
+      final subscription = ref.listenManual(favoriteEventsProvider, (_, value) {
+        if (!value.isLoading && !loaded.isCompleted) {
+          loaded.complete(value.valueOrNull);
+        }
+      }, fireImmediately: true);
+      List<FavoriteEvent>? favorites;
+      try {
+        favorites = await loaded.future.timeout(const Duration(seconds: 10));
+      } catch (_) {
+        favorites = null;
+      } finally {
+        subscription.close();
+      }
+      final request = smartEventRequestFromPushData(
+        data,
+        favorites: favorites ?? const [],
+      );
+
+      final navigator = navigatorKey.currentState;
+      if (navigator == null) return;
+      // Over Home, so Back lands on the app rather than leaving it.
+      navigator.pushNamedAndRemoveUntil('/home_screen', (route) => false);
+      if (request == null) return;
+      navigator.push(
+        MaterialPageRoute<void>(
+          builder: (_) => SmartEventScreen(request: request),
+        ),
+      );
+    } finally {
+      _isNavigating = false;
+    }
+  }
+
   /// Opens the starred My Prep profile a daily "new games" push was sent
   /// for. Profiles live on the device: one this device no longer has, or no
   /// longer stars, opens My Prep instead and is unstarred on the server, so
@@ -1532,6 +1592,19 @@ class DeepLinkService {
           _navigateToHome(
             navigatorKey,
             reason: 'notification_missing_collection_slug',
+            extras: {'type': type, 'appReady': wasAppReady},
+          );
+        }
+        return;
+      case 'smart_event_games':
+        if (smartEventRequestFromPushData(data) != null) {
+          _navigateToSmartEvent(data, navigatorKey, ref);
+        } else if (gameId != null && gameId.isNotEmpty) {
+          _navigateToGame(gameId, navigatorKey, ref);
+        } else {
+          _navigateToHome(
+            navigatorKey,
+            reason: 'notification_missing_smart_event',
             extras: {'type': type, 'appReady': wasAppReady},
           );
         }

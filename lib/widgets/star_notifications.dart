@@ -14,19 +14,32 @@ import 'package:chessever2/widgets/app_snack.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
-/// The flag a starred smart event or collection carries in its favorites
-/// row's `metadata` once its owner has answered whether it notifies. The
-/// dispatcher reads it the way [starNotificationsEnabled] does.
+/// The flag a starred collection carries in its favorites row's `metadata`
+/// once its owner has answered whether it notifies. The dispatcher reads it
+/// the way [starNotificationsEnabled] does.
 const String kStarNotificationsKey = 'notificationsEnabled';
+
+/// Set on a starred smart event when its owner turns its pushes off, and
+/// cleared when they turn them back on. [kStarNotificationsKey] cannot say
+/// that for smart events: older builds saved every new smart star with it
+/// false. The four-hour "new games" push
+/// (`queue_smart_event_digests`) reads this key alone.
+const String kStarMutedKey = 'notificationsMuted';
+
+bool _isSmartEventStar(String eventId, Map<String, dynamic> metadata) =>
+    eventId.startsWith('smart_event:') || metadata['type'] == 'smart_event';
 
 /// Whether the starred row [favorite] sends notifications.
 ///
-/// A collection's star does unless its owner turned that off: starring one
-/// is asking to hear about its new games (Trello #1225), and a star made
-/// before the question, on the desktop app or on an older build never
-/// answered it. A smart event's star stays quiet until its owner says yes:
-/// a broad one can match every round of every event.
+/// A smart event's star does unless its owner muted it: starring one is
+/// subscribing to its new games. So does a collection's, unless its owner
+/// turned that off: starring one is asking to hear about its new games
+/// (Trello #1225), and a star made before the question, on the desktop app
+/// or on an older build never answered it.
 bool starNotificationsEnabled(FavoriteEvent favorite) {
+  if (_isSmartEventStar(favorite.eventId, favorite.metadata)) {
+    return favorite.metadata[kStarMutedKey] != true;
+  }
   final flag = favorite.metadata[kStarNotificationsKey];
   if (flag is bool) return flag;
   return favorite.eventId.startsWith('collection:') ||
@@ -72,10 +85,12 @@ Future<void> setStarNotifications({
   }
 
   try {
-    await container.read(favoriteEventsProvider.notifier).updateMetadata(
-      eventId,
-      {kStarNotificationsKey: enabled},
-    );
+    await container
+        .read(favoriteEventsProvider.notifier)
+        .updateMetadata(eventId, {
+          kStarNotificationsKey: enabled,
+          if (_isSmartEventStar(eventId, const {})) kStarMutedKey: !enabled,
+        });
   } catch (error) {
     snack(
       userFacingError(
@@ -97,6 +112,13 @@ Future<void> setStarNotifications({
   final reachable = await _makeReachable(container, messenger);
   if (reachable && confirm) snack('Notifications turned on');
 }
+
+/// Makes a new smart event star's four-hour push reachable: starring one
+/// turns its pushes on, with no question. Sent under starred-event alerts.
+Future<bool> makeSmartEventStarReachable({
+  required ProviderContainer container,
+  required ScaffoldMessengerState? messenger,
+}) => _makeReachable(container, messenger);
 
 /// Makes a starred My Prep player's daily push reachable, as a yes does for
 /// a starred event. The dispatcher sends it under favorite-player alerts.
