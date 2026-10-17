@@ -107,6 +107,8 @@ class FeedClip extends ConsumerStatefulWidget {
     required this.onRequestNext,
     required this.onScrollLock,
     this.hasNext = true,
+    this.keepsPlace = true,
+    this.onOpenGame,
     super.key,
   });
 
@@ -124,6 +126,16 @@ class FeedClip extends ConsumerStatefulWidget {
   /// coming. False on the last post of a feed that has ended, where the
   /// result card offers no "Next game" and runs no countdown to one.
   final bool hasNext;
+
+  /// Whether the clip keeps its place for Feed's return
+  /// ([FeedClipResumeStore]). Watch's lead does not: it is not a place in
+  /// Feed, so it starts afresh and leaves what Feed kept alone.
+  final bool keepsPlace;
+
+  /// What Analyze and Open game do in place of opening the game on a new
+  /// board: Watch's lead goes back to the board it was opened from, which
+  /// holds that game already.
+  final VoidCallback? onOpenGame;
 
   @override
   ConsumerState<FeedClip> createState() => _FeedClipState();
@@ -389,7 +401,9 @@ class _FeedClipState extends ConsumerState<FeedClip>
     _lastShown = _playback.shownPly;
     // Back on Feed from another tab: the settled clip carries on where the
     // viewer left it, before the board is first drawn.
-    final resumed = widget.isCurrent ? _resume.take(_entryKey) : null;
+    final resumed = widget.isCurrent && widget.keepsPlace
+        ? _resume.take(_entryKey)
+        : null;
     if (resumed != null) _restore(resumed);
     final initial = _gameDataFor(_view());
     _board = ChessboardController(game: initial);
@@ -487,7 +501,7 @@ class _FeedClipState extends ConsumerState<FeedClip>
       if (widget.isCurrent) {
         // Swiped onto: a fresh start, and whatever an earlier Feed left
         // behind no longer applies.
-        _resume.clear();
+        if (widget.keepsPlace) _resume.clear();
         _countdown.value = 0;
         _restartPlayback();
       }
@@ -502,7 +516,7 @@ class _FeedClipState extends ConsumerState<FeedClip>
     _seen?.removeListener(_onSeenChanged);
     // Leaving Feed (another tab) tears the settled clip down; keep its place
     // for the return. A neighbour page restarts when swiped onto anyway.
-    if (widget.isCurrent) _resume.save(_snapshot());
+    if (widget.isCurrent && widget.keepsPlace) _resume.save(_snapshot());
     _cancelTimers();
     if (_holding || _dragLock) {
       _holding = false;
@@ -1244,7 +1258,7 @@ class _FeedClipState extends ConsumerState<FeedClip>
   /// once the heart is on the button the next tap is the unlike, and its
   /// write waits its turn behind the like's.
   void _playLike({required Offset at, required bool fromButton}) {
-    if (_likeBusy) return;
+    if (_likeBusy || !_item.likeable) return;
     final wasLiked = _likedNow;
     final unlike = fromButton && wasLiked;
     final writes = fromButton || !wasLiked;
@@ -1395,7 +1409,7 @@ class _FeedClipState extends ConsumerState<FeedClip>
   /// post being paged away.
   void _writeLike({required bool liked}) {
     final notifier = ref.read(likedGamesProvider.notifier);
-    final game = _game;
+    final game = _item.likeGame ?? _game;
     final messenger = ScaffoldMessenger.maybeOf(context);
     setState(() => _likeIntent = liked);
     _likeWritesOut++;
@@ -1441,6 +1455,12 @@ class _FeedClipState extends ConsumerState<FeedClip>
 
   void _openGame() {
     _note(FeedAction.analyze);
+    final open = widget.onOpenGame;
+    if (open != null) {
+      HapticFeedbackService.cardTap();
+      open();
+      return;
+    }
     final snapshot = feedAnalysisSnapshot(
       item: _item,
       shownPly: _playback.shownPly,
@@ -1517,6 +1537,14 @@ class _FeedClipState extends ConsumerState<FeedClip>
     _note(FeedAction.mySpace);
     await toggleSpaceShortcut(context: context, ref: ref, draft: draft);
   }
+
+  /// Whether the header's event opens somewhere: a broadcast or an archive
+  /// game. A game Watch brought from the user's own analysis or the board
+  /// editor names an event in its PGN with no page behind it.
+  bool get _opensEvent => switch (_game.source) {
+    GameSource.supabase || GameSource.gamebase || GameSource.twic => true,
+    _ => false,
+  };
 
   /// The event the game was played in: a broadcast opens its event page, an
   /// archive game (a miniature) opens the ChessEver Database on that event.
@@ -1802,8 +1830,8 @@ class _FeedClipState extends ConsumerState<FeedClip>
           id: 'event',
           pieces: [FeedHeaderPiece.text(event)],
           shrinkable: true,
-          onTap: () => unawaited(_openEvent()),
-          semanticsLabel: 'Open event $event',
+          onTap: _opensEvent ? () => unawaited(_openEvent()) : null,
+          semanticsLabel: _opensEvent ? 'Open event $event' : event,
         ),
       );
     }
@@ -2378,12 +2406,12 @@ class _FeedClipState extends ConsumerState<FeedClip>
                     inSpace: inSpace,
                     saved: saved,
                     likeIconKey: _likeIconKey,
-                    onLike: _likeFromButton,
+                    onLike: _item.likeable ? _likeFromButton : null,
                     onSpace: () {
                       if (draft != null) unawaited(_toggleSpace(draft));
                     },
                     onShare: _share,
-                    onSave: () => unawaited(_save()),
+                    onSave: _item.exportable ? () => unawaited(_save()) : null,
                     onAnalyze: _openGame,
                   ),
                 ),

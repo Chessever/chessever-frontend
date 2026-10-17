@@ -606,12 +606,20 @@ class FeedNotifier extends AsyncNotifier<List<FeedItem>> {
 
   /// Called when the viewer reaches [index] so the notifier can prefetch:
   /// at least [_prefetchAhead] ready clips are kept beyond it.
+  ///
+  /// -1 is the page above the first game: the game Watch opened Feed on
+  /// ([FeedScreen.watch]). It is not one of this feed's draws, so the visit
+  /// before it ends there and nothing is learned from it.
   void onVisible(int index) {
     final items = state.valueOrNull;
     if (items == null) return;
     if (index >= 0 && index < items.length) {
       _remember(items[index].game.gameId);
       _visit(items[index].game.gameId);
+    } else if (index < 0) {
+      _closeVisit();
+      _visitId = null;
+      _visitStart = null;
     }
     if (items.length - 1 - index <= _prefetchAhead + 1) {
       unawaited(loadMore());
@@ -1661,6 +1669,33 @@ class FeedNotifier extends AsyncNotifier<List<FeedItem>> {
 List<FeedClip?> _parseFlowClips(List<String> pgns) => [
   for (final pgn in pgns) feedClipFromPgn(pgn),
 ];
+
+/// [game] as the post Watch opens Feed on ([FeedScreen.watch]), its moves
+/// read off [pgn]. Unlike the feed's own draws it needs no report and no
+/// finished result: any game with a move to play is watchable, a live one
+/// up to the move it has reached. [likeable] and [exportable] carry what
+/// the board it came from allows. Null when [pgn] has no playable mainline.
+FeedItem? feedWatchItem(
+  GamesTourModel game,
+  String pgn, {
+  bool likeable = true,
+  bool exportable = true,
+}) {
+  final clip = feedClipFromPgn(pgn);
+  if (clip == null || clip.plyCount < 1) return null;
+  return FeedItem(
+    // Share and Save read the moves off the game.
+    game: game.copyWith(pgn: pgn, isPgnDeferred: false),
+    plies: clip.plies,
+    reason: '',
+    eventLabel: clip.event ?? _prettySlug(game.tourSlug),
+    result: clip.result ?? _resultOf(game.gameStatus),
+    hasEvals: clip.hasEvals,
+    likeable: likeable,
+    exportable: exportable,
+    likeGame: game,
+  );
+}
 
 GamesTourModel? _tourModel(Games row) {
   if (!const {'1-0', '0-1', '1/2-1/2'}.contains(row.status)) return null;

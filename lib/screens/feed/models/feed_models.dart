@@ -160,6 +160,9 @@ class FeedItem {
     this.signal,
     this.likes = 0,
     this.reportType,
+    this.likeable = true,
+    this.exportable = true,
+    this.likeGame,
   });
 
   final GamesTourModel game;
@@ -187,6 +190,20 @@ class FeedItem {
 
   /// Verified category from Discovery > Reports, never a rating-gap label.
   final ReportGameType? reportType;
+
+  /// Whether the post offers Like. Always for the feed's own games; a game
+  /// Watch brought from a board follows that board (no like for the board
+  /// editor, a local analysis or a game from the viewer's own databases).
+  final bool likeable;
+
+  /// Whether the post offers Save. False for a game Watch brought from a
+  /// board that keeps its PGN in (licensed collection content).
+  final bool exportable;
+
+  /// What a Like saves, when not [game]: Watch keeps the board's own model,
+  /// the game as published, as a like on the board saves it. [game] carries
+  /// the reader's analysis PGN, which only Share and Save hand out.
+  final GamesTourModel? likeGame;
 
   int get plyCount => plies.length - 1;
 
@@ -220,6 +237,9 @@ class FeedItem {
     signal: signal ?? this.signal,
     likes: likes,
     reportType: reportType,
+    likeable: likeable,
+    exportable: exportable,
+    likeGame: likeGame,
   );
 
   /// Plies Feed should linger on (headline moments).

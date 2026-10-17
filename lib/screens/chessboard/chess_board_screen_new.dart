@@ -47,6 +47,9 @@ import 'package:chessever2/screens/chessboard/widgets/chess_board_context_menu.d
 import 'package:chessever2/screens/chessboard/widgets/board_focus_menus.dart';
 import 'package:chessever2/screens/library/widgets/library_context_menu.dart';
 import 'package:chessever2/screens/my_space/actions/space_menu_action.dart';
+import 'package:chessever2/screens/feed/feed_screen.dart';
+import 'package:chessever2/screens/feed/providers/feed_provider.dart'
+    show feedWatchItem;
 import 'package:chessever2/screens/my_space/providers/space_shortcuts_provider.dart';
 import 'package:chessever2/widgets/space_shortcut_drafts.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/utils/game_space_shortcut.dart';
@@ -4576,6 +4579,41 @@ class _AppBar extends ConsumerStatefulWidget implements PreferredSizeWidget {
   Size get preferredSize => const Size.fromHeight(kToolbarHeight);
 }
 
+bool _isLikeableGameSource(GameSource source) =>
+    source == GameSource.supabase ||
+    source == GameSource.gamebase ||
+    source == GameSource.twic ||
+    // Games opened from a library database or the Liked Games folder are
+    // saved analyses; their like identity is the original sourceGameId
+    // (see GamesTourModel.likeId), so they like/unlike like everywhere else.
+    // Own-database games are excluded separately in _isOwnDatabaseBoardGame.
+    source == GameSource.savedAnalysis;
+
+/// True when [game], on the board page at [index], was opened from one of
+/// the user's own library databases. Those games are not double-tap-likeable:
+/// the game is already curated into the library, and a like would only
+/// mirror it into the Liked Games folder as a confusing duplicate.
+///
+/// Games opened from the Liked Games folder itself (My Likes) keep the
+/// gesture so double-tap-unlike still works there, and shared/subscribed
+/// databases (read-only, [SavedAnalysisData.analysisId] == null) are not
+/// the user's own, so they stay likeable too.
+bool _isOwnDatabaseBoardGame(WidgetRef ref, GamesTourModel game, int index) {
+  if (game.source != GameSource.savedAnalysis) return false;
+  final saved = ref
+      .read(
+        chessBoardScreenProviderNew(
+          ChessBoardProviderParams(game: game, index: index),
+        ).notifier,
+      )
+      .savedAnalysisData;
+  if (saved?.analysisId == null) return false;
+  final likedFolderId = ref.read(likedGamesFolderProvider).valueOrNull?.id;
+  // Fail closed: if the Liked Games folder is unknown we cannot prove the
+  // game came from it, and every own-library open carries a folderId.
+  return likedFolderId == null || saved!.folderId != likedFolderId;
+}
+
 bool _shareGameNeedsTerminalPosition(GameSource source) {
   return source == GameSource.gamebase || source == GameSource.openingExplorer;
 }
@@ -4769,6 +4807,55 @@ class _AppBarState extends ConsumerState<_AppBar> {
       isAtGameEnd: isAtGameEnd,
       boardImageBytes: boardImageBytes,
     );
+  }
+
+  /// From the tap until the Feed it opened closes: a second tap (the tablet
+  /// menu's rows stay live while it fades out) opens nothing more.
+  bool _openingWatch = false;
+
+  /// Watch: Feed opened on this game as its first post, the feed carrying on
+  /// after it ([FeedScreen.watch]). The moves are the ones Share and Copy PGN hand out (the
+  /// game's mainline with its report and the reader's glyphs); a game with
+  /// no move yet has nothing to play. The post's Analyze comes back here.
+  Future<void> _watchInFeed() async {
+    if (_openingWatch) return;
+    _openingWatch = true;
+    try {
+      // Read before the PGN awaits below, for the game the menu was opened
+      // on. The post offers what this board does: no Like where the board
+      // takes none, no Save where it keeps the moves in.
+      final game = widget.game;
+      final likeable =
+          _isLikeableGameSource(game.source) &&
+          !_isOwnDatabaseBoardGame(ref, game, widget.currentGameIndex);
+      final exportable = widget.allowGameExport;
+      final route = ModalRoute.of(context);
+      final resolved = await _resolveAppBarShareData();
+      // The board is still what the viewer sees: Feed's Analyze comes back
+      // to the route under it, which must be this board.
+      if (!mounted || !(route?.isCurrent ?? false)) return;
+      final lead = feedWatchItem(
+        game,
+        resolved.pgn,
+        likeable: likeable,
+        exportable: exportable,
+      );
+      if (lead == null) {
+        showAppSnack(context, 'No moves to watch yet');
+        return;
+      }
+      await FeedScreen.watch(context, lead);
+    } catch (error) {
+      debugPrint('[Board] Watch failed: $error');
+      if (!mounted) return;
+      showAppSnack(
+        context,
+        userFacingError(error, fallback: "Couldn't open this game in Feed"),
+        tone: AppSnackTone.danger,
+      );
+    } finally {
+      _openingWatch = false;
+    }
   }
 
   void copyPgnBtnClicked() async {
@@ -5158,6 +5245,8 @@ class _AppBarState extends ConsumerState<_AppBar> {
                           .flipBoard();
                     } else if (value == 'share') {
                       shareGameBtnClicked();
+                    } else if (value == 'watch') {
+                      await _watchInFeed();
                     } else if (value == 'board_settings') {
                       final allowed = await requireFullAuthGuard(context);
                       if (!allowed) return;
@@ -5201,6 +5290,8 @@ class _AppBarState extends ConsumerState<_AppBar> {
                           .flipBoard();
                     } else if (value == 'share') {
                       shareGameBtnClicked();
+                    } else if (value == 'watch') {
+                      await _watchInFeed();
                     } else if (value == 'board_settings') {
                       final allowed = await requireFullAuthGuard(context);
                       if (!allowed) return;
@@ -10429,40 +10520,10 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
     _handleDoubleTapLike();
   }
 
-  bool _isLikeableSource(GameSource source) =>
-      source == GameSource.supabase ||
-      source == GameSource.gamebase ||
-      source == GameSource.twic ||
-      // Games opened from a library database or the Liked Games folder are
-      // saved analyses; their like identity is the original sourceGameId
-      // (see GamesTourModel.likeId), so they like/unlike like everywhere else.
-      // Own-database games are excluded separately in _isOwnDatabaseGame.
-      source == GameSource.savedAnalysis;
+  bool _isLikeableSource(GameSource source) => _isLikeableGameSource(source);
 
-  /// True when the displayed game was opened from one of the user's own
-  /// library databases. Those games are not double-tap-likeable: the game is
-  /// already curated into the library, and a like would only mirror it into
-  /// the Liked Games folder as a confusing duplicate.
-  ///
-  /// Games opened from the Liked Games folder itself (My Likes) keep the
-  /// gesture so double-tap-unlike still works there, and shared/subscribed
-  /// databases (read-only, [SavedAnalysisData.analysisId] == null) are not
-  /// the user's own, so they stay likeable too.
-  bool _isOwnDatabaseGame(GamesTourModel game) {
-    if (game.source != GameSource.savedAnalysis) return false;
-    final saved = ref
-        .read(
-          chessBoardScreenProviderNew(
-            ChessBoardProviderParams(game: game, index: widget.index),
-          ).notifier,
-        )
-        .savedAnalysisData;
-    if (saved?.analysisId == null) return false;
-    final likedFolderId = ref.read(likedGamesFolderProvider).valueOrNull?.id;
-    // Fail closed: if the Liked Games folder is unknown we cannot prove the
-    // game came from it, and every own-library open carries a folderId.
-    return likedFolderId == null || saved!.folderId != likedFolderId;
-  }
+  bool _isOwnDatabaseGame(GamesTourModel game) =>
+      _isOwnDatabaseBoardGame(ref, game, widget.index);
 
   @override
   Widget build(BuildContext context) {

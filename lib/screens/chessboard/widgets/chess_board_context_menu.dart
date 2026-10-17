@@ -65,6 +65,12 @@ List<PopupMenuEntry<String>> chessBoardContextMenuItems(
         onTap: videoSession.toggle,
       ),
     ],
+    // Feed's own mark: Watch opens this game as Feed's first post.
+    action(
+      value: 'watch',
+      label: 'Watch',
+      icon: const Icon(Icons.smart_display_outlined),
+    ),
     action(
       value: 'board_settings',
       label: 'Board Settings',

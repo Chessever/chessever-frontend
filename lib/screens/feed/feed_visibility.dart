@@ -7,6 +7,19 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 /// bottom nav before it refreshes.
 final feedScreenOpenProvider = StateProvider<bool>((ref) => false);
 
+/// How many Feed screens are mounted. Watch opens Feed from a board that may
+/// itself have been opened from Feed, so two can stand on the stack at once:
+/// [feedScreenOpenProvider] turns false only when the last of them goes.
+final feedScreenCountProvider = Provider<FeedScreenCount>(
+  (ref) => FeedScreenCount(),
+);
+
+/// A plain counter, not provider state: it changes from initState and
+/// dispose, where nothing may be notified.
+class FeedScreenCount {
+  int value = 0;
+}
+
 /// Whether Feed is seen this instant: its route is on top and not on its way
 /// out (Back, a back swipe in progress), and the app is in the foreground.
 ///

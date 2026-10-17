@@ -142,6 +142,21 @@ void main() {
       );
     });
 
+    test('a saved analysis with no SavedAnalysisData links through the '
+        "model's own source id (a Feed post Watch made)", () {
+      final url = buildGameShareUrl(
+        game: _game(
+          gameId: 'saved_analysis_1',
+          source: GameSource.savedAnalysis,
+        ).copyWith(sourceGameId: _canonicalGameId),
+      );
+
+      expect(
+        url,
+        'https://chessever.com/games/$_canonicalGameId?tour=tour-slug&round=A00',
+      );
+    });
+
     test('returns a deep link for saved analyses with canonical source IDs', () {
       final url = buildGameShareUrl(
         game: _game(
