@@ -1,4 +1,5 @@
 import 'package:chessever2/repository/gamebase/gamebase_repository.dart';
+import 'package:chessever2/repository/gamebase/collections/collection_search_query.dart';
 import 'package:chessever2/screens/collections/collections_data.dart';
 import 'package:chessever2/screens/collections/collections_screen.dart';
 import 'package:chessever2/screens/my_space/models/space_shortcut.dart';
@@ -31,6 +32,22 @@ class _FakeCollections extends CollectionsRepository {
   Future<List<Collection>> fetchCollections() async {
     fetches++;
     return all;
+  }
+
+  /// The books tab pages through the catalog (35.27.0); without this the
+  /// screen reaches the network and shows its error, not its empty notice.
+  @override
+  Future<CollectionsPage> searchBooks(
+    CollectionSearchQuery query,
+    int offset,
+  ) async {
+    fetches++;
+    return CollectionsPage(
+      items: offset == 0 ? all : const [],
+      total: all.length,
+      limit: 20,
+      offset: offset,
+    );
   }
 }
 

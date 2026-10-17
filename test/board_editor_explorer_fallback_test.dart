@@ -192,8 +192,11 @@ void main() {
       expect(find.text('Results'), findsOneWidget);
       expect(find.text('Games'), findsOneWidget);
       expect(find.text('Last'), findsOneWidget);
+      // No parallel embedded sheet: since 34.12.11 an editor position lists
+      // its games in the same inline strip as every position, asked once
+      // through the FEN endpoint (one position, one games request).
       expect(find.byType(LibraryGameCard), findsNothing);
-      expect(repository.fenGamesRequests, 0);
+      expect(repository.fenGamesRequests, 1);
 
       await _teardownPanel(tester, container);
     });

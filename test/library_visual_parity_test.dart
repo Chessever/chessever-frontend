@@ -776,9 +776,8 @@ void main() {
     });
   }
   for (final paid in [false, true]) {
-    testWidgets('allowed Likes tap routes normal board paid=$paid', (
-      tester,
-    ) async {
+    testWidgets('a Likes tap routes the normal board, or asks for Premium '
+        'first, paid=$paid', (tester) async {
       addTearDown(tester.view.reset);
       final observer = _NavigationProbe();
       final c = await _pump(
@@ -807,6 +806,15 @@ void main() {
       list.onOpen!(list.games, 0);
       await tester.idle();
       expect(observer.lastPage, isNot(same(initial)));
+      if (!paid) {
+        // Since 35.39.4 opening a liked game asks for Premium in every
+        // period, Today's included: the guard's sheet, no board.
+        await tester.pump(const Duration(milliseconds: 300));
+        expect(observer.lastPage, isA<ModalBottomSheetRoute<void>>());
+        expect(find.text('Sign in to get Premium'), findsOneWidget);
+        await _close(tester, c);
+        return;
+      }
       final route = observer.lastPage as MaterialPageRoute<int>;
       // Inspect only the real navigation payload: do not start native engines.
       final dynamic board = route.builder(

@@ -230,7 +230,7 @@ void main() {
         ],
         settle: false,
       );
-      for (final label in ['Feed', 'Most Liked', 'Miniatures', 'Reports']) {
+      for (final label in ['Feed', 'Likes', 'Miniatures', 'Reports']) {
         expect(find.text(label), findsOneWidget);
       }
       expectNoContrastMisses(
