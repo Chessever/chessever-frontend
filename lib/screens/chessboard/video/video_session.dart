@@ -116,6 +116,22 @@ class EventVideoSession extends ChangeNotifier {
   bool get showVideo => hasVideo && visible;
   bool isActive(String id) => gameId == id;
 
+  /// Selected-chip dismissals, not camera toggles or metadata changes.
+  int get chipDismissals => _chipDismissals;
+  int _chipDismissals = 0;
+
+  void activateStream(String id) {
+    if (_disposed) return;
+    if (showVideo && selected?.id == id) {
+      _chipDismissals++;
+      // Keep the exact selection, mute/language/country and visibility storage.
+      // Restoring retains the existing paused-player policy.
+      toggle();
+    } else {
+      select(id);
+    }
+  }
+
   void openGame({
     required String gameId,
     required String tourId,

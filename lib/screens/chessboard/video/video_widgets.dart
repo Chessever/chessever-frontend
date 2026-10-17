@@ -416,12 +416,13 @@ class EventVideoFlags extends StatelessWidget {
             selected: selected,
             button: true,
             label: '${stream.languageLabel}: $label',
+            hint: selected ? 'Hide video' : 'Switch stream',
             child: Tooltip(
               message: label,
               child: InkWell(
                 key: ValueKey('video_stream_${stream.id}'),
                 borderRadius: BorderRadius.circular(8),
-                onTap: () => session.select(stream.id),
+                onTap: () => session.activateStream(stream.id),
                 child: Container(
                   width: 112,
                   padding: const EdgeInsets.symmetric(
