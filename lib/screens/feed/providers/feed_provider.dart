@@ -1681,8 +1681,12 @@ FeedItem? feedWatchItem(
   String pgn, {
   bool likeable = true,
   bool exportable = true,
+  bool hideEvaluation = false,
+  bool hideResult = false,
 }) {
-  final clip = feedClipFromPgn(pgn);
+  final clip = feedClipFromPgn(
+    feedSpoilerFreePgn(pgn, evaluation: hideEvaluation, result: hideResult),
+  );
   if (clip == null || clip.plyCount < 1) return null;
   return FeedItem(
     // Share and Save read the moves off the game.
@@ -1691,12 +1695,38 @@ FeedItem? feedWatchItem(
     reason: '',
     eventLabel:
         clip.event ?? _archiveEventOf(game) ?? _prettySlug(game.tourSlug),
-    result: clip.result ?? _resultOf(game.gameStatus),
+    result: hideResult ? null : clip.result ?? _resultOf(game.gameStatus),
     hasEvals: clip.hasEvals,
     likeable: likeable,
     exportable: exportable,
     boardGame: game,
+    hideEvaluation: hideEvaluation,
+    hideResult: hideResult,
   );
+}
+
+final RegExp _evalComment = RegExp(r'\[%eval[^\]]*\]');
+final RegExp _resultHeader = RegExp(r'\[Result\s+"[^"]*"\]');
+final RegExp _resultToken = RegExp(r'(1-0|0-1|1/2-1/2|½-½)\s*$');
+
+/// [pgn] without what No Spoilers hides, so the clip is built without it:
+/// its [%eval] comments ([evaluation]: no eval, and no verdict read off an
+/// eval swing), and its result ([result]: no "White wins" on the last move).
+/// The report's own move classes stay, as the board still shows them.
+@visibleForTesting
+String feedSpoilerFreePgn(
+  String pgn, {
+  required bool evaluation,
+  required bool result,
+}) {
+  var out = pgn;
+  if (evaluation) out = out.replaceAll(_evalComment, '');
+  if (result) {
+    out = out
+        .replaceAll(_resultHeader, '[Result "*"]')
+        .replaceFirst(_resultToken, '*');
+  }
+  return out;
 }
 
 GamesTourModel? _tourModel(Games row) {

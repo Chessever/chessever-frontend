@@ -161,6 +161,7 @@ String feedSurname(String name) {
 }
 
 GameStatus feedResultStatus(FeedItem item) {
+  if (item.hideResult) return GameStatus.unknown;
   final fromResult = GameStatus.fromString(item.result);
   if (fromResult.isFinished) return fromResult;
   return item.game.gameStatus;

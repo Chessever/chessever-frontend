@@ -18,6 +18,7 @@ import 'package:chessever2/screens/feed/providers/feed_eval_provider.dart';
 import 'package:chessever2/screens/feed/providers/feed_provider.dart';
 import 'package:chessever2/screens/feed/puzzles/feed_puzzle.dart';
 import 'package:chessever2/screens/feed/widgets/feed_clip.dart';
+import 'package:chessever2/screens/feed/widgets/feed_format.dart';
 import 'package:chessever2/screens/feed/widgets/feed_move_sound.dart';
 import 'package:chessever2/screens/feed/widgets/feed_sfx_provider.dart';
 import 'package:chessever2/screens/my_space/models/space_shortcut.dart';
@@ -79,6 +80,46 @@ void main() {
         isNull,
       );
       expect(feedWatchItem(_game('w1'), ''), isNull);
+    });
+  });
+
+  group('No Spoilers on a Watch post', () {
+    const pgn =
+        '[Event "Test Open 2026"]\n[Result "1-0"]\n\n'
+        '1. e4 {[%eval 0.3]} e5 {[%eval 0.3]} 2. Bc4 {[%eval 0.2]} '
+        'Nc6 {[%eval 0.3]} 3. Qh5 {[%eval 0.1]} Nf6 {[%eval 9.0]} '
+        '4. Qxf7# 1-0';
+
+    test('hidden evaluation: no evals in the plies, no chart', () {
+      final item = feedWatchItem(_game('s1'), pgn, hideEvaluation: true)!;
+      expect(item.hideEvaluation, isTrue);
+      expect(item.hasEvals, isFalse);
+      expect(item.plies.any((p) => p.cp != null || p.mate != null), isFalse);
+      // The result still shows: only the evaluation is held back.
+      expect(item.result, '1-0');
+      expect(feedResultStatus(item), GameStatus.whiteWins);
+    });
+
+    test('hidden result: no result, no "White wins", no fallen king', () {
+      final item = feedWatchItem(_game('s2'), pgn, hideResult: true)!;
+      expect(item.result, isNull);
+      expect(feedResultStatus(item), GameStatus.unknown);
+      expect(feedResultLabel(item), '');
+      expect(
+        item.plies.any((p) => p.moment?.type == FeedMomentType.gameEnd),
+        isFalse,
+      );
+      // Share and Save still hand out the game as the board would.
+      expect(item.game.pgn, pgn);
+    });
+
+    test('the PGN is cleaned only of what is hidden', () {
+      expect(feedSpoilerFreePgn(pgn, evaluation: false, result: false), pgn);
+      final clean = feedSpoilerFreePgn(pgn, evaluation: true, result: true);
+      expect(clean.contains('%eval'), isFalse);
+      expect(clean.contains('[Result "*"]'), isTrue);
+      expect(clean.trim().endsWith('*'), isTrue);
+      expect(clean.contains('Qxf7#'), isTrue);
     });
   });
 

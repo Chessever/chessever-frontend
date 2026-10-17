@@ -163,6 +163,8 @@ class FeedItem {
     this.likeable = true,
     this.exportable = true,
     this.boardGame,
+    this.hideEvaluation = false,
+    this.hideResult = false,
   });
 
   final GamesTourModel game;
@@ -206,6 +208,15 @@ class FeedItem {
   /// hand out (the reader's analysis, its links rebranded).
   final GamesTourModel? boardGame;
 
+  /// A post Watch made from a board under the event's No Spoilers: what the
+  /// board hides, the post hides too. No evaluation at all (no bar, number,
+  /// chart or engine; the plies carry none) ...
+  final bool hideEvaluation;
+
+  /// ... and no result until the viewer reveals it on the board: no result
+  /// card, no fallen king, no result in the player rows ([feedResultStatus]).
+  final bool hideResult;
+
   int get plyCount => plies.length - 1;
 
   /// The ply a clip opens on: the position after the game's last book move,
@@ -241,6 +252,8 @@ class FeedItem {
     likeable: likeable,
     exportable: exportable,
     boardGame: boardGame,
+    hideEvaluation: hideEvaluation,
+    hideResult: hideResult,
   );
 
   /// Plies Feed should linger on (headline moments).

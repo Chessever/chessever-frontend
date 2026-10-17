@@ -2098,6 +2098,7 @@ class _FeedClipState extends ConsumerState<FeedClip>
   /// evals; anything else asks [feedPositionEvalProvider]: the cache while
   /// the clip plays, the engine once the viewer has the board.
   FeedEval _watchEval(_BoardView view, {required bool exploring}) {
+    if (_item.hideEvaluation) return FeedEval.none;
     final position = view.position;
     if (position == null) return FeedEval.none;
     if (position.isCheckmate) {
@@ -2157,8 +2158,10 @@ class _FeedClipState extends ConsumerState<FeedClip>
     final exploring = line != null;
     final shown = p.shownPly.clamp(0, _item.plies.length - 1);
     final ply = _item.plies[shown];
-    // The rows print the result only on the game's final position.
-    final revealResult = !exploring && shown >= _item.plies.length - 1;
+    // The rows print the result only on the game's final position, and not
+    // at all while No Spoilers holds it back.
+    final revealResult =
+        !_item.hideResult && !exploring && shown >= _item.plies.length - 1;
     // The report chart carries the move while scrubbing; only a game with no
     // recorded evaluations has no chart, and its scrub shows the move bubble.
     final showBubble = p.isScrubbing && !_item.hasEvals;
@@ -2352,20 +2355,25 @@ class _FeedClipState extends ConsumerState<FeedClip>
             children: [
               Row(
                 children: [
-                  EvaluationBarWidget(
-                    key: const ValueKey('feed_eval_bar'),
-                    width: l.evalWidth,
-                    height: l.board,
-                    isFlipped: false,
-                    evaluation: _barEvaluation(eval),
-                    mate: eval.mate,
-                    isEvaluating: eval.evaluating,
-                    isWhiteToMove: view.position?.turn != Side.black,
-                    positionKey: view.position?.fen ?? view.fen,
-                    // "#", as the game card and the move strip say, not
-                    // the ±100 the bar is filled with.
-                    isCheckmate: view.position?.isCheckmate ?? false,
-                  ),
+                  // Under No Spoilers (a Watch post) the bar's column stays,
+                  // empty, so the board sits where every post's does.
+                  if (_item.hideEvaluation)
+                    SizedBox(width: l.evalWidth, height: l.board)
+                  else
+                    EvaluationBarWidget(
+                      key: const ValueKey('feed_eval_bar'),
+                      width: l.evalWidth,
+                      height: l.board,
+                      isFlipped: false,
+                      evaluation: _barEvaluation(eval),
+                      mate: eval.mate,
+                      isEvaluating: eval.evaluating,
+                      isWhiteToMove: view.position?.turn != Side.black,
+                      positionKey: view.position?.fen ?? view.fen,
+                      // "#", as the game card and the move strip say, not
+                      // the ±100 the bar is filled with.
+                      isCheckmate: view.position?.isCheckmate ?? false,
+                    ),
                   board,
                 ],
               ),

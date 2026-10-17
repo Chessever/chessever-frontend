@@ -4829,6 +4829,20 @@ class _AppBarState extends ConsumerState<_AppBar> {
           _isLikeableGameSource(game.source) &&
           !_isOwnDatabaseBoardGame(ref, game, widget.currentGameIndex);
       final exportable = widget.allowGameExport;
+      // No Spoilers, as this board applies it: no evaluation for a broadcast
+      // game, and no result for a finished one until it is revealed here.
+      final spoilers = ref.read(eventNoSpoilersProvider(game.tourId));
+      final hideEvaluation =
+          game.source == GameSource.supabase &&
+          shouldHideEventEvaluation(
+            isBroadcastGame: true,
+            spoilerState: spoilers,
+          );
+      final hideResult =
+          game.gameStatus != GameStatus.ongoing &&
+          game.gameStatus != GameStatus.unknown &&
+          (spoilers.isLoading || spoilers.enabled) &&
+          !ref.read(eventNoSpoilersRevealedGamesProvider).contains(game.gameId);
       final route = ModalRoute.of(context);
       final resolved = await _resolveAppBarShareData();
       // The board is still what the viewer sees: Feed's Analyze comes back
@@ -4844,6 +4858,8 @@ class _AppBarState extends ConsumerState<_AppBar> {
         extendable ? feedRecordedPgn(game.pgn, resolved.pgn) : resolved.pgn,
         likeable: likeable,
         exportable: exportable,
+        hideEvaluation: hideEvaluation,
+        hideResult: hideResult,
       );
       if (lead == null) {
         showAppSnack(context, 'No moves to watch yet');
