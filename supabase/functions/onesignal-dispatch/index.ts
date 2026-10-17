@@ -7,6 +7,7 @@ import {
   groupFavoriteBoardCopy,
 } from "./favorite_copy.ts";
 import { collectionStarRecipients } from "./collection_subscribers.ts";
+import { prepGamesAddedCopy } from "./prep_copy.ts";
 import { collectFavoriteMatches } from "./favorite_match.ts";
 import { filterGameStartedPlayerRecipients } from "./player_game_recipients.ts";
 import { chunk, packForUrlBudget } from "./postgrest_in.ts";
@@ -751,6 +752,53 @@ async function processItem(item: OutboxItem) {
         url: null,
         data: { type: "collection_games_added", collection_slug: slug },
         androidChannelId: channelForEvent("collection_games_added"),
+      });
+
+      await markSent(item.id);
+      return { id: item.id, status: "sent", recipients: eligible.length };
+    }
+
+    if (item.event_type === "prep_games_added") {
+      const userId = optionalPayloadString(item.payload, "user_id");
+      const profileId = optionalPayloadString(item.payload, "profile_id");
+      if (!userId || !profileId) {
+        await markSkipped(item.id, "missing_prep_profile");
+        return {
+          id: item.id,
+          status: "skipped",
+          reason: "missing_prep_profile",
+        };
+      }
+
+      // The star may have come off between the check and this send.
+      if (!await isPrepProfileWatched(userId, profileId)) {
+        await markSkipped(item.id, "not_starred");
+        return { id: item.id, status: "skipped", reason: "not_starred" };
+      }
+
+      const eligible = await filterPrepRecipients([userId]);
+      if (eligible.length === 0) {
+        await markSkipped(item.id, "no_recipients");
+        return { id: item.id, status: "skipped", reason: "no_recipients" };
+      }
+
+      const added = typeof item.payload?.added === "number"
+        ? Math.max(1, Math.trunc(item.payload.added as number))
+        : 1;
+      const copy = prepGamesAddedCopy(
+        optionalPayloadString(item.payload, "profile_name") ?? "",
+        added,
+      );
+      await sendOneSignal(eligible, {
+        title: copy.title,
+        body: copy.body,
+        url: null,
+        data: {
+          type: "prep_games_added",
+          prep_profile_id: profileId,
+          added,
+        },
+        androidChannelId: channelForEvent("prep_games_added"),
       });
 
       await markSent(item.id);
@@ -2475,6 +2523,43 @@ async function filterCollectionRecipients(
   return filtered;
 }
 
+/** Whether [userId] still stars the My Prep profile [profileId]. */
+async function isPrepProfileWatched(
+  userId: string,
+  profileId: string,
+): Promise<boolean> {
+  const rows = await runQuery<Array<{ id: string }>>(
+    "Prep star lookup",
+    () =>
+      supabase
+        .from("prep_profile_watches")
+        .select("id")
+        .eq("user_id", userId)
+        .eq("profile_id", profileId)
+        .limit(1),
+  );
+  return (rows ?? []).length > 0;
+}
+
+/** A starred Prep player is a favorite player to the settings: same switch. */
+async function filterPrepRecipients(userIds: string[]): Promise<string[]> {
+  if (userIds.length === 0) return [];
+
+  const prefsMap = await fetchPreferenceMap(
+    userIds,
+    "user_id,push_enabled,favorite_player_alerts",
+  );
+
+  const filtered: string[] = [];
+  for (const userId of userIds) {
+    const prefs = prefsMap.get(userId);
+    if (prefs && prefs.push_enabled === false) continue;
+    if (prefs && prefs.favorite_player_alerts === false) continue;
+    filtered.push(userId);
+  }
+  return filtered;
+}
+
 /** "3 new games added." A count the importer could not give is left out. */
 function collectionGamesAddedBody(added: unknown): string {
   const count = typeof added === "number" && Number.isFinite(added)
@@ -2905,6 +2990,7 @@ function channelForEvent(eventType: string) {
     case "call_to_action":
       return ANDROID_CHANNELS.callToAction;
     case "collection_games_added":
+    case "prep_games_added":
       return ANDROID_CHANNELS.favorites;
     case "book_game_added":
     case "book_game_updated":
@@ -3120,6 +3206,14 @@ function notificationCollapseId(
     : null;
 
   if (gameId) return compactCollapseId(`game:${type ?? "update"}:${gameId}`);
+
+  // A later day's push for the same player replaces an unread one.
+  const prepProfileId = typeof notification.data?.prep_profile_id === "string"
+    ? notification.data.prep_profile_id
+    : null;
+  if (type === "prep_games_added" && prepProfileId) {
+    return compactCollapseId(`prep:${prepProfileId}`);
+  }
 
   if (type === "round_started") {
     const groupedRoundStartKey = notification.data?.grouped_round_start_key;

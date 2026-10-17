@@ -98,20 +98,32 @@ Future<void> setStarNotifications({
   if (reachable && confirm) snack('Notifications turned on');
 }
 
+/// Makes a starred My Prep player's daily push reachable, as a yes does for
+/// a starred event. The dispatcher sends it under favorite-player alerts.
+Future<bool> makePlayerStarReachable({
+  required ProviderContainer container,
+  required ScaffoldMessengerState? messenger,
+}) => _makeReachable(container, messenger, playerAlerts: true);
+
 /// A yes means nothing if starred alerts are switched off for the account or
 /// the device refuses ChessEver's notifications: turn the first back on, and
 /// for the second show the system prompt, or point at Settings when the
 /// system will not ask again. False when it ended on that Settings hint.
+/// [playerAlerts] picks the favorite-player switch over the event one.
 Future<bool> _makeReachable(
   ProviderContainer container,
-  ScaffoldMessengerState? messenger,
-) async {
+  ScaffoldMessengerState? messenger, {
+  bool playerAlerts = false,
+}) async {
   try {
     final prefs = await container.read(notificationPreferencesProvider.future);
-    if (!prefs.favoriteEventAlerts) {
-      await container
-          .read(notificationPreferencesProvider.notifier)
-          .setFavoriteEventAlerts(true);
+    final settings = container.read(notificationPreferencesProvider.notifier);
+    if (playerAlerts) {
+      if (!prefs.favoritePlayerAlerts) {
+        await settings.setFavoritePlayerAlerts(true);
+      }
+    } else if (!prefs.favoriteEventAlerts) {
+      await settings.setFavoriteEventAlerts(true);
     }
   } catch (_) {
     // The dispatcher treats a missing preference row as allowed.

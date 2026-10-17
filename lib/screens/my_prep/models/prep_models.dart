@@ -439,6 +439,7 @@ class PrepProfile {
     this.accounts = const [],
     this.favoriteId,
     this.fideIdentity,
+    this.watching = false,
   });
 
   final String id;
@@ -452,6 +453,10 @@ class PrepProfile {
 
   /// Set when the profile was added from Players.
   final String? favoriteId;
+
+  /// Starred: the server checks its online accounts once a day and pushes
+  /// when the player has new games (see `prep_watch.dart`).
+  final bool watching;
 
   String? get fideId =>
       fideIdentity ??
@@ -568,6 +573,7 @@ class PrepProfile {
     String? name,
     List<PrepAccount>? accounts,
     PrepKind? kind,
+    bool? watching,
   }) => PrepProfile(
     id: id,
     kind: kind ?? this.kind,
@@ -578,6 +584,7 @@ class PrepProfile {
         fideId ??
         accounts?.map((a) => a.fideId).whereType<String>().firstOrNull,
     favoriteId: favoriteId,
+    watching: watching ?? this.watching,
   );
 
   PrepProfile replaceAccount(PrepAccount account) => copyWith(
@@ -592,6 +599,7 @@ class PrepProfile {
     'accounts': [for (final a in accounts) a.toJson()],
     'fideIdentity': fideId,
     'favoriteId': favoriteId,
+    if (watching) 'watching': true,
   };
 
   static PrepProfile? fromJson(Object? raw) {
@@ -611,6 +619,7 @@ class PrepProfile {
           for (final a in rawAccounts) ?PrepAccount.fromJson(a),
       ],
       favoriteId: _text(raw['favoriteId']),
+      watching: raw['watching'] == true,
     );
   }
 }

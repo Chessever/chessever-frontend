@@ -55,3 +55,9 @@ verify_jwt = false
 verify_jwt = false
 [functions.rewarded-premium-ssv]
 verify_jwt = false
+
+# Started hourly by pg_cron (kick_prep_games_check) with the dispatcher's
+# x-stream-token, never a user JWT. Gateway verification would 401 every run
+# and starred Prep players would never notify. NEVER set this to true.
+[functions.prep-games-check]
+verify_jwt = false

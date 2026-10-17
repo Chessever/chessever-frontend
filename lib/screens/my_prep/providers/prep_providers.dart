@@ -8,6 +8,7 @@ import 'package:chessever2/screens/my_prep/models/prep_models.dart';
 import 'package:chessever2/screens/my_prep/services/prep_analysis.dart';
 import 'package:chessever2/screens/my_prep/services/prep_index.dart';
 import 'package:chessever2/screens/my_prep/services/prep_repository.dart';
+import 'package:chessever2/screens/my_prep/services/prep_watch.dart';
 import 'package:chessever2/services/game_tree/game_tree_registry.dart';
 import 'package:chessever2/services/game_tree/game_tree_service.dart';
 import 'package:chessever2/services/game_tree/game_tree_store.dart';
@@ -114,8 +115,22 @@ class PrepProfilesNotifier
   final Ref _ref;
   Future<void> _writing = Future.value();
 
+  /// Server writes for stars, one at a time and in order.
+  Future<void> _watchWriting = Future.value();
+
+  /// Profiles whose star came off (or which were removed) while the server
+  /// could not be told. Saved with the profiles and retried at the next
+  /// launch, so an unstarred player never keeps notifying.
+  final Set<String> _unwatchPending = {};
+
   @visibleForTesting
   Future<void> debugDrainWrites() => _writing;
+
+  @visibleForTesting
+  Future<void> debugDrainWatches() async {
+    await _watchWriting;
+    await _writing;
+  }
 
   List<PrepProfile> get _profiles => state.valueOrNull ?? const [];
 
@@ -130,11 +145,15 @@ class PrepProfilesNotifier
         return;
       }
       final json = jsonDecode(await file.readAsString());
+      if (json is Map && json['unwatch'] is List) {
+        _unwatchPending.addAll((json['unwatch'] as List).whereType<String>());
+      }
       state = AsyncValue.data([
         if (json is Map && json['profiles'] is List)
           for (final raw in json['profiles'] as List)
             ?PrepProfile.fromJson(raw),
       ]);
+      _reconcileWatches();
     } catch (error, stack) {
       debugPrint('[MyPrep] profiles failed to load: $error');
       state = AsyncValue.error(error, stack);
@@ -142,7 +161,14 @@ class PrepProfilesNotifier
   }
 
   void _set(List<PrepProfile> profiles) {
+    final before = _profiles;
     state = AsyncValue.data(List.unmodifiable(profiles));
+    _mirrorWatches(before, profiles);
+    _persist(profiles);
+  }
+
+  void _persist(List<PrepProfile> profiles) {
+    final unwatch = _unwatchPending.toList();
     // Serialized so an older snapshot can never land after a newer one.
     _writing = _writing.then((_) async {
       try {
@@ -152,12 +178,88 @@ class PrepProfilesNotifier
           jsonEncode({
             'version': 1,
             'profiles': [for (final p in profiles) p.toJson()],
+            if (unwatch.isNotEmpty) 'unwatch': unwatch,
           }),
           flush: true,
         );
         await temp.rename(file.path);
       } catch (error) {
         debugPrint('[MyPrep] profiles failed to save: $error');
+      }
+    });
+  }
+
+  // ---------------------------------------------------------------- stars
+
+  /// Stars or unstars [profileId]. The server's copy follows on its own.
+  void setWatching(String profileId, bool watching) =>
+      edit(profileId, (p) => p.copyWith(watching: watching));
+
+  /// A push arrived for [profileId]. If this device no longer stars it (or
+  /// no longer has it), the server is told again, so the pushes stop.
+  void settleWatch(String profileId) {
+    final profile = byId(profileId);
+    if (profile == null || prepWatchSignature(profile) == null) {
+      _queueUnwatch(profileId);
+    }
+  }
+
+  /// Tells the server about every star that changed between [before] and
+  /// [after]: a new or edited starred profile is written again, one that
+  /// lost its star, its online accounts or its place is cleared.
+  void _mirrorWatches(List<PrepProfile> before, List<PrepProfile> after) {
+    final was = <String, String>{
+      for (final p in before)
+        if (prepWatchSignature(p) case final signature?) p.id: signature,
+    };
+    final watched = <String>{};
+    for (final p in after) {
+      final signature = prepWatchSignature(p);
+      if (signature == null) continue;
+      watched.add(p.id);
+      if (signature != was[p.id]) _queueWatch(p.id);
+    }
+    for (final id in was.keys) {
+      if (!watched.contains(id)) _queueUnwatch(id);
+    }
+  }
+
+  /// Once per launch: retries the unstars that did not reach the server and
+  /// writes every star again, which also carries today's UTC offset.
+  void _reconcileWatches() {
+    for (final id in _unwatchPending.toList()) {
+      _queueUnwatch(id);
+    }
+    for (final p in _profiles) {
+      if (prepWatchSignature(p) != null) _queueWatch(p.id);
+    }
+  }
+
+  void _queueWatch(String profileId) {
+    if (_unwatchPending.remove(profileId)) _persist(_profiles);
+    _watchWriting = _watchWriting.then((_) async {
+      if (!mounted) return;
+      // The newest copy: it may have changed while earlier writes ran.
+      final profile = byId(profileId);
+      if (profile == null || prepWatchSignature(profile) == null) return;
+      // A failure is retried by the next launch's reconcile.
+      await _ref.read(prepWatchRemoteProvider).watch(profile);
+    });
+  }
+
+  void _queueUnwatch(String profileId) {
+    if (_unwatchPending.add(profileId)) _persist(_profiles);
+    _watchWriting = _watchWriting.then((_) async {
+      if (!mounted) return;
+      final profile = byId(profileId);
+      if (profile != null && prepWatchSignature(profile) != null) {
+        // Starred again since: the watch queued with it wins.
+        if (_unwatchPending.remove(profileId)) _persist(_profiles);
+        return;
+      }
+      final done = await _ref.read(prepWatchRemoteProvider).unwatch(profileId);
+      if (done && mounted && _unwatchPending.remove(profileId)) {
+        _persist(_profiles);
       }
     });
   }

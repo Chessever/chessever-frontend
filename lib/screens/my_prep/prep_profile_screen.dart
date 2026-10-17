@@ -14,6 +14,7 @@ import 'package:chessever2/screens/my_prep/tabs/prep_games_tab.dart';
 import 'package:chessever2/screens/my_prep/tabs/prep_trees_tab.dart';
 import 'package:chessever2/screens/my_prep/prep_sources_screen.dart';
 import 'package:chessever2/screens/my_prep/widgets/prep_identity.dart';
+import 'package:chessever2/screens/my_prep/widgets/prep_watch_star.dart';
 import 'package:chessever2/screens/my_prep/tabs/prep_overview_tab.dart';
 import 'package:chessever2/screens/my_prep/widgets/prep_common.dart';
 import 'package:chessever2/screens/my_prep/widgets/prep_filters.dart';
@@ -24,6 +25,7 @@ import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/number_format_utils.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/widgets/app_snack.dart';
 import 'package:chessever2/widgets/card_context_menu.dart';
 import 'package:chessever2/widgets/generic_loading_widget.dart';
 import 'package:chessever2/widgets/segmented_switcher.dart';
@@ -38,9 +40,15 @@ class PrepProfileScreen extends ConsumerStatefulWidget {
     super.key,
     required this.profileId,
     this.accountKey,
+    this.newGames,
   });
 
   final String profileId;
+
+  /// Set when the daily "new games" push opened the profile: how many games
+  /// the player has played since the check before. The push leaves the
+  /// number out; the profile says it.
+  final int? newGames;
 
   /// The source to open on alone. Without one, and for a profile with a
   /// single source, the profile opens on every source together.
@@ -230,8 +238,30 @@ class _PrepProfileScreenState extends ConsumerState<PrepProfileScreen> {
     _checkedFreshness = true;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      ref.read(prepSyncProvider.notifier).refreshStale([profile]);
+      final added = widget.newGames;
+      if (added == null || added < 1) {
+        ref.read(prepSyncProvider.notifier).refreshStale([profile]);
+        return;
+      }
+      showAppSnack(
+        context,
+        added == 1
+            ? '${profile.name} played 1 new game.'
+            : '${profile.name} played $added new games.',
+      );
+      unawaited(_fetchNewGames(profile));
     });
+  }
+
+  /// The push's games are newer than a daily freshness rule would fetch:
+  /// every downloaded online source checks now, one after another.
+  Future<void> _fetchNewGames(PrepProfile profile) async {
+    final sync = ref.read(prepSyncProvider.notifier);
+    for (final account in profile.accounts) {
+      if (!account.source.online || account.lastSyncAtMs == null) continue;
+      if (!mounted) return;
+      await sync.syncAccount(profile.id, account, background: true);
+    }
   }
 
   /// [filter] is About's own. While another source's games are read there
@@ -605,6 +635,9 @@ class _TopBar extends ConsumerWidget {
               color: colors.textPrimary,
             ),
           ),
+          // Balances the star on the right, so the name stays centred.
+          if (prepHasWatchSlot(profile))
+            const SizedBox(width: kPrepWatchStarSlot),
           Expanded(
             child: Center(
               child: Row(
@@ -638,6 +671,7 @@ class _TopBar extends ConsumerWidget {
               ),
             ),
           ),
+          if (prepHasWatchSlot(profile)) PrepWatchStar(profileId: profile.id),
           CardMoreButton(
             vertical: true,
             color: colors.iconPrimary,

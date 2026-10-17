@@ -21,6 +21,14 @@ import 'package:chessever2/screens/collections/collections_data.dart'
     show Collection, collectionsRepositoryProvider;
 import 'package:chessever2/screens/collections/collections_screen.dart'
     show CollectionScreen;
+import 'package:chessever2/screens/my_prep/models/prep_models.dart'
+    show PrepProfile;
+import 'package:chessever2/screens/my_prep/my_prep_home_screen.dart'
+    show MyPrepHomeScreen;
+import 'package:chessever2/screens/my_prep/prep_profile_screen.dart'
+    show PrepProfileScreen;
+import 'package:chessever2/screens/my_prep/providers/prep_providers.dart'
+    show prepProfilesProvider;
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
 import 'package:chessever2/screens/chessboard/utils/game_share_utils.dart'
     show kGamebaseShareSourceParam, kGamebaseShareSourceValue;
@@ -856,6 +864,65 @@ class DeepLinkService {
     }
   }
 
+  /// Opens the starred My Prep profile a daily "new games" push was sent
+  /// for. Profiles live on the device: one this device no longer has, or no
+  /// longer stars, opens My Prep instead and is unstarred on the server, so
+  /// the pushes stop.
+  Future<void> _navigateToPrepProfile(
+    String profileId,
+    GlobalKey<NavigatorState> navigatorKey,
+    WidgetRef ref, {
+    int? newGames,
+  }) async {
+    if (_isNavigating) return;
+    _isNavigating = true;
+
+    try {
+      try {
+        await _appReadyCompleter.future.timeout(const Duration(seconds: 30));
+      } catch (_) {
+        debugPrint(
+          'DeepLinkService: Timed out waiting for app ready, proceeding',
+        );
+      }
+
+      final loaded = Completer<List<PrepProfile>?>();
+      final subscription = ref.listenManual(prepProfilesProvider, (_, value) {
+        if (!value.isLoading && !loaded.isCompleted) {
+          loaded.complete(value.valueOrNull);
+        }
+      }, fireImmediately: true);
+      List<PrepProfile>? profiles;
+      try {
+        profiles = await loaded.future.timeout(const Duration(seconds: 10));
+      } catch (_) {
+        profiles = null;
+      } finally {
+        subscription.close();
+      }
+      final profile = profiles
+          ?.where((p) => p.id == profileId && p.watching)
+          .firstOrNull;
+      if (profiles != null) {
+        ref.read(prepProfilesProvider.notifier).settleWatch(profileId);
+      }
+
+      final navigator = navigatorKey.currentState;
+      if (navigator == null) return;
+      // Over Home, so Back lands on the app rather than leaving it.
+      navigator.pushNamedAndRemoveUntil('/home_screen', (route) => false);
+      navigator.push(
+        MaterialPageRoute<void>(
+          builder: (_) => profile == null
+              ? const MyPrepHomeScreen()
+              : PrepProfileScreen(profileId: profile.id, newGames: newGames),
+        ),
+      );
+    } finally {
+      _isNavigating = false;
+    }
+  }
+
   /// Navigate to a specific library folder for push notifications (e.g. game added/updated in a database).
   Future<void> _navigateToFolder(
     String folderId,
@@ -1403,6 +1470,7 @@ class DeepLinkService {
       data['collection_slug'],
       data['collectionSlug'],
     ]);
+    final prepProfileId = _firstNonEmptyString([data['prep_profile_id']]);
 
     // The notification path used to be completely untelemetered, so a tap that
     // ended on Home was indistinguishable from a tap that never reached Dart at
@@ -1420,6 +1488,7 @@ class DeepLinkService {
         'hasTourId': tourId != null,
         'hasFolderId': folderId != null,
         'hasCollectionSlug': collectionSlug != null,
+        'hasPrepProfileId': prepProfileId != null,
         'keys': data.keys.toList()..sort(),
       },
     );
@@ -1463,6 +1532,25 @@ class DeepLinkService {
           _navigateToHome(
             navigatorKey,
             reason: 'notification_missing_collection_slug',
+            extras: {'type': type, 'appReady': wasAppReady},
+          );
+        }
+        return;
+      case 'prep_games_added':
+        if (prepProfileId != null) {
+          final added = data['added'];
+          _navigateToPrepProfile(
+            prepProfileId,
+            navigatorKey,
+            ref,
+            newGames: added is num
+                ? added.toInt()
+                : int.tryParse('${added ?? ''}'),
+          );
+        } else {
+          _navigateToHome(
+            navigatorKey,
+            reason: 'notification_missing_prep_profile_id',
             extras: {'type': type, 'appReady': wasAppReady},
           );
         }

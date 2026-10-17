@@ -128,7 +128,7 @@ These must be `false`, whichever repo owns them:
 stripe-webhook             revenuecat-webhook        revenuecat-sync
 onesignal-dispatch         github-webhook            fetch-fide-photo-webp
 fetch-lichess-annotations  stripe-checkout           stripe-portal
-entitlement
+entitlement                prep-games-check
 ```
 
 ### How to deploy
