@@ -188,6 +188,15 @@ class FeedNotifier extends AsyncNotifier<List<FeedItem>> {
   /// Below this many candidates in the pool, sources are read again.
   static const int _poolLow = 14;
 
+  /// Below this many distinct events in the pool, sources are read again
+  /// even when it holds plenty of games: on an evening of online events the
+  /// newest pages are one or two events deep, and the ranker's quotas can
+  /// only hold when it has other events to turn to.
+  static const int _poolMinEvents = 8;
+
+  /// Extra pages a page load may read looking for those events.
+  static const int _varietyReads = 3;
+
   /// Shown game ids remembered across launches (newest kept).
   static const int _shownMemory = 400;
 
@@ -527,7 +536,7 @@ class FeedNotifier extends AsyncNotifier<List<FeedItem>> {
     try {
       // Two rounds: filters (short draws, unparsable PGNs) can empty a batch.
       for (var round = 0; round < 2 && items.isEmpty; round++) {
-        if (_pool.length < _poolLow) await _refillAll(generation).all;
+        await _refillForVariety(generation);
         if (generation != _generation) return;
         items = await _materialize(generation, _pageSize);
         if (generation != _generation) return;
@@ -640,6 +649,8 @@ class FeedNotifier extends AsyncNotifier<List<FeedItem>> {
     required List<FeedItem> cacheFirst,
   }) async {
     try {
+      await _refillForVariety(generation);
+      if (generation != _generation) return;
       final more = await _materialize(generation, count);
       if (generation != _generation) return;
       if (more.isNotEmpty) await _append(generation, more);
@@ -656,6 +667,8 @@ class FeedNotifier extends AsyncNotifier<List<FeedItem>> {
   ) async {
     try {
       await sources.all;
+      if (generation != _generation) return;
+      await _refillForVariety(generation);
       if (generation != _generation) return;
       final fresh = await _materialize(generation, _pageSize);
       if (generation != _generation || fresh.isEmpty) return;
@@ -698,6 +711,18 @@ class FeedNotifier extends AsyncNotifier<List<FeedItem>> {
       if (identical(_inFlight, reads)) _inFlight = null;
     }).ignore();
     return reads;
+  }
+
+  /// Reads the sources again while the pool is short of games or of
+  /// distinct events, up to [_varietyReads] times, and while any source has
+  /// more.
+  Future<void> _refillForVariety(int generation) async {
+    for (var read = 0; read < _varietyReads; read++) {
+      if (generation != _generation || _allSourcesExhausted) return;
+      final events = {for (final c in _pool.values) c.signals.eventKey};
+      if (_pool.length >= _poolLow && events.length >= _poolMinEvents) return;
+      await _refillAll(generation).all;
+    }
   }
 
   bool get _allSourcesExhausted =>
