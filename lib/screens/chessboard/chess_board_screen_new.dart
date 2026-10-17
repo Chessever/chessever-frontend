@@ -7597,11 +7597,19 @@ class _BottomNavBar extends ConsumerWidget {
 
     final params = ChessBoardProviderParams(game: game, index: index);
     final notifier = ref.read(chessBoardScreenProviderNew(params).notifier);
-    ChessGameNavigatorState? navigatorState;
+    // Read the pointer the board itself synced, never
+    // `chessGameNavigatorProvider(state.analysisState.game)`. That provider is
+    // keyed by ChessGame identity and the navigator replaces its game on every
+    // live append or played move, so the lookup lands on a fresh navigator
+    // parked at the start: canGoBackward false, which silently disabled the
+    // left-arrow hold while taps still worked.
     final analysisGame = state.analysisState.game;
-    if (analysisGame != null) {
-      navigatorState = ref.watch(chessGameNavigatorProvider(analysisGame));
-    }
+    final navigatorState = analysisGame == null
+        ? null
+        : ChessGameNavigatorState(
+            game: analysisGame,
+            movePointer: state.analysisState.movePointer,
+          );
     final baseCanMoveForward = state.analysisState.canMoveForward;
     final baseCanMoveBackward = state.analysisState.canMoveBackward;
     final canMoveForward = navigatorState != null
@@ -11606,7 +11614,9 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
         ? List<Number>.of(tailNode.pointer)
         : const <Number>[];
 
-    if (pointerForScroll.isNotEmpty) {
+    final isAtStartPosition =
+        !hasPointer && widget.state.analysisState.currentMoveIndex < 0;
+    if (pointerForScroll.isNotEmpty || isAtStartPosition) {
       _schedulePointerScroll(pointerForScroll, pointerForHighlightId);
     }
 
@@ -13128,11 +13138,28 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
 
   void _schedulePointerScroll(ChessMovePointer pointer, String? pointerId) {
     if (widget.index != widget.currentPageIndex) return;
-    if (pointerId == null) return;
     if (_lastPointer != null &&
         _pointerEquality.equals(_lastPointer!, pointer)) {
       return;
     }
+    // The start position has no move chip to centre on, so returning to it
+    // (a left-arrow hold, or stepping back past move one) rewinds the list to
+    // its top edge instead.
+    if (pointer.isEmpty) {
+      _lastPointer = const [];
+      _lastPointerId = null;
+      if (!_hasInitiallyScrolled) return;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || !_scrollController.hasClients) return;
+        _scrollController.animateTo(
+          0,
+          duration: const Duration(milliseconds: 250),
+          curve: Curves.easeInOut,
+        );
+      });
+      return;
+    }
+    if (pointerId == null) return;
     _lastPointer = List.of(pointer);
     _lastPointerId = pointerId;
     WidgetsBinding.instance.addPostFrameCallback((_) {
