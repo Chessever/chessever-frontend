@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'app_colors.dart';
+import 'app_page_transitions.dart';
 
 // Color constants
 const Color kPrimaryColor = Color(0xFF0FB4E5); // PRIMARY COLOR
@@ -181,6 +182,7 @@ class AppTheme {
       textStyle: const TextStyle(color: kWhiteColor, fontSize: 12),
     ),
     extensions: const [_darkAppColors],
+    pageTransitionsTheme: kAppPageTransitionsTheme,
     useMaterial3: true,
   );
 
@@ -273,6 +275,7 @@ class AppTheme {
       selectionHandleColor: Color(0xFF005F7D),
     ),
     extensions: const [_lightAppColors],
+    pageTransitionsTheme: kAppPageTransitionsTheme,
     useMaterial3: true,
   );
 
