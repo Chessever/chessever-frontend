@@ -241,11 +241,17 @@ class _StandingsList extends ConsumerWidget {
                         isFavorite: isFav,
                         showFavoriteButton: false,
                         detailWidget:
-                            player.tiebreaks.isEmpty
-                                ? null
-                                : PublishedPlayerTiebreaks(
+                            PublishedPlayerTiebreaks.hasAny(
                                   values: player.tiebreaks,
-                                ),
+                                  startNumber: player.startNumber,
+                                  club: player.club,
+                                )
+                                ? PublishedPlayerTiebreaks(
+                                  values: player.tiebreaks,
+                                  startNumber: player.startNumber,
+                                  club: player.club,
+                                )
+                                : null,
                         onTap: openScorecard,
                         onLongPress:
                             (_) => _showStandingMenu(

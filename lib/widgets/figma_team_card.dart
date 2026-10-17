@@ -167,13 +167,13 @@ class FigmaTeamCard extends StatelessWidget {
               ),
             ],
           ),
-          if (team.tiebreaks.isNotEmpty)
+          if (team.extraTiebreaks.isNotEmpty)
             Padding(
               padding: EdgeInsets.only(top: 8.h),
               child: GestureDetector(
                 behavior: HitTestBehavior.opaque,
                 onTap: onTeamTap,
-                child: PublishedPlayerTiebreaks(values: team.tiebreaks),
+                child: PublishedPlayerTiebreaks(values: team.extraTiebreaks),
               ),
             ),
         ],
