@@ -169,6 +169,16 @@ void main() {
     expect(session.chipDismissals, 0);
   });
 
+  test('a quick second tap on a just-switched chip does not hide', () {
+    final session = selectedSession();
+    addTearDown(session.dispose);
+    session.activateStream('english-second');
+    session.activateStream('english-second');
+    expect(session.selected!.id, 'english-second');
+    expect(session.showVideo, isTrue);
+    expect(session.chipDismissals, 0);
+  });
+
   test(
     'explicit select remains idempotent, invalid/disposed chip is harmless',
     () {

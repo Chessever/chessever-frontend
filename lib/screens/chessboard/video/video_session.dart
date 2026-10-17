@@ -120,14 +120,25 @@ class EventVideoSession extends ChangeNotifier {
   int get chipDismissals => _chipDismissals;
   int _chipDismissals = 0;
 
+  /// A second tap on a chip just switched to (double tap, or impatience while
+  /// the new player loads) must not read as "hide".
+  static const _chipSwitchSettle = Duration(milliseconds: 600);
+  DateTime? _chipSwitchedAt;
+
   void activateStream(String id) {
     if (_disposed) return;
     if (showVideo && selected?.id == id) {
+      final switchedAt = _chipSwitchedAt;
+      if (switchedAt != null &&
+          DateTime.now().difference(switchedAt) < _chipSwitchSettle) {
+        return;
+      }
       _chipDismissals++;
       // Keep the exact selection, mute/language/country and visibility storage.
       // Restoring retains the existing paused-player policy.
       toggle();
     } else {
+      if (showVideo) _chipSwitchedAt = DateTime.now();
       select(id);
     }
   }
@@ -167,15 +178,13 @@ class EventVideoSession extends ChangeNotifier {
       // The app/list preloader owns this cache, so opening a board does not
       // start over with an empty video action while an HTTP request completes.
       final source = repository;
-      final cached =
-          source is EventVideoMetadataCache
-              ? source.peek(EventVideoKey(tourId: tourId, roundId: roundId))
-              : null;
+      final cached = source is EventVideoMetadataCache
+          ? source.peek(EventVideoKey(tourId: tourId, roundId: roundId))
+          : null;
       if (cached != null) _applyMetadata(cached, preserveSelection: true);
-      _releaseMetadata =
-          source is EventVideoMetadataCache && tourId.isNotEmpty
-              ? source.retain(EventVideoKey(tourId: tourId, roundId: roundId))
-              : null;
+      _releaseMetadata = source is EventVideoMetadataCache && tourId.isNotEmpty
+          ? source.retain(EventVideoKey(tourId: tourId, roundId: roundId))
+          : null;
       // Resolve the new scope's flags without ever dropping a
       // stream that is already running in this event.
       unawaited(refresh(preserveSelection: true));
@@ -224,13 +233,10 @@ class EventVideoSession extends ChangeNotifier {
     required bool preserveSelection,
   }) {
     _lastMetadata = result;
-    final ranked =
-        result.streams
-            .where((s) => s.supportsPlatform(VideoClientPlatform.mobile))
-            .map(
-              (s) => s.withRanking(_ranking.putIfAbsent(s.identity, () => s)),
-            )
-            .toList();
+    final ranked = result.streams
+        .where((s) => s.supportsPlatform(VideoClientPlatform.mobile))
+        .map((s) => s.withRanking(_ranking.putIfAbsent(s.identity, () => s)))
+        .toList();
     streams = prioritizeVideoCountry(
       ranked,
       _orderingCountry,
