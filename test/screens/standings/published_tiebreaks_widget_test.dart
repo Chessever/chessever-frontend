@@ -79,4 +79,81 @@ void main() {
       expect(opened, isTrue);
     },
   );
+
+  testWidgets(
+    'start number and club lead the published line in Chess-Results order',
+    (tester) async {
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = const Size(320, 1000);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      addTearDown(tester.view.resetPhysicalSize);
+      const values = [
+        PublishedTiebreak(
+          points: 9.5,
+          description: 'Buchholz Cut-1',
+          extendedCode: 'TB1',
+        ),
+      ];
+      const club =
+          'Sahovski klub Petar Sedlar - Pepe, Kastel Novi, Split-Dalmatia County';
+      expect(PublishedPlayerTiebreaks.hasAny(values: const []), isFalse);
+      expect(
+        PublishedPlayerTiebreaks.hasAny(values: const [], club: ' '),
+        isFalse,
+      );
+      expect(
+        PublishedPlayerTiebreaks.hasAny(values: const [], startNumber: 5),
+        isTrue,
+      );
+      await tester.pumpWidget(
+        ProviderScope(
+          child: MaterialApp(
+            home: Builder(
+              builder: (context) {
+                ResponsiveHelper.init(context);
+                return MediaQuery(
+                  data: MediaQuery.of(
+                    context,
+                  ).copyWith(textScaler: const TextScaler.linear(1.8)),
+                  child: Scaffold(
+                    body: SingleChildScrollView(
+                      child: FigmaPlayerCard(
+                        player: const PlayerStandingModel(
+                          countryCode: '',
+                          name: 'Published player',
+                          score: 2100,
+                          scoreChange: 0,
+                          matchScore: '3 / 4',
+                        ),
+                        rank: 2,
+                        showFavoriteButton: false,
+                        onTap: () {},
+                        detailWidget: const PublishedPlayerTiebreaks(
+                          values: values,
+                          startNumber: 12,
+                          club: club,
+                        ),
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final card = tester.getRect(find.byType(FigmaPlayerCard));
+      final sno = tester.getRect(find.text('SNo 12'));
+      final clubRect = tester.getRect(find.text(club));
+      final tb = tester.getRect(find.text('Buchholz Cut-1: 9.5'));
+      for (final r in [sno, clubRect, tb]) {
+        expect(r.left, greaterThanOrEqualTo(card.left));
+        expect(r.right, lessThanOrEqualTo(card.right));
+        expect(r.bottom, lessThanOrEqualTo(card.bottom));
+      }
+      expect(sno.top <= clubRect.top && clubRect.top <= tb.top, isTrue);
+      expect(tester.takeException(), isNull);
+    },
+  );
 }

@@ -24,6 +24,11 @@ class TournamentPlayer {
   final int? rank;
   final List<PublishedTiebreak> tiebreaks;
 
+  /// Chess-Results starting-list number (SNo) and Club/City, published
+  /// beside the official ranking.
+  final int? startNumber;
+  final String? club;
+
   TournamentPlayer({
     this.federation,
     required this.name,
@@ -37,6 +42,8 @@ class TournamentPlayer {
     this.team,
     this.rank,
     this.tiebreaks = const [],
+    this.startNumber,
+    this.club,
   });
 
   /// Creates a TournamentPlayer from JSON map.
@@ -65,6 +72,8 @@ class TournamentPlayer {
       team: _text(json['team']),
       rank: _parseInt(json['rank']),
       tiebreaks: PublishedTiebreak.parse(json['tiebreaks']),
+      startNumber: _parseInt(json['startNumber']),
+      club: _text(json['club']),
     );
   }
 
@@ -111,6 +120,8 @@ class TournamentPlayer {
     if (tiebreaks.isNotEmpty) {
       data['tiebreaks'] = tiebreaks.map((t) => t.toJson()).toList();
     }
+    if (startNumber != null) data['startNumber'] = startNumber;
+    if (club != null) data['club'] = club;
 
     return data;
   }
@@ -208,6 +219,8 @@ class TournamentPlayer {
         other.performance == performance &&
         other.rank == rank &&
         other.team == team &&
+        other.startNumber == startNumber &&
+        other.club == club &&
         PublishedTiebreak.same(other.tiebreaks, tiebreaks);
   }
 
@@ -224,6 +237,8 @@ class TournamentPlayer {
         performance.hashCode ^
         team.hashCode ^
         rank.hashCode ^
+        startNumber.hashCode ^
+        club.hashCode ^
         Object.hashAll(tiebreaks);
   }
 
@@ -241,6 +256,8 @@ class TournamentPlayer {
     String? team,
     int? rank,
     List<PublishedTiebreak>? tiebreaks,
+    int? startNumber,
+    String? club,
   }) {
     return TournamentPlayer(
       federation: federation ?? this.federation,
@@ -255,6 +272,8 @@ class TournamentPlayer {
       team: team ?? this.team,
       rank: rank ?? this.rank,
       tiebreaks: tiebreaks ?? this.tiebreaks,
+      startNumber: startNumber ?? this.startNumber,
+      club: club ?? this.club,
     );
   }
 }
