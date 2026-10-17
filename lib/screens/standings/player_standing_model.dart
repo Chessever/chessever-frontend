@@ -57,7 +57,11 @@ class PlayerStandingModel {
     );
   }
 
-  /// Formats tournament score as "score / games_played" or null if no score
+  /// Formats tournament score as "score / games_played" or null if no score.
+  ///
+  /// A published table can rank a player without a games count (Chess-Results
+  /// rows the broadcast never paired). Show the score alone rather than
+  /// "4.5 / 0".
   static String? _formatTournamentScore(double? score, int played) {
     if (score == null) {
       return played > 0 ? '0.0 / $played' : null;
@@ -67,7 +71,7 @@ class PlayerStandingModel {
     final scoreStr = score % 1 == 0
         ? score.toInt().toString()
         : score.toStringAsFixed(1);
-    return '$scoreStr / $played';
+    return played > 0 ? '$scoreStr / $played' : scoreStr;
   }
 
   // Copy with method to create a new instance with some changes
