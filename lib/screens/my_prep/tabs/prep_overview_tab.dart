@@ -1260,7 +1260,13 @@ class _DetailsPanelState extends State<_DetailsPanel> {
     tilePadding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 2.h),
     childrenPadding: EdgeInsets.fromLTRB(16.w, 4.h, 16.w, 16.h),
     children: [
+      // The tile stores its open flag (a bool) under the panel's key. A
+      // scroll view inside with no key of its own resolves to that same
+      // identifier and reads the bool as its offset: "type 'bool' is not a
+      // subtype of type 'double?'" (CHESSEVER-24D/249). This key gives
+      // everything inside an identifier of its own.
       Column(
+        key: PageStorageKey<String>('${widget.title}/details'),
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: widget.children,
       ),

@@ -56,15 +56,15 @@ class PlayerSelectionScreen extends HookConsumerWidget {
             title: 'Follow 3 players to get started',
             subtitle: 'Pick up to 3 now — add more after signing in.',
             actionLabel: 'Next',
-            onComplete: () => _completeOnboarding(context, ref),
+            onComplete: () => _completeOnboarding(context),
           ),
         ),
       ),
     );
   }
 
-  Future<void> _completeOnboarding(BuildContext context, WidgetRef ref) async {
-    await markOnboardingComplete(context, ref);
+  Future<void> _completeOnboarding(BuildContext context) async {
+    await markOnboardingComplete(context);
   }
 }
 
@@ -382,7 +382,12 @@ class PlayerSelectionContent extends HookConsumerWidget {
   }
 }
 
-Future<void> markOnboardingComplete(BuildContext context, WidgetRef ref) async {
+/// Reads through the [ProviderContainer] rather than a [WidgetRef]: the auth
+/// change behind these awaits can route away and dispose the calling widget,
+/// and a disposed `ref` throws (CHESSEVER-1V1). Inside the try below that
+/// also silently skipped `markCompleted`, so onboarding came back next launch.
+Future<void> markOnboardingComplete(BuildContext context) async {
+  final container = ProviderScope.containerOf(context, listen: false);
   try {
     final user = Supabase.instance.client.auth.currentUser;
     if (user == null) {
@@ -398,7 +403,7 @@ Future<void> markOnboardingComplete(BuildContext context, WidgetRef ref) async {
     await FavoritesMigration.cleanupBadMigrationDataIfNeeded();
 
     try {
-      await ref
+      await container
           .read(pendingFavoriteSelectionsProvider.notifier)
           .flushToSupabase();
       if (kDebugMode) {
@@ -410,8 +415,8 @@ Future<void> markOnboardingComplete(BuildContext context, WidgetRef ref) async {
       }
     }
 
-    await ref.read(onboardingRepositoryProvider).markCompleted(user.id);
-    final favoritePlayers = ref.read(favoritePlayersProviderNew);
+    await container.read(onboardingRepositoryProvider).markCompleted(user.id);
+    final favoritePlayers = container.read(favoritePlayersProviderNew);
     final favoriteCount = favoritePlayers.valueOrNull?.length;
 
     AnalyticsService.instance.trackEventDetached(
@@ -430,7 +435,7 @@ Future<void> markOnboardingComplete(BuildContext context, WidgetRef ref) async {
     }
   }
 
-  ref.invalidate(onboardingSelectedFideIdsProvider);
+  container.invalidate(onboardingSelectedFideIdsProvider);
 
   if (context.mounted) {
     Navigator.pushReplacementNamed(context, '/home_screen');

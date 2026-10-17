@@ -1591,11 +1591,15 @@ class DeepLinkService {
           return;
         }
 
-        // call_to_action and any unknown types — open the app to home
+        // call_to_action and any unknown types — open the app to home.
+        // Home IS the destination of a push that names nothing to open
+        // (dashboard sends arrive as `default`), so this is not a failed
+        // route: breadcrumb only (CHESSEVER-15Z was all this case).
         _navigateToHome(
           navigatorKey,
           reason: 'notification_no_routing_hints',
           extras: {'type': type, 'appReady': wasAppReady},
+          report: false,
         );
         return;
     }

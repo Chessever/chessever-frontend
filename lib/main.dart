@@ -129,11 +129,21 @@ bool _shouldDropSentryEvent(SentryEvent event) {
     'bad_decrypt', // corrupted TLS record on flaky network (CHESSEVER-12B)
     'decryption_failed_or_bad_record_mac', // same TLS record corruption
     'software caused connection abort', // OS killed the socket (CHESSEVER-1NK)
+    // The same dead socket as reported by package:http's ClientException:
+    // iOS closes it while the app is suspended, Android drops it on a
+    // network switch (CHESSEVER-1NK/1VH, CHESSEVER-23A).
+    'clientexception: bad file descriptor',
+    'clientexception: read failed',
     'no internet connection', // NetworkException
     'connection timeout', // DioException slow network (CHESSEVER-12B)
     'receive timeout', // DioException slow network
     'send timeout', // DioException slow network
     'no active stream to cancel', // benign EventChannel cancel race
+    // Sentry Cocoa's native failed-request capture. Our own traffic is Dart
+    // sockets, which it never sees, so every one is a third-party SDK's 5xx:
+    // RevenueCat receipts, Firebase Remote Config, Google consent, OneSignal
+    // (CHESSEVER-XM). Nothing in the app can act on them.
+    'httpclienterror',
     // Self-healing Stockfish engine lifecycle resets: the singleton already
     // retries up to 7x with native quit + back-off and reinitialises on the
     // next request, so these are non-fatal degradations rather than bugs.

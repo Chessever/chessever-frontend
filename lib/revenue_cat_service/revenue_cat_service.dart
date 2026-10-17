@@ -89,6 +89,12 @@ class RevenueCatService {
   bool get isSdkReady => _sdkReady;
   Object? _sdkConfigurationError;
 
+  /// The `getOfferings` call still running natively. A timed-out request is
+  /// not cancelled (Play Billing can take longer than our timeout to bind on
+  /// a cold start), so the next fetch joins it instead of abandoning its
+  /// answer and overlapping it with a second store call.
+  Future<Offerings>? _offeringsInFlight;
+
   void Function(CustomerInfo)? _pendingCustomerInfoListener;
 
   /// Invoked once [markSdkReady] runs. `Purchases.configure` is kicked off
@@ -278,7 +284,9 @@ class RevenueCatService {
 
     for (var attempt = 1; attempt <= attempts; attempt++) {
       try {
-        final offerings = await Purchases.getOfferings().timeout(requestTimeout);
+        final request = _offeringsInFlight ??= Purchases.getOfferings()
+            .whenComplete(() => _offeringsInFlight = null);
+        final offerings = await request.timeout(requestTimeout);
         final current = offerings.current;
         if (current != null && current.availablePackages.isNotEmpty) {
           debugPrint('📦 Current offering: ${current.identifier}');
@@ -337,20 +345,41 @@ class RevenueCatService {
     // paywall that never loads, and it was previously invisible in production.
     if (lastError != null) {
       final code = _storeErrorCode(lastError);
-      unawaited(
-        Sentry.captureException(
-          lastError,
-          stackTrace: lastStackTrace,
-          withScope: (scope) {
-            scope.setTag('rc_offerings_error', code);
-            scope.setTag('rc_sdk_ready', '$_sdkReady');
-          },
-        ),
-      );
+      if (_deviceSideOfferingsErrors.contains(code)) {
+        Sentry.addBreadcrumb(
+          Breadcrumb(
+            category: 'revenuecat',
+            message: 'offerings unavailable: $code',
+            level: SentryLevel.warning,
+          ),
+        );
+      } else {
+        unawaited(
+          Sentry.captureException(
+            lastError,
+            stackTrace: lastStackTrace,
+            withScope: (scope) {
+              scope.setTag('rc_offerings_error', code);
+              scope.setTag('rc_sdk_ready', '$_sdkReady');
+            },
+          ),
+        );
+      }
       return OfferingsFetch.failure('$code: $lastError');
     }
     return const OfferingsFetch.failure(null);
   }
+
+  /// Offerings failures that describe the device or account rather than a
+  /// fault we can fix, so they stay breadcrumbs instead of Sentry issues:
+  /// Play Billing refusing this user (`PurchaseNotAllowedError`: restricted
+  /// or missing Play account, CHESSEVER-1W6/1W7), and the store not answering
+  /// within the timeout on a cold start (CHESSEVER-1W8/1WG), which the
+  /// in-flight join above and the paywall's own retry already absorb.
+  static const Set<String> _deviceSideOfferingsErrors = {
+    'PurchaseNotAllowedError',
+    'TimeoutException',
+  };
 
   /// Best-effort extraction of the underlying store/SDK error code.
   ///

@@ -1692,7 +1692,11 @@ class StockfishSingleton {
 
     // Acquire initialization lock
     _isInitializing = true;
-    _initCompleter = Completer<void>();
+    // Failed, disposed and force-recovered inits complete this with an error
+    // that only a concurrent caller is waiting for. With none waiting, that
+    // error went to the zone as unhandled (CHESSEVER-1R1 "Stockfish
+    // disposed"); waiters still see it through their own listener.
+    _initCompleter = Completer<void>()..future.ignore();
 
     // Acquire global instance lock for thread-safety
     final releaseLock = await _acquireInstanceLock();

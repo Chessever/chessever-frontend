@@ -8914,6 +8914,9 @@ class _BoardWithSidebarState extends ConsumerState<_BoardWithSidebar> {
     _touches.remove(pointer);
     _pinchDistance = null;
     _pinchBoardWidth = null;
+    // A cancel can arrive after the page is disposed mid-touch (swiped away
+    // or popped): `context` would throw there (CHESSEVER-246).
+    if (!mounted) return;
     // The pinch is over once the last finger lifts: keep the size for the
     // next game and the next visit.
     final width = _BoardZoomScope.of(context).value ?? _boardWidth;
