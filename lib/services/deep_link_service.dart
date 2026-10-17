@@ -32,7 +32,7 @@ import 'package:chessever2/screens/my_prep/models/prep_models.dart'
 import 'package:chessever2/screens/my_prep/my_prep_home_screen.dart'
     show MyPrepHomeScreen;
 import 'package:chessever2/screens/my_prep/prep_profile_screen.dart'
-    show PrepProfileScreen;
+    show PrepProfileScreen, prepProfileGamesTab;
 import 'package:chessever2/screens/my_prep/providers/prep_providers.dart'
     show prepProfilesProvider;
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
@@ -162,6 +162,18 @@ List<GamesTourModel> _buildSortedRoundGameModels(List<Games> roundGames) {
 /// Handles URLs like: `https://chessever.com/games/{id}`
 /// Handles URLs like: `https://chessever.com/databases/{id}`
 /// Handles notification data routing for games, events, rounds, and databases.
+/// Where a Prep "new games" push lands: the starred player's profile on its
+/// Games tab, or My Prep when this device no longer has or stars it.
+@visibleForTesting
+Widget prepPushDestination(PrepProfile? profile, {int? newGames}) =>
+    profile == null
+    ? const MyPrepHomeScreen()
+    : PrepProfileScreen(
+        profileId: profile.id,
+        newGames: newGames,
+        initialTab: prepProfileGamesTab,
+      );
+
 class DeepLinkService {
   static final DeepLinkService instance = DeepLinkService._();
   DeepLinkService._();
@@ -976,9 +988,7 @@ class DeepLinkService {
       navigator.pushNamedAndRemoveUntil('/home_screen', (route) => false);
       navigator.push(
         MaterialPageRoute<void>(
-          builder: (_) => profile == null
-              ? const MyPrepHomeScreen()
-              : PrepProfileScreen(profileId: profile.id, newGames: newGames),
+          builder: (_) => prepPushDestination(profile, newGames: newGames),
         ),
       );
     } finally {

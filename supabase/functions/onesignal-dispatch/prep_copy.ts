@@ -1,16 +1,17 @@
 /**
  * The words of a starred Prep player's "playing now" push.
  *
- * It names the player as the profile is called (with their title) and the
- * accounts the new games came from, and says when, in the reader's day. The
- * count is deliberately left out: the push says that the player played, the
- * reader taps to see what (the app shows the number on the profile the push
- * opens, data `added`). The second push of a day says they kept playing.
+ * It names the player as the profile is called (with their title), how many
+ * new games they played, the accounts the games came from, and when, in the
+ * reader's day. The second push of a day says they kept playing and how many
+ * more. Tapping opens the player's Games tab.
  */
 export type PrepGamesCopy = { title: string; body: string };
 
 export type PrepGamesPush = {
   profileName: string;
+  /** New games since the reader's last Prep push today. */
+  games: number;
   /** "GM", "IM", ... or null. */
   profileTitle: string | null;
   /** The accounts the new games came from, busiest first. */
@@ -55,16 +56,19 @@ export function prepGamesAddedCopy(push: PrepGamesPush): PrepGamesCopy {
     ? ` ${push.otherPlayers} more of your players played too.`
     : "";
 
+  const n = Math.max(1, push.games);
+  const games = n === 1 ? "1 game" : `${n} games`;
+
   if (push.slot >= 2) {
     return {
-      title: `${who} is still playing`,
+      title: `${who} is still playing: ${n} more ${n === 1 ? "game" : "games"}`,
       body: `${
         from ? `More new games from ${from}.` : "More new games."
       }${others} Tap to see.`,
     };
   }
   return {
-    title: `${who} played ${partOfDay(push.localHour)}`,
+    title: `${who} played ${games} ${partOfDay(push.localHour)}`,
     body: `${
       from ? `New games from ${from}.` : "New games are in."
     }${others} Tap to see.`,
@@ -92,6 +96,7 @@ export function prepGamesPushFromPayload(
     : [];
   return {
     profileName: typeof p.profile_name === "string" ? p.profile_name : "",
+    games: Math.max(1, toInt(p.added, 1)),
     profileTitle: typeof p.profile_title === "string" ? p.profile_title : null,
     accounts,
     slot: Math.max(1, toInt(p.slot, 1)),

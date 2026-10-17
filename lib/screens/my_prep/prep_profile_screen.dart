@@ -35,20 +35,28 @@ import 'package:motor/motor.dart';
 
 /// One prepared person: About and Games over every source together or one
 /// source alone, and the source trees.
+/// Index of Games among a Prep profile's tabs (About, Games, Build Tree).
+const prepProfileGamesTab = 1;
+
 class PrepProfileScreen extends ConsumerStatefulWidget {
   const PrepProfileScreen({
     super.key,
     required this.profileId,
     this.accountKey,
     this.newGames,
+    this.initialTab = 0,
   });
 
   final String profileId;
 
-  /// Set when the daily "new games" push opened the profile: how many games
-  /// the player has played since the check before. The push leaves the
-  /// number out; the profile says it.
+  /// Set when a "new games" push opened the profile: how many new games the
+  /// push announced. The profile fetches them and says so.
   final int? newGames;
+
+  /// The tab it opens on: About, or Games ([prepProfileGamesTab]) for a
+  /// "new games" push. A tab that needs Premium or an ad asks first, as its
+  /// tab does, and stays on About if the reader declines.
+  final int initialTab;
 
   /// The source to open on alone. Without one, and for a profile with a
   /// single source, the profile opens on every source together.
@@ -79,7 +87,7 @@ class _PrepProfileScreenState extends ConsumerState<PrepProfileScreen> {
   static const _tabFeatures = [null, 'prep_games', 'build_tree'];
   static const _kStatistics = 'prep_statistics';
   int _tab = 0;
-  late final PageController _pages = PageController();
+  late final PageController _pages = PageController(initialPage: _tab);
   final _gamesController = PrepGamesController();
   PrepFilter _filter = const PrepFilter();
   bool _checkedFreshness = false;
@@ -207,6 +215,21 @@ class _PrepProfileScreenState extends ConsumerState<PrepProfileScreen> {
             ? null
             : PrepRepository.gamesFileName(account),
       );
+
+  @override
+  void initState() {
+    super.initState();
+    final wanted = widget.initialTab.clamp(0, _tabs.length - 1);
+    if (wanted == 0) return;
+    if (_tabFeatures[wanted] == null || hasPrepAccess(ref)) {
+      _tab = wanted;
+      return;
+    }
+    // Without access, opening on a gated tab asks the way its tab does.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) unawaited(_select(wanted));
+    });
+  }
 
   Future<void> _select(int index) async {
     if (index == _tab) return;

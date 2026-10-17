@@ -1752,6 +1752,91 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  group('a "new games" push opens the profile on Games', () {
+    const account = PrepAccount(
+      source: PrepSource.lichess,
+      username: 'durarbayli',
+    );
+    const profile = PrepProfile(
+      id: 'p',
+      kind: PrepKind.opponent,
+      name: 'Vasif Durarbayli',
+      createdAtMs: 1,
+      accounts: [account],
+    );
+    final games = [
+      for (var i = 0; i < 2; i++)
+        PrepGame(
+          index: i,
+          source: account.source,
+          sourcePath: PrepRepository.gamesFileName(account),
+          white: 'durarbayli',
+          black: 'Opponent $i',
+          result: '1-0',
+          plies: 4,
+          speed: PrepTimeControl.blitz,
+          playerIsWhite: true,
+        ),
+    ];
+    final overrides = [
+      prepProfileProvider.overrideWith((ref, id) => profile),
+      prepAnalysisProvider.overrideWith(
+        (ref, id) async => PrepAnalysis(profileId: id, games: games),
+      ),
+    ];
+
+    testWidgets('a Premium reader lands on Games at once', (tester) async {
+      await pump(
+        tester,
+        const PrepProfileScreen(
+          profileId: 'p',
+          initialTab: prepProfileGamesTab,
+        ),
+        premium: true,
+        overrides: overrides,
+      );
+      await tester.pumpAndSettle();
+      expect(find.byType(PrepGamesTab), findsOneWidget);
+      expect(asked, isEmpty);
+      expect(tester.takeException(), isNull);
+    });
+
+    for (final granted in [false, true]) {
+      testWidgets('a free reader is asked first, as the tab asks '
+          '(${granted ? 'granted' : 'declined'})', (tester) async {
+        grant = granted;
+        await pump(
+          tester,
+          const PrepProfileScreen(
+            profileId: 'p',
+            initialTab: prepProfileGamesTab,
+          ),
+          overrides: overrides,
+        );
+        await tester.pumpAndSettle();
+        expect(asked, [('prep_games', true)]);
+        expect(find.byType(PrepGamesTab), granted ? findsOneWidget : findsNothing);
+        expect(
+          find.text('Games analyzed'),
+          granted ? findsNothing : findsOneWidget,
+        );
+        expect(tester.takeException(), isNull);
+      });
+    }
+
+    testWidgets('opened any other way it starts on About', (tester) async {
+      await pump(
+        tester,
+        const PrepProfileScreen(profileId: 'p'),
+        premium: true,
+        overrides: overrides,
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('Games analyzed'), findsOneWidget);
+      expect(find.byType(PrepGamesTab), findsNothing);
+    });
+  });
+
   testWidgets('a free reader is asked before a Prep database in the Library '
       'lists its games', (tester) async {
     const account = PrepAccount(
