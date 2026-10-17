@@ -252,6 +252,10 @@ void main() {
         'eco_code': 'null',
         'label': 'GM',
         'game_id': 'top-game',
+        // Added by the notification service on the way to the phone.
+        'url': '',
+        'delivery_id': '5b1c9f0e-0d1a-4c7e-9a52-0f3c6d2e8a11',
+        'campaign_id': '856a94b6-a8e3-4529-9abb-b344b431c8bd',
       });
 
       final screen = openedScreen(tester);
