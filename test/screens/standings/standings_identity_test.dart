@@ -68,7 +68,8 @@ void main() {
         useExternalOrder: true,
       );
       final published = rows.singleWhere((p) => p.fideId == 101);
-      expect(published.matchScore, '0 / 0');
+      // No published games count: the score shows alone, uninflated by the win.
+      expect(published.matchScore, '0');
       expect(published.overallRank, 2);
     },
   );
