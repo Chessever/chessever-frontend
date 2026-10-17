@@ -480,7 +480,9 @@ class _CenterContent extends ConsumerWidget {
 
     // If game is not ongoing, show result text unless this event is spoiler-free.
     if (effectiveStatus != GameStatus.ongoing) {
-      if (hideSpoilers && matchWithComparison.game.gameStatus.isFinished) {
+      // The effective status, as printed below: a game that has just lost on
+      // the clock is finished here before the database says so.
+      if (hideSpoilers && effectiveStatus.isFinished) {
         return const SizedBox.shrink();
       }
       return Center(

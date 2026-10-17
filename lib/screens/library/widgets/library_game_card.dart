@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:chessever2/providers/engine_settings_provider.dart';
 import 'package:chessever2/screens/chessboard/models/like_tag.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/event_no_spoilers_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/chess_progress_bar.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/app_typography.dart';
@@ -782,8 +783,24 @@ class _ResultOrEvalBar extends StatelessWidget {
     // Use effectiveGameStatus to handle DB update lag
     final effectiveStatus = game.effectiveGameStatus;
 
+    // Favorites and Countrymen list broadcast games through this card, so it
+    // honours the event's No Spoilers the way the event's own game cards do
+    // (game_card.dart). Only broadcast games carry the tour id the setting is
+    // stored under, and a game stays hidden while that value is still being
+    // read, so a result never flashes in first.
+    final hideSpoilers =
+        game.source == GameSource.supabase &&
+        ref.watch(
+          eventNoSpoilersProvider(
+            game.tourId,
+          ).select((state) => state.isLoading || state.enabled),
+        );
+
     // If game is not ongoing, show result score
     if (effectiveStatus != GameStatus.ongoing) {
+      if (hideSpoilers && effectiveStatus.isFinished) {
+        return const SizedBox.shrink();
+      }
       return _GameResultScore(status: effectiveStatus);
     }
 
@@ -794,8 +811,9 @@ class _ResultOrEvalBar extends StatelessWidget {
       ),
     );
 
-    // If engine gauge is disabled, show "LIVE" indicator
-    if (!showEngineGauge) {
+    // If engine gauge is disabled, show "LIVE" indicator. No Spoilers hides
+    // the evaluation of a game under way too; LIVE still says it is on.
+    if (!showEngineGauge || (hideSpoilers && game.hasStarted)) {
       return Text(
         'LIVE',
         style: AppTypography.textSmMedium.copyWith(
