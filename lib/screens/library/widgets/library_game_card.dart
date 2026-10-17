@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:chessever2/providers/engine_settings_provider.dart';
 import 'package:chessever2/screens/chessboard/models/like_tag.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/event_no_spoilers_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/chess_progress_bar.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/app_typography.dart';
@@ -782,8 +783,23 @@ class _ResultOrEvalBar extends StatelessWidget {
     // Use effectiveGameStatus to handle DB update lag
     final effectiveStatus = game.effectiveGameStatus;
 
-    // If game is not ongoing, show result score
+    // Favorites and Countrymen list broadcast games through this card, so it
+    // honours the event's No Spoilers like GameCard does. Only broadcast games
+    // consult it: archive sources put an event *name* in tourId.
+    final hideSpoilers =
+        game.source == GameSource.supabase &&
+        ref.watch(
+          eventNoSpoilersProvider(
+            game.tourId,
+          ).select((state) => state.isLoading || state.enabled),
+        );
+
+    // If game is not ongoing, show result score unless the event is
+    // spoiler-free.
     if (effectiveStatus != GameStatus.ongoing) {
+      if (hideSpoilers && effectiveStatus.isFinished) {
+        return const SizedBox.shrink();
+      }
       return _GameResultScore(status: effectiveStatus);
     }
 
@@ -794,8 +810,9 @@ class _ResultOrEvalBar extends StatelessWidget {
       ),
     );
 
-    // If engine gauge is disabled, show "LIVE" indicator
-    if (!showEngineGauge) {
+    // No Spoilers also hides the live evaluation; "LIVE" still says the game
+    // is in progress. Same marker when the engine gauge is turned off.
+    if (hideSpoilers || !showEngineGauge) {
       return Text(
         'LIVE',
         style: AppTypography.textSmMedium.copyWith(
