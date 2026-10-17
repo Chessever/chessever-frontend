@@ -134,6 +134,48 @@ void main() {
     );
   });
 
+  testWidgets("an event round opened on its third board: Watch plays that "
+      'board, not the first', (tester) async {
+    final raws = [
+      for (var i = 1; i <= 3; i++)
+        _raw(
+          id: 'r$i',
+          pgn: i == 3 ? finished : live,
+          status: i == 3 ? '1-0' : '*',
+        ),
+    ];
+    await _watch(
+      tester,
+      games: raws.map(GamesTourModel.fromGame).toList(),
+      index: 2,
+      raws: raws,
+      want: const _Expect(plies: 7, like: true, save: true),
+    );
+  });
+
+  testWidgets('a database swiped through, opened on its second game', (
+    tester,
+  ) async {
+    final games = [
+      for (var i = 1; i <= 3; i++)
+        _model(
+          'saved_analysis_db$i',
+          source: GameSource.savedAnalysis,
+          pgn: i == 2 ? live : finished,
+          sourceGameId: 'src$i',
+        ),
+    ];
+    await _watch(
+      tester,
+      games: games,
+      index: 1,
+      savedByIndex: [
+        for (final g in games) _saved(g, g.pgn!, folderId: 'own-folder'),
+      ],
+      want: const _Expect(plies: 5, like: false, save: true, result: false),
+    );
+  });
+
   for (final source in [GameSource.gamebase, GameSource.twic]) {
     testWidgets('an archive game (${source.name}): Database, profiles, '
         'miniatures', (tester) async {
@@ -264,7 +306,10 @@ class _Expect {
 /// back.
 Future<void> _watch(
   WidgetTester tester, {
-  required GamesTourModel game,
+  GamesTourModel? game,
+  List<GamesTourModel>? games,
+  int index = 0,
+  List<SavedAnalysisData>? savedByIndex,
   required _Expect want,
   List<Games> raws = const [],
   SavedAnalysisData? saved,
@@ -273,6 +318,8 @@ Future<void> _watch(
   bool noSpoilers = false,
   bool tablet = false,
 }) async {
+  final pages = games ?? [game!];
+  final current = pages[index];
   final defaultOnError = FlutterError.onError;
   // The explorer cards overflow under the test font; that layout noise is not
   // what this test covers.
@@ -348,10 +395,11 @@ Future<void> _watch(
           builder: (context) {
             ResponsiveHelper.init(context);
             return ChessBoardScreenNew(
-              currentIndex: 0,
-              games: [game],
+              currentIndex: index,
+              games: pages,
               viewSource: ChessboardView.tour,
               savedAnalysisData: saved,
+              savedAnalysesDataByIndex: savedByIndex,
               allowGameExport: allowGameExport,
               hideEventInfo: hideEventInfo,
             );
@@ -384,7 +432,7 @@ Future<void> _watch(
   // Feed, on this game, with Feed's own posts after it.
   expect(find.byType(FeedScreen), findsOneWidget);
   final lead = find.byKey(
-    ValueKey('watch:game:${game.gameId}'),
+    ValueKey('watch:game:${current.gameId}'),
     skipOffstage: false,
   );
   expect(lead, findsOneWidget);
