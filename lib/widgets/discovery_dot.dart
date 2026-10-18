@@ -31,8 +31,8 @@ enum DiscoveryDotMessage {
 /// shape either way, so a dot arriving or leaving never remounts the child.
 ///
 /// Reaching the surface retires the dot. That is a tap on it, or, for a
-/// surface that can also be reached by swiping (a tab), [selected] turning
-/// true.
+/// selectable surface (a tab), being the selected one while on screen,
+/// however it got selected.
 class DiscoveryDotAnchor extends ConsumerStatefulWidget {
   const DiscoveryDotAnchor({
     super.key,
@@ -67,16 +67,18 @@ class _DiscoveryDotAnchorState extends ConsumerState<DiscoveryDotAnchor> {
   Offset? _down;
   OverlayEntry? _bubble;
   Timer? _bubbleLife;
+  bool _selectedAckPending = false;
 
-  @override
-  void didUpdateWidget(DiscoveryDotAnchor oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    // Arrived by swipe: the tab was never tapped, but it has been reached.
-    if (widget.selected == true && oldWidget.selected == false) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) _acknowledge();
-      });
-    }
+  /// The user is standing on this selected surface: it was swiped to, the
+  /// page opened on it, or the dot was published while it was already
+  /// current. None of those is a tap, but each one has reached it.
+  void _acknowledgeSelected() {
+    if (_selectedAckPending) return;
+    _selectedAckPending = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _selectedAckPending = false;
+      if (mounted && widget.selected == true) _acknowledge();
+    });
   }
 
   @override
@@ -167,6 +169,13 @@ class _DiscoveryDotAnchorState extends ConsumerState<DiscoveryDotAnchor> {
             }),
           )
         : null;
+    // Offstage surfaces (under a pushed route, a hidden stack child) run with
+    // tickers off and have not been reached, even if they are still selected.
+    if (lit &&
+        widget.selected == true &&
+        TickerMode.valuesOf(context).enabled) {
+      _acknowledgeSelected();
+    }
 
     // A raw Listener sits outside the gesture arena, so the surface's own tap,
     // long-press and drag recognizers are untouched.

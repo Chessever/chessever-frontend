@@ -151,6 +151,30 @@ void main() {
       expect(litDiscoveryAnchors([dot], result.seen), {'home.tab.discovery'});
     });
 
+    test('standing on a hop retires every hop before it', () {
+      // The published Prep nudge: Home (bottom bar) → My Space → My Prep → tab.
+      final prep = parseDiscoveryDots(
+        _config([
+          {
+            'id': 'prep',
+            'rev': 1,
+            'target': 'prep.tab.games',
+            'trail': [
+              'home.nav.home',
+              'home.tab.my_space',
+              'my_space.tile.my_prep',
+            ],
+          },
+        ]),
+      ).single;
+      final result = acknowledgeDiscoveryAnchor(
+        [prep],
+        'my_space.tile.my_prep',
+        {},
+      );
+      expect(litDiscoveryAnchors([prep], result.seen), {'prep.tab.games'});
+    });
+
     test('reaching the target retires the trail and returns the message', () {
       final result = acknowledgeDiscoveryAnchor(
         [dot],
@@ -211,6 +235,7 @@ void main() {
       List<Map<String, Object?>> dots = const [_feed],
       Map<String, int>? seen,
       EditorialLinkOpener? openLink,
+      bool onScreen = true,
     }) async {
       final source = _FakeSource(_config(dots));
       final store = _MemoryStore(seen);
@@ -228,13 +253,16 @@ void main() {
                 ResponsiveHelper.init(context);
                 return Scaffold(
                   body: Center(
-                    child: SizedBox(
-                      width: 360,
-                      child: SegmentedSwitcher(
-                        dotScope: 'home.tab',
-                        options: const ['My Space', 'Today', 'Discovery'],
-                        initialSelection: 1,
-                        onSelectionChanged: (_) {},
+                    child: TickerMode(
+                      enabled: onScreen,
+                      child: SizedBox(
+                        width: 360,
+                        child: SegmentedSwitcher(
+                          dotScope: 'home.tab',
+                          options: const ['My Space', 'Today', 'Discovery'],
+                          initialSelection: 1,
+                          onSelectionChanged: (_) {},
+                        ),
                       ),
                     ),
                   ),
@@ -385,6 +413,43 @@ void main() {
         expect(tester.takeException(), isNull);
       },
     );
+
+    testWidgets('a tab the page opened on is reached without a tap', (
+      tester,
+    ) async {
+      final (_, store) = await pumpTabs(
+        tester,
+        dots: const [
+          {
+            'id': 'today',
+            'rev': 1,
+            'target': 'home.tab.today',
+            'trail': ['home.nav.home'],
+            'message': 'Fresh games every morning.',
+          },
+        ],
+      );
+      await tester.pump();
+      expect(dotIn('Today'), findsNothing);
+      expect(store.seen['today'], 1);
+      expect(find.text('Fresh games every morning.'), findsOneWidget);
+      await tester.pump(const Duration(seconds: 7));
+    });
+
+    testWidgets('a selected tab behind another page is not reached', (
+      tester,
+    ) async {
+      final (_, store) = await pumpTabs(
+        tester,
+        onScreen: false,
+        dots: const [
+          {'id': 'today', 'rev': 1, 'target': 'home.tab.today'},
+        ],
+      );
+      await tester.pump();
+      expect(dotIn('Today'), findsOneWidget);
+      expect(store.seen, isEmpty);
+    });
 
     testWidgets('tapping the tab retires the dot and shows its message', (
       tester,
