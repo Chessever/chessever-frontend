@@ -57,24 +57,43 @@ class TeamStandingModel {
   /// (Chess-Results TB1/TB2, Info64 MP/GP) when they repeat the [matchPoints]
   /// and [gamePoints] the row already shows. Derived tiebreaks such as BH:MP
   /// or EMMSB stay.
-  List<PublishedTiebreak> get extraTiebreaks => [
-    for (final tiebreak in tiebreaks)
-      if (!_repeatsShownPoints(tiebreak)) tiebreak,
-  ];
+  ///
+  /// Like the hub's parser, only the first Chess-Results column described as
+  /// match points (or game points) is the one shown on the card. A later
+  /// "Matchpoints (variabel)" column next to a "Matchpoints (2 for wins, …)"
+  /// TB1 is a different number, so it stays on every row, including a row
+  /// where it happens to equal the match points (0 and 0).
+  List<PublishedTiebreak> get extraTiebreaks {
+    final matchColumn = tiebreaks.indexWhere(
+      (t) => _publishedMatchPoints.hasMatch(t.description),
+    );
+    final gameColumn = tiebreaks.indexWhere(
+      (t) => t.description == 'points (game-points)',
+    );
+    return [
+      for (var i = 0; i < tiebreaks.length; i++)
+        if (!_repeatsShownPoints(
+          tiebreaks[i],
+          isMatchColumn: i == matchColumn,
+          isGameColumn: i == gameColumn,
+        ))
+          tiebreaks[i],
+    ];
+  }
 
-  bool _repeatsShownPoints(PublishedTiebreak tiebreak) {
+  bool _repeatsShownPoints(
+    PublishedTiebreak tiebreak, {
+    required bool isMatchColumn,
+    required bool isGameColumn,
+  }) {
     final description = tiebreak.description;
     final code = tiebreak.extendedCode;
     if (tiebreak.points == matchPoints &&
-        (description == 'MP' ||
-            code == 'MP' ||
-            _publishedMatchPoints.hasMatch(description))) {
+        (description == 'MP' || code == 'MP' || isMatchColumn)) {
       return true;
     }
     return tiebreak.points == gamePoints &&
-        (description == 'GP' ||
-            code == 'GP' ||
-            description == 'points (game-points)');
+        (description == 'GP' || code == 'GP' || isGameColumn);
   }
 
   // "Matchpoints (2 for wins, …)" or the organizer's own scale,
