@@ -197,7 +197,8 @@ String discoveryDotHopKey(DiscoveryDot dot, String anchor) =>
 /// already acknowledged ([seen] maps a key to the revision it was seen at).
 ///
 /// Reaching the target retires the whole dot, trail included. Passing a hop
-/// retires only that hop, so the next surface on the way stays lit.
+/// retires that hop and every hop before it (see [acknowledgeDiscoveryAnchor]),
+/// so the next surface on the way stays lit.
 bool discoveryDotShowsAt(
   DiscoveryDot dot,
   String anchor,
@@ -239,7 +240,12 @@ acknowledgeDiscoveryAnchor(
       next[dot.id] = dot.rev;
       messages.addAll(dot.tooltipMessages);
     } else {
-      next[discoveryDotHopKey(dot, anchor)] = dot.rev;
+      // Standing on a hop means the user is past every hop before it, however
+      // they got here: the bottom bar's Home never needs its own tap once the
+      // My Space tile has been reached.
+      for (final hop in dot.trail.take(dot.trail.indexOf(anchor) + 1)) {
+        next[discoveryDotHopKey(dot, hop)] = dot.rev;
+      }
     }
   }
   return (
