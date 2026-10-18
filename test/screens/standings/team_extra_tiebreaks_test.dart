@@ -81,4 +81,31 @@ void main() {
     );
     expect(_team(const [mp, gp]).extraTiebreaks, [mp, gp]);
   });
+
+  test('a variable match-point column that repeats the row is hidden', () {
+    // Andalucía rapid teams: "Tie Break1: Matchpoints (variabel)" (3/1/0).
+    const mp = PublishedTiebreak(
+      points: 21,
+      description: 'Matchpoints (variabel)',
+      extendedCode: 'TB1',
+    );
+    const bh = PublishedTiebreak(
+      points: 116.5,
+      description: 'Buchholz Tie-Breaks (variabel with parameter)',
+      extendedCode: 'TB3',
+    );
+    final team = TeamStandingModel(
+      teamName: 'Prodomasa Coin',
+      rank: 1,
+      tiebreaks: const [mp, bh],
+      matchPoints: 21,
+      gamePoints: 24,
+      matchesWon: 7,
+      matchesDrawn: 0,
+      matchesLost: 0,
+      boardsPlayed: 0,
+      players: const [],
+    );
+    expect(team.extraTiebreaks, [bh]);
+  });
 }

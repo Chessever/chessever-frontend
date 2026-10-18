@@ -77,7 +77,11 @@ class TeamStandingModel {
             description == 'points (game-points)');
   }
 
-  static final _publishedMatchPoints = RegExp(r'^Matchpoints \(\d+ for wins');
+  // "Matchpoints (2 for wins, …)" or the organizer's own scale,
+  // "Matchpoints (variabel)".
+  static final _publishedMatchPoints = RegExp(
+    r'^Matchpoints \((\d+ for wins|variabel\))',
+  );
 
   /// "W · D · L" record over completed matches.
   String get recordLabel => '$matchesWon · $matchesDrawn · $matchesLost';
