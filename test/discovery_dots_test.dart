@@ -175,6 +175,28 @@ void main() {
       expect(litDiscoveryAnchors([prep], result.seen), {'prep.tab.games'});
     });
 
+    test('the live Prep nudge clears the bottom bar once Prep is tapped', () {
+      // Remote Config discovery_dots v12, verbatim.
+      const live =
+          '{"dots":[{"id":"prep","rev":1792285788580,'
+          '"target":"my_space.tile.my_prep",'
+          '"trail":["home.nav.home","home.tab.my_space"],'
+          '"message":"","label":"","messages":[],"enabled":true,'
+          '"name":"Prep"}]}';
+      final dots = parseDiscoveryDots(live);
+      expect(litDiscoveryAnchors(dots, const {}), {
+        'home.nav.home',
+        'home.tab.my_space',
+        'my_space.tile.my_prep',
+      });
+      final result = acknowledgeDiscoveryAnchor(
+        dots,
+        'my_space.tile.my_prep',
+        const {},
+      );
+      expect(litDiscoveryAnchors(dots, result.seen), isEmpty);
+    });
+
     test('reaching the target retires the trail and returns the message', () {
       final result = acknowledgeDiscoveryAnchor(
         [dot],
