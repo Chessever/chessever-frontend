@@ -28,7 +28,7 @@ final subscriptionProvider =
     });
 
 class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
-  final _revenueCat = RevenueCatService();
+  final RevenueCatService _revenueCat;
   Timer? _periodicSyncTimer;
   Timer? _expirationTimer;
 
@@ -48,7 +48,8 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
   /// purchase sync, manual restore, etc.) and don't double-attribute.
   static const _redemptionWindow = Duration(minutes: 30);
 
-  final _offlineCache = const OfflinePremiumCache();
+  final OfflinePremiumCache _offlineCache;
+  final String? Function() _currentUserId;
 
   /// The user whose Premium currently stands on [OfflinePremiumCache] alone,
   /// because neither RevenueCat nor the `entitlement` function could answer.
@@ -70,7 +71,15 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
     debugPrint('🎟️ Redemption pending: $source');
   }
 
-  SubscriptionNotifier() : super(SubscriptionState()) {
+  /// The parameters exist for tests; the app builds it with none.
+  SubscriptionNotifier({
+    RevenueCatService? revenueCat,
+    OfflinePremiumCache? offlineCache,
+    String? Function()? currentUserId,
+  }) : _revenueCat = revenueCat ?? RevenueCatService(),
+       _offlineCache = offlineCache ?? const OfflinePremiumCache(),
+       _currentUserId = currentUserId ?? _supabaseUserId,
+       super(SubscriptionState()) {
     _revenueCat.setCustomerInfoListener((customerInfo) {
       _updateStateFromCustomerInfo(customerInfo);
     });
@@ -93,7 +102,7 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
     _grantOffline(offline.userId, offline.snapshot);
   }
 
-  String? _currentUserId() {
+  static String? _supabaseUserId() {
     try {
       return Supabase.instance.client.auth.currentUser?.id;
     } catch (_) {

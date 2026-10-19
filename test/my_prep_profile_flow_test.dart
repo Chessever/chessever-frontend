@@ -4,6 +4,8 @@ import 'dart:io';
 
 import 'package:chessever2/providers/favorite_players_provider.dart';
 import 'package:chessever2/repository/favorites/models/favorite_player.dart';
+import 'package:chessever2/revenue_cat_service/offline_premium_cache.dart';
+import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
 import 'package:chessever2/repository/gamebase/gamebase_repository.dart';
 import 'package:chessever2/repository/supabase/chess_player/chess_player_repository.dart';
 import 'package:chessever2/screens/favorites/rankings/ranking_filters.dart';
@@ -57,6 +59,7 @@ import 'package:smooth_sheets/smooth_sheets.dart';
 import 'package:dio/dio.dart';
 
 import 'my_prep_sources_test.dart' show databasePlayer, sourceGame;
+import 'support/offline_premium_fakes.dart';
 
 class _PickerRepository extends PrepRepository {
   _PickerRepository()
@@ -435,15 +438,21 @@ void main() {
     List<Override> overrides = const [],
     GlobalKey<NavigatorState>? navigatorKey,
     RouteFactory? onGenerateRoute,
+    SubscriptionNotifier Function()? subscription,
   }) async {
     await tester.binding.setSurfaceSize(const Size(320, 640));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     final container = ProviderContainer(
       overrides: [
         prepRepositoryProvider.overrideWithValue(repo),
-        premiumAccessProvider.overrideWithValue(premium),
-        // A Premium fixture is a subscriber: no limit applies either.
-        prepUnlimitedProvider.overrideWithValue(premium),
+        // A real subscription state decides Premium and the limits itself.
+        if (subscription != null)
+          subscriptionProvider.overrideWith((ref) => subscription())
+        else ...[
+          premiumAccessProvider.overrideWithValue(premium),
+          // A Premium fixture is a subscriber: no limit applies either.
+          prepUnlimitedProvider.overrideWithValue(premium),
+        ],
         prepPremiumPromptProvider.overrideWithValue((
           _,
           feature, {
@@ -1827,6 +1836,77 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byType(PrepGamesTab), findsOneWidget);
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('a subscriber without a connection opens statistics, Games and '
+      'Build Tree with no ad prompt', (tester) async {
+    const account = PrepAccount(
+      source: PrepSource.lichess,
+      username: 'ClubPlayer',
+    );
+    const profile = PrepProfile(
+      id: 'p',
+      kind: PrepKind.opponent,
+      name: 'Club Player',
+      createdAtMs: 1,
+      accounts: [account],
+    );
+    final games = [
+      for (var i = 0; i < 3; i++)
+        PrepGame(
+          index: i,
+          source: account.source,
+          sourcePath: PrepRepository.gamesFileName(account),
+          white: 'ClubPlayer',
+          black: 'Opponent $i',
+          result: i == 0 ? '0-1' : '1-0',
+          plies: 4,
+          speed: PrepTimeControl.rapid,
+          playerIsWhite: true,
+        ),
+    ];
+    final now = DateTime.now();
+    // Neither RevenueCat nor the entitlement function answers; only the
+    // Premium this device confirmed while it was last online remains.
+    final container = await pump(
+      tester,
+      const PrepProfileScreen(profileId: 'p'),
+      subscription: () => SubscriptionNotifier(
+        revenueCat: OfflineRevenueCat(() async => null),
+        offlineCache: MemoryPremiumCache({
+          'reader': OfflinePremiumSnapshot(
+            verifiedAt: now.subtract(const Duration(days: 1)),
+            expiresAt: now.add(const Duration(days: 20)),
+          ),
+        }),
+        currentUserId: () => 'reader',
+      ),
+      overrides: [
+        prepProfileProvider.overrideWith((ref, id) => profile),
+        prepAnalysisProvider.overrideWith(
+          (ref, id) async => PrepAnalysis(profileId: id, games: games),
+        ),
+      ],
+    );
+    await tester.pumpAndSettle();
+    expect(container.read(subscriptionProvider).isSubscribed, isTrue);
+
+    await tester.tap(find.text('Performance by colour'));
+    await tester.pumpAndSettle();
+    expect(find.text('Their White'), findsOneWidget);
+    await tester.tap(find.text('Wins'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('prep_filter_banner')), findsOneWidget);
+    await tester.tap(find.text('Games 2'));
+    await tester.pumpAndSettle();
+    expect(find.byType(PrepGamesTab), findsOneWidget);
+    await tester.tap(find.text('Build Tree'));
+    await tester.pumpAndSettle();
+    expect(find.text('Opening trees'), findsOneWidget);
+    expect(asked, isEmpty);
+    expect(tester.takeException(), isNull);
+    // The notifier's hourly sync timer goes with the container.
+    container.dispose();
   });
 
   group('a "new games" push opens the profile on Games', () {

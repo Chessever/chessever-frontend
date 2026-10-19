@@ -1,0 +1,145 @@
+import 'dart:async';
+
+import 'package:chessever2/revenue_cat_service/offline_premium_cache.dart';
+import 'package:chessever2/revenue_cat_service/revenue_cat_service.dart';
+import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
+import 'package:chessever2/services/rewarded_premium/rewarded_access_provider.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:hooks_riverpod/hooks_riverpod.dart';
+
+import 'support/offline_premium_fakes.dart';
+
+void main() {
+  final now = DateTime.now();
+  final paid = OfflinePremiumSnapshot(
+    verifiedAt: now.subtract(const Duration(days: 2)),
+    expiresAt: now.add(const Duration(days: 20)),
+    provider: 'revenuecat',
+  );
+
+  ({ProviderContainer container, OfflineRevenueCat revenueCat}) launch({
+    required MemoryPremiumCache cache,
+    Future<BackendEntitlementSnapshot?> Function()? backend,
+    String? userId = 'reader',
+  }) {
+    final revenueCat = OfflineRevenueCat(backend ?? () async => null);
+    final container = ProviderContainer(
+      overrides: [
+        subscriptionProvider.overrideWith(
+          (ref) => SubscriptionNotifier(
+            revenueCat: revenueCat,
+            offlineCache: cache,
+            currentUserId: () => userId,
+          ),
+        ),
+      ],
+    );
+    addTearDown(container.dispose);
+    return (container: container, revenueCat: revenueCat);
+  }
+
+  test('an offline launch keeps a remembered subscriber Premium', () async {
+    final cache = MemoryPremiumCache({'reader': paid});
+    final app = launch(cache: cache);
+
+    app.container.read(subscriptionProvider);
+    await pumpEventQueue();
+
+    final state = app.container.read(subscriptionProvider);
+    expect(state.isSubscribed, isTrue);
+    expect(state.isLoading, isFalse);
+    expect(app.container.read(premiumAccessProvider), isTrue);
+    expect(cache.snapshots['reader'], same(paid));
+  });
+
+  test('Premium stands before the offline checks give up', () async {
+    final never = Completer<BackendEntitlementSnapshot?>();
+    final app = launch(
+      cache: MemoryPremiumCache({'reader': paid}),
+      backend: () => never.future,
+    );
+
+    app.container.read(subscriptionProvider);
+    await pumpEventQueue();
+
+    final state = app.container.read(subscriptionProvider);
+    expect(state.isLoading, isTrue, reason: 'the live checks are still out');
+    expect(app.container.read(premiumAccessProvider), isTrue);
+  });
+
+  test('offline, nobody is granted what was never confirmed', () async {
+    final expired = OfflinePremiumSnapshot(
+      verifiedAt: now.subtract(const Duration(days: 40)),
+      expiresAt: now.subtract(const Duration(days: 1)),
+      willRenew: false,
+    );
+    for (final (label, cache, userId) in [
+      ('no snapshot', MemoryPremiumCache({}), 'reader'),
+      ('an ended plan', MemoryPremiumCache({'reader': expired}), 'reader'),
+      ('another account', MemoryPremiumCache({'other': paid}), 'reader'),
+      ('signed out', MemoryPremiumCache({'reader': paid}), null),
+    ]) {
+      final app = launch(cache: cache, userId: userId);
+      app.container.read(subscriptionProvider);
+      await pumpEventQueue();
+      expect(app.container.read(premiumAccessProvider), isFalse, reason: label);
+    }
+  });
+
+  test('a reachable entitlement that says no ends it and forgets it', () async {
+    final cache = MemoryPremiumCache({'reader': paid});
+    final app = launch(
+      cache: cache,
+      backend: () async => const BackendEntitlementSnapshot(isActive: false),
+    );
+
+    app.container.read(subscriptionProvider);
+    await pumpEventQueue();
+
+    expect(app.container.read(premiumAccessProvider), isFalse);
+    expect(cache.snapshots, isEmpty);
+  });
+
+  test(
+    'coming back online with a lapsed plan revokes the offline Premium',
+    () async {
+      final cache = MemoryPremiumCache({'reader': paid});
+      BackendEntitlementSnapshot? answer;
+      final app = launch(cache: cache, backend: () async => answer);
+      app.container.read(subscriptionProvider);
+      await pumpEventQueue();
+      expect(app.container.read(premiumAccessProvider), isTrue);
+
+      answer = const BackendEntitlementSnapshot(isActive: false);
+      await app.container.read(subscriptionProvider.notifier).syncAndRefresh();
+      await pumpEventQueue();
+
+      expect(app.container.read(premiumAccessProvider), isFalse);
+      expect(cache.snapshots, isEmpty);
+    },
+  );
+
+  test('an online confirmation is what the next offline launch uses', () async {
+    final cache = MemoryPremiumCache({});
+    final expiresAt = now.add(const Duration(days: 30));
+    final online = launch(
+      cache: cache,
+      backend: () async => BackendEntitlementSnapshot(
+        isActive: true,
+        provider: 'stripe',
+        expiresAt: expiresAt,
+        willRenew: true,
+      ),
+    );
+    online.container.read(subscriptionProvider);
+    await pumpEventQueue();
+    expect(online.container.read(premiumAccessProvider), isTrue);
+    expect(cache.snapshots['reader']?.expiresAt, expiresAt);
+    expect(cache.snapshots['reader']?.provider, 'stripe');
+
+    final offline = launch(cache: cache);
+    offline.container.read(subscriptionProvider);
+    await pumpEventQueue();
+    expect(offline.container.read(premiumAccessProvider), isTrue);
+  });
+}
