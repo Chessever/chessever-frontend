@@ -1088,22 +1088,26 @@ class _QuickFilterButtons extends ConsumerWidget {
     final isUpcomingDisabled = selectedYear > currentYear;
 
     // Calculate upcoming count (events starting today or in future)
-    // This should show the count of upcoming events that match the current search
+    // This should show the count of upcoming events that match the current search.
+    // An event that spans months sits in each of those months' lists, and the
+    // Upcoming list shows it once, so the badge counts unique ids.
     final upcomingCount = calendarData.maybeWhen(
       data: (summaries) {
         // If we're already in upcoming filter mode, show the actual filtered count
         if (filterMode == CalendarFilterMode.upcoming) {
-          int count = 0;
+          final uniqueIds = <String>{};
           for (final summary in summaries) {
-            count += summary.events.length;
+            for (final event in summary.events) {
+              uniqueIds.add(event.id);
+            }
           }
-          return count;
+          return uniqueIds.length;
         }
 
         // Otherwise, calculate potential upcoming events from current filtered data
         final now = DateTime.now();
         final today = DateTime(now.year, now.month, now.day);
-        int count = 0;
+        final uniqueIds = <String>{};
         for (final summary in summaries) {
           for (final event in summary.events) {
             final startDate = event.startDate ?? event.endDate;
@@ -1114,10 +1118,10 @@ class _QuickFilterButtons extends ConsumerWidget {
                 !event.isMajorUpcoming) {
               continue;
             }
-            count++;
+            uniqueIds.add(event.id);
           }
         }
-        return count;
+        return uniqueIds.length;
       },
       orElse: () => 0,
     );
