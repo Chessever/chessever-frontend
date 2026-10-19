@@ -119,6 +119,28 @@ void main() {
     },
   );
 
+  test('RevenueCat\'s cached Premium holds offline while it is still being '
+      'saved', () async {
+    final cache = MemoryPremiumCache({})
+      ..writesWaitOn = Completer<void>().future;
+    final backend = Completer<BackendEntitlementSnapshot?>();
+    final app = launch(cache: cache, backend: () => backend.future);
+    app.container.read(subscriptionProvider);
+    await pumpEventQueue();
+    expect(app.container.read(premiumAccessProvider), isFalse);
+
+    // The SDK hands its cached customer info to the listener at configure,
+    // then the entitlement function fails for want of a connection.
+    app.revenueCat.customerInfoListener!(
+      premiumCustomerInfo(expiresAt: now.add(const Duration(days: 20))),
+    );
+    backend.complete(null);
+    await pumpEventQueue();
+
+    expect(app.container.read(premiumAccessProvider), isTrue);
+    expect(app.container.read(subscriptionProvider).isLoading, isFalse);
+  });
+
   test('an online confirmation is what the next offline launch uses', () async {
     final cache = MemoryPremiumCache({});
     final expiresAt = now.add(const Duration(days: 30));

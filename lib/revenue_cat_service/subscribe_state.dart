@@ -56,6 +56,11 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
   /// Null when the state came from a live source.
   String? _offlineGrantUserId;
 
+  /// The last confirmation [_rememberPremium] wrote. Read before the store,
+  /// whose write may still be in flight when a RevenueCat update and the
+  /// first live check land together.
+  ({String userId, OfflinePremiumSnapshot snapshot})? _remembered;
+
   /// Set once the first live check has been written, so the startup seed
   /// from [OfflinePremiumCache] never overwrites a live answer.
   bool _verdictSettled = false;
@@ -115,7 +120,10 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
   _offlinePremium() async {
     final userId = _currentUserId();
     if (userId == null) return null;
-    final snapshot = await _offlineCache.read(userId);
+    final remembered = _remembered;
+    final snapshot = remembered?.userId == userId
+        ? remembered!.snapshot
+        : await _offlineCache.read(userId);
     if (snapshot == null || !snapshot.honoredAt(DateTime.now())) return null;
     return (userId: userId, snapshot: snapshot);
   }
@@ -142,17 +150,14 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
     if (!state.isSubscribed || _offlineGrantUserId != null) return;
     final userId = _currentUserId();
     if (userId == null) return;
-    unawaited(
-      _offlineCache.write(
-        userId,
-        OfflinePremiumSnapshot(
-          verifiedAt: DateTime.now(),
-          expiresAt: state.expirationDate,
-          provider: state.provider,
-          willRenew: state.willRenew,
-        ),
-      ),
+    final snapshot = OfflinePremiumSnapshot(
+      verifiedAt: DateTime.now(),
+      expiresAt: state.expirationDate,
+      provider: state.provider,
+      willRenew: state.willRenew,
     );
+    _remembered = (userId: userId, snapshot: snapshot);
+    unawaited(_offlineCache.write(userId, snapshot));
   }
 
   /// A reachable `entitlement` function said no: the next offline launch
@@ -160,6 +165,7 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
   void _forgetPremium() {
     final userId = _currentUserId();
     if (userId == null) return;
+    if (_remembered?.userId == userId) _remembered = null;
     unawaited(_offlineCache.clear(userId));
   }
 

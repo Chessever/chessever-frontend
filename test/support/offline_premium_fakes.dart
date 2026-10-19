@@ -2,7 +2,8 @@
 // contact RevenueCat, Supabase or the device database.
 import 'package:chessever2/revenue_cat_service/offline_premium_cache.dart';
 import 'package:chessever2/revenue_cat_service/revenue_cat_service.dart';
-import 'package:purchases_flutter/purchases_flutter.dart' show CustomerInfo;
+import 'package:purchases_flutter/purchases_flutter.dart'
+    show CustomerInfo, EntitlementInfo, EntitlementInfos;
 
 class MemoryPremiumCache extends OfflinePremiumCache {
   MemoryPremiumCache(Map<String, OfflinePremiumSnapshot> snapshots)
@@ -10,13 +11,18 @@ class MemoryPremiumCache extends OfflinePremiumCache {
 
   final Map<String, OfflinePremiumSnapshot> snapshots;
 
+  /// While set, writes wait on it, as a slow device database would.
+  Future<void>? writesWaitOn;
+
   @override
   Future<OfflinePremiumSnapshot?> read(String userId) async =>
       snapshots[userId];
 
   @override
-  Future<void> write(String userId, OfflinePremiumSnapshot snapshot) async =>
-      snapshots[userId] = snapshot;
+  Future<void> write(String userId, OfflinePremiumSnapshot snapshot) async {
+    await writesWaitOn;
+    snapshots[userId] = snapshot;
+  }
 
   @override
   Future<void> clear(String userId) async => snapshots.remove(userId);
@@ -29,11 +35,16 @@ class OfflineRevenueCat implements RevenueCatService {
 
   final Future<BackendEntitlementSnapshot?> Function() _backend;
 
+  /// The notifier's customer info listener, for a test to call as the SDK
+  /// would with its cached customer info.
+  void Function(CustomerInfo)? customerInfoListener;
+
   @override
   bool get isSdkReady => false;
 
   @override
-  void setCustomerInfoListener(void Function(CustomerInfo) listener) {}
+  void setCustomerInfoListener(void Function(CustomerInfo) listener) =>
+      customerInfoListener = listener;
 
   @override
   Future<CustomerInfo?> getCustomerInfo() async => null;
@@ -52,4 +63,31 @@ class OfflineRevenueCat implements RevenueCatService {
 
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+/// RevenueCat's customer info for a reader whose plan is active.
+CustomerInfo premiumCustomerInfo({required DateTime expiresAt}) {
+  final now = DateTime.now().toUtc().toIso8601String();
+  final entitlement = EntitlementInfo(
+    RevenueCatService.premiumEntitlement,
+    true,
+    true,
+    now,
+    now,
+    'chessever_monthly',
+    false,
+    expirationDate: expiresAt.toUtc().toIso8601String(),
+  );
+  final entitlements = {RevenueCatService.premiumEntitlement: entitlement};
+  return CustomerInfo(
+    EntitlementInfos(entitlements, entitlements),
+    const {},
+    const ['chessever_monthly'],
+    const ['chessever_monthly'],
+    const [],
+    now,
+    'reader',
+    const {},
+    now,
+  );
 }

@@ -540,9 +540,12 @@ class RevenueCatService {
   Future<CustomerInfo?> syncPurchases() async {
     if (!_sdkReady) return null;
     try {
-      // Invalidate cache first to ensure we get fresh data from RevenueCat servers
-      await Purchases.invalidateCustomerInfoCache();
+      // Sync before invalidating. Offline the sync fails, and invalidating
+      // first threw away the cached customer info, the one record that
+      // still knew this reader is Premium without a connection.
       await Purchases.syncPurchases();
+      // Invalidate so the fetch below gets fresh data from RevenueCat servers
+      await Purchases.invalidateCustomerInfoCache();
       debugPrint('✅ RevenueCat purchases synced');
       // Always fetch fresh customer info after sync to ensure state is up-to-date
       // This handles edge cases where the listener doesn't fire (e.g., expired subscriptions)
