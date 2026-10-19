@@ -319,6 +319,60 @@ void main() {
   );
 
   test(
+    'leaving the app mid-download pauses it and continues on return',
+    () async {
+      final binding = TestWidgetsFlutterBinding.instance;
+      void move(List<AppLifecycleState> states) {
+        for (final state in states) {
+          binding.handleAppLifecycleStateChanged(state);
+        }
+      }
+
+      move([AppLifecycleState.resumed]);
+      final container = ProviderContainer(
+        overrides: [prepRepositoryProvider.overrideWithValue(repo)],
+      );
+      addTearDown(container.dispose);
+      await _loaded(container);
+      final profiles = container.read(prepProfilesProvider.notifier);
+      const account = PrepAccount(
+        source: PrepSource.lichess,
+        username: 'ClubPlayer',
+      );
+      final profile = profiles.create(
+        kind: PrepKind.opponent,
+        name: 'ClubPlayer',
+        accounts: [account],
+      );
+      final gate = repo.syncGate = Completer<void>();
+      repo.syncFailure = const PrepException('Could not download games.');
+      final pending = container
+          .read(prepSyncProvider.notifier)
+          .syncAccount(profile.id, account, force: true);
+      // The system cuts the connection off once the app is in the background.
+      move([AppLifecycleState.inactive, AppLifecycleState.hidden]);
+      gate.complete();
+      await pumpEventQueue();
+      expect(
+        container.read(prepSyncProvider)[account.key]?.message,
+        startsWith('Paused'),
+      );
+      expect(profiles.byId(profile.id)!.accounts.single.error, isNull);
+      expect(repo.syncCalls, 1);
+
+      repo
+        ..syncGate = null
+        ..syncFailure = null;
+      move([AppLifecycleState.inactive, AppLifecycleState.resumed]);
+      expect(await pending, isNull);
+      expect(repo.syncCalls, 2);
+      expect(profiles.byId(profile.id)!.accounts.single.error, isNull);
+      expect(container.read(prepSyncProvider), isEmpty);
+      await profiles.debugDrainWrites();
+    },
+  );
+
+  test(
     'source analysis retains a duplicate game removed from Combined',
     () async {
       final container = ProviderContainer(
@@ -1838,7 +1892,10 @@ void main() {
         );
         await tester.pumpAndSettle();
         expect(asked, [('prep_games', true)]);
-        expect(find.byType(PrepGamesTab), granted ? findsOneWidget : findsNothing);
+        expect(
+          find.byType(PrepGamesTab),
+          granted ? findsOneWidget : findsNothing,
+        );
         expect(
           find.text('Games analyzed'),
           granted ? findsNothing : findsOneWidget,
@@ -1860,8 +1917,7 @@ void main() {
     });
   });
 
-  group('tapping a Prep "new games" push, through the notification router',
-      () {
+  group('tapping a Prep "new games" push, through the notification router', () {
     const account = PrepAccount(
       source: PrepSource.lichess,
       username: 'durarbayli',
@@ -1897,7 +1953,9 @@ void main() {
       File('${directory.path}/prep/profiles.json')
         ..createSync(recursive: true)
         ..writeAsStringSync(
-          jsonEncode({'profiles': [for (final p in profiles) p.toJson()]}),
+          jsonEncode({
+            'profiles': [for (final p in profiles) p.toJson()],
+          }),
         );
       final remote = _WatchRemote();
       final navigatorKey = GlobalKey<NavigatorState>();
@@ -1916,10 +1974,8 @@ void main() {
         host,
         premium: true,
         navigatorKey: navigatorKey,
-        onGenerateRoute: (settings) => MaterialPageRoute<void>(
-          settings: settings,
-          builder: (_) => host,
-        ),
+        onGenerateRoute: (settings) =>
+            MaterialPageRoute<void>(settings: settings, builder: (_) => host),
         overrides: [
           prepWatchRemoteProvider.overrideWithValue(remote),
           prepAnalysisProvider.overrideWith(
