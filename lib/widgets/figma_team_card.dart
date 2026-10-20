@@ -1,4 +1,3 @@
-import 'package:chessever2/screens/standings/widgets/published_player_tiebreaks.dart';
 import 'package:chessever2/screens/standings/team_standing_model.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/app_typography.dart';
@@ -167,15 +166,6 @@ class FigmaTeamCard extends StatelessWidget {
               ),
             ],
           ),
-          if (team.extraTiebreaks.isNotEmpty)
-            Padding(
-              padding: EdgeInsets.only(top: 8.h),
-              child: GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: onTeamTap,
-                child: PublishedPlayerTiebreaks(values: team.extraTiebreaks),
-              ),
-            ),
         ],
       ),
     );
