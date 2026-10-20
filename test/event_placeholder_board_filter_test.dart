@@ -1,5 +1,6 @@
 import 'package:chessever2/screens/gamebase/event_view/gamebase_virtual_event.dart';
 import 'package:chessever2/screens/gamebase/models/gamebase_event_view.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/models/games_app_bar_view_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_grouped_provider.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -97,6 +98,101 @@ void main() {
       expect(isEventBoardGameVisible(unfinishedPlaceholder), isFalse);
     });
   });
+
+  // Ported from the desktop Games view (4b6f2eda). European Club Cup
+  // 2026-10-20: each board appeared only after its own first move.
+  group('named pairings on an open round', () {
+    test('merges unstarted boards onto a live round that has a move', () {
+      final started = _game(
+        id: 'started-board',
+        whiteName: 'White 1',
+        blackName: 'Black 1',
+        lastMove: 'e2e4',
+        boardNr: 1,
+      );
+      final waiting = [
+        _game(
+          id: 'waiting-3',
+          whiteName: 'White 3',
+          blackName: 'Black 3',
+          fen: _initialFen,
+          boardNr: 3,
+        ),
+        _game(
+          id: 'waiting-2',
+          whiteName: 'White 2',
+          blackName: 'Black 2',
+          fen: _initialFen,
+          boardNr: 2,
+        ),
+      ];
+
+      final merge = _merge(
+        roundStatus: RoundStatus.live,
+        games: [started, ...waiting],
+        visibleIds: {started.gameId},
+      );
+
+      expect(merge.markAsPairingOnly, isFalse);
+      expect(merge.gamesToAdd.map((game) => game.gameId), [
+        'waiting-2',
+        'waiting-3',
+      ]);
+    });
+
+    test('a live round with no moves yet keeps every named board', () {
+      final merge = _merge(
+        roundStatus: RoundStatus.live,
+        games: [
+          _game(
+            id: 'waiting-1',
+            whiteName: 'White 1',
+            blackName: 'Black 1',
+            fen: _initialFen,
+          ),
+          _game(id: 'placeholder', whiteName: '?', blackName: '?'),
+        ],
+        visibleIds: <String>{},
+      );
+
+      expect(merge.markAsPairingOnly, isTrue);
+      expect(merge.gamesToAdd.map((game) => game.gameId), ['waiting-1']);
+    });
+
+    test('leaves a completed round alone', () {
+      final merge = _merge(
+        roundStatus: RoundStatus.completed,
+        games: [
+          _game(
+            id: 'late-pairing',
+            whiteName: 'White 1',
+            blackName: 'Black 1',
+            fen: _initialFen,
+          ),
+        ],
+        visibleIds: <String>{},
+      );
+
+      expect(merge.gamesToAdd, isEmpty);
+      expect(merge.markAsPairingOnly, isFalse);
+    });
+  });
+}
+
+NamedPairingMerge _merge({
+  required RoundStatus roundStatus,
+  required List<GamesTourModel> games,
+  required Set<String> visibleIds,
+}) {
+  return resolveNamedPairingsForRound(
+    roundStatus: roundStatus,
+    allGames: games,
+    roundId: 'round-8',
+    knownRoundIds: {'round-8'},
+    defaultRoundId: 'round-8',
+    alreadyVisibleGameIds: visibleIds,
+    includeGame: (_) => true,
+  );
 }
 
 const _initialFen = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
@@ -108,6 +204,7 @@ GamesTourModel _game({
   String? lastMove,
   String? fen,
   String? pgn,
+  int? boardNr,
   GameStatus gameStatus = GameStatus.ongoing,
 }) {
   return GamesTourModel(
@@ -124,6 +221,7 @@ GamesTourModel _game({
     lastMove: lastMove,
     fen: fen,
     pgn: pgn,
+    boardNr: boardNr,
   );
 }
 

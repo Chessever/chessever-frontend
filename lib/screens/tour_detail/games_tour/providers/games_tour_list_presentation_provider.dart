@@ -24,6 +24,33 @@ class GamesTourListPresentation {
   final GamesTourFlattenedLayout layout;
 }
 
+/// Rounds painted by the Games tab, in display order.
+///
+/// The regular board list, the team matchup list and the scroll mapping all
+/// read this one list, so team events show (and scroll to) exactly the rounds
+/// an individual event would — including a live round whose boards have no
+/// moves yet.
+final gamesTourDisplayRoundsProvider =
+    Provider.autoDispose<List<GamesAppBarModel>>((ref) {
+      final grouped = ref.watch(gamesTourGroupedProvider);
+      final appBar = ref.watch(gamesAppBarProvider).valueOrNull;
+      final isSearchMode = ref.watch(
+        gamesTourScreenProvider.select(
+          (screen) => screen.valueOrNull?.isSearchMode ?? false,
+        ),
+      );
+      return selectGamesTourDisplayRounds(
+        rounds: grouped.rounds,
+        effectiveRounds: grouped.filteredRounds,
+        gamesByRound: grouped.gamesByRound,
+        upcomingPairingRoundIds: grouped.upcomingPairingRoundIds,
+        isSearchMode: isSearchMode,
+        isMultiStageKnockout: grouped.isMultiStageKnockout,
+        selectedRoundId: appBar?.selectedId,
+        userSelected: appBar?.userSelectedId ?? false,
+      );
+    });
+
 /// Canonical presentation snapshot for the regular tournament Games list.
 ///
 /// The widget paints [layout], while dropdown and scroll providers query the
@@ -31,7 +58,6 @@ class GamesTourListPresentation {
 final gamesTourListPresentationProvider =
     Provider.autoDispose<GamesTourListPresentation>((ref) {
       final grouped = ref.watch(gamesTourGroupedProvider);
-      final appBar = ref.watch(gamesAppBarProvider).valueOrNull;
       final screen = ref.watch(gamesTourScreenProvider).valueOrNull;
       final viewMode = ref.watch(gamesListViewModeProvider);
       final isSearchMode = screen?.isSearchMode ?? false;
@@ -45,16 +71,7 @@ final gamesTourListPresentationProvider =
               ? (ref.watch(tourRoundStartTimesProvider(tourId)).valueOrNull ??
                   const <String, DateTime?>{})
               : const <String, DateTime?>{};
-      final displayRounds = selectGamesTourDisplayRounds(
-        rounds: grouped.rounds,
-        effectiveRounds: grouped.filteredRounds,
-        gamesByRound: grouped.gamesByRound,
-        upcomingPairingRoundIds: grouped.upcomingPairingRoundIds,
-        isSearchMode: isSearchMode,
-        isMultiStageKnockout: grouped.isMultiStageKnockout,
-        selectedRoundId: appBar?.selectedId,
-        userSelected: appBar?.userSelectedId ?? false,
-      );
+      final displayRounds = ref.watch(gamesTourDisplayRoundsProvider);
       final layout = buildGamesTourFlattenedLayout(
         rounds: displayRounds,
         gamesByRound: grouped.gamesByRound,
