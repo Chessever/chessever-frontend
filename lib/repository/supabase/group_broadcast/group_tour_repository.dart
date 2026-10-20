@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:chessever2/repository/supabase/base_repository.dart';
+import 'package:chessever2/repository/supabase/fetch_all_pages.dart';
 import 'package:chessever2/repository/supabase/group_broadcast/group_broadcast.dart';
 import 'package:chessever2/utils/country_utils.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -538,11 +539,27 @@ class GroupBroadcastRepository extends BaseRepository {
     }
   }
 
-  Future<List<GroupBroadcast>> getGroupBroadcastsForYear({
+  /// Every group broadcast in [year], read page by page.
+  ///
+  /// One capped request ordered by date silently drops the end of the year,
+  /// which is every upcoming event, as soon as the year outgrows the cap.
+  /// Only the columns [GroupBroadcast.fromJson] reads are selected: the
+  /// unused `search_fts` column alone more than doubles each row.
+  Future<List<GroupBroadcast>> getGroupBroadcastsForYear({required int year}) {
+    return fetchAllPages<GroupBroadcast>(
+      (offset, limit) => _getGroupBroadcastsForYearPage(
+        year: year,
+        offset: offset,
+        limit: limit,
+      ),
+      keyOf: (broadcast) => broadcast.id,
+    );
+  }
+
+  Future<List<GroupBroadcast>> _getGroupBroadcastsForYearPage({
     required int year,
-    int limit = 500,
-    String orderBy = 'date_start',
-    bool ascending = true,
+    required int offset,
+    required int limit,
   }) async {
     return handleApiCall(() async {
       final startOfYear = DateTime(year, 1, 1);
@@ -553,13 +570,17 @@ class GroupBroadcastRepository extends BaseRepository {
 
       final dynamic response = await supabase
           .from('group_broadcasts')
-          .select()
+          .select(
+            'id, created_at, name, search, max_avg_elo, date_start, date_end, '
+            'time_control, broadcast_writer',
+          )
           .or(
             'and(date_start.gte.$startDateStr,date_start.lte.$endDateStr),'
             'and(date_end.gte.$startDateStr,date_end.lte.$endDateStr)',
           )
-          .order(orderBy, ascending: ascending)
-          .limit(limit);
+          .order('date_start', ascending: true)
+          .order('id', ascending: true)
+          .range(offset, offset + limit - 1);
 
       if (response == null) return <GroupBroadcast>[];
       return (response as List)

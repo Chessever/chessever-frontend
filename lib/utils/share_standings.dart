@@ -1,4 +1,5 @@
 import 'package:chessever2/screens/standings/player_standing_sections_provider.dart';
+import 'package:chessever2/screens/gamebase/event_view/gamebase_virtual_event_id.dart';
 import 'dart:io';
 import 'dart:math' as math;
 
@@ -49,13 +50,18 @@ Future<void> shareTournamentStandings(
     final fallbackId = about.groupBroadcastId?.isNotEmpty == true
         ? about.groupBroadcastId!
         : about.id;
-    final shareUrl = section?.sourceUrl ?? buildEventShareUrl(
-      id: fallbackId,
-      title: about.name,
-      tourId: about.id,
-      tourSlug: about.slug,
-      tab: kEventStandingsTab,
-    );
+    // Gamebase-only virtual events have no page on chessever.com, so their
+    // standings image goes out without a (dead) event link.
+    final shareUrl = section?.sourceUrl ??
+        (isVirtualGamebaseId(about.id)
+            ? null
+            : buildEventShareUrl(
+                id: fallbackId,
+                title: about.name,
+                tourId: about.id,
+                tourSlug: about.slug,
+                tab: kEventStandingsTab,
+              ));
 
     final standings = await ref.read(playerTourScreenProvider.future);
     if (!context.mounted) return;
@@ -108,13 +114,16 @@ Future<void> shareTournamentStandings(
           sharePositionOrigin: const Rect.fromLTWH(0, 0, 1, 1),
         );
       },
-      onShareLink: () async {
-        await Share.share(
-          shareUrl,
-          subject: subject,
-          sharePositionOrigin: const Rect.fromLTWH(0, 0, 1, 1),
-        );
-      },
+      onShareLink:
+          shareUrl == null
+              ? null
+              : () async {
+                await Share.share(
+                  shareUrl,
+                  subject: subject,
+                  sharePositionOrigin: const Rect.fromLTWH(0, 0, 1, 1),
+                );
+              },
     );
   } catch (e) {
     debugPrint('Failed to share standings: $e');

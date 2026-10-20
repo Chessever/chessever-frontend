@@ -193,13 +193,41 @@ def test_game_start_window_lookup_is_chunked_and_fails_loud() -> None:
     # If the window read fails silently, covered users look uncovered and the
     # per-game fallback double-sends after a round_started push.
     source = _source()
-    win_start = source.index("async function fetchUsersWithActiveGameStartWindow(")
+    win_start = source.index("async function fetchGameStartWindows(")
     win_end = source.index("async function resolveRecursiveBookSubscribers(", win_start)
     win_block = source[win_start:win_end]
 
-    assert "chunk(userIds, POSTGREST_IN_QUERY_CHUNK_SIZE)" in win_block
-    assert '"Game-start window lookup"' in win_block  # runQuery fails loud
-    assert "runQuery" in win_block
+    assert "packForUrlBudget(userIds)" in win_block
+    assert '"Game-start window lookup"' in win_block  # fails loud
+    # One row per user AND board: page past PostgREST's silent 1000-row cap.
+    assert "fetchAllPages" in win_block and ".range(from, to)" in win_block
+
+
+def test_start_windows_cover_one_board_not_the_whole_round() -> None:
+    # European Club Cup 2026 R3: the window was keyed by round, so the first
+    # board alert a reader got (Mamedyarov) silenced every other favorite's
+    # board (Suleymanli) for that round. 19 of 22 reachable Suleymanli
+    # favoriters got nothing; 252 of 609 board alerts went missing in 44h.
+    source = _source()
+
+    assert '.eq("family", "game_start")' not in source
+    assert "usersCoveredForBoard(windows, item.game_id)" in source
+
+    record_start = source.index("async function recordGameStartWindow(")
+    record = source[record_start:source.index("async function buildContext(", record_start)]
+    assert "gameId: string" in record
+    assert "gameStartWindowFamily(gameId)" in record
+
+    start = source.index("const rsTimeControl = await resolveGameTimeControl(")
+    end = source.index('if (item.event_type === "round_heads_up")', start)
+    block = source[start:end]
+    # Covered boards are skipped one by one, never the whole user.
+    assert "if (covered?.has(gameId)) continue;" in block
+    # Each board records its own window right after its send.
+    board_loop = block[block.index("for (const [gameId, userIds] of boardBatches)"):]
+    assert board_loop.index("await recordGameStartWindow(userIds, roundId, gameId)") < board_loop.index(
+        "sentBoards.add(gameId)"
+    )
 
 
 def test_round_event_display_name_omits_redundant_single_open_section() -> None:
