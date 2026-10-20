@@ -284,7 +284,6 @@ Future<E2eSeedData> seedBaselineData(PatrolTester $) async {
   final currentYear = DateTime.now().year;
   final calendarEvents = await calendarRepository.getCalendarEventsForYear(
     year: currentYear,
-    limit: 50,
   );
 
   return E2eSeedData(

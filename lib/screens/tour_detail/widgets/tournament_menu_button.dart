@@ -5,6 +5,7 @@ import 'package:chessever2/providers/auth_state_provider.dart';
 import 'package:chessever2/providers/event_mute_provider.dart';
 import 'package:chessever2/screens/group_event/model/tour_detail_view_model.dart';
 import 'package:chessever2/screens/group_event/widget/appbar_icons_widget.dart';
+import 'package:chessever2/screens/gamebase/event_view/gamebase_virtual_event_id.dart';
 import 'package:chessever2/screens/library/widgets/library_context_menu.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/event_no_spoilers_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_app_bar_provider.dart';
@@ -262,27 +263,43 @@ class TournamentMenuButton extends ConsumerWidget {
             : aboutModel.id;
     if (fallbackId.isEmpty || aboutModel.name.isEmpty) return actions;
 
-    actions.add(
-      LibraryMenuAction(
-        icon: Icons.ios_share_rounded,
-        label: "Share event",
-        onSelected: () {
-          final url = buildEventShareUrl(
-            id: fallbackId,
-            title: aboutModel.name,
-            tourId: aboutModel.id,
-            tourSlug: aboutModel.slug,
-          );
-          final box =
-              context.mounted ? context.findRenderObject() as RenderBox? : null;
-          final origin =
-              box != null && box.hasSize
-                  ? box.localToGlobal(Offset.zero) & box.size
-                  : const Rect.fromLTWH(0, 0, 1, 1);
-          Share.share(url, sharePositionOrigin: origin);
-        },
-      ),
-    );
+    // A gamebase-only virtual event (historical event opened from a player
+    // profile) has no page on chessever.com and no deep-link route, so its
+    // `/broadcast/<slug>/<gamebasev2::...>` link is dead. Same rule as the
+    // event card and board menus: no "Share event" row, and the standings /
+    // bracket images below go out without a link.
+    final hasEventPage = !isVirtualGamebaseId(aboutModel.id);
+    String? eventLink({String? tab}) =>
+        hasEventPage
+            ? buildEventShareUrl(
+              id: fallbackId,
+              title: aboutModel.name,
+              tourId: aboutModel.id,
+              tourSlug: aboutModel.slug,
+              tab: tab,
+            )
+            : null;
+
+    if (hasEventPage) {
+      actions.add(
+        LibraryMenuAction(
+          icon: Icons.ios_share_rounded,
+          label: "Share event",
+          onSelected: () {
+            final url = eventLink()!;
+            final box =
+                context.mounted
+                    ? context.findRenderObject() as RenderBox?
+                    : null;
+            final origin =
+                box != null && box.hasSize
+                    ? box.localToGlobal(Offset.zero) & box.size
+                    : const Rect.fromLTWH(0, 0, 1, 1);
+            Share.share(url, sharePositionOrigin: origin);
+          },
+        ),
+      );
+    }
 
     // Standings share actions are tab-scoped (same idea as Share brackets).
     // Individual table: Standings on non-team events, Players on team events.
@@ -302,13 +319,7 @@ class TournamentMenuButton extends ConsumerWidget {
             // Standings share = the event link + the standings tab marker, so
             // the same URL renders standings on the web and opens the
             // Standings tab in-app.
-            final url = buildEventShareUrl(
-              id: fallbackId,
-              title: aboutModel.name,
-              tourId: aboutModel.id,
-              tourSlug: aboutModel.slug,
-              tab: kEventStandingsTab,
-            );
+            final url = eventLink(tab: kEventStandingsTab);
             unawaited(_shareStandings(ref, context, aboutModel.name, url));
           },
         ),
@@ -320,13 +331,7 @@ class TournamentMenuButton extends ConsumerWidget {
           icon: Icons.groups_outlined,
           label: "Share team standings",
           onSelected: () {
-            final url = buildEventShareUrl(
-              id: fallbackId,
-              title: aboutModel.name,
-              tourId: aboutModel.id,
-              tourSlug: aboutModel.slug,
-              tab: kEventStandingsTab,
-            );
+            final url = eventLink(tab: kEventStandingsTab);
             unawaited(_shareTeamStandings(ref, context, aboutModel.name, url));
           },
         ),
@@ -344,13 +349,7 @@ class TournamentMenuButton extends ConsumerWidget {
           icon: Icons.account_tree_outlined,
           label: "Share brackets",
           onSelected: () {
-            final url = buildEventShareUrl(
-              id: fallbackId,
-              title: aboutModel.name,
-              tourId: aboutModel.id,
-              tourSlug: aboutModel.slug,
-              tab: kEventBracketTab,
-            );
+            final url = eventLink(tab: kEventBracketTab);
             unawaited(_shareBrackets(ref, context, aboutModel.name, url));
           },
         ),
@@ -415,7 +414,7 @@ class TournamentMenuButton extends ConsumerWidget {
     WidgetRef ref,
     BuildContext context,
     String eventName,
-    String shareUrl,
+    String? shareUrl,
   ) async {
     try {
       final standings = await ref.read(playerTourScreenProvider.future);
@@ -471,13 +470,16 @@ class TournamentMenuButton extends ConsumerWidget {
             sharePositionOrigin: const Rect.fromLTWH(0, 0, 1, 1),
           );
         },
-        onShareLink: () async {
-          await Share.share(
-            shareUrl,
-            subject: subject,
-            sharePositionOrigin: const Rect.fromLTWH(0, 0, 1, 1),
-          );
-        },
+        onShareLink:
+            shareUrl == null
+                ? null
+                : () async {
+                  await Share.share(
+                    shareUrl,
+                    subject: subject,
+                    sharePositionOrigin: const Rect.fromLTWH(0, 0, 1, 1),
+                  );
+                },
       );
     } catch (e) {
       debugPrint('Failed to share standings: $e');
@@ -496,7 +498,7 @@ class TournamentMenuButton extends ConsumerWidget {
     WidgetRef ref,
     BuildContext context,
     String eventName,
-    String shareUrl,
+    String? shareUrl,
   ) async {
     try {
       // The team standings derive from the individual standings; awaiting the
@@ -551,13 +553,16 @@ class TournamentMenuButton extends ConsumerWidget {
             sharePositionOrigin: const Rect.fromLTWH(0, 0, 1, 1),
           );
         },
-        onShareLink: () async {
-          await Share.share(
-            shareUrl,
-            subject: subject,
-            sharePositionOrigin: const Rect.fromLTWH(0, 0, 1, 1),
-          );
-        },
+        onShareLink:
+            shareUrl == null
+                ? null
+                : () async {
+                  await Share.share(
+                    shareUrl,
+                    subject: subject,
+                    sharePositionOrigin: const Rect.fromLTWH(0, 0, 1, 1),
+                  );
+                },
       );
     } catch (e) {
       debugPrint('Failed to share team standings: $e');
@@ -577,7 +582,7 @@ class TournamentMenuButton extends ConsumerWidget {
     WidgetRef ref,
     BuildContext context,
     String eventName,
-    String shareUrl,
+    String? shareUrl,
   ) async {
     try {
       final key = ref.read(bracketShareBoundaryKeyProvider);
@@ -644,13 +649,16 @@ class TournamentMenuButton extends ConsumerWidget {
             sharePositionOrigin: const Rect.fromLTWH(0, 0, 1, 1),
           );
         },
-        onShareLink: () async {
-          await Share.share(
-            shareUrl,
-            subject: subject,
-            sharePositionOrigin: const Rect.fromLTWH(0, 0, 1, 1),
-          );
-        },
+        onShareLink:
+            shareUrl == null
+                ? null
+                : () async {
+                  await Share.share(
+                    shareUrl,
+                    subject: subject,
+                    sharePositionOrigin: const Rect.fromLTWH(0, 0, 1, 1),
+                  );
+                },
       );
     } catch (e) {
       debugPrint('Failed to share bracket: $e');

@@ -14,7 +14,12 @@ import {
 } from "./smart_event_copy.ts";
 import { timezoneFromOneSignalUser } from "./user_timezone.ts";
 import { collectFavoriteMatches } from "./favorite_match.ts";
-import { filterGameStartedPlayerRecipients } from "./player_game_recipients.ts";
+import {
+  coveredBoardsByUser,
+  filterGameStartedPlayerRecipients,
+  gameStartWindowFamily,
+  usersCoveredForBoard,
+} from "./player_game_recipients.ts";
 import { chunk, packForUrlBudget } from "./postgrest_in.ts";
 import { pushImageUrl } from "./push_image.ts";
 import {
@@ -423,15 +428,14 @@ async function processItem(item: OutboxItem) {
       const roundName = context.round?.name ?? "";
       const title = buildEventHeader(eventName, roundName) ?? eventName;
 
-      // Exclude player-favorite users who already received a game_started
-      // push for this round (recorded by the game_started handler).
-      const suppressedByWindow = await fetchUsersWithActiveGameStartWindow(
+      // Boards a game_started row (or an earlier pass of this row) already
+      // announced to each user. Only those boards are skipped for them: their
+      // other favorites' boards in this round still go out.
+      const coveredBoards = await fetchGameStartWindows(
         roundId,
         playerRecipients,
       );
-      const dedupedPlayerRecipients = playerRecipients.filter(
-        (uid) => !suppressedByWindow.has(uid),
-      );
+      const reachedPlayerRecipients = new Set<string>();
 
       // One notification PER BOARD for player-favorite users.
       //
@@ -445,11 +449,11 @@ async function processItem(item: OutboxItem) {
       //
       // Wording and payload match game_started exactly, so the same board reads
       // the same whichever row wins the race to dispatch it.
-      if (dedupedPlayerRecipients.length > 0) {
+      if (playerRecipients.length > 0) {
         const boardBatches = new Map<string, string[]>();
         const unresolved: string[] = []; // no favorite board → event fallback
 
-        for (const userId of dedupedPlayerRecipients) {
+        for (const userId of playerRecipients) {
           const favNames = context.playerFavoriteMap.get(userId) ?? [];
           const gameIds = new Set<string>();
           for (const name of favNames) {
@@ -458,13 +462,21 @@ async function processItem(item: OutboxItem) {
               if (context.roundBoards.has(gameId)) gameIds.add(gameId);
             }
           }
+          const covered = coveredBoards.get(userId);
 
           if (gameIds.size === 0) {
+            // A board alert already reached them this round (their favorite
+            // matched a board this index missed): the generic round
+            // template would only repeat it.
+            if (covered) continue;
             unresolved.push(userId);
+            reachedPlayerRecipients.add(userId);
             continue;
           }
 
           for (const gameId of gameIds) {
+            if (covered?.has(gameId)) continue;
+            reachedPlayerRecipients.add(userId);
             const batch = boardBatches.get(gameId);
             if (batch) batch.push(userId);
             else boardBatches.set(gameId, [userId]);
@@ -523,6 +535,10 @@ async function processItem(item: OutboxItem) {
               androidChannelId: channelForEvent("round_started"),
             });
           }
+          // Per board, right after its send: the game_started row for this
+          // board then skips exactly these users, and a continuation of this
+          // row after a timeout skips it too.
+          await recordGameStartWindow(userIds, roundId, gameId);
           sentBoards.add(gameId);
         }
 
@@ -544,24 +560,6 @@ async function processItem(item: OutboxItem) {
 
         progress.boards_sent = [...sentBoards];
         await saveRoundStartProgress(item, progress);
-      }
-
-      // Record game_start windows for every player recipient who just
-      // received this round_started notification.  This prevents
-      // game_started (which fires later, when the first move is played)
-      // from sending a duplicate push to the same users.
-      // TTL = 15 min — comfortably covers the gap between round start
-      // and first moves in any standard tournament format.
-      const progressAfterBoards = readRoundStartProgress(item);
-      if (
-        dedupedPlayerRecipients.length > 0 &&
-        !progressAfterBoards.windows_recorded
-      ) {
-        await recordGameStartWindow(dedupedPlayerRecipients, roundId);
-        await saveRoundStartProgress(item, {
-          ...progressAfterBoards,
-          windows_recorded: true,
-        });
       }
 
       // Event-only recipients (starred event, no favorites playing)
@@ -586,7 +584,7 @@ async function processItem(item: OutboxItem) {
       return {
         id: item.id,
         status: "sent",
-        recipients: dedupedPlayerRecipients.length + eventRecipients.length,
+        recipients: reachedPlayerRecipients.size + eventRecipients.length,
       };
     }
 
@@ -1040,18 +1038,17 @@ async function processItem(item: OutboxItem) {
       return { id: item.id, status: "skipped", reason: "no_recipients" };
     }
 
-    // For game_started, suppress only users already covered by a confirmed
-    // combined round_started or an earlier per-game fallback. Favorite count
-    // alone is not proof of delivery: if round_started was waiting for moves,
-    // the first matching game_started becomes the safe one-per-round fallback.
-    if (item.event_type === "game_started" && item.round_id) {
-      const alreadyCovered = await fetchUsersWithActiveGameStartWindow(
+    // For game_started, drop only users whom round_started already told about
+    // THIS board. Another favorite's board in the same round is not cover:
+    // every favorite's board gets its own start alert.
+    if (item.event_type === "game_started" && item.round_id && item.game_id) {
+      const windows = await fetchGameStartWindows(
         item.round_id,
         Array.from(filteredUserIds),
       );
       const { keep } = filterGameStartedPlayerRecipients(
         filteredUserIds,
-        alreadyCovered,
+        usersCoveredForBoard(windows, item.game_id),
       );
       filteredUserIds.clear();
       for (const uid of keep) filteredUserIds.add(uid);
@@ -1092,14 +1089,18 @@ async function processItem(item: OutboxItem) {
       await sendOneSignal(Array.from(filteredUserIds), notification);
     }
 
-    // Record a cooldown window so that round_started skips these users.
-    // Only record for the users who actually received this push (1-favorite users).
-    if (item.event_type === "game_started" && item.round_id) {
+    // Record this board for the users who just got it, so a round_started
+    // still waiting for moves does not announce the same board again.
+    if (item.event_type === "game_started" && item.round_id && item.game_id) {
       const playerRecipients = Array.from(filteredUserIds).filter(
         (uid) => context.playerUserIds.has(uid),
       );
       if (playerRecipients.length > 0) {
-        await recordGameStartWindow(playerRecipients, item.round_id);
+        await recordGameStartWindow(
+          playerRecipients,
+          item.round_id,
+          item.game_id,
+        );
       }
     }
 
@@ -1162,7 +1163,6 @@ type RoundStartProgress = {
   event_sent?: boolean;
   boards_sent?: string[];
   unresolved_sent?: boolean;
-  windows_recorded?: boolean;
 };
 
 function readRoundStartProgress(item: OutboxItem): RoundStartProgress {
@@ -1175,7 +1175,6 @@ function readRoundStartProgress(item: OutboxItem): RoundStartProgress {
       ? boards.filter((id): id is string => typeof id === "string")
       : [],
     unresolved_sent: raw.unresolved_sent === true,
-    windows_recorded: raw.windows_recorded === true,
   };
 }
 
@@ -1294,23 +1293,45 @@ async function markFailed(id: string, attempts: number, error: string) {
       .eq("id", id));
 }
 
+// A board starts once, so a per-board window can only ever stop the same
+// board being announced twice. It has to outlive the gap between the round
+// push and that board's own first move (a late arrival, a relay that comes
+// online late), not the 15 minutes the old round-wide window allowed.
+const GAME_START_WINDOW_SECONDS = 4 * 60 * 60;
+const GAME_START_WINDOW_WRITE_ROWS = 500;
+
 // Written after the push went out, so this must never throw: a retry from
 // here would re-send. Lose the window and the worst case is one duplicate
 // board alert, which the per-board collapse_id folds into the same tray entry.
-async function recordGameStartWindow(userIds: string[], roundId: string) {
+async function recordGameStartWindow(
+  userIds: string[],
+  roundId: string,
+  gameId: string,
+) {
+  const family = gameStartWindowFamily(gameId);
+  const expiresAt = new Date(Date.now() + GAME_START_WINDOW_SECONDS * 1000)
+    .toISOString();
   try {
-    await runQuery(
-      "Game-start window record",
-      () =>
-        supabase.rpc("record_game_start_window", {
-          p_user_ids: userIds,
-          p_round_id: roundId,
-          p_cooldown_seconds: 900, // 15 min covers the gap to the round_started cron
-        }),
-    );
+    for (const batch of chunk(userIds, GAME_START_WINDOW_WRITE_ROWS)) {
+      await runQuery(
+        "Game-start window record",
+        () =>
+          supabase
+            .from("notification_user_windows")
+            .upsert(
+              batch.map((userId) => ({
+                user_id: userId,
+                round_id: roundId,
+                family,
+                expires_at: expiresAt,
+              })),
+              { onConflict: "user_id,round_id,family" },
+            ),
+      );
+    }
   } catch (error) {
     console.error(
-      `[onesignal-dispatch] game-start window for round ${roundId} not recorded (${userIds.length} users): ${
+      `[onesignal-dispatch] game-start window for board ${gameId} (round ${roundId}) not recorded (${userIds.length} users): ${
         describeError(error, 300)
       }`,
     );
@@ -2204,34 +2225,39 @@ async function fetchMutedUserIds(
   return muted;
 }
 
-async function fetchUsersWithActiveGameStartWindow(
+// user → boards of this round whose start push already reached them. Rows
+// of the old round-wide `game_start` family are ignored: they silenced every
+// other favorite's board for the round.
+async function fetchGameStartWindows(
   roundId: string,
   userIds: string[],
-): Promise<Set<string>> {
-  const suppressed = new Set<string>();
-  if (userIds.length === 0) return suppressed;
+): Promise<Map<string, Set<string>>> {
+  if (userIds.length === 0) return new Map();
   const nowIso = new Date().toISOString();
+  const rows: Array<{ user_id: string; family: string }> = [];
   for (const batch of packForUrlBudget(userIds)) {
     // A failed window read must fail the item (and retry) rather than treat
-    // covered users as uncovered and double-send. runQuery throws
+    // covered users as uncovered and double-send. fetchAllPages throws
     // `Game-start window lookup failed: …` once its in-process retries are
-    // spent.
-    const data = await runQuery<Array<{ user_id: string }>>(
-      "Game-start window lookup",
-      () =>
-        supabase
-          .from("notification_user_windows")
-          .select("user_id")
-          .eq("round_id", roundId)
-          .eq("family", "game_start")
-          .gt("expires_at", nowIso)
-          .in("user_id", batch),
+    // spent. One row per user AND board, so a page can pass PostgREST's
+    // silent 1000-row cap: walk every page.
+    rows.push(
+      ...await fetchAllPages<{ user_id: string; family: string }>(
+        "Game-start window lookup",
+        (from, to) =>
+          supabase
+            .from("notification_user_windows")
+            .select("user_id, family")
+            .eq("round_id", roundId)
+            .gt("expires_at", nowIso)
+            .in("user_id", batch)
+            .order("user_id")
+            .order("family")
+            .range(from, to),
+      ),
     );
-    for (const row of data ?? []) {
-      suppressed.add(row.user_id);
-    }
   }
-  return suppressed;
+  return coveredBoardsByUser(rows);
 }
 
 async function resolveRecursiveBookSubscribers(
