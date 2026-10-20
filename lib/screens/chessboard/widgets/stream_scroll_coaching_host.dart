@@ -251,9 +251,9 @@ class _StreamScrollCoachingLessonState extends State<StreamScrollCoachingLesson>
                             left: inset,
                             child: Transform.rotate(
                               angle: math.pi / 4,
-                              child: const Icon(
+                              child: Icon(
                                 Icons.touch_app,
-                                color: Colors.white,
+                                color: context.colors.textPrimary,
                                 size: 36,
                                 shadows: [
                                   Shadow(color: Colors.black, blurRadius: 4),
@@ -265,9 +265,9 @@ class _StreamScrollCoachingLessonState extends State<StreamScrollCoachingLesson>
                             right: inset,
                             child: Transform.rotate(
                               angle: -math.pi / 4,
-                              child: const Icon(
+                              child: Icon(
                                 Icons.touch_app,
-                                color: Colors.white,
+                                color: context.colors.textPrimary,
                                 size: 36,
                                 shadows: [
                                   Shadow(color: Colors.black, blurRadius: 4),
@@ -275,12 +275,12 @@ class _StreamScrollCoachingLessonState extends State<StreamScrollCoachingLesson>
                               ),
                             ),
                           ),
-                          const Row(
+                          Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
                               Icon(
                                 Icons.arrow_forward,
-                                color: Colors.white,
+                                color: context.colors.textPrimary,
                                 size: 18,
                                 shadows: [
                                   Shadow(color: Colors.black, blurRadius: 4),
@@ -288,7 +288,7 @@ class _StreamScrollCoachingLessonState extends State<StreamScrollCoachingLesson>
                               ),
                               Icon(
                                 Icons.arrow_back,
-                                color: Colors.white,
+                                color: context.colors.textPrimary,
                                 size: 18,
                                 shadows: [
                                   Shadow(color: Colors.black, blurRadius: 4),
