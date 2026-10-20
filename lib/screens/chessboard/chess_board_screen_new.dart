@@ -3,6 +3,7 @@ import 'package:chessever2/config/feature_flags.dart';
 import 'package:chessever2/providers/country_dropdown_provider.dart';
 import 'widgets/notation_scroll.dart';
 import 'dart:async';
+import 'package:chessever2/screens/chessboard/widgets/stream_scroll_coaching_host.dart';
 import 'dart:developer' as developer;
 // import 'dart:io'; // UNUSED: Removed with old dialog approach
 import 'dart:math' as math;
@@ -3217,6 +3218,13 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
                 key: _featureTeachingHostKey,
                 isEligibleVisit: _canShowTeachingsForCurrentGame,
                 eligibleFeatures: _eligibleFeatureTeachings,
+                canShowContextual: () =>
+                    !_showTutorialOverlay &&
+                    !_showPinchTutorial &&
+                    !_gameSwitcher.isOpen &&
+                    _gameReviewTarget.value == null &&
+                    !_isRouteCovered &&
+                    !_isLifecycleBackgrounded,
                 child: child,
               ),
             ),
@@ -7845,6 +7853,7 @@ class _BottomNavBar extends ConsumerWidget {
       videoVisible: hasVideo && video.visible,
       isActivePage: isActivePage,
       gameIndex: index,
+      coachingGameId: '${identityHashCode(ModalRoute.of(context))}:${game.gameId}',
       showGamebaseButton: showGamebaseButton,
       explorerPanelVisible: explorerPanelVisible,
       onFlip: () => notifier.flipBoard(),
@@ -8340,25 +8349,31 @@ class _AnalysisGameBody extends ConsumerWidget {
 
         final video = EventVideoLayoutScope.maybeOf(context);
         if (video != null && video.watches(game.tourId)) {
-          return EventVideoGameLayout(
-            active: video.isActive(game.gameId),
-            sideBySide: isTabletLandscape,
-            maxWidth: ResponsiveHelper.isTablet && !isTabletLandscape
-                ? math.min(MediaQuery.sizeOf(context).width * .85, 720.0)
-                : null,
-            board: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: boardHeaderChildren,
+          return StreamScrollCoachingHost(
+            key: ValueKey('stream_scroll_${game.gameId}'),
+            gameId: '${identityHashCode(ModalRoute.of(context))}:${game.gameId}',
+            active: video.isActive(game.gameId) && video.visible && isVisiblePage,
+            canShow: () => BoardFeatureTeachingHost.allowsContextual(context),
+            child: EventVideoGameLayout(
+              active: video.isActive(game.gameId),
+              sideBySide: isTabletLandscape,
+              maxWidth: ResponsiveHelper.isTablet && !isTabletLandscape
+                  ? math.min(MediaQuery.sizeOf(context).width * .85, 720.0)
+                  : null,
+              board: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: boardHeaderChildren,
+              ),
+              engine: showPv
+                  ? _PrincipalVariationList(
+                      key: e2eKey(E2eIds.boardPvList),
+                      index: index,
+                      state: state,
+                      game: game,
+                    )
+                  : const SizedBox.shrink(),
+              analysis: buildAnalysisView(),
             ),
-            engine: showPv
-                ? _PrincipalVariationList(
-                    key: e2eKey(E2eIds.boardPvList),
-                    index: index,
-                    state: state,
-                    game: game,
-                  )
-                : const SizedBox.shrink(),
-            analysis: buildAnalysisView(),
           );
         }
 

@@ -15,7 +15,33 @@ class BoardFeatureTeachingHost extends ConsumerStatefulWidget {
     required this.isEligibleVisit,
     required this.eligibleFeatures,
     this.elapsed,
+    this.canShowContextual,
   });
+
+  final bool Function()? canShowContextual;
+  static bool allowsContextual(BuildContext context) {
+    final host = context
+        .findAncestorStateOfType<_BoardFeatureTeachingHostState>();
+    return host == null ||
+        (host._dialog == null &&
+            (host.widget.canShowContextual?.call() ?? true));
+  }
+
+  static ValueChanged<bool> contextualVisibility(
+    BuildContext context,
+    Object owner,
+  ) {
+    final host = context
+        .findAncestorStateOfType<_BoardFeatureTeachingHostState>();
+    return (visible) {
+      if (host?.mounted != true) return;
+      if (visible) {
+        host!._contextualOwners.add(owner);
+      } else {
+        host!._contextualOwners.remove(owner);
+      }
+    };
+  }
 
   final Widget child;
   final bool Function() isEligibleVisit;
@@ -41,6 +67,7 @@ class _BoardFeatureTeachingHostState
   int _interactions = 0;
   int _visit = 0;
   bool _checking = false;
+  final _contextualOwners = <Object>{};
   bool _foreground = true;
   bool _routeCurrent = true;
   Timer? _checkTimer;
@@ -83,6 +110,7 @@ class _BoardFeatureTeachingHostState
   bool get _canShow =>
       _routeIsReady &&
       _dialog == null &&
+      _contextualOwners.isEmpty &&
       _pointers.isEmpty &&
       _interactions >= 3 &&
       _time >= engagementDelay &&
