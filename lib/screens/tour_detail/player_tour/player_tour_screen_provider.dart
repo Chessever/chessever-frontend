@@ -3,6 +3,7 @@ import 'package:chessever2/repository/local_storage/favorite/favourate_standings
 import 'package:chessever2/repository/supabase/tour/tour.dart';
 import 'package:chessever2/screens/standings/player_standing_model.dart';
 import 'package:chessever2/screens/standings/standings_builder.dart';
+import 'package:chessever2/screens/standings/standings_search_text.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_screen_provider.dart';
@@ -135,8 +136,7 @@ List<PlayerStandingModel> filterStandingsByQuery(
   List<PlayerStandingModel> standings,
   String rawQuery,
 ) {
-  final query = _normalizeStandingSearch(rawQuery);
-  if (query.isEmpty) return standings;
+  if (standingsSearchForms(rawQuery).isEmpty) return standings;
 
   return standings
       .where((player) {
@@ -145,28 +145,9 @@ List<PlayerStandingModel> filterStandingsByQuery(
           player.title ?? '',
           player.countryCode,
         ].join(' ');
-        return _matchesStandingSearch(searchable, query);
+        return matchesStandingsSearch(searchable, rawQuery);
       })
       .toList(growable: false);
-}
-
-String _normalizeStandingSearch(String value) {
-  return value
-      .toLowerCase()
-      .replaceAll(RegExp(r'[^a-z0-9]+'), ' ')
-      .trim()
-      .split(RegExp(r'\s+'))
-      .where((part) => part.isNotEmpty)
-      .join(' ');
-}
-
-bool _matchesStandingSearch(String value, String normalizedQuery) {
-  final normalizedValue = _normalizeStandingSearch(value);
-  if (normalizedValue.isEmpty) return false;
-  if (normalizedValue.contains(normalizedQuery)) return true;
-
-  final queryTokens = normalizedQuery.split(' ');
-  return queryTokens.every(normalizedValue.contains);
 }
 
 final playerTourScreenProvider =
