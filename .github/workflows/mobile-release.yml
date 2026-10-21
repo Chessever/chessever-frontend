@@ -1,5 +1,5 @@
-# Production mobile release: App Bundle to Google Play (internal track) and IPA
-# to App Store Connect. GitHub Actions port of Codemagic's
+# Production mobile review submission, held for manual release on both stores.
+# GitHub Actions replaces Codemagic's
 # "Flutter-Default Workflow" (app chessever-frontend-mobile).
 #
 # Manual runs only. Signing and store credentials live in the `release`
@@ -20,9 +20,13 @@ on:
         type: boolean
         default: true
       publish:
-        description: Upload to Google Play internal and App Store Connect
+        description: Submit to Google Play production and App Store review (manual release only)
         type: boolean
         default: true
+      managed_publishing_confirmed:
+        description: I verified Google Play Managed publishing is ON for production ChessEver
+        type: boolean
+        default: false
       upload_symbols:
         description: Keep R8 mapping and dSYMs as run artifacts (any signed-in GitHub user can download them)
         type: boolean
@@ -49,8 +53,43 @@ env:
   ANALYSIS_API_BASE: https://chessever-analysis.young-sun-69a8.workers.dev
 
 jobs:
+  preflight:
+    name: Verify release request
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Require stable and a manual publishing hold
+        env:
+          RELEASE_REF: ${{ github.ref }}
+          BUILD_ANDROID: ${{ inputs.android }}
+          BUILD_IOS: ${{ inputs.ios }}
+          SUBMIT: ${{ inputs.publish }}
+          MANAGED_PUBLISHING_CONFIRMED: ${{ inputs.managed_publishing_confirmed }}
+        run: |
+          if [ "$RELEASE_REF" != refs/heads/stable ]; then
+            echo '::error::Mobile releases must run from stable.'
+            exit 1
+          fi
+          if [ "$BUILD_ANDROID" != true ] && [ "$BUILD_IOS" != true ]; then
+            echo '::error::Select at least one platform.'
+            exit 1
+          fi
+          if [ "$SUBMIT" = true ] && [ "$BUILD_ANDROID" = true ] && [ "$MANAGED_PUBLISHING_CONFIRMED" != true ]; then
+            echo '::error::Verify Managed publishing is ON in Google Play Publishing overview before submitting Android.'
+            exit 1
+          fi
+
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Test store submission safeguards
+        run: python3 -m unittest scripts/ci/test_mobile_store_submit.py
+
   android:
     name: Android App Bundle
+    needs: preflight
     if: inputs.android
     runs-on: ubuntu-24.04
     timeout-minutes: 120
@@ -65,38 +104,50 @@ jobs:
           persist-credentials: false
 
       - name: Free disk space
+        background: true
         # The bundle alone is ~600 MB; the R8 and Gradle intermediates need
         # several GB more than a stock runner reliably has free.
         run: sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/.ghcup /usr/local/share/boost /opt/hostedtoolcache/CodeQL
 
       - name: Set up Java 17
+        background: true
         uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
         with:
           distribution: temurin
           java-version: "17"
 
       - name: Set up Flutter (stable)
+        background: true
         uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
         with:
           channel: stable
 
       - name: Set up Python
         if: inputs.publish
+        background: true
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.12"
 
-      - name: Install Codemagic CLI tools
+      - name: Wait for build toolchains
+        wait-all:
+
+      - name: Install store CLI tools
         if: inputs.publish
+        background: true
         # 0.70.0, the release Codemagic's machines run, hash-locked with every
         # dependency because these tools handle the store credentials.
         run: python -m pip install --require-hashes -r scripts/ci/release-tools.txt
 
       - name: Install Android NDKs
+        background: true
         # Codemagic pre-build step. The runner image ships neither version.
         run: |
           "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" --install \
             "ndk;27.0.12077973" "ndk;28.2.13676358" > /dev/null
+
+      - name: Wait for Android dependencies
+        wait-all:
 
       - name: Write Firebase config and upload key
         env:
@@ -137,15 +188,12 @@ jobs:
           GAMEBASE_API_KEY: ${{ secrets.GAMEBASE_API_KEY }}
         run: bash scripts/ci/mobile_flutter_build.sh appbundle
 
-      - name: Publish to Google Play (internal)
+      - name: Submit to Google Play review (manual publishing)
         if: inputs.publish
         env:
           GOOGLE_PLAY_SERVICE_ACCOUNT_CREDENTIALS: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}
-        run: |
-          google-play bundles publish \
-            --bundle build/app/outputs/bundle/productionRelease/app-production-release.aab \
-            --track internal \
-            --in-app-update-priority 5
+          MANAGED_PUBLISHING_CONFIRMED: ${{ inputs.managed_publishing_confirmed }}
+        run: bash scripts/ci/mobile_store_submit.sh android
 
       - name: Keep App Bundle (build only)
         if: ${{ !inputs.publish }}
@@ -171,6 +219,7 @@ jobs:
 
   ios:
     name: iOS IPA
+    needs: preflight
     if: inputs.ios
     runs-on: macos-26
     timeout-minutes: 120
@@ -182,6 +231,7 @@ jobs:
           persist-credentials: false
 
       - name: Select Xcode 26.6
+        background: true
         # Codemagic's "latest" resolved to 26.6 (17F113) when this was ported.
         # Move deliberately; App Store Connect enforces a minimum SDK.
         run: |
@@ -189,16 +239,21 @@ jobs:
           xcodebuild -version
 
       - name: Set up Flutter (stable)
+        background: true
         uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
         with:
           channel: stable
 
       - name: Set up Python
+        background: true
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.12"
 
-      - name: Install Codemagic CLI tools
+      - name: Wait for iOS toolchains
+        wait-all:
+
+      - name: Install store CLI tools
         # 0.70.0, the release Codemagic's machines run, hash-locked with every
         # dependency because these tools handle the signing credentials.
         run: python -m pip install --require-hashes -r scripts/ci/release-tools.txt
@@ -268,7 +323,12 @@ jobs:
           profile="$RUNNER_TEMP/runner_profile.plist"
           security cms -D -i "$check_dir/Payload/Runner.app/embedded.mobileprovision" > "$profile"
           echo "Profile: $(/usr/libexec/PlistBuddy -c "Print :Name" "$profile")"
-          echo "App ID:  $(/usr/libexec/PlistBuddy -c "Print :Entitlements:application-identifier" "$profile")"
+          app_id=$(/usr/libexec/PlistBuddy -c "Print :Entitlements:application-identifier" "$profile")
+          case "$app_id" in
+            *.com.chessever.app) ;;
+            *) echo '::error::The IPA is not signed for production ChessEver.'; exit 1 ;;
+          esac
+          echo "App ID:  $app_id"
           aps=$(/usr/libexec/PlistBuddy -c "Print :Entitlements:aps-environment" "$profile")
           echo "APNs:    $aps"
           if [ "$aps" != "production" ]; then
@@ -276,15 +336,13 @@ jobs:
             exit 1
           fi
 
-      - name: Publish to App Store Connect
+      - name: Submit to App Store review (manual release)
         if: inputs.publish
         env:
           APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
           APP_STORE_CONNECT_KEY_IDENTIFIER: ${{ secrets.APP_STORE_CONNECT_KEY_IDENTIFIER }}
           APP_STORE_CONNECT_PRIVATE_KEY: ${{ secrets.APP_STORE_CONNECT_PRIVATE_KEY }}
-        run: |
-          ipa=(build/ios/ipa/*.ipa)
-          app-store-connect publish --path "${ipa[0]}"
+        run: bash scripts/ci/mobile_store_submit.sh ios
 
       - name: Keep IPA (build only)
         if: ${{ !inputs.publish }}

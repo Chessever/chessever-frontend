@@ -17,15 +17,23 @@ docs local, so the shared guide lives here).
 
 Actions -> **Mobile release** -> Run workflow, on `stable`.
 
+GitHub Actions is the production mobile build service. Do not trigger Codemagic.
+Store submission and public release are separate: every submitted version must
+wait for a person to release it in the store console.
+
 | Input | Default | Effect |
 |---|---|---|
 | `android` | on | Build the App Bundle on `ubuntu-24.04` |
 | `ios` | on | Build the IPA on `macos-26` (Xcode 26.6) |
-| `publish` | on | Upload to Google Play `internal` (in-app update priority 5) and App Store Connect (no TestFlight submission) |
+| `publish` | on | Submit Google Play `production` and App Store versions for review, held for manual release |
+| `managed_publishing_confirmed` | off | Confirm Managed publishing is ON in the production app's Play Console; required for Android submissions on every run |
 | `upload_symbols` | off | Keep R8 `mapping.txt` and dSYMs as run artifacts for 7 days |
 
 Codemagic built both platforms one after the other on a single Mac. Here they
-run in parallel, each on its own free runner. The release commands explicitly select the production flavor and `lib/main.dart`.
+run in parallel, each on its own free runner. Independent setup steps also use
+GitHub's native `background: true` with `wait-all` barriers before consuming
+their tools or environment changes. Failures at a barrier stop the build.
+The release commands explicitly select the production flavor and `lib/main.dart`.
 Build-only runs retain the AAB and IPA for seven days. The remaining commands run
 in the same order:
 
@@ -38,8 +46,34 @@ in the same order:
 | `flutter build appbundle --release <defines>` | `scripts/ci/mobile_flutter_build.sh appbundle` (same define list and order) |
 | `flutter build ipa --release --export-options-plist ... <defines>` | `scripts/ci/mobile_flutter_build.sh ipa --export-options-plist ...` |
 | Post-build: embedded profile must carry production APNs | "Check IPA signing" |
-| Publish: `google-play bundles publish --track internal --in-app-update-priority 5`, `app-store-connect publish` | Same commands |
+| Store upload | `scripts/ci/mobile_store_submit.sh`: Android production review with Managed publishing confirmed; iOS App Store review with explicit `--release-type MANUAL` |
 | Email to info@, brky29cn@, flutterdev77@ | Not ported. GitHub emails the person who started a failed run. |
+
+### Review without automatic release
+
+- **Android:** Before starting a submission, open production ChessEver in Google
+  Play Console -> Publishing overview and verify **Managed publishing is on**.
+  Only then select `managed_publishing_confirmed`. Google does not expose this
+  setting in the publishing API; a successful upload cannot prove the hold is on.
+  The preflight and submission script both refuse Android submission without
+  this per-run confirmation. A production release is sent for review; after
+  approval it must stay in Changes ready to publish until a person publishes it.
+  Internal-track upload does not provide this review-and-hold behavior.
+- **iOS:** The upload command includes `--app-store --release-type MANUAL`, waits
+  for build processing, and submits for App Review. Approval must leave the
+  version in Pending Developer Release. There is no automatic-release option
+  in the submission script and no cancellation of an existing review.
+- Release notes live in `scripts/ci/mobile_release_notes.txt` and the matching
+  Play JSON file. Update them when preparing the next store submission.
+- Both jobs require the protected `release` environment. Inspect the exact
+  `stable` commit before approving deployment. GitHub deployment approval only
+  allows building and submitting; it does not authorize public store release.
+- `codemagic-cli-tools` is a pinned open-source signing/upload utility running
+  on GitHub's runners. Using it does not start a Codemagic build or use its
+  hosted service.
+
+See [GitHub's parallel-step syntax](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax#jobsjob_idstepsbackground)
+and [Google's Managed publishing requirements](https://support.google.com/googleplay/android-developer/answer/9859654).
 
 ## Desktop release
 
