@@ -15,6 +15,7 @@ import 'package:chessever2/screens/group_event/smart_event/smart_event_screen.da
 import 'package:chessever2/screens/player_profile/player_profile_screen.dart';
 import 'package:chessever2/widgets/game_filter/game_filter_model.dart';
 import 'package:chessever2/widgets/auth/auth_upgrade_sheet.dart';
+import 'package:chessever2/widgets/dismiss_keyboard.dart';
 import 'package:chessever2/widgets/app_snack.dart';
 import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
 import 'package:flutter/material.dart';
@@ -760,7 +761,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
               // An account with no allowance keeps the composer: _send opens
               // the Premium popup when the message is sent.
               ChatComposerAccess.upgradeRequired ||
-              ChatComposerAccess.enabled => _ChatComposer(
+              ChatComposerAccess.enabled => ChatComposer(
                 controller: _controller,
                 sending: _sending,
                 onSend: _send,
@@ -1089,8 +1090,9 @@ MarkdownStyleSheet chatMarkdownStyleSheet(BuildContext context) {
   );
 }
 
-class _ChatComposer extends StatefulWidget {
-  const _ChatComposer({
+class ChatComposer extends StatefulWidget {
+  const ChatComposer({
+    super.key,
     required this.controller,
     required this.sending,
     required this.onSend,
@@ -1101,7 +1103,7 @@ class _ChatComposer extends StatefulWidget {
   final VoidCallback onSend;
 
   @override
-  State<_ChatComposer> createState() => _ChatComposerState();
+  State<ChatComposer> createState() => _ChatComposerState();
 }
 
 class _ChatLoginGate extends StatelessWidget {
@@ -1163,7 +1165,7 @@ class _ChatDailyLimitNotice extends StatelessWidget {
   }
 }
 
-class _ChatComposerState extends State<_ChatComposer> {
+class _ChatComposerState extends State<ChatComposer> {
   static const _placeholders = <String>[
     'Your move. Ask Botvinnik',
     '轮到你了，问问博特维尼克',
@@ -1217,7 +1219,7 @@ class _ChatComposerState extends State<_ChatComposer> {
   }
 
   @override
-  void didUpdateWidget(covariant _ChatComposer oldWidget) {
+  void didUpdateWidget(covariant ChatComposer oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.controller == widget.controller) return;
     oldWidget.controller.removeListener(_onTextChanged);
@@ -1325,6 +1327,25 @@ class _ChatComposerState extends State<_ChatComposer> {
                 Expanded(
                   child: TextField(
                     controller: widget.controller,
+                    // The global outside-tap listener must not unfocus the
+                    // field on pointer-down in its overlay toolbar, before
+                    // Android's Paste button receives pointer-up.
+                    contextMenuBuilder: (context, editableTextState) {
+                      // Preserve the native iOS menu when the engine supports it.
+                      if (SystemContextMenu.isSupportedByField(
+                        editableTextState,
+                      )) {
+                        return SystemContextMenu.editableText(
+                          editableTextState: editableTextState,
+                        );
+                      }
+                      return KeyboardDismissExclusion(
+                        focusNode: editableTextState.widget.focusNode,
+                        child: AdaptiveTextSelectionToolbar.editableText(
+                          editableTextState: editableTextState,
+                        ),
+                      );
+                    },
                     minLines: 1,
                     maxLines: 5,
                     maxLength: 2000,
