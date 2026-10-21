@@ -27,6 +27,9 @@ wait for a person to release it in the store console.
 | `ios` | on | Build the IPA on `macos-26` (Xcode 26.6) |
 | `publish` | on | Submit Google Play `production` and App Store versions for review, held for manual release |
 | `managed_publishing_confirmed` | off | Confirm Managed publishing is ON in the production app's Play Console; required for Android submissions on every run |
+| `android_draft` | off | Upload Android to Play Console as a draft, without review or rollout; does not require Managed publishing confirmation |
+| `source_run` | empty | Reuse the AAB/IPA from a successful Mobile release run instead of compiling again |
+| `source_sha` | empty | Full reviewed source commit SHA; required with `source_run` |
 | `upload_symbols` | off | Keep R8 `mapping.txt` and dSYMs as run artifacts for 7 days |
 
 Codemagic built both platforms one after the other on a single Mac. Here they
@@ -36,6 +39,21 @@ their tools or environment changes. Failures at a barrier stop the build.
 The release commands explicitly select the production flavor and `lib/main.dart`.
 Build-only runs retain the AAB and IPA for seven days. The remaining commands run
 in the same order:
+
+To submit an already validated build, set `source_run` and `source_sha` to
+the successful build-only run and its exact commit, with `publish` on.
+The downloader requires a successful manual `stable` run of this workflow in
+this repository and verifies the complete version plus build number against
+the current `pubspec.yaml`. Pull-request, fork, failed, and mismatched-version
+artifacts are rejected before download. Signing and compilation are skipped;
+the protected store steps upload the original validated binaries.
+
+When Android's Managed publishing hold is not yet verified, `android_draft`
+allows uploading its binary without sending it for review or changing rollout.
+After the hold is verified, promote the uploaded draft and send it for review
+in Play Console. Do not upload the same Android version code twice.
+Each platform's job has its own concurrency group, so a slow iOS submission
+does not block Android; two submissions for the same platform stay serialized.
 
 | Codemagic step | GitHub step |
 |---|---|
@@ -142,7 +160,8 @@ The workflows add:
 
 - Manual trigger only. No `pull_request` or `pull_request_target`, so a
   fork's pull request can never reach a secret.
-- `GITHUB_TOKEN` limited to `contents: read`; checkout does not persist it.
+- `GITHUB_TOKEN` limited to `contents: read` and `actions: read` for verified
+  artifact downloads; checkout does not persist it.
 - Every action pinned to a full commit SHA, and the Python tools
   (`codemagic-cli-tools`, `boto3`) installed with `--require-hashes` from a
   lock file covering every dependency (`scripts/ci/release-tools.txt`;

@@ -12,15 +12,20 @@ case "${1:-}" in
   android)
     # Google exposes no API for reading Managed publishing. The operator must
     # verify it in Play Console and explicitly attest on every workflow run.
-    if [ "${MANAGED_PUBLISHING_CONFIRMED:-}" != true ]; then
+    release_args=(
+      bundles publish
+      --bundle build/app/outputs/bundle/productionRelease/app-production-release.aab
+      --track production
+      --in-app-update-priority 5
+      --release-notes @file:scripts/ci/mobile_release_notes.json
+    )
+    if [ "${ANDROID_SUBMIT_DRAFT:-}" = true ]; then
+      release_args+=(--draft)
+    elif [ "${MANAGED_PUBLISHING_CONFIRMED:-}" != true ]; then
       echo '::error::Google Play Managed publishing must be ON before submission.'
       exit 1
     fi
-    google-play bundles publish \
-      --bundle build/app/outputs/bundle/productionRelease/app-production-release.aab \
-      --track production \
-      --in-app-update-priority 5 \
-      --release-notes @file:scripts/ci/mobile_release_notes.json
+    google-play "${release_args[@]}"
     ;;
   ios)
     shopt -s nullglob

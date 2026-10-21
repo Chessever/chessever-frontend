@@ -67,6 +67,16 @@ class StoreSubmissionTest(unittest.TestCase):
         self.assertNotIn("--draft", args)
         self.assertNotIn("--changes-not-sent-for-review", args)
 
+    def test_android_draft_upload_cannot_start_a_rollout(self):
+        result = self.submit(
+            "android", ANDROID_SUBMIT_DRAFT="true",
+            MANAGED_PUBLISHING_CONFIRMED="false",
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        args = json.loads(self.calls.read_text())
+        self.assertIn("--draft", args)
+        self.assertNotIn("--rollout-fraction", args)
+
     def test_ios_submits_for_review_with_manual_release(self):
         ipa = self.root / "build/ios/ipa/ChessEver.ipa"
         ipa.parent.mkdir(parents=True)

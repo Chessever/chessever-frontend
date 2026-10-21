@@ -27,6 +27,18 @@ on:
         description: I verified Google Play Managed publishing is ON for production ChessEver
         type: boolean
         default: false
+      android_draft:
+        description: Upload Android as a draft only, without review or release
+        type: boolean
+        default: false
+      source_run:
+        description: Reuse artifacts from this successful Mobile release run instead of rebuilding (optional)
+        type: string
+        default: ""
+      source_sha:
+        description: Full commit SHA of the source run (required when reusing artifacts)
+        type: string
+        default: ""
       upload_symbols:
         description: Keep R8 mapping and dSYMs as run artifacts (any signed-in GitHub user can download them)
         type: boolean
@@ -34,10 +46,7 @@ on:
 
 permissions:
   contents: read
-
-concurrency:
-  group: mobile-release
-  cancel-in-progress: false
+  actions: read
 
 # Explicit bash adds `-o pipefail`, matching the `set -euo pipefail` the
 # Codemagic scripts ran under.
@@ -65,6 +74,7 @@ jobs:
           BUILD_IOS: ${{ inputs.ios }}
           SUBMIT: ${{ inputs.publish }}
           MANAGED_PUBLISHING_CONFIRMED: ${{ inputs.managed_publishing_confirmed }}
+          ANDROID_DRAFT: ${{ inputs.android_draft }}
         run: |
           if [ "$RELEASE_REF" != refs/heads/stable ]; then
             echo '::error::Mobile releases must run from stable.'
@@ -74,7 +84,7 @@ jobs:
             echo '::error::Select at least one platform.'
             exit 1
           fi
-          if [ "$SUBMIT" = true ] && [ "$BUILD_ANDROID" = true ] && [ "$MANAGED_PUBLISHING_CONFIRMED" != true ]; then
+          if [ "$SUBMIT" = true ] && [ "$BUILD_ANDROID" = true ] && [ "$ANDROID_DRAFT" != true ] && [ "$MANAGED_PUBLISHING_CONFIRMED" != true ]; then
             echo '::error::Verify Managed publishing is ON in Google Play Publishing overview before submitting Android.'
             exit 1
           fi
@@ -85,7 +95,7 @@ jobs:
           persist-credentials: false
 
       - name: Test store submission safeguards
-        run: python3 -m unittest scripts/ci/test_mobile_store_submit.py
+        run: python3 -m unittest discover -s scripts/ci -p 'test_mobile_*.py'
 
   android:
     name: Android App Bundle
@@ -94,6 +104,9 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     environment: release
+    concurrency:
+      group: mobile-release-android
+      cancel-in-progress: false
     env:
       JAVA_TOOL_OPTIONS: -Xmx10g
       ANDROID_KEY_ALIAS: my-key-alias
@@ -104,6 +117,7 @@ jobs:
           persist-credentials: false
 
       - name: Free disk space
+        if: inputs.source_run == ''
         background: true
         # The bundle alone is ~600 MB; the R8 and Gradle intermediates need
         # several GB more than a stock runner reliably has free.
@@ -117,6 +131,7 @@ jobs:
           java-version: "17"
 
       - name: Set up Flutter (stable)
+        if: inputs.source_run == ''
         background: true
         uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
         with:
@@ -140,6 +155,7 @@ jobs:
         run: python -m pip install --require-hashes -r scripts/ci/release-tools.txt
 
       - name: Install Android NDKs
+        if: inputs.source_run == ''
         background: true
         # Codemagic pre-build step. The runner image ships neither version.
         run: |
@@ -150,6 +166,7 @@ jobs:
         wait-all:
 
       - name: Write Firebase config and upload key
+        if: inputs.source_run == ''
         env:
           GOOGLE_SERVICES_JSON_B64: ${{ secrets.GOOGLE_SERVICES_JSON_B64 }}
           ANDROID_KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
@@ -176,6 +193,7 @@ jobs:
           } > android/key.properties
 
       - name: Build App Bundle
+        if: inputs.source_run == ''
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
@@ -188,11 +206,20 @@ jobs:
           GAMEBASE_API_KEY: ${{ secrets.GAMEBASE_API_KEY }}
         run: bash scripts/ci/mobile_flutter_build.sh appbundle
 
-      - name: Submit to Google Play review (manual publishing)
+      - name: Download verified Android build
+        if: inputs.source_run != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_RUN_ID: ${{ inputs.source_run }}
+          SOURCE_COMMIT: ${{ inputs.source_sha }}
+        run: python3 scripts/ci/mobile_artifact_download.py android
+
+      - name: Upload Android draft or submit for review
         if: inputs.publish
         env:
           GOOGLE_PLAY_SERVICE_ACCOUNT_CREDENTIALS: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}
           MANAGED_PUBLISHING_CONFIRMED: ${{ inputs.managed_publishing_confirmed }}
+          ANDROID_SUBMIT_DRAFT: ${{ inputs.android_draft }}
         run: bash scripts/ci/mobile_store_submit.sh android
 
       - name: Keep App Bundle (build only)
@@ -224,6 +251,9 @@ jobs:
     runs-on: macos-26
     timeout-minutes: 120
     environment: release
+    concurrency:
+      group: mobile-release-ios
+      cancel-in-progress: false
     steps:
       - name: Check out
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -239,6 +269,7 @@ jobs:
           xcodebuild -version
 
       - name: Set up Flutter (stable)
+        if: inputs.source_run == ''
         background: true
         uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
         with:
@@ -259,6 +290,7 @@ jobs:
         run: python -m pip install --require-hashes -r scripts/ci/release-tools.txt
 
       - name: Write Firebase config and check entitlements
+        if: inputs.source_run == ''
         env:
           GOOGLE_SERVICE_INFO_PLIST_B64: ${{ secrets.GOOGLE_SERVICE_INFO_PLIST_B64 }}
         run: |
@@ -275,6 +307,7 @@ jobs:
           fi
 
       - name: Set up code signing
+        if: inputs.source_run == ''
         # Same commands Codemagic ran: fetch the App Store certificate and
         # profiles for com.chessever.app (and its extension bundle IDs), then
         # point the Xcode project at them.
@@ -299,6 +332,7 @@ jobs:
           xcode-project use-profiles --export-options-plist "$RUNNER_TEMP/export_options.plist"
 
       - name: Build IPA
+        if: inputs.source_run == ''
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
@@ -310,6 +344,14 @@ jobs:
           APPSFLYER_DEV_KEY: ${{ secrets.APPSFLYER_DEV_KEY }}
           GAMEBASE_API_KEY: ${{ secrets.GAMEBASE_API_KEY }}
         run: bash scripts/ci/mobile_flutter_build.sh ipa --export-options-plist "$RUNNER_TEMP/export_options.plist"
+
+      - name: Download verified iOS build
+        if: inputs.source_run != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_RUN_ID: ${{ inputs.source_run }}
+          SOURCE_COMMIT: ${{ inputs.source_sha }}
+        run: python3 scripts/ci/mobile_artifact_download.py ios
 
       - name: Check IPA signing
         # Codemagic post-build check: the embedded profile must carry
