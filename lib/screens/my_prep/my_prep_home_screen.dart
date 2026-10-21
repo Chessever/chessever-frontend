@@ -47,8 +47,9 @@ class _MyPrepHomeScreenState extends ConsumerState<MyPrepHomeScreen> {
   late final PageController _pages = PageController(initialPage: _tab);
   bool _refreshedOnOpen = false;
 
-  /// The profiles whose sources are listed under their card. Kept here, so
-  /// a list stays as the reader left it after visiting another tab.
+  /// The profiles whose sources are listed under their card, on Games and
+  /// Profiles alike. Kept here, so a list stays as the reader left it after
+  /// visiting another tab.
   final _unfolded = <String>{};
 
   @override
@@ -110,7 +111,7 @@ class _MyPrepHomeScreenState extends ConsumerState<MyPrepHomeScreen> {
       _ => null,
     };
     if (kind == null) return false;
-    // My Games lists sources, so a profile with none attached is empty.
+    // My Games shows the empty state until a source is attached.
     return profiles.any(
       (p) => p.kind == kind && (kind != PrepKind.mine || p.accounts.isNotEmpty),
     );
@@ -168,7 +169,7 @@ class _MyPrepHomeScreenState extends ConsumerState<MyPrepHomeScreen> {
                     if (index != _tab) setState(() => _tab = index);
                   },
                   children: [
-                    const _MyGamesTab(),
+                    _MyGamesTab(unfolded: _unfolded, onFold: _fold),
                     _OpponentsTab(unfolded: _unfolded, onFold: _fold),
                     const _FavoritesTab(),
                   ],
@@ -225,7 +226,11 @@ double get _gutter => ResponsiveHelper.adaptive(phone: 16.w, tablet: 24.w);
 // ------------------------------------------------------------------ my games
 
 class _MyGamesTab extends ConsumerWidget {
-  const _MyGamesTab();
+  const _MyGamesTab({required this.unfolded, required this.onFold});
+
+  /// The profiles whose sources are listed under their card.
+  final Set<String> unfolded;
+  final ValueChanged<String> onFold;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -256,29 +261,13 @@ class _MyGamesTab extends ConsumerWidget {
           bottom: MediaQuery.viewPaddingOf(context).bottom + 96.h,
         ),
         children: [
-          // My Games is one person, so the tab lists their sources rather
-          // than a player card.
-          for (final source in PrepSource.values)
-            for (final account in profile.accounts.where(
-              (a) => a.source == source,
-            ))
-              Padding(
-                padding: EdgeInsets.fromLTRB(_gutter, 0, _gutter, 8.h),
-                child: Material(
-                  color: context.colors.surface,
-                  borderRadius: BorderRadius.circular(12.br),
-                  clipBehavior: Clip.antiAlias,
-                  child: PrepAccountRow(profile: profile, account: account),
-                ),
-              ),
-          if (profile.gameCount > 0)
-            Padding(
-              padding: EdgeInsets.fromLTRB(_gutter, 8.h, _gutter, 0),
-              child: PrepOpenProfileButton(
-                key: const ValueKey('prep_mine_open'),
-                profileId: profile.id,
-              ),
-            ),
+          // The reader's own card reads as every card on Profiles: their
+          // usernames fold away under it.
+          _ProfileRow(
+            profile: profile,
+            open: unfolded.contains(profile.id),
+            onFold: onFold,
+          ),
         ],
       ),
     );
@@ -319,50 +308,74 @@ class _OpponentsTab extends ConsumerWidget {
       itemCount: opponents.length,
       itemBuilder: (context, index) {
         final profile = opponents[index];
-        final open =
-            profile.accounts.isNotEmpty && unfolded.contains(profile.id);
-        return Padding(
+        return _ProfileRow(
           key: ValueKey(profile.id),
-          padding: EdgeInsets.symmetric(horizontal: _gutter),
-          // One rule per profile, under whatever it shows: the card alone, or
-          // the card and its sources. Folded, it lies where the card's own
-          // rule did.
-          child: DecoratedBox(
-            position: DecorationPosition.foreground,
-            decoration: BoxDecoration(
-              border: Border(bottom: BorderSide(color: context.colors.divider)),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                // The card stays every source together; its sources unfold
-                // beneath it.
-                PrepProfileCard(
-                  profile: profile,
-                  fideId: prepFavoriteFide(profile),
-                  expanded: open,
-                  onExpand: profile.accounts.isEmpty
-                      ? null
-                      : () {
-                          HapticFeedbackService.selection();
-                          onFold(profile.id);
-                        },
-                  onTap: () {
-                    HapticFeedbackService.cardTap();
-                    PrepProfileScreen.open(context, profile.id);
-                  },
-                ),
-                _ProfileSources(profile: profile, open: open),
-              ],
-            ),
-          ),
+          profile: profile,
+          open: unfolded.contains(profile.id),
+          onFold: onFold,
         );
       },
     );
   }
 }
 
-/// A profile's sources under its card, each on the My Games source card.
+/// A profile's card, with its sources unfolding beneath it.
+class _ProfileRow extends StatelessWidget {
+  const _ProfileRow({
+    super.key,
+    required this.profile,
+    required this.open,
+    required this.onFold,
+  });
+
+  final PrepProfile profile;
+
+  /// Whether the sources are listed. A profile with none never is.
+  final bool open;
+  final ValueChanged<String> onFold;
+
+  @override
+  Widget build(BuildContext context) {
+    final open = this.open && profile.accounts.isNotEmpty;
+    return Padding(
+      padding: EdgeInsets.symmetric(horizontal: _gutter),
+      // One rule per profile, under whatever it shows: the card alone, or
+      // the card and its sources. Folded, it lies where the card's own
+      // rule did.
+      child: DecoratedBox(
+        position: DecorationPosition.foreground,
+        decoration: BoxDecoration(
+          border: Border(bottom: BorderSide(color: context.colors.divider)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // The card stays every source together; its sources unfold
+            // beneath it.
+            PrepProfileCard(
+              profile: profile,
+              fideId: prepFavoriteFide(profile),
+              expanded: open,
+              onExpand: profile.accounts.isEmpty
+                  ? null
+                  : () {
+                      HapticFeedbackService.selection();
+                      onFold(profile.id);
+                    },
+              onTap: () {
+                HapticFeedbackService.cardTap();
+                PrepProfileScreen.open(context, profile.id);
+              },
+            ),
+            _ProfileSources(profile: profile, open: open),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// A profile's sources under its card, each on its own source card.
 /// Nothing is ruled between the card and them: they are one profile.
 class _ProfileSources extends StatelessWidget {
   const _ProfileSources({required this.profile, required this.open});
@@ -410,8 +423,7 @@ class _ProfileSources extends StatelessWidget {
                   child: PrepAccountRow(profile: profile, account: account),
                 ),
               ),
-          // The profile's own door, as on My Games, once there is anything
-          // to open.
+          // The profile's own door, once there is anything to open.
           if (profile.gameCount > 0)
             Padding(
               padding: EdgeInsets.fromLTRB(12.w, 8.h, 8.w, 8.h),
