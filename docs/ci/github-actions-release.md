@@ -286,7 +286,20 @@ Run on a Mac (the script uses `plutil` to check the plist).
 Expect approval prompts: each run waits on the `release` environment until a
 reviewer clicks **Review deployments**.
 
-## Known gaps
+## Device checks after the first build
+
+- Android Botvinnik: long-press Paste inserts once with focus retained; a tap
+  outside dismisses the keyboard. On iOS, native Copy/Paste still works.
+- Standings: search a non-Latin and an accented name, leave missing ratings
+  blank, and confirm official A/B squads never share each other's boards.
+- Stream coaching: two separate downward drags trigger it; OK clears the demo
+  and ends the camera pulse after two seconds. Check large text, reduced motion,
+  both themes and persistent Don't show again.
+- Long annotations start expanded and still support collapse and editing.
+- Mobile and desktop feedback: submit text and a picture; confirm receipt in
+  the feedback destination. On mobile, offline delivery must show failure.
+
+## Operational limits
 
 - Feedback bot credentials are intentionally excluded from both apps. Feedback
   goes through the production `chessever-feedback` Worker with bounded payloads,
