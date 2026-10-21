@@ -11465,7 +11465,7 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
   final ListEquality<int> _pointerEquality = const ListEquality<int>();
   final Set<String> _collapsedVariationIds = <String>{};
   final Set<String> _expandedVariationIds = <String>{};
-  final Set<String> _expandedCommentIds = <String>{};
+  final Set<String> _collapsedCommentIds = <String>{};
   bool _hasInitiallyScrolled = false;
   String? _lastSignature;
   ChessMovePointer? _lastPointer;
@@ -11663,7 +11663,7 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
       // Reset cached variation collapse state when the notation tree changes
       _collapsedVariationIds.clear();
       _expandedVariationIds.clear();
-      _expandedCommentIds.clear();
+      _collapsedCommentIds.clear();
     }
 
     final notationParams = NotationTreeParams(
@@ -12813,7 +12813,7 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
   }
 
   /// Editorial block-quote for a comment — full-width, depth-colored left
-  /// rail, soft white wash. Long comments fold to a "Read more" toggle.
+  /// rail, soft white wash. Comments start expanded; "Show less" folds them.
   ///
   /// Edit is **double-tap or long-press** — never a lone single-tap. Single-tap
   /// used to open the editor for short comments and mistapped when users aimed
@@ -12828,7 +12828,7 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
     final id = token.pointerId ?? token.variation?.id;
     if (id == null) return const SizedBox.shrink();
 
-    final isExpanded = _expandedCommentIds.contains(id);
+    final isExpanded = !_collapsedCommentIds.contains(id);
     final isLong = fullText.length > _variationCommentPreviewChars;
     final displayText = (isLong && !isExpanded)
         ? '${fullText.substring(0, _variationCommentPreviewChars).trimRight()}…'
@@ -12926,7 +12926,7 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
     _lastCommentTapTime = now;
 
     // Short comments: single tap is a no-op (avoids → mistaps).
-    // Long comments: expand only after the double-tap window expires so a
+    // Long comments: toggle only after the double-tap window expires so a
     // second tap can still open the editor instead of toggling expand twice.
     if (!isLong) return;
 
@@ -12978,9 +12978,9 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
   void _toggleCommentExpansion(String id, bool isExpanded) {
     setState(() {
       if (isExpanded) {
-        _expandedCommentIds.remove(id);
+        _collapsedCommentIds.add(id);
       } else {
-        _expandedCommentIds.add(id);
+        _collapsedCommentIds.remove(id);
       }
     });
     HapticFeedback.selectionClick();
