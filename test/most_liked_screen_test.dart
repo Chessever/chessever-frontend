@@ -337,9 +337,9 @@ void main() {
         queries: queries,
       );
       expect(queries, isNotEmpty);
-      expect(queries.last.period, MostLikedPeriod.month);
-      expect(container.read(mostLikedPeriodProvider), MostLikedPeriod.month);
-      expect(find.bySemanticsLabel('Most liked, Month'), findsOneWidget);
+      expect(queries.last.period, MostLikedPeriod.week);
+      expect(container.read(mostLikedPeriodProvider), MostLikedPeriod.week);
+      expect(find.bySemanticsLabel('Most liked, Week'), findsOneWidget);
       expect(
         tester
             .widget<SegmentedSwitcher>(
