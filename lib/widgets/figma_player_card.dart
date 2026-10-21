@@ -320,8 +320,10 @@ class FigmaPlayerCard extends ConsumerWidget {
                               ),
                             ),
                           ),
-                        // Rating
-                        if (!hideMissingRating || player.score > 0)
+                        // Rating. A rating the source never published stays
+                        // blank rather than reading as 0.
+                        if (player.hasRating &&
+                            (!hideMissingRating || player.score > 0))
                           Text(
                             player.score.toString(),
                             style: AppTypography.textSmRegular.copyWith(
