@@ -4,7 +4,7 @@ import 'package:chessever2/config/app_environment.dart';
 abstract final class GamebaseEnvironment {
   static String get baseUrl => AppEnvironment.isTest
       ? validateTestBase(const String.fromEnvironment('GAMEBASE_TEST_BASE_URL'))
-      : 'https://service.chessever.com';
+      : 'https://${AppEnvironment.productionSupabaseProjectRef}.supabase.co/functions/v1/gamebase-proxy';
 
   static String get testApiKey =>
       const String.fromEnvironment('GAMEBASE_TEST_API_KEY');

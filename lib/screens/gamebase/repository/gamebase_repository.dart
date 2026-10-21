@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:chessever2/repository/gamebase/explorer_query.dart';
+import 'package:chessever2/repository/gamebase/gamebase_connection.dart';
 import '../models/models.dart';
 
 class GamebaseApiKeyMissingException implements Exception {
@@ -9,9 +10,8 @@ class GamebaseApiKeyMissingException implements Exception {
 
   @override
   String toString() {
-    return 'Missing GAMEBASE_API_KEY. Generate a personal developer key from '
-        'https://chessever.com/developers and pass it with --dart-define or '
-        '--dart-define-from-file.';
+    return 'Gamebase proxy is not configured. Supply the public '
+        'SUPABASE_ANON_KEY; upstream Gamebase credentials stay server-side.';
   }
 }
 
@@ -20,18 +20,13 @@ class GamebaseApiKeyMissingException implements Exception {
 class GamebaseRepository {
   GamebaseRepository({http.Client? client, String? baseUrl, String? apiKey})
     : _client = client ?? http.Client(),
-      _baseUrl = baseUrl ?? 'https://service.chessever.com',
-      _apiKey =
-          (apiKey ?? const String.fromEnvironment('GAMEBASE_API_KEY')).trim();
+      _connection = GamebaseConnection(baseUrl: baseUrl, apiKey: apiKey);
 
   final http.Client _client;
-  final String _baseUrl;
-  final String _apiKey;
+  final GamebaseConnection _connection;
+  String get _baseUrl => _connection.baseUrl;
 
-  Map<String, String> get _headers {
-    if (_apiKey.isEmpty) throw const GamebaseApiKeyMissingException();
-    return {'Content-Type': 'application/json', 'X-API-Key': _apiKey};
-  }
+  Map<String, String> get _headers => _connection.headers;
 
   /// Get move aggregates for a given FEN position.
   ///

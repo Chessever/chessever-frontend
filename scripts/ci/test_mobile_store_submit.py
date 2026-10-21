@@ -98,6 +98,17 @@ class StoreSubmissionTest(unittest.TestCase):
         self.assertNotEqual(self.submit("ios").returncode, 0)
         self.assertFalse(self.calls.exists())
 
+    def test_ios_replacing_pending_review_still_requires_manual_release(self):
+        ipa = self.root / "build/ios/ipa/ChessEver.ipa"
+        ipa.parent.mkdir(parents=True)
+        ipa.touch()
+        result = self.submit("ios", REPLACE_PENDING_IOS_REVIEW="true")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        args = json.loads(self.calls.read_text())
+        self.assertIn("--cancel-previous-submissions", args)
+        self.assertIn("--app-store", args)
+        self.assertEqual(args[args.index("--release-type") + 1], "MANUAL")
+
 
 if __name__ == "__main__":
     unittest.main()

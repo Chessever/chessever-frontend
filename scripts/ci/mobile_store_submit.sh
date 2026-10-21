@@ -34,14 +34,18 @@ case "${1:-}" in
       echo '::error::Expected exactly one production IPA.'
       exit 1
     fi
-    app-store-connect publish \
+    release_args=(publish
       --path "${packages[0]}" \
       --app-store \
       --platform IOS \
       --release-type MANUAL \
       --whats-new @file:scripts/ci/mobile_release_notes.txt \
       --max-find-build-wait 30 \
-      --max-build-processing-wait 60
+      --max-build-processing-wait 60)
+    if [ "${REPLACE_PENDING_IOS_REVIEW:-}" = true ]; then
+      release_args+=(--cancel-previous-submissions)
+    fi
+    app-store-connect "${release_args[@]}"
     ;;
   *)
     echo 'usage: mobile_store_submit.sh <android|ios>' >&2

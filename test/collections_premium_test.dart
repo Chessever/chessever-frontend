@@ -198,7 +198,13 @@ class _Repo extends CollectionsRepository {
     this.gamesError,
     this.books = const [],
     this.booksError,
-  }) : super(GamebaseRepository(Dio(), apiKey: 'test'));
+  }) : super(
+         GamebaseRepository(
+           Dio(),
+           baseUrl: 'https://gamebase.test',
+           apiKey: 'test',
+         ),
+       );
 
   Collection detail;
   Object? gamesError;
@@ -665,7 +671,11 @@ void main() {
         return (200, _ok({'id': 'b1', 'slug': 'b1', 'kind': 'book'}));
       });
       final repo = CollectionsRepository(
-        GamebaseRepository(Dio()..httpClientAdapter = http, apiKey: 'test'),
+        GamebaseRepository(
+          Dio()..httpClientAdapter = http,
+          baseUrl: 'https://gamebase.test',
+          apiKey: 'test',
+        ),
         accessToken: () => 'session-jwt',
       );
       await repo.fetchCollection('b1');
@@ -681,7 +691,11 @@ void main() {
         (o) => (200, _ok({'id': 'b1', 'slug': 'b1', 'kind': 'book'})),
       );
       await CollectionsRepository(
-        GamebaseRepository(Dio()..httpClientAdapter = guest, apiKey: 'test'),
+        GamebaseRepository(
+          Dio()..httpClientAdapter = guest,
+          baseUrl: 'https://gamebase.test',
+          apiKey: 'test',
+        ),
         accessToken: () => null,
       ).fetchCollection('b1');
       expect(guest.requests.single.headers.containsKey('Authorization'), false);
@@ -700,7 +714,11 @@ void main() {
         return (200, _ok({'id': 'b1', 'slug': 'b1', 'kind': 'book'}));
       });
       final repo = CollectionsRepository(
-        GamebaseRepository(Dio()..httpClientAdapter = http, apiKey: 'test'),
+        GamebaseRepository(
+          Dio()..httpClientAdapter = http,
+          baseUrl: 'https://gamebase.test',
+          apiKey: 'test',
+        ),
         accessToken: () => 'jwt',
       );
       await repo.fetchCollection('b1');
@@ -732,7 +750,11 @@ void main() {
         (o) => (403, _err('Premium required', 'premium_required')),
       );
       final repo = CollectionsRepository(
-        GamebaseRepository(Dio()..httpClientAdapter = http, apiKey: 'test'),
+        GamebaseRepository(
+          Dio()..httpClientAdapter = http,
+          baseUrl: 'https://gamebase.test',
+          apiKey: 'test',
+        ),
         accessToken: () => 'jwt',
       );
       await expectLater(
@@ -764,7 +786,11 @@ void main() {
         ),
       );
       final repo = CollectionsRepository(
-        GamebaseRepository(Dio()..httpClientAdapter = http, apiKey: 'test'),
+        GamebaseRepository(
+          Dio()..httpClientAdapter = http,
+          baseUrl: 'https://gamebase.test',
+          apiKey: 'test',
+        ),
         accessToken: () => null,
       );
       final books = await repo.fetchBooksForEvent(

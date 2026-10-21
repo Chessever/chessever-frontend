@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Build the production mobile app with its release dart-defines.
 #
-# Called by .github/workflows/mobile-release.yml. The define list and order
-# match the build arguments of Codemagic's "Flutter-Default Workflow".
+# Called by .github/workflows/mobile-release.yml. Public client settings
+# preserve Codemagic's build arguments. The upstream Gamebase credential is
+# deliberately excluded; only the server proxy receives it.
 #
 #   scripts/ci/mobile_flutter_build.sh appbundle
 #   scripts/ci/mobile_flutter_build.sh ipa --export-options-plist "$RUNNER_TEMP/export_options.plist"
@@ -29,7 +30,6 @@ defines=(
   CLARITY_PROJECT_ID=CLARITY_PROJECT_ID
   ONESIGNAL_APP_ID=ONESIGNAL_APP_ID
   APPSFLYER_DEV_KEY=APPSFLYER_DEV_KEY
-  GAMEBASE_API_KEY=GAMEBASE_API_KEY
   CHESSEVER_CLOUDFLARE_API_BASE=CHESSEVER_CLOUDFLARE_API_BASE
   ANALYSIS_API_BASE=ANALYSIS_API_BASE
 )
@@ -51,5 +51,6 @@ for entry in "${defines[@]}"; do
   args+=("--dart-define=$key=$value")
 done
 [ "$missing" -eq 0 ] || exit 1
+python3 scripts/ci/validate_client_config.py --mobile
 
 flutter build "$target" --release --flavor production --target lib/main.dart "$@" "${args[@]}"

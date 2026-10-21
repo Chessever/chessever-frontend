@@ -63,7 +63,11 @@ void main() {
             },
           ),
         );
-      final api = GamebaseRepository(dio, apiKey: 'test');
+      final api = GamebaseRepository(
+        dio,
+        baseUrl: 'https://gamebase.test',
+        apiKey: 'test',
+      );
       final repo = CollectionsRepository(
         api,
         accessToken: () => 'test-session',
@@ -122,7 +126,11 @@ void main() {
           ),
         );
       final batch = await CollectionsRepository(
-        GamebaseRepository(dio, apiKey: 'test'),
+        GamebaseRepository(
+          dio,
+          baseUrl: 'https://gamebase.test',
+          apiKey: 'test',
+        ),
         accessToken: () => null,
       ).fetchPublishedGames(offset: 40);
       expect(batch.games, isEmpty);

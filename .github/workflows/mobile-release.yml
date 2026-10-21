@@ -31,6 +31,10 @@ on:
         description: Upload Android as a draft only, without review or release
         type: boolean
         default: false
+      replace_pending_ios_review:
+        description: Explicitly cancel and replace an earlier pending iOS review (release stays manual)
+        type: boolean
+        default: false
       source_run:
         description: Reuse artifacts from this successful Mobile release run instead of rebuilding (optional)
         type: string
@@ -133,7 +137,7 @@ jobs:
       - name: Set up Flutter (stable)
         if: inputs.source_run == ''
         background: true
-        uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        uses: ./.github/actions/setup-flutter
         with:
           channel: stable
 
@@ -203,7 +207,6 @@ jobs:
           CLARITY_PROJECT_ID: ${{ secrets.CLARITY_PROJECT_ID }}
           ONESIGNAL_APP_ID: ${{ secrets.ONESIGNAL_APP_ID }}
           APPSFLYER_DEV_KEY: ${{ secrets.APPSFLYER_DEV_KEY }}
-          GAMEBASE_API_KEY: ${{ secrets.GAMEBASE_API_KEY }}
         run: bash scripts/ci/mobile_flutter_build.sh appbundle
 
       - name: Download verified Android build
@@ -271,7 +274,7 @@ jobs:
       - name: Set up Flutter (stable)
         if: inputs.source_run == ''
         background: true
-        uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        uses: ./.github/actions/setup-flutter
         with:
           channel: stable
 
@@ -342,7 +345,6 @@ jobs:
           CLARITY_PROJECT_ID: ${{ secrets.CLARITY_PROJECT_ID }}
           ONESIGNAL_APP_ID: ${{ secrets.ONESIGNAL_APP_ID }}
           APPSFLYER_DEV_KEY: ${{ secrets.APPSFLYER_DEV_KEY }}
-          GAMEBASE_API_KEY: ${{ secrets.GAMEBASE_API_KEY }}
         run: bash scripts/ci/mobile_flutter_build.sh ipa --export-options-plist "$RUNNER_TEMP/export_options.plist"
 
       - name: Download verified iOS build
@@ -381,6 +383,7 @@ jobs:
       - name: Submit to App Store review (manual release)
         if: inputs.publish
         env:
+          REPLACE_PENDING_IOS_REVIEW: ${{ inputs.replace_pending_ios_review }}
           APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
           APP_STORE_CONNECT_KEY_IDENTIFIER: ${{ secrets.APP_STORE_CONNECT_KEY_IDENTIFIER }}
           APP_STORE_CONNECT_PRIVATE_KEY: ${{ secrets.APP_STORE_CONNECT_PRIVATE_KEY }}

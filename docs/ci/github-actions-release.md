@@ -9,6 +9,7 @@ public repositories).
 | `chessever-frontend` | `.github/workflows/mobile-release.yml` | app `chessever-frontend-mobile`, workflow "Flutter-Default Workflow" |
 | `chessever_frontend_desktop` | `.github/workflows/desktop-release.yml` | `macos-desktop-release-arm64`, `macos-desktop-release-x64`, `windows-desktop-release`, `linux-desktop-release` in `codemagic.yaml` |
 | `chessever_frontend_desktop` | `.github/workflows/desktop-macos-flutter-master.yml` | `macos-desktop-master` in `codemagic.yaml` |
+| `chessever_frontend_desktop` | `.github/workflows/desktop-app-store.yml` | Separate universal Mac App Store package and manual App Review submission |
 
 This file covers both repositories (the desktop repo keeps its markdown
 docs local, so the shared guide lives here).
@@ -28,6 +29,7 @@ wait for a person to release it in the store console.
 | `publish` | on | Submit Google Play `production` and App Store versions for review, held for manual release |
 | `managed_publishing_confirmed` | off | Confirm Managed publishing is ON in the production app's Play Console; required for Android submissions on every run |
 | `android_draft` | off | Upload Android to Play Console as a draft, without review or rollout; does not require Managed publishing confirmation |
+| `replace_pending_ios_review` | off | Explicitly replace a pending iOS review with this version; release remains MANUAL |
 | `source_run` | empty | Reuse the AAB/IPA from a successful Mobile release run instead of compiling again |
 | `source_sha` | empty | Full reviewed source commit SHA; required with `source_run` |
 | `upload_symbols` | off | Keep R8 `mapping.txt` and dSYMs as run artifacts for 7 days |
@@ -61,7 +63,7 @@ does not block Android; two submissions for the same platform stay serialized.
 | Post-clone: decode `GOOGLE_SERVICES_JSON`, `GOOGLE_SERVICE_INFO_PLIST` | "Write Firebase config ..." steps |
 | Code signing: `app-store-connect fetch-signing-files com.chessever.app --type IOS_APP_STORE --create`, keystore | "Set up code signing" (same `codemagic-cli-tools` 0.70.0 command); keystore is written to the git-ignored `android/key.properties` that `build.gradle.kts` already reads |
 | Pre-build: NDK 27.0.12077973 + 28.2.13676358, required-variable check, `aps-environment` check, `xcode-project use-profiles` | "Install Android NDKs", the checks in each step, "Set up code signing" |
-| `flutter build appbundle --release <defines>` | `scripts/ci/mobile_flutter_build.sh appbundle` (same define list and order) |
+| `flutter build appbundle --release <defines>` | `scripts/ci/mobile_flutter_build.sh appbundle` (public client defines; upstream Gamebase key excluded) |
 | `flutter build ipa --release --export-options-plist ... <defines>` | `scripts/ci/mobile_flutter_build.sh ipa --export-options-plist ...` |
 | Post-build: embedded profile must carry production APNs | "Check IPA signing" |
 | Store upload | `scripts/ci/mobile_store_submit.sh`: Android production review with Managed publishing confirmed; iOS App Store review with explicit `--release-type MANUAL` |
@@ -80,7 +82,8 @@ does not block Android; two submissions for the same platform stay serialized.
 - **iOS:** The upload command includes `--app-store --release-type MANUAL`, waits
   for build processing, and submits for App Review. Approval must leave the
   version in Pending Developer Release. There is no automatic-release option
-  in the submission script and no cancellation of an existing review.
+  in the submission script. Replacing an existing review requires the separate,
+  explicit `replace_pending_ios_review` input.
 - Release notes live in `scripts/ci/mobile_release_notes.txt` and the matching
   Play JSON file. Update them when preparing the next store submission.
 - Both jobs require the protected `release` environment. Inspect the exact
@@ -138,6 +141,15 @@ are on R2.
 ad-hoc signed, never published, zipped `.app` kept for 7 days. It reads only
 the app-config organization secrets, so it needs no `release` environment and
 no approval.
+
+**Mac App Store review** builds the separate universal store edition with
+`MAC_APP_STORE=true`, Apple purchases, sandboxed engines and App Store updates.
+It uses its own application/installer identities and provisioning profile;
+direct downloads keep their existing Stripe and updater behavior. The default
+`submit_review` input uploads and submits with `--release-type MANUAL`.
+Unchecked, it uploads to App Store Connect only. Replacing an existing pending
+review requires the separate `replace_pending_review` input. This workflow
+receives no R2 publisher or Telegram credentials.
 
 ## How the secrets are protected
 
@@ -213,7 +225,6 @@ Identical in both Codemagic apps today.
 | `CLARITY_PROJECT_ID` | same | Microsoft Clarity project |
 | `ONESIGNAL_APP_ID` | same | OneSignal app settings |
 | `APPSFLYER_DEV_KEY` | same | AppsFlyer dev key |
-| `GAMEBASE_API_KEY` | same | Gamebase release key |
 | `GOOGLE_SERVICES_JSON_B64` | `GOOGLE_SERVICES_JSON` | Firebase -> Android app `com.chessEver.app` -> `google-services.json` (raw file) |
 | `GOOGLE_SERVICE_INFO_PLIST_B64` | `GOOGLE_SERVICE_INFO_PLIST` | Firebase -> iOS app `com.chessever.app` -> `GoogleService-Info.plist` (raw file) |
 
@@ -272,8 +283,17 @@ Apple Distribution certificate whose private key you give it, and with
 
 Not carried over: `CODEMAGIC_PUBLISHER_KEY` and `CODEMAGIC_PUBLISH_REMOTE`
 (the old droplet upload; nothing reads them since the move to R2),
-`GAMEBASE_API_KEY` in the desktop group (no desktop build passes it), and the
+`GAMEBASE_API_KEY` in either frontend (both use the server proxy), and the
 mobile `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` (no mobile step uses them).
+
+Gamebase requests carry only the public Supabase project key and the caller's
+session. The upstream Gamebase key belongs in the production `gamebase-proxy`
+function's server secrets. Never add it to Dart defines, app assets, or either
+frontend repository's Actions secrets.
+
+Flutter setup is vendored under `.github/actions/setup-flutter` from the pinned
+upstream release. Its two nested cache actions also use full commit pins, so
+repository-wide SHA enforcement remains enabled without mutable nested actions.
 
 ## One-time setup
 

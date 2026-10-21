@@ -1,18 +1,14 @@
 import 'package:chessever2/services/rewarded_premium/rewarded_safe_interceptor.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:chessever2/services/rewarded_premium/rewarded_session.dart';
 import 'package:chessever2/repository/gamebase/collections/collection_search_query.dart';
-import 'package:chessever2/config/gamebase_environment.dart';
+import 'package:chessever2/repository/gamebase/gamebase_connection.dart';
 import 'dart:convert';
 import 'dart:io' show HttpClient;
 
-import 'package:chessever2/config/app_environment.dart';
 import 'package:chessever2/repository/lichess/cloud_eval/cloud_eval.dart';
 import 'package:dio/dio.dart';
 import 'package:dio/io.dart';
 import 'package:chessever2/main.dart';
 import 'package:flutter/foundation.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:dart_mappable/dart_mappable.dart';
 import 'package:chessever2/screens/gamebase/models/models.dart';
@@ -50,9 +46,8 @@ class MissingGamebaseApiKeyException implements Exception {
 
   @override
   String toString() {
-    return 'Missing GAMEBASE_API_KEY. Generate a personal developer key from '
-        'https://chessever.com/developers and pass it with --dart-define or '
-        '--dart-define-from-file.';
+    return 'Gamebase proxy is not configured. Supply the public '
+        'SUPABASE_ANON_KEY; upstream Gamebase credentials stay server-side.';
   }
 }
 
@@ -101,34 +96,13 @@ class GamebaseWireRequest {
 
 class GamebaseRepository {
   final Dio _dio;
-  final String _apiKey;
-  final String _baseUrl;
+  final GamebaseConnection _connection;
+  String get _baseUrl => _connection.baseUrl;
 
   GamebaseRepository(this._dio, {String? baseUrl, String? apiKey})
-    : _baseUrl = baseUrl ?? GamebaseEnvironment.baseUrl,
-      _apiKey = (apiKey ?? _resolveApiKey()).trim();
+    : _connection = GamebaseConnection(baseUrl: baseUrl, apiKey: apiKey);
 
-  static String _resolveApiKey() {
-    if (AppEnvironment.isTest) return GamebaseEnvironment.testApiKey;
-    const releaseKey = String.fromEnvironment(
-      'GAMEBASE_API_KEY',
-      defaultValue: '',
-    );
-
-    if (releaseKey.isNotEmpty) {
-      return releaseKey;
-    }
-
-    if (kDebugMode && !AppEnvironment.isTest) {
-      final envKey = dotenv.env['GAMEBASE_API_KEY']?.trim();
-      if (envKey != null && envKey.isNotEmpty) return envKey;
-    } else {
-      if (releaseKey.isNotEmpty) return releaseKey;
-    }
-    return '';
-  }
-
-  bool get hasApiKey => _apiKey.isNotEmpty;
+  bool get hasApiKey => _connection.isConfigured;
 
   /// Cold replay-backed aggregate queries (any position past the server's
   /// fast indexed window) can legitimately outlast the repository-wide
@@ -141,23 +115,7 @@ class GamebaseRepository {
   );
   static const int _aggregateReceiveTimeoutRetries = 1;
 
-  Map<String, String> get _headers {
-    if (_baseUrl.isEmpty) {
-      throw StateError(
-        'Set GAMEBASE_TEST_BASE_URL to the test Gamebase service.',
-      );
-    }
-    if (!hasApiKey) throw const MissingGamebaseApiKeyException();
-    return {
-      'X-API-Key': _apiKey,
-      'Accept': 'application/json',
-      ...RewardedSession.instance.headers,
-      if (RewardedSession.instance.active &&
-          Supabase.instance.client.auth.currentSession != null)
-        'Authorization':
-            'Bearer ${Supabase.instance.client.auth.currentSession!.accessToken}',
-    };
-  }
+  Map<String, String> get _headers => _connection.headers;
 
   /// Filter keys shared by aggregates and position-games requests.
   /// Null / empty values are omitted so the backend ANDs only present keys.
