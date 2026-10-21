@@ -1,8 +1,10 @@
 import 'package:chessever2/repository/supabase/tour/published_tiebreak.dart';
 import 'package:chessever2/repository/supabase/tour/info64_source.dart';
 import 'package:chessever2/repository/supabase/tour/tour.dart';
+import 'package:chessever2/screens/standings/official_team_feed_link.dart';
 import 'package:chessever2/screens/standings/player_standing_model.dart';
 import 'package:chessever2/screens/standings/team_standing_model.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 
 /// A complete official snapshot takes precedence over PGN-derived standings:
 /// organizer tiebreaks, byes and adjudications are absent from board feeds.
@@ -102,13 +104,6 @@ List<TeamStandingModel>? _buildOfficialTeamSnapshot(
     return null;
   }
 
-  final playersByTeam = <String, List<PlayerStandingModel>>{};
-  for (final player in players) {
-    final key = player.team?.trim().toLowerCase();
-    if (key != null && key.isNotEmpty) {
-      playersByTeam.putIfAbsent(key, () => []).add(player);
-    }
-  }
   final rows = <TeamStandingModel>[];
   final names = <String>{};
   // Published knockout ranks can skip places; preserve their order rather
@@ -163,11 +158,86 @@ List<TeamStandingModel>? _buildOfficialTeamSnapshot(
         matchesLost: losses,
         // The source counts matches; it does not certify played boards.
         boardsPlayed: 0,
-        players: playersByTeam[name.trim().toLowerCase()] ?? const [],
+        players: const [],
       ),
     );
   }
-  return rows;
+  return _attachFeedTeams(rows, teams.cast<Map>(), players);
+}
+
+/// Fills each official row's players and [TeamStandingModel.feedLink] from
+/// the broadcast roster, whose labels can differ from the organizer's names.
+List<TeamStandingModel> _attachFeedTeams(
+  List<TeamStandingModel> rows,
+  List<Map> raw,
+  List<PlayerStandingModel> players,
+) {
+  final links = linkOfficialTeamsToFeed(
+    official: [
+      for (var i = 0; i < rows.length; i++)
+        (
+          name: rows[i].teamName,
+          members: officialTeamMembers(raw[i]['members']),
+        ),
+    ],
+    feedPlayers: [
+      for (final p in players) (team: p.team, fideId: p.fideId, name: p.name),
+    ],
+  );
+  return [
+    for (final row in rows)
+      TeamStandingModel(
+        teamName: row.teamName,
+        rank: row.rank,
+        officialRound: row.officialRound,
+        tiebreaks: row.tiebreaks,
+        matchPoints: row.matchPoints,
+        gamePoints: row.gamePoints,
+        matchesWon: row.matchesWon,
+        matchesDrawn: row.matchesDrawn,
+        matchesLost: row.matchesLost,
+        boardsPlayed: row.boardsPlayed,
+        feedLink: links[row.teamName],
+        players: [
+          for (final p in players)
+            if (links[row.teamName]?.includes(
+                  team: p.team,
+                  fideId: p.fideId,
+                  name: p.name,
+                ) ??
+                false)
+              p,
+        ],
+      ),
+  ];
+}
+
+/// Names a board's opponent by its official row when exactly one row's
+/// [TeamStandingModel.feedLink] claims that player; otherwise null, and the
+/// caller keeps the broadcast label.
+String? Function(PlayerCard opponent)? officialTeamOpponentNamer(
+  List<TeamStandingModel>? standings,
+) {
+  final linked = [
+    for (final t in standings ?? const <TeamStandingModel>[])
+      if (t.feedLink != null) t,
+  ];
+  if (linked.isEmpty) return null;
+  return (card) {
+    String? hit;
+    for (final t in linked) {
+      if (!t.feedLink!.includes(
+        team: card.team,
+        fideId: card.fideId,
+        name: card.name,
+      )) {
+        continue;
+      }
+      if (hit != null) return null;
+      hit = t.teamName;
+    }
+    return hit;
+  };
 }
 
 num? _points(dynamic value) => value is num && value.isFinite && value >= 0

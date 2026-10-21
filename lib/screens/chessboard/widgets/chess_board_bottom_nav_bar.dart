@@ -1,4 +1,5 @@
 import 'dart:math' as math;
+import 'package:chessever2/screens/chessboard/utils/stream_scroll_coaching.dart';
 import 'package:chessever2/e2e/e2e_ids.dart';
 import 'package:chessever2/providers/engine_settings_provider.dart';
 import 'package:chessever2/screens/chessboard/utils/live_stream_coachmark.dart';
@@ -17,6 +18,7 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 class ChessBoardBottomNavBar extends ConsumerStatefulWidget {
   final int gameIndex;
+  final String? coachingGameId;
   final VoidCallback? onLeftMove;
   final VoidCallback? onRightMove;
   final VoidCallback onFlip;
@@ -52,6 +54,7 @@ class ChessBoardBottomNavBar extends ConsumerStatefulWidget {
   const ChessBoardBottomNavBar({
     super.key,
     required this.gameIndex,
+    this.coachingGameId,
     required this.onLeftMove,
     required this.onRightMove,
     required this.onFlip,
@@ -90,6 +93,7 @@ class _ChessBoardBottomNavBarState extends ConsumerState<ChessBoardBottomNavBar>
   int _coachmarkGeneration = 0;
   EventVideoSession? _videoSession;
   int _chipDismissals = 0;
+  bool _contextPulseRequested = false;
   late final AnimationController _cameraPulse = AnimationController(
     vsync: this,
     duration: const Duration(milliseconds: 1000),
@@ -143,12 +147,24 @@ class _ChessBoardBottomNavBarState extends ConsumerState<ChessBoardBottomNavBar>
   @override
   void initState() {
     super.initState();
-    if (_hasVideoToggle && widget.videoVisible) _scheduleVideoCoachmark();
+    if (_hasVideoToggle && widget.videoVisible && widget.coachingGameId == null) {
+      _scheduleVideoCoachmark();
+    }
   }
 
   @override
   void didUpdateWidget(covariant ChessBoardBottomNavBar oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (oldWidget.isActivePage &&
+        !widget.isActivePage &&
+        widget.coachingGameId != null) {
+      final coach = ref.read(
+        streamScrollCoachingProvider(widget.coachingGameId!),
+      );
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && !widget.isActivePage) coach.setActive(false);
+      });
+    }
     if (!_canShowCoachmark(_restoringVideo)) {
       _hideVideoCoachmark();
     }
@@ -156,7 +172,8 @@ class _ChessBoardBottomNavBarState extends ConsumerState<ChessBoardBottomNavBar>
     final becameActive = !oldWidget.isActivePage;
     final streamOpened = widget.videoVisible && !oldWidget.videoVisible;
     final gameChanged = widget.gameIndex != oldWidget.gameIndex;
-    if (widget.videoVisible &&
+    if (widget.coachingGameId == null &&
+        widget.videoVisible &&
         (toggleAppeared || becameActive || streamOpened || gameChanged)) {
       _scheduleVideoCoachmark();
     }
@@ -239,6 +256,26 @@ class _ChessBoardBottomNavBarState extends ConsumerState<ChessBoardBottomNavBar>
 
   @override
   Widget build(BuildContext context) {
+    final contextual = widget.coachingGameId == null
+        ? null
+        : ref.watch(streamScrollCoachingProvider(widget.coachingGameId!));
+    final requested =
+        contextual?.pulsing == true &&
+        widget.isActivePage &&
+        widget.videoVisible;
+    if (requested != _contextPulseRequested) {
+      _contextPulseRequested = requested;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        if (_contextPulseRequested &&
+            !MediaQuery.disableAnimationsOf(context) &&
+            !MediaQuery.accessibleNavigationOf(context)) {
+          _cameraPulse.repeat();
+        } else {
+          _cameraPulse.reset();
+        }
+      });
+    }
     final buttonCount = widget.showGamebaseButton ? 5 : 4;
     final fullWidth = MediaQuery.of(context).size.width;
 
@@ -375,6 +412,7 @@ class _ChessBoardBottomNavBarState extends ConsumerState<ChessBoardBottomNavBar>
                 onPressed: () {
                   Tooltip.dismissAllToolTips();
                   _hideVideoCoachmark();
+                  contextual?.dismiss();
                   widget.onVideoToggle?.call();
                 },
                 icon: ScaleTransition(
@@ -386,7 +424,7 @@ class _ChessBoardBottomNavBarState extends ConsumerState<ChessBoardBottomNavBar>
                         : Icons.videocam_outlined,
                     // Material camera glyphs have more inset than the SVG controls.
                     size: 28.sp,
-                    color: _videoCoachmarkEntry != null
+                    color: _videoCoachmarkEntry != null || requested
                         ? context.colors.accentText
                         : context.colors.iconPrimary,
                   ),
@@ -458,24 +496,20 @@ class _ChessBoardBottomNavBarState extends ConsumerState<ChessBoardBottomNavBar>
         child: SizedBox(
           height: barHeight,
           child: Center(
-            child:
-                isTablet
-                    // Tablet: Container with refined styling
-                    ? Container(
-                      height: barHeight - 12,
-                      decoration: BoxDecoration(
-                        color: tabletSurface,
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      margin: EdgeInsets.symmetric(vertical: 4),
-                      padding: EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 6,
-                      ),
-                      child: buttonsRow,
-                    )
-                    // Phone: Full width row
-                    : SizedBox(width: contentWidth, child: buttonsRow),
+            child: isTablet
+                // Tablet: Container with refined styling
+                ? Container(
+                    height: barHeight - 12,
+                    decoration: BoxDecoration(
+                      color: tabletSurface,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    margin: EdgeInsets.symmetric(vertical: 4),
+                    padding: EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    child: buttonsRow,
+                  )
+                // Phone: Full width row
+                : SizedBox(width: contentWidth, child: buttonsRow),
           ),
         ),
       ),
