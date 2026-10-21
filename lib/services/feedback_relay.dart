@@ -15,7 +15,7 @@ class FeedbackRelay {
 
   Future<bool> send(String message, {Uint8List? picture}) async {
     if (message.trim().isEmpty || message.length > 16000) return false;
-    if (picture != null && picture.length > 5 * 1024 * 1024) return false;
+    if (picture != null && picture.length > 8 * 1024 * 1024) return false;
     final body = jsonEncode({
       'message': message,
       if (picture != null && picture.isNotEmpty)

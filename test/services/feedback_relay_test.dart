@@ -61,7 +61,7 @@ void main() {
     expect(await relay.send('   '), isFalse);
     expect(await relay.send('x' * 16001), isFalse);
     expect(
-      await relay.send('report', picture: Uint8List(5 * 1024 * 1024 + 1)),
+      await relay.send('report', picture: Uint8List(8 * 1024 * 1024 + 1)),
       isFalse,
     );
   });
