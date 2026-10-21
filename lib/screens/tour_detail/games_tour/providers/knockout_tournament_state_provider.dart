@@ -3,6 +3,8 @@ import 'package:chessever2/repository/supabase/round/round.dart';
 import 'package:chessever2/repository/supabase/round/round_repository.dart';
 import 'package:chessever2/repository/supabase/tour/tour.dart';
 import 'package:chessever2/screens/group_event/model/tour_detail_view_model.dart';
+import 'package:chessever2/screens/standings/official_team_standings.dart';
+import 'package:chessever2/screens/standings/player_standing_model.dart';
 import 'package:chessever2/screens/tour_detail/bracket/utils/knockout_stage_parser.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_provider.dart';
@@ -109,6 +111,12 @@ final knockoutTournamentStateProvider = Provider.autoDispose.family<
     formatString: formatString,
     players: teamPlayers,
     games: models,
+    hasOfficialTeamTable:
+        buildOfficialTeamStandings(
+          info: tourMetadata?.info,
+          players: const <PlayerStandingModel>[],
+        ) !=
+        null,
   );
 
   // Check format string first (fast), only analyze games if inconclusive
@@ -313,8 +321,12 @@ bool resolveIsTeamEvent({
   required String? formatString,
   required List<TournamentPlayer> players,
   required List<GamesTourModel> games,
+  bool hasOfficialTeamTable = false,
 }) {
-  if (teamTable == true) return true;
+  // A validated organizer team table (Chess-Results/Info64) is proof on its
+  // own: the 2026 Russian Rapid Teams feeds carry no teamTable flag, a
+  // "9-round Swiss" format and no team labels, yet the event is a team one.
+  if (teamTable == true || hasOfficialTeamTable) return true;
 
   // Normalize like [formatRulesOutKnockout]: separators become spaces so
   // "team-battle" / "team_battle" and "N-team" all tokenize cleanly.

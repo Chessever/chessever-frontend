@@ -553,11 +553,17 @@ Future<void> _initializeRevenueCat() async {
     // and any webhook fired before the auth-listener calls Purchases.logIn(uid)
     // arrives with the anonymous id — the affiliate webhook then can't match
     // it back to affiliate_referrals.referred_user_id and silently drops it.
+    //
+    // An expired access token still names the same reader: Supabase refreshes
+    // it moments later, and if it cannot (signed out elsewhere) the auth
+    // listener logs RC out. Offline it cannot refresh at all, and only
+    // configuring as that reader lets RC answer from its cached customer
+    // info, since Purchases.logIn needs the network.
     String? bootUserId;
     try {
       final session = Supabase.instance.client.auth.currentSession;
       final user = Supabase.instance.client.auth.currentUser;
-      if (session != null && user != null && !session.isExpired) {
+      if (session != null && user != null) {
         bootUserId = user.id;
       }
     } catch (_) {}

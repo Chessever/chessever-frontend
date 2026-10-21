@@ -112,13 +112,14 @@ class _CalendarScreenNotifier
 
       final selectedYear = ref.read(selectedYearProvider);
 
-      final yearBroadcasts = await ref
-          .read(groupBroadcastRepositoryProvider)
-          .getGroupBroadcastsForYear(year: selectedYear);
-
-      final yearCalendarEvents = await ref
-          .read(calendarEventRepositoryProvider)
-          .getCalendarEventsForYear(year: selectedYear);
+      final (yearBroadcasts, yearCalendarEvents) = await (
+        ref
+            .read(groupBroadcastRepositoryProvider)
+            .getGroupBroadcastsForYear(year: selectedYear),
+        ref
+            .read(calendarEventRepositoryProvider)
+            .getCalendarEventsForYear(year: selectedYear),
+      ).wait;
       final List<String> liveIds =
           ref.read(liveGroupBroadcastIdsProvider).valueOrNull ??
           await ref.read(liveGroupBroadcastIdsProvider.future);
@@ -245,15 +246,18 @@ class _CalendarScreenNotifier
       // Check if this result is still current (cancellation check)
       if (!mounted || _filterVersion != currentVersion) return;
 
-      // Convert back to GroupEventCardModel for UI
+      // Convert back to GroupEventCardModel for UI. A full year is a few
+      // thousand rows, so look them up by id instead of scanning per event;
+      // the first row with an id wins, as before.
+      final yearEventsById = <String, GroupEventCardModel>{};
+      for (final event in _yearEvents) {
+        yearEventsById.putIfAbsent(event.id, () => event);
+      }
       final summaries =
           result.summaries.map((monthData) {
             final events =
                 monthData.events.map((data) {
-                  return _yearEvents.firstWhere(
-                    (e) => e.id == data.id,
-                    orElse: () => _fromEventData(data),
-                  );
+                  return yearEventsById[data.id] ?? _fromEventData(data);
                 }).toList();
 
             return MonthEventsSummary(

@@ -1,12 +1,14 @@
 import 'dart:async';
 
+import 'package:chessever2/revenue_cat_service/offline_premium_cache.dart';
 import 'package:chessever2/revenue_cat_service/revenue_cat_service.dart';
 import 'package:chessever2/services/analytics/analytics_service.dart';
 import 'package:chessever2/services/appsflyer_service.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:purchases_flutter/purchases_flutter.dart'
-    show CustomerInfo, Package, PackageType, SubscriptionOption;
+    show CustomerInfo, Package, PackageType, SubscriptionOption, Store;
+import 'package:supabase_flutter/supabase_flutter.dart' show Supabase;
 
 final subscriptionProvider =
     StateNotifierProvider<SubscriptionNotifier, SubscriptionState>((ref) {
@@ -26,7 +28,7 @@ final subscriptionProvider =
     });
 
 class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
-  final _revenueCat = RevenueCatService();
+  final RevenueCatService _revenueCat;
   Timer? _periodicSyncTimer;
   Timer? _expirationTimer;
 
@@ -46,6 +48,47 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
   /// purchase sync, manual restore, etc.) and don't double-attribute.
   static const _redemptionWindow = Duration(minutes: 30);
 
+  final OfflinePremiumCache _offlineCache;
+  final String? Function() _currentUserId;
+  String? _stateAccount;
+  BackendEntitlementSnapshot? _backendSnapshot;
+
+  String? _beginAccountRead() {
+    final account = _currentUserId();
+    if (account != _stateAccount) {
+      _stateAccount = account;
+      _backendSnapshot = null;
+      _offlineGrantUserId = null;
+      _remembered = null;
+      _pendingRedemption = null;
+      _verdictSettled = false;
+      _expirationTimer?.cancel();
+      state = SubscriptionState(
+        products: state.products,
+        isLoadingProducts: state.isLoadingProducts,
+        productsError: state.productsError,
+      );
+    }
+    return account;
+  }
+
+  bool _ownsAccount(String? account) =>
+      mounted && _stateAccount == account && _currentUserId() == account;
+
+  /// The user whose Premium currently stands on [OfflinePremiumCache] alone,
+  /// because neither RevenueCat nor the `entitlement` function could answer.
+  /// Null when the state came from a live source.
+  String? _offlineGrantUserId;
+
+  /// The last confirmation [_rememberPremium] wrote. Read before the store,
+  /// whose write may still be in flight when a RevenueCat update and the
+  /// first live check land together.
+  ({String userId, OfflinePremiumSnapshot snapshot})? _remembered;
+
+  /// Set once the first live check has been written, so the startup seed
+  /// from [OfflinePremiumCache] never overwrites a live answer.
+  bool _verdictSettled = false;
+
   /// Mark that the user just initiated a code redemption. Call before
   /// presenting the iOS sheet or launching the Android Play Store deep link.
   void markRedemptionPending({required String source, String? code}) {
@@ -57,7 +100,16 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
     debugPrint('🎟️ Redemption pending: $source');
   }
 
-  SubscriptionNotifier() : super(SubscriptionState()) {
+  /// The parameters exist for tests; the app builds it with none.
+  SubscriptionNotifier({
+    RevenueCatService? revenueCat,
+    OfflinePremiumCache? offlineCache,
+    String? Function()? currentUserId,
+  }) : _revenueCat = revenueCat ?? RevenueCatService(),
+       _offlineCache = offlineCache ?? const OfflinePremiumCache(),
+       _currentUserId = currentUserId ?? _supabaseUserId,
+       super(SubscriptionState()) {
+    _stateAccount = _currentUserId();
     _revenueCat.setCustomerInfoListener((customerInfo) {
       _updateStateFromCustomerInfo(customerInfo);
     });
@@ -65,7 +117,146 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
     // paywall is the first thing to read it). Cover that case too.
     if (_revenueCat.isSdkReady) onSdkStateChanged();
     _initialize();
+    unawaited(_seedOfflinePremium());
     _startPeriodicSync();
+  }
+
+  /// Without a connection the live checks take seconds to fail, and a reader
+  /// who opens a Premium surface meanwhile must not meet the paywall. Stand
+  /// the last confirmed Premium in until they answer.
+  Future<void> _seedOfflinePremium() async {
+    final offline = await _offlinePremium();
+    if (offline == null || !mounted || _verdictSettled || state.isSubscribed) {
+      return;
+    }
+    _grantOffline(offline.userId, offline.snapshot);
+  }
+
+  static String? _supabaseUserId() {
+    try {
+      return Supabase.instance.client.auth.currentUser?.id;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// The signed-in reader's last confirmed Premium, when it still holds.
+  Future<({String userId, OfflinePremiumSnapshot snapshot})?>
+  _offlinePremium() async {
+    final userId = _currentUserId();
+    if (userId == null) return null;
+    final remembered = _remembered;
+    final snapshot = remembered?.userId == userId
+        ? remembered!.snapshot
+        : await _offlineCache.read(userId);
+    if (userId != _currentUserId() ||
+        snapshot == null ||
+        !snapshot.honoredAt(DateTime.now())) {
+      return null;
+    }
+    return (userId: userId, snapshot: snapshot);
+  }
+
+  void _grantOffline(
+    String userId,
+    OfflinePremiumSnapshot snapshot, {
+    bool? isLoading,
+    String? managementUrl,
+  }) {
+    _offlineGrantUserId = userId;
+    state = state.copyWith(
+      isSubscribed: true,
+      isLoading: isLoading,
+      expirationDate: snapshot.expiresAt,
+      provider: snapshot.provider,
+      willRenew: snapshot.willRenew,
+      managementUrl: managementUrl,
+    );
+  }
+
+  /// Records a live Premium confirmation for the next offline launch.
+  void _rememberPremium() {
+    if (!state.isSubscribed || _offlineGrantUserId != null) return;
+    final userId = _currentUserId();
+    if (userId == null || _stateAccount != userId) return;
+    final snapshot = OfflinePremiumSnapshot(
+      verifiedAt: DateTime.now(),
+      expiresAt: state.expirationDate,
+      provider: state.provider,
+      willRenew: state.willRenew,
+    );
+    _remembered = (userId: userId, snapshot: snapshot);
+    unawaited(_offlineCache.write(userId, snapshot));
+  }
+
+  /// A reachable `entitlement` function said no: the next offline launch
+  /// must not grant Premium either.
+  void _forgetPremium() {
+    final userId = _currentUserId();
+    if (userId == null) return;
+    if (_remembered?.userId == userId) _remembered = null;
+    unawaited(_offlineCache.clear(userId));
+  }
+
+  /// Writes one live check's answer. When neither source vouches for
+  /// Premium and the `entitlement` function never answered (offline, outage
+  /// or timeout), the last confirmed Premium stands in, so a subscriber keeps
+  /// it without a connection.
+  Future<void> _applyVerdict(
+    CustomerInfo? customerInfo,
+    BackendEntitlementSnapshot? backendEntitlement,
+    String? account,
+  ) async {
+    if (!_ownsAccount(account)) return;
+    _backendSnapshot = backendEntitlement;
+    final localSnapshot = _readLocalSnapshot(customerInfo);
+
+    final merged = _mergeBackendEntitlement(
+      isSubscribed: localSnapshot.isSubscribed,
+      expirationDate: localSnapshot.expirationDate,
+      willRenew: localSnapshot.willRenew,
+      provider: localSnapshot.provider,
+      inBillingGracePeriod: localSnapshot.inBillingGracePeriod,
+      billingIssueDetectedAt: localSnapshot.billingIssueDetectedAt,
+      backendEntitlement: backendEntitlement,
+    );
+
+    final offline = !merged.isSubscribed && backendEntitlement == null
+        ? await _offlinePremium()
+        : null;
+    if (!_ownsAccount(account)) return;
+    _verdictSettled = true;
+
+    if (offline != null) {
+      _grantOffline(
+        offline.userId,
+        offline.snapshot,
+        isLoading: false,
+        managementUrl: localSnapshot.managementUrl,
+      );
+      return;
+    }
+
+    _offlineGrantUserId = null;
+    state = state.copyWith(
+      replaceEntitlement: true,
+      isSubscribed: merged.isSubscribed,
+      isLoading: false,
+      expirationDate: merged.expirationDate,
+      managementUrl: localSnapshot.managementUrl,
+      willRenew: merged.willRenew,
+      provider: merged.provider,
+      inBillingGracePeriod: merged.inBillingGracePeriod,
+      billingIssueDetectedAt: merged.billingIssueDetectedAt,
+    );
+
+    if (merged.isSubscribed) {
+      _rememberPremium();
+      // Schedule expiration check if subscribed
+      if (merged.expirationDate != null) _scheduleExpirationCheck();
+    } else if (backendEntitlement != null) {
+      _forgetPremium();
+    }
   }
 
   /// Called when `Purchases.configure` completes. Loads the offerings the
@@ -103,10 +294,7 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
   }
 
   Future<void> _doLoadProducts() async {
-    state = state.copyWith(
-      isLoadingProducts: true,
-      clearProductsError: true,
-    );
+    state = state.copyWith(isLoadingProducts: true, clearProductsError: true);
     final result = await _revenueCat.fetchProducts();
     if (!mounted) return;
 
@@ -122,10 +310,9 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
         state = state.copyWith(
           products: result.packages,
           isLoadingProducts: false,
-          productsError:
-              hasCompleteCatalog
-                  ? null
-                  : 'Some subscription plans are unavailable. Please try again.',
+          productsError: hasCompleteCatalog
+              ? null
+              : 'Some subscription plans are unavailable. Please try again.',
           clearProductsError: hasCompleteCatalog,
         );
       case OfferingsFetchStatus.notConfigured:
@@ -198,6 +385,7 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
   }
 
   Future<void> _initialize({bool force = false}) async {
+    final account = _beginAccountRead();
     state = state.copyWith(isLoading: true);
 
     try {
@@ -209,44 +397,20 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
       // Bounded: a hung call here must never strand `isLoading`. Both
       // futures already swallow their own errors and return null, so the
       // outer timeout is a last-resort backstop, not the primary guard.
-      final results = await Future.wait([
-        _revenueCat.getCustomerInfo(),
-        _revenueCat.getBackendEntitlement(),
-      ]).timeout(
-        const Duration(seconds: 12),
-        onTimeout: () => <Object?>[null, null],
-      );
-      final customerInfo = results[0] as CustomerInfo?;
-      final backendEntitlement = results[1] as BackendEntitlementSnapshot?;
+      final results =
+          await Future.wait([
+            _revenueCat.getCustomerInfo(),
+            _revenueCat.getBackendEntitlement(),
+          ]).timeout(
+            const Duration(seconds: 12),
+            onTimeout: () => <Object?>[null, null],
+          );
       if (!mounted) return;
-
-      final localSnapshot = _readLocalSnapshot(customerInfo);
-
-      final merged = _mergeBackendEntitlement(
-        isSubscribed: localSnapshot.isSubscribed,
-        expirationDate: localSnapshot.expirationDate,
-        willRenew: localSnapshot.willRenew,
-        provider: localSnapshot.provider,
-        inBillingGracePeriod: localSnapshot.inBillingGracePeriod,
-        billingIssueDetectedAt: localSnapshot.billingIssueDetectedAt,
-        backendEntitlement: backendEntitlement,
+      await _applyVerdict(
+        results[0] as CustomerInfo?,
+        results[1] as BackendEntitlementSnapshot?,
+        account,
       );
-
-      state = state.copyWith(
-        isSubscribed: merged.isSubscribed,
-        isLoading: false,
-        expirationDate: merged.expirationDate,
-        managementUrl: localSnapshot.managementUrl,
-        willRenew: merged.willRenew,
-        provider: merged.provider,
-        inBillingGracePeriod: merged.inBillingGracePeriod,
-        billingIssueDetectedAt: merged.billingIssueDetectedAt,
-      );
-
-      // Schedule expiration check if subscribed
-      if (merged.isSubscribed && merged.expirationDate != null) {
-        _scheduleExpirationCheck();
-      }
     } catch (e) {
       debugPrint('❌ Subscription initialization error: $e');
       state = state.copyWith(error: e.toString(), isLoading: false);
@@ -255,6 +419,7 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
 
   /// Refresh subscription status (call after auth changes)
   Future<void> refresh({bool force = true}) async {
+    final account = _beginAccountRead();
     state = state.copyWith(isLoading: true, error: null);
 
     try {
@@ -266,44 +431,20 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
       // Bounded: a hung call here must never strand `isLoading`. Both
       // futures already swallow their own errors and return null, so the
       // outer timeout is a last-resort backstop, not the primary guard.
-      final results = await Future.wait([
-        _revenueCat.getCustomerInfo(),
-        _revenueCat.getBackendEntitlement(),
-      ]).timeout(
-        const Duration(seconds: 12),
-        onTimeout: () => <Object?>[null, null],
-      );
-      final customerInfo = results[0] as CustomerInfo?;
-      final backendEntitlement = results[1] as BackendEntitlementSnapshot?;
+      final results =
+          await Future.wait([
+            _revenueCat.getCustomerInfo(),
+            _revenueCat.getBackendEntitlement(),
+          ]).timeout(
+            const Duration(seconds: 12),
+            onTimeout: () => <Object?>[null, null],
+          );
       if (!mounted) return;
-
-      final localSnapshot = _readLocalSnapshot(customerInfo);
-
-      final merged = _mergeBackendEntitlement(
-        isSubscribed: localSnapshot.isSubscribed,
-        expirationDate: localSnapshot.expirationDate,
-        willRenew: localSnapshot.willRenew,
-        provider: localSnapshot.provider,
-        inBillingGracePeriod: localSnapshot.inBillingGracePeriod,
-        billingIssueDetectedAt: localSnapshot.billingIssueDetectedAt,
-        backendEntitlement: backendEntitlement,
+      await _applyVerdict(
+        results[0] as CustomerInfo?,
+        results[1] as BackendEntitlementSnapshot?,
+        account,
       );
-
-      state = state.copyWith(
-        isSubscribed: merged.isSubscribed,
-        isLoading: false,
-        expirationDate: merged.expirationDate,
-        managementUrl: localSnapshot.managementUrl,
-        willRenew: merged.willRenew,
-        provider: merged.provider,
-        inBillingGracePeriod: merged.inBillingGracePeriod,
-        billingIssueDetectedAt: merged.billingIssueDetectedAt,
-      );
-
-      // Schedule expiration check if subscribed
-      if (merged.isSubscribed && merged.expirationDate != null) {
-        _scheduleExpirationCheck();
-      }
     } catch (e) {
       debugPrint('❌ Subscription refresh error: $e');
       state = state.copyWith(error: e.toString(), isLoading: false);
@@ -313,22 +454,25 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
   _LocalEntitlementSnapshot _readLocalSnapshot(CustomerInfo? customerInfo) {
     if (customerInfo == null) return const _LocalEntitlementSnapshot.empty();
 
-    final activeEntitlements = customerInfo.entitlements.active;
-    final isSubscribed =
-        activeEntitlements.containsKey(RevenueCatService.premiumEntitlement) ||
-        activeEntitlements.isNotEmpty;
+    final entitlement =
+        customerInfo.entitlements.active[RevenueCatService.premiumEntitlement];
+    final isSubscribed = entitlement != null;
 
     DateTime? expirationDate;
     bool willRenew = true;
     String? provider;
     DateTime? billingIssueDetectedAt;
-    if (activeEntitlements.isNotEmpty) {
-      final entitlement = activeEntitlements.values.first;
+    if (entitlement != null) {
       if (entitlement.expirationDate != null) {
         expirationDate = DateTime.tryParse(entitlement.expirationDate!);
       }
       willRenew = entitlement.willRenew;
-      provider = 'revenuecat';
+      provider = switch (entitlement.store) {
+        Store.appStore || Store.macAppStore => 'apple',
+        Store.playStore => 'google',
+        Store.stripe => 'stripe',
+        _ => 'revenuecat',
+      };
       if (entitlement.billingIssueDetectedAt != null) {
         billingIssueDetectedAt = DateTime.tryParse(
           entitlement.billingIssueDetectedAt!,
@@ -350,12 +494,17 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
   /// Sync purchases with RevenueCat servers and update local state.
   /// Call this on app resume/foreground to catch expired subscriptions.
   Future<void> syncAndRefresh() async {
+    final account = _beginAccountRead();
     try {
-      final customerInfo = await _revenueCat.syncPurchases();
-      if (customerInfo != null) {
-        _updateStateFromCustomerInfo(customerInfo);
-      }
-      await _refreshBackendEntitlement();
+      final results = await Future.wait<Object?>([
+        _revenueCat.syncPurchases(),
+        _revenueCat.getBackendEntitlement(),
+      ]).timeout(const Duration(seconds: 12), onTimeout: () => [null, null]);
+      await _applyVerdict(
+        results[0] as CustomerInfo?,
+        results[1] as BackendEntitlementSnapshot?,
+        account,
+      );
     } catch (e) {
       debugPrint('❌ Subscription sync error: $e');
     }
@@ -363,18 +512,18 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
 
   /// Update state from CustomerInfo (used by listener and sync)
   void _updateStateFromCustomerInfo(CustomerInfo customerInfo) {
-    final hasPremiumEntitlement = customerInfo.entitlements.active.containsKey(
-      RevenueCatService.premiumEntitlement,
-    );
-    final hasAnyEntitlement = customerInfo.entitlements.active.isNotEmpty;
-    final isSubscribed = hasPremiumEntitlement || hasAnyEntitlement;
+    if (!mounted) return;
+    _beginAccountRead();
+    final backend = _backendSnapshot;
+    final entitlement =
+        customerInfo.entitlements.active[RevenueCatService.premiumEntitlement];
+    final isSubscribed = backend?.isActive ?? (entitlement != null);
 
     DateTime? expirationDate;
     bool willRenew = true;
     String? activeProductId;
     DateTime? billingIssueDetectedAt;
-    if (customerInfo.entitlements.active.isNotEmpty) {
-      final entitlement = customerInfo.entitlements.active.values.first;
+    if (entitlement != null) {
       if (entitlement.expirationDate != null) {
         expirationDate = DateTime.tryParse(entitlement.expirationDate!);
       }
@@ -386,29 +535,49 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
         );
       }
     }
+    if (backend != null) {
+      expirationDate = backend.expiresAt;
+      willRenew = backend.willRenew;
+      activeProductId = backend.productId;
+      billingIssueDetectedAt = backend.billingIssueDetectedAt;
+    }
 
     final previouslySubscribed = state.isSubscribed;
+    // Without a live verdict, retain this account's previously verified access.
+    final keepsOfflineGrant =
+        backend == null &&
+        !isSubscribed &&
+        _offlineGrantUserId != null &&
+        _offlineGrantUserId == _currentUserId();
+    if (!keepsOfflineGrant) _offlineGrantUserId = null;
     final nextIsSubscribed =
-        isSubscribed || (state.isSubscribed && state.provider == 'stripe');
+        isSubscribed ||
+        (backend == null &&
+            state.isSubscribed &&
+            (state.provider == 'stripe' || keepsOfflineGrant));
     state = state.copyWith(
+      replaceEntitlement: backend != null || isSubscribed,
       isSubscribed: nextIsSubscribed,
       expirationDate: isSubscribed ? expirationDate : state.expirationDate,
-      managementUrl:
-          customerInfo.managementURL?.isNotEmpty == true
-              ? customerInfo.managementURL
-              : state.managementUrl,
+      managementUrl: customerInfo.managementURL?.isNotEmpty == true
+          ? customerInfo.managementURL
+          : state.managementUrl,
       willRenew: isSubscribed ? willRenew : state.willRenew,
-      provider: isSubscribed ? 'revenuecat' : state.provider,
+      provider:
+          backend?.provider ??
+          (isSubscribed
+              ? _readLocalSnapshot(customerInfo).provider
+              : state.provider),
       // Only the RevenueCat-side billing-grace flag survives the listener
       // update. Stripe past_due is re-read by _refreshBackendEntitlement so
       // we don't clobber it here. When this listener fires for a non-RC
       // user, keep the prior backend-derived flag.
-      inBillingGracePeriod:
-          isSubscribed
-              ? (billingIssueDetectedAt != null)
-              : state.inBillingGracePeriod,
-      billingIssueDetectedAt:
-          isSubscribed ? billingIssueDetectedAt : state.billingIssueDetectedAt,
+      inBillingGracePeriod: isSubscribed
+          ? (backend?.inBillingGracePeriod ?? (billingIssueDetectedAt != null))
+          : state.inBillingGracePeriod,
+      billingIssueDetectedAt: isSubscribed
+          ? billingIssueDetectedAt
+          : state.billingIssueDetectedAt,
     );
 
     // Log subscription status changes for debugging
@@ -428,6 +597,8 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
       _maybeAttributeRedemption(activeProductId);
     }
 
+    if (isSubscribed) _rememberPremium();
+
     // Schedule a check for when subscription expires (if subscribed)
     if (nextIsSubscribed && expirationDate != null) {
       _scheduleExpirationCheck();
@@ -445,7 +616,7 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
     required DateTime? billingIssueDetectedAt,
     required BackendEntitlementSnapshot? backendEntitlement,
   }) {
-    if (backendEntitlement?.isActive != true) {
+    if (backendEntitlement == null) {
       return _MergedSubscription(
         isSubscribed: isSubscribed,
         expirationDate: expirationDate,
@@ -457,55 +628,50 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
     }
 
     return _MergedSubscription(
-      isSubscribed: true,
-      expirationDate: backendEntitlement!.expiresAt ?? expirationDate,
+      isSubscribed: backendEntitlement.isActive,
+      expirationDate: backendEntitlement.expiresAt,
       willRenew: backendEntitlement.willRenew,
       provider: backendEntitlement.provider ?? provider,
-      // Honor either side: RC SDK flag (App Store / Play Store) OR backend
-      // past_due (Stripe / web). Whichever fires first wins so we surface
-      // the popup as soon as the platform tells us payment failed.
+      // A reachable authority provides the current lifecycle across stores.
       inBillingGracePeriod:
-          inBillingGracePeriod || backendEntitlement.inBillingGracePeriod,
-      billingIssueDetectedAt:
-          billingIssueDetectedAt ?? backendEntitlement.billingIssueDetectedAt,
+          backendEntitlement.isActive &&
+          backendEntitlement.inBillingGracePeriod,
+      billingIssueDetectedAt: backendEntitlement.billingIssueDetectedAt,
     );
   }
 
   Future<void> _refreshBackendEntitlement() async {
+    final account = _beginAccountRead();
     final backendEntitlement = await _revenueCat.getBackendEntitlement();
+    if (!_ownsAccount(account)) return;
+    _backendSnapshot = backendEntitlement;
     if (backendEntitlement == null) return;
 
     if (backendEntitlement.isActive) {
-      // Stripe has no RC SDK signal on this device, so the backend is the
-      // single authority: take its flag verbatim — including clearing it
-      // once the card recovers. For store-billed subs (apple/google/
-      // revenuecat) the RC SDK often reports the billing issue before the
-      // backend mirror catches up, so there we keep whichever side fired.
-      final stripeAuthoritative = backendEntitlement.provider == 'stripe';
+      _offlineGrantUserId = null;
       state = state.copyWith(
+        replaceEntitlement: true,
         isSubscribed: true,
         expirationDate: backendEntitlement.expiresAt,
         willRenew: backendEntitlement.willRenew,
         provider: backendEntitlement.provider,
-        inBillingGracePeriod:
-            stripeAuthoritative
-                ? backendEntitlement.inBillingGracePeriod
-                : (state.inBillingGracePeriod ||
-                    backendEntitlement.inBillingGracePeriod),
-        billingIssueDetectedAt:
-            stripeAuthoritative
-                ? backendEntitlement.billingIssueDetectedAt
-                : (state.billingIssueDetectedAt ??
-                    backendEntitlement.billingIssueDetectedAt),
+        managementUrl: backendEntitlement.provider == 'stripe'
+            ? null
+            : state.managementUrl,
+        inBillingGracePeriod: backendEntitlement.inBillingGracePeriod,
+        billingIssueDetectedAt: backendEntitlement.billingIssueDetectedAt,
       );
+      _rememberPremium();
       if (backendEntitlement.expiresAt != null) {
         _scheduleExpirationCheck();
       }
       return;
     }
 
-    if (state.provider == 'stripe') {
+    {
+      _offlineGrantUserId = null;
       state = state.copyWith(
+        replaceEntitlement: true,
         isSubscribed: false,
         willRenew: false,
         provider: backendEntitlement.provider,
@@ -513,6 +679,7 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
         billingIssueDetectedAt: null,
       );
     }
+    if (!state.isSubscribed) _forgetPremium();
   }
 
   void _maybeAttributeRedemption(String? productId) {
@@ -573,17 +740,26 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
   /// Purchase a subscription package
   /// Returns the result indicating success, cancellation, or error
   Future<PurchaseAttemptResult> purchaseSubscription(Package package) async {
+    final account = _beginAccountRead();
     state = state.copyWith(isLoading: true, error: null);
 
     try {
       final result = await _revenueCat.purchaseSubscription(package);
+      if (!_ownsAccount(account)) {
+        return PurchaseAttemptResult.error(
+          'Account changed. Please try again.',
+        );
+      }
 
       if (result.success) {
+        _backendSnapshot = null;
+        _offlineGrantUserId = null;
         state = state.copyWith(
           isSubscribed: true,
           isLoading: false,
           provider: 'revenuecat',
         );
+        _rememberPremium();
 
         final productId = package.storeProduct.identifier;
         final price = package.storeProduct.price;
@@ -640,17 +816,26 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
     Package package,
     SubscriptionOption option,
   ) async {
+    final account = _beginAccountRead();
     state = state.copyWith(isLoading: true, error: null);
 
     try {
       final result = await _revenueCat.purchaseSubscriptionOption(option);
+      if (!_ownsAccount(account)) {
+        return PurchaseAttemptResult.error(
+          'Account changed. Please try again.',
+        );
+      }
 
       if (result.success) {
+        _backendSnapshot = null;
+        _offlineGrantUserId = null;
         state = state.copyWith(
           isSubscribed: true,
           isLoading: false,
           provider: 'revenuecat',
         );
+        _rememberPremium();
 
         final productId = package.storeProduct.identifier;
         // The base-plan price is what AppsFlyer's revenue dashboards expect as
@@ -698,16 +883,14 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
   }
 
   Future<bool> restorePurchases() async {
+    final account = _beginAccountRead();
     state = state.copyWith(isLoading: true, error: null);
 
     try {
-      final success = await _revenueCat.restorePurchases();
-      state = state.copyWith(
-        isSubscribed: success,
-        isLoading: false,
-        provider: success ? 'revenuecat' : state.provider,
-      );
-      return success;
+      await _revenueCat.restorePurchases();
+      if (!_ownsAccount(account)) return false;
+      await refresh(force: false);
+      return _ownsAccount(account) && state.isSubscribed;
     } catch (e) {
       debugPrint('❌ Restore purchases error: $e');
       state = state.copyWith(error: e.toString(), isLoading: false);
@@ -773,6 +956,7 @@ class SubscriptionState {
   });
 
   SubscriptionState copyWith({
+    bool replaceEntitlement = false,
     bool? isSubscribed,
     bool? isLoading,
     List<Package>? products,
@@ -792,16 +976,22 @@ class SubscriptionState {
       isLoading: isLoading ?? this.isLoading,
       products: products ?? this.products,
       isLoadingProducts: isLoadingProducts ?? this.isLoadingProducts,
-      productsError:
-          clearProductsError ? null : (productsError ?? this.productsError),
+      productsError: clearProductsError
+          ? null
+          : (productsError ?? this.productsError),
       error: error,
-      expirationDate: expirationDate ?? this.expirationDate,
-      managementUrl: managementUrl ?? this.managementUrl,
-      provider: provider ?? this.provider,
+      expirationDate: replaceEntitlement
+          ? expirationDate
+          : (expirationDate ?? this.expirationDate),
+      managementUrl: replaceEntitlement
+          ? managementUrl
+          : (managementUrl ?? this.managementUrl),
+      provider: replaceEntitlement ? provider : (provider ?? this.provider),
       willRenew: willRenew ?? this.willRenew,
       inBillingGracePeriod: inBillingGracePeriod ?? this.inBillingGracePeriod,
-      billingIssueDetectedAt:
-          billingIssueDetectedAt ?? this.billingIssueDetectedAt,
+      billingIssueDetectedAt: replaceEntitlement
+          ? billingIssueDetectedAt
+          : (billingIssueDetectedAt ?? this.billingIssueDetectedAt),
     );
   }
 }
