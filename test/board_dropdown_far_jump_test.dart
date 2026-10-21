@@ -1,6 +1,7 @@
 import 'package:chessever2/providers/country_dropdown_provider.dart';
 import 'package:chessever2/e2e/e2e_ids.dart';
 import 'package:chessever2/providers/engine_settings_provider.dart';
+import 'package:chessever2/providers/board_engine_lines_visibility_provider.dart';
 import 'package:chessever2/providers/gamebase_overlay_settings_provider.dart';
 import 'package:chessever2/repository/gamebase/gamebase_repository.dart';
 import 'package:chessever2/repository/lichess/cloud_eval/cloud_eval.dart';
@@ -68,6 +69,7 @@ void main() {
         ),
         localEvalCacheProvider.overrideWith(_FakeLocalEvalCache.new),
         engineSettingsProviderNew.overrideWith(_FakeEngineSettingsNotifier.new),
+        boardEngineLinesVisibleProvider.overrideWith(_VisibleBoardLines.new),
         gamebaseOverlayEnabledProvider.overrideWith(
           _FakeGamebaseOverlayNotifier.new,
         ),
@@ -269,6 +271,11 @@ class _FakeGameStreamRepository extends GameStreamRepository {
 
   @override
   Stream<String?> subscribeToStatus(String gameId) => const Stream.empty();
+}
+
+class _VisibleBoardLines extends BoardEngineLinesVisibleNotifier {
+  @override
+  Future<bool> build() async => true;
 }
 
 class _FakeEngineSettingsNotifier extends AsyncNotifier<EngineSettings>

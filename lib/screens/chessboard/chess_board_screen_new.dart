@@ -40,6 +40,7 @@ import 'package:chessever2/screens/chessboard/notation/notation_pointer.dart';
 import 'package:chessever2/screens/chessboard/notation/notation_tree.dart';
 import 'package:chessever2/screens/chessboard/view_model/chess_board_state_new.dart';
 import 'package:chessever2/providers/engine_settings_provider.dart';
+import 'package:chessever2/providers/board_engine_lines_visibility_provider.dart';
 import 'package:chessever2/screens/chessboard/utils/engine_pv_arrows.dart';
 import 'package:chessever2/providers/gamebase_overlay_settings_provider.dart';
 import 'package:chessever2/screens/chessboard/widgets/chess_board_bottom_nav_bar.dart';
@@ -8155,6 +8156,17 @@ class _AnalysisGameBody extends ConsumerWidget {
       explorerPanelVisible: explorerVisible,
       gamesPinned: gamesPinned,
     );
+    // Presentation only: do not disable the engine or change eval/arrows/depth.
+    // No preference read is needed when the panel is already ineligible.
+    final showPv =
+        state.isAnalysisMode &&
+        state.showEngineAnalysis &&
+        state.showPrincipalVariations &&
+        ref.watch(
+          boardEngineLinesVisibleProvider.select(
+            (value) => value.valueOrNull ?? true,
+          ),
+        );
 
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -8170,10 +8182,6 @@ class _AnalysisGameBody extends ConsumerWidget {
         // suppresses its own internal PV via `showHorizontalPvLines: false`.
         // When games pin we collapse PV with a height/opacity ease so the
         // analysis panel grows into that space without a layout jump.
-        final showPv =
-            state.isAnalysisMode &&
-            state.showEngineAnalysis &&
-            state.showPrincipalVariations;
         // Tablet right-column / portrait put a gap under PV; fold it into the
         // collapsing slot so that gap eases away with the lines (no residual jump).
         final double pvBottomGap;

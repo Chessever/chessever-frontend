@@ -1,3 +1,4 @@
+import 'package:chessever2/providers/board_engine_lines_visibility_provider.dart';
 import 'package:chessever2/providers/engine_settings_provider.dart';
 import 'package:chessever2/screens/settings/widgets/engine_settings_body.dart';
 import 'package:chessever2/theme/app_colors.dart';
@@ -13,6 +14,7 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          boardEngineLinesVisibleProvider.overrideWith(_VisibleBoardLines.new),
           engineSettingsProviderNew.overrideWith(
             () => _FakeEngineSettingsNotifier(const EngineSettings()),
           ),
@@ -70,6 +72,7 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          boardEngineLinesVisibleProvider.overrideWith(_VisibleBoardLines.new),
           engineSettingsProviderNew.overrideWith(
             () => _FakeEngineSettingsNotifier(
               const EngineSettings(showEngineGauge: false),
@@ -114,6 +117,7 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          boardEngineLinesVisibleProvider.overrideWith(_VisibleBoardLines.new),
           engineSettingsProviderNew.overrideWith(
             () =>
                 notifier = _FakeEngineSettingsNotifier(const EngineSettings()),
@@ -158,6 +162,11 @@ void main() {
       isTrue,
     );
   });
+}
+
+class _VisibleBoardLines extends BoardEngineLinesVisibleNotifier {
+  @override
+  Future<bool> build() async => true;
 }
 
 class _FakeEngineSettingsNotifier extends EngineSettingsNotifierNew {

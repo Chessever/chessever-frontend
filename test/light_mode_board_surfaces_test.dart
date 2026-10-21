@@ -1,6 +1,7 @@
 import 'package:chessever2/providers/auto_pin_preferences_provider.dart';
 import 'package:chessever2/providers/board_settings_provider_new.dart';
 import 'package:chessever2/providers/engine_settings_provider.dart';
+import 'package:chessever2/providers/board_engine_lines_visibility_provider.dart';
 import 'package:chessever2/repository/lichess/cloud_eval/cloud_eval.dart';
 import 'package:chessever2/repository/local_storage/auto_pin_preferences/auto_pin_preferences_repository.dart';
 import 'package:chessever2/repository/library/models/saved_analysis.dart';
@@ -108,6 +109,7 @@ void main() {
   group('settings bodies', () {
     final overrides = <Override>[
       engineSettingsProviderNew.overrideWith(_EngineSettings.new),
+      boardEngineLinesVisibleProvider.overrideWith(_VisibleBoardLines.new),
       boardSettingsProviderNew.overrideWith(_BoardSettings.new),
       autoPinPreferencesProvider.overrideWith(_AutoPin.new),
     ];
@@ -632,6 +634,11 @@ void main() {
 }
 
 void _noop() {}
+
+class _VisibleBoardLines extends BoardEngineLinesVisibleNotifier {
+  @override
+  Future<bool> build() async => true;
+}
 
 class _EngineSettings extends EngineSettingsNotifierNew {
   @override
