@@ -1,0 +1,3 @@
+# Python tools for .github/workflows/mobile-release.yml. Lock with:
+#   uv pip compile scripts/ci/release-tools.in --universal --python-version 3.12 --generate-hashes -o scripts/ci/release-tools.txt
+codemagic-cli-tools==0.70.0

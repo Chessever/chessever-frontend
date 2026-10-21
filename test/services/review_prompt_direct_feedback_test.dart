@@ -1,9 +1,13 @@
 import 'package:chessever2/services/review_prompt_service.dart';
+import 'package:chessever2/services/feedback_relay.dart';
+import 'package:chessever2/services/telegram_notification_service.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:package_info_plus/package_info_plus.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -21,6 +25,18 @@ void main() {
   testWidgets(
     'drawer-style pop still opens the form and relays after the host unmounts',
     (tester) async {
+      var submissions = 0;
+      final client = MockClient((request) async {
+        submissions++;
+        expect(request.url, FeedbackRelay.endpoint);
+        expect(request.body, contains('Clocks are unclear.'));
+        return http.Response('{"ok":false}', 429);
+      });
+      final service = ReviewPromptService(
+        notifications: TelegramNotificationService(
+          relay: FeedbackRelay(client: client),
+        ),
+      );
       tester.view.physicalSize = const Size(390, 844);
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.resetPhysicalSize);
@@ -42,12 +58,8 @@ void main() {
                             return Scaffold(
                               body: Center(
                                 child: TextButton(
-                                  onPressed:
-                                      () =>
-                                          ReviewPromptService.instance
-                                              .openSidebarDirectFeedback(
-                                                drawerContext,
-                                              ),
+                                  onPressed: () => service
+                                      .openSidebarDirectFeedback(drawerContext),
                                   child: const Text('Feedback'),
                                 ),
                               ),
@@ -76,13 +88,23 @@ void main() {
       await tester.enterText(find.byType(TextField), 'Clocks are unclear.');
       await tester.pump();
       await tester.tap(find.text('Send'));
-      await tester.pumpAndSettle();
+      await tester.pump();
+      // The snack's countdown keeps scheduling frames until it dismisses.
+      // Observe it while visible, rather than settling past its lifetime.
+      await tester.pump(const Duration(milliseconds: 350));
 
       // The old bug returned before send when the drawer context was
       // unmounted. Getting here with the form gone means the relay ran;
-      // widget tests have no bot token, so Telegram logs "Not configured".
+      // the fake relay returns a rate limit without contacting Telegram.
+      expect(submissions, 1);
       expect(find.text('Your Feedback'), findsNothing);
       expect(find.text('Open drawer'), findsOneWidget);
+      expect(
+        find.text('Feedback could not be sent. Please try again.'),
+        findsOneWidget,
+      );
+      await tester.pump(const Duration(seconds: 5));
+      await tester.pumpAndSettle();
     },
   );
 }

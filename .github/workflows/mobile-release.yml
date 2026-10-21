@@ -1,0 +1,312 @@
+# Production mobile release: App Bundle to Google Play (internal track) and IPA
+# to App Store Connect. GitHub Actions port of Codemagic's
+# "Flutter-Default Workflow" (app chessever-frontend-mobile).
+#
+# Manual runs only. Signing and store credentials live in the `release`
+# environment, which only `stable` may use and which waits for a reviewer
+# before a job receives them. Setup and the secret catalogue:
+# docs/ci/github-actions-release.md.
+name: Mobile release
+
+on:
+  workflow_dispatch:
+    inputs:
+      android:
+        description: Build Android (App Bundle)
+        type: boolean
+        default: true
+      ios:
+        description: Build iOS (IPA)
+        type: boolean
+        default: true
+      publish:
+        description: Upload to Google Play internal and App Store Connect
+        type: boolean
+        default: true
+      upload_symbols:
+        description: Keep R8 mapping and dSYMs as run artifacts (any signed-in GitHub user can download them)
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mobile-release
+  cancel-in-progress: false
+
+# Explicit bash adds `-o pipefail`, matching the `set -euo pipefail` the
+# Codemagic scripts ran under.
+defaults:
+  run:
+    shell: bash
+
+env:
+  # Public values compiled into the app (non-secure variables in Codemagic).
+  CHESSEVER_CLOUDFLARE_API_BASE: ${{ vars.CHESSEVER_CLOUDFLARE_API_BASE }}
+  GOOGLE_WEB_CLIENT_ID: ${{ vars.GOOGLE_WEB_CLIENT_ID }}
+  GOOGLE_IOS_CLIENT_ID: ${{ vars.GOOGLE_IOS_CLIENT_ID }}
+  ANALYSIS_API_BASE: https://chessever-analysis.young-sun-69a8.workers.dev
+
+jobs:
+  android:
+    name: Android App Bundle
+    if: inputs.android
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    environment: release
+    env:
+      JAVA_TOOL_OPTIONS: -Xmx10g
+      ANDROID_KEY_ALIAS: my-key-alias
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Free disk space
+        # The bundle alone is ~600 MB; the R8 and Gradle intermediates need
+        # several GB more than a stock runner reliably has free.
+        run: sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/.ghcup /usr/local/share/boost /opt/hostedtoolcache/CodeQL
+
+      - name: Set up Java 17
+        uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Flutter (stable)
+        uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        with:
+          channel: stable
+
+      - name: Set up Python
+        if: inputs.publish
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+
+      - name: Install Codemagic CLI tools
+        if: inputs.publish
+        # 0.70.0, the release Codemagic's machines run, hash-locked with every
+        # dependency because these tools handle the store credentials.
+        run: python -m pip install --require-hashes -r scripts/ci/release-tools.txt
+
+      - name: Install Android NDKs
+        # Codemagic pre-build step. The runner image ships neither version.
+        run: |
+          "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" --install \
+            "ndk;27.0.12077973" "ndk;28.2.13676358" > /dev/null
+
+      - name: Write Firebase config and upload key
+        env:
+          GOOGLE_SERVICES_JSON_B64: ${{ secrets.GOOGLE_SERVICES_JSON_B64 }}
+          ANDROID_KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          umask 077
+          for name in GOOGLE_SERVICES_JSON_B64 ANDROID_KEYSTORE_B64 ANDROID_KEYSTORE_PASSWORD ANDROID_KEY_PASSWORD; do
+            if [ -z "${!name:-}" ]; then
+              echo "::error::$name is not set"
+              exit 1
+            fi
+          done
+          printf '%s' "$GOOGLE_SERVICES_JSON_B64" | base64 --decode > android/app/google-services.json
+          keystore="$RUNNER_TEMP/upload-keystore.jks"
+          printf '%s' "$ANDROID_KEYSTORE_B64" | base64 --decode > "$keystore"
+          # android/app/build.gradle.kts signs release builds from this
+          # git-ignored file. Backslashes are escapes in .properties values.
+          {
+            echo "storeFile=$keystore"
+            echo "storePassword=${ANDROID_KEYSTORE_PASSWORD//\\/\\\\}"
+            echo "keyAlias=$ANDROID_KEY_ALIAS"
+            echo "keyPassword=${ANDROID_KEY_PASSWORD//\\/\\\\}"
+          } > android/key.properties
+
+      - name: Build App Bundle
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          REVENUECAT_API_KEY: ${{ secrets.REVENUECAT_API_KEY }}
+          SENTRY_FLUTTER: ${{ secrets.SENTRY_FLUTTER }}
+          AMPLITUDE: ${{ secrets.AMPLITUDE }}
+          CLARITY_PROJECT_ID: ${{ secrets.CLARITY_PROJECT_ID }}
+          ONESIGNAL_APP_ID: ${{ secrets.ONESIGNAL_APP_ID }}
+          APPSFLYER_DEV_KEY: ${{ secrets.APPSFLYER_DEV_KEY }}
+          GAMEBASE_API_KEY: ${{ secrets.GAMEBASE_API_KEY }}
+        run: bash scripts/ci/mobile_flutter_build.sh appbundle
+
+      - name: Publish to Google Play (internal)
+        if: inputs.publish
+        env:
+          GOOGLE_PLAY_SERVICE_ACCOUNT_CREDENTIALS: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}
+        run: |
+          google-play bundles publish \
+            --bundle build/app/outputs/bundle/productionRelease/app-production-release.aab \
+            --track internal \
+            --in-app-update-priority 5
+
+      - name: Keep App Bundle (build only)
+        if: ${{ !inputs.publish }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: android-app-bundle
+          path: build/app/outputs/bundle/productionRelease/app-production-release.aab
+          retention-days: 7
+          if-no-files-found: error
+
+      - name: Keep R8 mapping
+        if: inputs.upload_symbols
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: android-r8-mapping
+          path: build/app/outputs/mapping/productionRelease/mapping.txt
+          retention-days: 7
+          if-no-files-found: error
+
+      - name: Remove signing material
+        if: always()
+        run: rm -f "$RUNNER_TEMP/upload-keystore.jks" android/key.properties android/app/google-services.json
+
+  ios:
+    name: iOS IPA
+    if: inputs.ios
+    runs-on: macos-26
+    timeout-minutes: 120
+    environment: release
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Select Xcode 26.6
+        # Codemagic's "latest" resolved to 26.6 (17F113) when this was ported.
+        # Move deliberately; App Store Connect enforces a minimum SDK.
+        run: |
+          sudo xcode-select --switch /Applications/Xcode_26.6.app
+          xcodebuild -version
+
+      - name: Set up Flutter (stable)
+        uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        with:
+          channel: stable
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+
+      - name: Install Codemagic CLI tools
+        # 0.70.0, the release Codemagic's machines run, hash-locked with every
+        # dependency because these tools handle the signing credentials.
+        run: python -m pip install --require-hashes -r scripts/ci/release-tools.txt
+
+      - name: Write Firebase config and check entitlements
+        env:
+          GOOGLE_SERVICE_INFO_PLIST_B64: ${{ secrets.GOOGLE_SERVICE_INFO_PLIST_B64 }}
+        run: |
+          if [ -z "${GOOGLE_SERVICE_INFO_PLIST_B64:-}" ]; then
+            echo "::error::GOOGLE_SERVICE_INFO_PLIST_B64 is not set"
+            exit 1
+          fi
+          printf '%s' "$GOOGLE_SERVICE_INFO_PLIST_B64" | base64 --decode > ios/Runner/GoogleService-Info.plist
+          plutil -lint ios/Runner/GoogleService-Info.plist
+          aps_env=$(/usr/libexec/PlistBuddy -c "Print :aps-environment" ios/Runner/RunnerRelease.entitlements)
+          if [ "$aps_env" != "production" ]; then
+            echo "::error::RunnerRelease.entitlements aps-environment is '$aps_env' (expected 'production')"
+            exit 1
+          fi
+
+      - name: Set up code signing
+        # Same commands Codemagic ran: fetch the App Store certificate and
+        # profiles for com.chessever.app (and its extension bundle IDs), then
+        # point the Xcode project at them.
+        env:
+          APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          APP_STORE_CONNECT_KEY_IDENTIFIER: ${{ secrets.APP_STORE_CONNECT_KEY_IDENTIFIER }}
+          APP_STORE_CONNECT_PRIVATE_KEY: ${{ secrets.APP_STORE_CONNECT_PRIVATE_KEY }}
+          CERTIFICATE_PRIVATE_KEY: ${{ secrets.IOS_DISTRIBUTION_CERTIFICATE_KEY }}
+        run: |
+          for name in APP_STORE_CONNECT_ISSUER_ID APP_STORE_CONNECT_KEY_IDENTIFIER APP_STORE_CONNECT_PRIVATE_KEY CERTIFICATE_PRIVATE_KEY; do
+            if [ -z "${!name:-}" ]; then
+              echo "::error::$name is not set"
+              exit 1
+            fi
+          done
+          keychain initialize --path "$RUNNER_TEMP/signing.keychain-db"
+          app-store-connect fetch-signing-files com.chessever.app \
+            --type IOS_APP_STORE \
+            --platform IOS \
+            --create
+          keychain add-certificates --path "$RUNNER_TEMP/signing.keychain-db"
+          xcode-project use-profiles --export-options-plist "$RUNNER_TEMP/export_options.plist"
+
+      - name: Build IPA
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          REVENUECAT_API_KEY: ${{ secrets.REVENUECAT_API_KEY }}
+          SENTRY_FLUTTER: ${{ secrets.SENTRY_FLUTTER }}
+          AMPLITUDE: ${{ secrets.AMPLITUDE }}
+          CLARITY_PROJECT_ID: ${{ secrets.CLARITY_PROJECT_ID }}
+          ONESIGNAL_APP_ID: ${{ secrets.ONESIGNAL_APP_ID }}
+          APPSFLYER_DEV_KEY: ${{ secrets.APPSFLYER_DEV_KEY }}
+          GAMEBASE_API_KEY: ${{ secrets.GAMEBASE_API_KEY }}
+        run: bash scripts/ci/mobile_flutter_build.sh ipa --export-options-plist "$RUNNER_TEMP/export_options.plist"
+
+      - name: Check IPA signing
+        # Codemagic post-build check: the embedded profile must carry
+        # production APNs or push notifications silently stop working.
+        run: |
+          ipa=(build/ios/ipa/*.ipa)
+          check_dir="$RUNNER_TEMP/ipa_check"
+          rm -rf "$check_dir"
+          mkdir -p "$check_dir"
+          unzip -q "${ipa[0]}" -d "$check_dir"
+          profile="$RUNNER_TEMP/runner_profile.plist"
+          security cms -D -i "$check_dir/Payload/Runner.app/embedded.mobileprovision" > "$profile"
+          echo "Profile: $(/usr/libexec/PlistBuddy -c "Print :Name" "$profile")"
+          echo "App ID:  $(/usr/libexec/PlistBuddy -c "Print :Entitlements:application-identifier" "$profile")"
+          aps=$(/usr/libexec/PlistBuddy -c "Print :Entitlements:aps-environment" "$profile")
+          echo "APNs:    $aps"
+          if [ "$aps" != "production" ]; then
+            echo "::error::Embedded profile APNs is '$aps' (expected 'production')"
+            exit 1
+          fi
+
+      - name: Publish to App Store Connect
+        if: inputs.publish
+        env:
+          APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          APP_STORE_CONNECT_KEY_IDENTIFIER: ${{ secrets.APP_STORE_CONNECT_KEY_IDENTIFIER }}
+          APP_STORE_CONNECT_PRIVATE_KEY: ${{ secrets.APP_STORE_CONNECT_PRIVATE_KEY }}
+        run: |
+          ipa=(build/ios/ipa/*.ipa)
+          app-store-connect publish --path "${ipa[0]}"
+
+      - name: Keep IPA (build only)
+        if: ${{ !inputs.publish }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ios-ipa
+          path: build/ios/ipa/*.ipa
+          retention-days: 7
+          if-no-files-found: error
+
+      - name: Keep dSYMs
+        if: inputs.upload_symbols
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ios-dsyms
+          path: build/ios/archive/Runner.xcarchive/dSYMs
+          retention-days: 7
+          if-no-files-found: error
+
+      - name: Remove signing material
+        if: always()
+        run: |
+          keychain delete --path "$RUNNER_TEMP/signing.keychain-db" || true
+          keychain use-login || true
+          rm -rf "$HOME/Library/Developer/Xcode/UserData/Certificates" ios/Runner/GoogleService-Info.plist
