@@ -270,26 +270,11 @@ class _GamesTourScrollProvider extends StateNotifier<ItemScrollController> {
       _ref.read(gamesTourScreenModeProvider).valueOrNull ==
       GamesTourScreenMode.groupEvent;
 
-  /// Regular events use the exact round sequence painted by GamesListView.
-  /// Team events retain their separate card-list presentation.
-  List<GamesAppBarModel> _getVisibleRounds() {
-    if (!_isGroupEvent) {
-      return _ref.read(gamesTourListPresentationProvider).displayRounds;
-    }
-
-    final vm = _ref.read(gamesAppBarProvider).valueOrNull;
-    final selectedId = vm?.selectedId;
-    final userSelected = vm?.userSelectedId ?? false;
-    final models = _ref.read(gamesTourGroupedProvider).rounds;
-    return models
-        .where(
-          (round) =>
-              _getGamesInRound(round.id) > 0 &&
-              ((userSelected && round.id == selectedId) ||
-                  round.roundStatus != RoundStatus.upcoming),
-        )
-        .toList(growable: false);
-  }
+  /// The exact round sequence painted by either renderer. Team events lay out
+  /// matchup cards instead of boards, but over the same rounds in the same
+  /// order, so header indices below stay in step with the screen.
+  List<GamesAppBarModel> _getVisibleRounds() =>
+      _ref.read(gamesTourDisplayRoundsProvider);
 
   List<String> get visibleRoundIds =>
       _getVisibleRounds().map((round) => round.id).toList(growable: false);
@@ -444,10 +429,6 @@ class _GamesTourScrollProvider extends StateNotifier<ItemScrollController> {
 
     // Return the number of team matchup cards
     return grouped.keys.length;
-  }
-
-  int _getGamesInRound(String roundId) {
-    return _getGamesForRound(roundId).length;
   }
 
   List<GamesTourModel> _getGamesForRound(String roundId) {

@@ -23,6 +23,8 @@ import 'package:chessever2/screens/collections/collections_data.dart'
     show Collection, collectionsRepositoryProvider;
 import 'package:chessever2/screens/collections/collections_screen.dart'
     show CollectionScreen;
+import 'package:chessever2/screens/collections/collection_share.dart'
+    show collectionSlugFromUri;
 import 'package:chessever2/screens/group_event/smart_event/smart_aggregate_event_provider.dart'
     show smartEventRequestFromPushData;
 import 'package:chessever2/screens/group_event/smart_event/smart_event_screen.dart'
@@ -559,6 +561,10 @@ class DeepLinkService {
         bookShareToken = uri.pathSegments[1];
       }
 
+      // Universal link: https://chessever.com/collections/<slug>, and the web
+      // page's hand-off com.chessever.app://collections/<slug>.
+      final collectionSlug = collectionSlugFromUri(uri);
+
       // Universal link: https://chessever.com/databases/<folderId>
       if (uri.pathSegments.length >= 2 &&
           (uri.pathSegments[0] == 'databases' ||
@@ -656,6 +662,7 @@ class DeepLinkService {
           'gameId': _maskedValue(gameId),
           'bookShareToken': _maskedValue(bookShareToken),
           'folderId': _maskedValue(folderId),
+          'collectionSlug': collectionSlug,
           'broadcastId': _maskedValue(broadcastId),
           'teamName': teamName,
         },
@@ -700,6 +707,12 @@ class DeepLinkService {
           data: {'folderId': _maskedValue(folderId)},
         );
         _navigateToFolder(folderId, navigatorKey, ref);
+      } else if (collectionSlug != null) {
+        _addBreadcrumb(
+          'routing to collection',
+          data: {'collectionSlug': collectionSlug},
+        );
+        _navigateToCollection(collectionSlug, navigatorKey, ref);
       } else if (broadcastId != null &&
           broadcastId.isNotEmpty &&
           playerFideId != null) {
@@ -833,8 +846,9 @@ class DeepLinkService {
     }
   }
 
-  /// Opens the collection a "new games" push was sent for. A collection that
-  /// is no longer published (or cannot be read right now) lands on Home.
+  /// Opens the collection a "new games" push was sent for, or a shared
+  /// `chessever.com/collections/<slug>` link points at. A collection that is
+  /// no longer published (or cannot be read right now) lands on Home.
   Future<void> _navigateToCollection(
     String slug,
     GlobalKey<NavigatorState> navigatorKey,

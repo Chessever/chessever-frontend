@@ -92,6 +92,23 @@ void main() {
     final rows = buildOfficialTeamStandings(info: info(data), players: []);
     expect(rows!.first.matchPoints, 9);
   });
+  test('preserves a full four-win table on the three-one-zero scale', () {
+    final data = snapshot();
+    data['matchScoring'] = {'win': 3, 'draw': 1, 'loss': 0};
+    (data['teams'] as List)[0] = {
+      'name': 'Other',
+      'rank': 1,
+      'matchPoints': 12,
+      'gamePoints': 14,
+      'matchesPlayed': 4,
+      'wins': 4,
+      'draws': 0,
+      'losses': 0,
+    };
+    final rows = buildOfficialTeamStandings(info: info(data), players: []);
+    expect(rows!.first.matchPoints, 12);
+    expect(rows.first.matchesWon, 4);
+  });
   test('rejects malformed scoring and negative points', () {
     final data = snapshot();
     data['matchScoring'] = {'win': 1, 'draw': 2, 'loss': 0};

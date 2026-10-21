@@ -170,7 +170,7 @@ class _StreamScrollCoachingLessonState extends State<StreamScrollCoachingLesson>
               padding: const EdgeInsets.all(12),
               child: Material(
                 color: context.colors.surfaceElevated,
-                elevation: 4,
+                elevation: 0,
                 borderRadius: BorderRadius.circular(12),
                 child: Padding(
                   padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
@@ -256,7 +256,11 @@ class _StreamScrollCoachingLessonState extends State<StreamScrollCoachingLesson>
                                 color: context.colors.textPrimary,
                                 size: 36,
                                 shadows: [
-                                  Shadow(color: Colors.black, blurRadius: 4),
+                                  Shadow(
+                                    color: Colors.black38,
+                                    offset: Offset(0, 1),
+                                    blurRadius: 2,
+                                  ),
                                 ],
                               ),
                             ),
@@ -270,7 +274,11 @@ class _StreamScrollCoachingLessonState extends State<StreamScrollCoachingLesson>
                                 color: context.colors.textPrimary,
                                 size: 36,
                                 shadows: [
-                                  Shadow(color: Colors.black, blurRadius: 4),
+                                  Shadow(
+                                    color: Colors.black38,
+                                    offset: Offset(0, 1),
+                                    blurRadius: 2,
+                                  ),
                                 ],
                               ),
                             ),
@@ -283,7 +291,11 @@ class _StreamScrollCoachingLessonState extends State<StreamScrollCoachingLesson>
                                 color: context.colors.textPrimary,
                                 size: 18,
                                 shadows: [
-                                  Shadow(color: Colors.black, blurRadius: 4),
+                                  Shadow(
+                                    color: Colors.black38,
+                                    offset: Offset(0, 1),
+                                    blurRadius: 2,
+                                  ),
                                 ],
                               ),
                               Icon(
@@ -291,7 +303,11 @@ class _StreamScrollCoachingLessonState extends State<StreamScrollCoachingLesson>
                                 color: context.colors.textPrimary,
                                 size: 18,
                                 shadows: [
-                                  Shadow(color: Colors.black, blurRadius: 4),
+                                  Shadow(
+                                    color: Colors.black38,
+                                    offset: Offset(0, 1),
+                                    blurRadius: 2,
+                                  ),
                                 ],
                               ),
                             ],

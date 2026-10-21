@@ -17,7 +17,7 @@ import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrap
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/grid_game_card_wrapper_widget.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/live_game_card_provider.dart';
 import 'package:chessever2/theme/app_colors.dart';
-import 'package:chessever2/widgets/paywall/past_game_access.dart';
+import 'package:chessever2/widgets/paywall/premium_game_access.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/scroll_cache.dart';
 import 'package:chessever2/utils/foreground_task_scheduler.dart';
@@ -868,7 +868,7 @@ class _CountrymenGamesTabState extends ConsumerState<CountrymenGamesTab>
           onAdd: () => _showAddToFolderSheet(context, entry.game),
           onLiveAdd: (liveGame) => _showAddToFolderSheet(context, liveGame),
           onLiveTap: (liveGame, updatedGames, liveIndex) async {
-            final allowed = await ensurePastGameAccess(context, game: liveGame);
+            final allowed = await ensureCountrymenGameAccess(context);
             if (!allowed || !mounted) return;
             _navigateToChessBoard(liveGame, updatedGames, liveIndex);
           },
@@ -930,10 +930,7 @@ class _CountrymenGamesTabState extends ConsumerState<CountrymenGamesTab>
       // from the card without going through [navigateToChessBoard].
       viewSource: ChessboardView.countryman,
       onChangedWithLiveGames: (updatedGames) async {
-        final allowed = await ensurePastGameAccess(
-          context,
-          game: updatedGames[gameIndex],
-        );
+        final allowed = await ensureCountrymenGameAccess(context);
         if (!allowed || !mounted) return;
 
         ref
@@ -1193,6 +1190,17 @@ class _CountrymenGamesTabState extends ConsumerState<CountrymenGamesTab>
   }
 }
 
+/// Countrymen games are a Premium feature: the list stays browsable, but
+/// opening any game, Current or past, asks a free viewer to watch an ad or
+/// subscribe. Paid and rewarded viewers open straight away.
+Future<bool> ensureCountrymenGameAccess(BuildContext context) {
+  return ensurePremiumGameAccess(
+    context,
+    featureId: 'countrymen',
+    returnTo: 'countrymen/games',
+  );
+}
+
 abstract class _CountrymenGamesListEntry {
   const _CountrymenGamesListEntry();
 }
@@ -1344,7 +1352,7 @@ class _DateHeader extends StatelessWidget {
   }
 }
 
-/// Checks event access for navigation while allowing offscreen live streams to
+/// Requires Premium for navigation while allowing offscreen live streams to
 /// auto-dispose.
 class _CountrymenLiveBoardGameCard extends ConsumerStatefulWidget {
   const _CountrymenLiveBoardGameCard({
@@ -1376,10 +1384,7 @@ class _CountrymenLiveBoardGameCard extends ConsumerStatefulWidget {
 class _CountrymenLiveBoardGameCardState
     extends ConsumerState<_CountrymenLiveBoardGameCard> {
   Future<void> _handleNavigate(List<GamesTourModel> updatedGames) async {
-    final allowed = await ensurePastGameAccess(
-      context,
-      game: updatedGames[widget.gameIndex],
-    );
+    final allowed = await ensureCountrymenGameAccess(context);
     if (!allowed || !mounted) return;
 
     ref
@@ -1414,7 +1419,7 @@ class _CountrymenLiveBoardGameCardState
       updatedGames[widget.gameIndex] = liveGame;
     }
 
-    // Use ChessBoardFromFENNew directly with event access checked on navigation.
+    // Use ChessBoardFromFENNew directly with Premium checked on navigation.
     final card = Padding(
       padding: EdgeInsets.only(bottom: widget.isLast ? 16.h : 12.h),
       child: ChessBoardFromFENNew(
