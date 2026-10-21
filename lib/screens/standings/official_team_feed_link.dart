@@ -23,7 +23,13 @@ class OfficialTeamFeedLink {
   /// under [label] belongs to it.
   final Set<String>? members;
 
-  const OfficialTeamFeedLink({required this.label, this.members});
+  final Map<String, int> memberFideIdsByName;
+
+  const OfficialTeamFeedLink({
+    required this.label,
+    this.members,
+    this.memberFideIdsByName = const {},
+  });
 
   bool includes({required String? team, int? fideId, required String name}) {
     if (team == null || foldTeamLabel(team) != foldTeamLabel(label)) {
@@ -31,11 +37,19 @@ class OfficialTeamFeedLink {
     }
     final squad = members;
     if (squad == null) return true;
-    return feedPlayerKeys(
-      fideId: fideId,
-      name: name,
-      team: team,
-    ).any(squad.contains);
+    final keys = feedPlayerKeys(fideId: fideId, name: name, team: team);
+    if (fideId != null && fideId > 0 && squad.contains('fide:$fideId')) {
+      return true;
+    }
+    return keys.any((key) {
+      if (!key.startsWith('name:') || !squad.contains(key)) return false;
+      final publishedId = memberFideIdsByName[key];
+      return publishedId != 0 &&
+          (fideId == null ||
+              fideId <= 0 ||
+              publishedId == null ||
+              publishedId == fideId);
+    });
   }
 }
 
@@ -70,9 +84,17 @@ String foldTeamLabel(String value) => _words(value).join(' ');
 /// Identity keys for one player: FIDE id when known, plus the name's word set
 /// without the feed's team prefix ("UTD Samant Aditya S" == "Samant, Aditya S").
 Set<String> feedPlayerKeys({int? fideId, required String name, String? team}) {
-  final teamWords = team == null ? const <String>{} : _words(team).toSet();
-  final words = _words(name).where((w) => !teamWords.contains(w)).toList()
-    ..sort();
+  final teamWords = team == null ? const <String>[] : _words(team);
+  var words = _words(name);
+  if (teamWords.isNotEmpty &&
+      words.length > teamWords.length &&
+      List.generate(
+        teamWords.length,
+        (i) => words[i] == teamWords[i],
+      ).every((matches) => matches)) {
+    words = words.sublist(teamWords.length);
+  }
+  words.sort();
   return {
     if (fideId != null && fideId > 0) 'fide:$fideId',
     if (words.isNotEmpty) 'name:${words.join(' ')}',
@@ -143,24 +165,39 @@ OfficialTeamFeedLink? _linkByMembers(
   List<({String? team, int? fideId, String name})> feedPlayers,
 ) {
   if (members.isEmpty) return null;
-  final wanted = <String>{
-    for (final m in members)
-      ...feedPlayerKeys(fideId: m.fideId, name: m.name ?? ''),
-  };
   final labels = <String, String>{};
   final keys = <String>{};
+  final idsByName = <String, int>{};
   for (final p in feedPlayers) {
     final team = p.team;
     if (team == null || team.trim().isEmpty) continue;
     final own = feedPlayerKeys(fideId: p.fideId, name: p.name, team: team);
-    final hit = own.any(wanted.contains);
+    final hit = members.any((member) {
+      if (member.fideId != null && p.fideId != null && p.fideId! > 0) {
+        return member.fideId == p.fideId;
+      }
+      return feedPlayerKeys(name: member.name ?? '').any(own.contains);
+    });
     if (!hit) continue;
     labels.putIfAbsent(foldTeamLabel(team), () => team.trim());
     keys.addAll(own);
+    if (p.fideId != null && p.fideId! > 0) {
+      for (final key in own.where((key) => key.startsWith('name:'))) {
+        idsByName.update(
+          key,
+          (id) => id == p.fideId ? id : 0,
+          ifAbsent: () => p.fideId!,
+        );
+      }
+    }
   }
   // Members spread over several feed labels means the join is wrong.
   if (labels.length != 1) return null;
-  return OfficialTeamFeedLink(label: labels.values.single, members: keys);
+  return OfficialTeamFeedLink(
+    label: labels.values.single,
+    members: keys,
+    memberFideIdsByName: idsByName,
+  );
 }
 
 const _stopWords = {
@@ -223,8 +260,10 @@ bool _sameWordSet(List<String> a, List<String> b) =>
   return (base: words.sublist(0, words.length - 1), suffix: last);
 }
 
-List<String> _words(String value) =>
-    RegExp(r'[a-z0-9]+').allMatches(_fold(value)).map((m) => m[0]!).toList();
+List<String> _words(String value) => RegExp(
+  r'[\p{L}\p{M}\p{N}]+',
+  unicode: true,
+).allMatches(_fold(value)).map((m) => m[0]!).toList();
 
 String _fold(String value) {
   const accents = {

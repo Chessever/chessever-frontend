@@ -130,6 +130,48 @@ final _games = [
 ];
 
 void main() {
+  test('exact non-Latin team names stay distinct', () {
+    final links = linkOfficialTeamsToFeed(
+      official: const [
+        (name: '北京队', members: []),
+        (name: '上海队', members: []),
+        (name: 'Москва', members: []),
+      ],
+      feedPlayers: const [
+        (team: '北京队', fideId: 1, name: '王浩'),
+        (team: '上海队', fideId: 2, name: '李超'),
+        (team: 'Москва', fideId: 3, name: 'Иванов'),
+      ],
+    );
+    expect(links['北京队']!.label, '北京队');
+    expect(links['上海队']!.label, '上海队');
+    expect(links['Москва']!.label, 'Москва');
+    expect(links['北京队']!.includes(team: '上海队', fideId: 2, name: '李超'), isFalse);
+  });
+
+  test('published FIDE IDs take priority over a matching name', () {
+    final links = linkOfficialTeamsToFeed(
+      official: const [
+        (name: 'Squad A', members: [(fideId: 1, name: 'Alex Smith')]),
+      ],
+      feedPlayers: const [
+        (team: 'Club', fideId: 1, name: 'Club Alex Smith'),
+        (team: 'Club', fideId: 2, name: 'Club Alex Smith'),
+      ],
+    );
+    final link = links['Squad A']!;
+    expect(link.includes(team: 'Club', fideId: 1, name: 'Alex Smith'), isTrue);
+    expect(link.includes(team: 'Club', fideId: 2, name: 'Alex Smith'), isFalse);
+    expect(link.includes(team: 'Club', name: 'Alex Smith'), isTrue);
+  });
+
+  test('team-prefix stripping preserves words later in a player name', () {
+    expect(
+      feedPlayerKeys(team: 'Dallas', name: 'Dallas Sam Dallas'),
+      feedPlayerKeys(name: 'Sam Dallas'),
+    );
+  });
+
   test('h2GbjYXa: a published squad roster finds its UTD-labelled players '
       'and only that squad\'s boards', () {
     final data = _snapshot();
