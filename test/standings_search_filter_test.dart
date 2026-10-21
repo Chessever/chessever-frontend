@@ -108,6 +108,45 @@ void main() {
     });
   });
 
+  group('standings search in every script', () {
+    final standings = assignOverallRanks([
+      _player(name: 'Carlsen, Magnus', rating: 2830, countryCode: 'NOR'),
+      _player(name: '王浩', rating: 2700, countryCode: 'CHN'),
+      _player(name: 'Иванов, Сергей', rating: 2600, countryCode: 'RUS'),
+      _player(name: 'Müller, Jörg', rating: 2400, countryCode: 'GER'),
+      _player(name: 'Mueller, Hans', rating: 2300, countryCode: 'GER'),
+      _player(name: 'Đukić, Nikola', rating: 2200, countryCode: 'SRB'),
+    ]);
+
+    List<String> names(String query) =>
+        filterStandingsByQuery(standings, query).map((p) => p.name).toList();
+
+    test('a CJK query finds only its player', () {
+      expect(names('王'), ['王浩']);
+      expect(filterStandingsByQuery(standings, '王浩').single.overallRank, 2);
+    });
+
+    test('a Cyrillic query finds only its player', () {
+      expect(names('иванов'), ['Иванов, Сергей']);
+      expect(names('Сергей Иванов'), ['Иванов, Сергей']);
+    });
+
+    test('Latin diacritics fold both ways', () {
+      expect(names('dukic'), ['Đukić, Nikola']);
+      expect(names('joerg'), ['Müller, Jörg']);
+      expect(names('jorg muller'), ['Müller, Jörg']);
+    });
+
+    test('umlauts match their transliteration in either direction', () {
+      expect(names('mueller'), ['Müller, Jörg', 'Mueller, Hans']);
+      expect(names('müller'), ['Müller, Jörg', 'Mueller, Hans']);
+    });
+
+    test('a punctuation-only query leaves the table unfiltered', () {
+      expect(names(' , ').length, standings.length);
+    });
+  });
+
   group('PlayerStandingModel overallRank', () {
     test('participates in json and equality', () {
       final player = _player(
