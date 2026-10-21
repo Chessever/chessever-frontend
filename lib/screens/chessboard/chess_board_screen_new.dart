@@ -1,3 +1,4 @@
+import 'package:chessever2/screens/chessboard/widgets/board_game_menu_host.dart';
 import 'package:chessever2/widgets/paywall/game_report_access.dart';
 import 'package:chessever2/config/feature_flags.dart';
 import 'package:chessever2/providers/country_dropdown_provider.dart';
@@ -4289,11 +4290,13 @@ class _GamePage extends ConsumerWidget {
         showClock: showClock,
       ),
     );
-    return _BoardShareBoundaryScope(
-      child: MediaQuery.removeViewInsets(
-        context: context,
-        removeBottom: true,
-        child: scaffold,
+    return BoardGameMenuHost(
+      child: _BoardShareBoundaryScope(
+        child: MediaQuery.removeViewInsets(
+          context: context,
+          removeBottom: true,
+          child: scaffold,
+        ),
       ),
     );
   }
@@ -4679,6 +4682,118 @@ bool _isSnapshotAtFinishedSharePosition({
 }
 
 class _AppBarState extends ConsumerState<_AppBar> {
+  BoardGameMenuController? _menuHost;
+  final _tabletMenuKey = GlobalKey<_TabletSafePopupMenuState<String>>();
+  bool _boardMenuOpen = false;
+  bool _overflowMenuOpen = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final host = BoardGameMenuHost.maybeOf(context);
+    if (identical(host, _menuHost)) return;
+    _menuHost?.detach(this);
+    _menuHost = host;
+    host?.attach(this, _openBoardMenu);
+  }
+
+  @override
+  void dispose() {
+    _menuHost?.detach(this);
+    if (_boardMenuOpen || _overflowMenuOpen) _ChessBoardPopupState.markClosed();
+    super.dispose();
+  }
+
+  List<PopupMenuEntry<String>> _menuItems(BuildContext menuContext) {
+    final params = ChessBoardProviderParams(
+      game: widget.game,
+      index: widget.currentGameIndex,
+    );
+    return chessBoardContextMenuItems(
+      menuContext,
+      videoSession: EventVideoScope.sessionOf(context),
+      analysisCleared:
+          ref
+              .read(chessBoardScreenProviderNew(params))
+              .valueOrNull
+              ?.analysisState
+              .game
+              ?.analysisCleared ??
+          false,
+      allowCopyPgn: widget.allowGameExport,
+    );
+  }
+
+  Future<void> _selectMenuAction(String value) async {
+    if (!mounted || !widget.isActivePage || widget.isLoading) return;
+    switch (value) {
+      case 'flip_board':
+        ref
+            .read(
+              chessBoardScreenProviderNew(
+                ChessBoardProviderParams(
+                  game: widget.game,
+                  index: widget.currentGameIndex,
+                ),
+              ).notifier,
+            )
+            .flipBoard();
+      case 'share':
+        await shareGameBtnClicked();
+      case 'copy_pgn':
+        if (widget.allowGameExport) copyPgnBtnClicked();
+      case 'watch':
+        await _watchInFeed();
+      case 'board_settings':
+        final allowed = await requireFullAuthGuard(context);
+        if (!allowed || !mounted) return;
+        await Navigator.of(
+          context,
+        ).push(SettingsPage.route(initiallyExpanded: SettingsSection.board));
+      case 'clear_analysis':
+        await _toggleAnalysis();
+      case 'enable_video':
+      case 'disable_video':
+        EventVideoScope.sessionOf(context)?.toggle();
+    }
+  }
+
+  Future<void> _openBoardMenu(Offset globalPosition) async {
+    if (!mounted ||
+        widget.isLoading ||
+        !widget.isActivePage ||
+        _boardMenuOpen ||
+        _ChessBoardPopupState.isAnyPopupOpen) {
+      return;
+    }
+    if (ResponsiveHelper.isTablet) {
+      _tabletMenuKey.currentState?._openMenu(anchor: globalPosition);
+      return;
+    }
+    final overlay = Overlay.of(context).context.findRenderObject() as RenderBox;
+    final point = overlay.globalToLocal(globalPosition);
+    _boardMenuOpen = true;
+    _ChessBoardPopupState.markOpen();
+    HapticFeedback.selectionClick();
+    String? selected;
+    try {
+      selected = await showMenu<String>(
+        context: context,
+        position: RelativeRect.fromRect(
+          point & Size.zero,
+          Offset.zero & overlay.size,
+        ),
+        color: context.colors.surfaceRecessed,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        items: _menuItems(context),
+      );
+    } finally {
+      _boardMenuOpen = false;
+      _ChessBoardPopupState.markClosed();
+    }
+    if (mounted && selected != null) await _selectMenuAction(selected);
+  }
+
   Future<void> _showSaveAnalysisDialog() async {
     final allowed = await requireFullAuthGuard(context);
     if (!allowed) return;
@@ -5171,12 +5286,6 @@ class _AppBarState extends ConsumerState<_AppBar> {
       game: widget.game,
       index: widget.currentGameIndex,
     );
-    final analysisCleared = ref.watch(
-      chessBoardScreenProviderNew(params).select(
-        (state) =>
-            state.valueOrNull?.analysisState.game?.analysisCleared ?? false,
-      ),
-    );
     final infoSheetPgn =
         ref.watch(
           chessBoardScreenProviderNew(
@@ -5255,48 +5364,15 @@ class _AppBarState extends ConsumerState<_AppBar> {
               // phantom tap dismissals, use standard PopupMenuButton on mobile
               if (ResponsiveHelper.isTablet)
                 _TabletSafePopupMenu<String>(
+                  key: _tabletMenuKey,
                   icon: Icon(
                     Icons.more_vert,
                     color: context.colors.textPrimary,
                     size: 22.sp,
                   ),
                   enabled: !widget.isLoading,
-                  onSelected: (value) async {
-                    if (value == 'flip_board') {
-                      ref
-                          .read(
-                            chessBoardScreenProviderNew(
-                              ChessBoardProviderParams(
-                                game: widget.game,
-                                index: widget.currentGameIndex,
-                              ),
-                            ).notifier,
-                          )
-                          .flipBoard();
-                    } else if (value == 'share') {
-                      shareGameBtnClicked();
-                    } else if (value == 'watch') {
-                      await _watchInFeed();
-                    } else if (value == 'board_settings') {
-                      final allowed = await requireFullAuthGuard(context);
-                      if (!allowed) return;
-                      if (!context.mounted) return;
-                      Navigator.of(context).push(
-                        SettingsPage.route(
-                          initiallyExpanded: SettingsSection.board,
-                        ),
-                      );
-                    } else if (value == 'clear_analysis') {
-                      await _toggleAnalysis();
-                    }
-                  },
-                  itemBuilder: (context) => chessBoardContextMenuItems(
-                    context,
-                    videoSession: EventVideoScope.sessionOf(this.context),
-                    analysisCleared: analysisCleared,
-                    onCopyPgn: copyPgnBtnClicked,
-                    allowCopyPgn: widget.allowGameExport,
-                  ),
+                  onSelected: _selectMenuAction,
+                  itemBuilder: _menuItems,
                 )
               else
                 PopupMenuButton<String>(
@@ -5306,42 +5382,20 @@ class _AppBarState extends ConsumerState<_AppBar> {
                     size: 22.sp,
                   ),
                   enabled: !widget.isLoading,
-                  onSelected: (value) async {
-                    if (value == 'flip_board') {
-                      ref
-                          .read(
-                            chessBoardScreenProviderNew(
-                              ChessBoardProviderParams(
-                                game: widget.game,
-                                index: widget.currentGameIndex,
-                              ),
-                            ).notifier,
-                          )
-                          .flipBoard();
-                    } else if (value == 'share') {
-                      shareGameBtnClicked();
-                    } else if (value == 'watch') {
-                      await _watchInFeed();
-                    } else if (value == 'board_settings') {
-                      final allowed = await requireFullAuthGuard(context);
-                      if (!allowed) return;
-                      if (!context.mounted) return;
-                      Navigator.of(context).push(
-                        SettingsPage.route(
-                          initiallyExpanded: SettingsSection.board,
-                        ),
-                      );
-                    } else if (value == 'clear_analysis') {
-                      await _toggleAnalysis();
-                    }
+                  onOpened: () {
+                    _overflowMenuOpen = true;
+                    _ChessBoardPopupState.markOpen();
                   },
-                  itemBuilder: (context) => chessBoardContextMenuItems(
-                    context,
-                    videoSession: EventVideoScope.sessionOf(this.context),
-                    analysisCleared: analysisCleared,
-                    onCopyPgn: copyPgnBtnClicked,
-                    allowCopyPgn: widget.allowGameExport,
-                  ),
+                  onCanceled: () {
+                    _overflowMenuOpen = false;
+                    _ChessBoardPopupState.markClosed();
+                  },
+                  onSelected: (value) {
+                    _overflowMenuOpen = false;
+                    _ChessBoardPopupState.markClosed();
+                    _selectMenuAction(value);
+                  },
+                  itemBuilder: _menuItems,
                 ),
             ],
           ),
@@ -5540,6 +5594,7 @@ class _TabletSafePopupMenu<T> extends StatefulWidget {
   final bool enabled;
 
   const _TabletSafePopupMenu({
+    super.key,
     required this.icon,
     required this.itemBuilder,
     this.onSelected,
@@ -5557,6 +5612,7 @@ class _TabletSafePopupMenuState<T> extends State<_TabletSafePopupMenu<T>>
   late AnimationController _animationController;
   late Animation<double> _animation;
   bool _isOpen = false;
+  bool _isClosing = false;
   OverlayEntry? _overlayEntry;
   DateTime? _openedAt;
   static const _minOpenDuration = Duration(milliseconds: 600);
@@ -5577,6 +5633,7 @@ class _TabletSafePopupMenuState<T> extends State<_TabletSafePopupMenu<T>>
 
   @override
   void dispose() {
+    if (_isOpen) _ChessBoardPopupState.markClosed();
     _removeOverlay();
     _animationController.dispose();
     super.dispose();
@@ -5601,8 +5658,10 @@ class _TabletSafePopupMenuState<T> extends State<_TabletSafePopupMenu<T>>
     return true;
   }
 
-  void _openMenu() {
-    if (!widget.enabled || _isOpen) return;
+  void _openMenu({Offset? anchor}) {
+    if (!widget.enabled || _isOpen || _ChessBoardPopupState.isAnyPopupOpen) {
+      return;
+    }
 
     HapticFeedback.selectionClick();
     _openedAt = DateTime.now();
@@ -5611,12 +5670,12 @@ class _TabletSafePopupMenuState<T> extends State<_TabletSafePopupMenu<T>>
     debugPrint('📂 TABLET POPUP OPENED: time=$_openedAt');
 
     setState(() => _isOpen = true);
-    _showOverlay();
+    _showOverlay(anchor: anchor);
     _animationController.forward();
   }
 
-  void _closeMenu({bool force = false}) {
-    if (!_isOpen) return;
+  Future<bool> _closeMenu({bool force = false}) async {
+    if (!_isOpen || _isClosing) return false;
 
     final elapsed = _openedAt != null
         ? DateTime.now().difference(_openedAt!)
@@ -5627,29 +5686,33 @@ class _TabletSafePopupMenuState<T> extends State<_TabletSafePopupMenu<T>>
 
     if (!force && !_canDismiss()) {
       debugPrint('🛡️ TABLET POPUP dismiss blocked - opened too recently');
-      return;
+      return false;
     }
 
     debugPrint('📕 TABLET POPUP CLOSING: proceeding with close');
 
+    _isClosing = true;
     _openedAt = null;
+    await _animationController.reverse();
+    if (!mounted) return false;
+    _isClosing = false;
+    setState(() => _isOpen = false);
+    _removeOverlay();
     _ChessBoardPopupState.markClosed();
-    _animationController.reverse().then((_) {
-      if (mounted) {
-        setState(() => _isOpen = false);
-        _removeOverlay();
-      }
-    });
+    return true;
   }
 
-  void _showOverlay() {
+  void _showOverlay({Offset? anchor}) {
     final overlay = Overlay.of(context);
+    final overlayBox = overlay.context.findRenderObject() as RenderBox;
     final renderBox = context.findRenderObject() as RenderBox?;
     if (renderBox == null) return;
-
-    final size = renderBox.size;
-    final offset = renderBox.localToGlobal(Offset.zero);
-    final screenWidth = MediaQuery.of(context).size.width;
+    final point = overlayBox.globalToLocal(
+      anchor ??
+          renderBox.localToGlobal(
+            Offset(renderBox.size.width, renderBox.size.height),
+          ),
+    );
 
     // Build menu items
     final items = widget.itemBuilder(context);
@@ -5671,60 +5734,69 @@ class _TabletSafePopupMenuState<T> extends State<_TabletSafePopupMenu<T>>
               child: Container(color: Colors.black.withValues(alpha: 0.01)),
             ),
           ),
-          // Menu positioned near the trigger
-          Positioned(
-            // Position to the left of the button, aligned to top
-            right: screenWidth - offset.dx - size.width,
-            top: offset.dy + size.height + 4,
-            child: AnimatedBuilder(
-              animation: _animation,
-              builder: (context, child) {
-                final progress = _animation.value.clamp(0.0, 1.0);
-                return Transform.scale(
-                  scale: 0.92 + (progress * 0.08),
-                  alignment: Alignment.topRight,
-                  child: Opacity(opacity: progress, child: child),
-                );
-              },
-              child: Material(
-                elevation: 8,
-                borderRadius: BorderRadius.circular(12),
-                color: context.colors.surfaceRecessed,
-                child: IntrinsicWidth(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: items.map((item) {
-                      if (item is PopupMenuItem<T>) {
-                        return InkWell(
-                          onTap: () {
-                            _closeMenu(force: true);
-                            if (item.onTap != null) {
-                              item.onTap!();
-                            }
-                            if (item.value != null &&
-                                widget.onSelected != null) {
-                              widget.onSelected!(item.value as T);
-                            }
-                          },
-                          child: Padding(
-                            padding: EdgeInsets.symmetric(
-                              horizontal: 16.w,
-                              vertical: 12.h,
-                            ),
-                            child: item.child,
-                          ),
-                        );
-                      } else if (item is PopupMenuDivider) {
-                        return Divider(
-                          height: 1,
-                          color: context.colors.textPrimary.withValues(
-                            alpha: 0.1,
-                          ),
-                        );
-                      }
-                      return const SizedBox.shrink();
-                    }).toList(),
+          // Clamp both board and overflow anchors to the safe viewport.
+          Positioned.fill(
+            child: CustomSingleChildLayout(
+              delegate: BoardMenuPositionDelegate(
+                anchor: point,
+                padding:
+                    MediaQuery.paddingOf(context) + const EdgeInsets.all(8),
+              ),
+              child: AnimatedBuilder(
+                animation: _animation,
+                builder: (context, child) {
+                  final progress = _animation.value.clamp(0.0, 1.0);
+                  return Transform.scale(
+                    scale: 0.92 + (progress * 0.08),
+                    alignment: Alignment.topRight,
+                    child: Opacity(opacity: progress, child: child),
+                  );
+                },
+                child: Material(
+                  elevation: 8,
+                  borderRadius: BorderRadius.circular(12),
+                  color: context.colors.surfaceRecessed,
+                  child: SingleChildScrollView(
+                    child: IntrinsicWidth(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: items.map((item) {
+                          if (item is PopupMenuItem<T>) {
+                            return InkWell(
+                              onTap: () async {
+                                if (!await _closeMenu(force: true) ||
+                                    !mounted) {
+                                  return;
+                                }
+                                if (item.onTap != null) {
+                                  item.onTap!();
+                                }
+                                if (item.value != null &&
+                                    widget.onSelected != null) {
+                                  widget.onSelected!(item.value as T);
+                                }
+                              },
+                              child: Padding(
+                                padding: EdgeInsets.symmetric(
+                                  horizontal: 16.w,
+                                  vertical: 12.h,
+                                ),
+                                child: item.child,
+                              ),
+                            );
+                          } else if (item is PopupMenuDivider) {
+                            return Divider(
+                              height: 1,
+                              color: context.colors.textPrimary.withValues(
+                                alpha: 0.1,
+                              ),
+                            );
+                          }
+                          return const SizedBox.shrink();
+                        }).toList(),
+                      ),
+                    ),
                   ),
                 ),
               ),
@@ -10032,26 +10104,60 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
     );
   }
 
+  bool _boardHoldConsumed = false;
+  PointerDownEvent? _pendingLikeTap;
+  int _likePointerCount = 0;
+
   Widget _wrapWithBoardGestures(Widget child) {
     return Listener(
       behavior: HitTestBehavior.deferToChild,
-      onPointerDown: _handleBoardPointerDownForLike,
+      onPointerDown: (event) {
+        _likePointerCount++;
+        if (_likePointerCount == 1) {
+          _boardHoldConsumed = false;
+          _pendingLikeTap = event;
+        } else {
+          _pendingLikeTap = null;
+          _resetLikeTapTracking();
+        }
+      },
+      onPointerMove: (event) {
+        final down = _pendingLikeTap;
+        if (down != null &&
+            down.pointer == event.pointer &&
+            (event.position - down.position).distance > kTouchSlop) {
+          _pendingLikeTap = null;
+          _resetLikeTapTracking();
+        }
+      },
+      onPointerUp: (event) {
+        _likePointerCount = math.max(0, _likePointerCount - 1);
+        final down = _pendingLikeTap;
+        _pendingLikeTap = null;
+        if (!_boardHoldConsumed &&
+            down != null &&
+            down.pointer == event.pointer &&
+            event.timeStamp - down.timeStamp < kLongPressTimeout) {
+          _handleBoardPointerDownForLike(down);
+        }
+      },
+      onPointerCancel: (_) {
+        _likePointerCount = math.max(0, _likePointerCount - 1);
+        _pendingLikeTap = null;
+        _resetLikeTapTracking();
+      },
       child: GestureDetector(
         behavior: HitTestBehavior.deferToChild,
-        onVerticalDragStart: _onFlipDragStart,
-        onVerticalDragUpdate: _onFlipDragUpdate,
-        onVerticalDragEnd: _onFlipDragEnd,
+        onVerticalDragStart: (details) {
+          if (!_boardHoldConsumed) _onFlipDragStart(details);
+        },
+        onVerticalDragUpdate: (details) {
+          if (!_boardHoldConsumed) _onFlipDragUpdate(details);
+        },
+        onVerticalDragEnd: (details) {
+          if (!_boardHoldConsumed) _onFlipDragEnd(details);
+        },
         onVerticalDragCancel: _onFlipDragCancel,
-        // Debug-only long-press alias for the same like flow. Lets Marionette
-        // and other agent-driven test harnesses trigger the chain without
-        // having to fight the chessground tap-to-move gesture arena.
-        onLongPressStart: kDebugMode
-            ? (details) {
-                _lastTapPosition = details.localPosition;
-                _lastTapGlobalPosition = details.globalPosition;
-                _handleDoubleTapLike();
-              }
-            : null,
         child: Stack(
           clipBehavior: Clip.none,
           children: [
@@ -10092,9 +10198,10 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
     );
   }
 
-  /// Detects the same-square double-tap-to-like via raw pointer events.
+  /// Counts a released tap toward same-square double-tap-to-like.
   ///
-  /// Runs on a passive [Listener] that wraps the board, so it never joins the
+  /// The passive [Listener] passes the original down event only after release,
+  /// excluding holds, swipes, and multi-touch. It never joins the
   /// gesture arena and never steals a tap from chessground's pointer-based
   /// tap-to-move. A tap-two-squares move always lands its two taps on two
   /// DIFFERENT squares, so by only firing when two quick taps hit the SAME
@@ -10810,8 +10917,13 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
       // null square (ply left, or it landed unclassified) cancels it.
       landingSquare: landingClass != null ? boardAnnotationSquare : null,
       landingKey: _landingSerial,
-      // chessground v10: promotion is resolved inside the board, so onMove
-      // receives the fully-resolved move (promotion role already set).
+      onLongPress: (details) {
+        _boardHoldConsumed = true;
+        _pendingLikeTap = null;
+        _resetLikeTapTracking();
+        BoardGameMenuHost.maybeOf(context)?.showAt(details.globalPosition);
+      },
+      // chessground v10 resolves promotion before reporting the move.
       onMove: (Move move, {bool? viaDragAndDrop}) {
         notifier.onAnalysisMove(move, viaDragAndDrop: viaDragAndDrop);
       },

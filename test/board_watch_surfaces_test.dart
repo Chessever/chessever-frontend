@@ -1,3 +1,4 @@
+import 'package:chessground/chessground.dart';
 import 'package:chessever2/providers/auth_state_provider.dart';
 import 'package:chessever2/providers/board_settings_provider_new.dart';
 import 'package:chessever2/providers/country_dropdown_provider.dart';
@@ -79,6 +80,27 @@ void main() {
   const empty =
       '[Event "New Analysis"]\n[White "White"]\n[Black "Black"]\n'
       '[Result "*"]\n\n*';
+
+  for (final tablet in [false, true]) {
+    testWidgets('long-press menu watches the current game (tablet: $tablet)', (
+      tester,
+    ) async {
+      final first = _raw(id: 'hold-first', pgn: live, status: '*');
+      final second = _raw(id: 'hold-second', pgn: finished, status: '1-0');
+      await _watch(
+        tester,
+        games: [
+          GamesTourModel.fromGame(first),
+          GamesTourModel.fromGame(second),
+        ],
+        raws: [first, second],
+        index: 1,
+        tablet: tablet,
+        longPressMenu: true,
+        want: const _Expect(plies: 7, like: true, save: true),
+      );
+    });
+  }
 
   testWidgets('an event broadcast game, finished', (tester) async {
     final raw = _raw(id: 'b1', pgn: finished, status: '1-0');
@@ -317,6 +339,7 @@ Future<void> _watch(
   bool hideEventInfo = false,
   bool noSpoilers = false,
   bool tablet = false,
+  bool longPressMenu = false,
 }) async {
   final pages = games ?? [game!];
   final current = pages[index];
@@ -414,8 +437,70 @@ Future<void> _watch(
   // a game from it keeps its Like, one from another database does not.
   await container.read(likedGamesFolderProvider.future);
 
-  // 3-dot > Watch.
-  await tester.tap(find.byIcon(Icons.more_vert).first);
+  // Both menu entry points must dispatch the current page's actions.
+  Future<void> openBoardMenu() async {
+    final board = find.byType(Chessboard).evaluate().firstWhere((element) {
+      final box = element.renderObject as RenderBox;
+      final rect = box.localToGlobal(Offset.zero) & box.size;
+      return rect.center.dx > 0 && rect.center.dx < (tablet ? 1024 : 393);
+    });
+    final gesture = await tester.startGesture(
+      tester.getCenter(find.byElementPredicate((e) => identical(e, board))),
+    );
+    await _frames(tester, 7);
+    await gesture.up();
+    await _frames(tester, 6);
+  }
+
+  if (longPressMenu) {
+    final params = ChessBoardProviderParams(game: current, index: index);
+    final provider = chessBoardScreenProviderNew(params);
+    final before = container.read(provider).requireValue;
+    final otherParams = ChessBoardProviderParams(game: pages.first, index: 0);
+    await openBoardMenu();
+    expect(find.text('Flip Board'), findsOneWidget);
+    await tester.tap(find.text('Flip Board'));
+    // Tablet popup dismissal finishes before the existing board flip starts.
+    // Let both animations finish before starting a new stationary hold.
+    await _frames(tester, 10);
+    expect(find.text('Watch'), findsNothing);
+    expect(
+      container.read(provider).requireValue.isBoardFlipped,
+      !before.isBoardFlipped,
+    );
+
+    await openBoardMenu();
+    await tester.tap(find.text('Clear Analysis'));
+    await _frames(tester, 6);
+    expect(find.text('Clear analysis?'), findsOneWidget);
+    expect(find.text('Watch'), findsNothing);
+    await tester.tap(find.text('Clear'));
+    await _frames(tester, 6);
+    expect(
+      container.read(provider).requireValue.analysisState.game?.analysisCleared,
+      isTrue,
+    );
+    expect(
+      container
+          .read(chessBoardScreenProviderNew(otherParams))
+          .valueOrNull
+          ?.analysisState
+          .game
+          ?.analysisCleared,
+      isFalse,
+    );
+    await openBoardMenu();
+    expect(find.text('Restore Analysis'), findsOneWidget);
+    await tester.tap(find.text('Restore Analysis'));
+    await _frames(tester, 6);
+    expect(
+      container.read(provider).requireValue.analysisState.game?.analysisCleared,
+      isFalse,
+    );
+    await openBoardMenu();
+  } else {
+    await tester.tap(find.byIcon(Icons.more_vert).first);
+  }
   await _frames(tester, 6);
   expect(find.text('Watch'), findsOneWidget);
   expect(find.byIcon(Icons.smart_display_outlined), findsOneWidget);

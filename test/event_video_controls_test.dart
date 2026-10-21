@@ -316,14 +316,19 @@ void main() {
         theme: theme,
         home: Scaffold(
           body: PopupMenuButton<String>(
-            onSelected: (value) => selected = value,
+            onSelected: (value) {
+              selected = value;
+              if (value == 'copy_pgn') copies++;
+              if (value == 'enable_video' || value == 'disable_video') {
+                session.toggle();
+              }
+            },
             itemBuilder: (context) {
               ResponsiveHelper.init(context);
               return chessBoardContextMenuItems(
                 context,
                 videoSession: session,
                 analysisCleared: false,
-                onCopyPgn: () => copies++,
               );
             },
           ),
@@ -335,7 +340,7 @@ void main() {
       await tester.pumpWidget(app());
       await tester.tap(find.byType(PopupMenuButton<String>));
       await tester.pumpAndSettle();
-      expect(find.text('Flip Board'), findsNothing);
+      expect(find.text('Flip Board'), findsOneWidget);
       // Watch: an icon and its label, on the same geometry as every row.
       final watchIcon = find.byIcon(Icons.smart_display_outlined);
       expect(watchIcon, findsOneWidget);
@@ -381,16 +386,15 @@ void main() {
             BlendMode.srcIn,
           ),
         );
-        TextStyle textStyle(String label) =>
-            tester
-                .widget<RichText>(
-                  find.descendant(
-                    of: find.text(label),
-                    matching: find.byType(RichText),
-                  ),
-                )
-                .text
-                .style!;
+        TextStyle textStyle(String label) => tester
+            .widget<RichText>(
+              find.descendant(
+                of: find.text(label),
+                matching: find.byType(RichText),
+              ),
+            )
+            .text
+            .style!;
         final streamLabel = visible ? 'Close Stream' : 'Show Stream';
         final settingsStyle = textStyle('Board Settings');
         final labelLeft = tester.getTopLeft(find.text('Board Settings')).dx;

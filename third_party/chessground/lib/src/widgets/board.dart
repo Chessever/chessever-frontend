@@ -61,6 +61,7 @@ class Chessboard extends StatefulWidget with ChessboardGeometry {
     required this.orientation,
     this.onMove,
     this.onTouchedSquare,
+    this.onLongPress,
     this.shapes = const {},
     this.annotations = const {},
     this.landingSquare,
@@ -92,6 +93,11 @@ class Chessboard extends StatefulWidget with ChessboardGeometry {
   /// This will be called even when the board is not interactable, with each [PointerDownEvent] that
   /// targets a square.
   final void Function(Square)? onTouchedSquare;
+
+  /// CHESSEVER PATCH: a stationary primary-pointer hold on any square.
+  /// Tap destinations commit on release when provided, so a hold never moves
+  /// a selected piece. Movement and multi-touch cancel the hold.
+  final GestureLongPressStartCallback? onLongPress;
 
   /// Optional set of [Shape] to be drawn on the board.
   final Set<Shape> shapes;
@@ -179,6 +185,49 @@ class _BoardState extends State<Chessboard> with TickerProviderStateMixin {
   /// blocking gestures, even after the pointer that started the gesture has been
   /// lifted.
   int _activePointers = 0;
+
+  LongPressGestureRecognizer? _longPressRecognizer;
+  PointerDownEvent? _longPressOrigin;
+  String? _longPressFen;
+
+  void _cancelLongPress() {
+    final pending = _longPressOrigin != null;
+    _longPressOrigin = null;
+    _longPressFen = null;
+    if (pending) _longPressRecognizer?.resolve(GestureDisposition.rejected);
+  }
+
+  void _startLongPress(PointerDownEvent event) {
+    _cancelLongPress();
+    if (widget.onLongPress == null ||
+        _activePointers != 1 ||
+        event.buttons != kPrimaryButton ||
+        widget.offsetSquare(event.localPosition) == null) {
+      return;
+    }
+    _longPressOrigin = event;
+    _longPressFen = _controller.fen;
+    final recognizer =
+        _longPressRecognizer ??= LongPressGestureRecognizer(debugOwner: this)
+          ..onLongPressStart = _onLongPress;
+    recognizer.gestureSettings = MediaQuery.maybeGestureSettingsOf(context);
+    recognizer.addPointer(event);
+  }
+
+  void _onLongPress(LongPressStartDetails details) {
+    if (!mounted || _longPressOrigin == null || _activePointers != 1) return;
+    // Keep the recognizer's arena win until release: the held finger must not
+    // turn into a parent PageView swipe after the popup has opened.
+    _longPressOrigin = null;
+    _longPressFen = null;
+    _cancelGesture();
+    _drawModeLockOrigin = null;
+    _drawOrigin = null;
+    _cancelShapesDoubleTapTimer?.cancel();
+    _cancelShapesDoubleTapTimer = null;
+    setState(() => _shapeAvatar = null);
+    widget.onLongPress?.call(details);
+  }
 
   /// Current render box during drag.
   // ignore: use_late_for_private_fields_and_variables
@@ -295,14 +344,17 @@ class _BoardState extends State<Chessboard> with TickerProviderStateMixin {
       behavior: HitTestBehavior.opaque, // stops hit test traversal immediately
       onPointerDown: (event) {
         _activePointers++;
+        _startLongPress(event);
         _onPointerDown(event);
       },
       onPointerMove: _onPointerMove,
       onPointerUp: (event) {
+        _cancelLongPress();
         if (_activePointers > 0) _activePointers--;
         _onPointerUp(event);
       },
       onPointerCancel: (event) {
+        _cancelLongPress();
         if (_activePointers > 0) _activePointers--;
         _onPointerCancel(event);
       },
@@ -535,6 +587,7 @@ class _BoardState extends State<Chessboard> with TickerProviderStateMixin {
 
   @override
   void deactivate() {
+    _cancelLongPress();
     _cancelLandingSettle();
     _controller.detach();
     _controllerDetached = true;
@@ -550,6 +603,8 @@ class _BoardState extends State<Chessboard> with TickerProviderStateMixin {
 
   @override
   void dispose() {
+    _cancelLongPress();
+    _longPressRecognizer?.dispose();
     _controller.drawnShapesNotifier.removeListener(_onDrawnShapesChange);
     _controller.premoveNotifier.removeListener(_onPremoveChange);
     _controller.removeListener(_onControllerChange);
@@ -578,9 +633,13 @@ class _BoardState extends State<Chessboard> with TickerProviderStateMixin {
   }
 
   void _onControllerChange() {
+    if (_longPressOrigin != null && _controller.fen != _longPressFen) {
+      _cancelLongPress();
+      _cancelGesture();
+    }
     if (!_controller.interactive) {
       _gesturePointerDownEvent = null;
-      _activePointers = 0;
+      if (widget.onLongPress == null) _activePointers = 0;
       _dragAvatar?.cancel();
       _dragAvatar = null;
       _releaseMoveTarget?.cancel();
@@ -607,7 +666,16 @@ class _BoardState extends State<Chessboard> with TickerProviderStateMixin {
   @override
   void didUpdateWidget(Chessboard oldBoard) {
     super.didUpdateWidget(oldBoard);
-    if (oldBoard.settings.drawShape.enable && !widget.settings.drawShape.enable) {
+    if ((oldBoard.onLongPress != null || widget.onLongPress != null) &&
+        (oldBoard.orientation != widget.orientation ||
+            oldBoard.controller != widget.controller ||
+            oldBoard.size != widget.size ||
+            widget.onLongPress == null)) {
+      _cancelLongPress();
+      _cancelGesture();
+    }
+    if (oldBoard.settings.drawShape.enable &&
+        !widget.settings.drawShape.enable) {
       _drawModeLockOrigin = null;
       _drawOrigin = null;
       _shapeAvatar = null;
@@ -847,7 +915,7 @@ class _BoardState extends State<Chessboard> with TickerProviderStateMixin {
     if (selected != null && square != selected) {
       // When moveOnRelease is enabled, don't move yet: arm the move and show a
       // target following the finger. The move is committed on pointer up.
-      if (widget.settings.moveOnRelease) {
+      if (widget.settings.moveOnRelease || widget.onLongPress != null) {
         _beginReleaseMove(details);
       } else {
         _moveSelectedOrSelect(square);
@@ -898,6 +966,21 @@ class _BoardState extends State<Chessboard> with TickerProviderStateMixin {
   }
 
   void _onPointerMove(PointerMoveEvent details) {
+    final origin = _longPressOrigin;
+    if (origin != null &&
+        origin.pointer == details.pointer &&
+        (details.position - origin.position).distance >
+            computeHitSlop(
+              details.kind,
+              _longPressRecognizer?.gestureSettings,
+            )) {
+      _cancelLongPress();
+      // The app uses tap-two-squares and owns swipe/pinch gestures outside
+      // this Listener. A swipe must not commit a deferred tap destination.
+      if (widget.settings.pieceShiftMethod == PieceShiftMethod.tapTwoSquares) {
+        _cancelGesture();
+      }
+    }
     if (details.buttons != kPrimaryButton) return;
     if (!mounted) return;
 
@@ -1064,6 +1147,7 @@ class _BoardState extends State<Chessboard> with TickerProviderStateMixin {
   }
 
   void _onDragStart(PointerEvent origin) {
+    _cancelLongPress();
     final bool isMousePointer = origin.kind == PointerDeviceKind.mouse;
     final square = widget.offsetSquare(origin.localPosition);
     final piece = square != null ? pieces[square] : null;

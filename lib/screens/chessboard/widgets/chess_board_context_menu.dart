@@ -10,20 +10,17 @@ List<PopupMenuEntry<String>> chessBoardContextMenuItems(
   BuildContext context, {
   required EventVideoSession? videoSession,
   required bool analysisCleared,
-  required VoidCallback onCopyPgn,
   bool allowCopyPgn = true,
 }) {
   PopupMenuItem<String> action({
     required String value,
     required String label,
     required Widget icon,
-    VoidCallback? onTap,
     Color? color,
   }) {
     final foreground = color ?? context.colors.textPrimary;
     return PopupMenuItem<String>(
       value: value,
-      onTap: onTap,
       child: Row(
         children: [
           SizedBox.square(
@@ -41,28 +38,27 @@ List<PopupMenuEntry<String>> chessBoardContextMenuItems(
   }
 
   return [
-    if (videoSession?.hasVideo == true) ...[
-      action(
-        value: 'flip_board',
-        label: 'Flip Board',
-        // Preserve the original bottom-bar flip mark.
-        icon: SvgWidget(
-          SvgAsset.refresh,
-          height: 24,
-          width: 24,
-          colorFilter: ColorFilter.mode(
-            context.colors.textPrimary,
-            BlendMode.srcIn,
-          ),
+    action(
+      value: 'flip_board',
+      label: 'Flip Board',
+      // Preserve the original bottom-bar flip mark.
+      icon: SvgWidget(
+        SvgAsset.refresh,
+        height: 24,
+        width: 24,
+        colorFilter: ColorFilter.mode(
+          context.colors.textPrimary,
+          BlendMode.srcIn,
         ),
       ),
+    ),
+    if (videoSession?.hasVideo == true) ...[
       action(
         value: videoSession!.visible ? 'disable_video' : 'enable_video',
         label: videoSession.visible ? 'Close Stream' : 'Show Stream',
         icon: Icon(
           videoSession.visible ? Icons.close : Icons.videocam_outlined,
         ),
-        onTap: videoSession.toggle,
       ),
     ],
     // Feed's own mark: Watch opens this game as Feed's first post.
@@ -82,15 +78,15 @@ List<PopupMenuEntry<String>> chessBoardContextMenuItems(
         value: 'copy_pgn',
         label: 'Copy PGN',
         icon: const Icon(Icons.copy),
-        onTap: onCopyPgn,
       ),
     const PopupMenuDivider(),
     action(
       value: 'clear_analysis',
       label: analysisCleared ? 'Restore Analysis' : 'Clear Analysis',
       icon: Icon(analysisCleared ? Icons.restore : Icons.auto_delete_outlined),
-      color:
-          analysisCleared ? context.colors.textPrimary : context.colors.danger,
+      color: analysisCleared
+          ? context.colors.textPrimary
+          : context.colors.danger,
     ),
   ];
 }

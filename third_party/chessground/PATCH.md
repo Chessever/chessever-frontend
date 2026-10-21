@@ -19,7 +19,7 @@ newest version so we never fall behind upstream.
 
 ## The patches — the only changes vs. upstream
 
-There are two, both marked `CHESSEVER PATCH` in the source.
+The patches are marked `CHESSEVER PATCH` in the source.
 
 ## Patch 1: detached-controller guard
 
@@ -104,3 +104,26 @@ per-ply key (the same `trigger` given to `ClassificationLanding`).
 When upstream ships an equivalent detached-getter guard AND a landing hook (or
 the app drops the settle), drop this override entirely and depend on the plain
 pub package.
+
+## Patch 3: board long-press callback
+
+**File:** `lib/src/widgets/board.dart`
+
+`Chessboard.onLongPress` optionally reports a stationary primary-pointer hold
+on any square using Flutter's long-press timeout and device hit slop. The
+recognizer claims the gesture arena on recognition, preventing the held finger
+from becoming a parent page swipe after the menu opens. Boards
+without the callback retain their original pointer-down move timing. With the
+callback, tap destinations use the existing move-on-release path, so a hold on a
+legal destination never plays a move. A recognized hold clears temporary
+selection/drag/drawing state and consumes the release. Movement, native piece
+drags, multi-touch, pointer cancellation, position/orientation/size changes,
+deactivation, and disposal cancel pending holds. Two-finger drawing still takes
+priority when the second finger arrives before the hold deadline.
+
+The production game board uses this callback for its shared overflow menu;
+static list/grid cards and the position editor do not opt in. App-level swipe
+handlers ignore a consumed hold, and double-tap-to-like counts released taps
+rather than pointer-down events. Regression coverage is in
+`test/board_long_press_test.dart` and `test/board_watch_surfaces_test.dart` at the
+app root.
