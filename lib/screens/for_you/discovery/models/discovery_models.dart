@@ -196,9 +196,9 @@ class MostLikedCount {
   int get hashCode => Object.hash(gameId, likes);
 }
 
-/// Parses `most_liked_games` rows. Rows are untrusted: a row without an id or
-/// a positive count is dropped rather than shown with a made-up number, and
-/// a repeated id keeps its first (highest) count.
+/// Parses community ranking rows. A game needs at least two likes in the
+/// selected window to qualify. Rows without an id or a valid count are
+/// dropped, and a repeated id keeps its first (highest) count.
 ///
 /// The order is re-applied here (count desc, id asc) so the ranking stays
 /// deterministic even if a proxy or a future backend change loses it.
@@ -210,7 +210,7 @@ List<MostLikedCount> parseMostLikedRows(Object? data) {
     if (raw is! Map) continue;
     final id = raw['source_game_id']?.toString().trim() ?? '';
     final likes = _asInt(raw['like_count']);
-    if (id.isEmpty || likes == null || likes <= 0) continue;
+    if (id.isEmpty || likes == null || likes < 2) continue;
     if (!seen.add(id)) continue;
     out.add(MostLikedCount(gameId: id, likes: likes));
   }

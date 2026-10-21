@@ -455,6 +455,87 @@ void main() {
     });
   });
 
+  group('Most Liked eligibility', () {
+    for (final period in MostLikedPeriod.values) {
+      test('${period.name} rankings require at least two likes', () async {
+        final requestedIds = <String>[];
+        final client = SupabaseClient(
+          'https://example.test',
+          'placeholder',
+          httpClient: MockClient((request) async {
+            if (request.url.path.endsWith('/rpc/most_liked_ranking_preview')) {
+              return _json([
+                {'source_game_id': 'two-likes', 'like_count': 2},
+                {'source_game_id': 'one-like', 'like_count': 1},
+              ], request);
+            }
+            final ids = _inIds(request.url.queryParameters['id']!);
+            requestedIds.addAll(ids);
+            return _json([
+              for (final id in ids) _withoutPgn(_row(id, game: _ruy)),
+            ], request);
+          }),
+        );
+        addTearDown(client.dispose);
+
+        final result = await DiscoveryRepository(
+          client: () => client,
+          games: _NoGameRepository(),
+          tours: _NoTours(),
+          gamebase: _NoArchive(),
+        ).fetchMostLiked(MostLikedQuery(period, DateTime(2026, 10, 21)));
+
+        expect(result.status, MostLikedStatus.ranked);
+        expect(result.entries.map((e) => e.game.gameId), ['two-likes']);
+        expect(result.entries.single.likes, 2);
+        expect(result.entries.single.rank, 1);
+        expect(requestedIds, ['two-likes']);
+        final players = aggregateMostLikedPlayers(result.entries);
+        expect(players, hasLength(2));
+        expect(players.every((p) => p.games == 1 && p.likes == 2), isTrue);
+      });
+    }
+
+    test(
+      'only one-like games returns an empty ranking without game reads',
+      () async {
+        final requests = <Uri>[];
+        final client = SupabaseClient(
+          'https://example.test',
+          'placeholder',
+          httpClient: MockClient((request) async {
+            requests.add(request.url);
+            if (request.url.path.endsWith('/rpc/most_liked_ranking_preview')) {
+              return _json([
+                {'source_game_id': 'one-like', 'like_count': 1},
+              ], request);
+            }
+            return _json([_withoutPgn(_row('one-like', game: _ruy))], request);
+          }),
+        );
+        addTearDown(client.dispose);
+
+        final result =
+            await DiscoveryRepository(
+              client: () => client,
+              games: _NoGameRepository(),
+              tours: _NoTours(),
+              gamebase: _NoArchive(),
+            ).fetchMostLiked(
+              MostLikedQuery(MostLikedPeriod.today, DateTime(2026, 10, 21)),
+            );
+
+        expect(result.status, MostLikedStatus.ranked);
+        expect(result.entries, isEmpty);
+        expect(requests, hasLength(1));
+        expect(
+          requests.single.path,
+          endsWith('/rpc/most_liked_ranking_preview'),
+        );
+      },
+    );
+  });
+
   group('Saved Reports eligibility', () {
     const reportPgn =
         r'1. e4 $247 {[%eval 0.20]} e5 $247 {[%eval 0.10]} 1/2-1/2';

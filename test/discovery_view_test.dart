@@ -490,6 +490,23 @@ void main() {
       expect(parseMostLikedRows(null), isEmpty);
     });
 
+    test('community rankings require at least two likes', () {
+      final counts = parseMostLikedRows([
+        {'source_game_id': 'popular', 'like_count': 3},
+        {'source_game_id': 'threshold', 'like_count': 2},
+        {'source_game_id': 'threshold-string', 'like_count': '2'},
+        {'source_game_id': 'one-like', 'like_count': 1},
+        {'source_game_id': 'one-like-string', 'like_count': '1'},
+        {'source_game_id': 'no-likes', 'like_count': 0},
+      ]);
+
+      expect(counts, const [
+        MostLikedCount(gameId: 'popular', likes: 3),
+        MostLikedCount(gameId: 'threshold', likes: 2),
+        MostLikedCount(gameId: 'threshold-string', likes: 2),
+      ]);
+    });
+
     test('entries keep their true rank and skip unresolved games', () {
       final entries = assembleMostLikedEntries(
         counts: const [
