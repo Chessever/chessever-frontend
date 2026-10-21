@@ -21,11 +21,10 @@ class DismissKeyboard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Listener(
       behavior: HitTestBehavior.translucent,
-      onPointerDown:
-          (event) => dismissKeyboardIfPointerOutsideFocus(
-            event,
-            keyboardVisible: MediaQuery.viewInsetsOf(context).bottom > 0,
-          ),
+      onPointerDown: (event) => dismissKeyboardIfPointerOutsideFocus(
+        event,
+        keyboardVisible: MediaQuery.viewInsetsOf(context).bottom > 0,
+      ),
       child: child,
     );
   }
@@ -67,8 +66,16 @@ void dismissSoftwareKeyboard({FocusNode? focusNode}) {
 
 bool _pointerHitsKeyboardDismissExclusion(Offset globalPosition) {
   for (final exclusion in _keyboardDismissExclusions) {
+    // Overlay toolbars can occupy the full viewport for positioning while
+    // only their visible controls hit-test. Bounds alone would also protect
+    // genuinely outside taps and leave the keyboard stuck open.
     if (exclusion.focusNode.hasFocus &&
-        _globalHitsBox(exclusion, globalPosition)) {
+        exclusion.attached &&
+        exclusion.hasSize &&
+        exclusion.hitTest(
+          BoxHitTestResult(),
+          position: exclusion.globalToLocal(globalPosition),
+        )) {
       return true;
     }
   }
