@@ -80,10 +80,19 @@ TourInfo? _selectedTourInfo(Ref ref) {
 final teamMatchesFamilyProvider =
     AutoDisposeProvider.family<List<TeamMatch>, String>((ref, teamName) {
       final games = _watchTeamGames(ref);
+      // Official rows can be spelled differently from the broadcast labels.
+      final standings = ref.watch(teamStandingsProvider).valueOrNull;
+      final key = teamName.trim().toLowerCase();
+      final link = standings
+          ?.where((t) => t.teamName.trim().toLowerCase() == key)
+          .firstOrNull
+          ?.feedLink;
       return buildTeamMatches(
         games: games,
         teamName: teamName,
         scoring: TeamScoringRules.fromTourInfo(_selectedTourInfo(ref)),
+        link: link,
+        opponentName: officialTeamOpponentNamer(standings),
       );
     });
 

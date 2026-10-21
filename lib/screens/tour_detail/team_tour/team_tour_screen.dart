@@ -2,6 +2,7 @@ import 'package:chessever2/repository/supabase/tour/tour.dart';
 import 'package:chessever2/screens/standings/player_standing_section_select.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_screen_provider.dart';
 import 'package:chessever2/screens/standings/team_standing_model.dart';
+import 'package:chessever2/screens/standings/standings_search_text.dart';
 import 'package:chessever2/screens/tour_detail/player_tour/player_tour_screen_provider.dart';
 import 'package:chessever2/screens/tour_detail/team_tour/team_space_shortcut.dart';
 import 'package:chessever2/screens/tour_detail/team_tour/team_tour_screen_provider.dart';
@@ -104,10 +105,7 @@ class _TeamList extends ConsumerWidget {
         final data = query.isEmpty
             ? allTeams
             : allTeams
-                  .where(
-                    (t) =>
-                        t.teamName.toLowerCase().contains(query.toLowerCase()),
-                  )
+                  .where((t) => matchesStandingsSearch(t.teamName, query))
                   .toList(growable: false);
         final isSearching = query.isNotEmpty;
         final officialRound = allTeams.isEmpty

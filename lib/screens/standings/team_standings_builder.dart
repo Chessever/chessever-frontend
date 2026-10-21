@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:chessever2/screens/standings/official_team_feed_link.dart';
 import 'package:chessever2/screens/standings/player_standing_model.dart';
 import 'package:chessever2/screens/standings/team_standing_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
@@ -250,12 +251,21 @@ class TeamMatch {
 
 /// The list of matches a team has played, most recent round first. Powers the
 /// team score card (mirrors the player score card's per-game list).
+///
+/// [link] selects an official row's boards by the broadcast's label (and
+/// squad members) instead of [teamName]; [opponentName] renames the other
+/// side to its official row.
 List<TeamMatch> buildTeamMatches({
   required List<GamesTourModel> games,
   required String teamName,
   TeamScoringRules scoring = TeamScoringRules.standard,
+  OfficialTeamFeedLink? link,
+  String? Function(PlayerCard opponent)? opponentName,
 }) {
   final target = teamName.trim();
+  bool isOurs(PlayerCard card) => link == null
+      ? card.team?.trim() == target
+      : link.includes(team: card.team, fideId: card.fideId, name: card.name);
   // Per (round, opponent) side accumulators for this team.
   final byRoundOpp = <String, _MatchSide>{};
   final oppByRoundOpp = <String, _MatchSide>{};
@@ -270,10 +280,12 @@ List<TeamMatch> buildTeamMatches({
     if (wTeam == null || wTeam.isEmpty || bTeam == null || bTeam.isEmpty) {
       continue;
     }
-    if (wTeam != target && bTeam != target) continue;
+    final isWhiteOurs = isOurs(g.whitePlayer);
+    if (!isWhiteOurs && !isOurs(g.blackPlayer)) continue;
 
-    final isWhiteOurs = wTeam == target;
-    final opp = isWhiteOurs ? bTeam : wTeam;
+    final opp =
+        opponentName?.call(isWhiteOurs ? g.blackPlayer : g.whitePlayer) ??
+        (isWhiteOurs ? bTeam : wTeam);
     final key = '${g.roundId} $opp';
     roundOf[key] = g.roundId;
     slugOf[key] = g.roundSlug;
