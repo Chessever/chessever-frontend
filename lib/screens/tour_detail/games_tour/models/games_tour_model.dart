@@ -85,6 +85,9 @@ class GamesTourModel {
   final int? whiteClockSeconds; // New: time in seconds from last_clock_white
   final int? blackClockSeconds; // New: time in seconds from last_clock_black
   final GameStatus gameStatus;
+
+  /// Published 0-0 adjudication, separate from played win/draw/loss results.
+  final bool isDoubleForfeit;
   final String? fen;
   final String? pgn;
   final bool isPgnDeferred;
@@ -127,6 +130,7 @@ class GamesTourModel {
     this.whiteClockSeconds,
     this.blackClockSeconds,
     required this.gameStatus,
+    this.isDoubleForfeit = false,
     required this.roundId, // Make required
     this.roundSlug,
     required this.tourId, // Make required
@@ -177,6 +181,7 @@ class GamesTourModel {
     int? whiteClockSeconds,
     int? blackClockSeconds,
     GameStatus? gameStatus,
+    bool? isDoubleForfeit,
     String? lastMove,
     String? fen,
     String? pgn,
@@ -211,6 +216,11 @@ class GamesTourModel {
       whiteClockSeconds: whiteClockSeconds ?? this.whiteClockSeconds,
       blackClockSeconds: blackClockSeconds ?? this.blackClockSeconds,
       gameStatus: gameStatus ?? this.gameStatus,
+      isDoubleForfeit:
+          isDoubleForfeit ??
+          (gameStatus != null && gameStatus != this.gameStatus
+              ? false
+              : this.isDoubleForfeit),
       lastMove: lastMove ?? this.lastMove,
       fen: fen ?? this.fen,
       pgn: pgn ?? this.pgn,
@@ -320,12 +330,12 @@ class GamesTourModel {
 
         whiteTimeDisplay =
             whiteClockSecondsToUse != null && whiteClockSecondsToUse > 0
-                ? _formatTimeFromSeconds(whiteClockSecondsToUse)
-                : '--:--';
+            ? _formatTimeFromSeconds(whiteClockSecondsToUse)
+            : '--:--';
         blackTimeDisplay =
             blackClockSecondsToUse != null && blackClockSecondsToUse > 0
-                ? _formatTimeFromSeconds(blackClockSecondsToUse)
-                : '--:--';
+            ? _formatTimeFromSeconds(blackClockSecondsToUse)
+            : '--:--';
       } else {
         final hasInitialClock = white.clock > 0 || black.clock > 0;
 
@@ -359,24 +369,22 @@ class GamesTourModel {
         resolvedEco ??= parsed.eco;
         resolvedOpening ??= parsed.opening;
       }
-      final freshestFen =
-          resolvePosition
-              ? resolveFreshestGameFen(
-                fen: game.fen,
-                pgn: game.pgn,
-                lastMove: game.lastMove,
-              )
-              : (isValidGameFen(game.fen) ? game.fen?.trim() : null);
+      final freshestFen = resolvePosition
+          ? resolveFreshestGameFen(
+              fen: game.fen,
+              pgn: game.pgn,
+              lastMove: game.lastMove,
+            )
+          : (isValidGameFen(game.fen) ? game.fen?.trim() : null);
 
       return GamesTourModel(
         gameId: game.id,
         // Gamebase-only events (synthesized into the broadcast view) carry a
         // sentinel tourId; tag their games so the board re-fetches the full
         // PGN by gamebase UUID instead of hitting Supabase.
-        source:
-            isVirtualGamebaseId(game.tourId)
-                ? GameSource.gamebase
-                : GameSource.supabase,
+        source: isVirtualGamebaseId(game.tourId)
+            ? GameSource.gamebase
+            : GameSource.supabase,
         whitePlayer: PlayerCard.fromPlayer(white),
         blackPlayer: PlayerCard.fromPlayer(black),
         whiteTimeDisplay: whiteTimeDisplay,
@@ -386,6 +394,7 @@ class GamesTourModel {
         whiteClockSeconds: whiteClockSecondsToUse,
         blackClockSeconds: blackClockSecondsToUse,
         gameStatus: GameStatus.fromString(game.status),
+        isDoubleForfeit: game.status?.trim() == '0-0',
         roundId: game.roundId, // Include roundId in model
         roundSlug: game.roundSlug, // Include roundSlug for display
         tourId: game.tourId, // Include tourId in model
@@ -665,6 +674,7 @@ class GamesTourModel {
         other.dateStart == dateStart &&
         other.gameDay == gameDay &&
         other.gameStatus == gameStatus &&
+        other.isDoubleForfeit == isDoubleForfeit &&
         other.lastMove == lastMove &&
         other.fen == fen &&
         other.pgn == pgn &&
@@ -699,6 +709,7 @@ class GamesTourModel {
       dateStart,
       gameDay,
       gameStatus,
+      isDoubleForfeit,
       lastMove,
       fen,
       pgn,

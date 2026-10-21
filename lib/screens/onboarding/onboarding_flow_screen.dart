@@ -225,7 +225,7 @@ class OnboardingFlowScreen extends HookConsumerWidget {
                       user: user,
                       topPadding: topPadding,
                       bottomPadding: bottomPadding,
-                      onContinue: () => markOnboardingComplete(context, ref),
+                      onContinue: () => markOnboardingComplete(context),
                     )
                   else
                     _AuthStep(
@@ -263,7 +263,7 @@ class OnboardingFlowScreen extends HookConsumerWidget {
                           );
                         }
                       },
-                      onNotNow: () => continueAsGuest(context, ref),
+                      onNotNow: () => continueAsGuest(context),
                     ),
                 ],
               ),
@@ -281,13 +281,15 @@ class OnboardingFlowScreen extends HookConsumerWidget {
 /// favorites, settings, saved analyses, the paywall — keeps working exactly as
 /// it does for a signed-in free account. The guest clock started here drives
 /// the day-7 prompt and the day-28 requirement in `GuestSessionGateListener`.
-Future<void> continueAsGuest(BuildContext context, WidgetRef ref) async {
+Future<void> continueAsGuest(BuildContext context) async {
+  // The container outlives this widget; see [markOnboardingComplete].
+  final container = ProviderScope.containerOf(context, listen: false);
   // Mirror the sign-in path: guests must still be attributable. Notifications
   // are asked for once, in the post-favorites step.
   await AttPromptService.instance.ensurePrompted(context);
 
   try {
-    await ref.read(authStateProvider.notifier).signInAnonymously();
+    await container.read(authStateProvider.notifier).signInAnonymously();
   } catch (e) {
     if (kDebugMode) {
       debugPrint('[Onboarding] Guest session failed: $e');
@@ -304,12 +306,12 @@ Future<void> continueAsGuest(BuildContext context, WidgetRef ref) async {
   }
 
   // Idempotent: a returning guest keeps their original start date.
-  await ref.read(guestSessionProvider.notifier).startGuestSession();
+  await container.read(guestSessionProvider.notifier).startGuestSession();
 
   AnalyticsService.instance.trackEventDetached('Onboarding Continued As Guest');
 
   if (context.mounted) {
-    await markOnboardingComplete(context, ref);
+    await markOnboardingComplete(context);
   }
 }
 

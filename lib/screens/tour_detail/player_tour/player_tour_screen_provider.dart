@@ -1,3 +1,4 @@
+import 'package:chessever2/screens/standings/player_standing_sections_provider.dart';
 import 'package:chessever2/repository/local_storage/favorite/favourate_standings_player_services.dart';
 import 'package:chessever2/repository/supabase/tour/tour.dart';
 import 'package:chessever2/screens/standings/player_standing_model.dart';
@@ -65,8 +66,9 @@ final mergedTournamentGamesProvider = AutoDisposeProvider<List<GamesTourModel>>(
           screen.gamesTourModels.length == complete.value!.length) {
         return screen.gamesTourModels;
       }
-      final rawGames =
-          ref.watch(completeGamesTourProvider(aboutTourModel.id)).valueOrNull;
+      final rawGames = ref
+          .watch(completeGamesTourProvider(aboutTourModel.id))
+          .valueOrNull;
       if (rawGames == null) {
         return const <GamesTourModel>[];
       }
@@ -83,14 +85,13 @@ final mergedTournamentGamesProvider = AutoDisposeProvider<List<GamesTourModel>>(
 
     if (isPaginationCategory(aboutTourModel.name)) {
       final baseName = getCategoryBaseName(aboutTourModel.name);
-      final relatedTours =
-          tourDetail.tours
-              .where(
-                (t) =>
-                    isPaginationCategory(t.tour.name) &&
-                    getCategoryBaseName(t.tour.name) == baseName,
-              )
-              .toList();
+      final relatedTours = tourDetail.tours
+          .where(
+            (t) =>
+                isPaginationCategory(t.tour.name) &&
+                getCategoryBaseName(t.tour.name) == baseName,
+          )
+          .toList();
 
       if (relatedTours.length > 1) {
         for (final tourModel in relatedTours) {
@@ -126,7 +127,7 @@ List<PlayerStandingModel> assignOverallRanks(
 ) {
   return [
     for (var i = 0; i < standings.length; i++)
-      standings[i].copyWith(overallRank: i + 1),
+      standings[i].copyWith(overallRank: standings[i].overallRank ?? i + 1),
   ];
 }
 
@@ -168,10 +169,11 @@ bool _matchesStandingSearch(String value, String normalizedQuery) {
   return queryTokens.every(normalizedValue.contains);
 }
 
-final playerTourScreenProvider = AutoDisposeAsyncNotifierProvider<
-  PlayerTourScreenNotifier,
-  List<PlayerStandingModel>
->(PlayerTourScreenNotifier.new);
+final playerTourScreenProvider =
+    AutoDisposeAsyncNotifierProvider<
+      PlayerTourScreenNotifier,
+      List<PlayerStandingModel>
+    >(PlayerTourScreenNotifier.new);
 
 class PlayerTourScreenNotifier
     extends AutoDisposeAsyncNotifier<List<PlayerStandingModel>> {
@@ -224,19 +226,17 @@ class PlayerTourScreenNotifier
     final List<TourModel> relatedTours;
     if (_isPaginationCategory(aboutTourModel.name)) {
       final baseName = _getCategoryBaseName(aboutTourModel.name);
-      relatedTours =
-          tourDetail.tours
-              .where(
-                (t) =>
-                    _isPaginationCategory(t.tour.name) &&
-                    _getCategoryBaseName(t.tour.name) == baseName,
-              )
-              .toList();
+      relatedTours = tourDetail.tours
+          .where(
+            (t) =>
+                _isPaginationCategory(t.tour.name) &&
+                _getCategoryBaseName(t.tour.name) == baseName,
+          )
+          .toList();
     } else {
-      relatedTours =
-          tourDetail.tours
-              .where((e) => e.tour.id == aboutTourModel.id)
-              .toList();
+      relatedTours = tourDetail.tours
+          .where((e) => e.tour.id == aboutTourModel.id)
+          .toList();
     }
 
     final catalogs = [
@@ -257,6 +257,22 @@ class PlayerTourScreenNotifier
       allPlayers.addAll(tourModel.tour.players);
     }
 
+    final sections = relatedTours.length == 1
+        ? relatedTours.first.tour.info.playerStandingSections
+        : const <OfficialPlayerSection>[];
+    final section = selectedOfficialPlayerSection(
+      sections,
+      ref.watch(selectedPlayerStandingSectionProvider(aboutTourModel.id)),
+    );
+    if (section != null) {
+      allPlayers
+        ..clear()
+        ..addAll(section.players);
+    }
+    final scopedGames = section == null
+        ? allGames
+        : scopeOfficialSectionGames(section, allGames);
+
     // Trust the server-side standings order only when scope is a single tour
     // that the data hub has flagged as canonically sorted (currently from
     // chess-results.com). Multi-tour pagination categories (e.g. "Boards 1-66"
@@ -264,7 +280,7 @@ class PlayerTourScreenNotifier
     // concatenation is not meaningful — fall back to client-side sort there.
     final useExternalOrder =
         relatedTours.length == 1 &&
-        relatedTours.first.tour.usesExternalStandings;
+        (section != null || relatedTours.first.tour.usesExternalStandings);
 
     // Use the app singleton client (same session/headers as Games), not the
     // secondary [supabaseProvider] client. A second anonymous client on the
@@ -273,7 +289,7 @@ class PlayerTourScreenNotifier
     final builtStandings = await buildStandingsFromData(
       supabase: Supabase.instance.client,
       tournamentPlayers: allPlayers,
-      gamesTourModels: allGames,
+      gamesTourModels: scopedGames,
       useExternalOrder: useExternalOrder,
       singleTourScope: relatedTours.length == 1,
     );

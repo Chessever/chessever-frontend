@@ -1,5 +1,25 @@
 # Chessever Frontend — Agent Rules
 
+> One file for every agent: `CLAUDE.md` is the one-line import `@AGENTS.md`;
+> edit only this file. (`third_party/chessground/CLAUDE.md` belongs to the
+> vendored package and is separate.)
+
+## Fast checks — run these first
+
+| What | Fast (use while iterating) | Reference / gate |
+|---|---|---|
+| Dart analyze | `dartr analyze <paths>` when `dartr` is on PATH (`brew install orestesgaolin/tap/dartr`) | `flutter analyze` (or `flutter analyze --no-pub <paths>`) — once before you finish |
+| Dart format | `dartr format <paths>` | `dart format <paths>` |
+| Dart fixes | `dartr fix --dry-run` | `dart fix --dry-run` |
+| Edge-function tests (`supabase/tests`) | `npm run test:rewarded` there (Node, under a second — no faster runner needed) | same |
+
+- dartr is a preview Rust port of the Dart 3.13.3 analyzer and we run Dart 3.14
+  beta, so it is a fast first pass only: run `flutter analyze` once before
+  finishing, and if the two disagree, `flutter analyze` wins.
+- Run the narrowest tests that cover the change first; the full suite once at the end.
+- No Oxlint/Bun here on purpose: the repo has no JS lint, and its only JS test
+  suite (`supabase/tests`, 9 tests) already finishes in ~0.2 s on Node.
+
 ## Production app and environment selection
 
 This repository targets the **production ChessEver app** by default. Berkay
@@ -108,7 +128,7 @@ These must be `false`, whichever repo owns them:
 stripe-webhook             revenuecat-webhook        revenuecat-sync
 onesignal-dispatch         github-webhook            fetch-fide-photo-webp
 fetch-lichess-annotations  stripe-checkout           stripe-portal
-entitlement
+entitlement                prep-games-check
 ```
 
 ### How to deploy
@@ -136,6 +156,21 @@ chessever_frontend_desktop_oss/scripts/which_repo_owns_function.sh <slug>
 ```
 
 `onesignal-dispatch`, `fetch-fide-photo-webp` and `revenuecat-webhook` have stale copies in other repos. Deploying from the wrong one rolls production back — it happened on 2026-08-26 and reverted an auth check to a version that accepted any request with no token header. This repo is the source of truth for the notification, RevenueCat and photo functions.
+
+## My Space: removal preserves the source
+
+- Removing anything from My Space changes only its shortcut or My Space
+  visibility, including bulk removal and automatic cards. Preserve the original
+  favorite, event, prep profile, downloaded games, database, liked game, and
+  subscription. Undo restores only My Space state.
+- Keep deletion, unfavoriting, unliking, and unsubscribe actions on their source
+  screens. My Space cards offer `Remove from My Space` instead.
+- Exception, by product decision (Trello #1225): smart event, collection and
+  Prep player cards in My Space end in their own star, the same star as the
+  Events list, Discovery and the Prep profile, because starring is how their
+  notifications are turned on (unstarring turns them off; smart events and
+  Prep players have no separate switch). The star is the thing's own
+  favorite; the shortcut stays when it is unstarred.
 
 ## Local commit preference
 

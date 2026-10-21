@@ -9,6 +9,7 @@ import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/event_card/event_card.dart';
+import 'package:chessever2/widgets/paywall/past_event_access.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -128,27 +129,38 @@ class ForYouTournamentCard extends ConsumerWidget {
   Future<void> _onTournamentTap(BuildContext context, WidgetRef ref) async {
     HapticFeedbackService.cardTap();
 
-    // Navigate INSTANTLY from local card data — never block the tap on a
-    // network round-trip. The games list keys off the group id (== groupKey,
-    // identical here), so upgrading to the fully-resolved tournament in the
-    // background triggers no games refetch and no flicker.
-    final fallbackTournament = GroupBroadcast(
-      id: groupKey,
-      name: _formatTournamentName(tourName),
-      createdAt: DateTime.now(),
-      search: [groupKey, tourId, tourName],
-      dateStart: hasLiveGames ? DateTime.now() : null,
-      maxAvgElo: null,
-      dateEnd: null,
-      timeControl: null,
-    );
+    // The card already resolved the event; reuse its dates for the past-event
+    // gate and keep live taps independent of a network round-trip.
+    final resolvedTournament = ref
+        .read(_tournamentProvider(groupKey))
+        .valueOrNull;
+    final tournament =
+        resolvedTournament ??
+        GroupBroadcast(
+          id: groupKey,
+          name: _formatTournamentName(tourName),
+          createdAt: DateTime.now(),
+          search: [groupKey, tourId, tourName],
+          dateStart: hasLiveGames ? DateTime.now() : null,
+          maxAvgElo: null,
+          dateEnd: null,
+          timeControl: null,
+        );
 
-    ref.read(selectedBroadcastModelProvider.notifier).state = fallbackTournament;
+    if (!hasLiveGames &&
+        !await ensurePastEventAccess(context, broadcast: tournament)) {
+      return;
+    }
+    if (!context.mounted) return;
+
+    ref.read(selectedBroadcastModelProvider.notifier).state = tournament;
     ref.read(selectedTourModeProvider.notifier).state =
         TournamentDetailScreenMode.games;
     Navigator.pushNamed(context, '/tournament_detail_screen');
 
-    // Upgrade to the fully-resolved tournament once it loads — but only if the
+    if (resolvedTournament != null) return;
+
+    // Upgrade to the fully-resolved tournament once it loads, but only if the
     // user is still viewing this same tournament (guard against a newer tap).
     unawaited(
       ref

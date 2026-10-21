@@ -41,10 +41,10 @@ class FeedActionRow extends StatelessWidget {
     required this.inSpace,
     this.saved = false,
     required this.likeIconKey,
-    required this.onLike,
+    this.onLike,
     required this.onSpace,
     required this.onShare,
-    required this.onSave,
+    this.onSave,
     required this.onAnalyze,
     super.key,
   });
@@ -80,10 +80,16 @@ class FeedActionRow extends StatelessWidget {
 
   /// Landing spot for the heart that flies in after a double-tap like.
   final GlobalKey likeIconKey;
-  final VoidCallback onLike;
+
+  /// Null when the game cannot be liked; the button is dropped, as My
+  /// Space's is.
+  final VoidCallback? onLike;
   final VoidCallback onSpace;
   final VoidCallback onShare;
-  final VoidCallback onSave;
+
+  /// Null when the game's moves stay where they are (licensed content the
+  /// board does not export either); the button is dropped.
+  final VoidCallback? onSave;
   final VoidCallback onAnalyze;
 
   @override
@@ -100,6 +106,8 @@ class FeedActionRow extends StatelessWidget {
     final colors = context.colors;
     final ink = colors.textPrimary;
     final space = inSpace;
+    final like = onLike;
+    final save = onSave;
     final likeLabel = feedLikeLabel(shownLikes ?? likes);
     final saveLabel = feedSaveLabel(saved: saved);
     // One size for every word in the row.
@@ -110,8 +118,8 @@ class FeedActionRow extends StatelessWidget {
         'Analyze',
         if (space != null) 'My Space',
         'Share',
-        saveLabel,
-        likeLabel,
+        if (save != null) saveLabel,
+        if (like != null) likeLabel,
       ],
     );
     // Equal cells with centered contents read as one balanced toolbar.
@@ -120,7 +128,9 @@ class FeedActionRow extends StatelessWidget {
       children: [
         if (tagPrompt != null)
           Expanded(
-            flex: space != null ? 4 : 3,
+            // The cells it stands over: Analyze, Share, and My Space and
+            // Save when the post has them.
+            flex: 2 + (space != null ? 1 : 0) + (save != null ? 1 : 0),
             child: Padding(
               padding: const EdgeInsets.only(right: 12),
               child: Align(alignment: Alignment.centerRight, child: tagPrompt),
@@ -184,50 +194,52 @@ class FeedActionRow extends StatelessWidget {
               ),
             ),
           ),
+          if (save != null)
+            Expanded(
+              child: FeedPressable(
+                key: const ValueKey('feed_save_button'),
+                semanticsLabel: feedSaveLabel(saved: saved),
+                semanticsHint: saved
+                    ? 'Choose the databases it is saved in'
+                    : 'Save to a database',
+                selected: saved,
+                onTap: save,
+                child: FeedActionLabel(
+                  fontSize: fontSize,
+                  label: saveLabel,
+                  icon: FeedGlyph(
+                    saved ? FeedGlyphs.saved : FeedGlyphs.save,
+                    width: 22,
+                    height: 22,
+                    // The tick says saved, in ink as My Space's does: the heart
+                    // stays the row's one colour.
+                    color: ink,
+                  ),
+                ),
+              ),
+            ),
+        ],
+        if (like != null)
           Expanded(
+            key: const ValueKey('feed_like_action'),
             child: FeedPressable(
-              key: const ValueKey('feed_save_button'),
-              semanticsLabel: feedSaveLabel(saved: saved),
-              semanticsHint: saved
-                  ? 'Choose the databases it is saved in'
-                  : 'Save to a database',
-              selected: saved,
-              onTap: onSave,
+              key: const ValueKey('feed_like_button'),
+              semanticsLabel: feedLikeSemantics(liked: liked, likes: likes),
+              selected: liked,
+              onTap: like,
               child: FeedActionLabel(
                 fontSize: fontSize,
-                label: saveLabel,
-                icon: FeedGlyph(
-                  saved ? FeedGlyphs.saved : FeedGlyphs.save,
-                  width: 22,
-                  height: 22,
-                  // The tick says saved, in ink as My Space's does: the heart
-                  // stays the row's one colour.
-                  color: ink,
+                label: likeLabel,
+                icon: _LikeGlyph(
+                  glyphKey: likeIconKey,
+                  filled: shownLiked ?? liked,
+                  pop: heartPop,
+                  ink: ink,
+                  fill: colors.danger,
                 ),
               ),
             ),
           ),
-        ],
-        Expanded(
-          key: const ValueKey('feed_like_action'),
-          child: FeedPressable(
-            key: const ValueKey('feed_like_button'),
-            semanticsLabel: feedLikeSemantics(liked: liked, likes: likes),
-            selected: liked,
-            onTap: onLike,
-            child: FeedActionLabel(
-              fontSize: fontSize,
-              label: likeLabel,
-              icon: _LikeGlyph(
-                glyphKey: likeIconKey,
-                filled: shownLiked ?? liked,
-                pop: heartPop,
-                ink: ink,
-                fill: colors.danger,
-              ),
-            ),
-          ),
-        ),
       ],
     );
   }

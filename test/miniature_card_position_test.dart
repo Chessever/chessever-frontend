@@ -45,6 +45,33 @@ void main() {
     );
   });
 
+  // Trello #1228: the index stores a broadcast game's PGN `Event` verbatim,
+  // which Lichess fills with the pairing. Row copied from production.
+  test('a pairing label never becomes the miniature\'s event', () {
+    final game = GamebaseMiniature.fromJson(<String, dynamic>{
+      'gameId': '018a297a-b637-59a2-b2be-b77c77735812',
+      'plyCount': 49,
+      'finalMoveNumber': 25,
+      'result': 'B',
+      'timeControl': 'CLASSICAL',
+      'isOnline': false,
+      'date': '2026-10-12T00:00:00.000Z',
+      'event': 'Round 6: Del Rio Baena, Dani - Garcia Canals, Gerard',
+      'whiteName': 'Del Rio Baena, Dani',
+      'blackName': 'Garcia Canals, Gerard',
+    }).toGamesTourModel();
+
+    expect(game.tourId, 'Miniatures');
+    expect(game.tourSlug, 'Miniatures');
+    expect(game.pgn, isNot(contains('Round 6')));
+  });
+
+  test('a real event name reaches the card untouched', () {
+    final game = _miniature().toGamesTourModel();
+
+    expect(game.tourId, '2025 Speed Chess Championship');
+  });
+
   test('miniature cards are eligible for the Gamebase preview fetch', () {
     expect(isGamebasePreviewGame(_miniature().toGamesTourModel()), isTrue);
   });

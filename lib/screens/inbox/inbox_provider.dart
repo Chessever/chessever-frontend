@@ -122,7 +122,9 @@ class InboxController extends StateNotifier<InboxState> {
         final messages = _hasServerSnapshot ? state.messages : cached;
         final merged = messages.map((message) {
           final readAt = _confirmedReads[message.id];
-          return readAt == null ? message : message.withReadAt(readAt);
+          return readAt == null || readAt.isBefore(message.publishedAt)
+              ? message
+              : message.withReadAt(readAt);
         }).toList();
         state = state.copyWith(
           messages: List.unmodifiable(merged),
@@ -152,7 +154,9 @@ class InboxController extends StateNotifier<InboxState> {
     for (final message in messages) {
       final readAt = message.readAt;
       final known = _confirmedReads[message.id];
-      if (readAt != null && (known == null || readAt.isAfter(known))) {
+      if (readAt != null &&
+          !readAt.isBefore(message.publishedAt) &&
+          (known == null || readAt.isAfter(known))) {
         _confirmedReads[message.id] = readAt;
       }
     }
@@ -188,11 +192,13 @@ class InboxController extends StateNotifier<InboxState> {
       if (!_isCurrentOwner(owner)) return;
       _hasServerSnapshot = true;
       _rememberReads(fetched);
-      // Read receipts are irreversible. A refresh begun before a successful
-      // mark must not resurrect that row's unread indicator.
+      // Preserve confirmed reads only for this publication. Republished content
+      // must not inherit the previous version's in-memory receipt.
       final merged = fetched.map((message) {
         final readAt = _confirmedReads[message.id];
-        return readAt == null ? message : message.withReadAt(readAt);
+        return readAt == null || readAt.isBefore(message.publishedAt)
+            ? message
+            : message.withReadAt(readAt);
       }).toList();
       final unreadIds = merged
           .where((m) => m.isUnread)
@@ -257,7 +263,20 @@ class InboxController extends StateNotifier<InboxState> {
       markErrors: {...state.markErrors}..remove(messageId),
     );
     try {
-      final readAt = await source!.markRead(owner, messageId);
+      final readAt = await source!.markRead(
+        owner,
+        messageId,
+        expectedPublishedAt: message.publishedAt,
+      );
+      if (!_isCurrentOwner(owner)) return false;
+      if (state.message(messageId)?.publishedAt != message.publishedAt) {
+        if (_isCurrentOwner(owner)) {
+          state = state.copyWith(
+            marking: {...state.marking}..remove(messageId),
+          );
+        }
+        return false;
+      }
       if (!_isCurrentOwner(owner)) return false;
       _confirmedReads[messageId] = readAt;
       state = state.copyWith(
@@ -286,7 +305,7 @@ class InboxController extends StateNotifier<InboxState> {
           markErrors: {
             ...state.markErrors,
             messageId:
-                'Could not save this read. It stays unread until confirmed. Retry.',
+                'Could not save this read. It stays unread until confirmed.',
           },
         );
       }
@@ -319,7 +338,7 @@ final inboxProvider = StateNotifierProvider<InboxController, InboxState>((ref) {
   );
   // Foreground catch-up, independent of push permission and without Realtime
   // configuration. The app's existing resume signal also catches backgrounding.
-  final timer = Timer.periodic(const Duration(minutes: 5), (_) {
+  final timer = Timer.periodic(const Duration(seconds: 30), (_) {
     if (WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed) {
       unawaited(controller.refresh());
     }
@@ -340,6 +359,15 @@ final inboxAvailableProvider = Provider<bool>(
       (state) =>
           state.messages.isNotEmpty ||
           (state.ownerId != null && !state.loading && state.syncError == null),
+    ),
+  ),
+);
+
+/// One shared count for every Botvinnik launcher, based on confirmed reads.
+final inboxUnreadCountProvider = Provider<int>(
+  (ref) => ref.watch(
+    inboxProvider.select(
+      (state) => state.messages.where((message) => message.isUnread).length,
     ),
   ),
 );

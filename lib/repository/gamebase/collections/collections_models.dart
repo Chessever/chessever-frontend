@@ -1,3 +1,4 @@
+import 'package:chessever2/repository/library/library_game_event.dart';
 import 'package:flutter/foundation.dart';
 
 /// Models for the gamebase Collections API (`/api/collections…`): curated
@@ -873,7 +874,7 @@ class CollectionGameCard {
       board: _nullableInt(json['board']),
       playedOn: _day(json['playedOn']),
       playedAt: _timestamp(json['playedAt']),
-      event: _nullableString(json['event']),
+      event: gamebaseRowEventTitle(json),
       site: _nullableString(json['site']),
       eco: _nullableString(json['eco']),
       opening: _nullableString(json['opening']),

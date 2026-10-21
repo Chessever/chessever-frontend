@@ -4,6 +4,7 @@ import 'dart:math' as math;
 
 import 'package:chessever2/config/feature_flags.dart';
 import 'package:chessever2/providers/board_settings_provider_new.dart';
+import 'package:chessever2/providers/country_dropdown_provider.dart';
 import 'package:chessever2/providers/favorite_players_provider.dart';
 import 'package:chessever2/repository/sqlite/app_database.dart';
 import 'package:chessever2/repository/supabase/game/game_repository.dart';
@@ -11,8 +12,10 @@ import 'package:chessever2/repository/supabase/game/games.dart';
 import 'package:chessever2/screens/feed/audio/feed_sfx.dart';
 import 'package:chessever2/screens/feed/logic/feed_codec.dart';
 import 'package:chessever2/screens/feed/logic/feed_moments.dart';
+import 'package:chessever2/screens/feed/logic/feed_pgn.dart';
 import 'package:chessever2/screens/feed/logic/feed_ranker.dart';
 import 'package:chessever2/screens/feed/logic/feed_report.dart';
+import 'package:chessever2/screens/feed/logic/feed_taste.dart';
 import 'package:chessever2/screens/feed/models/feed_models.dart';
 import 'package:chessever2/screens/for_you/discovery/data/discovery_repository.dart';
 import 'package:chessever2/screens/for_you/discovery/models/discovery_models.dart';
@@ -21,6 +24,7 @@ import 'package:chessever2/screens/standings/providers/player_utils_provider.dar
 import 'package:chessever2/screens/streaks/models/streak_models.dart';
 import 'package:chessever2/screens/streaks/providers/streak_providers.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
+import 'package:chessever2/utils/country_utils.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -188,8 +192,29 @@ class FeedNotifier extends AsyncNotifier<List<FeedItem>> {
   /// Below this many candidates in the pool, sources are read again.
   static const int _poolLow = 14;
 
+  /// Below this many distinct events in the pool, sources are read again
+  /// even when it holds plenty of games: on an evening of online events the
+  /// newest pages are one or two events deep, and the ranker's quotas can
+  /// only hold when it has other events to turn to.
+  static const int _poolMinEvents = 8;
+
+  /// Extra pages a page load may read looking for those events.
+  static const int _varietyReads = 3;
+
+  /// Below this many distinct over-the-board events in the pool, the
+  /// over-the-board backfill is read: on a week of online series the 2550+
+  /// listing can hold only three or four, too few for the online quota.
+  static const int _poolMinOtbEvents = 5;
+  static const int _backfillMinRating = 2450;
+  static const int _backfillLimit = 40;
+
   /// Shown game ids remembered across launches (newest kept).
   static const int _shownMemory = 400;
+
+  /// Candidates one event may hold in the pool at a time; the best are
+  /// kept. Online events finish hundreds of games an evening, and a pool
+  /// full of one of them leaves the ranker nothing else to draw.
+  static const int _poolPerEvent = 6;
 
   static const int _currentMinEventElo = 2300;
   static const int _currentMinRating = 2300;
@@ -211,6 +236,16 @@ class FeedNotifier extends AsyncNotifier<List<FeedItem>> {
 
   static const Duration _currentAge = Duration(days: 4);
   static const Duration _topAge = Duration(days: 7);
+
+  /// How far back the strong listing and the backfill read. Each widens
+  /// once the window before it is read to its end, so the Feed never runs
+  /// out: this week first, then the month, the season, the year.
+  static const List<Duration> _horizons = [
+    _topAge,
+    Duration(days: 30),
+    Duration(days: 120),
+    Duration(days: 365),
+  ];
   static const Duration _favoriteAge = Duration(days: 14);
   static const Duration _favoriteGrace = Duration(milliseconds: 400);
   static const Duration _sourceTimeout = Duration(seconds: 6);
@@ -222,6 +257,26 @@ class FeedNotifier extends AsyncNotifier<List<FeedItem>> {
 
   int _generation = 0;
   FeedRanker _ranker = FeedRanker(0);
+
+  /// What this viewer enjoys, learned from every visit and kept across
+  /// sessions and refreshes (see [FeedTaste]).
+  final FeedTaste _taste = FeedTaste();
+  static const String _tasteKey = 'flow_feed_taste_v1';
+  bool _tasteLoaded = false;
+  Timer? _tasteWrite;
+
+  /// Signals of every game handed to the screen, for learning from its
+  /// visit.
+  final Map<String, FeedSignals> _postSignals = {};
+
+  /// The post on screen and what has happened on it so far.
+  String? _visitId;
+  DateTime? _visitStart;
+  double _visitProgress = 0;
+  final Set<FeedAction> _visitActions = {};
+
+  int _topHorizon = 0;
+  int _backfillHorizon = 0;
 
   /// Every game already in the list (or picked for it) this generation.
   final Set<String> _seen = <String>{};
@@ -255,6 +310,8 @@ class FeedNotifier extends AsyncNotifier<List<FeedItem>> {
   int _favoriteOffset = 0;
   bool _favoritesExhausted = false;
   bool _likedExhausted = false;
+  int _backfillOffset = 0;
+  bool _backfillExhausted = false;
 
   /// Ready for the next pull; see [_prepareReserve].
   _FeedReserve? _reserve;
@@ -275,7 +332,7 @@ class FeedNotifier extends AsyncNotifier<List<FeedItem>> {
   Future<List<FeedItem>> build() async {
     final generation = ++_generation;
     _resetPaging();
-    _ranker = FeedRanker(_newSeed());
+    _ranker = _newRanker();
     _bindBoardSound();
 
     // Warm the streak wall so winners on a run can say so in their caption.
@@ -294,7 +351,11 @@ class FeedNotifier extends AsyncNotifier<List<FeedItem>> {
 
     // The sources start now, alongside the disk reads, not after them.
     final sources = _refillAll(generation);
-    final (cachedRaw, _) = await (_readCache(), _loadShown()).wait;
+    final (cachedRaw, _, _) = await (
+      _readCache(),
+      _loadShown(),
+      _loadTaste(),
+    ).wait;
     if (generation != _generation) return const [];
     final cached = cachedRaw.map(_withStreakReason).toList();
     if (cached.isNotEmpty) {
@@ -372,7 +433,7 @@ class FeedNotifier extends AsyncNotifier<List<FeedItem>> {
       return;
     }
 
-    _ranker = FeedRanker(_newSeed());
+    _ranker = _newRanker();
     final first = await _loadFirstPage(generation, _refillAll(generation))
         .timeout(
           _refreshTimeout,
@@ -456,10 +517,10 @@ class FeedNotifier extends AsyncNotifier<List<FeedItem>> {
             continue;
           }
           if (!game.gameStatus.isFinished) continue;
-          slice[game.gameId] = _FeedCandidate(
-            game: game,
-            signals: _signalsOf(game, FeedPool.top),
-          );
+          final signals = _signalsOf(game, FeedPool.top);
+          if (!feedMeetsQualityFloor(signals)) continue;
+          slice[game.gameId] = _FeedCandidate(game: game, signals: signals);
+          _capEvent(slice, signals.eventKey, _poolPerEvent);
         }
       }
       // Some of the pool's own flavour: current events, followed players,
@@ -475,7 +536,7 @@ class FeedNotifier extends AsyncNotifier<List<FeedItem>> {
       }
       if (slice.isEmpty) return;
 
-      final ranker = FeedRanker(_newSeed());
+      final ranker = _newRanker();
       final items = await _materialize(
         generation,
         _reserveSize,
@@ -522,7 +583,7 @@ class FeedNotifier extends AsyncNotifier<List<FeedItem>> {
     try {
       // Two rounds: filters (short draws, unparsable PGNs) can empty a batch.
       for (var round = 0; round < 2 && items.isEmpty; round++) {
-        if (_pool.length < _poolLow) await _refillAll(generation).all;
+        await _refillForVariety(generation);
         if (generation != _generation) return;
         items = await _materialize(generation, _pageSize);
         if (generation != _generation) return;
@@ -546,16 +607,82 @@ class FeedNotifier extends AsyncNotifier<List<FeedItem>> {
 
   /// Called when the viewer reaches [index] so the notifier can prefetch:
   /// at least [_prefetchAhead] ready clips are kept beyond it.
+  ///
+  /// -1 is the page above the first game: the game Watch opened Feed on
+  /// ([FeedScreen.watch]). It is not one of this feed's draws, so the visit
+  /// before it ends there and nothing is learned from it.
   void onVisible(int index) {
     final items = state.valueOrNull;
     if (items == null) return;
     if (index >= 0 && index < items.length) {
       _remember(items[index].game.gameId);
+      _visit(items[index].game.gameId);
+    } else if (index < 0) {
+      _closeVisit();
+      _visitId = null;
+      _visitStart = null;
     }
     if (items.length - 1 - index <= _prefetchAhead + 1) {
       unawaited(loadMore());
     }
     _redrawStaleReserve();
+  }
+
+  /// How much of [gameId]'s clip has played (0..1), as the clip reports it.
+  void noteProgress(String gameId, double fraction) {
+    if (gameId != _visitId) return;
+    if (fraction > _visitProgress) _visitProgress = fraction;
+  }
+
+  /// Something the viewer did with [gameId]'s post.
+  void noteAction(String gameId, FeedAction action) {
+    if (gameId == _visitId) _visitActions.add(action);
+  }
+
+  /// The viewer moved to [gameId]: what they did on the post before it is
+  /// learned from, and the next pages are drawn with it.
+  void _visit(String gameId) {
+    if (gameId == _visitId) return;
+    _closeVisit();
+    _visitId = gameId;
+    _visitStart = DateTime.now();
+    _visitProgress = 0;
+    _visitActions.clear();
+  }
+
+  /// Signals for a post handed out before this feed's bookkeeping began (the
+  /// cached first page, a refresh's reserve): read off the post itself.
+  FeedSignals? _signalsOnScreen(String id) {
+    for (final item in state.valueOrNull ?? const <FeedItem>[]) {
+      if (item.game.gameId != id) continue;
+      final base = _signalsOf(item.game, FeedPool.top);
+      final pgn = item.game.pgn ?? '';
+      return base.withSeenBefore(
+        false,
+        reportType: item.reportType,
+        freestyle: base.freestyle || feedPgnIsFreestyle(pgn),
+        online: base.online || feedPgnIsOnline(pgn),
+      );
+    }
+    return null;
+  }
+
+  void _closeVisit() {
+    final id = _visitId;
+    final start = _visitStart;
+    final signals = id == null
+        ? null
+        : _postSignals[id] ?? _signalsOnScreen(id);
+    if (signals == null || start == null) return;
+    _taste.learn(
+      signals,
+      FeedVisit(
+        dwell: DateTime.now().difference(start),
+        progress: _visitProgress,
+        actions: {..._visitActions},
+      ),
+    );
+    _scheduleTasteWrite();
   }
 
   /// A reserve the viewer has scrolled past [reserveMaxAge] with is drawn
@@ -581,6 +708,10 @@ class FeedNotifier extends AsyncNotifier<List<FeedItem>> {
   @protected
   @visibleForTesting
   DateTime now() => DateTime.now();
+
+  /// What the feed has learned about the viewer.
+  @visibleForTesting
+  FeedTaste get taste => _taste;
 
   /// The games of the ready reserve, if there is one.
   @visibleForTesting
@@ -635,6 +766,8 @@ class FeedNotifier extends AsyncNotifier<List<FeedItem>> {
     required List<FeedItem> cacheFirst,
   }) async {
     try {
+      await _refillForVariety(generation);
+      if (generation != _generation) return;
       final more = await _materialize(generation, count);
       if (generation != _generation) return;
       if (more.isNotEmpty) await _append(generation, more);
@@ -651,6 +784,8 @@ class FeedNotifier extends AsyncNotifier<List<FeedItem>> {
   ) async {
     try {
       await sources.all;
+      if (generation != _generation) return;
+      await _refillForVariety(generation);
       if (generation != _generation) return;
       final fresh = await _materialize(generation, _pageSize);
       if (generation != _generation || fresh.isEmpty) return;
@@ -693,6 +828,74 @@ class FeedNotifier extends AsyncNotifier<List<FeedItem>> {
       if (identical(_inFlight, reads)) _inFlight = null;
     }).ignore();
     return reads;
+  }
+
+  /// Reads the sources again while the pool is short of games or of
+  /// distinct events, up to [_varietyReads] times, and while any source has
+  /// more.
+  ///
+  /// Short of over-the-board events, it reads the over-the-board backfill
+  /// ([_fetchBackfill]) instead: more pages of the same online evening would
+  /// not help.
+  Future<void> _refillForVariety(int generation) async {
+    for (var read = 0; read < _varietyReads; read++) {
+      if (generation != _generation) return;
+      final events = <String?>{};
+      final otbEvents = <String?>{};
+      for (final c in _pool.values) {
+        events.add(c.signals.eventKey);
+        if (!c.signals.online) otbEvents.add(c.signals.eventKey);
+      }
+      final short = _pool.length < _poolLow || events.length < _poolMinEvents;
+      final fewOtb = otbEvents.length < _poolMinOtbEvents;
+      if (fewOtb && !_backfillExhausted) {
+        await _fetchBackfill(
+          generation,
+        ).timeout(_sourceTimeout, onTimeout: () {});
+      } else if (short && !_allSourcesExhausted) {
+        await _refillAll(generation).all;
+      } else {
+        return;
+      }
+    }
+  }
+
+  /// Over-the-board games from this week a step below [_topMinRating], the
+  /// floor of [feedMeetsQualityFloor] still applying: the supply of other
+  /// events when the strong listing is one online series deep.
+  Future<void> _fetchBackfill(int generation) async {
+    final offset = _backfillOffset;
+    _backfillOffset += _backfillLimit;
+    try {
+      final rows = await ref
+          .read(gameRepositoryProvider)
+          .getFeedCandidateGames(
+            since: DateTime.now().subtract(_horizons[_backfillHorizon]),
+            minRating: _backfillMinRating,
+            limit: _backfillLimit,
+            offset: offset,
+            overTheBoardOnly: true,
+          );
+      if (generation != _generation) return;
+      if (rows.length < _backfillLimit) {
+        if (_backfillHorizon < _horizons.length - 1) {
+          _backfillHorizon++;
+        } else {
+          _backfillExhausted = true;
+        }
+      }
+      for (final row in rows) {
+        final game = _tourModel(row);
+        if (game == null || feedIsOnlineEvent(game.tourSlug)) continue;
+        _offer(
+          _FeedCandidate(game: game, signals: _signalsOf(game, FeedPool.top)),
+        );
+      }
+    } catch (error) {
+      if (generation != _generation) return;
+      debugPrint('[Feed] over-the-board backfill failed: $error');
+      _backfillExhausted = true;
+    }
   }
 
   bool get _allSourcesExhausted =>
@@ -756,13 +959,21 @@ class FeedNotifier extends AsyncNotifier<List<FeedItem>> {
       final rows = await ref
           .read(gameRepositoryProvider)
           .getFeedCandidateGames(
-            since: DateTime.now().subtract(_topAge),
+            since: DateTime.now().subtract(_horizons[_topHorizon]),
             minRating: _topMinRating,
             limit: _topLimit,
             offset: offset,
           );
       if (generation != _generation) return;
-      if (rows.length < _topLimit) _topExhausted = true;
+      // Newest first either way, so the same offset carries on into a
+      // wider window where this one ended.
+      if (rows.length < _topLimit) {
+        if (_topHorizon < _horizons.length - 1) {
+          _topHorizon++;
+        } else {
+          _topExhausted = true;
+        }
+      }
       for (final row in rows) {
         final game = _tourModel(row);
         if (game == null) continue;
@@ -789,6 +1000,7 @@ class FeedNotifier extends AsyncNotifier<List<FeedItem>> {
           if ((favorite.fideId ?? '').trim().isNotEmpty)
             favorite.fideId!.trim(),
       };
+      _taste.seed(players: fideIds, country: _viewerFed());
       if (fideIds.isEmpty) {
         _favoritesExhausted = true;
         return;
@@ -889,6 +1101,14 @@ class FeedNotifier extends AsyncNotifier<List<FeedItem>> {
           if (key(player).isNotEmpty) key(player),
       },
       openingKey: game.eco?.trim().isNotEmpty == true ? game.eco!.trim() : null,
+      freestyle: feedIsFreestyleEvent(game.tourSlug),
+      online: feedIsOnlineEvent(game.tourSlug),
+      countries: {
+        for (final player in [game.whitePlayer, game.blackPlayer])
+          if (player.countryCode.trim().isNotEmpty)
+            player.countryCode.trim().toUpperCase(),
+      },
+      timeClass: game.timeControl?.trim().toLowerCase(),
     );
   }
 
@@ -902,9 +1122,11 @@ class FeedNotifier extends AsyncNotifier<List<FeedItem>> {
     final id = candidate.game.gameId;
     if (candidate.game.source != GameSource.supabase) return;
     if (_seen.contains(id) || !candidate.game.gameStatus.isFinished) return;
+    if (!feedMeetsQualityFloor(candidate.signals)) return;
     final existing = _pool[id];
     if (existing == null) {
       _pool[id] = candidate;
+      _capEvent(_pool, candidate.signals.eventKey, _poolPerEvent);
       return;
     }
     final keep =
@@ -920,6 +1142,27 @@ class FeedNotifier extends AsyncNotifier<List<FeedItem>> {
             pgn: other.pgn,
             hint: keep.hint,
           );
+  }
+
+  /// Keeps at most [limit] candidates of [event] in [pool], dropping the
+  /// least interesting.
+  static void _capEvent(
+    Map<String, _FeedCandidate> pool,
+    String? event,
+    int limit,
+  ) {
+    if (event == null) return;
+    final same = [
+      for (final c in pool.values)
+        if (c.signals.eventKey == event) c,
+    ];
+    if (same.length <= limit) return;
+    same.sort(
+      (a, b) => feedInterest(b.signals).compareTo(feedInterest(a.signals)),
+    );
+    for (final c in same.skip(limit)) {
+      pool.remove(c.game.gameId);
+    }
   }
 
   /// Previews up to three times [count] games, fetches the PGNs they still
@@ -938,7 +1181,9 @@ class FeedNotifier extends AsyncNotifier<List<FeedItem>> {
     final pool = from ?? _pool;
     final draw = ranker ?? _ranker;
     // Preview a wider shortlist without committing rejected games to history.
-    final shortlist = FeedRanker(_newSeed());
+    // It follows the feed's recent picks, so it does not fill up with the
+    // kind of game the feed's quotas will not take next.
+    final shortlist = FeedRanker.following(draw, _newSeed());
     // History may have loaded after a candidate was offered; read it now.
     final signals = [
       for (final c in pool.values)
@@ -1003,6 +1248,12 @@ class FeedNotifier extends AsyncNotifier<List<FeedItem>> {
           _shownBefore.contains(candidate.game.gameId),
           reportInterest: feedReportInterest(clip!, type: type),
           reportType: type,
+          // The moves settle it where the event name did not.
+          freestyle: candidate.signals.freestyle || feedPgnIsFreestyle(pgn),
+          online:
+              candidate.signals.online ||
+              feedIsOnlineEvent(null, clip.event) ||
+              feedPgnIsOnline(pgn),
         ),
       );
       // Keep eligible runners-up ready for the next page, with their PGNs.
@@ -1028,6 +1279,7 @@ class FeedNotifier extends AsyncNotifier<List<FeedItem>> {
       }
       pool.remove(next.id);
       _seen.add(next.id);
+      _postSignals[next.id] = next;
       items.add(playable[next.id]!);
     }
     return items;
@@ -1120,23 +1372,6 @@ class FeedNotifier extends AsyncNotifier<List<FeedItem>> {
     return null;
   }
 
-  /// The streak ledger's online rule on event names
-  /// (`player_streak_is_online`), applied to the tour slug and the PGN
-  /// `[Event]`. Not [GamesTourModel.isOnline]: that only means the game
-  /// carries a Lichess id, which every relayed OTB broadcast game does.
-  static final RegExp _onlineEventName = RegExp(
-    r'(titled tuesday|\bonline\b|chess\.com|\bchesscom\b|\blichess\b'
-    r'|\bbullet\b|speed chess championship|champions chess tour|\bcct\b'
-    r'|freestyle friday|\d\+\d\s*thursday|\binternet\b|\bvirtual\b'
-    r'|titled arena|\btornelo\b|\bchess24\b|\be-?sports\b)',
-    caseSensitive: false,
-  );
-
-  static bool _isOnlineEvent(GamesTourModel game, String? event) {
-    final slug = game.tourSlug?.replaceAll(RegExp(r'[-_]+'), ' ') ?? '';
-    return _onlineEventName.hasMatch('$slug ${event ?? ''}');
-  }
-
   static DateTime? _dayOf(String? raw) {
     final parsed = DateTime.tryParse(raw ?? '');
     return parsed == null
@@ -1178,7 +1413,7 @@ class FeedNotifier extends AsyncNotifier<List<FeedItem>> {
         !passesStreakFloor(run)) {
       return null;
     }
-    if (_isOnlineEvent(game, event)) return null;
+    if (feedIsOnlineEvent(game.tourSlug, event)) return null;
 
     // Only a win after the loss that anchors the run is part of it. The
     // ledger orders a day's games by time, which the wall does not carry, so
@@ -1283,11 +1518,60 @@ class FeedNotifier extends AsyncNotifier<List<FeedItem>> {
     _favoriteOffset = 0;
     _favoritesExhausted = false;
     _likedExhausted = false;
+    _backfillOffset = 0;
+    _backfillExhausted = false;
+    _topHorizon = 0;
+    _backfillHorizon = 0;
+    _postSignals.clear();
     _publicSourceFailures = 0;
     _lastFailure = null;
   }
 
   static int _newSeed() => math.Random().nextInt(1 << 31);
+
+  FeedRanker _newRanker() => FeedRanker(_newSeed(), taste: _taste);
+
+  /// The viewer's taste from earlier sessions, and what the app knows about
+  /// them: their country now, their followed players when that source reads.
+  Future<void> _loadTaste() async {
+    if (_tasteLoaded) return;
+    try {
+      _taste.seed(country: _viewerFed());
+      final entry = await AppDatabase.instance.getCache(
+        key: _tasteKey,
+        userId: _userId,
+        maxAge: const Duration(days: 180),
+      );
+      if (entry != null) _taste.restore(entry.value, DateTime.now());
+    } catch (error) {
+      debugPrint('[Feed] taste unreadable: $error');
+    } finally {
+      _tasteLoaded = true;
+    }
+  }
+
+  /// The viewer's federation (FIDE code, as games carry it), once known.
+  String? _viewerFed() {
+    final iso = ref.read(countryDropdownProvider).valueOrNull?.countryCode;
+    return iso == null || iso.isEmpty ? null : CountryUtils.toFideCode(iso);
+  }
+
+  /// Coalesces a run of swipes into one small write.
+  void _scheduleTasteWrite() {
+    if (!_tasteLoaded) return;
+    _tasteWrite?.cancel();
+    _tasteWrite = Timer(const Duration(seconds: 5), () async {
+      try {
+        await AppDatabase.instance.setCache(
+          key: _tasteKey,
+          userId: _userId,
+          value: _taste.encode(DateTime.now()),
+        );
+      } catch (error) {
+        debugPrint('[Feed] taste write failed: $error');
+      }
+    });
+  }
 
   /// Notes [id] as shown to this viewer, for this and later sessions.
   void _remember(String id) {
@@ -1387,6 +1671,64 @@ List<FeedClip?> _parseFlowClips(List<String> pgns) => [
   for (final pgn in pgns) feedClipFromPgn(pgn),
 ];
 
+/// [game] as the post Watch opens Feed on ([FeedScreen.watch]), its moves
+/// read off [pgn]. Unlike the feed's own draws it needs no report and no
+/// finished result: any game with a move to play is watchable, a live one
+/// up to the move it has reached. [likeable] and [exportable] carry what
+/// the board it came from allows. Null when [pgn] has no playable mainline.
+FeedItem? feedWatchItem(
+  GamesTourModel game,
+  String pgn, {
+  bool likeable = true,
+  bool exportable = true,
+  bool hideEvaluation = false,
+  bool hideResult = false,
+}) {
+  final clip = feedClipFromPgn(
+    feedSpoilerFreePgn(pgn, evaluation: hideEvaluation, result: hideResult),
+  );
+  if (clip == null || clip.plyCount < 1) return null;
+  return FeedItem(
+    // Share and Save read the moves off the game.
+    game: game.copyWith(pgn: pgn, isPgnDeferred: false),
+    plies: clip.plies,
+    reason: '',
+    eventLabel:
+        clip.event ?? _archiveEventOf(game) ?? _prettySlug(game.tourSlug),
+    result: hideResult ? null : clip.result ?? _resultOf(game.gameStatus),
+    hasEvals: clip.hasEvals,
+    likeable: likeable,
+    exportable: exportable,
+    boardGame: game,
+    hideEvaluation: hideEvaluation,
+    hideResult: hideResult,
+  );
+}
+
+final RegExp _evalComment = RegExp(r'\[%eval[^\]]*\]');
+final RegExp _resultHeader = RegExp(r'\[Result\s+"[^"]*"\]');
+final RegExp _resultToken = RegExp(r'(1-0|0-1|1/2-1/2|½-½)\s*$');
+
+/// [pgn] without what No Spoilers hides, so the clip is built without it:
+/// its [%eval] comments ([evaluation]: no eval, and no verdict read off an
+/// eval swing), and its result ([result]: no "White wins" on the last move).
+/// The report's own move classes stay, as the board still shows them.
+@visibleForTesting
+String feedSpoilerFreePgn(
+  String pgn, {
+  required bool evaluation,
+  required bool result,
+}) {
+  var out = pgn;
+  if (evaluation) out = out.replaceAll(_evalComment, '');
+  if (result) {
+    out = out
+        .replaceAll(_resultHeader, '[Result "*"]')
+        .replaceFirst(_resultToken, '*');
+  }
+  return out;
+}
+
 GamesTourModel? _tourModel(Games row) {
   if (!const {'1-0', '0-1', '1/2-1/2'}.contains(row.status)) return null;
   try {
@@ -1409,6 +1751,37 @@ String? _resultOf(GameStatus status) => switch (status) {
   GameStatus.draw => '½-½',
   _ => null,
 };
+
+/// [exported], or [recorded] when [exported] only adds moves past the end
+/// of [recorded]'s mainline. A board that lets the reader extend a game's
+/// mainline (board-editor games: imported, prep and collection games)
+/// exports their moves after the last one as the game's own; Watch plays
+/// the game as it was recorded. A changed move, or a recorded PGN with no
+/// moves (a position set up in the editor), keeps [exported].
+String feedRecordedPgn(String? recorded, String exported) {
+  final own = recorded == null ? null : parseFlowPgn(recorded);
+  if (own == null || own.moves.isEmpty) return exported;
+  final shown = parseFlowPgn(exported);
+  if (shown == null || shown.moves.length <= own.moves.length) return exported;
+  for (var i = 0; i < own.moves.length; i++) {
+    if (shown.moves[i].uci != own.moves[i].uci) return exported;
+  }
+  return recorded!;
+}
+
+/// The event an archive game names in its tourId (the gamebase event, as
+/// the board shows it), when its PGN gives none Feed can read. Null for
+/// other sources, and for the archive's placeholder names.
+String? _archiveEventOf(GamesTourModel game) {
+  if (game.source != GameSource.gamebase && game.source != GameSource.twic) {
+    return null;
+  }
+  final event = game.tourId.trim();
+  if (event.isEmpty || event == 'Miniatures' || event == 'Gamebase') {
+    return null;
+  }
+  return event;
+}
 
 String? _prettySlug(String? slug) {
   final value = slug?.trim();

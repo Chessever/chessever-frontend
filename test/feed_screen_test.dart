@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'package:chessever2/services/rewarded_premium/rewarded_access_provider.dart';
 import 'package:chessever2/providers/auth_state_provider.dart';
 import 'package:chessever2/providers/board_settings_provider_new.dart';
@@ -14,12 +13,12 @@ import 'package:chessever2/screens/feed/feed_screen.dart';
 import 'package:chessever2/screens/feed/models/feed_entry.dart';
 import 'package:chessever2/screens/feed/models/feed_models.dart';
 import 'package:chessever2/screens/feed/news/feed_news.dart';
+import 'package:chessever2/screens/feed/providers/feed_entries_provider.dart';
 import 'package:chessever2/screens/feed/providers/feed_eval_provider.dart';
 import 'package:chessever2/screens/feed/providers/feed_provider.dart';
 import 'package:chessever2/screens/for_you/discovery/models/report_game_type.dart';
 import 'package:chessever2/screens/feed/puzzles/feed_puzzle.dart';
 import 'package:chessever2/screens/feed/widgets/feed_live_board.dart';
-import 'package:chessever2/screens/feed/widgets/feed_glyphs.dart';
 import 'package:chessever2/screens/feed/widgets/feed_layout.dart';
 import 'package:chessever2/screens/feed/widgets/feed_move_sound.dart';
 import 'package:chessever2/screens/feed/widgets/feed_scrub.dart';
@@ -30,6 +29,7 @@ import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_mode
 import 'package:chessever2/screens/tour_detail/games_tour/providers/event_no_spoilers_provider.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/app_typography.dart';
+import 'package:chessever2/widgets/ads/ad_disclosure.dart';
 import 'package:chessever2/widgets/destination_title.dart';
 import 'package:chessground/chessground.dart';
 import 'package:dartchess/dartchess.dart';
@@ -43,105 +43,209 @@ const _pgn = '1. e4 e5 2. Bc4 Nc6 3. Qh5 Nf6 4. Qxf7# 1-0';
 final _testFeedAccess = StateProvider<bool>((ref) => false);
 
 void main() {
-  for (final unlock in [false, true]) {
-    testWidgets('free feed swipe prompts and unlock=$unlock', (tester) async {
-      final completion = Completer<bool>();
-      var prompts = 0;
-      await _pumpFeed(
-        tester,
-        games: [
-          _scholarsMate(),
-          _scholarsMate(id: 'g2'),
-          _scholarsMate(id: 'g3'),
-        ],
-        accessOverrides: [
-          premiumAccessProvider.overrideWith(
-            (ref) => ref.watch(_testFeedAccess),
-          ),
-          feedAccessPromptProvider.overrideWithValue((context) async {
-            prompts++;
-            final allowed = await completion.future;
-            if (allowed && context.mounted) {
-              ProviderScope.containerOf(
-                context,
-                listen: false,
-              ).read(_testFeedAccess.notifier).state = true;
-            }
-            return allowed;
-          }),
-        ],
-      );
-      final pages = find.byKey(const ValueKey('feed_pages'));
-      expect(
-        tester.widget<PageView>(pages).childrenDelegate.estimatedChildCount,
-        2,
-      );
-      final board = tester.getRect(find.byType(FeedLiveBoard).first);
-      await tester.flingFrom(
-        _squareCenter(board, 'd2'),
-        const Offset(0, -240),
-        1500,
-      );
-      for (var i = 0; i < 10; i++) {
-        await tester.pump(const Duration(milliseconds: 100));
-      }
-      expect(prompts, 1);
-      expect(find.byKey(const ValueKey('feed_premium_gate')), findsOneWidget);
-      final container = ProviderScope.containerOf(
-        tester.element(find.byType(FeedScreen)),
-        listen: false,
-      );
-      expect(container.read(feedCurrentEntryKeyProvider), contains('feed-test-game'));
-      completion.complete(unlock);
-      for (var i = 0; i < 6; i++) {
-        await tester.pump(const Duration(milliseconds: 100));
-      }
-      final controller = tester.widget<PageView>(pages).controller!;
-      expect(controller.page, unlock ? 1 : 0);
-      expect(
-        tester.widget<PageView>(pages).childrenDelegate.estimatedChildCount,
-        unlock ? 4 : 2,
-      );
-      expect(prompts, 1);
-      if (unlock) {
-        controller.jumpToPage(2);
-        await tester.pump();
-        container.read(_testFeedAccess.notifier).state = false;
-        for (var i = 0; i < 4; i++) {
-          await tester.pump(const Duration(milliseconds: 100));
-        }
-        expect(controller.page, 0);
-        expect(prompts, 1, reason: 'Expiry must not show another swipe prompt');
-      }
-      expect(tester.takeException(), isNull);
-      await _tearDown(tester);
-    });
-  }
+  testWidgets('a free viewer swipes past the second post, no prompt', (
+    tester,
+  ) async {
+    await _pumpFeed(
+      tester,
+      games: [
+        _scholarsMate(),
+        _scholarsMate(id: 'g2'),
+        _scholarsMate(id: 'g3'),
+      ],
+      accessOverrides: [premiumAccessProvider.overrideWithValue(false)],
+    );
+    final pages = find.byKey(const ValueKey('feed_pages'));
+    // Every post and the tail: nothing stands in for the posts after the
+    // first.
+    expect(
+      tester.widget<PageView>(pages).childrenDelegate.estimatedChildCount,
+      4,
+    );
+    final board = tester.getRect(find.byType(FeedLiveBoard).first);
+    await tester.flingFrom(
+      _squareCenter(board, 'd2'),
+      const Offset(0, -240),
+      1500,
+    );
+    for (var i = 0; i < 10; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+    expect(tester.widget<PageView>(pages).controller!.page, 1);
+    expect(find.text('Keep exploring Feed'), findsNothing);
+    expect(find.text('Unlock Premium'), findsNothing);
+    final container = ProviderScope.containerOf(
+      tester.element(find.byType(FeedScreen)),
+      listen: false,
+    );
+    expect(container.read(feedCurrentEntryKeyProvider), contains('g2'));
+    tester.widget<PageView>(pages).controller!.jumpToPage(2);
+    for (var i = 0; i < 4; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+    expect(container.read(feedCurrentEntryKeyProvider), contains('g3'));
+    expect(find.text('Keep exploring Feed'), findsNothing);
+    expect(find.text('Unlock Premium'), findsNothing);
+    expect(tester.takeException(), isNull);
+    await _tearDown(tester);
+  });
 
-  testWidgets('slider playback control stops and resumes the game', (
+  testWidgets('temporary Premium access still shows Feed ads', (tester) async {
+    await _pumpFeed(
+      tester,
+      games: [for (var i = 1; i <= 3; i++) _scholarsMate(id: 'g$i')],
+      accessOverrides: [
+        premiumAccessProvider.overrideWithValue(true),
+        feedAdsAvailableProvider.overrideWithValue(true),
+      ],
+    );
+    final container = ProviderScope.containerOf(
+      tester.element(find.byType(FeedScreen)),
+      listen: false,
+    );
+    expect(container.read(feedPagesProvider)[2], isA<FeedAdEntry>());
+    await _tearDown(tester);
+  });
+
+  testWidgets('ads stand between posts, and the viewer keeps their post as '
+      'subscription changes remove and restore them', (tester) async {
+    await _pumpFeed(
+      tester,
+      games: [for (var i = 1; i <= 7; i++) _scholarsMate(id: 'g$i')],
+      accessOverrides: [
+        premiumAccessProvider.overrideWith((ref) => ref.watch(_testFeedAccess)),
+        feedAdsAvailableProvider.overrideWithValue(true),
+      ],
+    );
+    final container = ProviderScope.containerOf(
+      tester.element(find.byType(FeedScreen)),
+      listen: false,
+    );
+    final pages = find.byKey(const ValueKey('feed_pages'));
+    final controller = tester.widget<PageView>(pages).controller!;
+    List<String> keys() => [
+      for (final page in container.read(feedPagesProvider)) page.key,
+    ];
+    Future<void> settle() async {
+      for (var i = 0; i < 4; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+    }
+
+    // Planned positions 3 and 8, never after the last post.
+    final posts = keys();
+    expect(posts, hasLength(9));
+    expect(posts[2], 'ad:${posts[1]}');
+    expect(posts[7], 'ad:${posts[6]}');
+    expect(
+      tester.widget<PageView>(pages).childrenDelegate.estimatedChildCount,
+      10,
+    );
+
+    controller.jumpToPage(2);
+    await settle();
+    expect(find.text(AdDisclosureLine.text), findsOneWidget);
+    expect(find.text(RemoveAdsButton.label), findsOneWidget);
+    expect(find.byKey(const ValueKey('feed_ad_placeholder')), findsOneWidget);
+    // An ad page is never the place Feed brings the viewer back to.
+    expect(container.read(feedCurrentEntryKeyProvider), posts[1]);
+
+    controller.jumpToPage(6);
+    await settle();
+    expect(container.read(feedCurrentEntryKeyProvider), posts[6]);
+
+    // Subscribed: the ad leaves from before the viewer, who stays on the post.
+    container.read(_testFeedAccess.notifier).state = true;
+    await settle();
+    expect(keys(), hasLength(7));
+    expect(controller.page, 5);
+    expect(keys()[5], posts[6]);
+    expect(container.read(feedCurrentEntryKeyProvider), posts[6]);
+
+    // Access ends: the ad comes back before them, and they stay put.
+    container.read(_testFeedAccess.notifier).state = false;
+    await settle();
+    expect(keys(), posts);
+    expect(controller.page, 6);
+    expect(container.read(feedCurrentEntryKeyProvider), posts[6]);
+    expect(tester.takeException(), isNull);
+    await _tearDown(tester);
+  });
+
+  testWidgets('an ad that does not come gives its page to the next post', (
+    tester,
+  ) async {
+    await _pumpFeed(
+      tester,
+      games: [for (var i = 1; i <= 7; i++) _scholarsMate(id: 'g$i')],
+      accessOverrides: [
+        premiumAccessProvider.overrideWithValue(false),
+        feedAdsAvailableProvider.overrideWithValue(true),
+      ],
+    );
+    final container = ProviderScope.containerOf(
+      tester.element(find.byType(FeedScreen)),
+      listen: false,
+    );
+    final controller = tester
+        .widget<PageView>(find.byKey(const ValueKey('feed_pages')))
+        .controller!;
+    final before = container.read(feedPagesProvider);
+    final ad = before[2];
+    expect(ad, isA<FeedAdEntry>());
+
+    controller.jumpToPage(2);
+    for (var i = 0; i < 4; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+    container.read(feedAdWithdrawnProvider.notifier).state = {ad.key};
+    for (var i = 0; i < 4; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+    final after = container.read(feedPagesProvider);
+    expect(after.whereType<FeedAdEntry>(), hasLength(1));
+    expect(controller.page, 2);
+    expect(after[2].key, before[3].key);
+    expect(container.read(feedCurrentEntryKeyProvider), before[3].key);
+    expect(find.text(AdDisclosureLine.text), findsNothing);
+    expect(tester.takeException(), isNull);
+    await _tearDown(tester);
+  });
+
+  testWidgets('the speed button steps 1x to 2x and round, and plays faster', (
     tester,
   ) async {
     final feed = await _pumpFeed(tester);
-    final toggle = find.byKey(const ValueKey('feed_scrub_play_toggle'));
-    expect(find.byKey(const ValueKey('feed_scrub_counter')), findsNothing);
+    final button = find.byKey(const ValueKey('feed_speed_button'));
+    final label = find.byKey(const ValueKey('feed_speed_label'));
     final trackY =
         tester.getRect(find.byType(FeedScrubStrip)).top +
         FeedLayout.scrubTrackCenter;
-    final glyph = find.descendant(of: toggle, matching: find.byType(FeedGlyph));
-    expect(tester.getRect(glyph).center.dy, closeTo(trackY, 0.01));
-    expect(tester.getSize(toggle).height, 44);
-    expect(find.bySemanticsLabel('Stop'), findsOneWidget);
-    await tester.tap(toggle);
-    await tester.pump();
-    final stoppedAt = feed.sound.played.length;
-    expect(find.bySemanticsLabel('Play'), findsOneWidget);
-    expect(tester.getRect(glyph).center.dy, closeTo(trackY, 0.01));
-    await tester.pump(const Duration(seconds: 2));
-    expect(feed.sound.played.length, stoppedAt);
-    await tester.tap(toggle);
-    await tester.pump(const Duration(milliseconds: 700));
-    expect(feed.sound.played.length, greaterThan(stoppedAt));
-    expect(find.bySemanticsLabel('Stop'), findsOneWidget);
+    expect(tester.getRect(label).center.dy, closeTo(trackY, 0.5));
+    expect(tester.getSize(button), const Size.square(44));
+    String shown() => tester.widget<Text>(label).data!;
+    expect(shown(), '1×');
+    for (final next in ['1.25×', '1.5×', '1.75×', '2×', '1×', '1.25×']) {
+      await tester.tap(button);
+      await tester.pump();
+      expect(shown(), next);
+      // The figure never outgrows its slot.
+      expect(tester.getRect(label).width, lessThanOrEqualTo(44.01));
+    }
+    // A speed change never stops the clip.
+    expect(find.byKey(const ValueKey('feed_paused')), findsNothing);
+    for (final _ in [1, 2, 3]) {
+      await tester.tap(button);
+      await tester.pump();
+    }
+    expect(shown(), '2×');
+
+    // At 2x the 650ms beat is 325ms: three moves in a little over a second
+    // after the first.
+    await tester.pump(const Duration(milliseconds: 260));
+    final from = feed.sound.played.length;
+    await tester.pump(const Duration(milliseconds: 1000));
+    expect(feed.sound.played.length - from, greaterThanOrEqualTo(3));
     await _tearDown(tester);
   });
 
@@ -201,21 +305,31 @@ void main() {
         1,
       );
 
-      // Paused means paused: time passes, the move does not. The pause
-      // confirmation fades away on its own, leaving the board clean.
+      // Paused means paused: time passes, the move does not, and the play
+      // control waits for the viewer.
+      double overlay() => tester
+          .widget<AnimatedOpacity>(find.byKey(const ValueKey('feed_paused')))
+          .opacity;
       final pausedAt = feed.sound.played.length;
       await tester.pump(const Duration(seconds: 2));
       expect(feed.sound.played.length, pausedAt);
-      expect(find.byKey(const ValueKey('feed_paused')), findsOneWidget);
-      expect(
-        tester
-            .widget<AnimatedOpacity>(find.byKey(const ValueKey('feed_paused')))
-            .opacity,
-        0,
-      );
+      expect(overlay(), 1);
 
-      // Tap again → resumes and moves on.
-      await tester.tapAt(board);
+      // A tap away from the triangle takes the control down; still paused.
+      final rect = tester.getRect(find.byType(FeedLiveBoard));
+      await tester.tapAt(_squareCenter(rect, 'a5'));
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(overlay(), 0);
+      await tester.pump(const Duration(seconds: 2));
+      expect(feed.sound.played.length, pausedAt);
+
+      // The next tap brings it back.
+      await tester.tapAt(_squareCenter(rect, 'a5'));
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(overlay(), 1);
+
+      // The triangle plays on.
+      await tester.tap(find.byKey(const ValueKey('feed_paused_play')));
       await tester.pump(const Duration(milliseconds: 300));
       expect(find.byKey(const ValueKey('feed_paused')), findsNothing);
       await tester.pump(const Duration(milliseconds: 700));
@@ -330,11 +444,19 @@ void main() {
       expect(find.byKey(const ValueKey('feed_back_to_game')), findsOneWidget);
       expect(find.text('Your line'), findsOneWidget);
 
-      // A stray tap on an empty square does not throw the line away.
+      // A stray tap on an empty square does not throw the line away: it
+      // puts the play control up, and the next one takes it down.
+      double overlay() => tester
+          .widget<AnimatedOpacity>(find.byKey(const ValueKey('feed_paused')))
+          .opacity;
+      expect(overlay(), 0);
       await tester.tapAt(_squareCenter(board, 'a5'));
       await tester.pump(const Duration(milliseconds: 400));
       expect(find.byKey(const ValueKey('feed_back_to_game')), findsOneWidget);
-      expect(find.byKey(const ValueKey('feed_paused')), findsNothing);
+      expect(overlay(), 1);
+      await tester.tapAt(_squareCenter(board, 'a5'));
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(overlay(), 0);
 
       // The line steps like the game does: back to the fork, then on to
       // the viewer's move again; "Your line" is the fork itself.
@@ -498,11 +620,17 @@ void main() {
       await tester.pump(const Duration(milliseconds: 100));
       expect(feed.sound.played, [('e4', null), ('e5', null)]);
 
-      // Stepped by hand: autoplay waits for a board tap.
+      // Stepped by hand: autoplay waits. A board tap puts the play control
+      // up, and the control plays on.
       await tester.pump(const Duration(seconds: 2));
       expect(feed.sound.played, hasLength(2));
       final board = tester.getRect(find.byType(FeedLiveBoard));
       await tester.tapAt(_squareCenter(board, 'a5'));
+      await tester.pump(const Duration(milliseconds: 300));
+      await tester.pump(const Duration(milliseconds: 700));
+      expect(feed.sound.played, hasLength(2));
+      expect(find.byKey(const ValueKey('feed_paused')), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('feed_paused_play')));
       await tester.pump(const Duration(milliseconds: 300));
       await tester.pump(const Duration(milliseconds: 700));
       expect(feed.sound.played, hasLength(3));
@@ -937,7 +1065,9 @@ Future<_Feed> _pumpFeed(
         likedGamesProvider.overrideWith(_NoLikes.new),
         spaceShortcutsProvider.overrideWith(_NoShortcuts.new),
         currentUserProvider.overrideWithValue(null),
-        subscriptionProvider.overrideWith((ref) => _FreeSubscription()),
+        subscriptionProvider.overrideWith(
+          (ref) => _FreeSubscription(subscribed: ref.watch(_testFeedAccess)),
+        ),
         engineSettingsProviderNew.overrideWith(
           () => _TestEngineSettings(engineSettings),
         ),
@@ -1187,11 +1317,13 @@ class _NoShortcuts extends SpaceShortcutsNotifier {
 }
 
 class _FreeSubscription extends SubscriptionNotifier {
-  _FreeSubscription() : super() {
+  _FreeSubscription({this.subscribed = false}) : super() {
     state = SubscriptionState(isSubscribed: false, isLoading: false);
   }
 
+  final bool subscribed;
+
   @override
   set state(SubscriptionState value) =>
-      super.state = value.copyWith(isSubscribed: false, isLoading: false);
+      super.state = value.copyWith(isSubscribed: subscribed, isLoading: false);
 }

@@ -20,6 +20,7 @@ import 'package:chessever2/widgets/positioned_list_scrollbar.dart';
 import 'package:dartchess/dartchess.dart';
 import 'package:flutter/material.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
+import 'package:chessever2/widgets/paywall/past_event_access.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
 
@@ -338,19 +339,25 @@ class GamesListView extends ConsumerWidget {
       liveBatchKey: liveBatchKeyByGameId[game.gameId],
       orderedGames: orderedGamesList,
       gameIndex: globalIndex,
-      onChangedWithLiveGames:
-          (updatedGames) => ref
-              .read(gameCardWrapperProvider)
-              .navigateToChessBoard(
-                context: context,
-                orderedGames: updatedGames,
-                gameIndex: globalIndex,
-                onReturnFromChessboard: (returnedIndex) {
-                  _scrollToGameIndex(returnedIndex);
-                  onReturnFromChessboard?.call(returnedIndex);
-                },
-                listPolicy: boardNavigationListPolicyForGamesData(gamesData),
-              ),
+      onChangedWithLiveGames: (updatedGames) async {
+        final allowed = await ensureEventGameAccess(
+          context,
+          tourId: game.tourId,
+        );
+        if (!allowed || !context.mounted) return;
+        ref
+            .read(gameCardWrapperProvider)
+            .navigateToChessBoard(
+              context: context,
+              orderedGames: updatedGames,
+              gameIndex: globalIndex,
+              onReturnFromChessboard: (returnedIndex) {
+                _scrollToGameIndex(returnedIndex);
+                onReturnFromChessboard?.call(returnedIndex);
+              },
+              listPolicy: boardNavigationListPolicyForGamesData(gamesData),
+            );
+      },
       pinnedIds: gamesData.pinnedGamedIs,
       fixedBottomSide: fixedBottomSide,
       allowStockfishFallback: allowStockfishFallback,
@@ -387,6 +394,8 @@ class GamesListView extends ConsumerWidget {
       fixedBottomSide: item.fixedBottomSide1,
       allowStockfishFallback: allowStockfishFallback,
       streamEnabled: streamEnabled,
+      onBeforeOpen: () =>
+          ensureEventGameAccess(context, tourId: item.game1.tourId),
       onReturnFromChessboard: (returnedIndex) {
         _scrollToGameIndex(returnedIndex);
         onReturnFromChessboard?.call(returnedIndex);

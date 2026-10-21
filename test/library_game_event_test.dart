@@ -134,4 +134,111 @@ void main() {
       );
     });
   });
+
+  // Strings below are verbatim from production Gamebase rows (2026-10-12).
+  group('round/pairing labels', () {
+    test('every shape Lichess exports is recognised without player names', () {
+      for (final label in const [
+        'Round 6: Del Rio Baena, Dani - Garcia Canals, Gerard',
+        'Round 1: Bytomski, Dominik - Maksymilian Jonda',
+        'Rd 9 - Some Pairing',
+        'Semifinals | Game 3: Yu, Yangyi - Wang, Hao',
+        'Tiebreak 1 | Game 1: Bosc, Seraphina - Navrotescu, Andreea',
+      ]) {
+        expect(looksLikeRoundPairingEvent(label), isTrue, reason: label);
+      }
+    });
+
+    test('tournament names are left alone', () {
+      for (final name in const [
+        'Round Robin Open: 2026',
+        'CE Equipos Ajedrez Rapido 2026',
+        '2026 Titled Tuesday Blitz October 06',
+        'Superfinal (m)',
+        'Carlsen vs. Caruana | Speed Chess | QF',
+        'Linares',
+      ]) {
+        expect(looksLikeRoundPairingEvent(name), isFalse, reason: name);
+      }
+    });
+  });
+
+  group('gamebase row event title', () {
+    const pairing = 'Round 6: Del Rio Baena, Dani - Garcia Canals, Gerard';
+    const site =
+        'https://lichess.org/broadcast/catalan-age-group-team-championship-2026-sub-18/round-6/rkYWEnda/R3kJFF30';
+
+    test('the server-resolved name wins over the pairing label', () {
+      expect(
+        gamebaseRowEventTitle({
+          'event': pairing,
+          'site': site,
+          'canonicalEvent': 'Catalan Age-Group Team Championship 2026',
+        }),
+        'Catalan Age-Group Team Championship 2026',
+      );
+    });
+
+    test('falls back to the broadcast site when only the pairing is given', () {
+      expect(
+        gamebaseRowEventTitle({'event': pairing, 'site': site}),
+        'Catalan Age Group Team Championship 2026 Sub 18',
+      );
+    });
+
+    test('names nothing rather than the pairing', () {
+      // `/api/miniatures` rows carry neither a site nor a canonical name.
+      expect(gamebaseRowEventTitle({'event': pairing}), isNull);
+      expect(gamebaseRowEventTitle({'event': '?'}), isNull);
+      expect(gamebaseRowEventTitle(const {}), isNull);
+    });
+
+    test('keeps real names, single words included', () {
+      expect(gamebaseRowEventTitle({'event': 'Linares'}), 'Linares');
+      expect(
+        gamebaseRowEventTitle({'event': 'Deutsche Ländermeisterschaft 2026'}),
+        'Deutsche Ländermeisterschaft 2026',
+      );
+    });
+
+    test('ignores nested player objects', () {
+      expect(
+        gamebaseRowEventTitle({
+          'event': pairing,
+          'site': site,
+          'white': {'name': 'Del Rio Baena, Dani'},
+          'black': {'name': 'Garcia Canals, Gerard'},
+        }),
+        'Catalan Age Group Team Championship 2026 Sub 18',
+      );
+    });
+  });
+
+  group('PGN header event title', () {
+    test('uses BroadcastName when Event is the pairing', () {
+      expect(
+        eventTitleFromPgnHeaders(const {
+          'Event': 'Round 6: Del Rio Baena, Dani - Garcia Canals, Gerard',
+          'White': 'Del Rio Baena, Dani',
+          'Black': 'Garcia Canals, Gerard',
+          'BroadcastName': 'Catalan Age-Group Team Championship 2026 Sub 18',
+        }),
+        'Catalan Age-Group Team Championship 2026 Sub 18',
+      );
+    });
+
+    test('keeps a real Event and reports none when there is none', () {
+      expect(
+        eventTitleFromPgnHeaders(const {'Event': 'Chicago Open 2026'}),
+        'Chicago Open 2026',
+      );
+      expect(
+        eventTitleFromPgnHeaders(const {
+          'Event': 'Round 2: Czech, Emil - Manka, Igor',
+        }),
+        isNull,
+      );
+      expect(eventTitleFromPgnHeaders(const {'Event': '?'}), isNull);
+    });
+  });
 }

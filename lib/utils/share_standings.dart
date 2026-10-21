@@ -1,3 +1,5 @@
+import 'package:chessever2/screens/standings/player_standing_sections_provider.dart';
+import 'package:chessever2/screens/gamebase/event_view/gamebase_virtual_event_id.dart';
 import 'dart:io';
 import 'dart:math' as math;
 
@@ -23,24 +25,43 @@ Future<void> shareTournamentStandings(
 ) async {
   final messenger = ScaffoldMessenger.of(context);
   try {
-    final about =
-        ref.read(tourDetailScreenProvider).valueOrNull?.aboutTourModel;
+    final about = ref
+        .read(tourDetailScreenProvider)
+        .valueOrNull
+        ?.aboutTourModel;
     if (about == null || about.name.isEmpty) {
       showAppSnackOn(messenger, 'Open an event to share its standings.');
       return;
     }
 
-    final fallbackId =
-        about.groupBroadcastId?.isNotEmpty == true
-            ? about.groupBroadcastId!
-            : about.id;
-    final shareUrl = buildEventShareUrl(
-      id: fallbackId,
-      title: about.name,
-      tourId: about.id,
-      tourSlug: about.slug,
-      tab: kEventStandingsTab,
+    final detail = ref.read(tourDetailScreenProvider).valueOrNull;
+    final tour = detail?.tours
+        .where((item) => item.tour.id == about.id)
+        .firstOrNull
+        ?.tour;
+    final section = selectedOfficialPlayerSection(
+      tour?.info.playerStandingSections ?? const [],
+      ref.read(selectedPlayerStandingSectionProvider(about.id)),
     );
+    final standingsTitle = section == null
+        ? about.name
+        : '${about.name} | ${section.name}';
+
+    final fallbackId = about.groupBroadcastId?.isNotEmpty == true
+        ? about.groupBroadcastId!
+        : about.id;
+    // Gamebase-only virtual events have no page on chessever.com, so their
+    // standings image goes out without a (dead) event link.
+    final shareUrl = section?.sourceUrl ??
+        (isVirtualGamebaseId(about.id)
+            ? null
+            : buildEventShareUrl(
+                id: fallbackId,
+                title: about.name,
+                tourId: about.id,
+                tourSlug: about.slug,
+                tab: kEventStandingsTab,
+              ));
 
     final standings = await ref.read(playerTourScreenProvider.future);
     if (!context.mounted) return;
@@ -59,7 +80,7 @@ Future<void> shareTournamentStandings(
       pixelRatio: 3.0,
       child: StandingsShareImageCard(
         width: width,
-        eventName: about.name,
+        eventName: standingsTitle,
         standings: standings,
       ),
     );
@@ -69,21 +90,19 @@ Future<void> shareTournamentStandings(
     if (!context.mounted) return;
 
     final tempDir = await getTemporaryDirectory();
-    final safeName =
-        about.name
-            .replaceAll(RegExp(r'[^A-Za-z0-9]+'), '-')
-            .replaceAll(RegExp(r'^-+|-+$'), '')
-            .toLowerCase();
+    final safeName = about.name
+        .replaceAll(RegExp(r'[^A-Za-z0-9]+'), '-')
+        .replaceAll(RegExp(r'^-+|-+$'), '')
+        .toLowerCase();
     final file = File(
       '${tempDir.path}/${safeName.isEmpty ? 'chessever-event' : safeName}-standings.png',
     );
     await file.writeAsBytes(imageBytes);
     if (!context.mounted) return;
 
-    final subject =
-        about.name.trim().isNotEmpty
-            ? '${about.name} standings'
-            : 'ChessEver standings';
+    final subject = about.name.trim().isNotEmpty
+        ? '$standingsTitle standings'
+        : 'ChessEver standings';
     await showShareImagePreview(
       context,
       imageBytes: imageBytes,
@@ -95,13 +114,16 @@ Future<void> shareTournamentStandings(
           sharePositionOrigin: const Rect.fromLTWH(0, 0, 1, 1),
         );
       },
-      onShareLink: () async {
-        await Share.share(
-          shareUrl,
-          subject: subject,
-          sharePositionOrigin: const Rect.fromLTWH(0, 0, 1, 1),
-        );
-      },
+      onShareLink:
+          shareUrl == null
+              ? null
+              : () async {
+                await Share.share(
+                  shareUrl,
+                  subject: subject,
+                  sharePositionOrigin: const Rect.fromLTWH(0, 0, 1, 1),
+                );
+              },
     );
   } catch (e) {
     debugPrint('Failed to share standings: $e');

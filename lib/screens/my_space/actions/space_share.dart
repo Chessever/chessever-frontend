@@ -1,5 +1,7 @@
 import 'package:chessever2/screens/chessboard/utils/game_share_utils.dart'
     show kGamebaseShareSourceParam, kGamebaseShareSourceValue;
+import 'package:chessever2/screens/collections/collection_share.dart'
+    show buildCollectionShareUrl;
 import 'package:chessever2/screens/gamebase/event_view/gamebase_virtual_event_id.dart';
 import 'package:chessever2/screens/my_space/models/space_shortcut.dart';
 import 'package:chessever2/screens/player_profile/utils/player_profile_share_utils.dart';
@@ -56,6 +58,8 @@ String? spaceShortcutShareUrl(SpaceShortcut s) {
           (uri.scheme == 'https' || uri.scheme == 'http') &&
           uri.host.isNotEmpty;
       return web ? uri.toString() : null;
+    case SpaceShortcutKind.collection:
+      return buildCollectionShareUrl(_str(p['slug']));
     case SpaceShortcutKind.round:
     case SpaceShortcutKind.position:
     case SpaceShortcutKind.opening:
@@ -65,7 +69,7 @@ String? spaceShortcutShareUrl(SpaceShortcut s) {
     case SpaceShortcutKind.countrymen:
     case SpaceShortcutKind.miniatures:
     case SpaceShortcutKind.likes:
-    case SpaceShortcutKind.collection:
+    case SpaceShortcutKind.prepProfile:
       return null;
   }
 }

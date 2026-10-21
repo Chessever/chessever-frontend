@@ -21,8 +21,7 @@ class TourRepository extends BaseRepository {
           .eq('group_broadcast_id', groupId)
           .order('avg_elo', ascending: false);
 
-      final byGroupTours =
-          (byGroupResponse as List).map((json) => Tour.fromJson(json)).toList();
+      final byGroupTours = Tour.listFromJson(byGroupResponse);
 
       if (byGroupTours.isNotEmpty) {
         return byGroupTours;
@@ -35,8 +34,7 @@ class TourRepository extends BaseRepository {
           .select()
           .eq('id', groupId);
 
-      final byIdTours =
-          (byIdResponse as List).map((json) => Tour.fromJson(json)).toList();
+      final byIdTours = Tour.listFromJson(byIdResponse);
       if (byIdTours.isEmpty) {
         return byIdTours;
       }
@@ -54,8 +52,7 @@ class TourRepository extends BaseRepository {
           .eq('group_broadcast_id', siblingGroupId)
           .order('avg_elo', ascending: false);
 
-      final siblingTours =
-          (siblingResponse as List).map((json) => Tour.fromJson(json)).toList();
+      final siblingTours = Tour.listFromJson(siblingResponse);
       return siblingTours.isNotEmpty ? siblingTours : byIdTours;
     });
   }
@@ -72,7 +69,7 @@ class TourRepository extends BaseRepository {
           .select()
           .inFilter('id', tourIds);
 
-      return (response as List).map((json) => Tour.fromJson(json)).toList();
+      return Tour.listFromJson(response);
     });
   }
 
@@ -88,7 +85,7 @@ class TourRepository extends BaseRepository {
           .select()
           .inFilter('slug', tourSlugs);
 
-      return (response as List).map((json) => Tour.fromJson(json)).toList();
+      return Tour.listFromJson(response);
     });
   }
 
@@ -108,7 +105,8 @@ class TourRepository extends BaseRepository {
 
       final result = <String, List<Tour>>{};
       for (final json in response as List) {
-        final tour = Tour.fromJson(json);
+        final tour = Tour.tryFromJson(json);
+        if (tour == null) continue;
         final gbId = json['group_broadcast_id'] as String?;
         if (gbId != null && gbId.isNotEmpty) {
           result.putIfAbsent(gbId, () => []).add(tour);
@@ -145,8 +143,7 @@ class TourRepository extends BaseRepository {
           .order('dates->0', ascending: false) // Most recent first
           .range(offset, offset + limit - 1);
 
-      final tours =
-          (response as List).map((json) => Tour.fromJson(json)).toList();
+      final tours = Tour.listFromJson(response);
 
       debugPrint(
         '[TourRepository] getToursByCountryLocation: found ${tours.length} tours',
@@ -181,8 +178,7 @@ class TourRepository extends BaseRepository {
           .order('dates->0', ascending: false)
           .range(offset, offset + limit - 1);
 
-      final tours =
-          (response as List).map((json) => Tour.fromJson(json)).toList();
+      final tours = Tour.listFromJson(response);
 
       debugPrint('[TourRepository] searchTours: found ${tours.length} tours');
       return tours;
@@ -198,7 +194,7 @@ class TourRepository extends BaseRepository {
           .order('created_at', ascending: false)
           .range(offset, offset + limit - 1);
 
-      return (response as List).map((json) => Tour.fromJson(json)).toList();
+      return Tour.listFromJson(response);
     });
   }
 

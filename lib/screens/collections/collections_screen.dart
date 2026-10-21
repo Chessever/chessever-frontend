@@ -19,6 +19,7 @@ import 'package:chessever2/providers/favorite_events_provider.dart';
 import 'package:chessever2/repository/favorites/models/favorite_event.dart';
 import 'package:chessever2/screens/collections/collection_bindings.dart';
 import 'package:chessever2/screens/collections/collection_plate_row.dart';
+import 'package:chessever2/screens/collections/collection_share.dart';
 export 'package:chessever2/screens/collections/collection_plate_row.dart';
 import 'package:chessever2/screens/collections/collections_data.dart';
 import 'package:chessever2/screens/collections/open_collection_game.dart';
@@ -59,6 +60,7 @@ import 'package:chessever2/widgets/auth/auth_upgrade_sheet.dart';
 import 'package:chessever2/widgets/hub_tile.dart';
 import 'package:chessever2/widgets/card_context_menu.dart';
 import 'package:chessever2/widgets/skeleton_widget.dart';
+import 'package:chessever2/widgets/star_notifications.dart';
 // import 'package:chessever2/screens/library/game_tree/library_game_tree_targets.dart';
 // import 'package:chessever2/widgets/game_tree/build_tree_button.dart';
 // import 'package:chessever2/widgets/paywall/premium_game_access.dart';
@@ -280,40 +282,56 @@ class _CollectionsAboutPage extends StatelessWidget {
 /// same way; `metadata.kind` tells it apart when it opens.
 String collectionFavoriteId(Collection c) => 'collection:${c.slug}';
 
-bool collectionIsFavorited(Iterable<FavoriteEvent> favorites, Collection c) {
+/// The favorites row that stars [c], or null when it is not starred.
+FavoriteEvent? collectionFavorite(
+  Iterable<FavoriteEvent> favorites,
+  Collection c,
+) {
   final id = collectionFavoriteId(c);
-  return favorites.any(
-    (e) =>
-        e.eventId == id ||
-        (e.metadata['kind'] == 'collection' && e.metadata['slug'] == c.slug),
-  );
+  for (final e in favorites) {
+    if (e.eventId == id ||
+        (e.metadata['kind'] == 'collection' && e.metadata['slug'] == c.slug)) {
+      return e;
+    }
+  }
+  return null;
 }
 
-/// Stars or unstars [c]: the one path behind every collection star, so each
-/// writes the same row and the same analytics event.
+bool collectionIsFavorited(Iterable<FavoriteEvent> favorites, Collection c) =>
+    collectionFavorite(favorites, c) != null;
+
+/// Stars or unstars [collection]: the one path behind every collection
+/// star, so each writes the same row and the same analytics event.
+///
+/// Starring fills the star at once and then asks whether new games should
+/// notify; the answer, yes or no, is written onto the row once the row has
+/// landed. A star with no answer notifies (see [starNotificationsEnabled]),
+/// so a "Not now" has to be written down to keep it quiet.
 Future<void> toggleCollectionFavorite({
   required BuildContext context,
-  required WidgetRef ref,
   required Collection collection,
 }) async {
   final allowed = await requireFullAuthGuard(context);
-  if (!allowed) return;
+  if (!allowed || !context.mounted) return;
+
+  // Resolved now: the card may be gone by the time the dialog closes.
+  final container = ProviderScope.containerOf(context, listen: false);
+  final messenger = ScaffoldMessenger.maybeOf(context);
+  final notifier = container.read(favoriteEventsProvider.notifier);
+  final saved = collectionFavorite(
+    container.read(favoriteEventsProvider).valueOrNull ??
+        const <FavoriteEvent>[],
+    collection,
+  );
 
   HapticFeedbackService.pin();
 
-  try {
-    final isFavorited = await ref
-        .read(favoriteEventsProvider.notifier)
-        .toggleFavorite(
-          eventId: collectionFavoriteId(collection),
-          eventName: collection.title,
-          extraMetadata: {
-            'kind': 'collection',
-            'slug': collection.slug,
-            'collectionKind': collection.kind.name,
-          },
-        );
-    unawaited(syncCollectionStar(ref, collection, isFavorited));
+  void settled(bool isFavorited) {
+    unawaited(
+      container
+          .read(collectionEngagementProvider)
+          .setStar(collection.slug, isFavorited),
+    );
     AnalyticsService.instance.trackEventDetached(
       'Collection Favorite Toggled',
       properties: {
@@ -322,9 +340,50 @@ Future<void> toggleCollectionFavorite({
         'is_favorited': isFavorited,
       },
     );
-  } catch (e) {
-    debugPrint('[CollectionCard] Error toggling favorite: $e');
   }
+
+  if (saved != null) {
+    try {
+      await notifier.removeFavorite(saved.eventId);
+      settled(false);
+    } catch (e) {
+      debugPrint('[CollectionCard] Error removing favorite: $e');
+    }
+    return;
+  }
+
+  final eventId = collectionFavoriteId(collection);
+  final added = notifier
+      .addFavorite(
+        eventId: eventId,
+        eventName: collection.title,
+        extraMetadata: {
+          'kind': 'collection',
+          'slug': collection.slug,
+          'collectionKind': collection.kind.name,
+        },
+      )
+      .then(
+        (_) => true,
+        onError: (Object e) {
+          debugPrint('[CollectionCard] Error adding favorite: $e');
+          return false;
+        },
+      );
+
+  final wantsAlerts = await askStarNotifications(
+    context,
+    message: 'Get an alert when new games are added to ${collection.title}.',
+  );
+  if (!await added) return;
+  settled(true);
+  await setStarNotifications(
+    container: container,
+    messenger: messenger,
+    eventId: eventId,
+    enabled: wantsAlerts,
+    surface: 'collection',
+  );
 }
 
 /// [c] as a My Space shortcut: it sits with the databases and opens the
@@ -491,6 +550,21 @@ class CollectionCard extends ConsumerWidget {
           label: 'Open',
           onSelected: open,
         ),
+        if (buildCollectionShareUrl(c.slug) != null)
+          LibraryMenuAction(
+            icon: Icons.ios_share_rounded,
+            label: 'Share',
+            onSelected: () => shareCollection(context, c),
+          ),
+        starNotificationsMenuAction(
+          context: menuContext,
+          favorite: collectionFavorite(
+            ref.read(favoriteEventsProvider).valueOrNull ??
+                const <FavoriteEvent>[],
+            c,
+          ),
+          surface: 'collection',
+        ),
         spaceMenuAction(
           context: menuContext,
           ref: ref,
@@ -528,11 +602,8 @@ class _CollectionStar extends ConsumerWidget {
           ? 'Unstar ${collection.title}'
           : 'Star ${collection.title}',
       child: InkWell(
-        onTap: () => toggleCollectionFavorite(
-          context: context,
-          ref: ref,
-          collection: collection,
-        ),
+        onTap: () =>
+            toggleCollectionFavorite(context: context, collection: collection),
         child: collection.kind == CollectionKind.book
             ? SizedBox(
                 width: 48,
@@ -969,6 +1040,12 @@ class _CollectionScreenState extends ConsumerState<CollectionScreen> {
                 showLibraryContextMenu(
                   context: menuContext,
                   actions: [
+                    if (buildCollectionShareUrl(c.slug) != null)
+                      LibraryMenuAction(
+                        icon: Icons.ios_share_rounded,
+                        label: 'Share',
+                        onSelected: () => shareCollection(menuContext, c),
+                      ),
                     LibraryMenuAction(
                       icon: starred
                           ? Icons.star_rounded
@@ -976,9 +1053,17 @@ class _CollectionScreenState extends ConsumerState<CollectionScreen> {
                       label: starred ? 'Unstar' : 'Star',
                       onSelected: () => toggleCollectionFavorite(
                         context: context,
-                        ref: ref,
                         collection: c,
                       ),
+                    ),
+                    starNotificationsMenuAction(
+                      context: context,
+                      favorite: collectionFavorite(
+                        ref.read(favoriteEventsProvider).valueOrNull ??
+                            const <FavoriteEvent>[],
+                        c,
+                      ),
+                      surface: 'collection',
                     ),
                     spaceMenuAction(
                       context: menuContext,

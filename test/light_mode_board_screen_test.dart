@@ -29,6 +29,8 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'support/contrast_audit.dart';
 
+import 'support/board_feature_teaching_store.dart';
+
 /// The live board screen in light mode, audited as the user sees it: every
 /// text run and icon glyph against the surface it is painted on, then the
 /// game switcher opened and audited the same way.
@@ -67,6 +69,9 @@ void main() {
 
     final container = ProviderContainer(
       overrides: [
+        boardFeatureTeachingTrackerProvider.overrideWith(
+          (_) => BoardFeatureTeachingTracker(QuietBoardTeachingStore()),
+        ),
         effectiveCountryProvider.overrideWithValue(const AsyncValue.loading()),
         gamesLocalStorage.overrideWith(
           (ref) => _FullCacheGamesLocalStorage(ref, {'tour-1': raws}),
@@ -115,12 +120,15 @@ void main() {
       await tester.pump(const Duration(milliseconds: 100));
     }
 
-    // The hint's scrim is a sibling layer, which this ancestor-based audit
-    // cannot composite. Its interaction is covered by the coachmark test.
-    final dismissHint = find.byTooltip('Dismiss pinch hint');
+    // The pinch coachmark's scrim is a sibling layer, which this
+    // ancestor-based audit cannot composite, and it covers the board until
+    // it is dismissed. Its interaction is covered by the coachmark test.
+    final dismissHint = find.text('Got it');
     if (dismissHint.evaluate().isNotEmpty) {
       await tester.tap(dismissHint);
-      await tester.pump(const Duration(milliseconds: 300));
+      for (var i = 0; i < 6; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
     }
     expect(find.textContaining('game-0'), findsWidgets);
     expectNoContrastMisses(

@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:chessever2/repository/supabase/calendar_event/calendar_event.dart';
 import 'package:chessever2/repository/supabase/calendar_event/calendar_event_repository.dart';
+import 'package:chessever2/repository/supabase/fetch_all_pages.dart';
 import 'package:chessever2/repository/supabase/group_broadcast/group_broadcast.dart';
 import 'package:chessever2/repository/supabase/group_broadcast/group_tour_repository.dart';
 import 'package:chessever2/screens/calendar/provider/calendar_detail_screen_provider.dart';
@@ -11,10 +12,6 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 /// the sidebar, or paging back to a month just seen, reuses the rows instead
 /// of asking again.
 const calendarMonthCacheTtl = Duration(minutes: 5);
-
-/// Rows asked for per request while reading a whole month. Matches the
-/// PostgREST `max-rows` cap, so a full page always means there may be more.
-const calendarMonthPageSize = 1000;
 
 /// Every event row that overlaps one calendar month, unfiltered.
 ///
@@ -62,22 +59,22 @@ final calendarMonthEventsProvider = FutureProvider.autoDispose
         final broadcastRepo = ref.read(groupBroadcastRepositoryProvider);
         final calendarRepo = ref.read(calendarEventRepositoryProvider);
         final rows = await Future.wait<Object>([
-          fetchCalendarMonthPages<GroupBroadcast>(
-            (offset) => broadcastRepo.getCurrentMonthGroupBroadcasts(
+          fetchAllPages<GroupBroadcast>(
+            (offset, limit) => broadcastRepo.getCurrentMonthGroupBroadcasts(
               selectedMonth: args.month,
               selectedYear: args.year,
-              limit: calendarMonthPageSize,
+              limit: limit,
               offset: offset,
             ),
             keyOf: (b) => b.id,
           ),
           // Ordered by `name`, the table's unique key, so offset paging is
           // stable; every consumer sorts the rows itself.
-          fetchCalendarMonthPages<CalendarEvent>(
-            (offset) => calendarRepo.getCalendarEventsForMonth(
+          fetchAllPages<CalendarEvent>(
+            (offset, limit) => calendarRepo.getCalendarEventsForMonth(
               selectedMonth: args.month,
               selectedYear: args.year,
-              limit: calendarMonthPageSize,
+              limit: limit,
               offset: offset,
               orderBy: 'name',
               ascending: true,
@@ -97,26 +94,6 @@ final calendarMonthEventsProvider = FutureProvider.autoDispose
         rethrow;
       }
     });
-
-/// Reads pages of [pageSize] from [fetchPage] until one comes back short,
-/// and returns every row once. A row inserted mid-read can shift the next
-/// page by one, so rows already seen (by [keyOf]) are dropped.
-Future<List<T>> fetchCalendarMonthPages<T>(
-  Future<List<T>> Function(int offset) fetchPage, {
-  required Object Function(T row) keyOf,
-  int pageSize = calendarMonthPageSize,
-}) async {
-  final rows = <Object, T>{};
-  var offset = 0;
-  while (true) {
-    final page = await fetchPage(offset);
-    for (final row in page) {
-      rows.putIfAbsent(keyOf(row), () => row);
-    }
-    if (page.length < pageSize) return rows.values.toList(growable: false);
-    offset += page.length;
-  }
-}
 
 /// The local calendar day [value] falls on. Event cards print their dates
 /// through `toLocal()`, so a day mark and the card it leads to agree.

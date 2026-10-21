@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:chessever2/providers/favorite_events_provider.dart';
 import 'package:chessever2/repository/favorites/models/favorite_event.dart';
@@ -417,13 +418,6 @@ class SmartEventRequest {
 
   String get scopeId => criteriaKey;
 
-  /// Source- and event-independent key for hiding the generated smart card.
-  ///
-  /// The For You and Current tabs build separate [SmartEventRequest] instances
-  /// from the same applied filters. Dismissing the card should therefore apply
-  /// to the filter configuration, not to one tab's source or current event set.
-  String get cardDismissKey => 'smart_event_card:$criteriaKey';
-
   /// The same request carrying a different (freshly resolved) event set.
   SmartEventRequest withEvents(List<GroupEventCardModel> newEvents) {
     return SmartEventRequest(
@@ -504,7 +498,9 @@ class SmartEventRequest {
       'minElo': minElo,
       'maxElo': maxElo,
       'caption': caption,
-      'notificationsEnabled': false,
+      // Starring a smart event subscribes to its evening "new games" push and
+      // unstarring is the opt-out: there is no separate switch.
+      'notificationsEnabled': true,
       'countSingular': countSingular,
       'countPlural': countPlural,
       'formatsAndStates': (formatsAndStates.toList(growable: false)..sort()),
@@ -701,8 +697,8 @@ class SmartEventCardData {
 }
 
 /// The Smart Event a set of Events filters describes, named and captioned
-/// exactly as the Events screens' generated card names it, with no events
-/// attached (members resolve from the criteria when it opens). Null when no
+/// by [SmartEventCardData.fromState], with no events attached (members
+/// resolve from the criteria when it opens). Null when no
 /// filter is set. Every path that turns filters into a Smart Event goes
 /// through here, so none of them can drift.
 SmartEventRequest? smartEventRequestFromFilterState(FilterPopupState filter) {
@@ -723,19 +719,6 @@ SmartEventRequest? smartEventRequestFromFilterState(FilterPopupState filter) {
     events: const [placeholder],
     source: SmartEventSource.forYou,
   )?.request.withEvents(const []);
-}
-
-final dismissedSmartEventCardKeysProvider = StateProvider<Set<String>>(
-  (ref) => const <String>{},
-);
-
-SmartEventCardData? visibleSmartEventCardData(
-  SmartEventCardData? data,
-  Set<String> dismissedKeys,
-) {
-  if (data == null) return null;
-  if (dismissedKeys.contains(data.request.cardDismissKey)) return null;
-  return data;
 }
 
 /// Shared by card generation and tier re-keying so both produce identical
@@ -1123,6 +1106,67 @@ List<SmartEventGameGroup> groupSmartEventGames({
   return groups;
 }
 
+/// The smart event a four-hour "new games" push was sent for (push data
+/// `type: smart_event_games`): the reader's own saved row when [favorites]
+/// holds it, otherwise one rebuilt from the criteria the push carries, so a
+/// smart event unstarred since the push still opens. Null when [data] names
+/// no smart event.
+SmartEventRequest? smartEventRequestFromPushData(
+  Map<String, dynamic> data, {
+  Iterable<FavoriteEvent> favorites = const [],
+}) {
+  final id = data['smart_event_id']?.toString().trim() ?? '';
+  if (!id.startsWith('smart_event:')) return null;
+  for (final favorite in favorites) {
+    if (favorite.eventId == id) {
+      return SmartEventRequest.fromFavoriteEvent(favorite);
+    }
+  }
+  // FCM carries strings only: the formats arrive as "blitz,live" (or JSON
+  // text), a missing value as "null". OneSignal keeps the JSON as sent.
+  String text(Object? value) {
+    final string = value?.toString().trim() ?? '';
+    return string == 'null' ? '' : string;
+  }
+
+  List<Object?> list(Object? raw) {
+    if (raw is List) return raw;
+    final string = text(raw);
+    if (!string.startsWith('[')) return string.split(',');
+    try {
+      final decoded = jsonDecode(string);
+      return decoded is List ? decoded : const [];
+    } on FormatException {
+      return const [];
+    }
+  }
+
+  final formats = [
+    for (final value in list(data['formats'])) text(value),
+  ]..removeWhere((value) => value.isEmpty);
+  final ecoCode = text(data['eco_code']);
+  final label = text(data['label']);
+  final now = DateTime.now();
+  return SmartEventRequest.fromFavoriteEvent(
+    FavoriteEvent(
+      id: id,
+      userId: '',
+      eventId: id,
+      eventName: text(data['smart_event_name']),
+      metadata: {
+        'type': 'smart_event',
+        'minElo': text(data['min_elo']),
+        'maxElo': text(data['max_elo']),
+        'formatsAndStates': formats,
+        if (ecoCode.isNotEmpty) 'ecoCode': ecoCode,
+        if (label.isNotEmpty) 'tierLabel': label,
+      },
+      createdAt: now,
+      updatedAt: now,
+    ),
+  );
+}
+
 /// The saved favorite (if any) whose smart event matches [criteriaKey]
 /// ([SmartEventRequest.criteriaKey]). Matching parses each smart favorite and
 /// compares criteria — never row eventIds — so legacy v1 rows (whose ids
@@ -1204,12 +1248,7 @@ Future<void> refreshSavedSmartEventSnapshot({
           eventId: fresh.favoriteEventId,
           eventName: fresh.displayName,
           maxAvgElo: fresh.minElo > 0 ? fresh.minElo : null,
-          extraMetadata: {
-            ...fresh.toFavoriteMetadata(),
-            // Carry user-owned flags the rebuild would otherwise reset.
-            'notificationsEnabled':
-                favorite.metadata['notificationsEnabled'] ?? false,
-          },
+          extraMetadata: fresh.toFavoriteMetadata(),
         );
       }
       return;

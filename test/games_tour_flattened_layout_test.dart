@@ -8,53 +8,38 @@ import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_s
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  group('selectGroupEventDisplayRounds', () {
-    test('keeps played boards whose canonical round is still upcoming', () {
-      final staleUpcoming = _round(
-        'round-1',
-        RoundStatus.upcoming,
-        startsAt: DateTime(2026, 9, 19),
-      );
-
-      final visible = selectGroupEventDisplayRounds(
-        rounds: [staleUpcoming],
-        gamesByRound: {
-          staleUpcoming.id: [_game('finished-board', status: GameStatus.draw)],
-        },
-        upcomingPairingRoundIds: const {},
-      );
-
-      expect(visible.map((round) => round.id), [staleUpcoming.id]);
-    });
-
-    test('keeps pairing-only rounds hidden until selected', () {
-      final pairingRound = _round('round-2', RoundStatus.upcoming);
-      final gamesByRound = {
-        pairingRound.id: [_game('future-pairing')],
-      };
-
-      expect(
-        selectGroupEventDisplayRounds(
-          rounds: [pairingRound],
-          gamesByRound: gamesByRound,
-          upcomingPairingRoundIds: {pairingRound.id},
-        ),
-        isEmpty,
-      );
-      expect(
-        selectGroupEventDisplayRounds(
-          rounds: [pairingRound],
-          gamesByRound: gamesByRound,
-          upcomingPairingRoundIds: {pairingRound.id},
-          selectedRoundId: pairingRound.id,
-          userSelected: true,
-        ).map((round) => round.id),
-        [pairingRound.id],
-      );
-    });
-  });
-
   group('selectGamesTourDisplayRounds', () {
+    // Team events render this same list (European Club Cup 2026-10-20: the
+    // live round stayed hidden until its first move).
+    test('leads with a live round whose boards have no moves yet', () {
+      final now = DateTime(2026, 10, 20, 15);
+      final played = _round(
+        'r3',
+        RoundStatus.completed,
+        startsAt: now.subtract(const Duration(days: 1)),
+      );
+      final live = _round(
+        'r4',
+        RoundStatus.live,
+        startsAt: now.subtract(const Duration(minutes: 5)),
+      );
+
+      final visible = selectGamesTourDisplayRounds(
+        rounds: [played, live],
+        effectiveRounds: [played, live],
+        gamesByRound: {
+          played.id: [_game('finished', status: GameStatus.draw)],
+          live.id: [_game('waiting-board')],
+        },
+        upcomingPairingRoundIds: {live.id},
+        isSearchMode: false,
+        isMultiStageKnockout: false,
+        now: now,
+      );
+
+      expect(visible.map((round) => round.id), ['r4', 'r3']);
+    });
+
     test('puts a populated synthetic semifinal above quarterfinals', () {
       final now = DateTime(2026, 8, 13, 19, 31);
       final quarterfinals = _round(

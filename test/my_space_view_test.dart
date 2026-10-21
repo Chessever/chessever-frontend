@@ -26,6 +26,8 @@ import 'package:chessever2/screens/my_space/providers/space_home_card_size_provi
 import 'package:chessever2/screens/my_space/providers/space_edit_mode_provider.dart';
 import 'package:chessever2/screens/collections/collections_data.dart'
     show collectionsProvider;
+import 'package:chessever2/screens/collections/collections_screen.dart'
+    show CollectionCard;
 import 'package:chessever2/screens/my_space/providers/space_hub_providers.dart';
 import 'package:chessever2/screens/my_space/providers/space_game_card_provider.dart'
     show spaceGameCardProvider;
@@ -73,6 +75,8 @@ import 'package:chessever2/screens/my_space/widgets/space_edit_tutorial.dart';
 import 'package:chessever2/screens/chessboard/widgets/switch_views_tutorial_overlay.dart'
     show TutorialStepIndicator;
 import 'package:chessever2/widgets/event_card/smart_event_card.dart';
+import 'package:chessever2/widgets/event_card/smart_event_star.dart'
+    show SmartEventStar;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show RenderParagraph;
 import 'package:flutter_test/flutter_test.dart';
@@ -636,6 +640,13 @@ List<String> _groupTitles(WidgetTester tester) => [
 ];
 
 /// Lets Edit's springs (the lane, a check, a lifted card landing) run out.
+/// Flips a home card's size as its item offers it.
+void _resizeHomeCard(WidgetTester tester, String key) => tester
+    .widget<SpaceEditGrid>(find.byType(SpaceEditGrid))
+    .items
+    .singleWhere((item) => item.key == key)
+    .onResize!();
+
 Future<void> _settleEdit(WidgetTester tester) async {
   for (var i = 0; i < 12; i++) {
     await tester.pump(const Duration(milliseconds: 60));
@@ -767,7 +778,7 @@ void main() {
 
     await _openHomeEdit(tester);
     // The page's own cards stay, movable but never selectable.
-    expect(find.text('My Prep'), findsOneWidget);
+    expect(find.text('Prep'), findsOneWidget);
     expect(find.byType(SpaceEditCheck), findsNothing);
     // Edit adds no controls of its own: the add button turns into its save.
     expect(find.byKey(const ValueKey<String>('space_edit_done')), findsNothing);
@@ -780,9 +791,12 @@ void main() {
     await _saveHomeEdit(tester);
     expect(_fabSave, findsNothing);
     expect(find.bySemanticsLabel(SpaceAddFab.label), findsOneWidget);
-    expect(find.text('My Likes'), findsOneWidget);
-    expect(find.text('My Prep'), findsOneWidget);
-    expect(find.text(kMyDatabaseEmptyText), findsOneWidget);
+    expect(find.text('Likes'), findsOneWidget);
+    expect(find.text('Prep'), findsOneWidget);
+    expect(
+      find.text('Add a database or build a smart event using +.'),
+      findsNothing,
+    );
     expect(tester.takeException(), isNull);
     await _drain(tester);
   });
@@ -1222,6 +1236,32 @@ void main() {
         findsNothing,
       );
     }
+    // The drag handle always occupies the top-left corner. A selection
+    // circle, when the card has one, sits in the slot to its right.
+    for (final (key, card) in <(String, Finder)>[
+      (kSpaceHomeMyPrep, cards[0]),
+      (kSpaceHomeLibrary, cards[1]),
+      (kSpaceHomeLikes, cards[2]),
+      (a.key, cards[3]),
+      (smart.key, cards[4]),
+    ]) {
+      final grip = tester.getRect(
+        find.byKey(ValueKey<String>('space_edit_grip_$key')),
+      );
+      final host = tester.getRect(card);
+      expect(grip.left - host.left, lessThan(host.width / 4), reason: key);
+      expect(grip.top - host.top, lessThan(host.height / 4), reason: key);
+    }
+    final savedGrip = tester.getRect(
+      find.byKey(ValueKey<String>('space_edit_grip_${a.key}')),
+    );
+    final savedCheck = tester.getRect(
+      find.byKey(ValueKey<String>('space_edit_check_${a.key}')),
+    );
+    final savedHost = tester.getRect(cards[3]);
+    expect(savedGrip.left - savedHost.left, lessThan(savedHost.width / 4));
+    expect(savedGrip.right, lessThanOrEqualTo(savedCheck.left));
+    expect(savedGrip.top, closeTo(savedCheck.top, 0.5));
     // A tap on one of the page's own cards neither selects nor opens it.
     await tester.tap(cards[0]);
     await _settleEdit(tester);
@@ -1382,14 +1422,17 @@ void main() {
       b.key,
       smart.key,
     ]) {
-      final resize = find.byKey(ValueKey('space_edit_resize_$key'));
-      expect(resize, findsOneWidget, reason: key);
+      expect(
+        find.byKey(ValueKey('space_edit_grip_$key')),
+        findsOneWidget,
+        reason: key,
+      );
       final initial = tester
           .widget<SpaceEditGrid>(find.byType(SpaceEditGrid))
           .items
           .singleWhere((item) => item.key == key)
           .wide;
-      await tester.tap(resize);
+      _resizeHomeCard(tester, key);
       await _settleEdit(tester);
       expect(
         tester
@@ -1400,12 +1443,12 @@ void main() {
         !initial,
       );
       expect(_selectedKeys(tester), isEmpty);
-      await tester.tap(resize);
+      _resizeHomeCard(tester, key);
       await _settleEdit(tester);
     }
     // Two saved cards can occupy one row with readable, reflowed content.
     for (final key in [a.key, b.key]) {
-      await tester.tap(find.byKey(ValueKey('space_edit_resize_$key')));
+      _resizeHomeCard(tester, key);
       await _settleEdit(tester);
     }
     final rowA = find.ancestor(
@@ -1508,19 +1551,7 @@ void main() {
         expect(find.text(event.title), findsOneWidget);
         expect(find.text(collection.title), findsOneWidget);
         for (final pin in pins) {
-          final resize = find.byKey(ValueKey('space_edit_resize_${pin.key}'));
-          await tester.ensureVisible(resize);
-          final label = tester.renderObject<RenderParagraph>(
-            find.descendant(of: resize, matching: find.byType(Text)).first,
-          );
-          expect(
-            label.size.height,
-            greaterThanOrEqualTo(
-              label.getMaxIntrinsicHeight(label.size.width) - 0.01,
-            ),
-            reason: 'The size label must remain whole',
-          );
-          await tester.tap(resize);
+          _resizeHomeCard(tester, pin.key);
           await _settleEdit(tester);
           final changed = tester.widget<SpaceEditGrid>(
             find.byType(SpaceEditGrid),
@@ -1549,15 +1580,18 @@ void main() {
         ),
       ],
     );
-    expect(find.text('My Prep'), findsOneWidget);
+    expect(find.text('Prep'), findsOneWidget);
     expect(find.text('Library'), findsOneWidget);
-    expect(find.text('My Likes'), findsOneWidget);
+    expect(find.text('Likes'), findsOneWidget);
     expect(find.text('No likes yet'), findsOneWidget);
     expect(
       find.byKey(const ValueKey<String>('my_space_likes_card')),
       findsOneWidget,
     );
-    expect(find.text(kMyDatabaseEmptyText), findsOneWidget);
+    expect(
+      find.text('Add a database or build a smart event using +.'),
+      findsNothing,
+    );
     expect(find.byType(EventCard), findsNothing);
     expect(find.byType(SpaceSaveToggle), findsNothing);
     expect(find.text('Build smart event'), findsNothing);
@@ -1754,7 +1788,10 @@ void main() {
     );
     expect(_groupTitles(tester), isEmpty);
     expect(find.text('Carlsen'), findsNothing);
-    expect(find.text(kMyDatabaseEmptyText), findsOneWidget);
+    expect(
+      find.text('Add a database or build a smart event using +.'),
+      findsNothing,
+    );
     expect(find.byType(SpaceSaveToggle), findsNothing);
     await store.add(_folder);
     for (var i = 0; i < 6; i++) {
@@ -1762,7 +1799,10 @@ void main() {
     }
     expect(_groupTitles(tester), isEmpty);
     expect(find.text('Najdorf prep'), findsOneWidget);
-    expect(find.text(kMyDatabaseEmptyText), findsNothing);
+    expect(
+      find.text('Add a database or build a smart event using +.'),
+      findsNothing,
+    );
     expect(find.byType(SpaceSaveToggle), findsNothing);
     expect(tester.takeException(), isNull);
     await _drain(tester);
@@ -2888,8 +2928,8 @@ void main() {
     await _drain(tester);
   });
 
-  testWidgets('in Edit the cards draw none of their own controls: no star on '
-      'an event, no chevron on a saved row', (tester) async {
+  testWidgets('My Space events never show favorite stars, and Edit hides '
+      'the open chevrons on events and saved rows', (tester) async {
     final seed = [
       _pin(eventSpaceDraft(_feed[0]), 'e0', 20),
       _pin(eventSpaceDraft(_feed[1]), 'e1', 19),
@@ -2904,10 +2944,12 @@ void main() {
     );
 
     await _openSeeAll(tester, seed, SpaceSection.events);
-    expect(stars(), findsNWidgets(2));
+    expect(stars(), findsNothing);
+    expect(chevrons(), findsNWidgets(2));
     await tester.tap(find.byKey(const ValueKey<String>('space_edit')));
     await _settleEdit(tester);
     expect(stars(), findsNothing);
+    expect(chevrons(), findsNothing);
     await _drain(tester);
 
     await _openSeeAll(tester, seed, SpaceSection.library);
@@ -2915,6 +2957,78 @@ void main() {
     await tester.tap(find.byKey(const ValueKey<String>('space_edit')));
     await _settleEdit(tester);
     expect(chevrons(), findsNothing);
+    expect(tester.takeException(), isNull);
+    await _drain(tester);
+  });
+
+  testWidgets('a My Space smart event ends in its own star, not the chevron, '
+      'on the home and its See all; Edit hides it (Trello #1225)', (
+    tester,
+  ) async {
+    final smart = _pin(_smartDraft(2700), 'se1', 1);
+    final collection = _pin(
+      SpaceShortcut.draft(
+        kind: SpaceShortcutKind.collection,
+        targetId: 'c',
+        title: 'Annotated games',
+        params: {
+          'slug': 'annotated-games',
+          'collectionKind': 'event',
+          'gameCount': 12,
+        },
+      ),
+      'c',
+      2,
+    );
+    final seed = [smart];
+    Finder chevrons(Finder of) => find.descendant(
+      of: of,
+      matching: find.byIcon(Icons.chevron_right_rounded),
+    );
+    final card = find.byKey(ValueKey<String>('space_smart_${smart.key}'));
+
+    await _pumpSpace(
+      tester,
+      [smart, collection],
+      extra: [
+        _noSmartMembers,
+        collectionsProvider.overrideWith((ref) async => []),
+      ],
+    );
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(
+      find.descendant(of: card, matching: find.byType(SmartEventStar)),
+      findsOneWidget,
+    );
+    expect(chevrons(card), findsNothing);
+    // A collection already wore its own star in My Space; it still does.
+    expect(
+      find.descendant(
+        of: find.byType(CollectionCard),
+        matching: find.byWidgetPredicate(
+          (w) => w.runtimeType.toString() == '_CollectionStar',
+        ),
+      ),
+      findsOneWidget,
+    );
+    await _drain(tester);
+
+    await _openSeeAll(
+      tester,
+      seed,
+      SpaceSection.smartEvents,
+      extra: [_noSmartMembers],
+    );
+    final page = find.byType(SpaceSectionScreen);
+    expect(
+      find.descendant(of: page, matching: find.byType(SmartEventStar)),
+      findsOneWidget,
+    );
+    expect(chevrons(page), findsNothing);
+    await tester.tap(find.byKey(const ValueKey<String>('space_edit')));
+    await _settleEdit(tester);
+    expect(find.byType(SmartEventStar), findsNothing);
+    expect(chevrons(page), findsNothing);
     expect(tester.takeException(), isNull);
     await _drain(tester);
   });
@@ -3043,7 +3157,10 @@ void main() {
       await tester.pump(const Duration(milliseconds: 200));
     }
     expect(find.text('Najdorf prep'), findsNothing);
-    expect(find.text(kMyDatabaseEmptyText), findsOneWidget);
+    expect(
+      find.text('Add a database or build a smart event using +.'),
+      findsNothing,
+    );
     await _drain(tester);
   });
 

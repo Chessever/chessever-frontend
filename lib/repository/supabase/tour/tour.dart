@@ -1,5 +1,8 @@
+import 'package:chessever2/repository/supabase/tour/published_tiebreak.dart';
+import 'package:chessever2/repository/supabase/tour/info64_source.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_app_bar_view_model.dart';
 import 'package:intl/intl.dart';
+import 'package:flutter/foundation.dart';
 
 class TournamentPlayer {
   final String? federation;
@@ -19,6 +22,12 @@ class TournamentPlayer {
   /// client-side). When every player in a tour has this, downstream code
   /// MUST trust the input order — see [PlayerTourScreenNotifier].
   final int? rank;
+  final List<PublishedTiebreak> tiebreaks;
+
+  /// Chess-Results starting-list number (SNo) and Club/City, published
+  /// beside the official ranking.
+  final int? startNumber;
+  final String? club;
 
   TournamentPlayer({
     this.federation,
@@ -32,6 +41,9 @@ class TournamentPlayer {
     this.performance,
     this.team,
     this.rank,
+    this.tiebreaks = const [],
+    this.startNumber,
+    this.club,
   });
 
   /// Creates a TournamentPlayer from JSON map.
@@ -46,9 +58,9 @@ class TournamentPlayer {
   /// is populated (Lichess only fills the bucket matching the tour TC).
   factory TournamentPlayer.fromJson(Map<String, dynamic> json) {
     return TournamentPlayer(
-      federation: json['fed'] as String?,
-      name: json['name'] as String? ?? '',
-      title: json['title'] as String?,
+      federation: _text(json['fed']),
+      name: _text(json['name']) ?? '',
+      title: _text(json['title']),
       fideId: _parseInt(json['fideId']),
       played: _parseInt(json['played']) ?? 0,
       rating: _parseInt(json['rating']),
@@ -57,8 +69,11 @@ class TournamentPlayer {
       score: _parseScore(json['score']), // Handle both int and double
       performance:
           _parseInt(json['performance']) ?? _firstNumber(json['performances']),
-      team: json['team'] as String?,
+      team: _text(json['team']),
       rank: _parseInt(json['rank']),
+      tiebreaks: PublishedTiebreak.parse(json['tiebreaks']),
+      startNumber: _parseInt(json['startNumber']),
+      club: _text(json['club']),
     );
   }
 
@@ -102,6 +117,11 @@ class TournamentPlayer {
     if (performance != null) data['performance'] = performance;
     if (team != null) data['team'] = team;
     if (rank != null) data['rank'] = rank;
+    if (tiebreaks.isNotEmpty) {
+      data['tiebreaks'] = tiebreaks.map((t) => t.toJson()).toList();
+    }
+    if (startNumber != null) data['startNumber'] = startNumber;
+    if (club != null) data['club'] = club;
 
     return data;
   }
@@ -197,7 +217,11 @@ class TournamentPlayer {
         other.ratingDiff == ratingDiff &&
         other.score == score &&
         other.performance == performance &&
-        other.rank == rank;
+        other.rank == rank &&
+        other.team == team &&
+        other.startNumber == startNumber &&
+        other.club == club &&
+        PublishedTiebreak.same(other.tiebreaks, tiebreaks);
   }
 
   @override
@@ -212,7 +236,10 @@ class TournamentPlayer {
         score.hashCode ^
         performance.hashCode ^
         team.hashCode ^
-        rank.hashCode;
+        rank.hashCode ^
+        startNumber.hashCode ^
+        club.hashCode ^
+        Object.hashAll(tiebreaks);
   }
 
   /// Creates a copy of this player with updated fields
@@ -228,6 +255,9 @@ class TournamentPlayer {
     int? performance,
     String? team,
     int? rank,
+    List<PublishedTiebreak>? tiebreaks,
+    int? startNumber,
+    String? club,
   }) {
     return TournamentPlayer(
       federation: federation ?? this.federation,
@@ -241,6 +271,9 @@ class TournamentPlayer {
       performance: performance ?? this.performance,
       team: team ?? this.team,
       rank: rank ?? this.rank,
+      tiebreaks: tiebreaks ?? this.tiebreaks,
+      startNumber: startNumber ?? this.startNumber,
+      club: club ?? this.club,
     );
   }
 }
@@ -249,9 +282,17 @@ class TournamentPlayer {
 
 /// Parses a list of tournament players from JSON
 List<TournamentPlayer> parsePlayersFromJson(List<dynamic> jsonList) {
-  return jsonList
-      .map((json) => TournamentPlayer.fromJson(json as Map<String, dynamic>))
-      .toList();
+  return [
+    for (final json in jsonList)
+      if (json is Map)
+        TournamentPlayer.fromJson(Map<String, dynamic>.from(json)),
+  ];
+}
+
+String? _text(dynamic value) {
+  if (value is String) return value;
+  if (value is num) return value.toString();
+  return null;
 }
 
 int? _parseInt(dynamic value) {
@@ -335,6 +376,111 @@ List<TournamentPlayer> sortByPerformance(List<TournamentPlayer> players) {
   return sorted;
 }
 
+/// Independently ranked organizer section. Its rank is local to this table.
+class OfficialPlayerSection {
+  const OfficialPlayerSection({
+    required this.id,
+    required this.name,
+    required this.sourceUrl,
+    required this.players,
+  });
+  final String id;
+  final String name;
+  final String sourceUrl;
+  final List<TournamentPlayer> players;
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'name': name,
+    'sourceUrl': sourceUrl,
+    'players': players.map((p) => p.toJson()).toList(),
+  };
+
+  static List<OfficialPlayerSection> parse(dynamic raw, String? standingsUrl) {
+    if (raw is! Map ||
+        raw['source'] != 'chess-results' ||
+        raw['sourceUrl'] != standingsUrl ||
+        DateTime.tryParse('${raw['fetchedAt']}') == null) {
+      return const [];
+    }
+    final sections = raw['sections'];
+    if (sections is! List || sections.length < 2 || sections.length > 32) {
+      return const [];
+    }
+    final ids = <String>{};
+    final result = <OfficialPlayerSection>[];
+    for (final section in sections) {
+      if (section is! Map ||
+          section['id'] is! String ||
+          section['name'] is! String ||
+          section['sourceUrl'] is! String ||
+          section['players'] is! List) {
+        return const [];
+      }
+      final id = section['id'] as String;
+      final name = section['name'] as String;
+      final url = section['sourceUrl'] as String;
+      final uri = Uri.tryParse(url);
+      if (name.trim().isEmpty ||
+          !ids.add(id) ||
+          uri == null ||
+          uri.scheme != 'https' ||
+          !(uri.host == 'chess-results.com' ||
+              RegExp(r'^s\d+\.chess-results\.com$').hasMatch(uri.host)) ||
+          uri.path != '/tnr$id.aspx') {
+        return const [];
+      }
+      final players = <TournamentPlayer>[];
+      // An official section owns its ranks, including skipped knockout places.
+      var previousRank = 0;
+      final identities = <String>{};
+      for (final row in section['players'] as List) {
+        if (row is! Map ||
+            row['name'] is! String ||
+            (row['name'] as String).trim().isEmpty ||
+            row['rank'] is! int ||
+            row['score'] is! num ||
+            row['played'] is! int) {
+          return const [];
+        }
+        final rank = row['rank'] as int;
+        if (rank < 1 ||
+            rank < previousRank ||
+            (players.isEmpty && rank != 1) ||
+            rank > (section['players'] as List).length ||
+            !(row['score'] as num).isFinite ||
+            (row['score'] as num) < 0 ||
+            (row['played'] as int) < 0) {
+          return const [];
+        }
+        final player = TournamentPlayer.fromJson(
+          Map<String, dynamic>.from(row),
+        );
+        final identity = player.fideId == null
+            ? player.name.toLowerCase().trim()
+            : '${player.fideId}';
+        if (!identities.add(identity)) {
+          return const [];
+        }
+        previousRank = rank;
+        players.add(player);
+      }
+      if (players.isEmpty) {
+        return const [];
+      }
+      result.add(
+        OfficialPlayerSection(
+          id: id,
+          name: name,
+          sourceUrl: url,
+          players: List.unmodifiable(players),
+        ),
+      );
+    }
+    return List.unmodifiable(result);
+  }
+}
+
 class TourInfo {
   final String? tc; // Time control (e.g., "90 min + 30 sec / move")
   final String? fideTc; // FIDE time control category (standard, rapid, blitz)
@@ -363,6 +509,10 @@ class TourInfo {
 
   /// Complete organizer table with source, round and fetch timestamp.
   final Map<String, dynamic>? officialTeamStandings;
+  final Map<String, dynamic>? officialPlayerStandingsSections;
+
+  List<OfficialPlayerSection> get playerStandingSections =>
+      OfficialPlayerSection.parse(officialPlayerStandingsSections, standings);
 
   const TourInfo({
     this.tc,
@@ -379,25 +529,47 @@ class TourInfo {
     this.customScoring,
     this.teamScoring,
     this.officialTeamStandings,
+    this.officialPlayerStandingsSections,
   });
 
+  /// Every field is read leniently: `tours.info` is free-form JSON written by
+  /// several tools, and one wrongly-typed value (e.g. `players: 171` on the
+  /// 2026 Russian Rapid/Blitz tours) must never make the whole event fail to
+  /// load. Wrong types degrade to a string or null instead of throwing.
   factory TourInfo.fromJson(Map<String, dynamic> json) {
     return TourInfo(
-      tc: json['tc'] as String?,
-      fideTc: json['fideTc'] as String?,
-      format: json['format'] as String?,
-      players: json['players'] as String?,
-      website: json['website'] as String?,
-      location: json['location'] as String?,
-      timeZone: json['timeZone'] as String?,
-      standings: json['standings'] as String?,
-      standingsSource: json['standingsSource'] as String?,
+      tc: _asText(json['tc']),
+      fideTc: _asText(json['fideTc']),
+      format: _asText(json['format']),
+      players: _asText(json['players']),
+      website: _asText(json['website']),
+      location: _asText(json['location']),
+      timeZone: _asText(json['timeZone']),
+      standings: _asText(json['standings']),
+      standingsSource: _asText(json['standingsSource']),
       standingsUpdatedAt: _parseTimestamp(json['standingsUpdatedAt']),
       teamTable: json['teamTable'] is bool ? json['teamTable'] as bool : null,
       customScoring: _asStringKeyMap(json['customScoring']),
       teamScoring: _asStringKeyMap(json['teamScoring']),
       officialTeamStandings: _asStringKeyMap(json['officialTeamStandings']),
+      officialPlayerStandingsSections: _asStringKeyMap(
+        json['officialPlayerStandingsSections'],
+      ),
     );
+  }
+
+  static String? _asText(dynamic value) {
+    if (value == null) return null;
+    if (value is String) return value;
+    if (value is num || value is bool) return value.toString();
+    if (value is List) {
+      final parts = value
+          .where((e) => e is String || e is num)
+          .map((e) => e.toString())
+          .toList();
+      return parts.isEmpty ? null : parts.join(', ');
+    }
+    return null;
   }
 
   static Map<String, dynamic>? _asStringKeyMap(dynamic value) {
@@ -429,6 +601,8 @@ class TourInfo {
       if (teamScoring != null) 'teamScoring': teamScoring,
       if (officialTeamStandings != null)
         'officialTeamStandings': officialTeamStandings,
+      if (officialPlayerStandingsSections != null)
+        'officialPlayerStandingsSections': officialPlayerStandingsSections,
     };
   }
 
@@ -521,20 +695,53 @@ class Tour {
       id: json['id'] as String,
       name: json['name'] as String,
       slug: json['slug'] as String,
-      info: TourInfo.fromJson(json['info'] as Map<String, dynamic>),
-      createdAt: DateTime.parse(json['created_at'] as String),
-      url: json['url'] as String,
+      info: TourInfo.fromJson(
+        TourInfo._asStringKeyMap(json['info']) ?? const <String, dynamic>{},
+      ),
+      createdAt:
+          DateTime.tryParse(json['created_at']?.toString() ?? '') ??
+          DateTime.fromMillisecondsSinceEpoch(0),
+      url: json['url']?.toString() ?? '',
       tier: _parseInt(json['tier']) ?? 0,
-      dates:
-          (json['dates'] as List)
-              .map((date) => DateTime.parse(date as String))
-              .toList(),
-      image: json['image'] as String?,
+      dates: [
+        for (final date in json['dates'] is List ? json['dates'] as List : [])
+          ?DateTime.tryParse(date?.toString() ?? ''),
+      ],
+      image: json['image'] is String ? json['image'] as String : null,
       players: parsePlayersFromJson(playersList),
-      search: (json['search'] as List?)?.map((e) => e as String).toList(),
-      groupBroadcastId: json['group_broadcast_id'] as String?,
+      search: json['search'] is List
+          ? [
+              for (final e in json['search'] as List)
+                if (e is String) e,
+            ]
+          : null,
+      groupBroadcastId: json['group_broadcast_id'] is String
+          ? json['group_broadcast_id'] as String
+          : null,
       avgElo: _parseInt(json['avg_elo']),
     );
+  }
+
+  /// Parses a PostgREST row list, skipping (and logging) any row that still
+  /// cannot be read, so one malformed tour never blanks a whole event.
+  static List<Tour> listFromJson(dynamic rows) {
+    if (rows is! List) return const [];
+    final tours = <Tour>[];
+    for (final row in rows) {
+      final tour = tryFromJson(row);
+      if (tour != null) tours.add(tour);
+    }
+    return tours;
+  }
+
+  static Tour? tryFromJson(dynamic row) {
+    if (row is! Map) return null;
+    try {
+      return Tour.fromJson(Map<String, dynamic>.from(row));
+    } catch (e, st) {
+      debugPrint('Tour.fromJson skipped ${row['id']}: $e\n$st');
+      return null;
+    }
   }
 
   Map<String, dynamic> toJson() {
@@ -561,15 +768,16 @@ class Tour {
   /// False for past tours that pre-date the data hub PR, future tours, and
   /// tours mid-round-1 where no game has finished + 20 min yet.
   bool get usesExternalStandings =>
-      info.standingsSource == 'chess-results' &&
+      (info.standingsSource == 'chess-results' ||
+          (info.standingsSource == 'info64' &&
+              info64EventUrl(info.standings) != null)) &&
       info.standingsUpdatedAt != null;
 
   /// Human-readable name of the standings source, or null when standings are
   /// computed client-side.
-  String? get standingsSourceLabel =>
-      usesExternalStandings && info.standingsSource == 'chess-results'
-          ? 'chess-results.com'
-          : null;
+  String? get standingsSourceLabel => usesExternalStandings
+      ? (info.standingsSource == 'info64' ? 'info64.org' : 'chess-results.com')
+      : null;
 
   // Format time until start
   static String timeUntilStart(List<DateTime> dates) {

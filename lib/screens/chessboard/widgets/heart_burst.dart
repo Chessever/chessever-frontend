@@ -426,8 +426,10 @@ class _FlyingHeartState extends State<FlyingHeart>
 
     // Sagitta (arc height) — large enough that the curve reads "arcsy"
     // through the whole flight, not just at the start. Big per-flight range.
+    // A flight under ~109px puts the 60px floor above the 55% ceiling and
+    // clamp() throws (CHESSEVER-1GY); the floor wins there.
     final sagitta = (_distance * (0.30 + rng.nextDouble() * 0.20))
-        .clamp(60.0, _distance * 0.55);
+        .clamp(60.0, math.max(60.0, _distance * 0.55));
 
     // Skew the control point along the chord so each flight has a distinct
     // "direction of curl". Sign biased by tap-vs-target horizontal position:

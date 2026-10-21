@@ -9,6 +9,7 @@ import 'package:chessever2/repository/supabase/game/game_repository.dart';
 import 'package:chessever2/screens/chessboard/analysis/chess_game.dart';
 import 'package:chessever2/screens/chessboard/models/like_tag.dart';
 import 'package:chessever2/screens/chessboard/utils/like_learning_prompt_tracker.dart';
+import 'package:chessever2/screens/chessboard/utils/board_feature_teaching_tracker.dart';
 import 'package:chessever2/screens/library/utils/gamebase_pgn_builder.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:flutter/foundation.dart';
@@ -294,6 +295,11 @@ class LikedGamesNotifier extends AsyncNotifier<List<SavedAnalysis>> {
             ..insert(0, displayCreated);
       state = AsyncValue.data(reconciled);
       _serverChanged();
+      unawaited(
+        ref
+            .read(boardFeatureTeachingTrackerProvider)
+            .markLearned(BoardTeachingFeature.like),
+      );
       try {
         await ref
             .read(likeLearningPromptTrackerProvider)

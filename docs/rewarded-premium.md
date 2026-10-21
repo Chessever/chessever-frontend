@@ -267,16 +267,15 @@ With ten saved games, a new single or bulk save must request a subscription.
 
 ## Feed scrolling
 
-Free viewers can open Feed and view its first post. Swiping or tapping Next
-shows the Watch ad / Upgrade chooser before revealing subsequent posts.
-Dismissal returns to the first post; confirmed paid or rewarded access continues
-to the next post and allows scrolling. Free visits start on the first post
-rather than restoring a previously unlocked position. Expiry returns scrolling
-to the first-post allowance.
+Feed is open to every viewer: no Watch ad / Upgrade chooser stands between
+posts, and free visits restore the last post like any other. Viewers without
+a paid subscription see non-rewarded ads at positions 3, 8, 13… instead
+(see `docs/feed-ads.md`). Feed features that need Premium inside a post keep
+their own gates.
 
-Device check: swipe after the first post and dismiss the chooser; the second
-post must stay hidden. Try again and complete an ad; verify the second post
-appears and further swipes work. Also verify a subscriber never sees the gate.
+Device check: on a free account, swipe through ten posts; no chooser opens and
+ads appear at positions 3 and 8. Temporary rewarded access keeps Feed ads.
+Subscribe and verify the ad pages leave without moving the post on screen.
 
 ## Smart Events and My Likes game access
 
@@ -290,3 +289,49 @@ Device check: on a free account, tap a recent like and Smart Event games in
 list/board/grid modes, including the scorecard route. Dismiss Watch ad / Upgrade
 and verify no board opens. Complete an ad and verify the selected game opens;
 paid subscribers should bypass the popup.
+
+## Past events and PGN copying (36.8.12)
+
+Past events stay browsable in every list, but opening one requires paid or
+active rewarded access: a card on Events → Past, a past result in Search or a
+completed event in Smart Event, and past events from Countrymen, Calendar,
+Favorites, For You, My Space, collections and a player profile. Current and
+Upcoming cards open as before. Games inside a past event are gated however
+the event was reached (favourite, My Space,
+link): list, board, grid and match cards, team rounds, the knockout bracket,
+and a standings score card. Membership in `group_broadcasts_current`, the
+SQL view behind Events → Current, overrides local past dates: those events
+and their games open freely on every surface. A failed membership lookup
+does not classify an event as past. Outside Current, past detection retains
+the final-day grace period and the week-after-start fallback for unknown ends.
+Database-only events use their event metadata dates too.
+
+Mixed Games tabs in Favorites, Player Profile and For You resolve
+the tapped game's own event. A free board stays within that event so its game
+switcher cannot bypass access by crossing into a past event. Other event games
+remain visible in the source list and raise the chooser when tapped. Paid and
+rewarded viewers retain the complete navigation list. Collection content
+entitlements and bulk/save allowances keep their existing rules.
+
+Every Copy PGN requires the same access, including in debug: the board menu,
+the Explorer menu, saved and archive game menus, and an event card's Copy PGN
+(the whole event). Copy FEN is unchanged.
+
+Device check: on a free account, tap a Past card, a game inside a past event
+opened from Search, and each Copy PGN. Dismiss Watch ad / Upgrade and verify
+nothing opens or copies. Complete an ad and verify each action runs once.
+Current-view events and every one of their games must open without the popup,
+including events whose stored dates look old. Check all game-card layouts and
+try a mixed history list from a player profile, Favorites and Countrymen.
+
+## Countrymen games (37.0.19)
+
+Countrymen is a Premium feature. Its Games tab stays browsable, but opening any
+game, Current or past, in list, board or grid layout requires paid or active
+rewarded access and raises the same Watch ad / Upgrade chooser. 36.8.12 had
+narrowed this to past events only, which left Current Countrymen games free.
+Paid and rewarded viewers open directly and keep the full navigation list.
+
+Device check: on a free account, open Countrymen, tap a live and a finished
+game in each layout, dismiss the chooser and verify no board opens. Complete an
+ad and verify the game opens; a subscriber should see no popup.

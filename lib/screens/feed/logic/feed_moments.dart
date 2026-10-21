@@ -1,3 +1,4 @@
+import 'package:chessever2/repository/library/library_game_event.dart';
 import 'package:chessever2/screens/chessboard/game_review/game_analysis_report.dart'
     show GameMoveClassification;
 import 'package:chessever2/screens/chessboard/game_review/lichess_judgment.dart';
@@ -58,7 +59,8 @@ class FeedClip {
 
   final List<FeedPly> plies;
 
-  /// The PGN's `[Event]`, when it names one.
+  /// The tournament the PGN names, never a per-pairing `[Event]` label: see
+  /// [eventTitleFromPgnHeaders].
   final String? event;
 
   /// `1-0`, `0-1`, `½-½` or null when unfinished / unknown.
@@ -94,10 +96,9 @@ FeedClip? feedClipFromPgn(String pgn, {int maxHeadlines = kFlowMaxHeadlines}) {
   final game = parseFlowPgn(pgn);
   if (game == null) return null;
   final plies = buildFlowPlies(game, maxHeadlines: maxHeadlines);
-  final event = game.headers['Event']?.trim();
   return FeedClip(
     plies: plies,
-    event: event == null || event.isEmpty || event == '?' ? null : event,
+    event: eventTitleFromPgnHeaders(game.headers),
     result: game.result,
     hasEvals: game.hasEvals,
     hasReport: hasSavedGameReport(pgn),

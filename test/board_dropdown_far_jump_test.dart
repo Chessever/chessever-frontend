@@ -24,6 +24,8 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import 'support/board_feature_teaching_store.dart';
+
 void main() {
   setUpAll(() async {
     TestWidgetsFlutterBinding.ensureInitialized();
@@ -50,6 +52,9 @@ void main() {
 
     final container = ProviderContainer(
       overrides: [
+        boardFeatureTeachingTrackerProvider.overrideWith(
+          (_) => BoardFeatureTeachingTracker(QuietBoardTeachingStore()),
+        ),
           effectiveCountryProvider.overrideWithValue(const AsyncValue.loading()),
         gamesLocalStorage.overrideWith(
           (ref) => _FullCacheGamesLocalStorage(ref, {'tour-1': raws}),

@@ -165,10 +165,10 @@ void main() {
           final scrub = tester.getRect(find.byType(FeedScrubStrip));
           final actionRow = tester.getRect(find.byType(FeedActionRow));
           final counter = tester.getRect(
-            find.byKey(const ValueKey('feed_scrub_play_toggle')),
+            find.byKey(const ValueKey('feed_speed_button')),
           );
 
-          expect(header.height, 44);
+          expect(header.height, closeTo(44, 0.01));
           expect(board.width, closeTo(board.height, 0.01));
           // Surfaces share the board column; toolbar contents have their
           // own centered rhythm rather than being pinned to its edges.
@@ -217,7 +217,7 @@ void main() {
           final board = tester.getRect(
             find.byKey(const ValueKey('feed_puzzle_board')),
           );
-          expect(header.height, 44);
+          expect(header.height, closeTo(44, 0.01));
           expect(header.top, greaterThanOrEqualTo(page.top));
           expect(board.width, closeTo(board.height, 0.01));
           expect(board.top - header.bottom, lessThanOrEqualTo(36));

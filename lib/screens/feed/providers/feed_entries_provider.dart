@@ -1,8 +1,10 @@
 import 'dart:math' as math;
 
+import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
 import 'package:chessever2/screens/feed/models/feed_entry.dart';
 import 'package:chessever2/screens/feed/news/feed_news.dart';
 import 'package:chessever2/screens/feed/providers/feed_provider.dart';
+import 'package:chessever2/services/feed_ads_config.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -83,6 +85,49 @@ class FeedEntriesNotifier extends Notifier<List<FeedEntry>> {
     _frozenThrough = -1;
   }
 }
+
+/// Feed's pages: posts with ads at positions 3, 8, 13… for viewers
+/// who see ads ([feedAdsVisibleProvider]).
+/// Ads sit at fixed places among the posts, so the frozen pages keep theirs.
+final feedPagesProvider = Provider<List<FeedEntry>>((ref) {
+  final entries = ref.watch(feedEntriesProvider);
+  if (!ref.watch(feedAdsVisibleProvider)) return entries;
+  return withFeedAds(entries, withdrawn: ref.watch(feedAdWithdrawnProvider));
+});
+
+/// Platform/configuration availability, separate from subscriber eligibility.
+final feedAdsAvailableProvider = Provider<bool>(
+  (ref) => FeedAdsConfig.available,
+);
+
+/// Whether Feed shows ads between its posts: on Android and iOS, to a viewer
+/// without a paid subscription (even with temporary rewarded Premium access),
+/// once the subscription has first been checked. Later checks (a purchase,
+/// a restore) do not take the ads away while they run.
+final feedAdsVisibleProvider = NotifierProvider<FeedAdsVisibleNotifier, bool>(
+  FeedAdsVisibleNotifier.new,
+);
+
+class FeedAdsVisibleNotifier extends Notifier<bool> {
+  bool _checked = false;
+
+  @override
+  bool build() {
+    if (!ref.watch(feedAdsAvailableProvider)) return false;
+    final loading = ref.watch(
+      subscriptionProvider.select((state) => state.isLoading),
+    );
+    _checked = _checked || !loading;
+    return _checked &&
+        !ref.watch(subscriptionProvider.select((state) => state.isSubscribed));
+  }
+}
+
+/// Ad pages whose ad did not come (no fill, no consent, offline): left out
+/// of [feedPagesProvider], so Feed never stands an empty page in the way.
+final feedAdWithdrawnProvider = StateProvider<Set<String>>(
+  (ref) => const <String>{},
+);
 
 /// [news] with the articles not in [reached] first, each group in its own
 /// order (newest first), so a fresh arrangement brings articles the viewer

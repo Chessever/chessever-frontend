@@ -138,6 +138,11 @@ class FeedLayout {
 
   static const double sidePadding = 16;
 
+  /// Type size of the player rows above and below the board. They span
+  /// the board's full width, so they carry a reading size rather than a
+  /// game card's compact one; [_Rows.row] gives them the height for it.
+  static const double playerFontSize = 12;
+
   /// The eval bar / puzzle rail width on the 393pt design frame; callers
   /// pass the scaled game-card width (`20.w`).
   static const double defaultEvalWidth = 20;
@@ -274,9 +279,9 @@ class _Rows {
       // One header line in a full 44pt target, so every tappable segment in
       // it (the event, the opening) is a real target.
       math.max(44.0, line(13, 18) + 12),
-      // The game cards' player row: 10pt type in a 20pt row, grown with
-      // scale.
-      math.max(20.0, scaler.scale(10) * 1.15 + 6),
+      // The player rows: [FeedLayout.playerFontSize] type at 1.2 height,
+      // grown with scale, plus room for the clock's frame.
+      math.max(24.0, scaler.scale(FeedLayout.playerFontSize) * 1.2 + 6),
       // The move strip: 44pt transport controls, moves at 15/20.
       infoHeight ?? FeedLayout.moveStripHeightFor(scaler),
       math.max(56.0, 22 + 5 + line(12, 14) + 12),

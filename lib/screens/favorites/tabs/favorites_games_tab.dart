@@ -36,6 +36,7 @@ import 'package:chessever2/widgets/game_filter/game_filter.dart';
 import 'package:chessever2/widgets/app_snack.dart';
 import 'package:chessever2/widgets/auth/auth_upgrade_sheet.dart';
 import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
+import 'package:chessever2/widgets/paywall/past_game_access.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
@@ -1412,12 +1413,14 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
   }
 
   /// Navigate to chess board screen for the selected game.
-  void _navigateToChessBoard(
+  Future<void> _navigateToChessBoard(
     GamesTourModel game,
     List<GamesTourModel> allGames,
     int gameIndex,
-  ) {
+  ) async {
     if (!mounted) return;
+    final allowed = await ensurePastGameAccess(context, game: game);
+    if (!allowed || !mounted) return;
     ref
         .read(gameCardWrapperProvider)
         .navigateToChessBoard(
@@ -1581,7 +1584,7 @@ class _DateHeader extends StatelessWidget {
   }
 }
 
-/// Adds premium guard for navigation while allowing offscreen live streams to
+/// Checks event access for navigation while allowing offscreen live streams to
 /// auto-dispose.
 class _FavoritesLiveBoardGameCard extends ConsumerStatefulWidget {
   const _FavoritesLiveBoardGameCard({

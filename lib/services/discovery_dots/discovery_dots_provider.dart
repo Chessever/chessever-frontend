@@ -1,15 +1,18 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:chessever2/providers/auth_state_provider.dart';
 import 'package:chessever2/repository/local_storage/local_storage_repository.dart';
 import 'package:chessever2/services/discovery_dots/discovery_dot.dart';
 import 'package:chessever2/services/firebase_app.dart';
 import 'package:firebase_remote_config/firebase_remote_config.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 /// Remote Config key holding the published dots, edited from the admin
-/// console (Nudges). The value is `{"dots":[...]}`; see [parseDiscoveryDots].
+/// console (Nudges). The value is `{"dots":[...],"targeted":[...]}`; see
+/// [parseDiscoveryDots].
 const discoveryDotsConfigKey = 'discovery_dots';
 
 abstract interface class DiscoveryDotsSource {
@@ -87,6 +90,41 @@ class DiscoveryDotsSeenStore {
   }
 }
 
+/// Asks the server which targeted dots are meant for the signed-in person.
+abstract interface class DiscoveryAudienceMatcher {
+  /// [audiences] maps a dot id to its audience id; returns the dot ids that
+  /// match.
+  Future<Set<String>> match(Map<String, String> audiences);
+}
+
+/// The database looks up each audience and checks it against the caller's own
+/// account only, with the same rules as the console's Inbox and Notifications
+/// audiences.
+class SupabaseDiscoveryAudienceMatcher implements DiscoveryAudienceMatcher {
+  const SupabaseDiscoveryAudienceMatcher();
+
+  @override
+  Future<Set<String>> match(Map<String, String> audiences) async {
+    final ids = await Supabase.instance.client
+        .rpc('match_editorial_audiences', params: {'p_audiences': audiences})
+        .timeout(const Duration(seconds: 10));
+    return {
+      if (ids is List)
+        for (final id in ids)
+          if (id is String) id,
+    };
+  }
+}
+
+final discoveryAudienceMatcherProvider = Provider<DiscoveryAudienceMatcher>(
+  (ref) => const SupabaseDiscoveryAudienceMatcher(),
+);
+
+/// Whose audiences are checked: the account in use, guests included.
+final discoveryAudienceViewerProvider = Provider<String?>(
+  (ref) => ref.watch(currentUserProvider)?.id,
+);
+
 final discoveryDotsSourceProvider = Provider<DiscoveryDotsSource>(
   (ref) => FirebaseDiscoveryDotsSource(),
 );
@@ -102,6 +140,7 @@ class DiscoveryDotsState {
   DiscoveryDotsState._(this.dots, this.seen)
     : _lit = litDiscoveryAnchors(dots, seen);
 
+  /// The dots this person sees: see [visibleDiscoveryDots].
   final List<DiscoveryDot> dots;
   final Map<String, int> seen;
   final Set<String>? _lit;
@@ -122,9 +161,22 @@ class DiscoveryDotsNotifier extends Notifier<DiscoveryDotsState> {
   StreamSubscription<String>? _updates;
   bool _disposed = false;
 
+  /// Every published dot, targeted ones included.
+  List<DiscoveryDot> _all = const [];
+
+  /// Targeted dot ids the server matched for [_matchedKey]; null while unknown.
+  Set<String>? _matched;
+  String? _matchedKey;
+  int _matchRequest = 0;
+  bool _watchingViewer = false;
+
   @override
   DiscoveryDotsState build() {
     _disposed = false;
+    _all = const [];
+    _matched = null;
+    _matchedKey = null;
+    _watchingViewer = false;
     ref.onDispose(() {
       _disposed = true;
       unawaited(_updates?.cancel());
@@ -135,9 +187,59 @@ class DiscoveryDotsNotifier extends Notifier<DiscoveryDotsState> {
     );
   }
 
+  void _publish() {
+    state = DiscoveryDotsState._(
+      visibleDiscoveryDots(_all, _matched),
+      state.seen,
+    );
+  }
+
   void _apply(String raw) {
     if (_disposed) return;
-    state = DiscoveryDotsState._(parseDiscoveryDots(raw), state.seen);
+    _all = parseDiscoveryDots(raw);
+    _publish();
+    if (!_all.any((dot) => dot.targeted)) return;
+    // Only targeted dots need to know who is signed in, so nothing reads the
+    // account until one is published.
+    if (_watchingViewer) {
+      unawaited(_match(ref.read(discoveryAudienceViewerProvider)));
+      return;
+    }
+    _watchingViewer = true;
+    ref.listen<String?>(
+      discoveryAudienceViewerProvider,
+      (_, viewer) => unawaited(_match(viewer)),
+      fireImmediately: true,
+    );
+  }
+
+  /// Asks which targeted dots are for [viewer]. Until the answer arrives, and
+  /// whenever it cannot, targeted dots stay hidden.
+  Future<void> _match(String? viewer) async {
+    final audiences = {
+      for (final dot in _all)
+        if (dot.audienceId case final audienceId?) dot.id: audienceId,
+    };
+    final key = viewer == null ? null : '$viewer ${jsonEncode(audiences)}';
+    if (key != null && key == _matchedKey) return;
+    final request = ++_matchRequest;
+    _matched = null;
+    _matchedKey = null;
+    _publish();
+    if (key == null || audiences.isEmpty) return;
+    try {
+      final matched = await ref
+          .read(discoveryAudienceMatcherProvider)
+          .match(audiences);
+      if (_disposed || request != _matchRequest) return;
+      _matched = matched;
+      _matchedKey = key;
+      _publish();
+    } catch (_) {
+      debugPrint(
+        '[DiscoveryDots] Audience check unavailable; targeted dots hidden.',
+      );
+    }
   }
 
   Future<void> _load(DiscoveryDotsSource source) async {
@@ -162,13 +264,13 @@ class DiscoveryDotsNotifier extends Notifier<DiscoveryDotsState> {
     }
   }
 
-  /// Records that the user reached [anchor]. Returns the message to show when
-  /// that completed a dot which carries one.
-  String? acknowledge(String anchor) {
-    if (!state.lit.contains(anchor)) return null;
+  /// Records that the user reached [anchor]. Returns the tooltip stack for
+  /// every campaign completed at this target, in publication order.
+  List<DiscoveryNudgeMessage> acknowledge(String anchor) {
+    if (!state.lit.contains(anchor)) return const [];
     final result = acknowledgeDiscoveryAnchor(state.dots, anchor, state.seen);
     state = DiscoveryDotsState._(state.dots, result.seen);
     unawaited(ref.read(discoveryDotsSeenStoreProvider).write(result.seen));
-    return result.message;
+    return result.messages;
   }
 }

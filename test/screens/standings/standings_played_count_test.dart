@@ -3,6 +3,16 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   group('resolveStandingsPlayedCount', () {
+    test('preserves a published zero despite broadcast games', () {
+      expect(
+        resolveStandingsPlayedCount(
+          sourcePlayed: 0,
+          countedFinishedGames: 4,
+          officialRow: true,
+        ),
+        0,
+      );
+    });
     test('prefers the source played count', () {
       expect(
         resolveStandingsPlayedCount(sourcePlayed: 3, countedFinishedGames: 4),

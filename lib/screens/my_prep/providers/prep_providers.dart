@@ -1,17 +1,17 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math' as math;
 
 import 'package:chessever2/repository/gamebase/gamebase_repository.dart';
-import 'package:chessever2/screens/my_prep/library/prep_cloud_sync.dart';
 import 'package:chessever2/screens/my_prep/models/prep_models.dart';
 import 'package:chessever2/screens/my_prep/services/prep_analysis.dart';
 import 'package:chessever2/screens/my_prep/services/prep_index.dart';
 import 'package:chessever2/screens/my_prep/services/prep_repository.dart';
+import 'package:chessever2/screens/my_prep/services/prep_watch.dart';
 import 'package:chessever2/services/game_tree/game_tree_registry.dart';
 import 'package:chessever2/services/game_tree/game_tree_service.dart';
 import 'package:chessever2/services/game_tree/game_tree_store.dart';
-import 'package:chessever2/services/rewarded_premium/rewarded_access_provider.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/widgets.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -23,6 +23,52 @@ const Duration kPrepMineRefreshEvery = Duration(hours: 8);
 /// How stale an opponent's or favorite's games may be before opening it
 /// checks for new ones.
 const Duration kPrepOthersRefreshEvery = Duration(hours: 24);
+
+/// The first wait after a failed download. Each further failure in a row
+/// waits four times longer, up to [kPrepRetryMax]: 2 min, 8 min, 32 min,
+/// about 2 h, about 8.5 h, then a day.
+const Duration kPrepRetryFirst = Duration(minutes: 2);
+
+/// The longest wait between background tries. A failure that asking again
+/// cannot fix (a missing account, a too-large selection) waits this long at
+/// once, so it still recovers by itself once the cause goes away.
+const Duration kPrepRetryMax = Duration(hours: 24);
+
+/// How often the open app looks for refreshes that have come due. The look
+/// itself is local; only a due account reaches the server.
+const Duration kPrepFreshnessTick = Duration(minutes: 2);
+
+/// How long a background refresh waits after [failures] downloads failed in
+/// a row (1 for the first). [roll] in [0, 1) spreads it by ±20%, so phones
+/// that failed together during an outage do not all come back together.
+/// The server's [retryAfter] is a floor.
+Duration prepRetryDelay(
+  int failures, {
+  bool permanent = false,
+  Duration? retryAfter,
+  double? roll,
+}) {
+  final steps = (failures < 1 ? 1 : failures) - 1;
+  final base = permanent
+      ? kPrepRetryMax
+      : Duration(
+          milliseconds: math
+              .min(
+                kPrepRetryFirst.inMilliseconds *
+                    math.pow(4, math.min(steps, 8)),
+                kPrepRetryMax.inMilliseconds.toDouble(),
+              )
+              .round(),
+        );
+  final spread = 0.8 + 0.4 * (roll ?? math.Random().nextDouble());
+  final delay = Duration(
+    milliseconds: math.min(
+      (base.inMilliseconds * spread).round(),
+      kPrepRetryMax.inMilliseconds,
+    ),
+  );
+  return retryAfter != null && retryAfter > delay ? retryAfter : delay;
+}
 
 final prepRepositoryProvider = Provider<PrepRepository>((ref) {
   final repo = PrepRepository(ref.read(gamebaseRepositoryProvider));
@@ -69,8 +115,22 @@ class PrepProfilesNotifier
   final Ref _ref;
   Future<void> _writing = Future.value();
 
+  /// Server writes for stars, one at a time and in order.
+  Future<void> _watchWriting = Future.value();
+
+  /// Profiles whose star came off (or which were removed) while the server
+  /// could not be told. Saved with the profiles and retried at the next
+  /// launch, so an unstarred player never keeps notifying.
+  final Set<String> _unwatchPending = {};
+
   @visibleForTesting
   Future<void> debugDrainWrites() => _writing;
+
+  @visibleForTesting
+  Future<void> debugDrainWatches() async {
+    await _watchWriting;
+    await _writing;
+  }
 
   List<PrepProfile> get _profiles => state.valueOrNull ?? const [];
 
@@ -85,11 +145,15 @@ class PrepProfilesNotifier
         return;
       }
       final json = jsonDecode(await file.readAsString());
+      if (json is Map && json['unwatch'] is List) {
+        _unwatchPending.addAll((json['unwatch'] as List).whereType<String>());
+      }
       state = AsyncValue.data([
         if (json is Map && json['profiles'] is List)
           for (final raw in json['profiles'] as List)
             ?PrepProfile.fromJson(raw),
       ]);
+      _reconcileWatches();
     } catch (error, stack) {
       debugPrint('[MyPrep] profiles failed to load: $error');
       state = AsyncValue.error(error, stack);
@@ -97,7 +161,14 @@ class PrepProfilesNotifier
   }
 
   void _set(List<PrepProfile> profiles) {
+    final before = _profiles;
     state = AsyncValue.data(List.unmodifiable(profiles));
+    _mirrorWatches(before, profiles);
+    _persist(profiles);
+  }
+
+  void _persist(List<PrepProfile> profiles) {
+    final unwatch = _unwatchPending.toList();
     // Serialized so an older snapshot can never land after a newer one.
     _writing = _writing.then((_) async {
       try {
@@ -107,12 +178,88 @@ class PrepProfilesNotifier
           jsonEncode({
             'version': 1,
             'profiles': [for (final p in profiles) p.toJson()],
+            if (unwatch.isNotEmpty) 'unwatch': unwatch,
           }),
           flush: true,
         );
         await temp.rename(file.path);
       } catch (error) {
         debugPrint('[MyPrep] profiles failed to save: $error');
+      }
+    });
+  }
+
+  // ---------------------------------------------------------------- stars
+
+  /// Stars or unstars [profileId]. The server's copy follows on its own.
+  void setWatching(String profileId, bool watching) =>
+      edit(profileId, (p) => p.copyWith(watching: watching));
+
+  /// A push arrived for [profileId]. If this device no longer stars it (or
+  /// no longer has it), the server is told again, so the pushes stop.
+  void settleWatch(String profileId) {
+    final profile = byId(profileId);
+    if (profile == null || prepWatchSignature(profile) == null) {
+      _queueUnwatch(profileId);
+    }
+  }
+
+  /// Tells the server about every star that changed between [before] and
+  /// [after]: a new or edited starred profile is written again, one that
+  /// lost its star, its online accounts or its place is cleared.
+  void _mirrorWatches(List<PrepProfile> before, List<PrepProfile> after) {
+    final was = <String, String>{
+      for (final p in before)
+        if (prepWatchSignature(p) case final signature?) p.id: signature,
+    };
+    final watched = <String>{};
+    for (final p in after) {
+      final signature = prepWatchSignature(p);
+      if (signature == null) continue;
+      watched.add(p.id);
+      if (signature != was[p.id]) _queueWatch(p.id);
+    }
+    for (final id in was.keys) {
+      if (!watched.contains(id)) _queueUnwatch(id);
+    }
+  }
+
+  /// Once per launch: retries the unstars that did not reach the server and
+  /// writes every star again, which also carries today's UTC offset.
+  void _reconcileWatches() {
+    for (final id in _unwatchPending.toList()) {
+      _queueUnwatch(id);
+    }
+    for (final p in _profiles) {
+      if (prepWatchSignature(p) != null) _queueWatch(p.id);
+    }
+  }
+
+  void _queueWatch(String profileId) {
+    if (_unwatchPending.remove(profileId)) _persist(_profiles);
+    _watchWriting = _watchWriting.then((_) async {
+      if (!mounted) return;
+      // The newest copy: it may have changed while earlier writes ran.
+      final profile = byId(profileId);
+      if (profile == null || prepWatchSignature(profile) == null) return;
+      // A failure is retried by the next launch's reconcile.
+      await _ref.read(prepWatchRemoteProvider).watch(profile);
+    });
+  }
+
+  void _queueUnwatch(String profileId) {
+    if (_unwatchPending.add(profileId)) _persist(_profiles);
+    _watchWriting = _watchWriting.then((_) async {
+      if (!mounted) return;
+      final profile = byId(profileId);
+      if (profile != null && prepWatchSignature(profile) != null) {
+        // Starred again since: the watch queued with it wins.
+        if (_unwatchPending.remove(profileId)) _persist(_profiles);
+        return;
+      }
+      final done = await _ref.read(prepWatchRemoteProvider).unwatch(profileId);
+      if (done && mounted && _unwatchPending.remove(profileId)) {
+        _persist(_profiles);
       }
     });
   }
@@ -214,7 +361,6 @@ class PrepProfilesNotifier
   Future<void> delete(String profileId) async {
     final profile = byId(profileId);
     if (profile == null) return;
-    _ref.read(prepCloudSyncProvider.notifier).cancel(profileId);
     _set([
       for (final p in _profiles)
         if (p.id != profileId) p,
@@ -232,7 +378,6 @@ class PrepProfilesNotifier
   }
 
   Future<void> removeAccount(String profileId, PrepAccount account) async {
-    _ref.read(prepCloudSyncProvider.notifier).cancel(profileId);
     await _ref.read(prepSyncProvider.notifier).cancelAndWait(account);
     await GameTreeService.cancel(PrepIndex.accountScope(account));
     await GameTreeService.cancel(profileId);
@@ -268,11 +413,41 @@ final prepSyncProvider =
     );
 
 class PrepSyncController extends StateNotifier<Map<String, PrepSyncStatus>> {
-  PrepSyncController(this._ref) : super(const {});
+  PrepSyncController(this._ref) : super(const {}) {
+    _lifecycle = AppLifecycleListener(
+      onHide: () => _hides++,
+      onResume: () {
+        final resumed = _resumed;
+        _resumed = null;
+        resumed?.complete();
+      },
+    );
+  }
 
   final Ref _ref;
+  late final AppLifecycleListener _lifecycle;
+
+  /// How many times the app has left the screen. A download that fails
+  /// after this moved was most likely cut off by the system, not refused.
+  int _hides = 0;
+  Completer<void>? _resumed;
 
   final Map<String, Completer<void>> _running = {};
+
+  /// Background refreshes waiting their turn, as (profile id, account key).
+  /// They run one at a time, so a launch with many stale accounts sends
+  /// one download after another instead of all of them at once.
+  final List<(String, String)> _queue = [];
+  bool _draining = false;
+
+  @override
+  void dispose() {
+    _lifecycle.dispose();
+    final resumed = _resumed;
+    _resumed = null;
+    resumed?.complete();
+    super.dispose();
+  }
 
   Future<void> cancelAndWait(PrepAccount account) async {
     cancel(account);
@@ -282,11 +457,22 @@ class PrepSyncController extends StateNotifier<Map<String, PrepSyncStatus>> {
   bool isSyncing(PrepAccount account) => state.containsKey(account.key);
 
   /// Downloads new games for one account. Returns the error text, or null.
+  ///
+  /// Every failure pushes the account's next background try out along
+  /// [prepRetryDelay]; a success resets it. A [background] refresh was not
+  /// asked for by the reader, so its failure is never shown on the account:
+  /// the games already downloaded stay as they were.
+  ///
+  /// Leaving the app mid-download pauses it instead of failing it: the
+  /// system cuts the connection off in the background, so a failure that
+  /// follows a trip away waits for the app to come back and continues from
+  /// there. The returned future completes with the resumed download.
   Future<String?> syncAccount(
     String profileId,
     PrepAccount account, {
     bool force = false,
     bool reinstall = false,
+    bool background = false,
   }) async {
     if (isSyncing(account)) return null;
     final profiles = _ref.read(prepProfilesProvider.notifier);
@@ -307,44 +493,66 @@ class PrepSyncController extends StateNotifier<Map<String, PrepSyncStatus>> {
     }
 
     report('Checking ${account.source.label}…');
+    var refresh = force;
     try {
-      final synced = await _ref
-          .read(prepRepositoryProvider)
-          .sync(
+      while (true) {
+        final hides = _hides;
+        try {
+          final synced = await _ref
+              .read(prepRepositoryProvider)
+              .sync(
+                account,
+                forceRefresh: refresh,
+                frequent: profile.kind == PrepKind.mine,
+                onProgress: report,
+                cancelToken: cancel,
+                reinstall: reinstall,
+              );
+          profiles.edit(profileId, (p) {
+            final live = p.accounts
+                .where((a) => a.key == account.key)
+                .firstOrNull;
+            if (live == null) return p;
+            // Keep any download options changed while this ran; the next
+            // sync notices the new scope and replaces the games.
+            return p.replaceAccount(
+              live.copyWith(
+                lastSyncAtMs: synced.lastSyncAtMs,
+                syncedScope: live.preferences == account.preferences
+                    ? synced.syncedScope
+                    : 'stale',
+                gameCount: synced.gameCount,
+                clearError: true,
+                clearRetry: true,
+              ),
+            );
+          });
+          return null;
+        } catch (error) {
+          if (error is DioException && CancelToken.isCancel(error)) {
+            return null;
+          }
+          final failure = _failureOf(error);
+          if (_hides != hides && !failure.permanent && mounted) {
+            report('Paused · continues when you are back');
+            if (!await _untilResumed(cancel)) return null;
+            if (!_stillAttached(profileId, account)) return null;
+            // The server kept preparing while the app was away; asking for
+            // a fresh job again would only restart it.
+            refresh = false;
+            report('Checking ${account.source.label}…');
+            continue;
+          }
+          return _fail(
+            profileId,
             account,
-            forceRefresh: force,
-            frequent: profile.kind == PrepKind.mine,
-            onProgress: report,
-            cancelToken: cancel,
-            reinstall: reinstall,
+            failure.message,
+            background: background,
+            permanent: failure.permanent,
+            retryAfter: failure.retryAfter,
           );
-      profiles.edit(profileId, (p) {
-        final live = p.accounts.where((a) => a.key == account.key).firstOrNull;
-        if (live == null) return p;
-        // Keep any download options changed while this ran; the next sync
-        // notices the new scope and replaces the games.
-        return p.replaceAccount(
-          live.copyWith(
-            lastSyncAtMs: synced.lastSyncAtMs,
-            syncedScope: live.preferences == account.preferences
-                ? synced.syncedScope
-                : 'stale',
-            gameCount: synced.gameCount,
-            clearError: true,
-          ),
-        );
-      });
-      // A player saved to the cloud takes the new games there too.
-      _ref.read(prepCloudSyncProvider.notifier).syncAfterDownload(profileId);
-      return null;
-    } on DioException catch (error) {
-      if (CancelToken.isCancel(error)) return null;
-      return _fail(profileId, account, 'Could not download games. Try again.');
-    } on PrepException catch (error) {
-      return _fail(profileId, account, error.message);
-    } catch (error) {
-      debugPrint('[MyPrep] sync failed: $error');
-      return _fail(profileId, account, 'Could not download games. Try again.');
+        }
+      }
     } finally {
       if (mounted) state = {...state}..remove(account.key);
       _running.remove(account.key);
@@ -352,17 +560,86 @@ class PrepSyncController extends StateNotifier<Map<String, PrepSyncStatus>> {
     }
   }
 
-  String _fail(String profileId, PrepAccount account, String message) {
-    _ref
-        .read(prepProfilesProvider.notifier)
-        .edit(
-          profileId,
-          (p) => p.replaceAccount(
-            (p.accounts.where((a) => a.key == account.key).firstOrNull ??
-                    account)
-                .copyWith(error: message),
-          ),
-        );
+  /// What a failed download tells the reader, and whether it may pass.
+  ({String message, bool permanent, Duration? retryAfter}) _failureOf(
+    Object error,
+  ) {
+    const generic = 'Could not download games. Try again.';
+    if (error is DioException) {
+      final code = error.response?.statusCode;
+      return (
+        message: generic,
+        // A refused request stays refused; a timeout, a dropped connection
+        // or a server error may pass.
+        permanent:
+            code != null &&
+            code >= 400 &&
+            code < 500 &&
+            code != 408 &&
+            code != 429,
+        retryAfter: code == 429
+            ? prepRetryAfter(error.response?.headers)
+            : null,
+      );
+    }
+    if (error is PrepException) {
+      return (
+        message: error.message,
+        permanent: error.permanent,
+        retryAfter: error.retryAfter,
+      );
+    }
+    debugPrint('[MyPrep] sync failed: $error');
+    return (message: generic, permanent: false, retryAfter: null);
+  }
+
+  /// Waits until the app is on screen again. False when the download was
+  /// canceled meanwhile, or the controller went away.
+  Future<bool> _untilResumed(CancelToken cancel) async {
+    if (WidgetsBinding.instance.lifecycleState != AppLifecycleState.resumed) {
+      final resumed = _resumed ??= Completer<void>();
+      await Future.any([resumed.future, cancel.whenCancel]);
+    }
+    return mounted && !cancel.isCancelled;
+  }
+
+  bool _stillAttached(String profileId, PrepAccount account) =>
+      _ref
+          .read(prepProfilesProvider.notifier)
+          .byId(profileId)
+          ?.accounts
+          .any((a) => a.key == account.key) ??
+      false;
+
+  String _fail(
+    String profileId,
+    PrepAccount account,
+    String message, {
+    required bool background,
+    bool permanent = false,
+    Duration? retryAfter,
+  }) {
+    if (background) debugPrint('[MyPrep] background refresh failed: $message');
+    final now = DateTime.now().millisecondsSinceEpoch;
+    _ref.read(prepProfilesProvider.notifier).edit(profileId, (p) {
+      // Detached while it ran: nothing to record.
+      final live = p.accounts.where((a) => a.key == account.key).firstOrNull;
+      if (live == null) return p;
+      final failures = live.failedAttempts + 1;
+      return p.replaceAccount(
+        live.copyWith(
+          error: background ? null : message,
+          failedAttempts: failures,
+          retryAtMs:
+              now +
+              prepRetryDelay(
+                failures,
+                permanent: permanent,
+                retryAfter: retryAfter,
+              ).inMilliseconds,
+        ),
+      );
+    });
     return message;
   }
 
@@ -379,27 +656,66 @@ class PrepSyncController extends StateNotifier<Map<String, PrepSyncStatus>> {
     return firstError;
   }
 
-  /// Brings stale profiles of [kinds] up to date in the background: the
-  /// reader's own accounts every [kPrepMineRefreshEvery], the rest daily.
+  /// Brings stale profiles up to date in the background: the reader's own
+  /// accounts every [kPrepMineRefreshEvery], the rest daily. They download
+  /// one at a time. A failed one waits out its [PrepAccount.retryAtMs]
+  /// first; an account still carrying an earlier failure is tried as well,
+  /// so a success clears it.
   void refreshStale(Iterable<PrepProfile> profiles) {
-    final now = DateTime.now().millisecondsSinceEpoch;
+    final now = DateTime.now();
     for (final profile in profiles) {
-      final every = profile.kind == PrepKind.mine
-          ? kPrepMineRefreshEvery
-          : kPrepOthersRefreshEvery;
       for (final account in profile.accounts) {
-        if (account.source == PrepSource.manual) continue;
-        final last = account.lastSyncAtMs;
-        // Connecting fetches metadata only. The first download is explicit,
-        // as on desktop; freshness applies once the reader has downloaded.
-        if (last == null) continue;
-        final stale =
-            now - last >= every.inMilliseconds ||
-            account.syncedScope != account.downloadScope(DateTime.now());
-        if (stale && account.error == null) {
-          unawaited(syncAccount(profile.id, account));
+        final entry = (profile.id, account.key);
+        if (!_due(profile, account, now) ||
+            isSyncing(account) ||
+            _queue.contains(entry)) {
+          continue;
         }
+        _queue.add(entry);
       }
+    }
+    unawaited(_drain());
+  }
+
+  /// Whether a background refresh should fetch [account] at [now].
+  static bool _due(PrepProfile profile, PrepAccount account, DateTime now) {
+    if (account.source == PrepSource.manual) return false;
+    final last = account.lastSyncAtMs;
+    // Connecting fetches metadata only. The first download is explicit,
+    // as on desktop; freshness applies once the reader has downloaded.
+    if (last == null) return false;
+    final at = now.millisecondsSinceEpoch;
+    if (account.retryAtMs case final retryAt? when at < retryAt) return false;
+    final every = profile.kind == PrepKind.mine
+        ? kPrepMineRefreshEvery
+        : kPrepOthersRefreshEvery;
+    return at - last >= every.inMilliseconds ||
+        account.syncedScope != account.downloadScope(now);
+  }
+
+  Future<void> _drain() async {
+    if (_draining) return;
+    _draining = true;
+    try {
+      while (mounted && _queue.isNotEmpty) {
+        final (profileId, key) = _queue.removeAt(0);
+        final profile = _ref
+            .read(prepProfilesProvider.notifier)
+            .byId(profileId);
+        final account = profile?.accounts
+            .where((a) => a.key == key)
+            .firstOrNull;
+        // Looked at again: since it was queued it may have been refreshed
+        // by the reader, detached, or failed.
+        if (profile == null ||
+            account == null ||
+            !_due(profile, account, DateTime.now())) {
+          continue;
+        }
+        await syncAccount(profileId, account, background: true);
+      }
+    } finally {
+      _draining = false;
     }
   }
 
@@ -411,25 +727,31 @@ class PrepSyncController extends StateNotifier<Map<String, PrepSyncStatus>> {
 // ------------------------------------------------------------------ freshness
 
 /// Keeps prepared players' games current while the app runs, as desktop
-/// does: a little after launch, and whenever the app comes back to the
-/// foreground, stale accounts fetch only their new games (yours every
-/// [kPrepMineRefreshEvery], opponents every [kPrepOthersRefreshEvery]).
-/// Watch it from the home shell; it does nothing without Premium.
+/// does: a little after launch, whenever the app comes back to the
+/// foreground, and every [kPrepFreshnessTick] while it stays open, stale
+/// accounts fetch only their new games (yours every [kPrepMineRefreshEvery],
+/// opponents every [kPrepOthersRefreshEvery]). The tick is what lets a
+/// failed refresh recover on its own once its wait is over. Watch it from
+/// the home shell.
 final prepKeepFreshProvider = Provider<void>((ref) {
   var launched = false;
   void check() {
+    // Never from the background: the system would cut the download off.
+    final lifecycle = WidgetsBinding.instance.lifecycleState;
+    if (lifecycle != null && lifecycle != AppLifecycleState.resumed) return;
     final profiles = ref.read(prepProfilesProvider).valueOrNull;
     if (profiles == null || profiles.isEmpty) return;
-    if (!ref.read(premiumAccessProvider)) return;
     ref
         .read(prepSyncProvider.notifier)
         .refreshStale(profiles.where((p) => p.kind != PrepKind.favorite));
   }
 
+  Timer? tick;
   // Not on the first frame: launch has enough to do already.
-  final timer = Timer(const Duration(seconds: 10), () {
+  final launch = Timer(const Duration(seconds: 10), () {
     launched = true;
     check();
+    tick = Timer.periodic(kPrepFreshnessTick, (_) => check());
   });
   final lifecycle = AppLifecycleListener(
     onResume: () {
@@ -437,7 +759,8 @@ final prepKeepFreshProvider = Provider<void>((ref) {
     },
   );
   ref.onDispose(() {
-    timer.cancel();
+    launch.cancel();
+    tick?.cancel();
     lifecycle.dispose();
   });
 });

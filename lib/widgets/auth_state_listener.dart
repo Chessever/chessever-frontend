@@ -9,7 +9,10 @@ import 'package:chessever2/providers/favorite_events_provider.dart';
 import 'package:chessever2/providers/favorite_players_provider.dart';
 import 'package:chessever2/providers/guest_session_provider.dart';
 import 'package:chessever2/providers/pending_favorite_players_provider.dart';
+import 'package:chessever2/e2e/e2e_config.dart';
+import 'package:chessever2/screens/onboarding/notification_permission_step.dart';
 import 'package:chessever2/screens/onboarding/player_selection_screen.dart';
+import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/repository/local_storage/country_man/country_man_repository.dart';
 import 'package:chessever2/repository/local_storage/onboarding/onboarding_repository.dart';
 import 'package:chessever2/repository/local_storage/sesions_manager/session_manager.dart';
@@ -242,8 +245,9 @@ class AuthStateListener extends ConsumerWidget {
                 .read(onboardingRepositoryProvider)
                 .hasSeenOnboarding(userId: currentUserId);
 
-            final targetRoute =
-                hasSeenOnboarding ? '/home_screen' : '/onboarding';
+            final targetRoute = hasSeenOnboarding
+                ? '/home_screen'
+                : '/onboarding';
             navigator.pushNamedAndRemoveUntil(targetRoute, (route) => false);
             ref.read(authScreenProvider.notifier).reset();
           }
@@ -276,10 +280,9 @@ class AuthStateListener extends ConsumerWidget {
             await ref.read(sessionManagerProvider).clearLocalStorage();
 
             // Check if onboarding was seen - if not, go to onboarding, otherwise auth
-            final hasSeenOnboarding =
-                await ref
-                    .read(onboardingRepositoryProvider)
-                    .hasSeenOnboarding();
+            final hasSeenOnboarding = await ref
+                .read(onboardingRepositoryProvider)
+                .hasSeenOnboarding();
 
             navigator.pushNamedAndRemoveUntil(
               hasSeenOnboarding ? '/auth_screen' : '/onboarding',
@@ -291,5 +294,70 @@ class AuthStateListener extends ConsumerWidget {
     });
 
     return child;
+  }
+}
+
+bool _notificationOfferInFlight = false;
+
+/// Shows onboarding's notification step after the auth screen navigates home,
+/// so a returning user who skipped it still gets the permission ask.
+Future<void> offerNotificationsAfterSignIn(NavigatorState navigator) async {
+  if (E2eConfig.suppressInterruptivePrompts ||
+      _notificationOfferInFlight ||
+      !navigator.mounted) {
+    return;
+  }
+
+  // The navigator's own context cannot see its descendant ModalRoute. Read
+  // the top route without popping anything: this predicate always stops first.
+  Route<dynamic>? topRoute;
+  navigator.popUntil((route) {
+    topRoute = route;
+    return true;
+  });
+  final homeRoute = topRoute;
+  if (homeRoute == null ||
+      homeRoute.settings.name != '/home_screen' ||
+      !homeRoute.isCurrent) {
+    return;
+  }
+
+  _notificationOfferInFlight = true;
+  try {
+    final service = PushNotificationsService.instance;
+    if (!await service.shouldOfferPermissionPrompt()) return;
+    // A delayed permission read must not interrupt a different screen/session.
+    if (!navigator.mounted || !homeRoute.isCurrent) return;
+    await navigator.push(
+      MaterialPageRoute<void>(
+        fullscreenDialog: true,
+        builder: (context) {
+          final padding = MediaQuery.paddingOf(context);
+          final permissionRoute = ModalRoute.of(context);
+          return Scaffold(
+            backgroundColor: context.colors.background,
+            body: NotificationPermissionStep(
+              topPadding: padding.top,
+              bottomPadding: padding.bottom,
+              onContinue: () async {
+                try {
+                  await service.requestPermissionIfNotGranted();
+                } catch (error) {
+                  debugPrint(
+                    '[PushNotifications] Sign-in permission request failed: $error',
+                  );
+                } finally {
+                  if (context.mounted && permissionRoute?.isCurrent == true) {
+                    Navigator.of(context).pop();
+                  }
+                }
+              },
+            ),
+          );
+        },
+      ),
+    );
+  } finally {
+    _notificationOfferInFlight = false;
   }
 }

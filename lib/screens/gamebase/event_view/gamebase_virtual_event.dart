@@ -62,6 +62,8 @@ GroupBroadcast virtualGroupBroadcastForEvent(
   String eventName, {
   String? site,
   String? slug,
+  DateTime? dateStart,
+  DateTime? dateEnd,
 }) {
   final clean = eventName.trim();
   return GroupBroadcast(
@@ -69,6 +71,8 @@ GroupBroadcast virtualGroupBroadcastForEvent(
     createdAt: DateTime.now(),
     name: clean,
     search: [clean],
+    dateStart: dateStart,
+    dateEnd: dateEnd,
   );
 }
 

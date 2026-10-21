@@ -1,3 +1,6 @@
+import 'package:chessever2/repository/supabase/tour/tour.dart';
+import 'package:chessever2/screens/standings/player_standing_section_select.dart';
+import 'package:chessever2/screens/tour_detail/provider/tour_detail_screen_provider.dart';
 import 'package:chessever2/screens/standings/team_standing_model.dart';
 import 'package:chessever2/screens/tour_detail/player_tour/player_tour_screen_provider.dart';
 import 'package:chessever2/screens/tour_detail/team_tour/team_space_shortcut.dart';
@@ -54,6 +57,12 @@ class _TeamStandingsScreenState extends ConsumerState<TeamStandingsScreen>
   @override
   Widget build(BuildContext context) {
     super.build(context);
+    final vm = ref.watch(tourDetailScreenProvider).valueOrNull;
+    final tourId = vm?.aboutTourModel.id ?? '';
+    final tours = vm?.tours.where((t) => t.tour.id == tourId).toList();
+    final sections = tours == null || tours.isEmpty
+        ? const <OfficialPlayerSection>[]
+        : tours.first.tour.info.playerStandingSections;
     final horizontalPadding = ResponsiveHelper.adaptive(
       phone: 16.sp,
       tablet: 24.sp,
@@ -68,6 +77,8 @@ class _TeamStandingsScreenState extends ConsumerState<TeamStandingsScreen>
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
+              if (sections.isNotEmpty)
+                PlayerStandingSectionSelect(tourId: tourId, sections: sections),
               Expanded(child: _TeamList(controller: _scrollController)),
             ],
           ),
@@ -90,19 +101,18 @@ class _TeamList extends ConsumerWidget {
       skipLoadingOnReload: true,
       data: (allTeams) {
         final query = ref.watch(standingsSearchQueryProvider).trim();
-        final data =
-            query.isEmpty
-                ? allTeams
-                : allTeams
-                    .where(
-                      (t) => t.teamName.toLowerCase().contains(
-                        query.toLowerCase(),
-                      ),
-                    )
-                    .toList(growable: false);
+        final data = query.isEmpty
+            ? allTeams
+            : allTeams
+                  .where(
+                    (t) =>
+                        t.teamName.toLowerCase().contains(query.toLowerCase()),
+                  )
+                  .toList(growable: false);
         final isSearching = query.isNotEmpty;
-        final officialRound =
-            allTeams.isEmpty ? null : allTeams.first.officialRound;
+        final officialRound = allTeams.isEmpty
+            ? null
+            : allTeams.first.officialRound;
 
         // Empty finished compute must not look like "still loading".
         if (allTeams.isEmpty && !isSearching) {
@@ -137,10 +147,9 @@ class _TeamList extends ConsumerWidget {
               return Padding(
                 padding: EdgeInsets.only(top: 48.h),
                 child: EmptyWidget(
-                  title:
-                      isSearching
-                          ? "No teams found matching your search"
-                          : "No data available",
+                  title: isSearching
+                      ? "No teams found matching your search"
+                      : "No data available",
                 ),
               );
             }
@@ -177,27 +186,26 @@ class _TeamList extends ConsumerWidget {
                   },
                   // Header only: the menu measures and lifts the same box,
                   // and the players and matchups below keep their gestures.
-                  wrapHeader:
-                      (header) => _TeamRowMenu(
-                        team: team,
-                        onOpen: openScorecard,
-                        child: header,
-                      ),
-                  expandedChildren:
-                      isExpanded ? [_TeamExpansion(team: team)] : const [],
+                  wrapHeader: (header) => _TeamRowMenu(
+                    team: team,
+                    onOpen: openScorecard,
+                    child: header,
+                  ),
+                  expandedChildren: isExpanded
+                      ? [_TeamExpansion(team: team)]
+                      : const [],
                 );
               },
             );
           },
         );
       },
-      error:
-          (e, _) => Padding(
-            padding: EdgeInsets.only(top: 48.h),
-            child: const EmptyWidget(
-              title: "Couldn't load team standings. Pull away and try again.",
-            ),
-          ),
+      error: (e, _) => Padding(
+        padding: EdgeInsets.only(top: 48.h),
+        child: const EmptyWidget(
+          title: "Couldn't load team standings. Pull away and try again.",
+        ),
+      ),
       loading: () => const _TeamStandingsLoading(),
     );
   }
@@ -225,13 +233,12 @@ class _TeamRowMenu extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return CardContextMenu(
-      actions:
-          (menuContext) => teamMenuActions(
-            context: menuContext,
-            ref: ref,
-            teamName: team.teamName,
-            onOpen: onOpen,
-          ),
+      actions: (menuContext) => teamMenuActions(
+        context: menuContext,
+        ref: ref,
+        teamName: team.teamName,
+        onOpen: onOpen,
+      ),
       onPreviewTap: onOpen,
       child: child,
     );

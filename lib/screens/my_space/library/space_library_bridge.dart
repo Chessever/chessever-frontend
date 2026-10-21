@@ -1,7 +1,6 @@
 import 'package:chessever2/widgets/paywall/pgn_import_access.dart';
 import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
 import 'package:chessever2/repository/library/library_book_publication.dart';
-import 'package:chessever2/screens/collections/collections_data.dart';
 import 'package:chessever2/screens/library/library_book_screen.dart';
 import 'package:chessever2/repository/library/library_repository.dart';
 import 'package:chessever2/repository/library/models/library_folder.dart';
@@ -26,7 +25,6 @@ import 'package:chessever2/utils/logger/logger.dart';
 import 'package:chessever2/utils/number_format_utils.dart';
 import 'package:chessever2/utils/pgn_multi_parser.dart';
 import 'package:chessever2/utils/user_error_message.dart';
-import 'package:chessever2/widgets/alert_dialog/alert_modal.dart';
 import 'package:chessever2/widgets/app_snack.dart';
 import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
 import 'package:file_picker/file_picker.dart';
@@ -203,9 +201,9 @@ class SpaceLibraryCountText extends ConsumerWidget {
   }
 }
 
-/// The Library card's own long-press actions for [folder], less its My Space
-/// row (the destination is already on the row). Built-in collections have
-/// nothing to manage. Everything the actions need is taken up front: they
+/// Non-removal Library actions for [folder]. Deletion and unsubscribe belong
+/// to Library; My Space only removes its own shortcut. Built-in collections
+/// have nothing to manage. Everything the actions need is taken up front: they
 /// run after the menu closes, when the tile may already be gone.
 List<LibraryMenuAction> spaceLibraryFolderActions(
   BuildContext context,
@@ -214,8 +212,8 @@ List<LibraryMenuAction> spaceLibraryFolderActions(
 ) {
   if (spaceIsProtectedFolder(folder)) return const [];
   final messenger = ScaffoldMessenger.maybeOf(context);
-  // The container outlives the tile, which a delete or unsubscribe removes
-  // before the action has finished. The repository is only read once an
+  // The container outlives the tile, which may leave My Space before an
+  // action has finished. The repository is only read once an
   // action runs: this list is also built for a screen reader's actions.
   final container = ProviderScope.containerOf(context, listen: false);
   LibraryRepository repo() => container.read(libraryRepositoryProvider);
@@ -237,26 +235,7 @@ List<LibraryMenuAction> spaceLibraryFolderActions(
     );
   }
 
-  if (folder.isSubscribed) {
-    return [
-      LibraryMenuAction(
-        icon: Icons.link_off_rounded,
-        label: 'Unsubscribe',
-        destructive: true,
-        onSelected: () async {
-          try {
-            await repo().unsubscribeFromBook(folder.id);
-            container.invalidate(subscribedBooksProvider);
-            container.invalidate(combinedLibraryFoldersProvider);
-            HapticFeedbackService.success();
-            say('Unsubscribed from "${folder.name}"');
-          } catch (e, st) {
-            fail(e, st, 'Could not unsubscribe. Please try again.');
-          }
-        },
-      ),
-    ];
-  }
+  if (folder.isSubscribed) return const [];
 
   final nonShareable = folder.parentId != null || folder.isFolder;
   void explainRootOnly() {
@@ -289,39 +268,6 @@ List<LibraryMenuAction> spaceLibraryFolderActions(
         say('Renamed to "$name"');
       } catch (e, st) {
         fail(e, st, 'Could not rename this item. Please try again.');
-      }
-    },
-  );
-
-  final delete = LibraryMenuAction(
-    icon: Icons.delete_outline_rounded,
-    label: 'Delete',
-    destructive: true,
-    onSelected: () async {
-      if (!context.mounted) return;
-      final confirmed = await showSmoothConfirmDialog(
-        context: context,
-        title: 'Delete ${folder.isFolder ? 'folder' : 'database'}?',
-        message: folder.isFolder
-            ? 'This permanently deletes the folder and every database inside it. This cannot be undone.'
-            : 'This permanently deletes the database and every game inside it. This cannot be undone.',
-        confirmText: 'Delete',
-        isDangerous: true,
-      );
-      if (confirmed != true) return;
-      try {
-        await deleteLibraryFolderWithPublications(
-          folder: folder,
-          publisher: container.read(libraryBookPublisherProvider),
-          deleteFolder: repo().deleteFolder,
-        );
-        container.invalidate(collectionsRepositoryProvider);
-        container.invalidate(libraryFoldersStreamProvider);
-        container.invalidate(folderAnalysisCountProvider);
-        HapticFeedbackService.success();
-        say('${folder.isFolder ? 'Folder' : 'Database'} deleted');
-      } catch (e, st) {
-        fail(e, st, 'Could not delete this item. Please try again.');
       }
     },
   );
@@ -360,7 +306,6 @@ List<LibraryMenuAction> spaceLibraryFolderActions(
       ),
       publication,
       rename,
-      delete,
     ];
   }
 
@@ -390,7 +335,6 @@ List<LibraryMenuAction> spaceLibraryFolderActions(
     ),
     publication,
     rename,
-    delete,
   ];
 }
 

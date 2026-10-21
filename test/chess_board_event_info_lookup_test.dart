@@ -13,10 +13,18 @@ PlayerCard _player() {
   );
 }
 
-GamesTourModel _game({String tourId = '', String? tourSlug, String? pgn}) {
+GamesTourModel _game({
+  String tourId = '',
+  String? tourSlug,
+  String? pgn,
+  String? roundSlug,
+  GameSource source = GameSource.supabase,
+}) {
   final player = _player();
   return GamesTourModel(
     gameId: 'game-1',
+    source: source,
+    roundSlug: roundSlug,
     whitePlayer: player,
     blackPlayer: player,
     whiteTimeDisplay: '--:--',
@@ -32,6 +40,59 @@ GamesTourModel _game({String tourId = '', String? tourSlug, String? pgn}) {
 }
 
 void main() {
+  // Archive rows keep their ECO code in `roundSlug` for the list card, and
+  // Event info used to print it as the round ("Round: A22").
+  group('event info round line', () {
+    test('an archive game takes its round from the PGN, not its ECO code', () {
+      final game = _game(source: GameSource.gamebase, roundSlug: 'A22');
+
+      expect(
+        resolveEventInfoRoundLabelForTesting(game, const {'Round': '6.2'}),
+        'Round 6',
+      );
+      expect(
+        resolveEventInfoRoundLabelForTesting(game, const {
+          'Round': '6.2',
+          'ChessEverRoundName': 'Round 6 | Tiebreak',
+        }),
+        'Round 6 | Tiebreak',
+      );
+      expect(
+        resolveEventInfoRoundLabelForTesting(game, const {'Round': 'Final'}),
+        'Final',
+      );
+    });
+
+    test('an archive game with no round in its PGN shows no round', () {
+      for (final slug in const ['A22', 'RAPID', null]) {
+        final game = _game(source: GameSource.gamebase, roundSlug: slug);
+        expect(
+          resolveEventInfoRoundLabelForTesting(game, const {'Round': '?'}),
+          isNull,
+          reason: '$slug',
+        );
+      }
+    });
+
+    test('a real round label on an archive game is kept', () {
+      final game = _game(source: GameSource.twic, roundSlug: 'Round 5');
+
+      expect(
+        resolveEventInfoRoundLabelForTesting(game, const {'Round': '9'}),
+        'Round 5',
+      );
+    });
+
+    test('a broadcast game still reads its round slug', () {
+      final game = _game(roundSlug: 'round-7');
+
+      expect(
+        resolveEventInfoRoundLabelForTesting(game, const {'Round': '7.3'}),
+        'Round 7',
+      );
+    });
+  });
+
   group('event info fallback lookup title', () {
     test('uses PGN Event title even when tourId is only a UUID', () {
       final game = _game(
@@ -63,6 +124,22 @@ void main() {
       expect(
         resolveEventInfoFallbackEventNameForTesting(game, null),
         'Game Info',
+      );
+    });
+
+    // Trello #1228: a miniature played in a broadcast is opened with the
+    // "Miniatures" label on its row and the pairing in its PGN Event.
+    test('an opened broadcast miniature shows its tournament', () {
+      final game = _game(tourId: 'Miniatures', tourSlug: 'Miniatures');
+      const pgn =
+          '[Event "Round 6: Del Rio Baena, Dani - Garcia Canals, Gerard"]\n'
+          '[Site "https://lichess.org/broadcast/catalan-age-group-team-championship-2026-sub-18/round-6/rkYWEnda/R3kJFF30"]\n'
+          '[White "Del Rio Baena, Dani"]\n'
+          '[Black "Garcia Canals, Gerard"]\n\n*';
+
+      expect(
+        resolveEventInfoFallbackEventNameForTesting(game, pgn),
+        'Catalan Age Group Team Championship 2026 Sub 18',
       );
     });
 

@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ChessEver publishing guide</title>
+<style>
+:root{color-scheme:light dark;--guide-ink:var(--foreground,light-dark(#222220,#f3f3ef));--guide-muted:var(--muted-foreground,light-dark(#62625d,#b7b7af));--guide-surface:var(--secondary,light-dark(#eeeee9,#2a2a26));--guide-primary:var(--foreground,light-dark(#33332e,#e5e5de));--guide-primary-ink:var(--background,light-dark(#fff,#222220));--guide-font:var(--font-sans,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif)}
+*{box-sizing:border-box}
+html,body{margin:0;background:transparent;color:var(--guide-ink);font-family:var(--guide-font);font-size:14px;line-height:1.55}
+main{width:100%;padding:8px 0 20px}
+h1,h2,h3,p{margin:0}
+h1{font:400 32px/1.2 Georgia,"Times New Roman",serif;max-width:calc(100% - 90px);margin-bottom:14px}
+h2{font:400 28px/1.2 Georgia,"Times New Roman",serif;margin-bottom:12px}
+h3{font-size:16px;font-weight:600;margin:22px 0 8px}
+p+p{margin-top:9px}
+a{color:inherit;text-underline-offset:3px;overflow-wrap:anywhere}
+code{font:12px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;overflow-wrap:anywhere}
+strong{font-weight:600}
+.muted{color:var(--guide-muted)}
+.small{font-size:12px}
+.entry{margin:20px 0 16px;display:flex;align-items:baseline;flex-wrap:wrap;gap:8px 16px}
+.entry strong{font-size:18px}
+.routes{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin:0 0 20px}
+.route{display:flex;flex-direction:column;padding:16px;background:var(--guide-surface);border-radius:8px;min-width:0}
+.route strong{display:block;font-size:18px;margin-bottom:3px}
+.route p{flex:1;margin-top:8px;min-height:44px}
+.route a{display:block;margin-top:14px;font-size:12px}
+button{font:inherit;cursor:pointer;min-height:44px;padding:9px 14px;background:var(--guide-surface);color:var(--guide-ink);border:0;border-radius:6px}
+button:hover{background:color-mix(in srgb,var(--guide-surface) 75%,var(--guide-ink) 10%)}
+button:focus-visible,a:focus-visible{outline:2px solid var(--guide-ink);outline-offset:4px}
+button[aria-pressed="true"]{background:var(--guide-primary);color:var(--guide-primary-ink)}
+.route button{width:100%;text-align:left;margin-top:14px}
+.context{margin-top:18px;max-width:72ch}
+.sheet{margin-top:30px}
+.path{display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin:14px 0 20px}
+.path span:not(.arrow){background:var(--guide-surface);border-radius:5px;padding:7px 10px}
+.arrow{font-size:18px;color:var(--guide-muted)}
+.steps{margin:14px 0 0;padding-left:22px}
+.steps li{padding-left:5px;margin-bottom:13px}
+.steps li strong{display:block;margin-bottom:3px}
+.limit-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px 20px}
+.limit-grid p{margin:0}
+.backend{display:grid;grid-template-columns:120px minmax(0,1fr);gap:8px 16px;margin:10px 0 0}
+.backend dt{font-weight:600}
+.backend dd{margin:0;min-width:0}
+.demo{margin:20px 0}
+.demo-path{display:grid;grid-template-columns:1fr auto 1fr auto 1fr;gap:9px;align-items:center;margin:12px 0}
+.demo-path>.arrow{align-self:start;line-height:44px}
+.hop{text-align:center;min-width:0}
+.hop button{width:100%;display:flex;align-items:center;justify-content:center;gap:8px}
+.hop code{display:block;margin-top:6px;font-size:11px}
+.dot{width:7px;height:7px;background:currentColor;border-radius:50%;flex:none;animation:breathe 1.8s ease-in-out infinite}
+.dot.seen{animation:none;visibility:hidden}
+@keyframes breathe{50%{opacity:.45}}
+.demo-actions{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-top:12px}
+.demo-state{margin-top:12px;min-height:44px}
+.operations{display:grid;grid-template-columns:100px minmax(0,1fr);gap:8px 16px}
+.operations dt{font-weight:600}
+.operations dd{margin:0}
+.sources{margin-top:25px;font-size:12px;color:var(--guide-muted)}
+.sources p{margin-top:6px}
+.print-only{display:none}
+[hidden]{display:none!important}
+@media(prefers-reduced-motion:reduce){.dot{animation:none}}
+@media(max-width:560px){.routes{grid-template-columns:1fr;gap:12px}.route p{min-height:0}.limit-grid{grid-template-columns:1fr}.backend{grid-template-columns:1fr;gap:4px}.backend dd{margin-bottom:8px}.demo-path{grid-template-columns:1fr}.demo-path>.arrow{align-self:center;justify-self:center;line-height:22px;text-align:center;transform:rotate(90deg)}.hop code{font-size:12px}.sheet{margin-top:24px}}
+@page{size:A4;margin:16mm 17mm}
+@media print{
+:root{color-scheme:light;--background:#fff;--guide-ink:#222220;--guide-muted:#62625d;--guide-surface:#eeeee9;--guide-primary:#33332e;--guide-primary-ink:#fff}
+html,body{font-size:10pt;line-height:1.45;background:#fff;print-color-adjust:exact;-webkit-print-color-adjust:exact}
+main{padding:0}h1{font-size:28pt;max-width:100%}h2{font-size:25pt;margin-bottom:8px}h3{font-size:12pt;margin-top:12px}.small,.sources{font-size:8.8pt}code{font-size:9pt}
+.sheet{display:block!important;break-before:page;margin-top:0}.overview{break-after:page}.route p{min-height:40px}.route button,.screen-only{display:none!important}.print-only{display:block}.dot{animation:none}.steps li{margin-bottom:8px}
+.demo-path{grid-template-columns:1fr auto 1fr auto 1fr}.hop button{pointer-events:none;background:var(--guide-surface);color:var(--guide-ink)}.hop code{font-size:8pt}.demo-state{min-height:0}.demo-actions{display:none}.backend,.steps li,.routes,.limit-grid,.operations{break-inside:avoid}
+a{text-decoration:none}.sources{margin-top:12px}.sources code{font-size:8.5pt}.path{margin-bottom:12px}.backend{row-gap:5px}.context{margin-top:12px}.demo{margin:12px 0}.operations{row-gap:5px}
+}
+</style>
+</head>
+<body>
+<main id="publishing-guide">
+<section class="overview" aria-label="Where to publish">
+<h1>Two ways to publish</h1>
+<p>ChessEver messages and discovery dots start in the same admin sidebar.</p>
+<div class="entry"><a href="https://chessever.com/admin" target="_blank" rel="noopener">chessever.com/admin</a><span class="muted">Sign in with an admin account</span><strong>Content</strong></div>
+<div class="routes" aria-label="Choose a publishing workflow">
+<div class="route"><strong>Inbox</strong><p>A rich message in every user’s Inbox, including guests. Add a push if you want one.</p><a href="https://chessever.com/admin/dashboard/inbox" target="_blank" rel="noopener">chessever.com/admin/dashboard/inbox</a><button type="button" data-guide="inbox" aria-pressed="true" aria-controls="inbox-guide">Show Inbox workflow</button></div>
+<div class="route"><strong>Nudges</strong><p>A breathing dot on a tab, tile, menu row or board control. An optional trail leads to the feature.</p><a href="https://chessever.com/admin/dashboard/nudges" target="_blank" rel="noopener">chessever.com/admin/dashboard/nudges</a><button type="button" data-guide="nudges" aria-pressed="false" aria-controls="nudges-guide">Show Nudges workflow</button></div>
+</div>
+<p><strong>Inbox → Supabase → message list</strong><br><strong>Nudges → Firebase Remote Config → feature anchors</strong></p>
+<p class="context">Inbox unread dots appear automatically when a published message is unread. Nudges are separately authored discovery campaigns. Publishing one does not publish the other.</p>
+<p class="context small muted">You mentioned admin.chessever.com. This repository defines these routes under chessever.com/admin; its Worker configuration does not list the admin subdomain.</p>
+<h3>What this guide was checked against</h3>
+<p class="small muted">Reviewed on 13 October 2026. The requested web checkout is at <code>c0d9f54c</code>. Its Inbox composer is plain text; the rich composer is in <code>feat/admin-inbox-rich</code> at <code>ebc6a624</code>. The rich instructions below follow that implementation. This source review does not establish which revision is currently deployed or whether the rich database migration is applied.</p>
+<p class="print-only small muted context">The next two pages contain both complete workflows and the discovery-dot example.</p>
+</section>
+
+<section id="inbox-guide" class="sheet" aria-label="Inbox publishing workflow">
+<h2>Publish a rich Inbox message</h2>
+<p><strong>Content → Inbox</strong> · <a href="https://chessever.com/admin/dashboard/inbox" target="_blank" rel="noopener">Open the Inbox admin page</a></p>
+<div class="path" aria-label="Inbox publication sequence"><span>Compose</span><span class="arrow" aria-hidden="true">→</span><span>Save / preview</span><span class="arrow" aria-hidden="true">→</span><span>Confirm publish</span><span class="arrow" aria-hidden="true">→</span><span>Every Inbox</span></div>
+<ol class="steps">
+<li><strong>Write a new message or select a draft.</strong>Enter the title and Markdown body. In the rich composer, use <b>Attached image</b> for the list thumbnail and opened-message hero. <b>Insert an image</b> places an uploaded picture within the body.</li>
+<li><strong>Add a destination, if needed.</strong>Tick <b>Add a button under the message</b>, then enter a label and an <code>https://</code> link. ChessEver links use the app’s deep-link router; other sites open in the browser.</li>
+<li><strong>Choose whether to send a push.</strong><b>Also send a push notification</b> is off by default. When on, its title and text are separately editable. Choose <b>Inbox image</b>, <b>Another image</b> or <b>No image</b>. Push reaches eligible users with notifications and announcements enabled; everyone still gets the Inbox message.</li>
+<li><strong>Check all three previews.</strong>Use <b>In the list</b>, <b>Opened</b> and <b>Push</b>. <b>Save as draft</b> keeps the message private to admin. Push customization is not saved with the draft; check it again when reopening one.</li>
+<li><strong>Publish, then confirm.</strong>Click <b>Publish to everyone</b> or <b>Publish and push</b>. The composer saves the draft, opens a confirmation, and publishes only after the final <b>Publish</b> / <b>Publish and push</b> click. Published messages cannot be edited, removed or recalled through this workflow.</li>
+</ol>
+<h3>Composer limits</h3>
+<div class="limit-grid"><p>Title: <strong>200 characters</strong><br>Body: <strong>20,000 characters</strong></p><p>Button label: <strong>40 characters</strong><br>Push title / text: <strong>65 / 170 characters</strong></p></div>
+<p class="small muted" style="margin-top:10px">Images: JPEG, PNG or WebP, up to 5 MB, uploaded through the composer. Current phone code supports rich messages from 36.4.2; older builds show Markdown as source text and omit rich fields. Push pictures show on Android; the implementation documents text-only pushes on iPhone until a notification service extension is added.</p>
+<h3>Where each action lands</h3>
+<dl class="backend"><dt>Save draft</dt><dd><code>POST /api/admin/inbox</code> → <code>save_editorial_inbox_draft_v2</code></dd><dt>Upload image</dt><dd><code>POST /api/admin/inbox/image</code> → public Storage bucket <code>editorial-inbox</code></dd><dt>Publish</dt><dd><code>POST /api/admin/inbox/publish</code> → <code>publish_editorial_inbox_v2</code> → <code>editorial_inbox_messages</code></dd><dt>Optional push</dt><dd><code>notification_outbox</code> → dispatcher → OneSignal. A push opens Inbox; the message’s button is a separate destination.</dd><dt>Phone</dt><dd>Profile menu → Inbox → open the message. It is marked read when opened and the server records the read.</dd></dl>
+<p class="small muted context">If the rich migration is missing, the rich composer explicitly disables saving and publishing. If you see only a plain text composer, that UI is an earlier implementation.</p>
+<div class="sources"><p>Web sources (rich worktree): <code>src/app/admin/dashboard/inbox/page.tsx</code>; <code>src/lib/admin-inbox.ts</code>; <code>src/app/api/admin/inbox/</code>.</p><p>Phone contract: <code>docs/phone_inbox.md</code>. Rich migration: <code>20261012200000_editorial_inbox_rich.sql</code>.</p></div>
+</section>
+
+<section id="nudges-guide" class="sheet" aria-label="Nudges publishing workflow">
+<h2>Publish a discovery dot</h2>
+<p><strong>Content → Nudges</strong> · <a href="https://chessever.com/admin/dashboard/nudges" target="_blank" rel="noopener">Open the Nudges admin page</a></p>
+<div class="path" aria-label="Nudge publication sequence"><span>New dot</span><span class="arrow" aria-hidden="true">→</span><span>Add dot</span><span class="arrow" aria-hidden="true">→</span><span>Publish to phones</span><span class="arrow" aria-hidden="true">→</span><span>Feature anchors</span></div>
+<ol class="steps">
+<li><strong>Click New dot.</strong>Enter <b>Name (only you see this)</b>. For example, <b>Feed launch</b> becomes the stable campaign ID <code>feed-launch</code>. Use a unique name.</li>
+<li><strong>Pick Where does the dot go?</strong>Choose the actual target, such as <b>Discovery → Feed</b>. The list covers bottom navigation, tabs, tiles, drawer rows and game-board buttons. A custom spot ID works only when that anchor exists in the installed app.</li>
+<li><strong>Choose the trail and message.</strong>Tick <b>Light the way there</b> to light the target’s known path. <b>Message (optional)</b> allows 140 characters and appears once on reaching the target. Leave it blank for a silent dot.</li>
+<li><strong>Add it, then publish the list.</strong><b>Add dot</b> closes the dialog and changes the local editor. Click the top <b>Publish to phones</b> button to send the entire list. Pause, Resume, Show again and Remove also require this final publish.</li>
+</ol>
+<div class="demo" aria-label="Example discovery trail">
+<h3>Example: Feed launch</h3>
+<p class="small muted screen-only">Local demonstration only. Click each stop to see its dot clear.</p>
+<div class="demo-path">
+<div class="hop"><button type="button" data-hop="0" aria-label="Reach Home in local demonstration"><span>Home</span><span class="dot" aria-hidden="true"></span></button><code>home.nav.home</code></div><span class="arrow" aria-hidden="true">→</span>
+<div class="hop"><button type="button" data-hop="1" aria-label="Reach Discovery in local demonstration"><span>Discovery</span><span class="dot" aria-hidden="true"></span></button><code>home.tab.discovery</code></div><span class="arrow" aria-hidden="true">→</span>
+<div class="hop"><button type="button" data-hop="2" aria-label="Reach Feed in local demonstration"><span>Feed</span><span class="dot" aria-hidden="true"></span></button><code>discovery.tile.feed</code></div>
+</div>
+<div class="demo-actions"><button type="button" id="show-again">Show again (demo)</button><span class="small muted" id="revision">Revision 1</span></div>
+<p id="demo-state" class="demo-state small" aria-live="polite">Passing a trail stop clears only that stop. Reaching Feed retires the whole campaign on this device.</p>
+</div>
+<dl class="operations"><dt>Pause / Resume</dt><dd>Hide or re-enable the campaign. Resume keeps its revision, so people who completed it still do not see it.</dd><dt>Show again</dt><dd>Increases the revision and enables the campaign, making it visible again on devices that already completed it.</dd><dt>Remove</dt><dd>Removes the campaign from the published list after <b>Publish to phones</b>.</dd></dl>
+<h3>Where it is published</h3>
+<p><code>PUT /api/admin/nudges</code> → Firebase project <code>chessever-53078</code> → Remote Config parameter <code>discovery_dots</code>.</p>
+<p class="small muted">Production is fixed as <code>app=live</code> in the page. Connected foreground apps receive Remote Config updates; release builds use a one-hour minimum fetch interval for ordinary fetches. Delivery depends on connectivity. Completion is stored on each device against the campaign ID and revision.</p>
+<p class="small muted context">If the page says <b>Not connected yet</b>, the Firebase service-account configuration is missing. If someone published while you were editing, the API refuses the stale version: refresh and reconcile your changes.</p>
+<div class="sources"><p>Web sources: <code>src/app/admin/dashboard/nudges/page.tsx</code>; <code>src/lib/admin-nudges.ts</code>; <code>src/app/api/admin/nudges/route.ts</code>; <code>src/lib/firebase-remote-config.ts</code>.</p><p>Phone sources: <code>lib/services/discovery_dots/discovery_dot.dart</code> and <code>discovery_dots_provider.dart</code>. Sidebar: <code>src/app/admin/dashboard/layout.tsx</code>.</p></div>
+</section>
+</main>
+<script>
+(()=>{
+const root=document.getElementById('publishing-guide');
+const selectors=[...root.querySelectorAll('[data-guide]')];
+root.querySelector('#nudges-guide').hidden=true;
+selectors.forEach(button=>button.addEventListener('click',()=>{
+selectors.forEach(other=>other.setAttribute('aria-pressed',String(other===button)));
+root.querySelectorAll('.sheet').forEach(panel=>{panel.hidden=panel.id!==button.dataset.guide+'-guide'});
+}));
+const hops=[...root.querySelectorAll('[data-hop]')];
+const state=root.querySelector('#demo-state');
+let revision=1,seen=[false,false,false],completed=false;
+function paint(){
+hops.forEach((button,i)=>{button.querySelector('.dot').classList.toggle('seen',completed||seen[i]);button.setAttribute('aria-label','Reach '+['Home','Discovery','Feed'][i]+' in local demonstration. Dot '+(completed||seen[i]?'cleared':'visible'))});
+root.querySelector('#revision').textContent='Revision '+revision;
+}
+hops.forEach((button,i)=>button.addEventListener('click',()=>{
+if(completed||seen[i])return;
+seen[i]=true;
+if(i===2){completed=true;state.textContent='Feed reached. The target and its entire trail are retired for revision '+revision+' on this device. An optional campaign message would appear once.'}
+else state.textContent=['Home','Discovery'][i]+' reached. Only this trail stop clears; the target stays lit.';
+paint();
+}));
+root.querySelector('#show-again').addEventListener('click',()=>{revision++;seen=[false,false,false];completed=false;state.textContent='Revision '+revision+': the whole trail is visible again, including on devices that completed an earlier revision. In admin, this takes effect after Publish to phones.';paint()});
+window.addEventListener('beforeprint',()=>{seen=[false,false,false];completed=false;state.textContent='Passing a trail stop clears only that stop. Reaching Feed retires the whole campaign on this device.';paint()});
+paint();
+})();
+</script>
+</body>
+</html>

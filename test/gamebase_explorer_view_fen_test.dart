@@ -71,6 +71,36 @@ class _FakeGamebaseRepository extends GamebaseRepository {
       metadata: GamebasePaginationMetadata(pageNumber: 0, pageSize: 1),
     );
   }
+
+  /// The panel loads the position's games alongside its statistics (the
+  /// inline strip), so the fake answers that too or the widget reaches the
+  /// network.
+  @override
+  Future<GamebaseSearchQueryResponse> getPositionGames({
+    required String fen,
+    List<String> moves = const [],
+    String? uci,
+    TimeControl? timeControl,
+    String? playerId,
+    String? color,
+    String? result,
+    int? minRating,
+    int? maxRating,
+    int? yearFrom,
+    int? yearTo,
+    GamebaseSortField? sortBy,
+    GamebaseSortDirection? sortDirection,
+    bool? isOnline,
+    int notationPlies = 0,
+    int pageNumber = 0,
+    int pageSize = 20,
+  }) async {
+    return const GamebaseSearchQueryResponse(
+      status: 'success',
+      data: <Map<String, dynamic>>[],
+      metadata: GamebasePaginationMetadata(pageNumber: 0, pageSize: 1),
+    );
+  }
 }
 
 ({List<Move> moves, Position position}) _buildLongLegalLine() {

@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:chessever2/screens/my_space/actions/space_edit_actions.dart';
 import 'package:chessever2/screens/my_space/models/space_shortcut.dart';
 import 'package:chessever2/screens/my_space/providers/space_shortcuts_provider.dart';
+import 'package:chessever2/screens/my_space/providers/space_auto_provider.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:flutter/material.dart';
@@ -26,6 +27,17 @@ final _event = _pin('event', SpaceShortcutKind.event, 4);
 final _folder = _pin('folder', SpaceShortcutKind.folder, 3);
 final _opening = _pin('opening', SpaceShortcutKind.opening, 2);
 final _player = _pin('player', SpaceShortcutKind.player, 1);
+
+class _Hidden extends SpaceHiddenAutoKeys {
+  @override
+  Set<String> build() => const {};
+
+  @override
+  void hide(String key) => state = {...state, key};
+
+  @override
+  void unhide(String key) => state = {...state}..remove(key);
+}
 
 /// The actual action only calls pin removal and restore. Its test store keeps
 /// those local effects immediate while real SpacePendingDeletes delays writes.
@@ -355,7 +367,10 @@ void main() {
       int? removedCount;
       await tester.pumpWidget(
         ProviderScope(
-          overrides: [spaceShortcutsProvider.overrideWith(() => store)],
+          overrides: [
+            spaceShortcutsProvider.overrideWith(() => store),
+            spaceHiddenAutoKeysProvider.overrideWith(_Hidden.new),
+          ],
           child: MaterialApp(
             theme: AppTheme.darkTheme,
             home: Consumer(

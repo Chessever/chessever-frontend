@@ -11,6 +11,7 @@ import 'package:chessever2/screens/feed/models/feed_entry.dart';
 import 'package:chessever2/screens/feed/models/feed_models.dart';
 import 'package:chessever2/screens/feed/news/feed_news.dart';
 import 'package:chessever2/screens/feed/providers/feed_entries_provider.dart';
+import 'package:chessever2/screens/feed/logic/feed_taste.dart';
 import 'package:chessever2/screens/feed/providers/feed_provider.dart';
 import 'package:chessever2/screens/for_you/discovery/data/discovery_repository.dart';
 import 'package:chessever2/screens/for_you/discovery/models/report_game_type.dart';
@@ -24,6 +25,21 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 /// none shown before while anything unseen is left. The ready reserve is
 /// landed on only while it is recent and new.
 void main() {
+  test('a post the viewer liked teaches the feed their taste', () async {
+    final harness = await _Harness.start();
+    final notifier = harness.notifier;
+    final items = harness.container.read(feedProvider).value!;
+    final liked = items.first.game;
+    final event = 'e:${liked.tourId}';
+    final before = notifier.taste.affinity(event);
+    notifier.onVisible(0);
+    notifier.noteProgress(liked.gameId, 1);
+    notifier.noteAction(liked.gameId, FeedAction.like);
+    notifier.onVisible(1);
+    expect(notifier.taste.visits, 1);
+    expect(notifier.taste.affinity(event), greaterThan(before));
+  });
+
   TestWidgetsFlutterBinding.ensureInitialized();
 
   group('the reserve a refresh lands on', () {
@@ -402,7 +418,7 @@ class _Games implements GameRepository {
           Player(
             name: 'White $i',
             title: 'GM',
-            rating: i < _strong ? 2860 : 2260,
+            rating: i < _strong ? 2860 : 2420,
             fideId: 1000 + i,
             fed: 'NOR',
             clock: 0,
@@ -411,7 +427,7 @@ class _Games implements GameRepository {
           Player(
             name: 'Black $i',
             title: 'GM',
-            rating: i < _strong ? 2840 : 2240,
+            rating: i < _strong ? 2840 : 2400,
             fideId: 5000 + i,
             fed: 'USA',
             clock: 0,
@@ -444,6 +460,7 @@ class _Games implements GameRepository {
     bool decisiveOnly = false,
     int limit = 60,
     int offset = 0,
+    bool overTheBoardOnly = false,
   }) async {
     reads++;
     final stall = stallNext;

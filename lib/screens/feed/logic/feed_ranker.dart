@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 
+import 'package:chessever2/screens/feed/logic/feed_taste.dart';
 import 'package:chessever2/screens/for_you/discovery/models/report_game_type.dart';
 import 'package:flutter/foundation.dart';
 
@@ -41,6 +42,10 @@ class FeedSignals {
     this.reportInterest = 0,
     this.reportType,
     this.openingKey,
+    this.freestyle = false,
+    this.online = false,
+    this.countries = const {},
+    this.timeClass,
   });
 
   final String id;
@@ -74,13 +79,35 @@ class FeedSignals {
   final ReportGameType? reportType;
   final String? openingKey;
 
+  /// Chess960 / Freestyle: a novelty in small doses (PM, Trello: "out of 10
+  /// games one can be freestyle"), never the feed's staple.
+  final bool freestyle;
+
+  /// Played online (Titled Tuesday, Freestyle Friday, 3+0 Thursday...).
+  /// Those events dump hundreds of games an evening; over the board games
+  /// must not be drowned by them.
+  final bool online;
+
+  /// The players' countries (ISO codes), for the viewer's countrymen.
+  final Set<String> countries;
+
+  /// `standard`, `rapid` or `blitz`, when the event says.
+  final String? timeClass;
+
   bool get decisive => result == '1-0' || result == '0-1';
 
   FeedSignals withSeenBefore(
     bool value, {
     double? reportInterest,
     ReportGameType? reportType,
-  }) => value == seenBefore && reportInterest == null && reportType == null
+    bool? freestyle,
+    bool? online,
+  }) =>
+      value == seenBefore &&
+          reportInterest == null &&
+          reportType == null &&
+          (freestyle == null || freestyle == this.freestyle) &&
+          (online == null || online == this.online)
       ? this
       : FeedSignals(
           id: id,
@@ -97,6 +124,10 @@ class FeedSignals {
           reportInterest: reportInterest ?? this.reportInterest,
           reportType: reportType ?? this.reportType,
           openingKey: openingKey,
+          freestyle: freestyle ?? this.freestyle,
+          online: online ?? this.online,
+          countries: countries,
+          timeClass: timeClass,
         );
 
   int get averageElo {
@@ -110,6 +141,85 @@ class FeedSignals {
   int get winnerMargin {
     if (!decisive || whiteElo <= 0 || blackElo <= 0) return 0;
     return result == '1-0' ? whiteElo - blackElo : blackElo - whiteElo;
+  }
+}
+
+/// Event names (tour slug or PGN `[Event]`) of Chess960 / Freestyle play.
+final RegExp _freestyleName = RegExp(
+  r'(freestyle|fischer\s*random|chess\s*960|\b960\b|chess9lx)',
+  caseSensitive: false,
+);
+
+/// The streak ledger's online rule on event names
+/// (`player_streak_is_online`). Not [GamesTourModel.isOnline]: that only
+/// means the game carries a Lichess id, which every relayed OTB broadcast
+/// game does.
+final RegExp _onlineName = RegExp(
+  r'(titled tuesday|\bonline\b|chess\.com|\bchesscom\b|\blichess\b'
+  r'|\bbullet\b|speed chess championship|champions chess tour|\bcct\b'
+  r'|freestyle friday|\d\+\d\s*thursday|\binternet\b|\bvirtual\b'
+  r'|titled arena|\btornelo\b|\bchess24\b|\be-?sports\b'
+  r'|\b\d+ \d+ thursday|collegiate chess league|\bbrawl\b)',
+  caseSensitive: false,
+);
+
+String _eventText(String? slug, String? event) =>
+    '${slug?.replaceAll(RegExp(r'[-_]+'), ' ') ?? ''} ${event ?? ''}';
+
+/// Whether a tour slug or event name says Chess960 / Freestyle.
+bool feedIsFreestyleEvent(String? slug, [String? event]) =>
+    _freestyleName.hasMatch(_eventText(slug, event));
+
+/// Whether a tour slug or event name says the event is played online.
+bool feedIsOnlineEvent(String? slug, [String? event]) =>
+    _onlineName.hasMatch(_eventText(slug, event));
+
+final RegExp _pgnVariant = RegExp(r'^\[Variant "([^"]*)"\]', multiLine: true);
+final RegExp _pgnFen = RegExp(r'^\[FEN "([^"]*)"\]', multiLine: true);
+
+/// Whether [pgn] is a Chess960 / Freestyle game: a 960-flavoured `[Variant]`
+/// header, or a `[FEN]` that is a full starting array with the back rank
+/// shuffled. Catches Freestyle games of events whose name does not say so.
+bool feedPgnIsFreestyle(String pgn) {
+  final variant = _pgnVariant.firstMatch(pgn)?.group(1) ?? '';
+  if (_freestyleName.hasMatch(variant)) return true;
+  final fen = _pgnFen.firstMatch(pgn)?.group(1);
+  if (fen == null) return false;
+  final ranks = fen.split(' ').first.split('/');
+  if (ranks.length != 8) return false;
+  return ranks[1] == 'pppppppp' &&
+      ranks[6] == 'PPPPPPPP' &&
+      ranks[0] != 'rnbqkbnr' &&
+      ranks[0].length == 8 &&
+      ranks[0].toUpperCase() == ranks[7];
+}
+
+final RegExp _pgnSite = RegExp(r'^\[Site "([^"]*)"\]', multiLine: true);
+
+/// Whether [pgn] was played on a server: its `[Site]` is Chess.com or a
+/// lichess.org game. Relayed over-the-board games name their venue there.
+bool feedPgnIsOnline(String pgn) {
+  final site = _pgnSite.firstMatch(pgn)?.group(1) ?? '';
+  return RegExp(
+    r'chess\.com|lichess\.org',
+    caseSensitive: false,
+  ).hasMatch(site);
+}
+
+/// The floor every game of the public pools must clear: both players rated
+/// and the pairing strong on average, so one 2550 in an open online event
+/// does not carry a 1960 opponent's game into the feed. The viewer's own
+/// players and community favourites are their own reason to be there.
+bool feedMeetsQualityFloor(FeedSignals s) {
+  switch (s.pool) {
+    case FeedPool.favorite:
+    case FeedPool.liked:
+    case FeedPool.miniature:
+      return true;
+    case FeedPool.current:
+    case FeedPool.top:
+      if (s.whiteElo <= 0 || s.blackElo <= 0) return false;
+      return s.averageElo >= 2350 && math.min(s.whiteElo, s.blackElo) >= 2150;
   }
 }
 
@@ -147,68 +257,66 @@ double feedInterest(FeedSignals s) {
 
 /// Picks the Feed's next game from a pool of candidates, one at a time.
 ///
-/// Not a sort. A sorted feed shows the same five games to everyone, in the
-/// same order, every launch; this is a weighted draw, so every session is
-/// its own:
+/// Not a sort, and no fixed rules about what may follow what. Each
+/// candidate's appeal is three things the feed knows at that moment:
 ///
-/// * **Softmax draw.** Each candidate's chance is `exp(interest / T)`: the
-///   best games come up most, but anything decent can.
-/// * **Variety.** The draw is damped for a candidate that repeats the pool,
-///   event, players or drawn result of the last few picks, so the feed never
-///   runs one kind of game for long; three games in a row from one event
-///   never happen while anything else is left.
-/// * **Jackpots.** Every 3 to 5 picks (the gap itself is random) the draw is
-///   skipped and the single best remaining game is served: a variable-ratio
-///   reward, the rhythm that makes one more swipe feel worth it. The very
-///   first pick is always one.
-/// * **Exploration.** Occasional draws within the promising quality band let
-///   an unknown player's report highlight surface without a weak random pick.
+/// * **Quality** ([feedInterest]): strength, result, report highlights,
+///   freshness.
+/// * **Taste** ([FeedTaste]): what this viewer has enjoyed, sampled rather
+///   than averaged, so uncertain interests get probed now and then.
+/// * **Fatigue** ([FeedFatigue]): what the last picks already showed. An
+///   event that dumps hundreds of games an evening tires after a game or
+///   two and comes back a few posts later; a kind of game the viewer
+///   swipes away (Freestyle, say) tires harder than one they love.
+///
+/// The pick is a softmax draw over appeal, except:
+///
+/// * **Jackpots.** Every 3 to 5 picks (the gap itself is random) the best
+///   game on offer is served outright: a variable-ratio reward, the rhythm
+///   that makes one more swipe feel worth it. The very first pick is one.
+/// * **Exploration** is built in: taste is sampled, so an interest the
+///   feed is unsure of is sometimes sampled high and gets its chance, and
+///   one the viewer has turned down stays down.
+/// * **Quality band.** Games far below the best on offer
+///   ([qualityBand]) are not drawn, whatever the viewer's taste; a deep pool
+///   of weak games cannot win on numbers.
 ///
 /// Seeded, so one session's order is stable and a test can replay it; a new
 /// session (or a pull-to-refresh) brings a new seed.
 class FeedRanker {
-  FeedRanker(int seed) : _random = math.Random(seed) {
+  FeedRanker(int seed, {FeedTaste? taste})
+    : _random = math.Random(seed),
+      taste = taste ?? FeedTaste(),
+      _fatigue = FeedFatigue() {
     _jackpotIn = 0; // the first pick is the hook
+  }
+
+  /// A ranker that starts from [feed]'s taste and fatigue, for previewing a
+  /// shortlist: it does not fill up with what the feed is tired of.
+  FeedRanker.following(FeedRanker feed, int seed)
+    : _random = math.Random(seed),
+      taste = feed.taste,
+      _fatigue = FeedFatigue.copy(feed._fatigue) {
+    _jackpotIn = 0;
   }
 
   final math.Random _random;
 
-  /// The most recent picks, newest last.
-  final List<FeedSignals> _history = [];
+  /// Shared with the feed that owns it: learning lands in every ranker.
+  final FeedTaste taste;
+  final FeedFatigue _fatigue;
   late int _jackpotIn;
 
   static const double temperature = 0.7;
-  static const double explore = 0.08;
-  static const int _historySize = 4;
 
-  /// How much a candidate is held back for echoing the recent picks: 1 is
-  /// not at all.
+  /// Interest below the best candidate on offer past which a game is not
+  /// drawn: at [temperature] 0.7 it had a 1.4% weight against the best.
+  static const double qualityBand = 3.0;
+
+  /// Quality, taste and fatigue together; see the class doc.
   @visibleForTesting
-  double varietyFactor(FeedSignals s) {
-    if (_history.isEmpty) return 1;
-    var factor = 1.0;
-    final last = _history.last;
-    if (last.pool == s.pool) {
-      factor *= 0.6;
-      if (_history.length >= 2 &&
-          _history[_history.length - 2].pool == s.pool) {
-        factor *= 0.4;
-      }
-    }
-    // One more game of an event just shown is fine, held back a little;
-    // [next] never allows a third in a row.
-    if (s.eventKey != null && s.eventKey == last.eventKey) factor *= 0.3;
-    for (final h in _history) {
-      if (h.playerKeys.any(s.playerKeys.contains)) {
-        factor *= 0.25;
-        break;
-      }
-    }
-    if (!last.decisive && !s.decisive) factor *= 0.5;
-    if (s.reportType != null && s.reportType == last.reportType) factor *= 0.45;
-    if (s.openingKey != null && s.openingKey == last.openingKey) factor *= 0.65;
-    return factor;
-  }
+  double appeal(FeedSignals s, {FeedTasteDraw? draw}) =>
+      feedInterest(s) + taste.score(s, draw: draw) - _fatigue.penalty(s, taste);
 
   /// Takes the next pick out of [pool] (and returns it), or null when no
   /// candidate passes [eligible].
@@ -216,63 +324,40 @@ class FeedRanker {
     List<FeedSignals> pool, {
     bool Function(FeedSignals)? eligible,
   }) {
-    var options = [
+    final all = [
       for (final s in pool)
         if (eligible == null || eligible(s)) s,
     ];
-    if (options.isEmpty) return null;
+    if (all.isEmpty) return null;
 
-    // Hard rule behind the soft penalties: never a third game in a row from
-    // one event while anything else is left.
-    if (_history.length >= 2) {
-      final event = _history.last.eventKey;
-      if (event != null && _history[_history.length - 2].eventKey == event) {
-        final others = [
-          for (final s in options)
-            if (s.eventKey != event) s,
-        ];
-        if (others.isNotEmpty) options = others;
-      }
-      final type = _history.last.reportType;
-      if (type != null && _history[_history.length - 2].reportType == type) {
-        final others = [
-          for (final s in options)
-            if (s.reportType != type) s,
-        ];
-        if (others.isNotEmpty) options = others;
-      }
-    }
+    final interest = {for (final s in all) s: feedInterest(s)};
+    final best = interest.values.reduce(math.max);
+    final options = [
+      for (final s in all)
+        if (interest[s]! >= best - qualityBand) s,
+    ];
+    final draw = taste.draw(_random);
 
     final FeedSignals pick;
     if (_jackpotIn <= 0) {
-      pick = _best(options);
+      // A jackpot is a sure thing: taste as expected, not as sampled.
+      pick = _top(options, null);
       _jackpotIn = 3 + _random.nextInt(3);
-    } else if (_random.nextDouble() < explore) {
-      // Explore within a quality band instead of randomly serving the weakest
-      // or oldest game merely because it survived eligibility.
-      final best = options.map(feedInterest).reduce(math.max);
-      final promising = [
-        for (final s in options)
-          if (feedInterest(s) >= best - 1.5) s,
-      ];
-      pick = promising[_random.nextInt(promising.length)];
-      _jackpotIn--;
     } else {
-      pick = _draw(options);
+      pick = _softmax(options, (s) => appeal(s, draw: draw));
       _jackpotIn--;
     }
 
     pool.remove(pick);
-    _history.add(pick);
-    if (_history.length > _historySize) _history.removeAt(0);
+    _fatigue.picked(pick);
     return pick;
   }
 
-  FeedSignals _best(List<FeedSignals> options) {
+  FeedSignals _top(List<FeedSignals> options, FeedTasteDraw? draw) {
     FeedSignals? best;
     var bestScore = double.negativeInfinity;
     for (final s in options) {
-      final score = feedInterest(s) + math.log(varietyFactor(s));
+      final score = appeal(s, draw: draw);
       if (score > bestScore) {
         best = s;
         bestScore = score;
@@ -281,14 +366,14 @@ class FeedRanker {
     return best!;
   }
 
-  FeedSignals _draw(List<FeedSignals> options) {
+  FeedSignals _softmax(
+    List<FeedSignals> options,
+    double Function(FeedSignals) score,
+  ) {
+    final scores = [for (final s in options) score(s) / temperature];
     // Shifted by the top score so exp never overflows.
-    final scores = [for (final s in options) feedInterest(s) / temperature];
     final top = scores.reduce(math.max);
-    final weights = [
-      for (var i = 0; i < options.length; i++)
-        math.exp(scores[i] - top) * varietyFactor(options[i]),
-    ];
+    final weights = [for (final x in scores) math.exp(x - top)];
     final total = weights.fold<double>(0, (a, b) => a + b);
     var roll = _random.nextDouble() * total;
     for (var i = 0; i < options.length; i++) {

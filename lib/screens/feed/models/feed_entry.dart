@@ -3,8 +3,8 @@ import 'package:chessever2/screens/feed/news/feed_news.dart';
 import 'package:chessever2/screens/feed/puzzles/feed_puzzle.dart';
 import 'package:flutter/foundation.dart';
 
-/// One page of the Feed: a replaying game, a Lichess puzzle, or a ChessEver
-/// News article.
+/// One page of the Feed: a replaying game, a Lichess puzzle, a ChessEver
+/// News article, or (for viewers who see ads) an ad between them.
 @immutable
 sealed class FeedEntry {
   const FeedEntry();
@@ -39,6 +39,58 @@ final class FeedNewsEntry extends FeedEntry {
 
   @override
   String get key => 'news:${news.id}';
+}
+
+/// An ad on a page of its own, laid between posts by [withFeedAds]. Never
+/// part of [composeFeedEntries]'s arrangement.
+final class FeedAdEntry extends FeedEntry {
+  const FeedAdEntry(this.after);
+
+  /// The key of the post it follows: unique in an arrangement, and gone with
+  /// it when a refresh draws new posts.
+  final String after;
+
+  @override
+  String get key => 'ad:$after';
+}
+
+/// Distance between planned ad pages, counting ads as pages.
+const int kFeedAdEvery = 5;
+
+/// [entries] with ads at positions 3, 8, 13… (one-based), only between
+/// two posts. [every] counts planned pages, including ads. Withdrawn ads
+/// are omitted without moving subsequent planned slots to different posts.
+List<FeedEntry> withFeedAds(
+  List<FeedEntry> entries, {
+  int every = kFeedAdEvery,
+  Set<String> withdrawn = const {},
+}) {
+  if (every <= 1 || entries.length <= 2) return entries;
+  final out = <FeedEntry>[];
+  for (var i = 0; i < entries.length; i++) {
+    final entry = entries[i];
+    out.add(entry);
+    final posts = i + 1;
+    if (posts >= 2 &&
+        (posts - 2) % (every - 1) == 0 &&
+        posts < entries.length) {
+      final ad = FeedAdEntry(entry.key);
+      if (!withdrawn.contains(ad.key)) out.add(ad);
+    }
+  }
+  return List.unmodifiable(out);
+}
+
+/// Page [index] of [pages] as an index into the posts under them: a post's
+/// own index, the next post's for an ad page, and past the last page (the
+/// tail) as far beyond the posts as it is beyond the pages.
+int feedPostIndexAt(List<FeedEntry> pages, int index) {
+  var ads = 0;
+  final end = index.clamp(0, pages.length);
+  for (var i = 0; i < end; i++) {
+    if (pages[i] is FeedAdEntry) ads++;
+  }
+  return index - ads;
 }
 
 /// A puzzle joins the feed after every this many games.
@@ -94,6 +146,9 @@ List<FeedEntry> composeFeedEntries({
       case FeedNewsEntry(news: final article):
         usedNews.add(article.id);
         out.add(entry);
+      // Laid over an arrangement, never part of one ([withFeedAds]).
+      case FeedAdEntry():
+        break;
     }
   }
   if (!prefixValid) {

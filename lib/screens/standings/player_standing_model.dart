@@ -1,3 +1,4 @@
+import 'package:chessever2/repository/supabase/tour/published_tiebreak.dart';
 import 'package:chessever2/repository/supabase/tour/tour.dart';
 
 class PlayerStandingModel {
@@ -21,6 +22,11 @@ class PlayerStandingModel {
   /// search so filtered results still display the player's overall standing
   /// (e.g. "#42") instead of re-numbering the filtered list from 1.
   final int? overallRank;
+  final List<PublishedTiebreak> tiebreaks;
+
+  /// Chess-Results start number (SNo) and Club/City.
+  final int? startNumber;
+  final String? club;
 
   const PlayerStandingModel({
     required this.countryCode,
@@ -36,6 +42,9 @@ class PlayerStandingModel {
     this.memorialRouteId,
     this.team,
     this.overallRank,
+    this.tiebreaks = const [],
+    this.startNumber,
+    this.club,
   });
 
   factory PlayerStandingModel.fromPlayer(TournamentPlayer player) {
@@ -50,19 +59,27 @@ class PlayerStandingModel {
       fideId: player.fideId,
       gamebasePlayerId: null,
       team: player.team,
+      tiebreaks: player.tiebreaks,
+      startNumber: player.startNumber,
+      club: player.club,
     );
   }
 
-  /// Formats tournament score as "score / games_played" or null if no score
+  /// Formats tournament score as "score / games_played" or null if no score.
+  ///
+  /// A published table can rank a player without a games count (Chess-Results
+  /// rows the broadcast never paired). Show the score alone rather than
+  /// "4.5 / 0".
   static String? _formatTournamentScore(double? score, int played) {
     if (score == null) {
       return played > 0 ? '0.0 / $played' : null;
     }
 
     // Format score with 1 decimal place if needed, otherwise as integer
-    final scoreStr =
-        score % 1 == 0 ? score.toInt().toString() : score.toStringAsFixed(1);
-    return '$scoreStr / $played';
+    final scoreStr = score % 1 == 0
+        ? score.toInt().toString()
+        : score.toStringAsFixed(1);
+    return played > 0 ? '$scoreStr / $played' : scoreStr;
   }
 
   // Copy with method to create a new instance with some changes
@@ -80,6 +97,9 @@ class PlayerStandingModel {
     String? memorialRouteId,
     String? team,
     int? overallRank,
+    List<PublishedTiebreak>? tiebreaks,
+    int? startNumber,
+    String? club,
   }) {
     return PlayerStandingModel(
       countryCode: countryCode ?? this.countryCode,
@@ -96,6 +116,9 @@ class PlayerStandingModel {
       memorialRouteId: memorialRouteId ?? this.memorialRouteId,
       team: team ?? this.team,
       overallRank: overallRank ?? this.overallRank,
+      tiebreaks: tiebreaks ?? this.tiebreaks,
+      startNumber: startNumber ?? this.startNumber,
+      club: club ?? this.club,
     );
   }
 
@@ -115,6 +138,9 @@ class PlayerStandingModel {
       memorialRouteId: json['memorialRouteId'] as String?,
       team: json['team'] as String?,
       overallRank: json['overallRank'] as int?,
+      tiebreaks: PublishedTiebreak.parse(json['tiebreaks']),
+      startNumber: (json['startNumber'] as num?)?.toInt(),
+      club: json['club'] as String?,
     );
   }
 
@@ -134,6 +160,10 @@ class PlayerStandingModel {
       'memorialRouteId': memorialRouteId,
       'team': team,
       'overallRank': overallRank,
+      if (tiebreaks.isNotEmpty)
+        'tiebreaks': tiebreaks.map((t) => t.toJson()).toList(),
+      if (startNumber != null) 'startNumber': startNumber,
+      if (club != null) 'club': club,
     };
   }
 
@@ -153,7 +183,10 @@ class PlayerStandingModel {
         other.memorialSourceIdentity == memorialSourceIdentity &&
         other.memorialRouteId == memorialRouteId &&
         other.team == team &&
-        other.overallRank == overallRank;
+        other.overallRank == overallRank &&
+        other.startNumber == startNumber &&
+        other.club == club &&
+        PublishedTiebreak.same(other.tiebreaks, tiebreaks);
   }
 
   @override
@@ -172,6 +205,9 @@ class PlayerStandingModel {
       memorialRouteId,
       team,
       overallRank,
+      startNumber,
+      club,
+      Object.hashAll(tiebreaks),
     );
   }
 }

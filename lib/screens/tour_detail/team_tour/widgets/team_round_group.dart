@@ -6,6 +6,7 @@ import 'package:chessever2/screens/tour_detail/games_tour/widgets/games_tour_con
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/widgets/paywall/past_event_access.dart';
 import 'package:flutter/material.dart';
 import 'package:motor/motor.dart';
 
@@ -253,6 +254,10 @@ class _RoundGames extends StatelessWidget {
                   // Results refresh when the matches provider re-emits; avoid a
                   // live subscription per card across many rounds.
                   streamEnabled: false,
+                  onBeforeOpen: () => ensureEventGameAccess(
+                    context,
+                    tourId: orderedGames[i].tourId,
+                  ),
                 ),
               ),
             ),

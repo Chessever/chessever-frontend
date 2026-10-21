@@ -25,14 +25,16 @@ chosen one is finished with ``--finish <name> <take>``.
 
 Finishing (needs ffmpeg for decode/encode; the rest is plain Python):
   * trims the API's leading and trailing silence — a class sound has to start
-    the instant the piece lands — or, for sounds whose body arrives late (the
-    page flick), starts a few ms before the loudest transient;
+    the instant the piece lands — or, when peak alignment is selected, starts
+    a few ms before the loudest transient;
   * for ``great`` and ``interesting``, composes the two-note gesture from the
     single generated note (at these lengths the model renders one note however
     the prompt asks for two): the second note is the same take re-pitched, and
     ``interesting``'s second note bends upward like a question;
   * caps the length, fades the tail, levels the take against the board sounds
-    and encodes 44.1 kHz / 128 kbps mp3.
+    and encodes 44.1 kHz / 128 kbps mp3;
+  * for book moves, rounds the attack and rolls off the bright edge so repeated
+    opening moves stay unobtrusive.
 """
 
 from __future__ import annotations
@@ -60,7 +62,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 OUT_DIR = REPO_ROOT / "assets" / "sfx"
 SAMPLE_RATE = 44100
 
-# Shared tail for every prompt: one instrument family (felt mallets, warm
+# Shared tail for most prompts: one instrument family (felt mallets, warm
 # bells, glass) so the nine read as a set, and away from the game-show /
 # cartoon register the model drifts into by default.
 _STYLE = (
@@ -99,6 +101,10 @@ class Sound:
     # first audible sample (for takes whose body arrives late).
     align_to_peak_ms: float | None = None
     compose: tuple[Note, ...] = field(default_factory=tuple)
+    style: str = _STYLE
+    attack_seconds: float = 0.002
+    lowpass_hz: int | None = None
+    peak_ceiling_db: float = -3.0
 
 
 SOUNDS: dict[str, Sound] = {
@@ -188,17 +194,24 @@ SOUNDS: dict[str, Sound] = {
     ),
     # Opening theory — the most frequent class, so the quietest and shortest.
     "book": Sound(
-        "One single crisp paper page flick, very short, sharp attack, quiet, "
-        "dry close-up",
+        "One single very soft felt-muted wooden marimba tap, a low-mid "
+        "rounded mellow note for a frequent chess book move. Feather-light "
+        "padded attack and brief dry decay. Quiet, warm and unobtrusive when "
+        "repeated every quarter second. No paper flick, crinkle, scrape, "
+        "sharp click, bright glass, metallic ping, high chime, bass thump, "
+        "reverb, whoosh, voice or music. Exactly one gentle note starting "
+        "immediately and fading to silence.",
         0.5,
         0.7,
-        0.32,
-        -27.0,
-        align_to_peak_ms=35,
+        0.24,
+        -31.0,
+        style="",  # The complete dry-wood prompt replaces the brighter glass style.
+        attack_seconds=0.012,
+        lowpass_hz=1800,
+        peak_ceiling_db=-15.0,
     ),
 }
 
-_PEAK_CEILING_DB = -3.0
 _SILENCE_DB = -50.0  # below the take's peak
 _PRE_ROLL_S = 0.005
 _FADE_S = 0.06
@@ -218,7 +231,7 @@ def _read_key(key_file: str | None) -> str:
 
 def _generate(key: str, name: str, sound: Sound) -> bytes:
     body = json.dumps({
-        "text": f"{sound.prompt}. {_STYLE}.",
+        "text": f"{sound.prompt}. {sound.style}." if sound.style else sound.prompt,
         "duration_seconds": sound.duration,
         "prompt_influence": sound.influence,
     }).encode("utf-8")
@@ -259,11 +272,14 @@ def _ffmpeg(*args: str) -> str:
     return result.stderr
 
 
-def _decode(path: Path, tmp: Path) -> list[float]:
+def _decode(
+    path: Path, tmp: Path, *, lowpass_hz: int | None = None,
+) -> list[float]:
     wav = tmp / "decoded.wav"
+    filters = ["-af", f"lowpass=f={lowpass_hz}:p=2"] if lowpass_hz else []
     _ffmpeg(
         "-i", str(path), "-ac", "1", "-ar", str(SAMPLE_RATE),
-        "-sample_fmt", "s16", str(wav),
+        *filters, "-sample_fmt", "s16", str(wav),
     )
     with wave.open(str(wav)) as reader:
         frames = array.array("h", reader.readframes(reader.getnframes()))
@@ -348,10 +364,12 @@ def _trim(samples: list[float], sound: Sound, *, cap: bool = True) -> list[float
     return samples[start:end]
 
 
-def _fade_edges(samples: list[float]) -> list[float]:
+def _fade_edges(
+    samples: list[float], *, attack_seconds: float = 0.002,
+) -> list[float]:
     out = list(samples)
-    # 2 ms fade-in: a peak-aligned start can land mid-waveform.
-    fade_in = min(len(out), round(0.002 * SAMPLE_RATE))
+    # Default 2 ms avoids a discontinuity; book gets a softer padded attack.
+    fade_in = min(len(out), round(attack_seconds * SAMPLE_RATE))
     for i in range(fade_in):
         out[i] *= i / fade_in
     fade_out = min(len(out) // 3, round(_FADE_S * SAMPLE_RATE))
@@ -360,10 +378,12 @@ def _fade_edges(samples: list[float]) -> list[float]:
     return out
 
 
-def _level(samples: list[float], rms_db: float) -> list[float]:
+def _level(
+    samples: list[float], rms_db: float, *, peak_ceiling_db: float = -3.0,
+) -> list[float]:
     rms = math.sqrt(sum(s * s for s in samples) / max(len(samples), 1))
     peak = max(abs(s) for s in samples)
-    gain_db = min(rms_db - _db(rms), _PEAK_CEILING_DB - _db(peak))
+    gain_db = min(rms_db - _db(rms), peak_ceiling_db - _db(peak))
     gain = 10 ** (gain_db / 20)
     return [s * gain for s in samples]
 
@@ -376,12 +396,16 @@ def finish(name: str, raw: Path, target: Path) -> str:
         return "raw (ffmpeg not found)"
     with tempfile.TemporaryDirectory() as tmp_dir:
         tmp = Path(tmp_dir)
-        samples = _decode(raw, tmp)
+        samples = _decode(raw, tmp, lowpass_hz=sound.lowpass_hz)
         if sound.compose:
             # Compose from the whole note (not its silent lead-in, and not
             # yet capped, so the re-pitched voices keep their full decay).
             samples = _compose(_trim(samples, sound, cap=False), sound.compose)
-        samples = _level(_fade_edges(_trim(samples, sound)), sound.rms_db)
+        samples = _level(
+            _fade_edges(_trim(samples, sound), attack_seconds=sound.attack_seconds),
+            sound.rms_db,
+            peak_ceiling_db=sound.peak_ceiling_db,
+        )
         _encode(samples, target, tmp)
     rms = math.sqrt(sum(s * s for s in samples) / len(samples))
     peak = max(abs(s) for s in samples)

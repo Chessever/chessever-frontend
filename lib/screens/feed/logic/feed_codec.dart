@@ -4,6 +4,7 @@ library;
 
 import 'dart:convert';
 
+import 'package:chessever2/repository/library/library_game_event.dart';
 import 'package:chessever2/screens/chessboard/classification_fx/move_class.dart';
 import 'package:chessever2/screens/chessboard/game_review/saved_game_report.dart';
 import 'package:chessever2/screens/feed/logic/feed_moments.dart';
@@ -195,11 +196,15 @@ FeedItem? _itemFromJson(Map<String, Object?> json, DateTime now) {
     }
     final storedReason = json['reason'] as String? ?? '';
     final rawSignal = json['signal'];
+    // A page cached before pairing labels were filtered still holds them.
+    final storedEvent = json['event'] as String?;
     return FeedItem(
       game: game,
       plies: List.unmodifiable(plies),
       reason: _refreshReason(storedReason, game, plies, result, now),
-      eventLabel: json['event'] as String?,
+      eventLabel: looksLikeRoundPairingEvent(storedEvent)
+          ? eventTitleFromPgnHeaders(parsed.headers)
+          : storedEvent,
       result: result,
       hasEvals: true,
       likes: (json['likes'] as num?)?.toInt() ?? 0,

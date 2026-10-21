@@ -46,6 +46,9 @@ class BotvinnikSettingsBody extends ConsumerWidget {
               ),
               Switch.adaptive(
                 value: enabled,
+                // Same thumb and track as the Auto Pin switches above it.
+                thumbColor: settingsSwitchThumb(context),
+                trackColor: settingsSwitchTrack(context),
                 onChanged: (value) {
                   trackPersist(
                     ref
@@ -62,9 +65,11 @@ class BotvinnikSettingsBody extends ConsumerWidget {
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              // Quiet, like the note beside it. Dark has no tertiary set,
+              // so colorScheme.tertiary fell back to Material's lilac.
               Icon(
                 Icons.warning_amber_rounded,
-                color: Theme.of(context).colorScheme.tertiary,
+                color: context.colors.iconSecondary,
               ),
               SizedBox(width: 12.w),
               Expanded(

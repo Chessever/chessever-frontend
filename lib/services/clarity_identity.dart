@@ -16,7 +16,7 @@ class ClarityIdentity {
     if (_subscription != null) return;
     _client = client;
     _userId = client.auth.currentUser?.id;
-    Clarity.setOnSessionStartedCallback((_) => _identify());
+    Clarity.setOnSessionStartedCallback(_identifyCurrentUser);
     _identify();
     _subscription = client.auth.onAuthStateChange.listen((event) {
       final next = event.session?.user.id;
@@ -24,9 +24,15 @@ class ClarityIdentity {
       _userId = next;
       // A recording must not retain a previous account's identity after logout
       // or an account switch. Read current auth in the callback to avoid races.
-      Clarity.startNewSession((_) => _identify());
+      Clarity.startNewSession(_identifyCurrentUser);
     });
   }
+
+  /// Clarity carries a new session's callback to its session isolate inside
+  /// an event, so it must be sendable: a static tear-off. A closure over this
+  /// instance drags the SupabaseClient and its isolate handles along, and the
+  /// send throws "object is unsendable" (CHESSEVER-23T).
+  static void _identifyCurrentUser(String _) => instance._identify();
 
   void _identify() {
     if (_client == null) return;

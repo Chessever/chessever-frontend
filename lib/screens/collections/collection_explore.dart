@@ -18,6 +18,7 @@ import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/user_error_message.dart';
 import 'package:chessever2/widgets/space_shortcut_drafts.dart';
+import 'package:chessever2/widgets/paywall/past_game_access.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -295,15 +296,31 @@ class _PublishedCollectionGamesViewState
     }
   }
 
-  void _open(int index) {
+  Future<void> _open(int index) async {
+    if (index < 0 || index >= _games.length) return;
     HapticFeedbackService.cardTap();
+    final games = [for (final game in _games) game.game];
+    if (!await ensurePastGameAccess(
+          context,
+          game: games[index],
+          publishedEventGame: true,
+        ) ||
+        !mounted) {
+      return;
+    }
+    final navigation = gameNavigationForAccess(
+      games: games,
+      index: index,
+      premium: ref.read(premiumAccessProvider),
+      publishedEventGame: true,
+    );
     ref.read(chessboardViewFromProviderNew.notifier).state =
         ChessboardView.tour;
     Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (_) => ChessBoardScreenNew(
-          currentIndex: index,
-          games: [for (final game in _games) game.game],
+          currentIndex: navigation.index,
+          games: navigation.games,
           viewSource: ChessboardView.tour,
           showGamebaseButton: false,
           disableGamebaseOverlayByDefault: true,

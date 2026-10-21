@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show HapticFeedback;
 import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
@@ -254,7 +256,15 @@ class _ScrollbarThumb extends StatelessWidget {
     return LayoutBuilder(
       builder: (context, constraints) {
         final trackHeight = constraints.maxHeight;
-        final thumbHeight = (trackHeight * 0.2).clamp(40.0, trackHeight * 0.3);
+        // Under ~133px of track the 40px floor passes the 30% ceiling and
+        // clamp() throws (CHESSEVER-1Q9): let the floor win, never the track.
+        final maxThumbHeight = math.max(
+          trackHeight * 0.3,
+          math.min(40.0, trackHeight),
+        );
+        final thumbHeight = (trackHeight * 0.2)
+            .clamp(math.min(40.0, maxThumbHeight), maxThumbHeight)
+            .toDouble();
         final maxThumbOffset = trackHeight - thumbHeight;
         final thumbOffset = maxThumbOffset * scrollProgress;
 

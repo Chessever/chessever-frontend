@@ -1205,51 +1205,39 @@ class _EditFace extends StatelessWidget {
             clipBehavior: Clip.none,
             children: [
               card(width),
-              if (marks && item.selectable)
+              // The drag handle always keeps the top-left corner. The
+              // selection circle sits in the next slot when the card can be
+              // selected. The handle takes no touch: a hold anywhere on the
+              // card lifts it.
+              if (marks)
                 Positioned(
                   left: inset,
                   top: inset,
                   width: size,
                   height: size,
-                  child: growing(),
-                ),
-              if (editing && item.onResize != null)
-                Positioned(
-                  // On a row the control stays on the artwork, clear of the
-                  // title and details. On a small card it owns the top right.
-                  left: item.wide ? 44.sp : null,
-                  right: item.wide ? null : inset,
-                  top: inset,
-                  width: 64,
-                  height: 44,
-                  child: TextButton(
-                    key: ValueKey<String>('space_edit_resize_${item.key}'),
-                    onPressed: item.onResize,
-                    style: TextButton.styleFrom(
-                      foregroundColor: context.colors.textPrimary,
-                      backgroundColor: context.colors.surface,
-                      padding: const EdgeInsets.symmetric(horizontal: 4),
-                      minimumSize: const Size(64, 44),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                      textStyle: const TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    child: Semantics(
-                      label:
-                          'Make ${item.label} ${item.wide ? 'small' : 'full row'}',
-                      excludeSemantics: true,
-                      child: Text(
-                        item.wide ? 'Small' : 'Full row',
-                        textScaler: MediaQuery.textScalerOf(
-                          context,
-                        ).clamp(maxScaleFactor: 1.3),
+                  child: IgnorePointer(
+                    child: AnimatedBuilder(
+                      animation: enter,
+                      builder: (context, child) =>
+                          Transform.scale(scale: _grown(enter), child: child),
+                      child: CustomPaint(
+                        key: ValueKey<String>('space_edit_grip_${item.key}'),
+                        painter: _GripPainter(
+                          dot: context.colors.textPrimary,
+                          ground: context.colors.background,
+                          edge: const Color(0x47000000),
+                        ),
                       ),
                     ),
                   ),
+                ),
+              if (marks && item.selectable)
+                Positioned(
+                  left: inset + size + 6.sp,
+                  top: inset,
+                  width: size,
+                  height: size,
+                  child: growing(),
                 ),
             ],
           ),
@@ -1651,6 +1639,51 @@ class _CheckPainter extends CustomPainter {
       old.ink != ink ||
       old.ground != ground ||
       old.edge != edge;
+}
+
+/// The four dots of a card that can be moved, on a disc the selection
+/// circle's size.
+class _GripPainter extends CustomPainter {
+  const _GripPainter({required this.dot, required this.ground, this.edge});
+
+  final Color dot;
+  final Color ground;
+
+  /// A hair just outside the disc, on a picture.
+  final Color? edge;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final center = size.center(Offset.zero);
+    final radius = size.shortestSide / 2;
+    final u = size.shortestSide / 22;
+    final edge = this.edge;
+    if (edge != null) {
+      canvas.drawCircle(
+        center,
+        radius + 0.5,
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1
+          ..color = edge,
+      );
+    }
+    canvas.drawCircle(center, radius, Paint()..color = ground);
+    final paint = Paint()..color = dot;
+    for (final dx in const [-1.0, 1.0]) {
+      for (final dy in const [-1.0, 1.0]) {
+        canvas.drawCircle(
+          center + Offset(dx * 3.2 * u, dy * 3.2 * u),
+          1.6 * u,
+          paint,
+        );
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(_GripPainter old) =>
+      old.dot != dot || old.ground != ground || old.edge != edge;
 }
 
 /// A card with its circle on its board, over the board's top-left square

@@ -64,7 +64,12 @@ def main() -> int:
     parser.add_argument("--pg-bin", type=Path, help="Directory containing initdb, pg_ctl, psql.")
     parser.add_argument("--pg-lib", type=Path, help="Unpacked libpq directory, if not installed.")
     parser.add_argument("--pg-share", type=Path, help="Unpacked PostgreSQL share directory.")
+    parser.add_argument("--sql", type=Path, default=ROOT / "supabase/tests/editorial_inbox.sql",
+                        help="Fixture SQL under supabase/tests to run (default: the original Inbox contract).")
     args = parser.parse_args()
+    sql = args.sql.resolve()
+    if sql.parent != (ROOT / "supabase/tests").resolve() or not sql.is_file():
+        parser.error("--sql must be a file in supabase/tests.")
     tools = {}
     for name in ("initdb", "pg_ctl", "psql"):
         value = str(args.pg_bin / name) if args.pg_bin else shutil.which(name)
@@ -100,7 +105,7 @@ def main() -> int:
                     "-U", "inbox_fixture_owner", "-d", "postgres", "-v", "ON_ERROR_STOP=1"]
             result = subprocess.run([
                 *psql, "-v", "editorial_inbox_local_fixture=on",
-                "-f", str(ROOT / "supabase/tests/editorial_inbox.sql"),
+                "-f", str(sql),
             ], capture_output=True, text=True, env=env)
             for line in result.stdout.splitlines():
                 if line.strip():
@@ -109,7 +114,9 @@ def main() -> int:
                 print(result.stderr)
             if result.returncode != 0:
                 return result.returncode
-            concurrent_contract_checks(psql, env)
+            # The multi-connection races belong to the original contract's fixtures.
+            if sql.name == "editorial_inbox.sql":
+                concurrent_contract_checks(psql, env)
             print("Ephemeral PostgreSQL SQL checks passed; cluster will be stopped and removed.")
             return 0
         finally:

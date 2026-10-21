@@ -160,6 +160,11 @@ class FeedItem {
     this.signal,
     this.likes = 0,
     this.reportType,
+    this.likeable = true,
+    this.exportable = true,
+    this.boardGame,
+    this.hideEvaluation = false,
+    this.hideResult = false,
   });
 
   final GamesTourModel game;
@@ -188,7 +193,44 @@ class FeedItem {
   /// Verified category from Discovery > Reports, never a rating-gap label.
   final ReportGameType? reportType;
 
+  /// Whether the post offers Like. Always for the feed's own games; a game
+  /// Watch brought from a board follows that board (no like for the board
+  /// editor, a local analysis or a game from the viewer's own databases).
+  final bool likeable;
+
+  /// Whether the post offers Save. False for a game Watch brought from a
+  /// board that keeps its PGN in (licensed collection content).
+  final bool exportable;
+
+  /// The board's own model, for a post Watch made: the game as the board
+  /// holds it, which a Like saves and the share link is built from, as the
+  /// board's own Like and Share do. [game] carries the PGN Share and Save
+  /// hand out (the reader's analysis, its links rebranded).
+  final GamesTourModel? boardGame;
+
+  /// A post Watch made from a board under the event's No Spoilers: what the
+  /// board hides, the post hides too. No evaluation at all (no bar, number,
+  /// chart or engine; the plies carry none) ...
+  final bool hideEvaluation;
+
+  /// ... and no result until the viewer reveals it on the board: no result
+  /// card, no fallen king, no result in the player rows ([feedResultStatus]).
+  final bool hideResult;
+
   int get plyCount => plies.length - 1;
+
+  /// The ply a clip opens on: the position after the game's last book move,
+  /// so Feed plays from where the players left theory instead of replaying
+  /// the opening. 0 when the PGN marks no book move. Never the final
+  /// position: a game that was theory to the end still plays its last move.
+  int get startPly {
+    for (var i = plies.length - 1; i > 0; i--) {
+      if (plies[i].moveClass == MoveClass.book) {
+        return i < plyCount ? i : plyCount - 1;
+      }
+    }
+    return 0;
+  }
 
   /// Per-move clock displays in the board screen's `moveTimes` shape: index
   /// 0 is the first move, moves without a clock hold the `-:--:--`
@@ -207,6 +249,11 @@ class FeedItem {
     signal: signal ?? this.signal,
     likes: likes,
     reportType: reportType,
+    likeable: likeable,
+    exportable: exportable,
+    boardGame: boardGame,
+    hideEvaluation: hideEvaluation,
+    hideResult: hideResult,
   );
 
   /// Plies Feed should linger on (headline moments).

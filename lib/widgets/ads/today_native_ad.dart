@@ -2,8 +2,7 @@ import 'dart:async';
 
 import 'package:chessever2/services/native_ads_config.dart';
 import 'package:chessever2/services/rewarded_premium/rewarded_access_provider.dart';
-import 'package:chessever2/theme/app_colors.dart';
-import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
+import 'package:chessever2/widgets/ads/ad_disclosure.dart';
 import 'package:flutter/material.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -112,36 +111,12 @@ class _TodayNativeAdState extends ConsumerState<TodayNativeAd>
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Padding(
-                padding: const EdgeInsets.only(bottom: 6),
-                child: Text(
-                  'We use ads to keep ChessEver available for all',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: context.colors.textSecondary,
-                    fontSize: 12,
-                  ),
-                ),
+              const Padding(
+                padding: EdgeInsets.only(bottom: 6),
+                child: AdDisclosureLine(),
               ),
               SizedBox(height: 350, child: AdWidget(ad: _ad!)),
-              TextButton(
-                // Straight to the paywall: a rewarded unlock is temporary,
-                // which is not what "Remove Ads" promises.
-                onPressed:
-                    () => showPremiumPaywallSheet(
-                      context: context,
-                      featureId: 'remove_ads',
-                      allowRewarded: false,
-                    ),
-                style: TextButton.styleFrom(
-                  foregroundColor: context.colors.accentText,
-                  minimumSize: const Size(0, 44),
-                ),
-                child: const Text(
-                  'Remove Ads',
-                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
-                ),
-              ),
+              const RemoveAdsButton(),
             ],
           ),
         ),

@@ -17,6 +17,7 @@ import 'package:chessever2/repository/library/models/saved_analysis.dart';
 import 'package:chessever2/repository/liked_games/liked_games_provider.dart';
 import 'package:chessever2/repository/lichess/cloud_eval/cloud_eval.dart';
 import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
+import 'package:chessever2/services/rewarded_premium/rewarded_access_provider.dart';
 import 'package:chessever2/screens/chessboard/analysis/chess_game.dart';
 import 'package:chessever2/screens/chessboard/chess_board_screen_new.dart';
 import 'package:chessever2/screens/chessboard/provider/current_eval_provider.dart';
@@ -306,6 +307,7 @@ Future<ProviderContainer> _pump(
   // window. Defaults to the tier; set apart from it to stand in for a view
   // read before the entitlement has re-derived it.
   bool? likesLocked,
+  bool? premium,
 }) async {
   tester.view.physicalSize = const Size(390, 844);
   tester.view.devicePixelRatio = 1;
@@ -319,6 +321,7 @@ Future<ProviderContainer> _pump(
       currentUserProvider.overrideWithValue(null),
       favoriteEventsProvider.overrideWith(_Favorites.new),
       subscriptionProvider.overrideWith((ref) => _Subscription(paid)),
+      if (premium != null) premiumAccessProvider.overrideWithValue(premium),
       collectionsRepositoryProvider.overrideWithValue(
         repo ?? _Collections(paid: paid),
       ),
@@ -748,6 +751,8 @@ void main() {
         paid,
         repo: repo,
         observer: observer,
+        // The unpaid variant has rewarded access to these archived games.
+        premium: !paid ? true : null,
       );
       final initial = observer.lastPage;
       final list = tester.widget<DiscoveryGameList>(
@@ -771,9 +776,8 @@ void main() {
     });
   }
   for (final paid in [false, true]) {
-    testWidgets('allowed Likes tap routes normal board paid=$paid', (
-      tester,
-    ) async {
+    testWidgets('a Likes tap routes the normal board, or asks for Premium '
+        'first, paid=$paid', (tester) async {
       addTearDown(tester.view.reset);
       final observer = _NavigationProbe();
       final c = await _pump(
@@ -802,6 +806,15 @@ void main() {
       list.onOpen!(list.games, 0);
       await tester.idle();
       expect(observer.lastPage, isNot(same(initial)));
+      if (!paid) {
+        // Since 35.39.4 opening a liked game asks for Premium in every
+        // period, Today's included: the guard's sheet, no board.
+        await tester.pump(const Duration(milliseconds: 300));
+        expect(observer.lastPage, isA<ModalBottomSheetRoute<void>>());
+        expect(find.text('Sign in to get Premium'), findsOneWidget);
+        await _close(tester, c);
+        return;
+      }
       final route = observer.lastPage as MaterialPageRoute<int>;
       // Inspect only the real navigation payload: do not start native engines.
       final dynamic board = route.builder(

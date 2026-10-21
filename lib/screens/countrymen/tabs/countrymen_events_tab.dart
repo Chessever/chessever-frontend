@@ -16,6 +16,7 @@ import 'package:chessever2/widgets/event_card/event_card.dart';
 import 'package:chessever2/widgets/scroll_to_top_bus.dart';
 import 'package:chessever2/widgets/scroll_to_top_button.dart';
 import 'package:chessever2/widgets/search/gameSearch/enhanced_game_search_widget.dart';
+import 'package:chessever2/widgets/paywall/past_event_access.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
@@ -426,7 +427,10 @@ class _CountrymenEventsTabState extends ConsumerState<CountrymenEventsTab>
     );
   }
 
-  void _onEventTap(GroupBroadcast event) {
+  Future<void> _onEventTap(GroupBroadcast event) async {
+    if (!await ensurePastEventAccess(context, broadcast: event) || !mounted) {
+      return;
+    }
     ref.read(selectedBroadcastModelProvider.notifier).state = event;
     Navigator.pushNamed(context, '/tournament_detail_screen');
   }

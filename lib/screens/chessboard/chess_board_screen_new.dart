@@ -47,6 +47,9 @@ import 'package:chessever2/screens/chessboard/widgets/chess_board_context_menu.d
 import 'package:chessever2/screens/chessboard/widgets/board_focus_menus.dart';
 import 'package:chessever2/screens/library/widgets/library_context_menu.dart';
 import 'package:chessever2/screens/my_space/actions/space_menu_action.dart';
+import 'package:chessever2/screens/feed/feed_screen.dart';
+import 'package:chessever2/screens/feed/providers/feed_provider.dart'
+    show feedRecordedPgn, feedWatchItem;
 import 'package:chessever2/screens/my_space/providers/space_shortcuts_provider.dart';
 import 'package:chessever2/widgets/space_shortcut_drafts.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/utils/game_space_shortcut.dart';
@@ -69,6 +72,8 @@ import 'package:chessever2/screens/chessboard/widgets/smooth_sheet_config.dart';
 import 'package:chessever2/screens/chessboard/widgets/save_analysis_sheet.dart';
 import 'package:chessever2/screens/chessboard/widgets/nag_display.dart';
 import 'package:chessever2/screens/chessboard/utils/chess_board_teaching_eligibility.dart';
+import 'package:chessever2/screens/chessboard/utils/board_feature_teaching_tracker.dart';
+import 'package:chessever2/screens/chessboard/widgets/board_feature_teaching_host.dart';
 import 'package:chessever2/screens/group_event/providers/countryman_games_tour_screen_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/event_no_spoilers_provider.dart';
@@ -148,6 +153,8 @@ import 'package:chessever2/repository/local_storage/local_storage_repository.dar
 import 'package:chessever2/services/lichess_move_annotations_service.dart';
 import 'package:chessever2/main.dart' show routeObserver, pageRouteObserver;
 import 'package:chessever2/screens/chessboard/utils/legible_ink.dart';
+import 'package:chessever2/widgets/paywall/pgn_copy_access.dart';
+import 'package:chessever2/widgets/paywall/past_event_access.dart';
 
 const Color kGameEndingRedColor = Color(0xCCF53236);
 
@@ -1398,6 +1405,9 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
   late Animation<double> _swipeScaleAnimation;
   late Animation<double> _swipeMoveAnimation;
   final GlobalKey<_SwipeTutorialOverlayState> _tutorialOverlayKey = GlobalKey();
+  // Loading/data branches reparent the route's scope. Retain one teaching
+  // host so that transition cannot count a second visit or reset engagement.
+  final GlobalKey _featureTeachingHostKey = GlobalKey();
   late final LikeFlightAnchor _likeFlightAnchor;
 
   // Step 2/2 ("Pinch to Resize") — chained after the Swipe step via
@@ -1527,6 +1537,9 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
       setState(() {
         _showTutorialOverlay = true;
       });
+      unawaited(
+        ref.read(boardFeatureTeachingTrackerProvider).recordOtherTeaching(),
+      );
 
       // Play animation 1 time
       int count = 0;
@@ -1644,8 +1657,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
     }
 
     final prefs = ref.read(sharedPreferencesRepository);
-    final dontShow =
-        await prefs.getBool(kPinchWalkthroughDontShowKey) ?? false;
+    final dontShow = await prefs.getBool(kPinchWalkthroughDontShowKey) ?? false;
     if (dontShow || !mounted) return;
 
     // Show once: if it's ever been seen, don't show it again.
@@ -1655,6 +1667,9 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
 
     _showPinchTutorial = true;
     _insertPinchTutorialOverlay();
+    unawaited(
+      ref.read(boardFeatureTeachingTrackerProvider).recordOtherTeaching(),
+    );
 
     await prefs.setBool(kPinchWalkthroughShownKey, true);
   }
@@ -1697,6 +1712,52 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
         ?.game;
 
     return shouldShowChessBoardTeachingsForGame(providerGame ?? fallbackGame);
+  }
+
+  Set<BoardTeachingFeature> _eligibleFeatureTeachings() {
+    if (_isRouteCovered ||
+        _isLifecycleBackgrounded ||
+        _showTutorialOverlay ||
+        _showPinchTutorial ||
+        _gameSwitcher.isOpen ||
+        _gameReviewTarget.value != null ||
+        !_canShowTeachingsForCurrentGame()) {
+      return {};
+    }
+    final index = _currentPageIndex.clamp(0, widget.games.length - 1);
+    final game = _resolveGameForIndex(index);
+    final params = _createParams(game, index);
+    final state = ref.read(chessBoardScreenProviderNew(params)).valueOrNull;
+    if (state == null ||
+        state.isPlaying ||
+        state.analysisState.allMoves.length < 6 ||
+        state.analysisState.currentMoveIndex < 3 ||
+        state.game.gameStatus == GameStatus.ongoing ||
+        ref.read(likeNudgeOfferProvider(index)) != null) {
+      return {};
+    }
+
+    final features = <BoardTeachingFeature>{
+      if (!ref.read(boardExplorerPanelVisibleProvider))
+        BoardTeachingFeature.notationSwipe,
+    };
+    final likes = ref.read(likedGamesProvider).valueOrNull;
+    final saved = ref
+        .read(chessBoardScreenProviderNew(params).notifier)
+        .savedAnalysisData;
+    final ownDatabase =
+        state.game.source == GameSource.savedAnalysis &&
+        saved?.analysisId != null &&
+        (ref.read(likedGamesFolderProvider).valueOrNull?.id == null ||
+            saved!.folderId !=
+                ref.read(likedGamesFolderProvider).valueOrNull?.id);
+    if (ref.read(currentUserProvider) != null &&
+        likes != null &&
+        likes.isEmpty &&
+        !ownDatabase) {
+      features.add(BoardTeachingFeature.like);
+    }
+    return features;
   }
 
   GamesTourModel _preferFresherGameSnapshot({
@@ -3152,7 +3213,12 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
             child: GameReviewSheetScope(
               target: _gameReviewTarget,
               anchorPixels: _gameReviewAnchor,
-              child: child,
+              child: BoardFeatureTeachingHost(
+                key: _featureTeachingHostKey,
+                isEligibleVisit: _canShowTeachingsForCurrentGame,
+                eligibleFeatures: _eligibleFeatureTeachings,
+                child: child,
+              ),
             ),
           ),
         ),
@@ -4513,6 +4579,41 @@ class _AppBar extends ConsumerStatefulWidget implements PreferredSizeWidget {
   Size get preferredSize => const Size.fromHeight(kToolbarHeight);
 }
 
+bool _isLikeableGameSource(GameSource source) =>
+    source == GameSource.supabase ||
+    source == GameSource.gamebase ||
+    source == GameSource.twic ||
+    // Games opened from a library database or the Liked Games folder are
+    // saved analyses; their like identity is the original sourceGameId
+    // (see GamesTourModel.likeId), so they like/unlike like everywhere else.
+    // Own-database games are excluded separately in _isOwnDatabaseBoardGame.
+    source == GameSource.savedAnalysis;
+
+/// True when [game], on the board page at [index], was opened from one of
+/// the user's own library databases. Those games are not double-tap-likeable:
+/// the game is already curated into the library, and a like would only
+/// mirror it into the Liked Games folder as a confusing duplicate.
+///
+/// Games opened from the Liked Games folder itself (My Likes) keep the
+/// gesture so double-tap-unlike still works there, and shared/subscribed
+/// databases (read-only, [SavedAnalysisData.analysisId] == null) are not
+/// the user's own, so they stay likeable too.
+bool _isOwnDatabaseBoardGame(WidgetRef ref, GamesTourModel game, int index) {
+  if (game.source != GameSource.savedAnalysis) return false;
+  final saved = ref
+      .read(
+        chessBoardScreenProviderNew(
+          ChessBoardProviderParams(game: game, index: index),
+        ).notifier,
+      )
+      .savedAnalysisData;
+  if (saved?.analysisId == null) return false;
+  final likedFolderId = ref.read(likedGamesFolderProvider).valueOrNull?.id;
+  // Fail closed: if the Liked Games folder is unknown we cannot prove the
+  // game came from it, and every own-library open carries a folderId.
+  return likedFolderId == null || saved!.folderId != likedFolderId;
+}
+
 bool _shareGameNeedsTerminalPosition(GameSource source) {
   return source == GameSource.gamebase || source == GameSource.openingExplorer;
 }
@@ -4708,7 +4809,81 @@ class _AppBarState extends ConsumerState<_AppBar> {
     );
   }
 
+  /// From the tap until the Feed it opened closes: a second tap (the tablet
+  /// menu's rows stay live while it fades out) opens nothing more.
+  bool _openingWatch = false;
+
+  /// Watch: Feed opened on this game as its first post, the feed carrying on
+  /// after it ([FeedScreen.watch]). The moves are the ones Share and Copy PGN hand out (the
+  /// game's mainline with its report and the reader's glyphs); a game with
+  /// no move yet has nothing to play. The post's Analyze comes back here.
+  Future<void> _watchInFeed() async {
+    if (_openingWatch) return;
+    _openingWatch = true;
+    try {
+      // Read before the PGN awaits below, for the game the menu was opened
+      // on. The post offers what this board does: no Like where the board
+      // takes none, no Save where it keeps the moves in.
+      final game = widget.game;
+      final likeable =
+          _isLikeableGameSource(game.source) &&
+          !_isOwnDatabaseBoardGame(ref, game, widget.currentGameIndex);
+      final exportable = widget.allowGameExport;
+      // No Spoilers, as this board applies it: no evaluation for a broadcast
+      // game, and no result for a finished one until it is revealed here.
+      final spoilers = ref.read(eventNoSpoilersProvider(game.tourId));
+      final hideEvaluation =
+          game.source == GameSource.supabase &&
+          shouldHideEventEvaluation(
+            isBroadcastGame: true,
+            spoilerState: spoilers,
+          );
+      final hideResult =
+          game.gameStatus != GameStatus.ongoing &&
+          game.gameStatus != GameStatus.unknown &&
+          (spoilers.isLoading || spoilers.enabled) &&
+          !ref.read(eventNoSpoilersRevealedGamesProvider).contains(game.gameId);
+      final route = ModalRoute.of(context);
+      final resolved = await _resolveAppBarShareData();
+      // The board is still what the viewer sees: Feed's Analyze comes back
+      // to the route under it, which must be this board.
+      if (!mounted || !(route?.isCurrent ?? false)) return;
+      // A board-editor game takes the reader's moves past its end into its
+      // mainline; those are not the game.
+      final extendable =
+          game.source == GameSource.boardEditor ||
+          game.roundId == 'board_editor';
+      final lead = feedWatchItem(
+        game,
+        extendable ? feedRecordedPgn(game.pgn, resolved.pgn) : resolved.pgn,
+        likeable: likeable,
+        exportable: exportable,
+        hideEvaluation: hideEvaluation,
+        hideResult: hideResult,
+      );
+      if (lead == null) {
+        showAppSnack(context, 'No moves to watch yet');
+        return;
+      }
+      await FeedScreen.watch(context, lead);
+    } catch (error) {
+      debugPrint('[Board] Watch failed: $error');
+      if (!mounted) return;
+      showAppSnack(
+        context,
+        userFacingError(error, fallback: "Couldn't open this game in Feed"),
+        tone: AppSnackTone.danger,
+      );
+    } finally {
+      _openingWatch = false;
+    }
+  }
+
   void copyPgnBtnClicked() async {
+    if (!await ensurePgnCopyAccess(context, returnTo: 'chessboard') ||
+        !mounted) {
+      return;
+    }
     try {
       final resolved = await _resolveAppBarShareData();
       if (resolved.pgn.trim().isEmpty) {
@@ -5091,6 +5266,8 @@ class _AppBarState extends ConsumerState<_AppBar> {
                           .flipBoard();
                     } else if (value == 'share') {
                       shareGameBtnClicked();
+                    } else if (value == 'watch') {
+                      await _watchInFeed();
                     } else if (value == 'board_settings') {
                       final allowed = await requireFullAuthGuard(context);
                       if (!allowed) return;
@@ -5134,6 +5311,8 @@ class _AppBarState extends ConsumerState<_AppBar> {
                           .flipBoard();
                     } else if (value == 'share') {
                       shareGameBtnClicked();
+                    } else if (value == 'watch') {
+                      await _watchInFeed();
                     } else if (value == 'board_settings') {
                       final allowed = await requireFullAuthGuard(context);
                       if (!allowed) return;
@@ -7530,11 +7709,19 @@ class _BottomNavBar extends ConsumerWidget {
 
     final params = ChessBoardProviderParams(game: game, index: index);
     final notifier = ref.read(chessBoardScreenProviderNew(params).notifier);
-    ChessGameNavigatorState? navigatorState;
+    // Read the pointer the board itself synced, never
+    // `chessGameNavigatorProvider(state.analysisState.game)`. That provider is
+    // keyed by ChessGame identity and the navigator replaces its game on every
+    // live append or played move, so the lookup lands on a fresh navigator
+    // parked at the start: canGoBackward false, which silently disabled the
+    // left-arrow hold while taps still worked.
     final analysisGame = state.analysisState.game;
-    if (analysisGame != null) {
-      navigatorState = ref.watch(chessGameNavigatorProvider(analysisGame));
-    }
+    final navigatorState = analysisGame == null
+        ? null
+        : ChessGameNavigatorState(
+            game: analysisGame,
+            movePointer: state.analysisState.movePointer,
+          );
     final baseCanMoveForward = state.analysisState.canMoveForward;
     final baseCanMoveBackward = state.analysisState.canMoveBackward;
     final canMoveForward = navigatorState != null
@@ -7649,7 +7836,9 @@ class _BottomNavBar extends ConsumerWidget {
     final hasVideo = video != null && video.isActive(game.gameId);
 
     return ChessBoardBottomNavBar(
-      key: ValueKey('bottom_nav_gamebase_$isGamebaseActive'),
+      // Panel visibility updates this bar in place. Replacing it while a swipe
+      // settles disposes the arrow recognizers and cancels an in-flight hold.
+      key: ValueKey('bottom_nav_${game.gameId}_$index'),
       onVideoToggle: hasVideo
           ? () => EventVideoScope.sessionOf(context)?.toggle()
           : null,
@@ -8748,6 +8937,9 @@ class _BoardWithSidebarState extends ConsumerState<_BoardWithSidebar> {
     _touches.remove(pointer);
     _pinchDistance = null;
     _pinchBoardWidth = null;
+    // A cancel can arrive after the page is disposed mid-touch (swiped away
+    // or popped): `context` would throw there (CHESSEVER-246).
+    if (!mounted) return;
     // The pinch is over once the last finger lifts: keep the size for the
     // next game and the next visit.
     final width = _BoardZoomScope.of(context).value ?? _boardWidth;
@@ -10253,8 +10445,21 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
       );
       if (!shouldAsk || !mounted || !_isLikeNudgeEligible) return;
 
-      setState(() => _likeNudgeVisible = true);
-      _syncLikeNudgeOffer();
+      final displayed = await ref
+          .read(boardFeatureTeachingTrackerProvider)
+          .tryShowLikeReminder(() {
+            if (!mounted ||
+                !_isLikeNudgeEligible ||
+                ModalRoute.of(context)?.isCurrent != true ||
+                WidgetsBinding.instance.lifecycleState !=
+                    AppLifecycleState.resumed) {
+              return false;
+            }
+            setState(() => _likeNudgeVisible = true);
+            _syncLikeNudgeOffer();
+            return true;
+          });
+      if (!displayed || !mounted || !_likeNudgeVisible) return;
       // Belt-and-braces: the reminder normally leaves when the user leaves the
       // final position or the game, but it must never camp on the notation.
       _likeNudgeSafetyTimer?.cancel();
@@ -10341,40 +10546,10 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
     _handleDoubleTapLike();
   }
 
-  bool _isLikeableSource(GameSource source) =>
-      source == GameSource.supabase ||
-      source == GameSource.gamebase ||
-      source == GameSource.twic ||
-      // Games opened from a library database or the Liked Games folder are
-      // saved analyses; their like identity is the original sourceGameId
-      // (see GamesTourModel.likeId), so they like/unlike like everywhere else.
-      // Own-database games are excluded separately in _isOwnDatabaseGame.
-      source == GameSource.savedAnalysis;
+  bool _isLikeableSource(GameSource source) => _isLikeableGameSource(source);
 
-  /// True when the displayed game was opened from one of the user's own
-  /// library databases. Those games are not double-tap-likeable: the game is
-  /// already curated into the library, and a like would only mirror it into
-  /// the Liked Games folder as a confusing duplicate.
-  ///
-  /// Games opened from the Liked Games folder itself (My Likes) keep the
-  /// gesture so double-tap-unlike still works there, and shared/subscribed
-  /// databases (read-only, [SavedAnalysisData.analysisId] == null) are not
-  /// the user's own, so they stay likeable too.
-  bool _isOwnDatabaseGame(GamesTourModel game) {
-    if (game.source != GameSource.savedAnalysis) return false;
-    final saved = ref
-        .read(
-          chessBoardScreenProviderNew(
-            ChessBoardProviderParams(game: game, index: widget.index),
-          ).notifier,
-        )
-        .savedAnalysisData;
-    if (saved?.analysisId == null) return false;
-    final likedFolderId = ref.read(likedGamesFolderProvider).valueOrNull?.id;
-    // Fail closed: if the Liked Games folder is unknown we cannot prove the
-    // game came from it, and every own-library open carries a folderId.
-    return likedFolderId == null || saved!.folderId != likedFolderId;
-  }
+  bool _isOwnDatabaseGame(GamesTourModel game) =>
+      _isOwnDatabaseBoardGame(ref, game, widget.index);
 
   @override
   Widget build(BuildContext context) {
@@ -11037,6 +11212,7 @@ class _AnalysisSwipePanels extends ConsumerStatefulWidget {
 class _AnalysisSwipePanelsState extends ConsumerState<_AnalysisSwipePanels> {
   late final PageController _pageController;
   int _currentPage = 0;
+  bool _userPanelDrag = false;
 
   @override
   void initState() {
@@ -11091,17 +11267,35 @@ class _AnalysisSwipePanelsState extends ConsumerState<_AnalysisSwipePanels> {
       });
     }
 
-    return PageView(
-      controller: _pageController,
-      dragStartBehavior: DragStartBehavior.down,
-      physics: const ClampingScrollPhysics(),
-      onPageChanged: (page) {
-        _currentPage = page;
-        // Only the active game publishes chrome/arrow ownership. Preloaded
-        // adjacent games must not steal the visible game's focused card.
-        if (widget.isActivePage) _publishPanelVisibility();
+    return NotificationListener<ScrollStartNotification>(
+      onNotification: (notification) {
+        if (notification.depth == 0 &&
+            notification.metrics.axis == Axis.horizontal) {
+          _userPanelDrag = notification.dragDetails != null;
+        }
+        return false;
       },
-      children: [widget.movesDisplay, widget.gamebaseDisplay],
+      child: PageView(
+        controller: _pageController,
+        dragStartBehavior: DragStartBehavior.down,
+        physics: const ClampingScrollPhysics(),
+        onPageChanged: (page) {
+          _currentPage = page;
+          // Only the active game publishes chrome/arrow ownership. Preloaded
+          // adjacent games must not steal the visible game's focused card.
+          if (widget.isActivePage) {
+            _publishPanelVisibility();
+            if (_userPanelDrag) {
+              unawaited(
+                ref
+                    .read(boardFeatureTeachingTrackerProvider)
+                    .markLearned(BoardTeachingFeature.notationSwipe),
+              );
+            }
+          }
+        },
+        children: [widget.movesDisplay, widget.gamebaseDisplay],
+      ),
     );
   }
 }
@@ -11507,7 +11701,9 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
         ? List<Number>.of(tailNode.pointer)
         : const <Number>[];
 
-    if (pointerForScroll.isNotEmpty) {
+    final isAtStartPosition =
+        !hasPointer && widget.state.analysisState.currentMoveIndex < 0;
+    if (pointerForScroll.isNotEmpty || isAtStartPosition) {
       _schedulePointerScroll(pointerForScroll, pointerForHighlightId);
     }
 
@@ -13029,11 +13225,28 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
 
   void _schedulePointerScroll(ChessMovePointer pointer, String? pointerId) {
     if (widget.index != widget.currentPageIndex) return;
-    if (pointerId == null) return;
     if (_lastPointer != null &&
         _pointerEquality.equals(_lastPointer!, pointer)) {
       return;
     }
+    // The start position has no move chip to centre on, so returning to it
+    // (a left-arrow hold, or stepping back past move one) rewinds the list to
+    // its top edge instead.
+    if (pointer.isEmpty) {
+      _lastPointer = const [];
+      _lastPointerId = null;
+      if (!_hasInitiallyScrolled) return;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || !_scrollController.hasClients) return;
+        _scrollController.animateTo(
+          0,
+          duration: const Duration(milliseconds: 250),
+          curve: Curves.easeInOut,
+        );
+      });
+      return;
+    }
+    if (pointerId == null) return;
     _lastPointer = List.of(pointer);
     _lastPointerId = pointerId;
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -16365,6 +16578,39 @@ String resolveEventInfoFallbackEventNameForTesting(
   );
 }
 
+/// ECO codes and time-control words: what archive rows keep in `roundSlug`.
+final RegExp _archiveFormatCode = RegExp(
+  r'^(?:[A-E]\d{2}|classical|rapid|blitz)$',
+  caseSensitive: false,
+);
+
+/// The Round line of Event info, or null when the game names no round.
+///
+/// Archive rows (Gamebase, TWIC) reuse `roundSlug` for the ECO code their list
+/// card prints, so for those the round comes from the PGN: the broadcast's
+/// own round name, else the `Round` tag ("6.2" is round 6, board 2).
+@visibleForTesting
+String? resolveEventInfoRoundLabelForTesting(
+  GamesTourModel game,
+  Map<String, String> headers,
+) {
+  final slug = game.roundSlug?.trim();
+  final isArchive =
+      game.source == GameSource.gamebase || game.source == GameSource.twic;
+  if (!isArchive || (slug != null && !_archiveFormatCode.hasMatch(slug))) {
+    return slug != null
+        ? StringUtils.formatRoundLabel(slug)
+        : (headers['Round'] ?? game.roundDisplayName);
+  }
+
+  final named = headers['ChessEverRoundName']?.trim() ?? '';
+  if (named.isNotEmpty) return named;
+  final round = headers['Round']?.trim() ?? '';
+  if (round.isEmpty || round == '?' || round == '-') return null;
+  final numbered = RegExp(r'^(\d+)(?:\.\d+)*$').firstMatch(round);
+  return numbered == null ? round : 'Round ${numbered.group(1)}';
+}
+
 DateTime? _parseEventInfoPgnDate(String? value) {
   final trimmed = value?.trim();
   if (trimmed == null ||
@@ -16589,7 +16835,11 @@ class _EventInfoSheet extends ConsumerWidget {
       );
     }
 
-    if (!context.mounted) return;
+    if (!context.mounted ||
+        !await ensurePastEventAccess(context, broadcast: groupBroadcast) ||
+        !context.mounted) {
+      return;
+    }
 
     ref.read(selectedBroadcastModelProvider.notifier).state = groupBroadcast;
 
@@ -16742,17 +16992,18 @@ class _EventInfoSheet extends ConsumerWidget {
         ),
         SizedBox(height: 16.h),
         // Round info
-        _roundFocus(
-          eventName: eventName,
-          child: _EventInfoRow(
-            icon: Icons.format_list_numbered_rounded,
-            label: 'Round',
-            value: game.roundSlug != null
-                ? StringUtils.formatRoundLabel(game.roundSlug)
-                : (headers['Round'] ?? game.roundDisplayName),
+        if (resolveEventInfoRoundLabelForTesting(game, headers)
+            case final roundLabel?) ...[
+          _roundFocus(
+            eventName: eventName,
+            child: _EventInfoRow(
+              icon: Icons.format_list_numbered_rounded,
+              label: 'Round',
+              value: roundLabel,
+            ),
           ),
-        ),
-        SizedBox(height: 12.h),
+          SizedBox(height: 12.h),
+        ],
         // Board number
         if (game.boardNr != null || headers['Board'] != null) ...[
           _EventInfoRow(
@@ -17048,18 +17299,19 @@ class _EventInfoSheet extends ConsumerWidget {
         ),
         SizedBox(height: 12.h),
         // Round info from game
-        _roundFocus(
-          eventName: aboutModel.name,
-          groupBroadcastId: aboutModel.groupBroadcastId,
-          child: _EventInfoRow(
-            icon: Icons.format_list_numbered_rounded,
-            label: 'Round',
-            value: game.roundSlug != null
-                ? StringUtils.formatRoundLabel(game.roundSlug)
-                : game.roundDisplayName,
+        if (resolveEventInfoRoundLabelForTesting(game, _parseHeadersFromPgn())
+            case final roundLabel?) ...[
+          _roundFocus(
+            eventName: aboutModel.name,
+            groupBroadcastId: aboutModel.groupBroadcastId,
+            child: _EventInfoRow(
+              icon: Icons.format_list_numbered_rounded,
+              label: 'Round',
+              value: roundLabel,
+            ),
           ),
-        ),
-        SizedBox(height: 12.h),
+          SizedBox(height: 12.h),
+        ],
         // Board number
         if (game.boardNr != null) ...[
           _EventInfoRow(

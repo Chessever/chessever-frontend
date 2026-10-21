@@ -33,11 +33,6 @@ abstract class GameTreeTarget {
   String? get country => null;
   String? get playerTitle => null;
 
-  /// Building a tree is Premium; a My Prep player's tree is not gated
-  /// again, since adding the player already was and its downloaded games
-  /// stay readable, as the Openings tab always allowed.
-  bool get requiresPremium => true;
-
   /// Whether an index built earlier still matches the games.
   Future<bool> isCurrent(GameTreeStore store);
 
@@ -140,7 +135,8 @@ Future<void> openOrBuildGameTree(
     return;
   }
   HapticFeedbackService.buttonPress();
-  if (target.requiresPremium && !await ensureGameTreeAccess(context)) return;
+  // Building and opening any tree is Premium, a My Prep player's included.
+  if (!await ensureGameTreeAccess(context)) return;
   if (!context.mounted) return;
   final messenger = ScaffoldMessenger.maybeOf(context);
   final container = ProviderScope.containerOf(context, listen: false);

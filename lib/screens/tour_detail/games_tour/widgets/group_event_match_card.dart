@@ -20,6 +20,7 @@ import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrap
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_screen_provider.dart';
+import 'package:chessever2/widgets/paywall/past_event_access.dart';
 
 class GroupEventMatchCard extends ConsumerWidget {
   final String roundTitle;
@@ -408,6 +409,10 @@ class GroupEventMatchCard extends ConsumerWidget {
             fixedBottomSide: teamOneBottomSide(matchWithComparison.comparison),
             allowStockfishFallback: allowStockfishFallback,
             streamEnabled: streamEnabled,
+            onBeforeOpen: () => ensureEventGameAccess(
+              context,
+              tourId: matchWithComparison.game.tourId,
+            ),
             onReturnFromChessboard: onReturnFromChessboard,
           ),
         );
@@ -432,16 +437,22 @@ class GroupEventMatchCard extends ConsumerWidget {
       orderedGames: fullGamesList,
       gameIndex: gameIndex,
       fixedBottomSide: teamOneBottomSide(matchWithComparison.comparison),
-      onChangedWithLiveGames:
-          (updatedGames) => ref
-              .read(gameCardWrapperProvider)
-              .navigateToChessBoard(
-                context: context,
-                orderedGames: updatedGames,
-                gameIndex: gameIndex,
-                onReturnFromChessboard: onReturnFromChessboard,
-                listPolicy: boardNavigationListPolicyForGamesData(gamesData),
-              ),
+      onChangedWithLiveGames: (updatedGames) async {
+        final allowed = await ensureEventGameAccess(
+          context,
+          tourId: matchWithComparison.game.tourId,
+        );
+        if (!allowed || !context.mounted) return;
+        ref
+            .read(gameCardWrapperProvider)
+            .navigateToChessBoard(
+              context: context,
+              orderedGames: updatedGames,
+              gameIndex: gameIndex,
+              onReturnFromChessboard: onReturnFromChessboard,
+              listPolicy: boardNavigationListPolicyForGamesData(gamesData),
+            );
+      },
       pinnedIds: gamesData.pinnedGamedIs,
       allowStockfishFallback: allowStockfishFallback,
       streamEnabled: streamEnabled,

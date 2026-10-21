@@ -259,8 +259,14 @@ class _BoardPinchCoachmarkState extends State<BoardPinchCoachmark>
                         ),
                       ),
                       SizedBox(height: 24.h),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
+                      // Wraps rather than overflowing on a narrow phone or at
+                      // a large text size, where the two would not fit side by
+                      // side and Got it would be cut off at the edge.
+                      Wrap(
+                        alignment: WrapAlignment.center,
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        spacing: 24.w,
+                        runSpacing: 8.h,
                         children: [
                           TextButton(
                             onPressed: _handleDontShowAgain,
@@ -274,7 +280,6 @@ class _BoardPinchCoachmarkState extends State<BoardPinchCoachmark>
                               style: AppTypography.textSmMedium,
                             ),
                           ),
-                          SizedBox(width: 24.w),
                           TextButton(
                             onPressed: _animateOut,
                             style: TextButton.styleFrom(

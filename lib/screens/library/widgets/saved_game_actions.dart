@@ -12,6 +12,7 @@ import 'package:chessever2/screens/tour_detail/games_tour/utils/game_space_short
 import 'package:chessever2/utils/logger/logger.dart';
 import 'package:chessever2/utils/pgn_export_utils.dart';
 import 'package:chessever2/widgets/app_snack.dart';
+import 'package:chessever2/widgets/paywall/pgn_copy_access.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -198,6 +199,10 @@ Future<String> _resolvePgn(SavedAnalysis analysis, GamesTourModel game) {
 }
 
 Future<void> _copyPgn(BuildContext context, SavedAnalysis analysis) async {
+  if (!await ensurePgnCopyAccess(context, returnTo: 'library/saved_game') ||
+      !context.mounted) {
+    return;
+  }
   try {
     final game = convertSavedAnalysisToGame(analysis);
     final pgn = await _resolvePgn(analysis, game);

@@ -30,7 +30,8 @@ const Duration kStandingsFideEloFetchTimeout = Duration(seconds: 8);
 int resolveStandingsPlayedCount({
   required int sourcePlayed,
   required int countedFinishedGames,
-}) => sourcePlayed > 0 ? sourcePlayed : countedFinishedGames;
+  bool officialRow = false,
+}) => officialRow || sourcePlayed > 0 ? sourcePlayed : countedFinishedGames;
 
 /// Signature over the parts of live games that can change standings. Watching
 /// `gamesTourProvider(tourId).select(standingsGamesSignature)` means move and
@@ -77,6 +78,39 @@ Future<List<PlayerStandingModel>> buildStandingsFromData({
   bool useExternalOrder = false,
   bool singleTourScope = true,
 }) async {
+  // A published table owns both its membership and its tied ranks. Boards
+  // can include withdrawn/obsolete names absent from that table; adding them
+  // here invents official rows. Optional FIDE enrichment must not delay an
+  // already complete source table either.
+  final rankedSource = tournamentPlayers
+      .where(
+        (p) =>
+            p.rank != null &&
+            p.rank! > 0 &&
+            p.score != null &&
+            p.score!.isFinite,
+      )
+      .toList();
+  final hasPublishedOrder =
+      singleTourScope &&
+      rankedSource.isNotEmpty &&
+      (useExternalOrder ||
+          (rankedSource.length == tournamentPlayers.length &&
+              rankedSource.any((p) => p.played > 0)));
+  if (hasPublishedOrder) {
+    final indexed = rankedSource.indexed.toList()
+      ..sort((a, b) {
+        final rankOrder = a.$2.rank!.compareTo(b.$2.rank!);
+        return rankOrder == 0 ? a.$1.compareTo(b.$1) : rankOrder;
+      });
+    return [
+      for (final entry in indexed)
+        PlayerStandingModel.fromPlayer(
+          entry.$2,
+        ).copyWith(overallRank: entry.$2.rank),
+    ];
+  }
+
   final players = mergeTournamentRosterWithGamePlayers(
     tournamentPlayers: tournamentPlayers,
     gamesTourModels: gamesTourModels,
@@ -117,26 +151,23 @@ Future<List<PlayerStandingModel>> buildStandingsFromData({
   for (final player in players) {
     final key = identities.key(player.name, player.fideId, player.team);
     final playerGames = gamesByPlayerKey[key] ?? const <_PlayerGameRef>[];
-    final referenceCard =
-        playerGames.isNotEmpty ? playerGames.first.playerCard : null;
+    final referenceCard = playerGames.isNotEmpty
+        ? playerGames.first.playerCard
+        : null;
 
     final updatedPlayer = player.copyWith(
-      federation:
-          (player.federation?.trim().isNotEmpty ?? false)
-              ? player.federation
-              : _nonEmpty(referenceCard?.federation) ?? player.federation,
-      title:
-          (player.title?.trim().isNotEmpty ?? false)
-              ? player.title
-              : _nonEmpty(referenceCard?.title) ?? player.title,
-      rating:
-          (player.rating != null && player.rating! > 0)
-              ? player.rating
-              : _positive(referenceCard?.rating) ?? player.rating,
-      fideId:
-          (player.fideId != null && player.fideId! > 0)
-              ? player.fideId
-              : referenceCard?.fideId ?? player.fideId,
+      federation: (player.federation?.trim().isNotEmpty ?? false)
+          ? player.federation
+          : _nonEmpty(referenceCard?.federation) ?? player.federation,
+      title: (player.title?.trim().isNotEmpty ?? false)
+          ? player.title
+          : _nonEmpty(referenceCard?.title) ?? player.title,
+      rating: (player.rating != null && player.rating! > 0)
+          ? player.rating
+          : _positive(referenceCard?.rating) ?? player.rating,
+      fideId: (player.fideId != null && player.fideId! > 0)
+          ? player.fideId
+          : referenceCard?.fideId ?? player.fideId,
     );
 
     var calculatedScore = 0.0;
@@ -172,8 +203,9 @@ Future<List<PlayerStandingModel>> buildStandingsFromData({
             isWhite: gameRef.isWhite,
           ) ??
           _positive(updatedPlayer.rating)?.toDouble();
-      final opponentCard =
-          gameRef.isWhite ? gameRef.game.blackPlayer : gameRef.game.whitePlayer;
+      final opponentCard = gameRef.isWhite
+          ? gameRef.game.blackPlayer
+          : gameRef.game.whitePlayer;
       final opponentRating = _getPlayerRating(
         gameRef.game,
         playerCard: opponentCard,
@@ -214,6 +246,11 @@ Future<List<PlayerStandingModel>> buildStandingsFromData({
     final int finalPlayed = resolveStandingsPlayedCount(
       sourcePlayed: updatedPlayer.played,
       countedFinishedGames: gamesPlayed,
+      officialRow:
+          useExternalOrder &&
+          singleTourScope &&
+          updatedPlayer.rank != null &&
+          updatedPlayer.score != null,
     );
     final int? finalRatingDiff =
         updatedPlayer.ratingDiff ??
@@ -253,8 +290,9 @@ Future<List<PlayerStandingModel>> buildStandingsFromData({
       if (status == GameStatus.ongoing || status == GameStatus.unknown) {
         continue;
       }
-      final opponentCard =
-          gameRef.isWhite ? gameRef.game.blackPlayer : gameRef.game.whitePlayer;
+      final opponentCard = gameRef.isWhite
+          ? gameRef.game.blackPlayer
+          : gameRef.game.whitePlayer;
       final opponentKey = identities.key(
         opponentCard.name,
         opponentCard.fideId,
@@ -286,7 +324,7 @@ Future<List<PlayerStandingModel>> buildStandingsFromData({
       singleTourScope &&
       enrichedPlayers.isNotEmpty &&
       enrichedPlayers.every((p) => p.rank != null);
-  if (hasUniversalRank) {
+  if (hasUniversalRank && !useExternalOrder) {
     enrichedPlayers.sort((a, b) {
       final aRank = a.rank ?? 1 << 30;
       final bRank = b.rank ?? 1 << 30;
@@ -314,7 +352,11 @@ Future<List<PlayerStandingModel>> buildStandingsFromData({
   }
 
   return enrichedPlayers
-      .map((player) => PlayerStandingModel.fromPlayer(player))
+      .map(
+        (player) => PlayerStandingModel.fromPlayer(player).copyWith(
+          overallRank: useExternalOrder && singleTourScope ? player.rank : null,
+        ),
+      )
       .toList();
 }
 
@@ -353,11 +395,13 @@ List<TournamentPlayer> mergeTournamentRosterWithGamePlayers({
       rank: existing.rank ?? player.rank,
       performance: existing.performance ?? player.performance,
       ratingDiff: existing.ratingDiff ?? player.ratingDiff,
+      startNumber:
+          _positive(existing.startNumber) ?? _positive(player.startNumber),
+      club: _nonEmpty(existing.club) ?? _nonEmpty(player.club),
       // Team scores use game labels; official scores still come from the roster.
-      team:
-          fromGame
-              ? _nonEmpty(player.team)?.trim() ?? _nonEmpty(existing.team)
-              : _nonEmpty(existing.team) ?? _nonEmpty(player.team),
+      team: fromGame
+          ? _nonEmpty(player.team)?.trim() ?? _nonEmpty(existing.team)
+          : _nonEmpty(existing.team) ?? _nonEmpty(player.team),
     );
   }
 
@@ -535,18 +579,17 @@ int? _positive(int? value) => (value != null && value > 0) ? value : null;
 double? _extractRatingFromPGN(String? pgn, bool isWhite) {
   if (pgn == null || pgn.isEmpty) return null;
 
-  final patterns =
-      isWhite
-          ? [
-            RegExp(r'\[WhiteElo "(\d+(?:\.\d+)?)"\]'),
-            RegExp(r'\[WhiteElo (\d+(?:\.\d+)?)\]'),
-            RegExp(r'WhiteElo\s+(\d+(?:\.\d+)?)'),
-          ]
-          : [
-            RegExp(r'\[BlackElo "(\d+(?:\.\d+)?)"\]'),
-            RegExp(r'\[BlackElo (\d+(?:\.\d+)?)\]'),
-            RegExp(r'BlackElo\s+(\d+(?:\.\d+)?)'),
-          ];
+  final patterns = isWhite
+      ? [
+          RegExp(r'\[WhiteElo "(\d+(?:\.\d+)?)"\]'),
+          RegExp(r'\[WhiteElo (\d+(?:\.\d+)?)\]'),
+          RegExp(r'WhiteElo\s+(\d+(?:\.\d+)?)'),
+        ]
+      : [
+          RegExp(r'\[BlackElo "(\d+(?:\.\d+)?)"\]'),
+          RegExp(r'\[BlackElo (\d+(?:\.\d+)?)\]'),
+          RegExp(r'BlackElo\s+(\d+(?:\.\d+)?)'),
+        ];
 
   for (final pattern in patterns) {
     final match = pattern.firstMatch(pgn);

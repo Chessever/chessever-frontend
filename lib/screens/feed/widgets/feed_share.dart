@@ -88,7 +88,11 @@ Future<void> shareFeedGame(
       game: game.copyWith(pgn: pgn),
       shareData: ResolvedGameShareData(
         pgn: pgn,
-        shareUrl: buildGameShareUrl(game: game.copyWith(pgn: pgn)),
+        // A post Watch made links as its board does: off the board's own
+        // model, whose PGN still names the game's Lichess id.
+        shareUrl: buildGameShareUrl(
+          game: item.boardGame ?? game.copyWith(pgn: pgn),
+        ),
         snapshot: snapshot,
         evaluation: mate != null && mate != 0
             ? (mate > 0 ? 10.0 : -10.0)

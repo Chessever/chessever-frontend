@@ -129,11 +129,21 @@ bool _shouldDropSentryEvent(SentryEvent event) {
     'bad_decrypt', // corrupted TLS record on flaky network (CHESSEVER-12B)
     'decryption_failed_or_bad_record_mac', // same TLS record corruption
     'software caused connection abort', // OS killed the socket (CHESSEVER-1NK)
+    // The same dead socket as reported by package:http's ClientException:
+    // iOS closes it while the app is suspended, Android drops it on a
+    // network switch (CHESSEVER-1NK/1VH, CHESSEVER-23A).
+    'clientexception: bad file descriptor',
+    'clientexception: read failed',
     'no internet connection', // NetworkException
     'connection timeout', // DioException slow network (CHESSEVER-12B)
     'receive timeout', // DioException slow network
     'send timeout', // DioException slow network
     'no active stream to cancel', // benign EventChannel cancel race
+    // Sentry Cocoa's native failed-request capture. Our own traffic is Dart
+    // sockets, which it never sees, so every one is a third-party SDK's 5xx:
+    // RevenueCat receipts, Firebase Remote Config, Google consent, OneSignal
+    // (CHESSEVER-XM). Nothing in the app can act on them.
+    'httpclienterror',
     // Self-healing Stockfish engine lifecycle resets: the singleton already
     // retries up to 7x with native quit + back-off and reinitialises on the
     // next request, so these are non-fatal degradations rather than bugs.
@@ -543,11 +553,17 @@ Future<void> _initializeRevenueCat() async {
     // and any webhook fired before the auth-listener calls Purchases.logIn(uid)
     // arrives with the anonymous id — the affiliate webhook then can't match
     // it back to affiliate_referrals.referred_user_id and silently drops it.
+    //
+    // An expired access token still names the same reader: Supabase refreshes
+    // it moments later, and if it cannot (signed out elsewhere) the auth
+    // listener logs RC out. Offline it cannot refresh at all, and only
+    // configuring as that reader lets RC answer from its cached customer
+    // info, since Purchases.logIn needs the network.
     String? bootUserId;
     try {
       final session = Supabase.instance.client.auth.currentSession;
       final user = Supabase.instance.client.auth.currentUser;
-      if (session != null && user != null && !session.isExpired) {
+      if (session != null && user != null) {
         bootUserId = user.id;
       }
     } catch (_) {}

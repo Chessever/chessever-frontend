@@ -1,4 +1,5 @@
 import 'package:chessever2/screens/my_space/actions/space_remove_confirmation.dart';
+import 'package:chessever2/screens/my_space/actions/space_shortcut_removal.dart';
 import 'package:chessever2/providers/favorite_players_provider.dart';
 import 'package:chessever2/repository/favorites/models/favorite_player.dart';
 import 'package:chessever2/screens/library/widgets/library_context_menu.dart';
@@ -39,6 +40,8 @@ LibraryMenuAction spaceMenuAction({
     return _playerMenuAction(context: context, ref: ref, draft: draft);
   }
   final notifier = ref.read(spaceShortcutsProvider.notifier);
+  final hidden = ref.read(spaceHiddenAutoKeysProvider.notifier);
+  final remove = spaceShortcutRemover(ref, draft);
   final messenger = ScaffoldMessenger.maybeOf(context);
   final navigator = Navigator.of(context);
   return LibraryMenuAction(
@@ -52,19 +55,21 @@ LibraryMenuAction spaceMenuAction({
             !await confirmSpaceSmartEventRemoval(navigator.context, [draft])) {
           return;
         }
-        final removed = await notifier.removeTarget(draft.kind, draft.targetId);
+        final removal = remove();
         HapticFeedbackService.light();
-        if (messenger != null && removed != null) {
+        if (messenger != null && messenger.mounted) {
           showAppSnackOn(
             messenger,
             'Removed from My Space',
             actionLabel: 'Undo',
-            onAction: () => notifier.restore(removed),
+            onAction: removal.undo,
           );
         }
+        await removal.written;
         return;
       }
       final added = await notifier.add(draft);
+      hidden.unhide(draft.key);
       HapticFeedbackService.success();
       if (messenger != null) {
         showAppSnackOn(
@@ -73,6 +78,34 @@ LibraryMenuAction spaceMenuAction({
           tone: added ? AppSnackTone.success : AppSnackTone.neutral,
         );
       }
+    },
+  );
+}
+
+/// An automatic card leaves My Space without deleting, unliking or
+/// unsubscribing its source. Its visibility and any matching pin share Undo.
+LibraryMenuAction spaceAutoRemoveMenuAction({
+  required BuildContext context,
+  required WidgetRef ref,
+  required SpaceShortcut shortcut,
+}) {
+  final messenger = ScaffoldMessenger.maybeOf(context);
+  final remove = spaceShortcutRemover(ref, shortcut);
+  return LibraryMenuAction(
+    icon: Icons.dashboard_customize_outlined,
+    label: 'Remove from My Space',
+    onSelected: () async {
+      final removal = remove();
+      HapticFeedbackService.light();
+      if (messenger != null && messenger.mounted) {
+        showAppSnackOn(
+          messenger,
+          'Removed from My Space',
+          actionLabel: 'Undo',
+          onAction: removal.undo,
+        );
+      }
+      await removal.written;
     },
   );
 }

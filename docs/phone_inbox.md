@@ -2,9 +2,17 @@
 
 ## Scope and audience
 
-- Editorial plain-text messages from the ChessEver team to **everyone**, including
+- Editorial messages from the ChessEver team to **everyone** by default, including
   existing Supabase `signInAnonymously` guests. This is not an account-sign-in gate,
-  a reply/chat system, a recipient list, Premium targeting or a push subscription.
+  a reply/chat system or a push subscription.
+- A message may have an **audience** (`20261015170500_editorial_inbox_audience.sql`):
+  the admin portal's audience filters (Premium/free, platform, sign-in method,
+  guest/registered, country, followed player or event, specific user ids). The
+  filters live in `editorial_private.audiences`, which no app role can read; a
+  message carries only `audience_id`. The row-level policy applies it, so
+  `list_editorial_inbox` (v1 and v2), the unread badge built from the list, and
+  read receipts follow it on every app version with no client change.
+  Membership is checked on each fetch, not frozen at publication.
 - Publication makes one shared message visible in Inbox; **no push, email,
   OneSignal call, send queue or per-recipient fan-out** is implemented.
 - A read means that this exact message was opened and the server successfully
@@ -12,6 +20,54 @@
 - The backend change is additive. Existing push/live-event notification behavior,
   configuration and credentials are unchanged. The phone code shipped as
   `36.0.2+3580`. Local implementation/testing grants no remote authority.
+
+## Rich messages (36.4.2)
+
+Migration: `supabase/migrations/20261012200000_editorial_inbox_rich.sql`, additive
+on top of the contract below. Where the two disagree, this section is current.
+
+- `editorial_inbox_messages.body_format` is `plain` (default; every message
+  published before this) or `markdown`. The phone renders Markdown with the
+  article reader's `NewsMarkdown` after `sanitizeNewsMarkdown`; raw HTML is never
+  interpreted. An unknown format is shown literally.
+- `editorial_inbox_messages.image_url` is one optional attached image: a
+  thumbnail on the list card, full width above the opened text.
+- `action_label` + `action_url` (both or neither) are one button under the opened
+  text: the label after an up-right arrow. A chessever.com link opens the matching
+  screen in the app through the deep-link router; any other https link opens the
+  browser. A link that is not http(s) draws no button.
+- The phone loads a picture on its own only from the origins article pictures
+  use (`isNewsImageSourceAllowed`: this project's public Storage, chessever.com).
+  An attached image anywhere else is not shown; an inline Markdown image
+  anywhere else becomes a link. Admin uploads go to the public
+  `editorial-inbox` bucket (5 MB; JPEG, PNG, WebP), written by the service role only.
+- RPCs: `list_editorial_inbox_v2` (authenticated), `save_editorial_inbox_draft_v2`
+  and `publish_editorial_inbox_v2` (service role). The originals stay for older
+  builds, which show a Markdown body as its source text and no image. The phone
+  asks for v2 and falls back to the original when the function does not exist.
+- A push is separate from the message. Its title, text and optional image travel
+  in the `notification_outbox` payload (`title`, `body`, `image_url`,
+  `data.inbox_message_id`) and are not stored on the message. `onesignal-dispatch`
+  passes `image_url` on as `big_picture` (Android) and `ios_attachments` with
+  `mutable_content`. **iOS shows a push picture only with a notification service
+  extension, which the app does not have yet**; until then iPhones get the text.
+
+## Notification destinations
+
+- An Inbox push with `data.inbox_message_id` opens that exact message, with
+  Home and the Inbox list beneath it for Back navigation. This waits for app
+  startup and uses the current account's Inbox cache and server refresh.
+- Loading and failed fetches do not mark a message read. A failed refresh keeps
+  a Retry action; an unavailable publication never opens a different message.
+- An explicit `data.route` overrides the default Inbox destination, including
+  for standalone notifications. The message's `action_url` remains the action
+  inside its article and never implicitly changes the push destination.
+- See [mobile app routes](mobile-app-routes.md) for supported paths, nested
+  destinations, parameters, and fallback behavior. Routes travel as notification
+  data, without a native browser launch URL.
+- The current publisher for `admin.chessever.com` lives in the companion
+  `chessever-admin-portal` repository. This implementation does not publish
+  messages, send pushes, deploy the admin, or release the mobile app.
 
 ## Data and access contract
 

@@ -35,6 +35,9 @@ import 'package:chessever2/screens/my_likes/provider/my_likes_provider.dart'
 import 'package:chessever2/screens/my_space/actions/space_share.dart'
     show isSpaceCalendarEvent;
 import 'package:chessever2/screens/my_space/models/space_shortcut.dart';
+import 'package:chessever2/screens/my_prep/models/prep_models.dart';
+import 'package:chessever2/screens/my_prep/prep_profile_screen.dart';
+import 'package:chessever2/screens/my_prep/providers/prep_providers.dart';
 import 'package:chessever2/screens/my_space/providers/space_shortcuts_provider.dart';
 import 'package:chessever2/screens/player_profile/player_profile_data_source.dart';
 import 'package:chessever2/screens/player_profile/player_profile_screen.dart';
@@ -49,6 +52,7 @@ import 'package:chessever2/widgets/event_card/event_context_menu.dart'
     show kEventTabQueryParam;
 import 'package:chessever2/widgets/game_filter/game_filter_model.dart';
 import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
+import 'package:chessever2/widgets/paywall/past_event_access.dart';
 import 'package:dartchess/dartchess.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -147,7 +151,27 @@ Future<bool> _open(BuildContext context, WidgetRef ref, SpaceShortcut s) {
     SpaceShortcutKind.likes => _push(context, const MyLikesScreen()),
     SpaceShortcutKind.link => _openLink(context, s.targetId),
     SpaceShortcutKind.collection => _openCollection(context, ref, s),
+    SpaceShortcutKind.prepProfile => _openPrepProfile(context, s),
   };
+}
+
+Future<bool> _openPrepProfile(BuildContext context, SpaceShortcut s) async {
+  final container = ProviderScope.containerOf(context, listen: false);
+  final ready = Completer<AsyncValue<List<PrepProfile>>>();
+  final subscription = container.listen(prepProfilesProvider, (_, profiles) {
+    if (!profiles.isLoading && !ready.isCompleted) ready.complete(profiles);
+  }, fireImmediately: true);
+  final AsyncValue<List<PrepProfile>> profiles;
+  try {
+    profiles = await ready.future;
+  } finally {
+    subscription.close();
+  }
+  if (!context.mounted ||
+      !(profiles.valueOrNull?.any((p) => p.id == s.targetId) ?? false)) {
+    return false;
+  }
+  return _push(context, PrepProfileScreen(profileId: s.targetId));
 }
 
 /// A published collection, by id, from the team's list (usually warm: the
@@ -208,21 +232,24 @@ Future<bool> _openVirtualEvent(
   BuildContext context,
   WidgetRef ref,
   String virtualId,
-) {
+) async {
   final key = virtualEventKeyFromId(virtualId);
-  if (key == null) return Future.value(false);
-  if (!context.mounted) return Future.value(true);
-  ref
-      .read(selectedBroadcastModelProvider.notifier)
-      .state = virtualGroupBroadcastForEvent(
+  if (key == null) return false;
+  final broadcast = virtualGroupBroadcastForEvent(
     key.eventName,
     site: key.site,
     slug: key.slug,
   );
+  if (!context.mounted ||
+      !await ensurePastEventAccess(context, broadcast: broadcast) ||
+      !context.mounted) {
+    return true;
+  }
+  ref.read(selectedBroadcastModelProvider.notifier).state = broadcast;
   ref.read(selectedTourModeProvider.notifier).state =
       TournamentDetailScreenMode.games;
   unawaited(Navigator.of(context).pushNamed('/tournament_detail_screen'));
-  return Future.value(true);
+  return true;
 }
 
 Future<bool> _openCalendarEvent(BuildContext context, SpaceShortcut s) async {
@@ -688,7 +715,8 @@ Future<bool> _openLink(BuildContext context, String raw) {
         preferGamebase: game.preferGamebase,
       );
   }
-  // Books, databases, folders and player profiles have no in-app opener yet.
+  // Books, databases, folders, collections and player profiles have no
+  // in-app opener yet.
   return Future.value(links.openLinkFromApp(uri));
 }
 
@@ -699,6 +727,7 @@ const _routableLinkRoots = {
   'folders',
   'broadcast',
   'player',
+  'collections',
 };
 
 /// Whether the app's deep-link router opens [uri]: chessever.com (or the

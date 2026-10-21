@@ -8,10 +8,10 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class _FakeLibraryRepository extends LibraryRepository {
-  String? lastOwnedPageTag;
-  String? lastOwnedCountTag;
-  String? lastSharedPageTag;
-  String? lastSharedCountTag;
+  List<String>? lastOwnedPageTags;
+  List<String>? lastOwnedCountTags;
+  List<String>? lastSharedPageTags;
+  List<String>? lastSharedCountTags;
   String? lastTagCountsFolderId;
   bool? lastTagCountsSubscribed;
 
@@ -20,11 +20,11 @@ class _FakeLibraryRepository extends LibraryRepository {
     required String folderId,
     required GameFilter filter,
     String search = '',
-    String? tag,
+    List<String> tags = const <String>[],
     int limit = 30,
     int offset = 0,
   }) async {
-    lastOwnedPageTag = tag;
+    lastOwnedPageTags = tags;
     return const <SavedAnalysis>[];
   }
 
@@ -33,9 +33,9 @@ class _FakeLibraryRepository extends LibraryRepository {
     required String folderId,
     required GameFilter filter,
     String search = '',
-    String? tag,
+    List<String> tags = const <String>[],
   }) async {
-    lastOwnedCountTag = tag;
+    lastOwnedCountTags = tags;
     return 7;
   }
 
@@ -44,11 +44,11 @@ class _FakeLibraryRepository extends LibraryRepository {
     required String folderId,
     required GameFilter filter,
     String search = '',
-    String? tag,
+    List<String> tags = const <String>[],
     int limit = 30,
     int offset = 0,
   }) async {
-    lastSharedPageTag = tag;
+    lastSharedPageTags = tags;
     return const <SavedAnalysis>[];
   }
 
@@ -57,9 +57,9 @@ class _FakeLibraryRepository extends LibraryRepository {
     required String folderId,
     required GameFilter filter,
     String search = '',
-    String? tag,
+    List<String> tags = const <String>[],
   }) async {
-    lastSharedCountTag = tag;
+    lastSharedCountTags = tags;
     return 3;
   }
 
@@ -80,7 +80,7 @@ void main() {
     SharedPreferences.setMockInitialValues({});
     await Supabase.initialize(
       url: 'https://placeholder.supabase.co',
-      anonKey: 'placeholder-anon-key',
+      publishableKey: 'placeholder-anon-key',
     );
   });
 
@@ -98,14 +98,14 @@ void main() {
           BookPaginationKey(
             folderId: 'folder-1',
             filter: GameFilter.defaultFilter(),
-            tag: 'Sacrifice',
+            tags: const ['Sacrifice'],
           ),
         ).future,
       );
 
       expect(state.totalCount, 7);
-      expect(repo.lastOwnedPageTag, 'Sacrifice');
-      expect(repo.lastOwnedCountTag, 'Sacrifice');
+      expect(repo.lastOwnedPageTags, ['Sacrifice']);
+      expect(repo.lastOwnedCountTags, ['Sacrifice']);
     },
   );
 
@@ -124,14 +124,14 @@ void main() {
             folderId: 'shared-1',
             isSubscribed: true,
             filter: GameFilter.defaultFilter(),
-            tag: 'Trap',
+            tags: const ['Trap'],
           ),
         ).future,
       );
 
       expect(state.totalCount, 3);
-      expect(repo.lastSharedPageTag, 'Trap');
-      expect(repo.lastSharedCountTag, 'Trap');
+      expect(repo.lastSharedPageTags, ['Trap']);
+      expect(repo.lastSharedCountTags, ['Trap']);
     },
   );
 

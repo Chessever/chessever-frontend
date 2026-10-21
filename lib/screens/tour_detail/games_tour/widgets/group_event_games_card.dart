@@ -8,6 +8,7 @@ import 'package:chessever2/screens/tour_detail/games_tour/widgets/games_tour_con
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/widgets/paywall/past_event_access.dart';
 
 class GroupEventGamesCard extends StatelessWidget {
   const GroupEventGamesCard({
@@ -113,7 +114,12 @@ class _GroupEventGameCardTile extends ConsumerWidget {
       },
       pinnedIds: gamesData.pinnedGamedIs,
       allowStockfishFallback: allowStockfishFallback,
-      onTap: () {
+      onTap: () async {
+        final allowed = await ensureEventGameAccess(
+          context,
+          tourId: liveGame.tourId,
+        );
+        if (!allowed || !context.mounted) return;
         ref
             .read(gameCardWrapperProvider)
             .navigateToChessBoard(

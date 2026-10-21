@@ -4,7 +4,6 @@ import 'package:chessever2/repository/supabase/chess_player/chess_player_reposit
     show ChessPlayer;
 import 'package:chessever2/screens/my_prep/data/prep_favorites.dart';
 import 'package:chessever2/screens/my_prep/models/prep_models.dart';
-import 'package:chessever2/screens/my_prep/prep_access.dart';
 import 'package:chessever2/screens/my_prep/prep_actions.dart';
 import 'package:chessever2/screens/my_prep/prep_profile_screen.dart';
 import 'package:chessever2/screens/my_prep/prep_sources_screen.dart';
@@ -12,6 +11,7 @@ import 'package:chessever2/screens/my_prep/providers/prep_favorites_provider.dar
 import 'package:chessever2/screens/my_prep/providers/prep_known_accounts_provider.dart';
 import 'package:chessever2/screens/my_prep/providers/prep_providers.dart';
 import 'package:chessever2/screens/my_prep/widgets/prep_common.dart';
+import 'package:chessever2/screens/my_prep/widgets/prep_open_profile_button.dart';
 import 'package:chessever2/screens/my_prep/widgets/prep_profile_card.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/app_typography.dart';
@@ -36,7 +36,7 @@ class MyPrepHomeScreen extends ConsumerStatefulWidget {
 
   final int initialTab;
 
-  static const List<String> tabs = ['My Games', 'Profiles', 'Players'];
+  static const List<String> tabs = ['Games', 'Profiles', 'Players'];
 
   @override
   ConsumerState<MyPrepHomeScreen> createState() => _MyPrepHomeScreenState();
@@ -93,7 +93,7 @@ class _MyPrepHomeScreenState extends ConsumerState<MyPrepHomeScreen> {
     if (_refreshedOnOpen) return;
     _refreshedOnOpen = true;
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted || !hasPrepAccess(ref)) return;
+      if (!mounted) return;
       ref
           .read(prepSyncProvider.notifier)
           .refreshStale(profiles.where((p) => p.kind != PrepKind.favorite));
@@ -205,7 +205,7 @@ class _AppBar extends StatelessWidget {
           Expanded(
             child: Center(
               child: Text(
-                'My Prep',
+                'Prep',
                 style: AppTypography.textLgBold.copyWith(
                   color: context.colors.textPrimary,
                 ),
@@ -274,24 +274,9 @@ class _MyGamesTab extends ConsumerWidget {
           if (profile.gameCount > 0)
             Padding(
               padding: EdgeInsets.fromLTRB(_gutter, 8.h, _gutter, 0),
-              child: FilledButton(
+              child: PrepOpenProfileButton(
                 key: const ValueKey('prep_mine_open'),
-                onPressed: () {
-                  HapticFeedbackService.cardTap();
-                  PrepProfileScreen.open(context, profile.id);
-                },
-                style: FilledButton.styleFrom(
-                  minimumSize: const Size.fromHeight(48),
-                  backgroundColor: context.colors.textPrimary,
-                  foregroundColor: context.colors.textInverse,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12.br),
-                  ),
-                ),
-                child: Text(
-                  'Open ${prepGamesLabel(profile.gameCount)}',
-                  style: AppTypography.textSmBold,
-                ),
+                profileId: profile.id,
               ),
             ),
         ],
@@ -425,6 +410,16 @@ class _ProfileSources extends StatelessWidget {
                   child: PrepAccountRow(profile: profile, account: account),
                 ),
               ),
+          // The profile's own door, as on My Games, once there is anything
+          // to open.
+          if (profile.gameCount > 0)
+            Padding(
+              padding: EdgeInsets.fromLTRB(12.w, 8.h, 8.w, 8.h),
+              child: PrepOpenProfileButton(
+                key: ValueKey('prep_profile_open_${profile.id}'),
+                profileId: profile.id,
+              ),
+            ),
           // With the last card's own gap, as far from the rule below as the
           // profile card is from it when folded.
           SizedBox(height: 4.h),
@@ -681,7 +676,7 @@ class _RankedCard extends StatelessWidget {
       action: _OpponentAction(
         added: switch (profile?.kind) {
           PrepKind.opponent => 'In Profiles',
-          PrepKind.mine => 'In My Games',
+          PrepKind.mine => 'In Games',
           _ => null,
         },
         onAdd: onAdd,

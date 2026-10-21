@@ -1,5 +1,7 @@
 import 'dart:math' as math;
 
+import 'package:chessever2/screens/group_event/smart_event/smart_aggregate_event_provider.dart'
+    show SmartEventRequest;
 import 'package:chessever2/screens/group_event/widget/filter_popup/group_event_filter_provider.dart'
     show EventFormat;
 import 'package:chessever2/screens/library/widgets/library_context_menu.dart';
@@ -15,6 +17,7 @@ import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/app_button.dart';
 import 'package:chessever2/widgets/game_filter/rating_tier_filter.dart';
 import 'package:chessever2/widgets/event_card/smart_event_deck.dart';
+import 'package:chessever2/widgets/event_card/smart_event_star.dart';
 import 'package:chessever2/widgets/hub_tile.dart' show kHubTileInk;
 import 'package:chessever2/widgets/time_control_glyph.dart';
 import 'package:flutter/material.dart';
@@ -58,6 +61,7 @@ class SmartEventCard extends StatelessWidget {
     this.summary,
     this.live = false,
     this.disclosure = true,
+    this.starRequest,
     this.stacked = false,
     super.key,
   });
@@ -110,6 +114,12 @@ class SmartEventCard extends StatelessWidget {
   /// The trailing "open" chevron. Off where a tap selects instead of opens
   /// (My Space's Edit mode).
   final bool disclosure;
+
+  /// When set, the card ends in this smart event's star instead of the
+  /// chevron, as an event card does in the Events lists, and its focus menu
+  /// gains the notifications row. My Space, the only place smart event cards
+  /// appear, sets it (Trello #1225), but not in Edit, where a tap selects.
+  final SmartEventRequest? starRequest;
   final bool stacked;
 
   static double _imageWidth(BuildContext context) {
@@ -229,7 +239,9 @@ class SmartEventCard extends StatelessWidget {
               ),
             ],
           ),
-          trailing: disclosure
+          trailing: starRequest != null
+              ? SmartEventStar(request: starRequest!)
+              : disclosure
               ? Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [

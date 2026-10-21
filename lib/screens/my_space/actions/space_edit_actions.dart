@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:chessever2/screens/my_space/actions/space_shortcut_removal.dart';
 import 'package:chessever2/screens/my_space/actions/space_player_actions.dart'
     show spacePlayerRemover;
 import 'package:chessever2/screens/my_space/models/space_shortcut.dart';
@@ -38,7 +39,6 @@ Future<int> spaceRemovePinsSelected({
   required WidgetRef ref,
   required Set<String> keys,
 }) async {
-  final store = ref.read(spaceShortcutsProvider.notifier);
   final doomed = [
     for (final pin in ref.read(spaceShortcutsProvider).valueOrNull ?? const [])
       if (keys.contains(pin.key)) pin,
@@ -46,11 +46,10 @@ Future<int> spaceRemovePinsSelected({
   if (doomed.isEmpty) return 0;
   final messenger = ScaffoldMessenger.maybeOf(context);
   HapticFeedbackService.light();
-  final written = Future.wait([
-    for (final pin in doomed) store.removeTarget(pin.kind, pin.targetId),
-  ]);
+  final removals = [for (final pin in doomed) removeSpaceShortcut(ref, pin)];
+  final written = Future.wait([for (final r in removals) r.written]);
   Future<void> undo() async {
-    await Future.wait([for (final pin in doomed) store.restore(pin)]);
+    await Future.wait([for (final r in removals) r.undo()]);
   }
 
   if (messenger != null && messenger.mounted) {
@@ -115,17 +114,15 @@ Future<int> spaceRemoveSelected({
     written = Future.wait([for (final r in removals) r.written]);
     undo = () => Future.wait([for (final r in removals) r.undo()]);
   } else {
-    final store = ref.read(spaceShortcutsProvider.notifier);
     final doomed = [
       for (final s in ref.read(spaceShortcutsProvider).valueOrNull ?? const [])
         if (s.section == section && keys.contains(s.key)) s,
     ];
     count = doomed.length;
     // Each removal leaves the list at once; only its delete is awaited.
-    written = Future.wait([
-      for (final s in doomed) store.removeTarget(s.kind, s.targetId),
-    ]);
-    undo = () => Future.wait([for (final s in doomed) store.restore(s)]);
+    final removals = [for (final s in doomed) removeSpaceShortcut(ref, s)];
+    written = Future.wait([for (final r in removals) r.written]);
+    undo = () => Future.wait([for (final r in removals) r.undo()]);
   }
 
   if (count > 0 && messenger != null && messenger.mounted) {

@@ -71,7 +71,7 @@ class PrepProfileCard extends ConsumerWidget {
       ),
     );
     final error = profile.accounts
-        .map((a) => a.error)
+        .map((a) => a.downloadError)
         .whereType<String>()
         .firstOrNull;
     final status =

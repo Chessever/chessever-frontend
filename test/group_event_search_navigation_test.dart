@@ -3,6 +3,7 @@ import 'package:chessever2/repository/supabase/group_broadcast/group_tour_reposi
 import 'package:chessever2/screens/group_event/group_event_screen.dart';
 import 'package:chessever2/screens/group_event/providers/group_event_screen_provider.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_mode_provider.dart';
+import 'package:chessever2/services/rewarded_premium/rewarded_access_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -39,46 +40,66 @@ void main() {
     }
   });
 
+  Widget app({
+    required bool premium,
+    GroupEventCategory category = GroupEventCategory.search,
+  }) {
+    return ProviderScope(
+      overrides: [
+        premiumAccessProvider.overrideWithValue(premium),
+        groupBroadcastRepositoryProvider.overrideWithValue(
+          _FakeGroupBroadcastRepository(),
+        ),
+      ],
+      child: MaterialApp(
+        routes: {
+          '/': (context) => Consumer(
+            builder: (context, ref, _) {
+              return TextButton(
+                onPressed: () {
+                  ref
+                      .read(tournamentNavigationProvider)
+                      .openTournament(
+                        context: context,
+                        id: 'fide_world_cup_2025',
+                        category: category,
+                      );
+                },
+                child: const Text('open'),
+              );
+            },
+          ),
+          '/tournament_detail_screen': (context) => Consumer(
+            builder: (context, ref, _) {
+              final selected = ref.watch(selectedBroadcastModelProvider);
+              final mode = ref.watch(selectedTourModeProvider);
+              return Text('${selected?.id ?? 'missing'}:${mode.name}');
+            },
+          ),
+        },
+      ),
+    );
+  }
+
+  // The fixture ended in November 2025, so a search hit is a past event:
+  // entitled viewers open it straight away.
   testWidgets('search result opens tournament detail on the Games tab', (
     tester,
   ) async {
+    await tester.pumpWidget(app(premium: true));
+
+    await tester.tap(find.text('open'));
+    await tester.pump();
+    await tester.pumpAndSettle();
+
+    expect(find.text('fide_world_cup_2025:games'), findsOneWidget);
+  });
+
+  testWidgets('a Current card opens for a free viewer without asking', (
+    tester,
+  ) async {
     await tester.pumpWidget(
-      ProviderScope(
-        overrides: [
-          groupBroadcastRepositoryProvider.overrideWithValue(
-            _FakeGroupBroadcastRepository(),
-          ),
-        ],
-        child: MaterialApp(
-          routes: {
-            '/':
-                (context) => Consumer(
-                  builder: (context, ref, _) {
-                    return TextButton(
-                      onPressed: () {
-                        ref
-                            .read(tournamentNavigationProvider)
-                            .openTournament(
-                              context: context,
-                              id: 'fide_world_cup_2025',
-                              category: GroupEventCategory.search,
-                            );
-                      },
-                      child: const Text('open'),
-                    );
-                  },
-                ),
-            '/tournament_detail_screen':
-                (context) => Consumer(
-                  builder: (context, ref, _) {
-                    final selected = ref.watch(selectedBroadcastModelProvider);
-                    final mode = ref.watch(selectedTourModeProvider);
-                    return Text('${selected?.id ?? 'missing'}:${mode.name}');
-                  },
-                ),
-          },
-        ),
-      ),
+      app(premium: false, category: GroupEventCategory.current),
     );
 
     await tester.tap(find.text('open'));
@@ -86,5 +107,6 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('fide_world_cup_2025:games'), findsOneWidget);
+    expect(find.byType(Dialog), findsNothing);
   });
 }

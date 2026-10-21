@@ -31,6 +31,8 @@ import 'package:chessever2/screens/feed/widgets/feed_playback.dart';
 import 'package:chessever2/screens/feed/widgets/feed_post_header.dart';
 import 'package:chessever2/screens/feed/widgets/feed_save.dart';
 import 'package:chessever2/screens/feed/widgets/feed_scrub.dart';
+import 'package:chessever2/screens/feed/logic/feed_taste.dart';
+import 'package:chessever2/screens/feed/providers/feed_provider.dart';
 import 'package:chessever2/screens/feed/widgets/feed_sfx_provider.dart';
 import 'package:chessever2/screens/feed/widgets/feed_share.dart';
 import 'package:chessever2/screens/feed/widgets/feed_states.dart';
@@ -80,15 +82,19 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 ///   piece stands the tipped king back up
 /// * once the viewer has the board (paused, stepping, at the end, or in
 ///   their own line) pieces also drag, and the feed holds still under them
-/// * tap anywhere else: pause / resume (resolved after the double-tap
-///   window); once the clip has ended, it moves the result card off the
-///   board and back
+/// * tap anywhere else: stop, with a play control centred on the dimmed
+///   board (resolved after the double-tap window). The control plays on; a
+///   tap elsewhere takes it down so the board is clear to play, and the next
+///   tap brings it back. In the viewer's own line the control returns to the
+///   game and plays on. Once the clip has ended, a tap moves the result card
+///   off the board and back
 /// * double-tap: like, with the board screen's heart burst flying into Like
 ///   (the Like button plays the same heart, and the heartbreak to unlike)
 /// * hold the right third 280ms: 2x while held
 /// * long-press the rest of the board: Open game / Share / My Space menu
 /// * the evaluation graph: tap to choose a move
-/// * drag the bottom line: scrub, with the report chart when evals exist
+/// * drag the bottom line: scrub, with the report chart when evals exist;
+///   the button at its end steps the playback speed (1× to 2×)
 ///
 /// While the clip plays, a swipe always belongs to the feed's PageView: a
 /// swipe that starts on a piece puts it back down. Holding 2x locks the feed
@@ -101,6 +107,8 @@ class FeedClip extends ConsumerStatefulWidget {
     required this.onRequestNext,
     required this.onScrollLock,
     this.hasNext = true,
+    this.keepsPlace = true,
+    this.onOpenGame,
     super.key,
   });
 
@@ -118,6 +126,16 @@ class FeedClip extends ConsumerStatefulWidget {
   /// coming. False on the last post of a feed that has ended, where the
   /// result card offers no "Next game" and runs no countdown to one.
   final bool hasNext;
+
+  /// Whether the clip keeps its place for Feed's return
+  /// ([FeedClipResumeStore]). Watch's lead does not: it is not a place in
+  /// Feed, so it starts afresh and leaves what Feed kept alone.
+  final bool keepsPlace;
+
+  /// What Analyze and Open game do in place of opening the game on a new
+  /// board: Watch's lead goes back to the board it was opened from, which
+  /// holds that game already.
+  final VoidCallback? onOpenGame;
 
   @override
   ConsumerState<FeedClip> createState() => _FeedClipState();
@@ -325,6 +343,10 @@ class _FeedClipState extends ConsumerState<FeedClip>
   /// or tapped the card (or the board) to see what lies under it.
   bool _cardAside = false;
 
+  /// The play control is up over the viewer's own line (a tap on the board
+  /// toggles it; its triangle returns to the game).
+  bool _lineControls = false;
+
   String? _pushedKey;
   bool _pushingBoard = false;
   bool _boardDirty = false;
@@ -375,10 +397,13 @@ class _FeedClipState extends ConsumerState<FeedClip>
       item: _item,
       sfx: ref.read(feedSfxProvider),
       moveSound: _moveSound,
-    );
+    )..setSpeed(ref.read(feedPlaybackSpeedProvider));
+    _lastShown = _playback.shownPly;
     // Back on Feed from another tab: the settled clip carries on where the
     // viewer left it, before the board is first drawn.
-    final resumed = widget.isCurrent ? _resume.take(_entryKey) : null;
+    final resumed = widget.isCurrent && widget.keepsPlace
+        ? _resume.take(_entryKey)
+        : null;
     if (resumed != null) _restore(resumed);
     final initial = _gameDataFor(_view());
     _board = ChessboardController(game: initial);
@@ -404,7 +429,7 @@ class _FeedClipState extends ConsumerState<FeedClip>
     // clip before its next timer, not at the next frame.
     _seen = FeedSeen.maybeOf(context)?..addListener(_onSeenChanged);
     _syncing = true;
-    if (widget.isCurrent && resumed == null) _playback.restart();
+    if (widget.isCurrent && resumed == null) _restartPlayback();
     _syncSuspended();
     _syncing = false;
   }
@@ -469,15 +494,16 @@ class _FeedClipState extends ConsumerState<FeedClip>
     if (widget.isCurrent != oldWidget.isCurrent) {
       _cancelGestures();
       _line = null;
+      _lineControls = false;
       _landingClass = null;
       _kingUp = false;
       _cardAside = false;
       if (widget.isCurrent) {
         // Swiped onto: a fresh start, and whatever an earlier Feed left
         // behind no longer applies.
-        _resume.clear();
+        if (widget.keepsPlace) _resume.clear();
         _countdown.value = 0;
-        _playback.restart();
+        _restartPlayback();
       }
     }
     _syncSuspended();
@@ -490,7 +516,7 @@ class _FeedClipState extends ConsumerState<FeedClip>
     _seen?.removeListener(_onSeenChanged);
     // Leaving Feed (another tab) tears the settled clip down; keep its place
     // for the return. A neighbour page restarts when swiped onto anyway.
-    if (widget.isCurrent) _resume.save(_snapshot());
+    if (widget.isCurrent && widget.keepsPlace) _resume.save(_snapshot());
     _cancelTimers();
     if (_holding || _dragLock) {
       _holding = false;
@@ -543,6 +569,24 @@ class _FeedClipState extends ConsumerState<FeedClip>
     _trackLanding();
     _pushBoard();
     _rebuild();
+    _noteProgress();
+  }
+
+  /// Tells the Feed how much of the game has played, for learning what the
+  /// viewer enjoys: watched from where the clip opens to the end is 1.
+  void _noteProgress() {
+    final span = _playback.lastPly - _playback.startPly;
+    if (span <= 0) return;
+    final played = (_playback.shownPly - _playback.startPly) / span;
+    // Never builds the Feed: a clip shown anywhere else has no one to tell.
+    if (!ref.exists(feedProvider)) return;
+    ref.read(feedProvider.notifier).noteProgress(_game.gameId, played);
+  }
+
+  /// Tells the Feed what the viewer did with this post.
+  void _note(FeedAction action) {
+    if (!ref.exists(feedProvider)) return;
+    ref.read(feedProvider.notifier).noteAction(_game.gameId, action);
   }
 
   /// setState, unless a rebuild is already coming (initState and
@@ -600,6 +644,14 @@ class _FeedClipState extends ConsumerState<FeedClip>
     _cardAside = value;
     _syncCountdown();
     _rebuild();
+  }
+
+  /// Plays the clip again from [FeedPlayback.startPly]. The clip opens on
+  /// that position rather than playing its move, so the move gets no landing.
+  void _restartPlayback() {
+    _landingClass = null;
+    _lastShown = _playback.startPly;
+    _playback.restart();
   }
 
   /// A classified game move that just arrived (autoplay, a step, a scrub
@@ -843,7 +895,9 @@ class _FeedClipState extends ConsumerState<FeedClip>
         return;
       }
       final (next, played) = result;
+      if (_line == null) _note(FeedAction.explore);
       _line = next;
+      _lineControls = false;
       _landingClass = null;
       // Their own moves are unclassified: the board's ordinary sounds.
       feedSfxSafely(() => _moveSound.play(san: played.san));
@@ -859,6 +913,7 @@ class _FeedClipState extends ConsumerState<FeedClip>
     if (_line == null) return;
     HapticFeedbackService.buttonPress();
     _line = null;
+    _lineControls = false;
     _landingClass = null;
     // A line from the final position returns to the ending as it was: the
     // king back down, the result card back up.
@@ -890,11 +945,19 @@ class _FeedClipState extends ConsumerState<FeedClip>
     _playback.stepTo(ply);
   }
 
+  /// The speed button: the next step, for this clip and every one after it.
+  void _cycleSpeed() {
+    HapticFeedbackService.selection();
+    ref.read(feedPlaybackSpeedProvider.notifier).state = FeedPlayback.nextSpeed(
+      _playback.speed,
+    );
+  }
+
   void _togglePlay() {
     HapticFeedbackService.buttonPress();
     if (_playback.isEnded) {
       _countdown.value = 0;
-      _playback.restart();
+      _restartPlayback();
     } else if (_playback.isHeld) {
       // A piece in hand holds the clip and the button shows Play: the piece
       // goes back down and the game plays on.
@@ -972,6 +1035,13 @@ class _FeedClipState extends ConsumerState<FeedClip>
       // Play on the final position takes the board: the result card steps
       // aside until a plain tap brings it back.
       if (_playback.isEnded) _setCardAside(true);
+      // Play on a stopped board takes the play control down, as a tap away
+      // from it would.
+      _playback.dismissGlyph();
+      if (_lineControls) {
+        _lineControls = false;
+        _rebuild();
+      }
       // A piece in hand on a board the viewer has may be dragged: the feed
       // holds still under it, the same lock the 2x hold uses.
       if (_dragAllowed && _boardSelection != null && !_dragLock) {
@@ -1058,9 +1128,13 @@ class _FeedClipState extends ConsumerState<FeedClip>
     _singleTap = Timer(_doubleTapWindow, () {
       _singleTap = null;
       if (!mounted) return;
-      // A stray tap never throws away the viewer's own line; that is what
-      // "Back to game" is for.
-      if (_line != null) return;
+      // A stray tap never throws away the viewer's own line; it puts up (or
+      // takes down) the play control, whose triangle returns to the game.
+      if (_line != null) {
+        HapticFeedbackService.selection();
+        setState(() => _lineControls = !_lineControls);
+        return;
+      }
       if (_playback.isEnded) {
         // Nothing left to pause: the tap moves the result card off the
         // board, so the whole final position can be seen and played, or
@@ -1073,7 +1147,7 @@ class _FeedClipState extends ConsumerState<FeedClip>
         _setCardAside(!_cardAside);
         return;
       }
-      _playback.togglePause();
+      _playback.boardTap();
     });
   }
 
@@ -1184,7 +1258,7 @@ class _FeedClipState extends ConsumerState<FeedClip>
   /// once the heart is on the button the next tap is the unlike, and its
   /// write waits its turn behind the like's.
   void _playLike({required Offset at, required bool fromButton}) {
-    if (_likeBusy) return;
+    if (_likeBusy || !_item.likeable) return;
     final wasLiked = _likedNow;
     final unlike = fromButton && wasLiked;
     final writes = fromButton || !wasLiked;
@@ -1206,7 +1280,10 @@ class _FeedClipState extends ConsumerState<FeedClip>
     // A fresh like fills the button when the heart lands on it, not before.
     final inbound = !wasLiked && !reduceMotion && from != null;
     if (inbound != _heartInbound) setState(() => _heartInbound = inbound);
-    if (!unlike) HapticFeedbackService.medium();
+    if (!unlike) {
+      HapticFeedbackService.medium();
+      _note(FeedAction.like);
+    }
 
     _burst.spawn(
       position: at,
@@ -1332,7 +1409,7 @@ class _FeedClipState extends ConsumerState<FeedClip>
   /// post being paged away.
   void _writeLike({required bool liked}) {
     final notifier = ref.read(likedGamesProvider.notifier);
-    final game = _game;
+    final game = _item.boardGame ?? _game;
     final messenger = ScaffoldMessenger.maybeOf(context);
     setState(() => _likeIntent = liked);
     _likeWritesOut++;
@@ -1377,6 +1454,13 @@ class _FeedClipState extends ConsumerState<FeedClip>
       gameSpaceShortcutDraft(_game, subtitle: _item.eventLabel);
 
   void _openGame() {
+    _note(FeedAction.analyze);
+    final open = widget.onOpenGame;
+    if (open != null) {
+      HapticFeedbackService.cardTap();
+      open();
+      return;
+    }
     final snapshot = feedAnalysisSnapshot(
       item: _item,
       shownPly: _playback.shownPly,
@@ -1404,6 +1488,7 @@ class _FeedClipState extends ConsumerState<FeedClip>
   /// board. In the viewer's own line the game is shared where the line left
   /// it (the board's pixels show the line, so they are not reused then).
   void _share() {
+    _note(FeedAction.share);
     HapticFeedbackService.buttonPress();
     final line = _line;
     final shown = line?.forkPly ?? _playback.shownPly;
@@ -1424,6 +1509,7 @@ class _FeedClipState extends ConsumerState<FeedClip>
   /// closed, then plays on where it was.
   Future<void> _save() async {
     if (_saveOpen) return;
+    _note(FeedAction.save);
     HapticFeedbackService.buttonPress();
     setState(() => _saveOpen = true);
     _syncSuspended();
@@ -1448,18 +1534,42 @@ class _FeedClipState extends ConsumerState<FeedClip>
   }
 
   Future<void> _toggleSpace(SpaceShortcut draft) async {
+    _note(FeedAction.mySpace);
     await toggleSpaceShortcut(context: context, ref: ref, draft: draft);
   }
+
+  /// Whether the header's event opens somewhere: a broadcast or an archive
+  /// game, or a saved copy of a broadcast game (a like keeps its tour id). A
+  /// game Watch brought from the user's own analysis or the board editor
+  /// names an event in its PGN with no page behind it.
+  bool get _opensEvent => switch (_game.source) {
+    GameSource.supabase || GameSource.gamebase || GameSource.twic => true,
+    GameSource.savedAnalysis => _savedFromTour,
+    _ => false,
+  };
+
+  /// A saved analysis whose tourId is a broadcast tour's id rather than the
+  /// event name it falls back to.
+  bool get _savedFromTour =>
+      _game.source == GameSource.savedAnalysis &&
+      _tourIdPattern.hasMatch(_game.tourId.trim());
+
+  static final RegExp _tourIdPattern = RegExp(
+    r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$',
+    caseSensitive: false,
+  );
 
   /// The event the game was played in: a broadcast opens its event page, an
   /// archive game (a miniature) opens the ChessEver Database on that event.
   Future<void> _openEvent() async {
+    _note(FeedAction.event);
     HapticFeedbackService.navigation();
     final game = _game;
-    if (game.source == GameSource.supabase) {
+    if (game.source == GameSource.supabase || _savedFromTour) {
       final opened = await DeepLinkService.instance.openEventForShortcut(
         tourId: game.tourId,
-        roundId: game.roundId,
+        // A saved copy's round is its PGN's Round text, not a round id.
+        roundId: game.source == GameSource.supabase ? game.roundId : null,
       );
       if (!opened && mounted) {
         showAppSnack(
@@ -1540,6 +1650,7 @@ class _FeedClipState extends ConsumerState<FeedClip>
   void _onScrubStart(double f) {
     if (_item.plyCount <= 0) return;
     _cancelGestures();
+    _note(FeedAction.explore);
     // Scrubbing is the game line; the viewer's own line gives way.
     _line = null;
     final target = (f * _item.plyCount).round();
@@ -1733,8 +1844,8 @@ class _FeedClipState extends ConsumerState<FeedClip>
           id: 'event',
           pieces: [FeedHeaderPiece.text(event)],
           shrinkable: true,
-          onTap: () => unawaited(_openEvent()),
-          semanticsLabel: 'Open event $event',
+          onTap: _opensEvent ? () => unawaited(_openEvent()) : null,
+          semanticsLabel: _opensEvent ? 'Open event $event' : event,
         ),
       );
     }
@@ -1955,6 +2066,7 @@ class _FeedClipState extends ConsumerState<FeedClip>
               ? PlayerProfileDataSource.supabase
               : PlayerProfileDataSource.twic,
           nameMenu: true,
+          fontSizeOverride: FeedLayout.playerFontSize,
           revealResult: revealResult,
           // The Feed shows every game's outcome and evaluation itself, so the
           // event's No Spoilers preference does not reach its rows either.
@@ -1986,6 +2098,7 @@ class _FeedClipState extends ConsumerState<FeedClip>
   /// evals; anything else asks [feedPositionEvalProvider]: the cache while
   /// the clip plays, the engine once the viewer has the board.
   FeedEval _watchEval(_BoardView view, {required bool exploring}) {
+    if (_item.hideEvaluation) return FeedEval.none;
     final position = view.position;
     if (position == null) return FeedEval.none;
     if (position.isCheckmate) {
@@ -2021,6 +2134,11 @@ class _FeedClipState extends ConsumerState<FeedClip>
       );
     }
 
+    // Every clip plays at the speed last chosen, including the ones already
+    // built either side of this one.
+    ref.listen(feedPlaybackSpeedProvider, (_, speed) {
+      _playback.setSpeed(speed);
+    });
     final colors = context.colors;
     final likedStored = ref.watch(isGameLikedProvider(_game.likeId));
     _likedAtOpen ??= likedStored;
@@ -2040,8 +2158,10 @@ class _FeedClipState extends ConsumerState<FeedClip>
     final exploring = line != null;
     final shown = p.shownPly.clamp(0, _item.plies.length - 1);
     final ply = _item.plies[shown];
-    // The rows print the result only on the game's final position.
-    final revealResult = !exploring && shown >= _item.plies.length - 1;
+    // The rows print the result only on the game's final position, and not
+    // at all while No Spoilers holds it back.
+    final revealResult =
+        !_item.hideResult && !exploring && shown >= _item.plies.length - 1;
     // The report chart carries the move while scrubbing; only a game with no
     // recorded evaluations has no chart, and its scrub shows the move bubble.
     final showBubble = p.isScrubbing && !_item.hasEvals;
@@ -2156,11 +2276,28 @@ class _FeedClipState extends ConsumerState<FeedClip>
                       ),
                     ),
                   ),
-                // Mounted for the whole pause so its fade runs once per
-                // pause; hidden while a piece is in hand or a scrub runs.
-                if (p.isUserPaused && !p.isEnded && !p.isManual && !exploring)
+                // Mounted for the whole stop so it fades in and out as it is
+                // taken down and brought back; hidden while a piece is in
+                // hand or a scrub runs.
+                if (exploring)
                   Positioned.fill(
-                    child: FeedPausedOverlay(visible: p.showsPauseGlyph),
+                    child: FeedPausedOverlay(
+                      visible: _lineControls && !p.isHeld && !p.isScrubbing,
+                      onPlay: () {
+                        _consumeZoneTap();
+                        _backToGame();
+                      },
+                    ),
+                  )
+                else if (p.isUserPaused && !p.isEnded && !p.isManual)
+                  Positioned.fill(
+                    child: FeedPausedOverlay(
+                      visible: p.showsPauseGlyph,
+                      onPlay: () {
+                        _consumeZoneTap();
+                        _togglePlay();
+                      },
+                    ),
                   ),
                 if (p.isFast && !p.isScrubbing)
                   const Positioned.fill(child: FeedFastOverlay()),
@@ -2187,7 +2324,7 @@ class _FeedClipState extends ConsumerState<FeedClip>
                           _consumeZoneTap();
                           HapticFeedbackService.buttonPress();
                           _countdown.value = 0;
-                          _playback.restart();
+                          _restartPlayback();
                         },
                         onNext: widget.hasNext
                             ? () {
@@ -2218,20 +2355,25 @@ class _FeedClipState extends ConsumerState<FeedClip>
             children: [
               Row(
                 children: [
-                  EvaluationBarWidget(
-                    key: const ValueKey('feed_eval_bar'),
-                    width: l.evalWidth,
-                    height: l.board,
-                    isFlipped: false,
-                    evaluation: _barEvaluation(eval),
-                    mate: eval.mate,
-                    isEvaluating: eval.evaluating,
-                    isWhiteToMove: view.position?.turn != Side.black,
-                    positionKey: view.position?.fen ?? view.fen,
-                    // "#", as the game card and the move strip say, not
-                    // the ±100 the bar is filled with.
-                    isCheckmate: view.position?.isCheckmate ?? false,
-                  ),
+                  // Under No Spoilers (a Watch post) the bar's column stays,
+                  // empty, so the board sits where every post's does.
+                  if (_item.hideEvaluation)
+                    SizedBox(width: l.evalWidth, height: l.board)
+                  else
+                    EvaluationBarWidget(
+                      key: const ValueKey('feed_eval_bar'),
+                      width: l.evalWidth,
+                      height: l.board,
+                      isFlipped: false,
+                      evaluation: _barEvaluation(eval),
+                      mate: eval.mate,
+                      isEvaluating: eval.evaluating,
+                      isWhiteToMove: view.position?.turn != Side.black,
+                      positionKey: view.position?.fen ?? view.fen,
+                      // "#", as the game card and the move strip say, not
+                      // the ±100 the bar is filled with.
+                      isCheckmate: view.position?.isCheckmate ?? false,
+                    ),
                   board,
                 ],
               ),
@@ -2286,12 +2428,12 @@ class _FeedClipState extends ConsumerState<FeedClip>
                     inSpace: inSpace,
                     saved: saved,
                     likeIconKey: _likeIconKey,
-                    onLike: _likeFromButton,
+                    onLike: _item.likeable ? _likeFromButton : null,
                     onSpace: () {
                       if (draft != null) unawaited(_toggleSpace(draft));
                     },
                     onShare: _share,
-                    onSave: () => unawaited(_save()),
+                    onSave: _item.exportable ? () => unawaited(_save()) : null,
                     onAnalyze: _openGame,
                   ),
                 ),
@@ -2352,18 +2494,15 @@ class _FeedClipState extends ConsumerState<FeedClip>
                     ),
                     Padding(
                       padding: EdgeInsets.only(right: l.contentLeft),
-                      child: FeedStepButton(
-                        key: const ValueKey('feed_scrub_play_toggle'),
-                        glyphOffset: const Offset(
+                      child: FeedSpeedButton(
+                        key: const ValueKey('feed_speed_button'),
+                        labelOffset: const Offset(
                           0,
                           FeedLayout.scrubTrackCenter -
                               FeedLayout.scrubHeight / 2,
                         ),
-                        glyph: p.isPlaying
-                            ? FeedGlyphs.stop
-                            : FeedGlyphs.playSmall,
-                        semanticsLabel: p.isPlaying ? 'Stop' : 'Play',
-                        onTap: exploring ? _backToGame : _togglePlay,
+                        speed: p.speed,
+                        onTap: _cycleSpeed,
                       ),
                     ),
                   ],

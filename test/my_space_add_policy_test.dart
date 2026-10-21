@@ -32,13 +32,14 @@ SpaceShortcut _draft(
 
 void main() {
   test(
-    'events, databases and smart events qualify while folders remain navigation-only',
+    'events, databases, prep profiles and smart events qualify while folders remain navigation-only',
     () {
       const permitted = {
         SpaceShortcutKind.event,
         SpaceShortcutKind.folder,
         SpaceShortcutKind.collection,
         SpaceShortcutKind.smartEvent,
+        SpaceShortcutKind.prepProfile,
       };
       for (final kind in SpaceShortcutKind.values) {
         expect(
@@ -122,6 +123,7 @@ void main() {
           SpaceShortcutKind.folder,
           SpaceShortcutKind.smartEvent,
           SpaceShortcutKind.collection,
+          SpaceShortcutKind.prepProfile,
         ],
       );
       expect(container.read(spaceShortcutsProvider).requireValue, seed);

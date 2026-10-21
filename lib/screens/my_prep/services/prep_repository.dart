@@ -5,6 +5,7 @@ import 'dart:io';
 import 'package:chessever2/repository/gamebase/gamebase_repository.dart';
 import 'package:chessever2/screens/my_prep/models/prep_models.dart';
 import 'package:chessever2/screens/gamebase/models/gamebase_player.dart';
+import 'package:chessever2/services/fide_photo_service.dart';
 import 'package:chessever2/services/game_tree/game_tree_codec.dart';
 import 'package:chessever2/services/game_tree/time_control_classifier.dart';
 import 'package:crypto/crypto.dart';
@@ -18,8 +19,15 @@ const _userAgent =
 
 /// A lookup or download failure worth showing the reader as written.
 class PrepException implements Exception {
-  const PrepException(this.message);
+  const PrepException(this.message, {this.retryAfter, this.permanent = false});
   final String message;
+
+  /// How long the server asked to be left alone, when it said.
+  final Duration? retryAfter;
+
+  /// Whether asking again cannot help until something changes: the
+  /// username, the download options or the server.
+  final bool permanent;
 
   @override
   String toString() => message;
@@ -28,14 +36,26 @@ class PrepException implements Exception {
 /// What a sync reports while it waits on the server.
 typedef PrepProgress = void Function(String message);
 
+/// The wait a `Retry-After` header asks for, in seconds; HTTP dates are
+/// rare enough here to fall back to the retry schedule.
+Duration? prepRetryAfter(Headers? headers) {
+  final seconds = int.tryParse(headers?.value('retry-after')?.trim() ?? '');
+  return seconds == null || seconds <= 0 ? null : Duration(seconds: seconds);
+}
+
 /// Lichess and Chess.com profile lookups, and the server-cached game
 /// downloads desktop Prep uses, stored as one PGN file per account.
 class PrepRepository {
-  PrepRepository(this._gamebase, {http.Client? client})
-    : _client = client ?? http.Client();
+  PrepRepository(
+    this._gamebase, {
+    http.Client? client,
+    Future<String?> Function(String fideId)? fidePhotoLookup,
+  }) : _client = client ?? http.Client(),
+       _fidePhotoLookup = fidePhotoLookup ?? FidePhotoService.getPhotoUrlOrNull;
 
   final GamebaseRepository _gamebase;
   final http.Client _client;
+  final Future<String?> Function(String fideId) _fidePhotoLookup;
   void dispose() => _client.close();
 
   Future<List<GamebasePlayer>> searchPlayers(String query) {
@@ -75,9 +95,42 @@ class PrepRepository {
         ),
       };
 
+  /// Resolves a missing portrait without downloading games or rating stats.
+  /// Lichess publishes a linked FIDE id, rather than a direct avatar URL.
+  Future<String?> lookupPhoto(PrepAccount account) async {
+    if (!account.source.online) return null;
+    final clean = _cleanUsername(account.username);
+    final chessCom = account.source == PrepSource.chesscom;
+    final response = await _get(
+      chessCom
+          ? Uri.https('api.chess.com', '/pub/player/${clean.toLowerCase()}')
+          : Uri.https('lichess.org', '/api/user/$clean', {'fideId': 'true'}),
+    );
+    if (response.statusCode == 404) return null;
+    _check(response, account.source.label);
+    final profile = jsonDecode(response.body);
+    if (profile is! Map) return null;
+    if (chessCom) {
+      if (profile['status']?.toString().startsWith('closed') == true) {
+        return null;
+      }
+      return _photoUrl(profile['avatar']);
+    }
+    if (profile['closed'] == true || profile['disabled'] == true) return null;
+    return _lichessPhoto(profile);
+  }
+
+  Future<String?> _lichessPhoto(Map profile) async {
+    final fideId = profile['fideId'];
+    if (fideId is! int || fideId <= 0) return null;
+    return _photoUrl(await _fidePhotoLookup(fideId.toString()));
+  }
+
   Future<PrepAccount> _lookupLichess(String username) async {
     final clean = _cleanUsername(username);
-    final response = await _get(Uri.https('lichess.org', '/api/user/$clean'));
+    final response = await _get(
+      Uri.https('lichess.org', '/api/user/$clean', {'fideId': 'true'}),
+    );
     if (response.statusCode == 404) {
       throw PrepException('No Lichess account is called "$clean".');
     }
@@ -106,10 +159,17 @@ class PrepRepository {
             profile['lastName'],
           ].whereType<String>().where((s) => s.trim().isNotEmpty).join(' ')
         : '';
+    String? photoUrl;
+    try {
+      photoUrl = await _lichessPhoto(json);
+    } catch (_) {
+      // A portrait lookup must not prevent attaching a valid account.
+    }
     return PrepAccount(
       source: PrepSource.lichess,
       username: id?.isNotEmpty == true ? id! : clean,
       displayName: realName.isNotEmpty ? realName : null,
+      avatarUrl: photoUrl,
       title: json['title']?.toString(),
       country: profile is Map ? _flagCode(profile['flag']) : null,
       ratings: ratings,
@@ -167,7 +227,7 @@ class PrepRepository {
       source: PrepSource.chesscom,
       username: cased.toLowerCase() == clean ? cased : clean,
       displayName: name?.isNotEmpty == true ? name : null,
-      avatarUrl: profile['avatar']?.toString(),
+      avatarUrl: _photoUrl(profile['avatar']),
       title: profile['title']?.toString(),
       country: _chessComCountry(profile['country']?.toString()),
       ratings: ratings,
@@ -220,7 +280,9 @@ class PrepRepository {
     if (account.source == PrepSource.chessever) {
       final now = DateTime.now();
       final prefs = account.preferences;
-      if (prefs.validationError case final error?) throw PrepException(error);
+      if (prefs.validationError case final error?) {
+        throw PrepException(error, permanent: true);
+      }
       onProgress?.call('Downloading ChessEver games…');
       final export = await _gamebase.getPlayerGamesPgn(
         playerId: account.externalId!,
@@ -231,6 +293,7 @@ class PrepRepository {
           (export.pgn.trim().isEmpty && export.gameCount > 0)) {
         throw const PrepException(
           'ChessEver game export is unavailable. Try again.',
+          permanent: true,
         );
       }
       if (cancelToken?.isCancelled ?? false) throw cancelToken!.cancelError!;
@@ -258,7 +321,9 @@ class PrepRepository {
     }
     final now = DateTime.now();
     final prefs = account.preferences;
-    if (prefs.validationError case final error?) throw PrepException(error);
+    if (prefs.validationError case final error?) {
+      throw PrepException(error, permanent: true);
+    }
     final scope = prefs.scopeKey(now);
     final file = await gamesFile(account);
     final sameScope =
@@ -313,17 +378,20 @@ class PrepRepository {
         if (code == 404) {
           throw PrepException(
             '${account.source.label} has no account "${account.username}".',
+            permanent: true,
           );
         }
         if (code == 413) {
           throw const PrepException(
             'That selection is too large. Choose fewer time controls or a '
             'shorter period.',
+            permanent: true,
           );
         }
         if (code == 429) {
           throw PrepException(
             '${account.source.label} is limiting downloads. Try again in a minute.',
+            retryAfter: prepRetryAfter(error.response?.headers),
           );
         }
         throw PrepException(
@@ -332,12 +400,16 @@ class PrepRepository {
       }
     }
     if (export == null) {
-      throw const PrepException('Game downloads are not available right now.');
+      throw const PrepException(
+        'Game downloads are not available right now.',
+        permanent: true,
+      );
     }
     if (prefs.isFiltered && export.filterVersion != '1') {
       throw const PrepException(
         'Download options need a server update. Choose All time controls and '
         'All time for now.',
+        permanent: true,
       );
     }
 
@@ -408,6 +480,17 @@ class PrepRepository {
     );
     await done.future;
   }
+}
+
+String? _photoUrl(Object? value) {
+  if (value is! String) return null;
+  final clean = value.trim();
+  final uri = Uri.tryParse(clean);
+  return uri != null &&
+          (uri.scheme == 'https' || uri.scheme == 'http') &&
+          uri.host.isNotEmpty
+      ? clean
+      : null;
 }
 
 String _cleanUsername(String raw) {

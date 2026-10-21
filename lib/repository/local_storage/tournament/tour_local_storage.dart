@@ -36,8 +36,8 @@ class _TourLocalStorage {
 
   Future<List<Tour>> getTours(String groupId) async {
     try {
-      return ref.read(tourRepositoryProvider).getTourByGroupId(groupId);
-    } catch (e, _) {
+      return await ref.read(tourRepositoryProvider).getTourByGroupId(groupId);
+    } catch (_) {
       return _getCachedTours(groupId);
     }
   }
@@ -59,9 +59,10 @@ class _TourLocalStorage {
       if (entry == null) return <Tour>[];
 
       final jsonList = jsonDecode(entry.value) as List;
-      return jsonList
-          .map((e) => Tour.fromJson(json.decode(e as String)))
-          .toList();
+      return Tour.listFromJson([
+        for (final e in jsonList)
+          if (e is String) json.decode(e),
+      ]);
     } catch (_) {
       return <Tour>[];
     }

@@ -92,11 +92,16 @@ final spaceAutoRowProvider = Provider.autoDispose
                 ),
             ],
             settled: library.settled,
+            hidden: hidden,
           );
         case SpaceSection.likes:
           final liked = ref.watch(likedGamesProvider);
           final all = liked.valueOrNull ?? const <SavedAnalysis>[];
-          final shown = all.take(kFreeMyLikesVisibleLimit);
+          final visible = [
+            for (final analysis in all)
+              if (!hidden.contains(spaceLikedGameFace(analysis).key)) analysis,
+          ];
+          final shown = visible.take(kFreeMyLikesVisibleLimit);
           final leading = [
             for (final a in shown)
               SpaceAutoItem(
@@ -110,7 +115,7 @@ final spaceAutoRowProvider = Provider.autoDispose
             hiddenPinKeys: leading.isEmpty
                 ? const {}
                 : {SpaceShortcut.keyFor(SpaceShortcutKind.likes, 'me')},
-            total: all.isEmpty ? null : all.length,
+            total: visible.isEmpty ? null : visible.length,
             settled: liked.hasValue || liked.hasError,
           );
         case SpaceSection.players:

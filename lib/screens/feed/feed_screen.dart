@@ -1,5 +1,3 @@
-import 'package:chessever2/services/rewarded_premium/rewarded_access_provider.dart';
-import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
 import 'dart:async';
 import 'dart:math' as math;
 
@@ -9,11 +7,13 @@ import 'package:chessever2/providers/board_settings_provider_new.dart';
 import 'package:chessever2/screens/feed/audio/feed_sfx.dart';
 import 'package:chessever2/screens/feed/feed_visibility.dart';
 import 'package:chessever2/screens/feed/models/feed_entry.dart';
+import 'package:chessever2/screens/feed/models/feed_models.dart';
 import 'package:chessever2/screens/feed/news/feed_news.dart';
 import 'package:chessever2/screens/feed/providers/feed_entries_provider.dart';
 import 'package:chessever2/screens/feed/providers/feed_provider.dart';
 import 'package:chessever2/screens/feed/puzzles/feed_puzzle.dart';
 import 'package:chessever2/screens/feed/widgets/feed_action_row.dart';
+import 'package:chessever2/screens/feed/widgets/feed_ad_page.dart';
 import 'package:chessever2/screens/feed/widgets/feed_clip.dart';
 import 'package:chessever2/screens/feed/widgets/feed_glyphs.dart';
 import 'package:chessever2/screens/feed/widgets/feed_layout.dart';
@@ -35,7 +35,8 @@ import 'package:motor/motor.dart';
 
 /// Feed: finished games that replay themselves on a playable board, one per
 /// page, picked by [FeedRanker], with a ChessEver News article now and then
-/// ([feedEntriesProvider]).
+/// ([feedEntriesProvider]) and, for viewers who see ads, an ad between posts
+/// ([feedPagesProvider]).
 ///
 /// Swipe for the next page, pull down on the first one for a fresh draw;
 /// everything else happens on the board (see [FeedClip] for the gesture
@@ -54,8 +55,20 @@ import 'package:motor/motor.dart';
 /// frame ([FeedLayout]), with nothing of the next post showing under it.
 /// After the last post stands one more page ([FeedTail]): the next post's
 /// skeleton while more can load, the end of the feed once nothing is left.
+///
+/// Feed is open to everyone. A viewer without a paid subscription gets an ad page
+/// at positions 3, 8, 13… ([feedPagesProvider], [FeedAdPage]) and swipes past
+/// it like any post: no prompt ever stands between them and the next one.
+///
+/// Watch ([watch], the board's menu) opens Feed on a game of the viewer's
+/// choosing: [lead] is the first post and the feed carries on after it as it
+/// is, without its own copy of that game. A refresh is a fresh draw, without
+/// the lead.
 class FeedScreen extends ConsumerStatefulWidget {
-  const FeedScreen({super.key});
+  const FeedScreen({super.key, this.lead});
+
+  /// The game Watch opened Feed on, above the feed's own posts.
+  final FeedItem? lead;
 
   /// Opens Feed over whatever is showing.
   static Future<void> open(BuildContext context) {
@@ -63,6 +76,14 @@ class FeedScreen extends ConsumerStatefulWidget {
     return Navigator.of(
       context,
     ).push(MaterialPageRoute<void>(builder: (_) => const FeedScreen()));
+  }
+
+  /// Opens Feed on [lead]: its first post, then the feed.
+  static Future<void> watch(BuildContext context, FeedItem lead) {
+    HapticFeedbackService.navigation();
+    return Navigator.of(
+      context,
+    ).push(MaterialPageRoute<void>(builder: (_) => FeedScreen(lead: lead)));
   }
 
   @override
@@ -73,17 +94,9 @@ class FeedScreen extends ConsumerStatefulWidget {
 /// built anew on every visit; this puts the viewer back on that page rather
 /// than on the first game again.
 /// Held by identity, not position: if the entries were rebuilt (a refresh)
-/// and the page is gone, Feed starts from the top.
+/// and the page is gone, Feed starts from the top. Only posts are held: an
+/// ad page is never the place to come back to.
 final feedCurrentEntryKeyProvider = StateProvider<String?>((ref) => null);
-
-final feedAccessPromptProvider = Provider<Future<bool> Function(BuildContext)>(
-  (ref) =>
-      (context) => showPremiumPaywallSheet(
-        context: context,
-        featureId: 'feed_scroll',
-        returnTo: 'feed',
-      ),
-);
 
 class _FeedScreenState extends ConsumerState<FeedScreen>
     with WidgetsBindingObserver, RouteAware {
@@ -106,11 +119,20 @@ class _FeedScreenState extends ConsumerState<FeedScreen>
   bool _appResumed = true;
   bool _routeCurrent = true;
   bool _scrollLocked = false;
-  bool _accessPromptOpen = false;
   bool _announcedFirst = false;
   ModalRoute<void>? _route;
   late final StateController<bool> _open;
+  late final FeedScreenCount _screens;
+  late final FeedClipResumeStore _resume;
+
+  /// This screen is in [_screens]' count (from its first frame).
+  bool _counted = false;
   late final FeedSfx _sfx;
+
+  /// The page of the post Watch opened Feed on ([FeedScreen.lead]), until a
+  /// refresh draws a new first page. Told apart from Feed's own pages by
+  /// identity: its [FeedEntry.key] is the one Feed's copy of that game has.
+  FeedGameEntry? _lead;
 
   /// Whether Feed is seen this instant; see [FeedSeen]. Every page that can
   /// sound listens to it, so it is written the moment Feed is left.
@@ -145,18 +167,28 @@ class _FeedScreenState extends ConsumerState<FeedScreen>
     WidgetsBinding.instance.addObserver(this);
     final state = WidgetsBinding.instance.lifecycleState;
     _appResumed = state == null || state == AppLifecycleState.resumed;
+    final lead = widget.lead;
+    if (lead != null) {
+      _lead = FeedGameEntry(lead);
+      _watched = lead;
+    }
     _index = _restoredIndex();
     _pages = PageController(initialPage: _index);
     // Written after the frame: a provider must not change while the tree
     // that mounts this screen is still building.
     _open = ref.read(feedScreenOpenProvider.notifier);
+    _screens = ref.read(feedScreenCountProvider);
+    _resume = ref.read(feedClipResumeProvider);
     _sfx = ref.read(feedSfxProvider);
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) _open.state = true;
+      if (!mounted) return;
+      _counted = true;
+      _screens.value++;
+      _open.state = true;
     });
     // Warms up when the board's Sound setting is (or turns) on; see
     // [_warmUpSoundsIfAudible].
-    ref.listenManual<List<FeedEntry>>(feedEntriesProvider, _onEntriesChanged);
+    ref.listenManual<List<FeedEntry>>(feedPagesProvider, _onPagesChanged);
     ref.listenManual<bool>(
       boardSettingsProviderNew.select(
         (settings) => settings.valueOrNull?.soundEnabled == true,
@@ -169,13 +201,98 @@ class _FeedScreenState extends ConsumerState<FeedScreen>
   }
 
   /// The page to open on: the one the viewer left, when it is still there.
+  /// Watch always opens on its lead.
   int _restoredIndex() {
-    if (!ref.read(premiumAccessProvider)) return 0;
+    if (_lead != null) return 0;
     final key = ref.read(feedCurrentEntryKeyProvider);
     if (key == null) return 0;
-    final index = ref.read(feedEntriesProvider).indexWhere((e) => e.key == key);
+    final index = ref.read(feedPagesProvider).indexWhere((e) => e.key == key);
     return index < 0 ? 0 : index;
   }
+
+  /// Feed's pages as this screen shows them: the lead first, then the feed
+  /// without its own copy of that game. Without a lead, Feed's own.
+  List<FeedEntry> _pagesOf(List<FeedEntry> feed) {
+    final lead = _lead;
+    if (lead == null) return feed;
+    final pages = <FeedEntry>[
+      lead,
+      for (final page in feed)
+        if (page is! FeedGameEntry || !_isWatchedGame(page.item)) page,
+    ];
+    // An ad stands only between two posts ([withFeedAds]); one left last by
+    // the hidden copy waits for the post that comes after it.
+    if (pages.last is FeedAdEntry) pages.removeLast();
+    return List.unmodifiable(pages);
+  }
+
+  List<FeedEntry> _currentPages() => _pagesOf(ref.read(feedPagesProvider));
+
+  /// The game Watch opened on, kept after a refresh drops its page: Feed's
+  /// own copy of it is the game the board under this screen holds.
+  FeedItem? _watched;
+
+  /// Whether [item] is Feed's copy of the game Watch opened on: the same id,
+  /// or the same moves (an archive copy of a broadcast game has its own id).
+  bool _isWatchedGame(FeedItem item) {
+    final watched = _watched;
+    if (watched == null) return false;
+    if (item.game.gameId == watched.game.gameId ||
+        item.game.likeId == watched.game.likeId) {
+      return true;
+    }
+    if (item.plies.length != watched.plies.length ||
+        _movesOf(item) != _movesOf(watched)) {
+      return false;
+    }
+    // The same moves by other players is another game.
+    final white = item.game.whitePlayer.fideId;
+    final watchedWhite = watched.game.whitePlayer.fideId;
+    return white == null || watchedWhite == null || white == watchedWhite;
+  }
+
+  static final Expando<String> _moves = Expando<String>('feedMoves');
+
+  /// [item]'s moves as one string, worked out once per item.
+  static String _movesOf(FeedItem item) =>
+      _moves[item] ??= [for (final ply in item.plies) ply.uci ?? ''].join(' ');
+
+  /// The key a page is built under. The lead's is its own: after a refresh
+  /// Feed's copy of the game may stand where the lead stood, and it must be
+  /// a new page with its own clip, not the lead's carried over.
+  String _pageKeyOf(FeedEntry page) =>
+      identical(page, _lead) ? 'watch:${page.key}' : page.key;
+
+  /// Page [index] of [pages] as a page of Feed's own [feed], found by key:
+  /// -1 for the lead (above Feed's first page), past the last page for the
+  /// tail, null for a page Feed no longer has.
+  int? _feedIndexOf(int index, List<FeedEntry> pages, List<FeedEntry> feed) {
+    if (index >= pages.length) return feed.length + index - pages.length;
+    final page = pages[index];
+    if (identical(page, _lead)) return -1;
+    final found = feed.indexWhere((other) => other.key == page.key);
+    return found < 0 ? null : found;
+  }
+
+  /// The game of Feed's own the viewer has last reached at page [index] of
+  /// [pages], as an index into [feed]'s games: the nearest game at or before
+  /// it on screen. -1 when that is the lead, or there is none. Feed's own
+  /// copy of the lead's game is not on screen, so it is never the one.
+  int _visitIndexOf(int index, List<FeedEntry> pages, List<FeedEntry> feed) {
+    for (var i = math.min(index, pages.length - 1); i >= 0; i--) {
+      final page = pages[i];
+      if (page is! FeedGameEntry) continue;
+      if (identical(page, _lead)) return -1;
+      final found = feed.indexWhere((other) => other.key == page.key);
+      return found < 0 ? -1 : feedGameIndexAt(feed, found);
+    }
+    return -1;
+  }
+
+  /// Feed's state as far as the lead's screen goes: ready once its first
+  /// page has loaded and no load is running.
+  bool _feedReady(AsyncValue<List<FeedItem>> feed) =>
+      feed.hasValue && !feed.isLoading;
 
   /// Loads the classification and swipe sounds, only for a viewer who will
   /// hear them. Warming up also makes the audio service reload those clips on
@@ -231,10 +348,18 @@ class _FeedScreenState extends ConsumerState<FeedScreen>
     _seen.dispose();
     _pages.dispose();
     // After this frame, and only while the provider still lives: closing
-    // the app disposes the provider together with this screen.
+    // the app disposes the provider together with this screen. A Feed still
+    // on the stack under this one keeps it open.
     final open = _open;
+    final screens = _screens;
+    if (_counted) screens.value--;
+    // A Feed still on the stack under this one (Watch, closed) keeps its own
+    // clip mounted: the playback this one's clips just saved (children
+    // dispose first) is no place it returns to, and must not resurface on
+    // the next post it builds as current.
+    if (screens.value > 0) _resume.clear();
     Future.microtask(() {
-      if (open.mounted) open.state = false;
+      if (open.mounted && screens.value <= 0) open.state = false;
     });
     super.dispose();
   }
@@ -266,6 +391,21 @@ class _FeedScreenState extends ConsumerState<FeedScreen>
     _routeCurrent = true;
     _syncSeen();
     _rebuildSoon();
+    _reclaim();
+  }
+
+  /// Back on top. When what was on top held another Feed (Watch, from a
+  /// board opened here), that Feed moved the visit to its own pages and may
+  /// have drawn a new arrangement under this one: the page here is the
+  /// viewer's again, remembered and visited.
+  void _reclaim() {
+    SchedulerBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_routeCurrent || _homing) return;
+      final pages = _currentPages();
+      if (pages.isEmpty) return;
+      _remember(_index, pages);
+      _reportVisible(_index, pages);
+    });
   }
 
   /// Back (the button, the system back, a finished back swipe): Feed goes
@@ -329,14 +469,10 @@ class _FeedScreenState extends ConsumerState<FeedScreen>
     }
   }
 
-  void _onPageChanged(int index, List<FeedEntry> entries) {
+  void _onPageChanged(int index, List<FeedEntry> pages) {
     if (_homing) return;
-    if (index > 0 && !ref.read(premiumAccessProvider)) {
-      unawaited(_unlockScrolling());
-      return;
-    }
     if (index == _index) {
-      _reportHomeIfPending(index, entries);
+      _reportHomeIfPending(index, pages);
       return;
     }
     _homeUnreported = false;
@@ -344,44 +480,66 @@ class _FeedScreenState extends ConsumerState<FeedScreen>
       _index = index;
       _scrollLocked = false;
     });
-    // Only posts are remembered: the tail has no key of its own to return
-    // to, and the last post stays the place to come back to.
-    if (index < entries.length) {
-      ref.read(feedCurrentEntryKeyProvider.notifier).state = entries[index].key;
-    }
+    _remember(index, pages);
     if (_seen.value) feedSfxSafely(ref.read(feedSfxProvider).playSwipe);
-    _reportVisible(index, entries);
+    _reportVisible(index, pages);
   }
 
-  Future<void> _unlockScrolling() async {
-    if (_accessPromptOpen || !mounted) return;
-    _accessPromptOpen = true;
-    try {
-      // Page changes can arrive during layout; open the modal after this frame.
-      await WidgetsBinding.instance.endOfFrame;
-      if (!mounted) return;
-      final allowed = await ref.read(feedAccessPromptProvider)(context);
-      if (!mounted || !_pages.hasClients) return;
-      if (allowed && ref.read(premiumAccessProvider)) {
-        setState(() {});
-        await WidgetsBinding.instance.endOfFrame;
-        if (mounted) _onPageChanged(1, ref.read(feedEntriesProvider));
-      } else {
-        _pages.jumpToPage(0);
-      }
-    } finally {
-      _accessPromptOpen = false;
+  /// Only posts are remembered: the tail has no key of its own to return to
+  /// (the last post stays the place to come back to), and an ad page is no
+  /// place to return to (the post it follows stands for it). Nor is Watch's
+  /// lead, which is not in the feed: Feed keeps the place the viewer had.
+  void _remember(int index, List<FeedEntry> pages) {
+    if (index >= pages.length) return;
+    var page = pages[index];
+    if (page is FeedAdEntry && _lead != null && index > 0) {
+      // Under a lead the post an ad follows on screen may not be the one it
+      // follows in Feed (that one may be the lead's hidden copy): the post
+      // before it here stands for it.
+      page = pages[index - 1];
     }
+    if (identical(page, _lead)) return;
+    ref.read(feedCurrentEntryKeyProvider.notifier).state = page is FeedAdEntry
+        ? page.after
+        : page.key;
   }
 
   /// Freezes the pages the viewer has reached and keeps games coming: the
-  /// games notifier pages by game, so the page index is translated. On the
-  /// tail, that is the last post's game, and the next page is asked for.
-  void _reportVisible(int index, List<FeedEntry> entries) {
-    ref.read(feedEntriesProvider.notifier).markSeen(index);
+  /// arrangement freezes by post and the games notifier pages by game, so
+  /// the page index is translated for each. On the tail, that is the last
+  /// post's game, and the next page is asked for.
+  ///
+  /// Under a lead the pages are not Feed's own: the page is found among
+  /// Feed's by key ([_feedIndexOf]) to hold its place, and the game reached
+  /// is the nearest one on screen ([_visitIndexOf]). The lead is the page
+  /// above Feed's first: the page after it holds its place, and no visit is
+  /// counted for it.
+  void _reportVisible(int index, List<FeedEntry> pages) {
     final notifier = ref.read(feedProvider.notifier);
-    notifier.onVisible(math.max(0, feedGameIndexAt(entries, index)));
-    if (index >= entries.length - 3) unawaited(_loadMore());
+    final entries = ref.read(feedEntriesProvider.notifier);
+    if (_lead == null) {
+      entries.markSeen(feedPostIndexAt(pages, index));
+      notifier.onVisible(math.max(0, feedGameIndexAt(pages, index)));
+    } else {
+      final feed = ref.read(feedPagesProvider);
+      final at = _feedIndexOf(index, pages, feed);
+      if (at != null) {
+        // The page after this one here (built, and seen mid-swipe) holds its
+        // place too, though Feed's hidden copy of the lead may stand between
+        // them in Feed's own order.
+        final after = index + 1 < pages.length
+            ? _feedIndexOf(index + 1, pages, feed)
+            : null;
+        entries.markSeen(
+          math.max(
+            feedPostIndexAt(feed, at),
+            after == null || after < 0 ? -1 : feedPostIndexAt(feed, after) - 1,
+          ),
+        );
+        notifier.onVisible(_visitIndexOf(index, pages, feed));
+      }
+    }
+    if (index >= pages.length - 3) unawaited(_loadMore());
   }
 
   /// Asks for the next page and, once the load it joined has finished,
@@ -424,25 +582,97 @@ class _FeedScreenState extends ConsumerState<FeedScreen>
     _reportVisible(0, entries);
   }
 
-  /// Posts arrived while the viewer sat on the tail: the skeleton they were
-  /// looking at is now a post, in place. It becomes the current page (its
-  /// key remembered, the pages after it asked for) as if swiped onto.
-  void _onEntriesChanged(List<FeedEntry>? previous, List<FeedEntry> next) {
-    final before = previous?.length ?? 0;
-    if (_index < before || _index >= next.length) return;
+  /// The pages changed under the viewer. The page they are on stays theirs:
+  ///
+  /// * Posts arrived while they sat on the tail: the skeleton they were
+  ///   looking at is now a page, in place, and becomes the current one (its
+  ///   key remembered, the pages after it asked for) as if swiped onto.
+  /// * An ad page joined or left before them (a subscription began or
+  ///   ended, an ad found no fill): Feed moves with their page, so it
+  ///   neither slides away nor is visited anew.
+  /// * The ad page they were on was withdrawn: the post after it takes its
+  ///   place, as the current page.
+  ///
+  /// A post that left is a new arrangement (a refresh): the viewer starts it
+  /// at its first page. A refresh run here lands there anyway; one run by a
+  /// Feed stacked over this one (Watch) would otherwise leave this one on
+  /// whatever now stands where the viewer was. A page that is not seen
+  /// (another route on top) is visited on the return ([_reclaim]).
+  ///
+  /// Under a lead, both lists are taken as this screen shows them.
+  void _onPagesChanged(List<FeedEntry>? previous, List<FeedEntry> feed) {
+    if (_homing) return;
+    final before = _pagesOf(previous ?? const <FeedEntry>[]);
+    final next = _pagesOf(feed);
+    // Under a lead, a load that brought only Feed's copy of the lead's game
+    // adds nothing here: a viewer on the tail would wait on a skeleton no
+    // load is coming for. The next page is asked for.
+    if (_lead != null &&
+        _index >= before.length &&
+        next.length == before.length &&
+        feed.length > (previous?.length ?? 0)) {
+      SchedulerBinding.instance.addPostFrameCallback((_) {
+        if (mounted) unawaited(_loadMore());
+      });
+    }
+    int? target;
+    if (_index >= before.length) {
+      if (_index < next.length) target = _index;
+    } else {
+      var postLeft = false;
+      for (var i = _index; i < before.length; i++) {
+        final found = next.indexWhere((page) => page.key == before[i].key);
+        if (found >= 0) {
+          target = found;
+          break;
+        }
+        if (before[i] is! FeedAdEntry) {
+          postLeft = true;
+          break;
+        }
+      }
+      if (target == null && postLeft && next.isNotEmpty) target = 0;
+    }
+    if (target == null) return;
+    final index = target;
+    final was = _index < before.length ? before[_index].key : null;
+    final arrived = next[index].key != was;
+    if (index != _index) _settleOn(index);
+    if (!arrived) return;
     SchedulerBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      final entries = ref.read(feedEntriesProvider);
-      if (_index >= entries.length) return;
-      ref.read(feedCurrentEntryKeyProvider.notifier).state =
-          entries[_index].key;
-      _reportVisible(_index, entries);
+      if (!mounted || _index != index || !_routeCurrent) return;
+      final pages = _currentPages();
+      if (index >= pages.length) return;
+      _remember(index, pages);
+      _reportVisible(index, pages);
     });
+  }
+
+  /// Puts the viewer on page [index] at once, without the page change
+  /// counting as a visit (it is the same page, moved).
+  void _settleOn(int index) {
+    void apply() {
+      if (!mounted || !_pages.hasClients) return;
+      setState(() {
+        _index = index;
+        _scrollLocked = false;
+      });
+      _pages.jumpToPage(index);
+    }
+
+    _index = index;
+    // A jump during build would report a page change mid-build.
+    if (SchedulerBinding.instance.schedulerPhase ==
+        SchedulerPhase.persistentCallbacks) {
+      SchedulerBinding.instance.addPostFrameCallback((_) => apply());
+    } else {
+      apply();
+    }
   }
 
   void _goNext() {
     if (!mounted || !_pages.hasClients) return;
-    final entries = ref.read(feedEntriesProvider);
+    final entries = _currentPages();
     // On the tail already: nothing to move on to until more arrives.
     if (_index >= entries.length) {
       unawaited(_loadMore());
@@ -469,13 +699,15 @@ class _FeedScreenState extends ConsumerState<FeedScreen>
   /// shown, a real fresh draw).
   void _onTitleTap() {
     if (!mounted || !_pages.hasClients || _homing) return;
-    final entries = ref.read(feedEntriesProvider);
+    final entries = _currentPages();
     if (entries.isEmpty) return;
     final page = _pages.page ?? _index.toDouble();
     final onFirst = _index == 0 && page.abs() < 0.01;
     if (onFirst) {
       final pull = _refresh.currentState;
       if (pull == null || pull.isRefreshing || _scrollLocked) return;
+      // On Watch's lead, Feed's own first page has to be in first.
+      if (_lead != null && !_feedReady(ref.read(feedProvider))) return;
       HapticFeedbackService.selection();
       unawaited(pull.show());
       return;
@@ -498,7 +730,7 @@ class _FeedScreenState extends ConsumerState<FeedScreen>
       _index = 0;
       _scrollLocked = false;
     });
-    ref.read(feedCurrentEntryKeyProvider.notifier).state = entries.first.key;
+    _remember(0, entries);
     if (_seen.value) feedSfxSafely(ref.read(feedSfxProvider).playSwipe);
     try {
       if (MediaQuery.disableAnimationsOf(context)) {
@@ -516,7 +748,7 @@ class _FeedScreenState extends ConsumerState<FeedScreen>
     }
     if (!mounted || !_pages.hasClients) return;
     if ((_pages.page ?? 0).abs() < 0.01) {
-      _reportVisible(0, ref.read(feedEntriesProvider));
+      _reportVisible(0, _currentPages());
     } else {
       // A touch took over on the way: the page it comes to rest on is
       // reported then, the first post included.
@@ -552,16 +784,27 @@ class _FeedScreenState extends ConsumerState<FeedScreen>
     unawaited(HapticFeedbackService.light());
     _homeUnreported = false;
     setState(() {
+      // A fresh draw: Watch's lead gives way to it.
+      _lead = null;
       _index = 0;
       _scrollLocked = false;
       _endedUnder = null;
     });
     if (_pages.hasClients) _pages.jumpToPage(0);
-    final entries = ref.read(feedEntriesProvider);
+    final entries = ref.read(feedPagesProvider);
     ref.read(feedCurrentEntryKeyProvider.notifier).state = entries.isEmpty
         ? null
         : entries.first.key;
     _reportVisible(0, entries);
+  }
+
+  /// Analyze on Watch's lead: back to the board Watch was opened from,
+  /// which holds that game with the viewer's own analysis, rather than a
+  /// second board for it on top of the first.
+  void _backToBoard() {
+    final route = ModalRoute.of(context);
+    if (route == null || !route.isCurrent) return;
+    unawaited(Navigator.of(context).maybePop());
   }
 
   /// The end note's action: a fresh draw, exactly what the pull does, then
@@ -573,6 +816,16 @@ class _FeedScreenState extends ConsumerState<FeedScreen>
 
   void _retryMore() {
     HapticFeedbackService.buttonPress();
+    // Under Watch's lead the tail stands for a first page that did not
+    // load: that load runs again.
+    final feed = ref.read(feedProvider);
+    if (_lead != null &&
+        ref.read(feedPagesProvider).isEmpty &&
+        feed.hasError &&
+        !feed.isLoading) {
+      ref.invalidate(feedProvider);
+      return;
+    }
     unawaited(_loadMore());
   }
 
@@ -604,23 +857,13 @@ class _FeedScreenState extends ConsumerState<FeedScreen>
     await ref.read(boardSettingsProviderNew.notifier).toggleSound(true);
   }
 
-  /// Page [i]: a post, then the tail ([FeedTail]).
+  /// Page [i]: a post or an ad, then the tail ([FeedTail]).
   Widget _page(
     int i, {
     required List<FeedEntry> entries,
     required FeedMore more,
     required bool visible,
   }) {
-    if (i > 0 && !ref.read(premiumAccessProvider)) {
-      return FeedMessage(
-        key: const ValueKey('feed_premium_gate'),
-        title: 'Keep exploring Feed',
-        body:
-            'Watch an ad for 10 minutes of Premium access, or upgrade to keep scrolling.',
-        actionLabel: 'Unlock Premium',
-        onAction: () => unawaited(_unlockScrolling()),
-      );
-    }
     if (i >= entries.length) {
       return FeedTail(
         key: _tailKey,
@@ -633,7 +876,7 @@ class _FeedScreenState extends ConsumerState<FeedScreen>
     final isCurrent = i == _index;
     return switch (entry) {
       FeedGameEntry(:final item) => FeedClip(
-        key: ValueKey(entry.key),
+        key: ValueKey(_pageKeyOf(entry)),
         item: item,
         isCurrent: isCurrent,
         isVisible: visible,
@@ -642,9 +885,17 @@ class _FeedScreenState extends ConsumerState<FeedScreen>
         // to end under, until a post lands after it.
         hasNext:
             i < entries.length - 1 ||
-            (more == FeedMore.open && entry.key != _endedUnder),
+            (more == FeedMore.open && _pageKeyOf(entry) != _endedUnder),
         onRequestNext: _goNext,
         onScrollLock: _setScrollLock,
+        // The lead is not a place in Feed: it neither takes nor leaves the
+        // playback Feed keeps for its return.
+        keepsPlace: !identical(entry, _lead),
+        // The board under Watch holds this game: Analyze goes back to it,
+        // from the lead and, after a refresh, from Feed's own copy.
+        onOpenGame: identical(entry, _lead) || _isWatchedGame(item)
+            ? _backToBoard
+            : null,
       ),
       FeedPuzzleEntry(:final puzzle) => FeedPuzzlePage(
         key: ValueKey(entry.key),
@@ -660,27 +911,30 @@ class _FeedScreenState extends ConsumerState<FeedScreen>
         isVisible: visible,
         onRequestNext: _goNext,
       ),
+      FeedAdEntry() => FeedAdPage(key: ValueKey(entry.key), entry: entry),
     };
   }
 
   @override
   Widget build(BuildContext context) {
-    final hasAccess = ref.watch(premiumAccessProvider);
-    ref.listen<bool>(premiumAccessProvider, (previous, next) {
-      if (previous == true && !next) {
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (!mounted || !_pages.hasClients) return;
-          _pages.jumpToPage(0);
-        });
-      }
-    });
     final feed = ref.watch(feedProvider);
-    final entries = ref.watch(feedEntriesProvider);
+    final feedPages = ref.watch(feedPagesProvider);
+    final entries = _pagesOf(feedPages);
     final visible = _isSeen;
-    final more = ref.read(feedProvider.notifier).more;
+    var more = ref.read(feedProvider.notifier).more;
+    // Under Watch's lead there is always a page, so the tail stands in for
+    // Feed's own first-page states: its skeleton while the first page loads,
+    // a retry when it failed.
+    if (_lead != null && feedPages.isEmpty) {
+      if (feed.isLoading || !feed.hasValue) {
+        more = feed.hasError && !feed.isLoading
+            ? FeedMore.stalled
+            : FeedMore.open;
+      }
+    }
     _builtMore = more;
     if (more != FeedMore.open && entries.isNotEmpty) {
-      _endedUnder = entries.last.key;
+      _endedUnder = _pageKeyOf(entries.last);
     }
 
     // What the speaker shows is what the viewer will hear: the board's Sound
@@ -695,12 +949,15 @@ class _FeedScreenState extends ConsumerState<FeedScreen>
         ) ??
         sfx.boardSoundEnabled;
 
-    if (entries.isNotEmpty && !_announcedFirst) {
+    // Feed's first page is in. Under Watch's lead there is a page before
+    // that, so it is the load that is waited for, empty or not.
+    final firstPageIn = _lead == null ? entries.isNotEmpty : _feedReady(feed);
+    if (firstPageIn && !_announcedFirst) {
       _announcedFirst = true;
       final games = entries.whereType<FeedGameEntry>().length;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
-        _reportVisible(_index, ref.read(feedEntriesProvider));
+        _reportVisible(_index, _currentPages());
         if (games <= 3) unawaited(_loadMore());
       });
     }
@@ -711,8 +968,9 @@ class _FeedScreenState extends ConsumerState<FeedScreen>
         key: _refresh,
         onRefresh: _refreshFeed,
         // Never while a clip holds the pages (a piece or the scrub bar
-        // under the finger).
-        enabled: !_scrollLocked,
+        // under the finger), nor on Watch's lead before Feed's own first
+        // page is in: a fresh draw needs the draw it replaces.
+        enabled: !_scrollLocked && (_lead == null || _feedReady(feed)),
         child: NotificationListener<ScrollEndNotification>(
           onNotification: (end) => _onScrollEnd(end, entries),
           child: PageView.builder(
@@ -726,15 +984,17 @@ class _FeedScreenState extends ConsumerState<FeedScreen>
                 ? const NeverScrollableScrollPhysics(parent: feedPagePhysics)
                 : feedPagePhysics,
             onPageChanged: (i) => _onPageChanged(i, entries),
-            // One page more than there are posts: the tail.
-            itemCount: hasAccess ? entries.length + 1 : 2,
+            // One page more than there are posts and ads: the tail.
+            itemCount: entries.length + 1,
             // Pages keep their state by identity, not position, so an entry
             // that is recaptioned (or a list that grows) never restarts a
             // clip.
             findChildIndexCallback: (key) {
               if (key == _tailKey) return entries.length;
               if (key is! ValueKey<String>) return null;
-              final index = entries.indexWhere((e) => e.key == key.value);
+              final index = entries.indexWhere(
+                (e) => _pageKeyOf(e) == key.value,
+              );
               return index < 0 ? null : index;
             },
             itemBuilder: (context, i) =>

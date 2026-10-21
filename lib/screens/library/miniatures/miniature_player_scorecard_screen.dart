@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:chessever2/repository/gamebase/miniatures/miniatures_models.dart';
+import 'package:chessever2/screens/gamebase/providers/gamebase_providers.dart';
 import 'package:chessever2/screens/favorites/tabs/favorites_players_tab.dart'
     show playerPhotoProvider;
 import 'package:chessever2/screens/library/miniatures/miniature_game_launcher.dart';
@@ -726,16 +727,35 @@ class _MiniaturePlayerScorecardScreenState
     if (entry is _ScorecardGameEntry) {
       return Padding(
         padding: EdgeInsets.only(bottom: entry.isLast ? 16.h : 12.h),
-        child: GamebaseSearchGameCard(
-          key: ValueKey('scorecard_${entry.game.gameId}'),
-          game: entry.game,
-          allGames: games,
-          gameIndex: entry.gameIndex,
-          showRound: true,
-          showGamebaseButton: false,
-          requirePremiumToAdd: false,
-          onAdd: () => showAddToFolderSheet(context: context, game: entry.game),
-          onTap: () => _openGame(games, entry.gameIndex),
+        // A broadcast game's index row names only its pairing, so its card
+        // takes the tournament from the full game; see the Games tab.
+        child: Consumer(
+          builder: (context, ref, _) {
+            final event =
+                miniatureRowNamesEvent(entry.game)
+                    ? null
+                    : ref.watch(
+                      gamebaseGameEventTitleProvider(entry.game.gameId),
+                    );
+            return GamebaseSearchGameCard(
+              key: ValueKey('scorecard_${entry.game.gameId}'),
+              game:
+                  event == null
+                      ? entry.game
+                      : entry.game.copyWith(tourId: event, tourSlug: event),
+              allGames: games,
+              gameIndex: entry.gameIndex,
+              showRound: true,
+              showGamebaseButton: false,
+              requirePremiumToAdd: false,
+              onAdd:
+                  () => showAddToFolderSheet(
+                    context: context,
+                    game: entry.game,
+                  ),
+              onTap: () => _openGame(games, entry.gameIndex),
+            );
+          },
         ),
       );
     }

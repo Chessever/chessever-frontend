@@ -48,6 +48,69 @@ void main() {
   });
   tearDown(() => client.dispose());
 
+  test(
+    'official player rank and zero played survive a broadcast win',
+    () async {
+      final rows = await buildStandingsFromData(
+        supabase: client,
+        tournamentPlayers: [
+          TournamentPlayer(
+            name: 'Published Player',
+            fideId: 101,
+            score: 0,
+            played: 0,
+            rank: 2,
+          ),
+        ],
+        gamesTourModels: [
+          game('r1', card('Published Player', 101), card('Opponent', 202)),
+        ],
+        useExternalOrder: true,
+      );
+      final published = rows.singleWhere((p) => p.fideId == 101);
+      // No published games count: the score shows alone, uninflated by the win.
+      expect(published.matchScore, '0');
+      expect(published.overallRank, 2);
+    },
+  );
+
+  test('shared official ranks retain the published row order', () async {
+    final rows = await buildStandingsFromData(
+      supabase: client,
+      tournamentPlayers: [
+        TournamentPlayer(
+          name: 'First in table',
+          rating: 1500,
+          score: 2,
+          played: 3,
+          rank: 1,
+        ),
+        TournamentPlayer(
+          name: 'Second in table',
+          rating: 2200,
+          score: 2,
+          played: 3,
+          rank: 1,
+        ),
+        TournamentPlayer(
+          name: 'Third in table',
+          rating: 2000,
+          score: 1,
+          played: 3,
+          rank: 3,
+        ),
+      ],
+      gamesTourModels: const [],
+      useExternalOrder: true,
+    );
+    expect(rows.map((row) => row.name), [
+      'First in table',
+      'Second in table',
+      'Third in table',
+    ]);
+    expect(rows.map((row) => row.overallRank), [1, 1, 3]);
+  });
+
   test('same FIDE player keeps results across name variants', () async {
     final rows = await buildStandingsFromData(
       supabase: client,

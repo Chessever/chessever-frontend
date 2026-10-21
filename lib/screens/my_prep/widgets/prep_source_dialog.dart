@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'package:chessever2/screens/my_prep/models/prep_models.dart';
-import 'package:chessever2/screens/my_prep/prep_access.dart';
 import 'package:chessever2/screens/my_prep/prep_source_actions.dart';
 import 'package:chessever2/screens/my_prep/providers/prep_providers.dart';
 import 'package:chessever2/screens/my_prep/widgets/prep_common.dart';
@@ -79,9 +78,8 @@ class _SourceDialogState extends ConsumerState<_SourceDialog> {
   /// Whether the options page was opened to start a first download.
   bool _firstDownload = false;
 
-  Future<void> _openOptions({bool download = false}) async {
+  void _openOptions({bool download = false}) {
     HapticFeedbackService.selection();
-    if (!await ensurePrepAccess(context) || !mounted) return;
     setState(() {
       _firstDownload = download;
       _onOptions = true;
@@ -93,9 +91,8 @@ class _SourceDialogState extends ConsumerState<_SourceDialog> {
     setState(() => _onOptions = false);
   }
 
-  Future<void> _startDownload(PrepAccount account) async {
+  void _startDownload(PrepAccount account) {
     HapticFeedbackService.buttonPress();
-    if (!await ensurePrepAccess(context) || !mounted) return;
     // The popup reports progress and failure itself, so nothing is raised
     // over it.
     unawaited(

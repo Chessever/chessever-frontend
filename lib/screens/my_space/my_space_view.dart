@@ -22,7 +22,6 @@ import 'package:chessever2/screens/my_space/widgets/space_database.dart';
 import 'package:chessever2/screens/my_space/widgets/space_edit_grid.dart';
 import 'package:chessever2/screens/my_space/widgets/space_edit_tutorial.dart';
 import 'package:chessever2/theme/app_colors.dart';
-import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 
@@ -36,10 +35,6 @@ import 'package:chessever2/widgets/skeleton_widget.dart';
 import 'package:chessever2/widgets/discovery_dot.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
-
-/// Guidance for the two supported My Space products.
-const String kMyDatabaseEmptyText =
-    'Add a database or build a smart event using +.';
 
 /// How many live events a new user is offered to save.
 const int kMySpaceSuggestions = 3;
@@ -158,12 +153,6 @@ class _MySpaceViewState extends ConsumerState<MySpaceView> {
     ];
     final keys = {for (final pin in pins) pin.key};
     _selected.retainAll(keys);
-    // Automatic follows and legacy pins do not replace the empty state.
-    final pinned = ref.watch(
-      spaceShortcutsProvider.select(
-        (s) => s.valueOrNull?.any((pin) => pin.canAddToMySpace) ?? false,
-      ),
-    );
     final order = spaceHomeOrder([
       for (final pin in pins) pin.key,
     ], ref.watch(spaceHomeLayoutProvider));
@@ -181,9 +170,7 @@ class _MySpaceViewState extends ConsumerState<MySpaceView> {
         : child;
 
     // Under the last row, at the air the page has always left there.
-    final Widget? footer = groups == null
-        ? const _DatabaseSkeleton()
-        : (!pinned ? const _DatabaseEmpty() : null);
+    final Widget? footer = groups == null ? const _DatabaseSkeleton() : null;
 
     final grid = SpaceHomeGrid(
       pins: pins,
@@ -250,7 +237,7 @@ class _MySpaceViewState extends ConsumerState<MySpaceView> {
     return {
       kSpaceHomeMyPrep: SpaceEditItem(
         key: kSpaceHomeMyPrep,
-        label: 'My Prep',
+        label: 'Prep',
         selectable: false,
         wide: !small(kSpaceHomeMyPrep),
         onResize: () => resize(kSpaceHomeMyPrep),
@@ -268,7 +255,7 @@ class _MySpaceViewState extends ConsumerState<MySpaceView> {
       ),
       kSpaceHomeLikes: SpaceEditItem(
         key: kSpaceHomeLikes,
-        label: 'My Likes',
+        label: 'Likes',
         selectable: false,
         wide: !small(kSpaceHomeLikes),
         onResize: () => resize(kSpaceHomeLikes),
@@ -290,7 +277,7 @@ class _MyPrepTile extends StatelessWidget {
   Widget build(BuildContext context) => HubTile(
     key: const ValueKey('my_space_my_prep_tile'),
     dotId: 'my_space.tile.my_prep',
-    title: 'My Prep',
+    title: 'Prep',
     caption: 'Your games and opponents',
     ramp: false,
     artwork: const HubSceneBackdrop(scene: HubScene.myPrep),
@@ -324,10 +311,10 @@ class _MyLikesCard extends ConsumerWidget {
       // The heart the Library's My Likes card wears, at the size it wears
       // it there, so the destination has one mark on both pages.
       plate: Center(child: LikesHeartMark(size: 64.0.h)),
-      title: 'My Likes',
+      title: 'Likes',
       meta: 'Your saved games',
       tally: caption,
-      semanticsLabel: 'My Likes, your saved games, $caption',
+      semanticsLabel: 'Likes, your saved games, $caption',
       onTap: () {
         HapticFeedbackService.cardTap();
         Navigator.of(
@@ -360,26 +347,6 @@ class _LibraryTile extends StatelessWidget {
       );
     },
   );
-}
-
-// ------------------------------------------------------------------ empty
-
-class _DatabaseEmpty extends StatelessWidget {
-  const _DatabaseEmpty();
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: EdgeInsets.fromLTRB(hubGutter, 4.sp, hubGutter, 16.sp),
-      child: Text(
-        kMyDatabaseEmptyText,
-        style: AppTypography.textSmRegular.copyWith(
-          color: context.colors.textSecondary,
-          height: 20 / 14,
-        ),
-      ),
-    );
-  }
 }
 
 // Event suggestions are temporarily outside My Space's product scope.

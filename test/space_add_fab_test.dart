@@ -73,7 +73,7 @@ void main() {
         'Database',
         'Smart event',
       ]);
-      for (final label in ['Event', 'Player', 'Game', 'Opening', 'My Likes']) {
+      for (final label in ['Event', 'Player', 'Game', 'Opening', 'Likes']) {
         expect(find.text(label), findsNothing);
       }
       for (final choice in kSpaceAddChoices) {
@@ -154,7 +154,7 @@ void main() {
         'Database',
         'Smart event',
       ]);
-      for (final label in ['Event', 'Player', 'Game', 'Opening', 'My Likes']) {
+      for (final label in ['Event', 'Player', 'Game', 'Opening', 'Likes']) {
         expect(find.text(label), findsNothing);
       }
       for (final choice in kSpaceAddChoices) {

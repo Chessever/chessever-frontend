@@ -460,12 +460,12 @@ void main() {
           twicDatabaseTotalGamesProvider.overrideWith((ref) async => 100),
         ],
       );
-      expect(find.text('My Likes').hitTestable(), findsOneWidget);
+      expect(find.text('Likes').hitTestable(), findsOneWidget);
       expect(
-        tester.getTopLeft(find.text('My Likes')).dy,
+        tester.getTopLeft(find.text('Likes')).dy,
         lessThan(tester.getTopLeft(find.text('ChessEver')).dy),
       );
-      await tester.tap(find.text('My Likes'));
+      await tester.tap(find.text('Likes'));
       await _settle(tester);
       expect(find.byType(MyLikesScreen), findsOneWidget);
       expect(find.byType(MyLikesGamesPage), findsOneWidget);
@@ -579,7 +579,7 @@ void main() {
         expect(find.text('Games').hitTestable(), findsOneWidget);
         await tester.tap(find.text('About').hitTestable());
         await _settle(tester);
-        expect(find.text('My Likes').hitTestable(), findsOneWidget);
+        expect(find.text('Likes').hitTestable(), findsOneWidget);
         expect(find.text('Games').first.hitTestable(), findsOneWidget);
         expect(tester.takeException(), isNull);
         await tester.tap(find.text('Games').first);

@@ -5,12 +5,19 @@ import 'package:chessever2/screens/feed/models/feed_models.dart';
 import 'package:chessever2/screens/feed/widgets/feed_move_sound.dart';
 import 'package:chessever2/screens/feed/widgets/feed_sfx_provider.dart';
 import 'package:flutter/foundation.dart';
+import 'package:hooks_riverpod/hooks_riverpod.dart';
+
+/// The speed the viewer last chose with the speed button, carried from clip
+/// to clip for the rest of the session.
+final feedPlaybackSpeedProvider = StateProvider<double>(
+  (ref) => FeedPlayback.speeds.first,
+);
 
 /// Autoplay state for one Feed clip.
 ///
 /// One timer drives the clip: it fires once per ply, waits longer on headline
-/// moments so the viewer can see them, and runs twice as fast while the right
-/// side is held. Everything that can stop playback (the viewer's tap, a scrub,
+/// moments so the viewer can see them, runs at the viewer's chosen [speed],
+/// and twice that while the right side is held. Everything that can stop playback (the viewer's tap, a scrub,
 /// the tab or app going away, the end of the game, the viewer's hand on the
 /// board) is a separate flag, so clearing one never restarts a clip another
 /// one is holding.
@@ -18,14 +25,19 @@ import 'package:flutter/foundation.dart';
 /// Every move that lands — autoplay, scrub or a step — sounds through
 /// [moveSound] with the ply's class, so a classified move plays its own sound
 /// instead of the ordinary one.
+///
+/// A clip opens on [startPly], the position after the game's last book move,
+/// and plays on from there; the scrub line still reaches back to move one.
 class FeedPlayback extends ChangeNotifier {
-  FeedPlayback({
-    required this.item,
-    required this.sfx,
-    required this.moveSound,
-  });
+  FeedPlayback({required this.item, required this.sfx, required this.moveSound})
+    : startPly = item.startPly,
+      _ply = item.startPly,
+      _scrubPly = item.startPly;
 
   final FeedItem item;
+
+  /// Where the clip opens and every replay starts: see [FeedItem.startPly].
+  final int startPly;
 
   /// Result stinger and the speaker state.
   final FeedSfx sfx;
@@ -35,13 +47,21 @@ class FeedPlayback extends ChangeNotifier {
   static const Duration step = Duration(milliseconds: 650);
   static const Duration headlineLinger = Duration(milliseconds: 1400);
 
-  int _ply = 0;
-  int _scrubPly = 0;
+  /// What the speed button steps through, one per tap, then round again.
+  static const List<double> speeds = [1, 1.25, 1.5, 1.75, 2];
+
+  int _ply;
+  int _scrubPly;
   bool _userPaused = false;
   bool _suspended = true;
   bool _fast = false;
   bool _scrubbing = false;
   bool _ended = false;
+  double _speed = speeds.first;
+
+  /// The viewer tapped the board away from the play control while paused:
+  /// the board is theirs, clear of the dim, until a tap brings it back.
+  bool _glyphDismissed = false;
 
   /// The viewer is driving: they stepped through the moves or are playing
   /// their own line. Autoplay waits, silently (no pause glyph over the
@@ -52,8 +72,8 @@ class FeedPlayback extends ChangeNotifier {
   /// only while the hand is on the board; releasing it resumes where it was.
   bool _held = false;
 
-  /// True from [restart] until the first move plays, so the opening beat is
-  /// short however the clip was resumed.
+  /// True from [restart] until the first move plays, so the beat off
+  /// [startPly] is short however the clip was resumed.
   bool _freshStart = false;
   Timer? _timer;
   bool _disposed = false;
@@ -64,6 +84,7 @@ class FeedPlayback extends ChangeNotifier {
   int get shownPly => _scrubbing ? _scrubPly : _ply;
   int get ply => _ply;
   bool get isFast => _fast;
+  double get speed => _speed;
   bool get isScrubbing => _scrubbing;
   bool get isEnded => _ended;
   bool get isSuspended => _suspended;
@@ -79,14 +100,35 @@ class FeedPlayback extends ChangeNotifier {
       !_manual &&
       !_held;
 
-  /// The play glyph shows only for a pause the viewer asked for.
+  /// The play control shows only for a pause the viewer asked for, until
+  /// they tap the board away from it.
   bool get showsPauseGlyph =>
-      _userPaused && !_scrubbing && !_ended && !_manual && !_held;
+      _userPaused &&
+      !_glyphDismissed &&
+      !_scrubbing &&
+      !_ended &&
+      !_manual &&
+      !_held;
 
-  /// Starts the clip from its first position.
+  /// The next step of [speeds] after [current], wrapping to the first.
+  static double nextSpeed(double current) {
+    final i = speeds.indexOf(current);
+    return speeds[(i + 1) % speeds.length];
+  }
+
+  /// Plays on at [value]; the beat in flight restarts at the new pace.
+  void setSpeed(double value) {
+    if (_speed == value) return;
+    _speed = value;
+    _notify();
+    _reschedule();
+  }
+
+  /// Starts the clip from [startPly]. Silent: that position is set up, not
+  /// played.
   void restart() {
-    _ply = 0;
-    _scrubPly = 0;
+    _ply = startPly;
+    _scrubPly = startPly;
     _ended = false;
     _userPaused = false;
     _manual = false;
@@ -110,10 +152,11 @@ class FeedPlayback extends ChangeNotifier {
     _scrubPly = _ply;
     _ended = ended;
     _userPaused = !ended && userPaused;
+    _glyphDismissed = false;
     _manual = manual;
     _fast = false;
     _scrubbing = false;
-    _freshStart = _ply == 0;
+    _freshStart = _ply == startPly;
     _notify();
     _reschedule();
   }
@@ -137,9 +180,35 @@ class FeedPlayback extends ChangeNotifier {
       _userPaused = false;
     } else {
       _userPaused = !_userPaused;
+      _glyphDismissed = false;
     }
     _notify();
     _reschedule();
+  }
+
+  /// A plain tap on the board (not on a piece, not on the play control).
+  /// Playing, or stepping by hand: it stops here and puts the play control
+  /// up. Paused: it takes the control down so the board is clear to play
+  /// on, and the next tap brings it back.
+  void boardTap() {
+    if (_ended || _scrubbing || _held || _suspended) return;
+    if (_userPaused && !_manual) {
+      _glyphDismissed = !_glyphDismissed;
+    } else {
+      _manual = false;
+      _userPaused = true;
+      _glyphDismissed = false;
+    }
+    _notify();
+    _reschedule();
+  }
+
+  /// The viewer started playing on the paused board: the play control
+  /// steps aside without a tap of its own.
+  void dismissGlyph() {
+    if (!_userPaused || _glyphDismissed) return;
+    _glyphDismissed = true;
+    _notify();
   }
 
   /// Hands playback back after [takeManual]: plays on from the shown ply.
@@ -266,7 +335,10 @@ class FeedPlayback extends ChangeNotifier {
     _timer?.cancel();
     _timer = null;
     if (_disposed || !isPlaying) return;
-    final delay = _delayFor(_ply, first: _freshStart && _ply == 0);
+    final beat = _delayFor(_ply, first: _freshStart && _ply == startPly);
+    final delay = Duration(
+      microseconds: (beat.inMicroseconds / _speed).round(),
+    );
     _timer = Timer(delay, _ply >= lastPly ? _finish : _advance);
   }
 

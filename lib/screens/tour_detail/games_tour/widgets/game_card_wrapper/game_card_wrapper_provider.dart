@@ -13,6 +13,9 @@ import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_p
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/games_tour_content_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/live_game_card_provider.dart';
+import 'package:chessever2/screens/tour_detail/provider/tour_detail_screen_provider.dart';
+import 'package:chessever2/services/rewarded_premium/rewarded_access_provider.dart';
+import 'package:chessever2/widgets/paywall/past_game_access.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -399,6 +402,30 @@ class _GameCardWrapperProvider {
     bool showClock = true,
     SavedAnalysisData? savedAnalysisData,
   }) async {
+    if (orderedGames.isEmpty || !context.mounted) return;
+    final tappedGame = orderedGames[gameIndex.clamp(0, orderedGames.length - 1)];
+    // Some cards read this auto-disposed controller only on tap. Hold it
+    // through the asynchronous gate before using its navigation state.
+    final admissionLifetime = _ref.keepAlive();
+    final bool allowed;
+    try {
+      allowed = await ensurePastGameAccess(context, game: tappedGame);
+    } finally {
+      admissionLifetime.close();
+    }
+    if (!allowed || !context.mounted) return;
+    final detail = _ref.exists(tourDetailScreenProvider)
+        ? _ref.read(tourDetailScreenProvider).valueOrNull
+        : null;
+    final eventTours = detail?.tours ?? const [];
+    final navigation = gameNavigationForAccess(
+      games: orderedGames,
+      index: gameIndex,
+      premium: _ref.read(premiumAccessProvider),
+      eventTourIds: eventTours.any((tour) => tour.tour.id == tappedGame.tourId)
+          ? eventTours.map((tour) => tour.tour.id)
+          : const [],
+    );
     final previousViewSource = _ref.read(chessboardViewFromProviderNew);
     final previousBoardGames = _ref.read(chessBoardAllGamesProvider);
     final previousVisibleIndex = _ref.read(currentlyVisiblePageIndexProvider);
@@ -409,8 +436,8 @@ class _GameCardWrapperProvider {
     // expand + selected-game PGN freshen run in the background and install into
     // the live board switcher when ready — never gate Navigator.push on them.
     final launch = beginBoardNavigation(
-      orderedGames: orderedGames,
-      gameIndex: gameIndex,
+      orderedGames: navigation.games,
+      gameIndex: navigation.index,
       viewSource: viewSource,
       listPolicy: listPolicy,
     );

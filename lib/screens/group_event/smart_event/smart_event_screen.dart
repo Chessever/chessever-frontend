@@ -1,4 +1,4 @@
-import 'package:chessever2/widgets/paywall/premium_game_access.dart';
+import 'package:chessever2/widgets/paywall/past_game_access.dart';
 import 'dart:async';
 
 import 'package:chessever2/main.dart' show routeObserver;
@@ -13,8 +13,6 @@ import 'package:chessever2/screens/group_event/group_event_screen.dart'
 import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart';
 import 'package:chessever2/screens/group_event/widget/appbar_icons_widget.dart';
 import 'package:chessever2/screens/group_event/smart_event/smart_aggregate_event_provider.dart';
-import 'package:chessever2/screens/group_event/widget/filter_popup/filter_popup_provider.dart';
-import 'package:chessever2/screens/group_event/widget/filter_popup/filter_popup_state.dart';
 import 'package:chessever2/screens/library/widgets/library_context_menu.dart';
 import 'package:chessever2/screens/my_space/actions/space_menu_action.dart';
 import 'package:chessever2/screens/my_space/models/space_shortcut.dart';
@@ -41,6 +39,7 @@ import 'package:chessever2/utils/time_utils.dart';
 import 'package:chessever2/widgets/auth/auth_upgrade_sheet.dart';
 import 'package:chessever2/widgets/alert_dialog/alert_modal.dart';
 import 'package:chessever2/widgets/event_card/event_card.dart';
+import 'package:chessever2/widgets/event_card/smart_event_star.dart';
 import 'package:chessever2/widgets/fluid_shimmer_painter.dart';
 import 'package:chessever2/widgets/game_filter/game_filter_dialog.dart';
 import 'package:chessever2/widgets/game_filter/game_filter_model.dart';
@@ -58,6 +57,9 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:intl/intl.dart';
 
 const smartEventTabLabels = <String>['About', 'Games', 'Events'];
+
+/// Index of Games in [smartEventTabLabels].
+const smartEventGamesTab = 1;
 
 /// My Space shortcut for a smart event.
 ///
@@ -106,9 +108,17 @@ SmartEventRequest? smartEventRequestFromSpaceShortcut(SpaceShortcut shortcut) {
 /// at a time ([smartAggregateEventRepositoryProvider]) so first paint is the
 /// newest day rather than a multi-thousand-row fetch.
 class SmartEventScreen extends ConsumerStatefulWidget {
-  const SmartEventScreen({required this.request, super.key});
+  const SmartEventScreen({
+    required this.request,
+    this.initialTab = smartEventGamesTab,
+    super.key,
+  });
 
   final SmartEventRequest request;
+
+  /// The tab it opens on, an index into [smartEventTabLabels]. A smart event
+  /// push names it so its tap always lands on the games it counted.
+  final int initialTab;
 
   @override
   ConsumerState<SmartEventScreen> createState() => _SmartEventScreenState();
@@ -119,7 +129,7 @@ class _SmartEventScreenState extends ConsumerState<SmartEventScreen> {
   static const _validTiers = <String>{'GM', 'IM', 'FM', 'CM', 'All'};
 
   // Default to Games because this surface is opened from a generated games card.
-  int _index = 1;
+  late int _index = widget.initialTab.clamp(0, _tabs.length - 1);
   late final PageController _page = PageController(initialPage: _index);
 
   // Search lives on the screen (not the Games tab) so the field can sit
@@ -222,30 +232,13 @@ class _SmartEventScreenState extends ConsumerState<SmartEventScreen> {
     setState(() => _filter = filter);
   }
 
-  /// Persists the overridden config: writes it back into the tabs' filter
-  /// popup state — the smart event IS a projection of that state, so the
-  /// generated cards on For You / Current rename and regenerate — and, when
-  /// this smart event is saved, rewrites the favorite row to the re-keyed
-  /// request (identity embeds the Elo floor, and even an identity-stable
-  /// change must refresh the stored criteria metadata).
+  /// Persists the overridden config: when this smart event is saved,
+  /// rewrites the favorite row to the re-keyed request (identity embeds the
+  /// Elo floor, and even an identity-stable change must refresh the stored
+  /// criteria metadata). The Today and Current filters are the reader's own
+  /// and stay as they are: no smart event is drawn from them any more.
   Future<void> _applyConfigChanges() async {
     final updated = _effectiveRequest;
-
-    final filter = ref.read(eventAppliedFilterProvider);
-    ref.read(eventAppliedFilterProvider.notifier).state = filter.copyWith(
-      formatsAndStates: updated.formatsAndStates,
-      eco: updated.eco,
-      eloRange: RangeValues(
-        updated.minElo
-            .toDouble()
-            .clamp(kFilterMinElo, kFilterMaxElo)
-            .toDouble(),
-        updated.maxElo
-            .toDouble()
-            .clamp(kFilterMinElo, kFilterMaxElo)
-            .toDouble(),
-      ),
-    );
 
     // Criteria-based lookup so legacy (v1, event-set-keyed) rows are found
     // and rewritten to the criteria-keyed v2 identity.
@@ -713,9 +706,17 @@ class _AppBar extends ConsumerWidget {
                           draft: spaceDraft,
                         ),
                       ),
-                      // A smart event is kept through My Space above; the
-                      // menu offers no separate save. One saved earlier
-                      // still manages itself here.
+                      // Starred here as on its card; a starred one manages
+                      // its notifications and itself below.
+                      if (savedFavorite == null)
+                        LibraryMenuAction(
+                          icon: Icons.star_outline_rounded,
+                          label: 'Star',
+                          onSelected: () => toggleSmartEventFavorite(
+                            context: context,
+                            request: request,
+                          ),
+                        ),
                       if (savedFavorite != null)
                         LibraryMenuAction(
                           icon: isDirty
@@ -767,12 +768,6 @@ class _AppBar extends ConsumerWidget {
     await ref
         .read(favoriteEventsProvider.notifier)
         .removeFavorite(savedFavorite.eventId);
-    // Removing the saved smart event must also wipe the applied
-    // filter that generates its card on home — otherwise the
-    // generated card lingers even though the favorite is gone.
-    ref.read(eventAppliedFilterProvider.notifier).state =
-        defaultFilterPopupState;
-    ref.read(filterPopupProvider.notifier).setState(defaultFilterPopupState);
     if (context.mounted) Navigator.of(context).pop();
   }
 }
@@ -1699,7 +1694,7 @@ class _GamesTabState extends ConsumerState<_GamesTab>
                   onReturnFromChessboard: (_) {},
                   liveBatchKey: liveBatchKeyByGameId[game.gameId],
                   allowStockfishFallback: allowStockfishFallback,
-                  onBeforeOpen: () => _guardGameOpen(context),
+                  onBeforeOpen: () => _guardGameOpen(context, game),
                 ),
               );
             },
@@ -1819,13 +1814,8 @@ class _GamesTabState extends ConsumerState<_GamesTab>
     };
   }
 
-  Future<bool> _guardGameOpen(BuildContext context) async {
-    return ensurePremiumGameAccess(
-      context,
-      featureId: 'smart_event_games',
-      returnTo: 'smart_event/games',
-    );
-  }
+  Future<bool> _guardGameOpen(BuildContext context, GamesTourModel game) =>
+      ensurePastGameAccess(context, game: game);
 
   Widget _buildGridGame(
     GamesTourModel game,
@@ -1852,7 +1842,7 @@ class _GamesTabState extends ConsumerState<_GamesTab>
               .read(gamesTourScreenProvider.notifier)
               .togglePinGame(g.gameId, sourceTourId: g.tourId),
       onChangedWithLiveGames: (updatedGames) async {
-        final allowed = await _guardGameOpen(context);
+        final allowed = await _guardGameOpen(context, updatedGames[safeIndex]);
         if (!allowed || !mounted) return;
         ref
             .read(gameCardWrapperProvider)
@@ -2153,8 +2143,8 @@ class _DateHeader extends StatelessWidget {
 
 /// Opens one of a smart event's included tournaments.
 ///
-/// SmartEventScreen is mostly reached from For You (Today cards, Discovery,
-/// My Space shortcuts), where the Events screen is not mounted. Going through
+/// SmartEventScreen is mostly reached from My Space shortcuts, where the
+/// Events screen is not mounted. Going through
 /// the shared tournament navigator avoids spinning up a throwaway Events
 /// controller (which would load a whole Events tab just to borrow its tap
 /// handler) and surfaces a failed open as a snack. The analytics category
@@ -2528,13 +2518,8 @@ class _EventsTabState extends ConsumerState<_EventsTab>
     ref.read(smartAggregateEventRepositoryProvider(query).notifier).loadMore();
   }
 
-  Future<bool> _guardGameOpen(BuildContext context) async {
-    return ensurePremiumGameAccess(
-      context,
-      featureId: 'smart_event_games',
-      returnTo: 'smart_event/games',
-    );
-  }
+  Future<bool> _guardGameOpen(BuildContext context, GamesTourModel game) =>
+      ensurePastGameAccess(context, game: game);
 
   Widget _buildGridGame({
     required GamesTourModel game,
@@ -2560,7 +2545,7 @@ class _EventsTabState extends ConsumerState<_EventsTab>
               .read(gamesTourScreenProvider.notifier)
               .togglePinGame(updated.gameId, sourceTourId: updated.tourId),
       onChangedWithLiveGames: (updatedGames) async {
-        final allowed = await _guardGameOpen(context);
+        final allowed = await _guardGameOpen(context, updatedGames[safeIndex]);
         if (!allowed || !mounted) return;
         ref
             .read(gameCardWrapperProvider)
@@ -2755,7 +2740,7 @@ class _EventsTabState extends ConsumerState<_EventsTab>
                       liveBatchKey: liveBatchKeyByGameId[game.gameId],
                       allowStockfishFallback: true,
                       streamEnabled: streamEnabled,
-                      onBeforeOpen: () => _guardGameOpen(context),
+                      onBeforeOpen: () => _guardGameOpen(context, game),
                     ),
                   );
                 },

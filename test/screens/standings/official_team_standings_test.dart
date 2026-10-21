@@ -48,6 +48,27 @@ TourInfo info(Map<String, dynamic> value, {String id = '1469896'}) =>
 
 void main() {
   test(
+    'keeps published team tiebreaks in source priority without reranking',
+    () {
+      final data = snapshot();
+      (data['teams'] as List)[0]['tiebreaks'] = [
+        {'extendedCode': 'TB1', 'description': 'Game points', 'points': 10},
+        {'extendedCode': 'TB2', 'description': 'Direct encounter', 'points': 0},
+        {
+          'extendedCode': 'TB3',
+          'description': 'Sonneborn-Berger',
+          'points': 42.75,
+        },
+      ];
+      final rows = buildOfficialTeamStandings(info: info(data), players: []);
+      expect(rows!.first.tiebreaks.map((t) => t.label), ['TB1', 'TB2', 'TB3']);
+      expect(rows.first.tiebreaks.last.formattedPoints, '42.75');
+      expect(rows.map((t) => t.rank), [1, 2, 3]);
+      expect(rows[1].tiebreaks, isEmpty);
+    },
+  );
+
+  test(
     'uses official order and points, including awarded points absent from games',
     () {
       final source = info(snapshot());
@@ -64,9 +85,17 @@ void main() {
       );
     },
   );
-  test('accepts three-one-zero match points only when published', () {
-    final table = snapshot();
-    (table['teams'] as List)[0] = {
+  test('accepts the organizer three-point win scale', () {
+    final data = snapshot();
+    data['matchScoring'] = {'win': 3, 'draw': 1, 'loss': 0};
+    (data['teams'] as List)[0]['matchPoints'] = 9;
+    final rows = buildOfficialTeamStandings(info: info(data), players: []);
+    expect(rows!.first.matchPoints, 9);
+  });
+  test('preserves a full four-win table on the three-one-zero scale', () {
+    final data = snapshot();
+    data['matchScoring'] = {'win': 3, 'draw': 1, 'loss': 0};
+    (data['teams'] as List)[0] = {
       'name': 'Other',
       'rank': 1,
       'matchPoints': 12,
@@ -76,22 +105,60 @@ void main() {
       'draws': 0,
       'losses': 0,
     };
-    expect(
-      buildOfficialTeamStandings(info: info(table), players: []),
-      isNull,
-      reason: '12 match points cannot come from four 2-1-0 matches',
-    );
-    table['matchScoring'] = {'win': 3, 'draw': 1, 'loss': 0};
-    final rows = buildOfficialTeamStandings(info: info(table), players: []);
+    final rows = buildOfficialTeamStandings(info: info(data), players: []);
     expect(rows!.first.matchPoints, 12);
+    expect(rows.first.matchesWon, 4);
   });
-
+  test('rejects malformed scoring and negative points', () {
+    final data = snapshot();
+    data['matchScoring'] = {'win': 1, 'draw': 2, 'loss': 0};
+    expect(buildOfficialTeamStandings(info: info(data), players: []), isNull);
+    data['matchScoring'] = {'win': 3, 'draw': 1, 'loss': 0};
+    (data['teams'] as List)[0]['matchPoints'] = -1;
+    expect(buildOfficialTeamStandings(info: info(data), players: []), isNull);
+  });
+  test('preserves organizer awards beyond played-match totals', () {
+    final data = snapshot();
+    (data['teams'] as List)[0]['matchPoints'] = 9;
+    final rows = buildOfficialTeamStandings(info: info(data), players: []);
+    expect(rows!.first.matchPoints, 9);
+  });
   test('preserves official shared ranks', () {
     final data = snapshot();
     (data['teams'] as List)[1]['rank'] = 1;
     final rows = buildOfficialTeamStandings(info: info(data), players: []);
     expect(rows!.map((t) => t.rank), [1, 1, 3]);
   });
+  test('preserves published skipped team ranks', () {
+    final data = snapshot();
+    (data['teams'] as List)[1]['rank'] = 3;
+    final rows = buildOfficialTeamStandings(info: info(data), players: []);
+    expect(rows, isNotNull);
+    expect(rows!.map((t) => t.rank), [1, 3, 3]);
+  });
+
+  test(
+    'rejects ranks outside membership, descending ranks and missing first',
+    () {
+      for (final ranks in [
+        [2, 2, 3],
+        [1, 4, 4],
+        [1, 3, 2],
+        [1, 0, 3],
+      ]) {
+        final data = snapshot();
+        final teams = data['teams'] as List;
+        for (var i = 0; i < ranks.length; i++) {
+          teams[i]['rank'] = ranks[i];
+        }
+        expect(
+          buildOfficialTeamStandings(info: info(data), players: []),
+          isNull,
+        );
+      }
+    },
+  );
+
   test('does not use another event snapshot', () {
     expect(
       buildOfficialTeamStandings(

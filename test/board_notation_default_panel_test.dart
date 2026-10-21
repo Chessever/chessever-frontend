@@ -8,6 +8,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
+import 'support/board_feature_teaching_store.dart';
+
 class _StoredExplorerPreference extends GamebaseOverlayEnabledNotifier {
   _StoredExplorerPreference(this.value);
   final Future<bool> value;
@@ -30,6 +32,9 @@ void main() {
         if (!delayed) preference.complete(true);
         final container = ProviderContainer(
           overrides: [
+            boardFeatureTeachingTrackerProvider.overrideWith(
+              (_) => BoardFeatureTeachingTracker(QuietBoardTeachingStore()),
+            ),
             gamebaseOverlayEnabledProvider.overrideWith(
               () => _StoredExplorerPreference(preference.future),
             ),
@@ -114,6 +119,9 @@ void main() {
   ) async {
     final container = ProviderContainer(
       overrides: [
+        boardFeatureTeachingTrackerProvider.overrideWith(
+          (_) => BoardFeatureTeachingTracker(QuietBoardTeachingStore()),
+        ),
         gamebaseExplorerProvider.overrideWith(
           (ref) => GamebaseExplorerNotifier(ref),
         ),

@@ -14,6 +14,7 @@ import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_mode
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/game_card_wrapper_provider.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/user_error_message.dart';
+import 'package:chessever2/widgets/paywall/past_event_access.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -391,7 +392,7 @@ class _KnockoutBracketScreenState extends ConsumerState<KnockoutBracketScreen>
     );
   }
 
-  void _openGame(KnockoutMatch match, Games selectedGame) {
+  Future<void> _openGame(KnockoutMatch match, Games selectedGame) async {
     final navigation = bracketNavigationSelection(
       games: match.games,
       selectedGameId: selectedGame.id,
@@ -399,6 +400,11 @@ class _KnockoutBracketScreenState extends ConsumerState<KnockoutBracketScreen>
     if (navigation.selectedIndex < 0 || navigation.games.isEmpty || !mounted) {
       return;
     }
+    final allowed = await ensureEventGameAccess(
+      context,
+      tourId: navigation.games[navigation.selectedIndex].tourId,
+    );
+    if (!allowed || !mounted) return;
 
     ref
         .read(gameCardWrapperProvider)

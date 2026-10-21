@@ -336,6 +336,22 @@ void main() {
       await tester.tap(find.byType(PopupMenuButton<String>));
       await tester.pumpAndSettle();
       expect(find.text('Flip Board'), findsNothing);
+      // Watch: an icon and its label, on the same geometry as every row.
+      final watchIcon = find.byIcon(Icons.smart_display_outlined);
+      expect(watchIcon, findsOneWidget);
+      expect(
+        tester.getSize(watchIcon),
+        tester.getSize(find.byIcon(Icons.settings)),
+      );
+      expect(
+        tester.getTopLeft(find.text('Watch')).dx,
+        tester.getTopLeft(find.text('Board Settings')).dx,
+      );
+      await tester.tap(find.text('Watch'));
+      await tester.pumpAndSettle();
+      expect(selected, 'watch');
+      await tester.tap(find.byType(PopupMenuButton<String>));
+      await tester.pumpAndSettle();
       await tester.tap(find.text('Board Settings'));
       await tester.pumpAndSettle();
       session.streams = fixtureVideos();
@@ -381,6 +397,7 @@ void main() {
         for (final label in [
           'Flip Board',
           streamLabel,
+          'Watch',
           'Share Game',
           'Copy PGN',
         ]) {

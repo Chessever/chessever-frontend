@@ -1,3 +1,4 @@
+import 'package:chessever2/repository/library/library_game_event.dart';
 import 'package:chessever2/widgets/paywall/pgn_import_access.dart';
 import 'dart:async';
 import 'dart:convert';
@@ -84,7 +85,9 @@ GamesTourModel chessGameToImportedGamesTourModel(ChessGame game) {
     blackClockSeconds: blackClock,
     gameStatus: status,
     roundId: _knownHeader(md['Round']) ?? 'import_preview',
-    tourId: _knownHeader(md['Event']) ?? 'import_preview',
+    // Lichess broadcast exports put the pairing in `Event`; the tournament is
+    // in `BroadcastName` or the `Site` URL.
+    tourId: eventTitleFromPgnHeaders(md) ?? 'import_preview',
     boardNr: _parseFideId(md['Board']) ?? _parseFideId(md['BoardNumber']),
     timeControl:
         _pgnTimeControlCategory(_knownHeader(md['TcCategory'])) ??

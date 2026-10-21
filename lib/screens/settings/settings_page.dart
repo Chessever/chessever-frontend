@@ -4,6 +4,7 @@ import 'package:chessever2/screens/settings/widgets/board_settings_body.dart';
 import 'package:chessever2/screens/settings/widgets/botvinnik_settings_body.dart';
 import 'package:chessever2/screens/settings/widgets/engine_settings_body.dart';
 import 'package:chessever2/screens/settings/widgets/notification_settings_body.dart';
+import 'package:chessever2/screens/settings/widgets/settings_primitives.dart';
 import 'package:chessever2/screens/settings/widgets/start_screen_settings_body.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
@@ -40,6 +41,7 @@ class SettingsPage extends ConsumerStatefulWidget {
 class _SettingsPageState extends ConsumerState<SettingsPage> {
   final Set<Future<void>> _pendingPersists = {};
   SettingsSection? _expanded;
+  bool _botvinnikExpanded = false;
 
   // Used to scroll the Picture-in-Picture card into view when the page is opened
   // straight to the notification section.
@@ -48,7 +50,10 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   @override
   void initState() {
     super.initState();
-    _expanded = widget.initiallyExpanded;
+    _botvinnikExpanded = widget.initiallyExpanded == SettingsSection.botvinnik;
+    _expanded = _botvinnikExpanded
+        ? SettingsSection.customization
+        : widget.initiallyExpanded;
     if (widget.initiallyExpanded == SettingsSection.notification) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _scrollToLiveWidgets();
@@ -134,16 +139,43 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                 bottom: 16.sp + bottomPadding,
               ),
               children: [
-                const SettingsAppearanceSection(),
-                SizedBox(height: 14.h),
                 _CollapsibleSection(
-                  title: 'Botvinnik',
-                  // BotvinnikIcon picks its own tint per theme (paperTint on
-                  // light); an accent-text override drowns the face.
-                  leading: BotvinnikIcon(size: 24.ic),
-                  expanded: _expanded == SettingsSection.botvinnik,
-                  onTap: () => _toggle(SettingsSection.botvinnik),
-                  child: BotvinnikSettingsBody(trackPersist: _trackPersist),
+                  title: 'Customization',
+                  leading: Icon(
+                    Icons.tune_rounded,
+                    color: context.colors.iconPrimary,
+                    size: 22.ic,
+                  ),
+                  expanded: _expanded == SettingsSection.customization,
+                  onTap: () => _toggle(SettingsSection.customization),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      const SettingsAppearanceSection(),
+                      SizedBox(height: 18.h),
+                      const StartScreenSettingsBody(),
+                      SizedBox(height: 24.h),
+                      const SectionLabel(title: 'Auto Pin'),
+                      SizedBox(height: 12.h),
+                      AutoPinSettingsBody(trackPersist: _trackPersist),
+                      SizedBox(height: 18.h),
+                      _CollapsibleSection(
+                        title: 'Botvinnik',
+                        // Keep the icon's own theme-aware tint.
+                        leading: BotvinnikIcon(size: 24.ic),
+                        expanded: _botvinnikExpanded,
+                        onTap: () {
+                          HapticFeedbackService.selection();
+                          setState(() {
+                            _botvinnikExpanded = !_botvinnikExpanded;
+                          });
+                        },
+                        child: BotvinnikSettingsBody(
+                          trackPersist: _trackPersist,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
                 SizedBox(height: 14.h),
                 _CollapsibleSection(
@@ -184,18 +216,6 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                     trackPersist: _trackPersist,
                     liveWidgetsKey: _liveWidgetsKey,
                   ),
-                ),
-                SizedBox(height: 14.h),
-                _CollapsibleSection(
-                  title: 'Customization',
-                  leading: Icon(
-                    Icons.tune_rounded,
-                    color: context.colors.iconPrimary,
-                    size: 22.ic,
-                  ),
-                  expanded: _expanded == SettingsSection.customization,
-                  onTap: () => _toggle(SettingsSection.customization),
-                  child: const StartScreenSettingsBody(),
                 ),
                 SizedBox(height: 24.h),
                 _DeleteAccountRow(
@@ -242,7 +262,8 @@ class SettingsAppearanceSection extends ConsumerWidget {
       key: const ValueKey('settings_appearance_card'),
       decoration: BoxDecoration(
         color: context.colors.surface,
-        borderRadius: BorderRadius.circular(20.br),
+        // Nested in Customization beside SettingCards, so it shares their 18.
+        borderRadius: BorderRadius.circular(18.br),
         border: Border.all(
           color: context.colors.divider.withValues(alpha: 0.4),
         ),

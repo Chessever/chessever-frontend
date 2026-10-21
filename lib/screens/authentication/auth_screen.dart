@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:chessever2/e2e/e2e_ids.dart';
 import 'package:chessever2/providers/country_dropdown_provider.dart';
@@ -12,6 +13,7 @@ import 'package:chessever2/utils/svg_asset.dart';
 import 'package:chessever2/widgets/animated_brand_logo.dart';
 import 'package:chessever2/widgets/app_button.dart';
 import 'package:chessever2/widgets/auth_button.dart';
+import 'package:chessever2/widgets/auth_state_listener.dart';
 import 'package:chessever2/widgets/blur_background.dart';
 import 'package:chessever2/widgets/country_dropdown.dart';
 import 'package:chessever2/widgets/guest_session_gate_listener.dart';
@@ -90,7 +92,9 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
         return;
       }
 
-      Navigator.pushReplacementNamed(context, '/home_screen');
+      final navigator = Navigator.of(context);
+      navigator.pushReplacementNamed('/home_screen');
+      unawaited(offerNotificationsAfterSignIn(navigator));
     });
 
     // Tablet landscape: side-by-side layout

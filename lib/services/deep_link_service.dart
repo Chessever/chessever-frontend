@@ -3,8 +3,11 @@ import 'package:chessever2/providers/event_video_provider.dart';
 import 'dart:io' show Platform;
 
 import 'package:app_links/app_links.dart';
+import 'package:chessever2/providers/auth_state_provider.dart';
+import 'package:chessever2/providers/favorite_events_provider.dart';
 import 'package:chessever2/repository/authentication/auth_repository.dart';
 import 'package:chessever2/repository/authentication/model/auth_state.dart';
+import 'package:chessever2/repository/favorites/models/favorite_event.dart';
 import 'package:chessever2/repository/supabase/chess_player/chess_player_repository.dart';
 import 'package:chessever2/repository/supabase/game/games.dart';
 import 'package:chessever2/repository/supabase/game/game_repository.dart';
@@ -16,9 +19,28 @@ import 'package:chessever2/repository/gamebase/memorial_player_local_search.dart
 import 'package:chessever2/repository/library/library_repository.dart';
 import 'package:chessever2/repository/library/models/library_folder.dart';
 import 'package:chessever2/screens/chessboard/chess_board_screen_new.dart';
+import 'package:chessever2/screens/collections/collections_data.dart'
+    show Collection, collectionsRepositoryProvider;
+import 'package:chessever2/screens/collections/collections_screen.dart'
+    show CollectionScreen;
+import 'package:chessever2/screens/collections/collection_share.dart'
+    show collectionSlugFromUri;
+import 'package:chessever2/screens/group_event/smart_event/smart_aggregate_event_provider.dart'
+    show smartEventRequestFromPushData;
+import 'package:chessever2/screens/group_event/smart_event/smart_event_screen.dart'
+    show SmartEventScreen, smartEventGamesTab;
+import 'package:chessever2/screens/my_prep/models/prep_models.dart'
+    show PrepProfile;
+import 'package:chessever2/screens/my_prep/my_prep_home_screen.dart'
+    show MyPrepHomeScreen;
+import 'package:chessever2/screens/my_prep/prep_profile_screen.dart'
+    show PrepProfileScreen, prepProfileGamesTab;
+import 'package:chessever2/screens/my_prep/providers/prep_providers.dart'
+    show prepProfilesProvider;
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
 import 'package:chessever2/screens/chessboard/utils/game_share_utils.dart'
     show kGamebaseShareSourceParam, kGamebaseShareSourceValue;
+import 'package:chessever2/screens/inbox/inbox_provider.dart';
 import 'package:chessever2/screens/inbox/inbox_screen.dart';
 import 'package:chessever2/screens/library/book_preview_screen.dart';
 import 'package:chessever2/screens/library/folder_contents_screen.dart';
@@ -48,9 +70,12 @@ import 'package:chessever2/screens/player_profile/player_profile_screen.dart'
 import 'package:chessever2/screens/streaks/models/streak_models.dart';
 import 'package:chessever2/screens/streaks/streak_player_screen.dart';
 import 'package:chessever2/screens/streaks/streaks_screen.dart';
+import 'package:chessever2/services/app_destination_service.dart';
 import 'package:chessever2/services/pgn_file_intake_service.dart';
 import 'package:chessever2/widgets/event_card/event_context_menu.dart'
     show kEventTabQueryParam;
+import 'package:chessever2/widgets/paywall/premium_game_access.dart';
+import 'package:chessever2/widgets/paywall/past_event_access.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:sentry_flutter/sentry_flutter.dart';
@@ -139,6 +164,18 @@ List<GamesTourModel> _buildSortedRoundGameModels(List<Games> roundGames) {
 /// Handles URLs like: `https://chessever.com/games/{id}`
 /// Handles URLs like: `https://chessever.com/databases/{id}`
 /// Handles notification data routing for games, events, rounds, and databases.
+/// Where a Prep "new games" push lands: the starred player's profile on its
+/// Games tab, or My Prep when this device no longer has or stars it.
+@visibleForTesting
+Widget prepPushDestination(PrepProfile? profile, {int? newGames}) =>
+    profile == null
+    ? const MyPrepHomeScreen()
+    : PrepProfileScreen(
+        profileId: profile.id,
+        newGames: newGames,
+        initialTab: prepProfileGamesTab,
+      );
+
 class DeepLinkService {
   static final DeepLinkService instance = DeepLinkService._();
   DeepLinkService._();
@@ -151,6 +188,7 @@ class DeepLinkService {
   bool _isNavigating = false;
   String? _lastHandledGameId;
   DateTime? _lastHandledTime;
+  int _destinationGeneration = 0;
 
   // Debounce duration to prevent duplicate link events
   static const _debounceDuration = Duration(milliseconds: 500);
@@ -219,6 +257,7 @@ class DeepLinkService {
   }
 
   void detachNotificationRouter() {
+    _destinationGeneration++;
     _routerNavigatorKey = null;
     _routerRef = null;
   }
@@ -457,6 +496,19 @@ class DeepLinkService {
   ) {
     debugPrint('DeepLinkService: Received link: $uri');
 
+    final appDestination = parseAppDestination(uri.toString());
+    if (appDestination != null) {
+      unawaited(
+        _navigateToAppDestination(
+          appDestination,
+          navigatorKey,
+          ref,
+          generation: ++_destinationGeneration,
+        ),
+      );
+      return;
+    }
+
     // iOS "Open in ChessEver" delivers `.pgn` as a file:// URI through
     // app_links (SceneDelegate forwards the URL). With
     // LSSupportsOpeningDocumentsInPlace disabled in Info.plist, iOS copies
@@ -508,6 +560,10 @@ class DeepLinkService {
       if (uri.pathSegments.length >= 2 && uri.pathSegments[0] == 'books') {
         bookShareToken = uri.pathSegments[1];
       }
+
+      // Universal link: https://chessever.com/collections/<slug>, and the web
+      // page's hand-off com.chessever.app://collections/<slug>.
+      final collectionSlug = collectionSlugFromUri(uri);
 
       // Universal link: https://chessever.com/databases/<folderId>
       if (uri.pathSegments.length >= 2 &&
@@ -606,6 +662,7 @@ class DeepLinkService {
           'gameId': _maskedValue(gameId),
           'bookShareToken': _maskedValue(bookShareToken),
           'folderId': _maskedValue(folderId),
+          'collectionSlug': collectionSlug,
           'broadcastId': _maskedValue(broadcastId),
           'teamName': teamName,
         },
@@ -650,6 +707,12 @@ class DeepLinkService {
           data: {'folderId': _maskedValue(folderId)},
         );
         _navigateToFolder(folderId, navigatorKey, ref);
+      } else if (collectionSlug != null) {
+        _addBreadcrumb(
+          'routing to collection',
+          data: {'collectionSlug': collectionSlug},
+        );
+        _navigateToCollection(collectionSlug, navigatorKey, ref);
       } else if (broadcastId != null &&
           broadcastId.isNotEmpty &&
           playerFideId != null) {
@@ -777,6 +840,170 @@ class DeepLinkService {
       navigatorKey.currentState?.pushNamedAndRemoveUntil(
         '/home_screen',
         (route) => false,
+      );
+    } finally {
+      _isNavigating = false;
+    }
+  }
+
+  /// Opens the collection a "new games" push was sent for, or a shared
+  /// `chessever.com/collections/<slug>` link points at. A collection that is
+  /// no longer published (or cannot be read right now) lands on Home.
+  Future<void> _navigateToCollection(
+    String slug,
+    GlobalKey<NavigatorState> navigatorKey,
+    WidgetRef ref,
+  ) async {
+    if (_isNavigating) return;
+    _isNavigating = true;
+
+    try {
+      try {
+        await _appReadyCompleter.future.timeout(const Duration(seconds: 30));
+      } catch (_) {
+        debugPrint(
+          'DeepLinkService: Timed out waiting for app ready, proceeding',
+        );
+      }
+
+      Collection? collection;
+      try {
+        collection = await ref
+            .read(collectionsRepositoryProvider)
+            .fetchCollection(slug);
+      } catch (e, stackTrace) {
+        _captureDeepLinkException(
+          e,
+          stackTrace,
+          stage: 'navigate_to_collection',
+          extras: {'slug': slug},
+        );
+      }
+
+      final navigator = navigatorKey.currentState;
+      if (navigator == null) return;
+      // Over Home, so Back lands on the app rather than leaving it.
+      navigator.pushNamedAndRemoveUntil('/home_screen', (route) => false);
+      final opened = collection;
+      if (opened == null) return;
+      navigator.push(
+        MaterialPageRoute<void>(
+          builder: (_) => CollectionScreen(collection: opened),
+        ),
+      );
+    } finally {
+      _isNavigating = false;
+    }
+  }
+
+  /// Opens the smart event an evening "new games" push was sent for, on its
+  /// Games tab: the reader's own starred row once favorites have loaded, else
+  /// one rebuilt from the criteria the push carries.
+  Future<void> _navigateToSmartEvent(
+    Map<String, dynamic> data,
+    GlobalKey<NavigatorState> navigatorKey,
+    WidgetRef ref,
+  ) async {
+    if (_isNavigating) return;
+    _isNavigating = true;
+
+    try {
+      try {
+        await _appReadyCompleter.future.timeout(const Duration(seconds: 30));
+      } catch (_) {
+        debugPrint(
+          'DeepLinkService: Timed out waiting for app ready, proceeding',
+        );
+      }
+
+      final loaded = Completer<List<FavoriteEvent>?>();
+      final subscription = ref.listenManual(favoriteEventsProvider, (_, value) {
+        if (!value.isLoading && !loaded.isCompleted) {
+          loaded.complete(value.valueOrNull);
+        }
+      }, fireImmediately: true);
+      List<FavoriteEvent>? favorites;
+      try {
+        favorites = await loaded.future.timeout(const Duration(seconds: 10));
+      } catch (_) {
+        favorites = null;
+      } finally {
+        subscription.close();
+      }
+      final request = smartEventRequestFromPushData(
+        data,
+        favorites: favorites ?? const [],
+      );
+
+      final navigator = navigatorKey.currentState;
+      if (navigator == null) return;
+      // Over Home, so Back lands on the app rather than leaving it.
+      navigator.pushNamedAndRemoveUntil('/home_screen', (route) => false);
+      if (request == null) return;
+      navigator.push(
+        MaterialPageRoute<void>(
+          builder: (_) => SmartEventScreen(
+            request: request,
+            initialTab: smartEventGamesTab,
+          ),
+        ),
+      );
+    } finally {
+      _isNavigating = false;
+    }
+  }
+
+  /// Opens the starred My Prep profile a daily "new games" push was sent
+  /// for. Profiles live on the device: one this device no longer has, or no
+  /// longer stars, opens My Prep instead and is unstarred on the server, so
+  /// the pushes stop.
+  Future<void> _navigateToPrepProfile(
+    String profileId,
+    GlobalKey<NavigatorState> navigatorKey,
+    WidgetRef ref, {
+    int? newGames,
+  }) async {
+    if (_isNavigating) return;
+    _isNavigating = true;
+
+    try {
+      try {
+        await _appReadyCompleter.future.timeout(const Duration(seconds: 30));
+      } catch (_) {
+        debugPrint(
+          'DeepLinkService: Timed out waiting for app ready, proceeding',
+        );
+      }
+
+      final loaded = Completer<List<PrepProfile>?>();
+      final subscription = ref.listenManual(prepProfilesProvider, (_, value) {
+        if (!value.isLoading && !loaded.isCompleted) {
+          loaded.complete(value.valueOrNull);
+        }
+      }, fireImmediately: true);
+      List<PrepProfile>? profiles;
+      try {
+        profiles = await loaded.future.timeout(const Duration(seconds: 10));
+      } catch (_) {
+        profiles = null;
+      } finally {
+        subscription.close();
+      }
+      final profile = profiles
+          ?.where((p) => p.id == profileId && p.watching)
+          .firstOrNull;
+      if (profiles != null) {
+        ref.read(prepProfilesProvider.notifier).settleWatch(profileId);
+      }
+
+      final navigator = navigatorKey.currentState;
+      if (navigator == null) return;
+      // Over Home, so Back lands on the app rather than leaving it.
+      navigator.pushNamedAndRemoveUntil('/home_screen', (route) => false);
+      navigator.push(
+        MaterialPageRoute<void>(
+          builder: (_) => prepPushDestination(profile, newGames: newGames),
+        ),
       );
     } finally {
       _isNavigating = false;
@@ -1160,6 +1387,17 @@ class DeepLinkService {
     required Future<void> appReadyFuture,
     bool preserveCurrentRoute = false,
   }) async {
+    await appReadyFuture;
+    final context = navigatorKey.currentState?.overlay?.context;
+    if (context == null || !context.mounted) return;
+    if (!await ensurePremiumGameAccess(
+      context,
+      featureId: 'archive_games',
+      returnTo: 'shared_game',
+    )) {
+      return;
+    }
+    if (!context.mounted) return;
     final gamebaseGame = await ref
         .read(gamebaseRepositoryProvider)
         .getGameById(gameId)
@@ -1172,7 +1410,7 @@ class DeepLinkService {
 
     final gameTourModel = mapGamebaseGameToGamesTourModel(gamebaseGame);
 
-    await appReadyFuture;
+    if (!context.mounted) return;
 
     ref.read(chessboardViewFromProviderNew.notifier).state =
         ChessboardView.forYou;
@@ -1253,6 +1491,40 @@ class DeepLinkService {
     GlobalKey<NavigatorState> navigatorKey,
     WidgetRef ref,
   ) {
+    final generation = ++_destinationGeneration;
+    final configuredRoute = _asNonEmptyString(data['route']);
+    final inboxMessageId = _asNonEmptyString(data['inbox_message_id']);
+    final destination = configuredRoute == null
+        ? null
+        : parseAppDestination(configuredRoute);
+    if (destination != null) {
+      unawaited(
+        _navigateToAppDestination(
+          destination,
+          navigatorKey,
+          ref,
+          generation: generation,
+          fallbackInboxMessageId: inboxMessageId,
+        ),
+      );
+      return;
+    }
+    if (configuredRoute != null) {
+      _addBreadcrumb('unsupported notification destination');
+    }
+    // An Inbox publication owns its tap unless an explicit destination is set.
+    // Its article action URL is deliberately unrelated to the push destination.
+    if (inboxMessageId != null) {
+      unawaited(
+        _navigateToInbox(
+          navigatorKey,
+          ref,
+          messageId: inboxMessageId,
+          generation: generation,
+        ),
+      );
+      return;
+    }
     final portalUrl = Uri.tryParse(data['url'] is String ? data['url'] as String : '');
     if (portalUrl != null && portalUrl.scheme == 'https' &&
         const ['chessever.com', 'www.chessever.com'].contains(portalUrl.host)) {
@@ -1281,6 +1553,11 @@ class DeepLinkService {
       data['folder_id'],
       data['folderId'],
     ]);
+    final collectionSlug = _firstNonEmptyString([
+      data['collection_slug'],
+      data['collectionSlug'],
+    ]);
+    final prepProfileId = _firstNonEmptyString([data['prep_profile_id']]);
 
     // The notification path used to be completely untelemetered, so a tap that
     // ended on Home was indistinguishable from a tap that never reached Dart at
@@ -1297,6 +1574,8 @@ class DeepLinkService {
         'hasRoundId': roundId != null,
         'hasTourId': tourId != null,
         'hasFolderId': folderId != null,
+        'hasCollectionSlug': collectionSlug != null,
+        'hasPrepProfileId': prepProfileId != null,
         'keys': data.keys.toList()..sort(),
       },
     );
@@ -1329,6 +1608,49 @@ class DeepLinkService {
           _navigateToHome(
             navigatorKey,
             reason: 'notification_missing_event_ids',
+            extras: {'type': type, 'appReady': wasAppReady},
+          );
+        }
+        return;
+      case 'collection_games_added':
+        if (collectionSlug != null) {
+          _navigateToCollection(collectionSlug, navigatorKey, ref);
+        } else {
+          _navigateToHome(
+            navigatorKey,
+            reason: 'notification_missing_collection_slug',
+            extras: {'type': type, 'appReady': wasAppReady},
+          );
+        }
+        return;
+      case 'smart_event_games':
+        if (smartEventRequestFromPushData(data) != null) {
+          _navigateToSmartEvent(data, navigatorKey, ref);
+        } else if (gameId != null && gameId.isNotEmpty) {
+          _navigateToGame(gameId, navigatorKey, ref);
+        } else {
+          _navigateToHome(
+            navigatorKey,
+            reason: 'notification_missing_smart_event',
+            extras: {'type': type, 'appReady': wasAppReady},
+          );
+        }
+        return;
+      case 'prep_games_added':
+        if (prepProfileId != null) {
+          final added = data['added'];
+          _navigateToPrepProfile(
+            prepProfileId,
+            navigatorKey,
+            ref,
+            newGames: added is num
+                ? added.toInt()
+                : int.tryParse('${added ?? ''}'),
+          );
+        } else {
+          _navigateToHome(
+            navigatorKey,
+            reason: 'notification_missing_prep_profile_id',
             extras: {'type': type, 'appReady': wasAppReady},
           );
         }
@@ -1369,26 +1691,147 @@ class DeepLinkService {
           return;
         }
 
-        // An announcement that also sits in the Inbox opens there, over home,
-        // so Back lands on the app rather than leaving it.
-        if (_asNonEmptyString(data['inbox_message_id']) != null) {
-          _addBreadcrumb('notification opens inbox', data: {'type': type});
-          final navigator = navigatorKey.currentState;
-          navigator?.pushNamedAndRemoveUntil('/home_screen', (route) => false);
-          navigator?.push(
-            MaterialPageRoute<void>(builder: (_) => const InboxScreen()),
-          );
-          return;
-        }
-
-        // call_to_action and any unknown types — open the app to home
+        // call_to_action and any unknown types — open the app to home.
+        // Home IS the destination of a push that names nothing to open
+        // (dashboard sends arrive as `default`), so this is not a failed
+        // route: breadcrumb only (CHESSEVER-15Z was all this case).
         _navigateToHome(
           navigatorKey,
           reason: 'notification_no_routing_hints',
           extras: {'type': type, 'appReady': wasAppReady},
+          report: false,
         );
         return;
     }
+  }
+
+  Future<void> _navigateToAppDestination(
+    AppDestination destination,
+    GlobalKey<NavigatorState> navigatorKey,
+    WidgetRef ref, {
+    required int generation,
+    String? fallbackInboxMessageId,
+  }) async {
+    await _appReadyCompleter.future;
+    final navigator = navigatorKey.currentState;
+    bool isCurrent() =>
+        generation == _destinationGeneration &&
+        navigator != null &&
+        navigator.mounted;
+    if (!isCurrent()) return;
+    try {
+      if (!await _awaitDestinationSession(ref, isCurrent: isCurrent)) return;
+      if (!navigator!.mounted) return;
+      if (destination.kind == AppDestinationKind.inbox) {
+        await _navigateToInbox(
+          navigatorKey,
+          ref,
+          messageId: destination.id,
+          generation: generation,
+        );
+        return;
+      }
+      // Every configured destination starts above a usable app root on a cold
+      // launch too. Existing content resolvers keep their auth/access guards.
+      navigator.pushNamedAndRemoveUntil('/home_screen', (route) => false);
+      final opened = await openAppDestination(
+        navigator.context,
+        ref,
+        destination,
+        isCurrent: isCurrent,
+        openLegacyLink: (link) async {
+          if (!isCurrent()) return true;
+          handleDeepLink(Uri.parse(link), navigatorKey, ref);
+          return true;
+        },
+        openInboxMessage: (messageId) => _navigateToInbox(
+          navigatorKey,
+          ref,
+          messageId: messageId,
+          generation: generation,
+        ),
+      );
+      if (opened) return;
+    } catch (error, stackTrace) {
+      _captureDeepLinkException(
+        error,
+        stackTrace,
+        stage: 'notification_app_destination',
+      );
+    }
+    if (!isCurrent()) return;
+    if (fallbackInboxMessageId != null) {
+      await _navigateToInbox(
+        navigatorKey,
+        ref,
+        messageId: fallbackInboxMessageId,
+        generation: generation,
+      );
+    } else {
+      _navigateToHome(navigatorKey, reason: 'app_destination_unavailable');
+    }
+  }
+
+  /// Startup may finish while the restored guest/account is still loading.
+  /// If restoration fails, retain the existing auth screen rather than replacing
+  /// it with Home. No notification destination grants a session of its own.
+  Future<bool> _awaitDestinationSession(
+    WidgetRef ref, {
+    required bool Function() isCurrent,
+  }) async {
+    if (!isCurrent()) return false;
+    if (ref.read(currentUserProvider) != null) return true;
+    if (ref.read(authStateProvider).isLoading) {
+      try {
+        await ref.read(authStateProvider.future).timeout(kAuthRestoreTimeout);
+      } catch (_) {
+        return false;
+      }
+    }
+    return isCurrent() && ref.read(currentUserProvider) != null;
+  }
+
+  /// Restores the Inbox stack after startup, then opens this exact publication.
+  /// The detail observes the account-scoped controller while it refreshes, so
+  /// a cold cache or an offline failure never marks a different message read.
+  Future<bool> _navigateToInbox(
+    GlobalKey<NavigatorState> navigatorKey,
+    WidgetRef ref, {
+    String? messageId,
+    required int generation,
+  }) async {
+    await _appReadyCompleter.future;
+    final navigator = navigatorKey.currentState;
+    if (navigator == null ||
+        !navigator.mounted ||
+        generation != _destinationGeneration) {
+      return false;
+    }
+    if (!await _awaitDestinationSession(
+      ref,
+      isCurrent: () =>
+          navigator.mounted && generation == _destinationGeneration,
+    )) {
+      return false;
+    }
+    final messageOwner = ref.read(inboxProvider).ownerId;
+    navigator.pushNamedAndRemoveUntil('/home_screen', (route) => false);
+    navigator.push(
+      MaterialPageRoute<void>(
+        settings: const RouteSettings(name: '/app/inbox'),
+        builder: (_) => const InboxScreen(),
+      ),
+    );
+    if (messageId != null && messageOwner != null) {
+      navigator.push(
+        MaterialPageRoute<void>(
+          settings: RouteSettings(name: '/app/inbox/$messageId'),
+          builder: (_) =>
+              InboxMessageScreen(ownerId: messageOwner, messageId: messageId),
+        ),
+      );
+    }
+    return true;
   }
 
   /// Navigate to home screen — the fallback when a tap can't be resolved to a
@@ -1529,6 +1972,17 @@ class DeepLinkService {
       final broadcast = await broadcastRepo
           .getGroupBroadcastById(routeContext.groupBroadcastId)
           .timeout(_fetchTimeout);
+
+      if (preserveCurrentRoute) {
+        final context = navigatorKey.currentState?.context;
+        if (context == null ||
+            !context.mounted ||
+            !await ensurePastEventAccess(context, broadcast: broadcast) ||
+            !context.mounted) {
+          // Dismissing access handles a valid shortcut without opening it.
+          return true;
+        }
+      }
 
       await _preselectTourAndRound(
         ref,
@@ -2278,6 +2732,7 @@ class DeepLinkService {
 
   /// Dispose of resources
   void dispose() {
+    _destinationGeneration++;
     _subscription?.cancel();
     _subscription = null;
     _isInitialized = false;

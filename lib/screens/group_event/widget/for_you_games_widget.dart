@@ -6,10 +6,8 @@ import 'package:chessever2/services/rewarded_premium/rewarded_access_provider.da
 import 'package:chessever2/widgets/ads/today_native_ad.dart';
 
 import 'package:chessever2/main.dart' show pageRouteObserver;
-import 'package:chessever2/providers/favorite_events_provider.dart';
 import 'package:chessever2/providers/for_you_games_logic.dart';
 import 'package:chessever2/providers/for_you_games_provider.dart';
-import 'package:chessever2/repository/favorites/models/favorite_event.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
 import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart';
 import 'package:chessever2/screens/for_you/open_for_you_event.dart';
@@ -26,21 +24,17 @@ import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/foreground_task_scheduler.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/user_error_message.dart';
-import 'package:chessever2/screens/group_event/smart_event/smart_aggregate_event_provider.dart';
-import 'package:chessever2/screens/group_event/smart_event/smart_event_screen.dart';
-import 'package:chessever2/screens/group_event/widget/filter_popup/filter_popup_provider.dart';
 import 'package:chessever2/widgets/event_card/event_card.dart';
-import 'package:chessever2/widgets/event_card/smart_event_card.dart';
-import 'package:chessever2/screens/group_event/smart_event/smart_event_builder_sheet.dart'
-    show smartEventCardSummary, watchSmartEventLive;
 import 'package:chessever2/widgets/generic_error_widget.dart';
 import 'package:chessever2/widgets/skeleton_widget.dart';
+import 'package:chessever2/widgets/paywall/past_game_access.dart';
 import 'package:flutter/material.dart';
 // Stable Flutter's material.dart does not export this type (only newer SDKs
 // do), so it is imported explicitly, as in lib/utils/scroll_cache.dart.
 // ignore: unnecessary_import
 import 'package:flutter/rendering.dart' show ScrollCacheExtent;
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:skeletonizer/skeletonizer.dart' show Bone;
 import 'package:chessever2/screens/chessboard/provider/game_pgn_stream_provider.dart';
 
 // Cache ~1.5 viewports for the compact card feed and ~1 viewport for the
@@ -68,6 +62,26 @@ LiveGamesBatchKey _forYouLiveBatchKey({
     scopeId: 'for_you:$eventId:$tourId',
     gameIds: games.where(shouldSubscribeToLiveGame).map((game) => game.gameId),
   );
+}
+
+Future<void> _openForYouGame(
+  BuildContext context,
+  WidgetRef ref,
+  List<GamesTourModel> games,
+  int index,
+) async {
+  if (index < 0 || index >= games.length || !context.mounted) return;
+  final allowed = await ensurePastGameAccess(context, game: games[index]);
+  if (!allowed || !context.mounted) return;
+  ref
+      .read(gameCardWrapperProvider)
+      .navigateToChessBoard(
+        context: context,
+        orderedGames: games,
+        gameIndex: index,
+        onReturnFromChessboard: (_) {},
+        viewSource: ChessboardView.forYou,
+      );
 }
 
 /// For You tab widget - displays events with their top 4 games
@@ -299,11 +313,6 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
         events.length >= 2 &&
         !ref.watch(subscriptionProvider.select((s) => s.isLoading)) &&
         !ref.watch(premiumAccessProvider);
-    final favoriteEvents = ref.watch(favoriteEventsProvider).valueOrNull ?? [];
-    final dismissedSmartEventCardKeys = ref.watch(
-      dismissedSmartEventCardKeysProvider,
-    );
-    final savedSmartData = _savedSmartCards(favoriteEvents);
 
     if (state.isLoading && events.isEmpty) {
       return _buildLoadingState();
@@ -321,49 +330,25 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
       );
     }
 
-    if (events.isEmpty && savedSmartData.isEmpty) {
+    // Smart events never appear on Today, starred or filtered: My Space is
+    // their only home.
+
+    // Each event section hides itself once its boards resolve empty. When
+    // nothing is left to draw and no further page can follow, the list would
+    // hold only the collection cards above a blank page; say there is nothing
+    // instead.
+    final everyEventHidden = ref.watch(
+      forYouTopGamesSnapshotCacheProvider.select(
+        (snapshots) =>
+            events.every((event) => snapshots[event.id]?.hasGames == false),
+      ),
+    );
+    if (everyEventHidden && (events.isEmpty || !state.hasMore)) {
       return _buildEmptyState();
     }
 
-    // The smart "Convergence" event only materialises when an ELO/tier filter
-    // is applied — it gathers the strongest live games across every broadcast
-    // into one card, pinned top-most.
-    final smartData = visibleSmartEventCardData(
-      SmartEventCardData.fromState(
-        filter: ref.watch(forYouAppliedFilterProvider),
-        events: events,
-        source: SmartEventSource.forYou,
-      ),
-      dismissedSmartEventCardKeys,
-    );
-    final visibleSavedSmartData =
-        smartData == null
-            ? savedSmartData
-                .where(
-                  (saved) =>
-                      !dismissedSmartEventCardKeys.contains(
-                        saved.request.cardDismissKey,
-                      ),
-                )
-                .toList(growable: false)
-            : savedSmartData
-                .where(
-                  (saved) =>
-                      saved.request.favoriteEventId !=
-                          smartData.request.favoriteEventId &&
-                      !dismissedSmartEventCardKeys.contains(
-                        saved.request.cardDismissKey,
-                      ),
-                )
-                .toList(growable: false);
-
     return RefreshIndicator(
-      onRefresh: () async {
-        // Saved smart cards resolve their membership server-side — refresh
-        // them together with the feed.
-        ref.invalidate(smartEventResolvedEventsProvider);
-        await ref.read(forYouEventsProvider.notifier).refresh();
-      },
+      onRefresh: () => ref.read(forYouEventsProvider.notifier).refresh(),
       color: context.colors.accentText,
       backgroundColor: context.colors.surface,
       child: _buildEventsList(
@@ -371,44 +356,8 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
         showNativeAd: showNativeAd,
         viewMode: viewMode,
         showLoadingMore: state.hasMore && !state.isLoading,
-        smartData: smartData,
-        savedSmartData: visibleSavedSmartData,
       ),
     );
-  }
-
-  List<SmartEventCardData> _savedSmartCards(
-    List<FavoriteEvent> favoriteEvents,
-  ) {
-    final cards = <SmartEventCardData>[];
-    final seenCriteriaKeys = <String>{};
-    for (final favorite in favoriteEvents) {
-      if (!isSmartFavoriteEvent(favorite)) continue;
-      final request = SmartEventRequest.fromFavoriteEvent(favorite);
-      // One card per criteria — duplicate legacy rows collapse here (and get
-      // merged server-side by the snapshot refresher).
-      if (!seenCriteriaKeys.add(request.criteriaKey)) continue;
-      cards.add(
-        SmartEventCardData(
-          request: request,
-          eventCount: request.events.length,
-          avgElo: _eventsAvgElo(request.events),
-        ),
-      );
-    }
-    cards.sort((a, b) {
-      final ad = a.request.savedAt ?? DateTime(0);
-      final bd = b.request.savedAt ?? DateTime(0);
-      return bd.compareTo(ad);
-    });
-    return cards;
-  }
-
-  static int _eventsAvgElo(List<GroupEventCardModel> events) {
-    final elos =
-        events.map((event) => event.maxAvgElo).where((elo) => elo > 0).toList();
-    if (elos.isEmpty) return 0;
-    return (elos.reduce((a, b) => a + b) / elos.length).round();
   }
 
   Widget _buildLoadingState() {
@@ -476,8 +425,6 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
     bool showNativeAd = false,
     required GamesListViewMode viewMode,
     bool showLoadingMore = false,
-    SmartEventCardData? smartData,
-    List<SmartEventCardData> savedSmartData = const [],
   }) {
     // On tablet, use a beautiful grid layout
     if (ResponsiveHelper.isTablet) {
@@ -486,24 +433,14 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
         showNativeAd: showNativeAd,
         viewMode: viewMode,
         showLoadingMore: showLoadingMore,
-        smartData: smartData,
-        savedSmartData: savedSmartData,
       );
     }
 
     // Phone: vertical list layout
     final horizontalPadding = 16.sp;
 
-    // Pinned right under the premium cards, above the first event.
-    final smartCards = <SmartEventCardData>[
-      ...savedSmartData,
-      if (smartData != null) smartData,
-    ];
-    final smartOffset = smartCards.length;
-
-    // +1 for premium cards, +smartOffset for the smart card, +1 for loading.
-    final itemCount =
-        events.length + 1 + smartOffset + (showLoadingMore ? 1 : 0);
+    // +1 for premium cards, +1 for loading.
+    final itemCount = events.length + 1 + (showLoadingMore ? 1 : 0);
 
     return ListView.builder(
       key: const PageStorageKey<String>('for_you_events_list'),
@@ -525,21 +462,13 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
           return const PremiumCollectionCards();
         }
 
-        if (index > 0 && index <= smartCards.length) {
-          final cardData = smartCards[index - 1];
-          return Padding(
-            padding: EdgeInsets.only(bottom: 16.sp),
-            child: _buildSmartEventCard(cardData),
-          );
-        }
-
         // Loading indicator at bottom
         if (showLoadingMore && index == itemCount - 1) {
           return _buildLoadingMoreIndicator();
         }
 
-        final event = events[index - 1 - smartOffset];
-        if (showNativeAd && index == 1 + smartOffset) {
+        final event = events[index - 1];
+        if (showNativeAd && index == 1) {
           return Column(
             key: ValueKey('event_${event.id}'),
             children: [
@@ -551,63 +480,9 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
         return _ForYouEventSection(
           key: ValueKey('event_${event.id}'),
           event: event,
-          isFirst: index == 1 + smartOffset,
+          isFirst: index == 1,
         );
       },
-    );
-  }
-
-  Widget _buildSmartEventCard(SmartEventCardData smartData) {
-    // SERVER-FRESH face: count / Ø resolve from the criteria against the
-    // current broadcasts every build, so a saved smart event never shows the
-    // membership it happened to have at save time. The stored snapshot only
-    // covers the frames before the first resolution (and offline).
-    final resolvedAsync = ref.watch(
-      smartEventResolvedEventsProvider(smartData.request.criteria),
-    );
-    final resolvedEvents = resolvedAsync.valueOrNull;
-    final events = resolvedEvents ?? smartData.request.events;
-    final request =
-        resolvedEvents == null
-            ? smartData.request
-            : smartData.request.withEvents(resolvedEvents);
-
-    // Keep the saved row's server-side snapshot in step with what resolved
-    // (also migrates legacy v1 rows to the criteria-keyed v2 identity).
-    if (resolvedEvents != null) {
-      final savedFavorite = ref.watch(
-        smartEventSavedFavoriteProvider(smartData.request.criteriaKey),
-      );
-      if (savedFavorite != null) {
-        unawaited(
-          refreshSavedSmartEventSnapshot(
-            ref: ref,
-            favorite: savedFavorite,
-            resolvedEvents: resolvedEvents,
-          ),
-        );
-      }
-    }
-
-    return SmartEventCard(
-      tierLabel: request.tierLabel,
-      minElo: request.minElo,
-      liveCount: events.length,
-      avgElo: _eventsAvgElo(events),
-      titleSuffix: request.titleSuffix,
-      caption: request.caption,
-      countSingular: request.countSingular,
-      countPlural: request.countPlural,
-      formatsAndStates: request.formatsAndStates,
-      summary: smartEventCardSummary(request),
-      live: watchSmartEventLive(ref, request),
-      spaceDraft: smartEventSpaceDraft(request),
-      onTap:
-          () => Navigator.of(context).push(
-            MaterialPageRoute(
-              builder: (_) => SmartEventScreen(request: request),
-            ),
-          ),
     );
   }
 
@@ -635,24 +510,16 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
     bool showNativeAd = false,
     required GamesListViewMode viewMode,
     bool showLoadingMore = false,
-    SmartEventCardData? smartData,
-    List<SmartEventCardData> savedSmartData = const [],
   }) {
     final horizontalPadding = ResponsiveHelper.isLandscape ? 32.sp : 24.sp;
     final columnSpacing = 16.sp;
-    final smartCards = <SmartEventCardData>[
-      ...savedSmartData,
-      if (smartData != null) smartData,
-    ];
-    final smartOffset = smartCards.length;
 
     // Number of event-pair rows (ceil division)
     final rowCount = showNativeAd
         ? 1 + events.length ~/ 2
         : (events.length + 1) ~/ 2;
-    // +1 for premium cards at top, +smartOffset for the smart card,
-    // +1 for loading indicator if showing.
-    final itemCount = rowCount + 1 + smartOffset + (showLoadingMore ? 1 : 0);
+    // +1 for premium cards at top, +1 for loading indicator if showing.
+    final itemCount = rowCount + 1 + (showLoadingMore ? 1 : 0);
 
     return ListView.builder(
       key: const PageStorageKey<String>('for_you_events_tablet_grid'),
@@ -674,20 +541,12 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
           return const PremiumCollectionCards();
         }
 
-        if (index > 0 && index <= smartCards.length) {
-          final cardData = smartCards[index - 1];
-          return Padding(
-            padding: EdgeInsets.only(bottom: 16.sp),
-            child: _buildSmartEventCard(cardData),
-          );
-        }
-
         // Loading indicator at bottom
         if (showLoadingMore && index == itemCount - 1) {
           return _buildLoadingMoreIndicator();
         }
 
-        final rowIndex = index - 1 - smartOffset;
+        final rowIndex = index - 1;
         if (showNativeAd && rowIndex == 0) {
           return Column(
             key: ValueKey('native_first_event_${events.first.id}'),
@@ -768,16 +627,9 @@ class _TabletColumnSkeleton extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       children: [
         // Event card skeleton
-        SkeletonWidget(
-          child: AspectRatio(
-            aspectRatio: eventCardAspectRatio,
-            child: Container(
-              decoration: BoxDecoration(
-                color: context.colors.surfaceRecessed,
-                borderRadius: BorderRadius.circular(12.br),
-              ),
-            ),
-          ),
+        AspectRatio(
+          aspectRatio: eventCardAspectRatio,
+          child: _SkeletonBlock(radius: 12.br),
         ),
         SizedBox(height: 10.sp),
         // Game card skeletons (2 rows of 2 = 4 total, matching actual content)
@@ -786,31 +638,9 @@ class _TabletColumnSkeleton extends StatelessWidget {
             padding: EdgeInsets.only(bottom: 8.sp),
             child: Row(
               children: [
-                Expanded(
-                  child: SkeletonWidget(
-                    ignoreContainers: true,
-                    child: Container(
-                      height: 72.sp,
-                      decoration: BoxDecoration(
-                        color: context.colors.surfaceRecessed,
-                        borderRadius: BorderRadius.circular(8.br),
-                      ),
-                    ),
-                  ),
-                ),
+                Expanded(child: _SkeletonBlock(height: 72.sp)),
                 SizedBox(width: 8.sp),
-                Expanded(
-                  child: SkeletonWidget(
-                    ignoreContainers: true,
-                    child: Container(
-                      height: 72.sp,
-                      decoration: BoxDecoration(
-                        color: context.colors.surfaceRecessed,
-                        borderRadius: BorderRadius.circular(8.br),
-                      ),
-                    ),
-                  ),
-                ),
+                Expanded(child: _SkeletonBlock(height: 72.sp)),
               ],
             ),
           );
@@ -1088,31 +918,9 @@ class _ForYouTabletColumnGames extends StatelessWidget {
           padding: EdgeInsets.only(bottom: 8.sp),
           child: Row(
             children: [
-              Expanded(
-                child: SkeletonWidget(
-                  ignoreContainers: true,
-                  child: Container(
-                    height: 72.sp,
-                    decoration: BoxDecoration(
-                      color: context.colors.surfaceRecessed,
-                      borderRadius: BorderRadius.circular(8.br),
-                    ),
-                  ),
-                ),
-              ),
+              Expanded(child: _SkeletonBlock(height: 72.sp)),
               SizedBox(width: 8.sp),
-              Expanded(
-                child: SkeletonWidget(
-                  ignoreContainers: true,
-                  child: Container(
-                    height: 72.sp,
-                    decoration: BoxDecoration(
-                      color: context.colors.surfaceRecessed,
-                      borderRadius: BorderRadius.circular(8.br),
-                    ),
-                  ),
-                ),
-              ),
+              Expanded(child: _SkeletonBlock(height: 72.sp)),
             ],
           ),
         );
@@ -1151,16 +959,8 @@ class _TabletGameCard extends ConsumerWidget {
       allowStockfishFallback: true,
       streamEnabled: true,
       viewSource: ChessboardView.forYou,
-      onChangedWithLiveGames:
-          (updatedGames) => ref
-              .read(gameCardWrapperProvider)
-              .navigateToChessBoard(
-                context: context,
-                orderedGames: updatedGames,
-                gameIndex: index,
-                onReturnFromChessboard: (_) {},
-                viewSource: ChessboardView.forYou,
-              ),
+      onChangedWithLiveGames: (updatedGames) =>
+          _openForYouGame(context, ref, updatedGames, index),
       pinnedIds: pinnedIds,
       onPinToggle:
           (_) => ref
@@ -1287,16 +1087,8 @@ class _ForYouEventGames extends ConsumerWidget {
                   allowStockfishFallback: true,
                   streamEnabled: true,
                   viewSource: ChessboardView.forYou,
-                  onChangedWithLiveGames:
-                      (updatedGames) => ref
-                          .read(gameCardWrapperProvider)
-                          .navigateToChessBoard(
-                            context: context,
-                            orderedGames: updatedGames,
-                            gameIndex: i,
-                            onReturnFromChessboard: (_) {},
-                            viewSource: ChessboardView.forYou,
-                          ),
+                  onChangedWithLiveGames: (updatedGames) =>
+                      _openForYouGame(context, ref, updatedGames, i),
                   pinnedIds: pinnedIds,
                   onPinToggle:
                       (_) => ref
@@ -1321,16 +1113,8 @@ class _ForYouEventGames extends ConsumerWidget {
                           allowStockfishFallback: true,
                           streamEnabled: true,
                           viewSource: ChessboardView.forYou,
-                          onChangedWithLiveGames:
-                              (updatedGames) => ref
-                                  .read(gameCardWrapperProvider)
-                                  .navigateToChessBoard(
-                                    context: context,
-                                    orderedGames: updatedGames,
-                                    gameIndex: i + 1,
-                                    onReturnFromChessboard: (_) {},
-                                    viewSource: ChessboardView.forYou,
-                                  ),
+                          onChangedWithLiveGames: (updatedGames) =>
+                              _openForYouGame(context, ref, updatedGames, i + 1),
                           pinnedIds: pinnedIds,
                           onPinToggle:
                               (_) => ref
@@ -1361,9 +1145,9 @@ class _ForYouEventGames extends ConsumerWidget {
             padding: EdgeInsets.only(bottom: 12.sp),
             child: Row(
               children: [
-                Expanded(child: _GameSkeletonBox(height: 72.sp)),
+                Expanded(child: _SkeletonBlock(height: 72.sp)),
                 SizedBox(width: 12.sp),
-                Expanded(child: _GameSkeletonBox(height: 72.sp)),
+                Expanded(child: _SkeletonBlock(height: 72.sp)),
               ],
             ),
           );
@@ -1375,28 +1159,32 @@ class _ForYouEventGames extends ConsumerWidget {
       children: List.generate(kGamesPerEvent, (index) {
         return Padding(
           padding: EdgeInsets.only(bottom: 12.sp),
-          child: _GameSkeletonBox(height: 72.sp),
+          child: _SkeletonBlock(height: 72.sp),
         );
       }),
     );
   }
 }
 
-class _GameSkeletonBox extends StatelessWidget {
-  const _GameSkeletonBox({required this.height});
+/// One placeholder block of the Today skeleton.
+///
+/// Drawn as a skeletonizer [Bone] because [SkeletonWidget] ignores
+/// containers: a decorated `Container` inside it paints nothing at all, which
+/// left the loading feed blank below the collection cards.
+class _SkeletonBlock extends StatelessWidget {
+  /// A null [height] fills the parent, e.g. an [AspectRatio].
+  const _SkeletonBlock({this.height, this.radius});
 
-  final double height;
+  final double? height;
+  final double? radius;
 
   @override
   Widget build(BuildContext context) {
     return SkeletonWidget(
-      ignoreContainers: true,
-      child: Container(
+      child: Bone(
+        width: double.infinity,
         height: height,
-        decoration: BoxDecoration(
-          color: context.colors.surfaceRecessed,
-          borderRadius: BorderRadius.circular(8.br),
-        ),
+        borderRadius: BorderRadius.circular(radius ?? 8.br),
       ),
     );
   }
@@ -1436,6 +1224,7 @@ class _ForYouGameCard extends ConsumerWidget {
         liveBatchKey: liveBatchKey,
         allowStockfishFallback: true,
         streamEnabled: true,
+        onBeforeOpen: () => ensurePastGameAccess(context, game: game),
         onPinToggle:
             (_) => ref
                 .read(forYouPinActionProvider)
@@ -1462,20 +1251,14 @@ class _ForYouEventSkeleton extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         // Event card skeleton
-        SkeletonWidget(
-          child: Container(
-            margin: EdgeInsets.only(top: isFirst ? 0 : 16.sp, bottom: 12.sp),
-            height: 80.sp,
-            decoration: BoxDecoration(
-              color: context.colors.surfaceRecessed,
-              borderRadius: BorderRadius.circular(8.br),
-            ),
-          ),
+        Padding(
+          padding: EdgeInsets.only(top: isFirst ? 0 : 16.sp, bottom: 12.sp),
+          child: _SkeletonBlock(height: 80.sp),
         ),
         ...List.generate(kGamesPerEvent, (index) {
           return Padding(
             padding: EdgeInsets.only(bottom: 12.sp),
-            child: _GameSkeletonBox(height: 72.sp),
+            child: _SkeletonBlock(height: 72.sp),
           );
         }),
       ],

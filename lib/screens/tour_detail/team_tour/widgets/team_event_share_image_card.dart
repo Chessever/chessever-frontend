@@ -152,8 +152,7 @@ class TeamEventShareImageCard extends StatelessWidget {
                       child: Column(
                         children: [
                           for (var i = 0; i < matches.length; i++) ...[
-                            if (i > 0)
-                              Divider(height: 1, color: p.hairline),
+                            if (i > 0) Divider(height: 1, color: p.hairline),
                             _MatchRow(row: matches[i]),
                           ],
                         ],
@@ -289,16 +288,15 @@ class TeamEventShareImageCard extends StatelessWidget {
       height: size,
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(size * 0.28),
-        boxShadow:
-            p.logoGlow
-                ? [
-                  BoxShadow(
-                    color: p.accentFill.withValues(alpha: 0.35),
-                    blurRadius: 14,
-                    spreadRadius: -4,
-                  ),
-                ]
-                : null,
+        boxShadow: p.logoGlow
+            ? [
+                BoxShadow(
+                  color: p.accentFill.withValues(alpha: 0.35),
+                  blurRadius: 14,
+                  spreadRadius: -4,
+                ),
+              ]
+            : null,
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(size * 0.28),
@@ -394,9 +392,7 @@ class TeamEventShareImageCard extends StatelessWidget {
                       team.teamName,
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
-                      style: AppTypography.textLgBold.copyWith(
-                        color: p.textHi,
-                      ),
+                      style: AppTypography.textLgBold.copyWith(color: p.textHi),
                     ),
                     const SizedBox(height: 6),
                     Text(
@@ -423,8 +419,7 @@ class TeamEventShareImageCard extends StatelessWidget {
           color: p.surface,
           borderRadius: BorderRadius.circular(10),
           // Paper only: a white tile needs an edge; dark separates by tone.
-          border:
-              p.tileEdge == null ? null : Border.all(color: p.tileEdge!),
+          border: p.tileEdge == null ? null : Border.all(color: p.tileEdge!),
         ),
         child: Column(
           children: [
@@ -444,14 +439,11 @@ class TeamEventShareImageCard extends StatelessWidget {
 
     return Row(
       children: [
-        tile('Team Pts', '${team.matchPoints}'),
+        tile('Team Pts', team.matchPointsLabel),
         const SizedBox(width: 8),
         tile('Board Pts', team.gamePointsLabel),
         const SizedBox(width: 8),
-        tile(
-          'Avg Elo',
-          averageElo != null ? averageElo.toString() : '-',
-        ),
+        tile('Avg Elo', averageElo != null ? averageElo.toString() : '-'),
       ],
     );
   }
@@ -524,9 +516,7 @@ class _MatchRow extends StatelessWidget {
                   padding: const EdgeInsets.symmetric(horizontal: 4),
                   child: Text(
                     '–',
-                    style: AppTypography.textXsMedium.copyWith(
-                      color: p.textLo,
-                    ),
+                    style: AppTypography.textXsMedium.copyWith(color: p.textLo),
                   ),
                 ),
                 Text(

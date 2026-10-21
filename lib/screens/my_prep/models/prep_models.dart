@@ -245,9 +245,8 @@ class PrepAccount {
     this.syncedScope,
     this.gameCount = 0,
     this.error,
-    this.cloudDatabaseId,
-    this.cloudSyncedTs,
-    this.cloudSyncedCount = 0,
+    this.failedAttempts = 0,
+    this.retryAtMs,
     this.externalId,
     this.fideId,
     this.playerAliases = const [],
@@ -291,14 +290,18 @@ class PrepAccount {
   final int gameCount;
   final String? error;
 
-  /// The cloud Library database this account's games are saved to, when
-  /// the reader saved the player to the cloud (Premium).
-  final String? cloudDatabaseId;
+  /// [error], while it left the account without games. A failed refresh
+  /// keeps every stored game, so the account goes on showing them; the
+  /// source popup still names the failure.
+  String? get downloadError => gameCount == 0 ? error : null;
 
-  /// The newest game already in [cloudDatabaseId], as yyyymmddHHMMSS: the
-  /// next cloud sync uploads only games played after it.
-  final int? cloudSyncedTs;
-  final int cloudSyncedCount;
+  /// Downloads that failed in a row since the last one that worked.
+  final int failedAttempts;
+
+  /// When a refresh the reader did not ask for may try again, after
+  /// [failedAttempts]. Kept with the account, so reopening the app does not
+  /// start the wait over.
+  final int? retryAtMs;
 
   /// The selection the stored games should hold this month. ChessEver's
   /// whole-player export keeps the scope it had before it could be narrowed.
@@ -336,10 +339,9 @@ class PrepAccount {
     int? gameCount,
     String? error,
     bool clearError = false,
-    String? cloudDatabaseId,
-    int? cloudSyncedTs,
-    int? cloudSyncedCount,
-    bool clearCloud = false,
+    int? failedAttempts,
+    int? retryAtMs,
+    bool clearRetry = false,
     List<String>? playerAliases,
   }) => PrepAccount(
     source: source,
@@ -357,13 +359,8 @@ class PrepAccount {
     syncedScope: syncedScope ?? this.syncedScope,
     gameCount: gameCount ?? this.gameCount,
     error: clearError ? null : (error ?? this.error),
-    cloudDatabaseId: clearCloud
-        ? null
-        : (cloudDatabaseId ?? this.cloudDatabaseId),
-    cloudSyncedTs: clearCloud ? null : (cloudSyncedTs ?? this.cloudSyncedTs),
-    cloudSyncedCount: clearCloud
-        ? 0
-        : (cloudSyncedCount ?? this.cloudSyncedCount),
+    failedAttempts: clearRetry ? 0 : (failedAttempts ?? this.failedAttempts),
+    retryAtMs: clearRetry ? null : (retryAtMs ?? this.retryAtMs),
   );
 
   Map<String, Object?> toJson() => {
@@ -382,9 +379,8 @@ class PrepAccount {
     'syncedScope': syncedScope,
     'gameCount': gameCount,
     'error': error,
-    'cloudDatabaseId': cloudDatabaseId,
-    'cloudSyncedTs': cloudSyncedTs,
-    'cloudSyncedCount': cloudSyncedCount,
+    'failedAttempts': failedAttempts,
+    'retryAtMs': retryAtMs,
   };
 
   static PrepAccount? fromJson(Object? raw) {
@@ -423,13 +419,10 @@ class PrepAccount {
       syncedScope: _text(raw['syncedScope']),
       gameCount: raw['gameCount'] is int ? raw['gameCount'] as int : 0,
       error: _text(raw['error']),
-      cloudDatabaseId: _text(raw['cloudDatabaseId']),
-      cloudSyncedTs: raw['cloudSyncedTs'] is int
-          ? raw['cloudSyncedTs'] as int
-          : null,
-      cloudSyncedCount: raw['cloudSyncedCount'] is int
-          ? raw['cloudSyncedCount'] as int
+      failedAttempts: raw['failedAttempts'] is int
+          ? raw['failedAttempts'] as int
           : 0,
+      retryAtMs: raw['retryAtMs'] is int ? raw['retryAtMs'] as int : null,
     );
   }
 }
@@ -445,8 +438,8 @@ class PrepProfile {
     required this.createdAtMs,
     this.accounts = const [],
     this.favoriteId,
-    this.cloudFolderId,
     this.fideIdentity,
+    this.watching = false,
   });
 
   final String id;
@@ -461,11 +454,10 @@ class PrepProfile {
   /// Set when the profile was added from Players.
   final String? favoriteId;
 
-  /// The cloud Library folder this player is saved to (Premium). Each
-  /// account's games go to their own database inside it, as on desktop.
-  final String? cloudFolderId;
+  /// Starred: the server checks its online accounts once a day and pushes
+  /// when the player has new games (see `prep_watch.dart`).
+  final bool watching;
 
-  bool get savedToCloud => cloudFolderId != null;
   String? get fideId =>
       fideIdentity ??
       accounts.map((a) => a.fideId).whereType<String>().firstOrNull;
@@ -581,8 +573,7 @@ class PrepProfile {
     String? name,
     List<PrepAccount>? accounts,
     PrepKind? kind,
-    String? cloudFolderId,
-    bool clearCloud = false,
+    bool? watching,
   }) => PrepProfile(
     id: id,
     kind: kind ?? this.kind,
@@ -593,7 +584,7 @@ class PrepProfile {
         fideId ??
         accounts?.map((a) => a.fideId).whereType<String>().firstOrNull,
     favoriteId: favoriteId,
-    cloudFolderId: clearCloud ? null : (cloudFolderId ?? this.cloudFolderId),
+    watching: watching ?? this.watching,
   );
 
   PrepProfile replaceAccount(PrepAccount account) => copyWith(
@@ -608,7 +599,7 @@ class PrepProfile {
     'accounts': [for (final a in accounts) a.toJson()],
     'fideIdentity': fideId,
     'favoriteId': favoriteId,
-    'cloudFolderId': cloudFolderId,
+    if (watching) 'watching': true,
   };
 
   static PrepProfile? fromJson(Object? raw) {
@@ -628,7 +619,7 @@ class PrepProfile {
           for (final a in rawAccounts) ?PrepAccount.fromJson(a),
       ],
       favoriteId: _text(raw['favoriteId']),
-      cloudFolderId: _text(raw['cloudFolderId']),
+      watching: raw['watching'] == true,
     );
   }
 }

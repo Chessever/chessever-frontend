@@ -43,6 +43,10 @@ String? customAwareResultLabelForSide(
   return standardValue == 0.5 ? '½' : formatBroadcastScore(standardValue);
 }
 
+/// A published double forfeit awards no board points to either player.
+/// Keep it separate from played results: no moves or rating change is implied.
+bool isDoubleForfeitGame(GamesTourModel game) => game.isDoubleForfeit;
+
 bool isArmageddonGame(GamesTourModel game) {
   return _containsArmageddon(game.roundSlug) ||
       _containsArmageddon(game.roundId) ||
@@ -54,6 +58,7 @@ bool _containsArmageddon(String? value) {
 }
 
 String? boardResultLabelForSide(GamesTourModel game, {required bool isWhite}) {
+  if (isDoubleForfeitGame(game)) return '0';
   if (isArmageddonGame(game)) {
     return standardResultLabelForSide(game.gameStatus, isWhite: isWhite);
   }
@@ -61,8 +66,9 @@ String? boardResultLabelForSide(GamesTourModel game, {required bool isWhite}) {
   return customAwareResultLabelForSide(
     game.gameStatus,
     isWhite: isWhite,
-    customPoints:
-        isWhite ? game.whitePlayer.customPoints : game.blackPlayer.customPoints,
+    customPoints: isWhite
+        ? game.whitePlayer.customPoints
+        : game.blackPlayer.customPoints,
   );
 }
 
@@ -135,29 +141,27 @@ TournamentPlayer? _standingForParticipant(
 
   final normalizedName = _normalizedBroadcastPlayerName(name);
   if (normalizedName.isEmpty) return null;
-  final byName =
-      rows
-          .where(
-            (row) => _normalizedBroadcastPlayerName(row.name) == normalizedName,
-          )
-          .toList();
+  final byName = rows
+      .where(
+        (row) => _normalizedBroadcastPlayerName(row.name) == normalizedName,
+      )
+      .toList();
   return byName.length == 1 ? byName.single : null;
 }
 
-String _normalizedBroadcastPlayerName(String name) =>
-    name
-        .trim()
-        .replaceFirst(
-          RegExp(
-            r'^(?:(?:GM|IM|FM|CM|WGM|WIM|WFM|WCM|NM|WNM)\.?\s+)+',
-            caseSensitive: false,
-          ),
-          '',
-        )
-        .toLowerCase()
-        .replaceAll('’', "'")
-        .replaceAll(RegExp(r'\s+'), ' ')
-        .trim();
+String _normalizedBroadcastPlayerName(String name) => name
+    .trim()
+    .replaceFirst(
+      RegExp(
+        r'^(?:(?:GM|IM|FM|CM|WGM|WIM|WFM|WCM|NM|WNM)\.?\s+)+',
+        caseSensitive: false,
+      ),
+      '',
+    )
+    .toLowerCase()
+    .replaceAll('’', "'")
+    .replaceAll(RegExp(r'\s+'), ' ')
+    .trim();
 
 ({double? score, int played}) resolveBroadcastStandingScore({
   required double? sourceScore,

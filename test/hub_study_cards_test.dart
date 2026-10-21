@@ -54,10 +54,10 @@ void main() {
                 ? 'Your games and opponents'
                 : 'Your databases';
             // Bounds measured from the actual generated bitmaps, including
-            // all pieces, branch endpoints and the Library database rims.
+            // all pieces, branch endpoints and the Library database outline.
             final subject = prep
-                ? const Rect.fromLTRB(.645, .078, .936, .492)
-                : const Rect.fromLTRB(.669, .111, .85, .58);
+                ? const Rect.fromLTRB(.645, .078, .936, .656)
+                : const Rect.fromLTRB(.694, .109, .826, .574);
             await tester.pumpWidget(
               MaterialApp(
                 theme: light ? AppTheme.lightTheme : AppTheme.darkTheme,

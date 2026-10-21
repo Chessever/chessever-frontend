@@ -42,13 +42,14 @@ class TeamScoreCardScreen extends ConsumerWidget {
       phone: 20.sp,
       tablet: 24.sp,
     );
-    final about =
-        ref.watch(tourDetailScreenProvider).valueOrNull?.aboutTourModel;
+    final about = ref
+        .watch(tourDetailScreenProvider)
+        .valueOrNull
+        ?.aboutTourModel;
     final eventName = about?.name;
-    final eventShareId =
-        about?.groupBroadcastId?.isNotEmpty == true
-            ? about!.groupBroadcastId!
-            : about?.id;
+    final eventShareId = about?.groupBroadcastId?.isNotEmpty == true
+        ? about!.groupBroadcastId!
+        : about?.id;
     final shareUrl = buildTeamEventShareUrl(
       teamName: team.teamName,
       canonicalEventId: eventShareId,
@@ -83,15 +84,14 @@ class TeamScoreCardScreen extends ConsumerWidget {
                   ),
                   title: PlayerNameShareTarget(
                     playerName: team.teamName,
-                    onShare:
-                        () => _shareTeamScorecard(
-                          context: context,
-                          ref: ref,
-                          team: team,
-                          matches: matches,
-                          eventName: eventName,
-                          shareUrl: shareUrl,
-                        ),
+                    onShare: () => _shareTeamScorecard(
+                      context: context,
+                      ref: ref,
+                      team: team,
+                      matches: matches,
+                      eventName: eventName,
+                      shareUrl: shareUrl,
+                    ),
                     coachmarkMessage:
                         'Tap the team’s name to share this performance.',
                     child: Text(
@@ -240,7 +240,7 @@ class _TeamHeader extends StatelessWidget {
                     Expanded(
                       child: _StatBox(
                         label: 'Team Pts',
-                        value: '${team.matchPoints}',
+                        value: team.matchPointsLabel,
                         height: avatarSize,
                       ),
                     ),
@@ -305,14 +305,13 @@ class _StatBox extends StatelessWidget {
         children: [
           Text(
             value,
-            style:
-                ResponsiveHelper.isTablet
-                    ? AppTypography.textLgBold.copyWith(
-                      color: context.colors.textPrimary,
-                    )
-                    : AppTypography.textMdBold.copyWith(
-                      color: context.colors.textPrimary,
-                    ),
+            style: ResponsiveHelper.isTablet
+                ? AppTypography.textLgBold.copyWith(
+                    color: context.colors.textPrimary,
+                  )
+                : AppTypography.textMdBold.copyWith(
+                    color: context.colors.textPrimary,
+                  ),
           ),
           SizedBox(height: ResponsiveHelper.isTablet ? 6.h : 4.h),
           Text(
@@ -444,21 +443,19 @@ Future<void> _shareTeamScorecard({
     if (!context.mounted) return;
 
     final tempDir = await getTemporaryDirectory();
-    final safe =
-        team.teamName
-            .replaceAll(RegExp(r'[^A-Za-z0-9]+'), '-')
-            .replaceAll(RegExp(r'^-+|-+$'), '')
-            .toLowerCase();
+    final safe = team.teamName
+        .replaceAll(RegExp(r'[^A-Za-z0-9]+'), '-')
+        .replaceAll(RegExp(r'^-+|-+$'), '')
+        .toLowerCase();
     final file = io.File(
       '${tempDir.path}/${safe.isEmpty ? 'team' : safe}-scorecard.png',
     );
     await file.writeAsBytes(imageBytes);
     if (!context.mounted) return;
 
-    final subject =
-        eventName?.trim().isNotEmpty == true
-            ? '${team.teamName} — $eventName'
-            : team.teamName;
+    final subject = eventName?.trim().isNotEmpty == true
+        ? '${team.teamName} — $eventName'
+        : team.teamName;
 
     await showShareImagePreview(
       context,
@@ -471,16 +468,15 @@ Future<void> _shareTeamScorecard({
           sharePositionOrigin: const Rect.fromLTWH(0, 0, 1, 1),
         );
       },
-      onShareLink:
-          shareUrl == null || shareUrl.isEmpty
-              ? null
-              : () async {
-                await Share.share(
-                  shareUrl,
-                  subject: subject,
-                  sharePositionOrigin: const Rect.fromLTWH(0, 0, 1, 1),
-                );
-              },
+      onShareLink: shareUrl == null || shareUrl.isEmpty
+          ? null
+          : () async {
+              await Share.share(
+                shareUrl,
+                subject: subject,
+                sharePositionOrigin: const Rect.fromLTWH(0, 0, 1, 1),
+              );
+            },
     );
   } catch (e) {
     debugPrint('Failed to share team scorecard: $e');

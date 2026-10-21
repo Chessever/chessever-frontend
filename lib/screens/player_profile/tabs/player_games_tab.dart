@@ -24,6 +24,7 @@ import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrap
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/widgets/app_snack.dart';
 import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
+import 'package:chessever2/widgets/paywall/past_game_access.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/scroll_cache.dart';
 import 'package:chessever2/utils/foreground_task_scheduler.dart';
@@ -965,9 +966,11 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
         allowStockfishFallback: true,
         streamEnabled: true,
         onChangedWithLiveGames: (updatedGames) async {
-          final hasPremium = await requirePremiumGuard(context, ref);
-          if (!hasPremium) return;
-          if (!mounted) return;
+          final allowed = await ensurePastGameAccess(
+            context,
+            game: updatedGames[entry.gameIndex],
+          );
+          if (!allowed || !mounted) return;
 
           ref
               .read(gameCardWrapperProvider)
@@ -1064,10 +1067,11 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
       viewSource: ChessboardView.playerProfile,
       playerProfileDataSource: widget.dataSource,
       onChangedWithLiveGames: (updatedGames) async {
-        // Premium guard - show paywall if not subscribed
-        final hasPremium = await requirePremiumGuard(context, ref);
-        if (!hasPremium) return;
-        if (!mounted) return;
+        final allowed = await ensurePastGameAccess(
+          context,
+          game: updatedGames[gameIndex],
+        );
+        if (!allowed || !mounted) return;
 
         ref
             .read(gameCardWrapperProvider)

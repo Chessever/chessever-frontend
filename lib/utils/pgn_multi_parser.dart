@@ -52,7 +52,7 @@ List<ParsedPgnEntry> parsePgnsToChessGames(String text) {
   for (var i = 0; i < raw.length; i++) {
     final pgn = raw[i];
     try {
-      final game = ChessGame.fromPgn('imported_$i', pgn);
+      final game = ChessGame.fromPgn(importedGameId(pgn, i), pgn);
       if (game.mainline.isEmpty) continue;
       entries.add(ParsedPgnEntry(chessGame: game, rawPgn: pgn));
     } catch (_) {
@@ -60,4 +60,19 @@ List<ParsedPgnEntry> parsePgnsToChessGames(String text) {
     }
   }
   return entries;
+}
+
+/// The id of the [index]th game of an import, [pgn] its text. Its own per
+/// game: the id is the game's identity for its board, its saved copies and
+/// its likes, so two imports' first games must not share one. The same
+/// game in the same place keeps it, so importing a file again finds what
+/// was saved from it. FNV-1a, not [String.hashCode], which changes between
+/// runs.
+String importedGameId(String pgn, int index) {
+  var hash = 0x811c9dc5;
+  for (final unit in pgn.trim().codeUnits) {
+    hash ^= unit;
+    hash = (hash * 0x01000193) & 0xffffffff;
+  }
+  return 'imported_${hash.toRadixString(16).padLeft(8, '0')}_$index';
 }

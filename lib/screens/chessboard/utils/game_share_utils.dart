@@ -583,7 +583,11 @@ String? buildGameShareUrl({
       includeTourContext = true;
       break;
     case GameSource.savedAnalysis:
-      linkableId = _trimmedOrNull(savedAnalysisData?.sourceGameId);
+      // The model carries the same source id (see GamesTourModel.likeId),
+      // for callers that hold no SavedAnalysisData: a Feed post Watch made.
+      linkableId = _trimmedOrNull(
+        savedAnalysisData?.sourceGameId ?? game.sourceGameId,
+      );
       includeTourContext = true;
       break;
     case GameSource.gamebase:

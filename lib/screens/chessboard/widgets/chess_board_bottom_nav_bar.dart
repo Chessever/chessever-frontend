@@ -2,6 +2,8 @@ import 'dart:math' as math;
 import 'package:chessever2/e2e/e2e_ids.dart';
 import 'package:chessever2/providers/engine_settings_provider.dart';
 import 'package:chessever2/screens/chessboard/utils/live_stream_coachmark.dart';
+import 'package:chessever2/screens/chessboard/video/video_session.dart';
+import 'package:chessever2/screens/chessboard/video/video_widgets.dart';
 import 'package:chessever2/screens/chessboard/widgets/board_arrow_key_shortcuts.dart';
 import 'package:chessever2/screens/chessboard/widgets/chess_board_bottom_navbar.dart';
 import 'package:chessever2/theme/app_colors.dart';
@@ -45,6 +47,7 @@ class ChessBoardBottomNavBar extends ConsumerStatefulWidget {
 
   /// Override for tests. Production persists the hint through the app database.
   final LiveStreamCoachmarkTracker? liveStreamCoachmarkTracker;
+  final LiveStreamCoachmarkTracker? restoreVideoCoachmarkTracker;
 
   const ChessBoardBottomNavBar({
     super.key,
@@ -70,6 +73,7 @@ class ChessBoardBottomNavBar extends ConsumerStatefulWidget {
     this.showGamebaseButton = false,
     this.explorerPanelVisible = false,
     this.liveStreamCoachmarkTracker,
+    this.restoreVideoCoachmarkTracker,
   });
 
   @override
@@ -77,15 +81,64 @@ class ChessBoardBottomNavBar extends ConsumerStatefulWidget {
       _ChessBoardBottomNavBarState();
 }
 
-class _ChessBoardBottomNavBarState
-    extends ConsumerState<ChessBoardBottomNavBar> {
+class _ChessBoardBottomNavBarState extends ConsumerState<ChessBoardBottomNavBar>
+    with SingleTickerProviderStateMixin {
   final GlobalKey _videoToggleTargetKey = GlobalKey();
   OverlayEntry? _videoCoachmarkEntry;
   bool _videoCoachmarkScheduled = false;
+  bool _restoringVideo = false;
+  int _coachmarkGeneration = 0;
+  EventVideoSession? _videoSession;
+  int _chipDismissals = 0;
+  late final AnimationController _cameraPulse = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1000),
+  );
+  late final Animation<double> _cameraScale = TweenSequence<double>([
+    TweenSequenceItem(
+      tween: Tween(
+        begin: 1.0,
+        end: 1.12,
+      ).chain(CurveTween(curve: Curves.easeInOut)),
+      weight: 1,
+    ),
+    TweenSequenceItem(
+      tween: Tween(
+        begin: 1.12,
+        end: 1.0,
+      ).chain(CurveTween(curve: Curves.easeInOut)),
+      weight: 1,
+    ),
+  ]).animate(_cameraPulse);
 
   bool get _hasVideoToggle => widget.onVideoToggle != null;
   LiveStreamCoachmarkTracker get _coachmarkTracker =>
       widget.liveStreamCoachmarkTracker ?? liveStreamCoachmarkTracker;
+  LiveStreamCoachmarkTracker get _restoreTracker =>
+      widget.restoreVideoCoachmarkTracker ?? liveStreamRestoreCoachmarkTracker;
+
+  bool _canShowCoachmark(bool restore) =>
+      _hasVideoToggle &&
+      widget.isActivePage &&
+      (restore ? !widget.videoVisible : widget.videoVisible);
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final session = EventVideoScope.maybeOf(context)?.session;
+    if (!identical(session, _videoSession)) {
+      _videoSession = session;
+      _chipDismissals = session?.chipDismissals ?? 0;
+    } else if (session != null && _chipDismissals != session.chipDismissals) {
+      _chipDismissals = session.chipDismissals;
+      _hideVideoCoachmark();
+      if (_canShowCoachmark(true)) _scheduleVideoCoachmark(restore: true);
+    }
+    if (MediaQuery.disableAnimationsOf(context) ||
+        MediaQuery.accessibleNavigationOf(context)) {
+      _cameraPulse.reset();
+    }
+  }
 
   @override
   void initState() {
@@ -96,9 +149,8 @@ class _ChessBoardBottomNavBarState
   @override
   void didUpdateWidget(covariant ChessBoardBottomNavBar oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (!_hasVideoToggle || !widget.videoVisible || !widget.isActivePage) {
+    if (!_canShowCoachmark(_restoringVideo)) {
       _hideVideoCoachmark();
-      return;
     }
     final toggleAppeared = oldWidget.onVideoToggle == null;
     final becameActive = !oldWidget.isActivePage;
@@ -112,21 +164,24 @@ class _ChessBoardBottomNavBarState
 
   @override
   void dispose() {
+    _coachmarkGeneration++;
     _videoCoachmarkEntry?.remove();
     _videoCoachmarkEntry = null;
+    _cameraPulse.dispose();
     super.dispose();
   }
 
   /// Readers miss the camera switch, so its first live appearance gets one
   /// persistent, anchored hint. Tapping its close button or camera clears it.
-  void _scheduleVideoCoachmark() {
+  void _scheduleVideoCoachmark({bool restore = false}) {
     if (_videoCoachmarkScheduled) return;
     _videoCoachmarkScheduled = true;
+    _restoringVideo = restore;
+    final generation = ++_coachmarkGeneration;
+    final tracker = restore ? _restoreTracker : _coachmarkTracker;
     WidgetsBinding.instance.addPostFrameCallback((_) async {
-      if (!mounted ||
-          !_hasVideoToggle ||
-          !widget.videoVisible ||
-          !widget.isActivePage) {
+      if (!mounted || generation != _coachmarkGeneration) return;
+      if (!_canShowCoachmark(restore)) {
         _videoCoachmarkScheduled = false;
         return;
       }
@@ -135,38 +190,47 @@ class _ChessBoardBottomNavBarState
         _videoCoachmarkScheduled = false;
         return;
       }
-      final claimed = await _coachmarkTracker.claim();
-      if (!mounted) {
-        if (claimed) _coachmarkTracker.release();
+      final claimed = await tracker.claim();
+      if (!mounted || generation != _coachmarkGeneration) {
+        if (claimed) tracker.release();
         return;
       }
       _videoCoachmarkScheduled = false;
       if (!claimed ||
-          !_hasVideoToggle ||
-          !widget.videoVisible ||
-          !widget.isActivePage) {
-        if (claimed) _coachmarkTracker.release();
+          !_canShowCoachmark(restore) ||
+          (route != null && !route.isCurrent)) {
+        if (claimed) tracker.release();
         return;
       }
       final overlay = Overlay.maybeOf(context, rootOverlay: true);
       if (overlay == null) {
-        _coachmarkTracker.release();
+        tracker.release();
         return;
       }
       _videoCoachmarkEntry = OverlayEntry(
-        builder:
-            (_) => _LiveStreamCoachmark(
-              targetKey: _videoToggleTargetKey,
-              onClose: _hideVideoCoachmark,
-            ),
+        builder: (_) => _LiveStreamCoachmark(
+          targetKey: _videoToggleTargetKey,
+          onClose: _hideVideoCoachmark,
+          message: restore
+              ? 'Show video here'
+              : 'Turn off the stream by clicking camera icon.',
+        ),
       );
       overlay.insert(_videoCoachmarkEntry!);
+      if (restore &&
+          !MediaQuery.disableAnimationsOf(context) &&
+          !MediaQuery.accessibleNavigationOf(context)) {
+        _cameraPulse.forward(from: 0);
+      }
       setState(() {});
-      await _coachmarkTracker.markShown();
+      await tracker.markShown();
     });
   }
 
   void _hideVideoCoachmark() {
+    _coachmarkGeneration++;
+    _videoCoachmarkScheduled = false;
+    _cameraPulse.reset();
     if (_videoCoachmarkEntry == null) return;
     _videoCoachmarkEntry?.remove();
     _videoCoachmarkEntry = null;
@@ -313,16 +377,19 @@ class _ChessBoardBottomNavBarState
                   _hideVideoCoachmark();
                   widget.onVideoToggle?.call();
                 },
-                icon: Icon(
-                  widget.videoVisible
-                      ? Icons.videocam_off_outlined
-                      : Icons.videocam_outlined,
-                  // Material camera glyphs have more inset than the SVG controls.
-                  size: 28.sp,
-                  color:
-                      _videoCoachmarkEntry != null
-                          ? context.colors.accentText
-                          : context.colors.iconPrimary,
+                icon: ScaleTransition(
+                  key: const ValueKey('video_camera_pulse'),
+                  scale: _cameraScale,
+                  child: Icon(
+                    widget.videoVisible
+                        ? Icons.videocam_off_outlined
+                        : Icons.videocam_outlined,
+                    // Material camera glyphs have more inset than the SVG controls.
+                    size: 28.sp,
+                    color: _videoCoachmarkEntry != null
+                        ? context.colors.accentText
+                        : context.colors.iconPrimary,
+                  ),
                 ),
               ),
             ),
@@ -437,10 +504,15 @@ class _ChessBoardBottomNavBarState
 }
 
 class _LiveStreamCoachmark extends StatelessWidget {
-  const _LiveStreamCoachmark({required this.targetKey, required this.onClose});
+  const _LiveStreamCoachmark({
+    required this.targetKey,
+    required this.onClose,
+    required this.message,
+  });
 
   final GlobalKey targetKey;
   final VoidCallback onClose;
+  final String message;
 
   @override
   Widget build(BuildContext context) {
@@ -499,7 +571,7 @@ class _LiveStreamCoachmark extends StatelessWidget {
                       children: [
                         Expanded(
                           child: Text(
-                            'Turn off the stream by clicking camera icon.',
+                            message,
                             textAlign: TextAlign.left,
                             style: AppTypography.textSmSemiBold.copyWith(
                               color: ink,

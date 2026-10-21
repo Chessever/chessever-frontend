@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:chessever2/revenue_cat_service/billing_account_queue.dart';
 
 import 'package:chessever2/services/push_notifications_service.dart';
 import 'package:flutter/foundation.dart';
@@ -75,9 +76,51 @@ class OfferingsFetch {
 }
 
 class RevenueCatService {
+  static String? _supabaseAccount() {
+    try {
+      return Supabase.instance.client.auth.currentUser?.id;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  late final _accountQueue = BillingAccountQueue(_currentAccount);
+  final String? Function() _currentAccount;
+  final bool Function() _isPermanentAccount;
+  void Function(CustomerInfo)? _customerInfoListener;
+
+  Future<T> _forCurrentAccount<T>(
+    Future<T> Function() operation, {
+    bool requirePermanentAccount = false,
+  }) {
+    final account = _currentAccount();
+    if (account == null ||
+        (requirePermanentAccount && !_isPermanentAccount())) {
+      return Future.error(StateError('Sign in before making a purchase.'));
+    }
+    return _accountQueue.run(account, () async {
+      if (await Purchases.appUserID != account) {
+        await Purchases.logIn(account);
+      }
+      if (_currentAccount() != account) {
+        throw StateError('Account changed. Please try again.');
+      }
+      return operation();
+    });
+  }
+
   static final RevenueCatService _instance = RevenueCatService._internal();
   factory RevenueCatService() => _instance;
-  RevenueCatService._internal();
+  RevenueCatService._internal()
+    : _currentAccount = _supabaseAccount,
+      _isPermanentAccount = (() {
+        final user = Supabase.instance.client.auth.currentUser;
+        return user != null && !user.isAnonymous;
+      });
+
+  @visibleForTesting
+  RevenueCatService.forTesting(this._currentAccount)
+    : _isPermanentAccount = (() => true);
 
   /// The entitlement identifier for ChessEver premium
   /// Must match the lookup_key in RevenueCat dashboard
@@ -88,6 +131,12 @@ class RevenueCatService {
   bool _sdkReady = false;
   bool get isSdkReady => _sdkReady;
   Object? _sdkConfigurationError;
+
+  /// The `getOfferings` call still running natively. A timed-out request is
+  /// not cancelled (Play Billing can take longer than our timeout to bind on
+  /// a cold start), so the next fetch joins it instead of abandoning its
+  /// answer and overlapping it with a second store call.
+  Future<Offerings>? _offeringsInFlight;
 
   void Function(CustomerInfo)? _pendingCustomerInfoListener;
 
@@ -123,7 +172,9 @@ class RevenueCatService {
     try {
       onSdkStateChanged?.call();
     } catch (callbackError) {
-      debugPrint('RevenueCatService: SDK state callback failed: $callbackError');
+      debugPrint(
+        'RevenueCatService: SDK state callback failed: $callbackError',
+      );
     }
   }
 
@@ -136,35 +187,37 @@ class RevenueCatService {
   Future<void> logIn(String userId) async {
     if (!_sdkReady) return;
     try {
-      final result = await Purchases.logIn(userId);
-      debugPrint(
-        '✅ RevenueCat user logged in: ${result.customerInfo.originalAppUserId}',
-      );
+      await _accountQueue.run(userId, () async {
+        final result = await Purchases.logIn(userId);
+        debugPrint(
+          '✅ RevenueCat user logged in: ${result.customerInfo.originalAppUserId}',
+        );
 
-      // Capture device identifiers for the RC <> AppsFlyer integration. On
-      // iOS this is IDFA (only populated if ATT was granted) + IDFV + IP; on
-      // Android this is GAID + Android ID + IP. Idempotent — safe to call on
-      // every login.
-      try {
-        await Purchases.collectDeviceIdentifiers();
-      } catch (e) {
-        debugPrint('RevenueCatService: collectDeviceIdentifiers failed: $e');
-      }
-
-      // Forward the device's OneSignal subscription ID to the new RC customer
-      // profile so RC's OneSignal integration can target this device with
-      // subscription-state push notifications (trial expiring, billing issue,
-      // etc.). The subscription ID is device-scoped, but RC scopes attributes
-      // per-customer — so every user switch needs to re-stamp it.
-      try {
-        final osId =
-            PushNotificationsService.instance.currentOneSignalSubscriptionId;
-        if (osId != null && osId.isNotEmpty) {
-          await Purchases.setOnesignalID(osId);
+        // Capture device identifiers for the RC <> AppsFlyer integration. On
+        // iOS this is IDFA (only populated if ATT was granted) + IDFV + IP; on
+        // Android this is GAID + Android ID + IP. Idempotent — safe to call on
+        // every login.
+        try {
+          await Purchases.collectDeviceIdentifiers();
+        } catch (e) {
+          debugPrint('RevenueCatService: collectDeviceIdentifiers failed: $e');
         }
-      } catch (e) {
-        debugPrint('RevenueCatService: setOnesignalID failed: $e');
-      }
+
+        // Forward the device's OneSignal subscription ID to the new RC customer
+        // profile so RC's OneSignal integration can target this device with
+        // subscription-state push notifications (trial expiring, billing issue,
+        // etc.). The subscription ID is device-scoped, but RC scopes attributes
+        // per-customer — so every user switch needs to re-stamp it.
+        try {
+          final osId =
+              PushNotificationsService.instance.currentOneSignalSubscriptionId;
+          if (osId != null && osId.isNotEmpty) {
+            await Purchases.setOnesignalID(osId);
+          }
+        } catch (e) {
+          debugPrint('RevenueCatService: setOnesignalID failed: $e');
+        }
+      });
     } catch (e) {
       debugPrint('❌ RevenueCat login error: $e');
     }
@@ -175,7 +228,7 @@ class RevenueCatService {
   Future<void> logOut() async {
     if (!_sdkReady) return;
     try {
-      await Purchases.logOut();
+      await _accountQueue.run(_currentAccount(), Purchases.logOut);
       debugPrint('✅ RevenueCat user logged out');
     } catch (e) {
       debugPrint('❌ RevenueCat logout error: $e');
@@ -186,14 +239,12 @@ class RevenueCatService {
   Future<bool> isSubscribed() async {
     if (_sdkReady) {
       try {
-        final customerInfo = await Purchases.getCustomerInfo();
+        final customerInfo = await getCustomerInfo();
         // Check for our specific entitlement
-        final hasEntitlement = customerInfo.entitlements.active.containsKey(
-          premiumEntitlement,
-        );
-        // Fallback: also check if any entitlement is active
-        final hasAnyEntitlement = customerInfo.entitlements.active.isNotEmpty;
-        if (hasEntitlement || hasAnyEntitlement) return true;
+        final hasEntitlement =
+            customerInfo?.entitlements.active.containsKey(premiumEntitlement) ??
+            false;
+        if (hasEntitlement) return true;
       } catch (e) {
         debugPrint('Error checking subscription: $e');
       }
@@ -207,7 +258,14 @@ class RevenueCatService {
   Future<CustomerInfo?> getCustomerInfo() async {
     if (!_sdkReady) return null;
     try {
-      return await Purchases.getCustomerInfo();
+      final account = _currentAccount();
+      if (account == null || await Purchases.appUserID != account) return null;
+      final info = await Purchases.getCustomerInfo();
+      if (_currentAccount() != account ||
+          await Purchases.appUserID != account) {
+        return null;
+      }
+      return info;
     } catch (e) {
       debugPrint('Error getting customer info: $e');
       return null;
@@ -269,8 +327,8 @@ class RevenueCatService {
       return configurationError == null
           ? const OfferingsFetch.notConfigured()
           : OfferingsFetch.failure(
-            'RevenueCat configuration failed: $configurationError',
-          );
+              'RevenueCat configuration failed: $configurationError',
+            );
     }
 
     Object? lastError;
@@ -278,7 +336,9 @@ class RevenueCatService {
 
     for (var attempt = 1; attempt <= attempts; attempt++) {
       try {
-        final offerings = await Purchases.getOfferings().timeout(requestTimeout);
+        final request = _offeringsInFlight ??= Purchases.getOfferings()
+            .whenComplete(() => _offeringsInFlight = null);
+        final offerings = await request.timeout(requestTimeout);
         final current = offerings.current;
         if (current != null && current.availablePackages.isNotEmpty) {
           debugPrint('📦 Current offering: ${current.identifier}');
@@ -301,7 +361,7 @@ class RevenueCatService {
         debugPrint(
           hasOffering
               ? '⚠️ Current offering "${current.identifier}" has no packages '
-                  '— the store returned no products for this account'
+                    '— the store returned no products for this account'
               : '⚠️ No current offering returned by RevenueCat',
         );
         unawaited(
@@ -337,20 +397,41 @@ class RevenueCatService {
     // paywall that never loads, and it was previously invisible in production.
     if (lastError != null) {
       final code = _storeErrorCode(lastError);
-      unawaited(
-        Sentry.captureException(
-          lastError,
-          stackTrace: lastStackTrace,
-          withScope: (scope) {
-            scope.setTag('rc_offerings_error', code);
-            scope.setTag('rc_sdk_ready', '$_sdkReady');
-          },
-        ),
-      );
+      if (_deviceSideOfferingsErrors.contains(code)) {
+        Sentry.addBreadcrumb(
+          Breadcrumb(
+            category: 'revenuecat',
+            message: 'offerings unavailable: $code',
+            level: SentryLevel.warning,
+          ),
+        );
+      } else {
+        unawaited(
+          Sentry.captureException(
+            lastError,
+            stackTrace: lastStackTrace,
+            withScope: (scope) {
+              scope.setTag('rc_offerings_error', code);
+              scope.setTag('rc_sdk_ready', '$_sdkReady');
+            },
+          ),
+        );
+      }
       return OfferingsFetch.failure('$code: $lastError');
     }
     return const OfferingsFetch.failure(null);
   }
+
+  /// Offerings failures that describe the device or account rather than a
+  /// fault we can fix, so they stay breadcrumbs instead of Sentry issues:
+  /// Play Billing refusing this user (`PurchaseNotAllowedError`: restricted
+  /// or missing Play account, CHESSEVER-1W6/1W7), and the store not answering
+  /// within the timeout on a cold start (CHESSEVER-1W8/1WG), which the
+  /// in-flight join above and the paywall's own retry already absorb.
+  static const Set<String> _deviceSideOfferingsErrors = {
+    'PurchaseNotAllowedError',
+    'TimeoutException',
+  };
 
   /// Best-effort extraction of the underlying store/SDK error code.
   ///
@@ -448,17 +529,20 @@ class RevenueCatService {
     try {
       debugPrint('🛒 Starting purchase for: $label');
 
-      final purchaseResult = await run();
+      final purchaseResult = await _forCurrentAccount(
+        run,
+        requirePermanentAccount: true,
+      );
 
-      final isActive =
-          purchaseResult.customerInfo.entitlements.active.isNotEmpty;
+      final isActive = purchaseResult.customerInfo.entitlements.active
+          .containsKey(premiumEntitlement);
       debugPrint('✅ Purchase completed. Active: $isActive');
 
       return isActive
           ? PurchaseAttemptResult.success()
           : PurchaseAttemptResult.error(
-            'Purchase completed but no entitlement activated',
-          );
+              'Purchase completed but no entitlement activated',
+            );
     } on PurchasesErrorCode catch (errorCode) {
       if (errorCode == PurchasesErrorCode.purchaseCancelledError) {
         debugPrint('ℹ️ Purchase cancelled by user');
@@ -492,10 +576,13 @@ class RevenueCatService {
   Future<bool> restorePurchases() async {
     if (!_sdkReady) return false;
     try {
-      final customerInfo = await Purchases.restorePurchases();
-      final hasEntitlement =
-          customerInfo.entitlements.active.containsKey(premiumEntitlement) ||
-          customerInfo.entitlements.active.isNotEmpty;
+      final customerInfo = await _forCurrentAccount(
+        Purchases.restorePurchases,
+        requirePermanentAccount: true,
+      );
+      final hasEntitlement = customerInfo.entitlements.active.containsKey(
+        premiumEntitlement,
+      );
       debugPrint('✅ Restore completed. Has entitlement: $hasEntitlement');
       return hasEntitlement;
     } catch (e) {
@@ -504,20 +591,16 @@ class RevenueCatService {
     }
   }
 
-  /// Sync purchases with RevenueCat servers.
-  /// Call this at critical points: app foreground, app startup, after auth changes.
-  /// This ensures subscription status is always up-to-date.
-  /// Returns the latest CustomerInfo after sync.
+  /// Refresh the signed-in account's subscription status on startup/resume.
+  /// Receipt restores stay behind the explicit Restore action: native
+  /// syncPurchases can transfer the device's purchases to a different account.
+  /// The notifier also refreshes the shared backend entitlement independently.
   Future<CustomerInfo?> syncPurchases() async {
     if (!_sdkReady) return null;
     try {
-      // Invalidate cache first to ensure we get fresh data from RevenueCat servers
-      await Purchases.invalidateCustomerInfoCache();
-      await Purchases.syncPurchases();
-      debugPrint('✅ RevenueCat purchases synced');
-      // Always fetch fresh customer info after sync to ensure state is up-to-date
-      // This handles edge cases where the listener doesn't fire (e.g., expired subscriptions)
-      return await Purchases.getCustomerInfo();
+      // Keep the SDK cache for offline access. getCustomerInfo refreshes stale
+      // status without reassigning receipts from the device's store account.
+      return await _forCurrentAccount(Purchases.getCustomerInfo);
     } catch (e) {
       debugPrint('❌ RevenueCat sync error: $e');
       return null;
@@ -526,13 +609,27 @@ class RevenueCatService {
 
   /// Set up listener for customer info changes
   void setCustomerInfoListener(void Function(CustomerInfo) listener) {
+    final previous = _customerInfoListener;
+    if (previous != null && _sdkReady) {
+      Purchases.removeCustomerInfoUpdateListener(previous);
+    }
+    // Re-read the current identity. A queued callback can belong to the
+    // account that just signed out, even after the SDK has switched users.
+    void verifiedListener(CustomerInfo _) {
+      unawaited(() async {
+        final current = await getCustomerInfo();
+        if (current != null) listener(current);
+      }());
+    }
+
+    _customerInfoListener = verifiedListener;
     if (!_sdkReady) {
       // Provider may construct before configure finishes, or ChessEver Test
       // may intentionally skip RC. Attach later via [markSdkReady].
-      _pendingCustomerInfoListener = listener;
+      _pendingCustomerInfoListener = verifiedListener;
       return;
     }
-    Purchases.addCustomerInfoUpdateListener(listener);
+    Purchases.addCustomerInfoUpdateListener(verifiedListener);
   }
 
   /// iOS only. Opens Apple's native offer-code redemption sheet.
@@ -619,17 +716,24 @@ class BackendEntitlementSnapshot {
       _ => null,
     };
     final status = json['status'] as String?;
+    final isActive = json['is_premium'] as bool? ?? false;
+    final expiresAt = switch (json['expires_at']) {
+      String s => DateTime.tryParse(s),
+      _ => null,
+    };
     return BackendEntitlementSnapshot(
-      isActive: json['is_premium'] as bool? ?? false,
+      isActive: isActive,
       provider: json['provider'] as String?,
-      expiresAt: switch (json['expires_at']) {
-        String s => DateTime.tryParse(s),
-        _ => null,
-      },
-      willRenew: cancelAt == null,
+      expiresAt: expiresAt,
+      willRenew:
+          (json['will_renew'] as bool?) ??
+          (isActive &&
+              expiresAt != null &&
+              cancelAt == null &&
+              !(json['product_id'] as String? ?? '').startsWith('rc_promo_')),
       productId: json['product_id'] as String?,
       status: status,
-      inBillingGracePeriod: status == 'past_due',
+      inBillingGracePeriod: isActive && status == 'past_due',
       billingIssueDetectedAt: switch (json['billing_issue_detected_at']) {
         String s => DateTime.tryParse(s),
         _ => null,

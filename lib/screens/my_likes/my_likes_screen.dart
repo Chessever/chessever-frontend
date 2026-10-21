@@ -286,7 +286,7 @@ class _MyLikesGamesPageState extends ConsumerState<MyLikesGamesPage>
                   SizedBox(width: 8.w),
                   Expanded(
                     child: Text(
-                      'My Likes',
+                      'Likes',
                       style: AppTypography.textLgBold.copyWith(
                         color: context.colors.textPrimary,
                       ),

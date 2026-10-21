@@ -541,19 +541,15 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
         ? folders
         : (List<LibraryFolder>.from(folders)..removeAt(likedIdx));
     // My Prep players are Library folders too, as on desktop: each holds a
-    // database per account. A player saved to the cloud is shown once, by
-    // their own card, rather than again as the cloud folder it syncs to.
+    // database per account.
     final prepProfiles = ref.watch(prepLibraryProfilesProvider);
-    final linkedCloudIds = ref.watch(prepLinkedCloudFolderIdsProvider);
-    final prepById = {
-      for (final p in prepProfiles) prepLibraryFolder(p).id: p,
-    };
+    final prepById = {for (final p in prepProfiles) prepLibraryFolder(p).id: p};
     final allFolders = <LibraryFolder>[
       if (likedIdx != -1) folders[likedIdx],
       kTwicFolder,
       if (!widget.databasesOnly) kMiniaturesFolder,
       for (final p in prepProfiles) prepLibraryFolder(p),
-      ...rest.where((f) => !linkedCloudIds.contains(f.id)),
+      ...rest,
     ];
     final filteredFolders = _filterFolders(allFolders);
 

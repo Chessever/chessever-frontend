@@ -10,7 +10,11 @@ import 'inbox_message.dart';
 abstract interface class InboxSource {
   bool hasSession(String ownerId);
   Future<List<InboxMessage>> fetch(String ownerId);
-  Future<DateTime> markRead(String ownerId, String messageId);
+  Future<DateTime> markRead(
+    String ownerId,
+    String messageId, {
+    DateTime? expectedPublishedAt,
+  });
 }
 
 /// Uses the app's configured Supabase client; never a service key or push SDK.
@@ -19,6 +23,15 @@ class SupabaseInboxSource implements InboxSource {
   final SupabaseClient Function() _client;
   SupabaseClient get client => _client();
   static const _requestTimeout = Duration(seconds: 15);
+
+  /// Whether the listing that carries a message's format and image exists
+  /// on this database; cleared the first time it turns out not to.
+  bool _richListing = true;
+  bool _versionedReads = true;
+
+  /// PostgREST's and Postgres's "no such function".
+  static bool _isMissingFunction(PostgrestException error) =>
+      error.code == 'PGRST202' || error.code == '42883';
 
   @override
   bool hasSession(String ownerId) {
@@ -64,20 +77,28 @@ class SupabaseInboxSource implements InboxSource {
     while (true) {
       await _freshSession(requestClient, ownerId);
       final session = _session(requestClient, ownerId);
-      final rows = await requestClient
-          .rpc(
-            'list_editorial_inbox',
-            params: {
-              'p_before_published_at': cursor?.publishedAt
-                  .toUtc()
-                  .toIso8601String(),
-              'p_before_id': cursor?.id,
-              'p_limit': 100,
-            },
-          )
+      final params = {
+        'p_before_published_at': cursor?.publishedAt.toUtc().toIso8601String(),
+        'p_before_id': cursor?.id,
+        'p_limit': 100,
+      };
+      Future<dynamic> list(String rpc) => requestClient
+          .rpc(rpc, params: params)
           // Keep A's credential pinned if the SDK awaits again during dispatch.
           .setHeader('Authorization', 'Bearer ${session.accessToken}')
           .timeout(_requestTimeout);
+      dynamic rows;
+      if (_richListing) {
+        try {
+          rows = await list('list_editorial_inbox_v2');
+        } on PostgrestException catch (error) {
+          if (!_isMissingFunction(error)) rethrow;
+          // A database from before rich messages: its listing still answers,
+          // with text only. Asked once, not on every page and refresh.
+          _richListing = false;
+        }
+      }
+      rows ??= await list('list_editorial_inbox');
       _session(requestClient, ownerId);
       final page = (rows as List)
           .map(
@@ -96,14 +117,36 @@ class SupabaseInboxSource implements InboxSource {
   }
 
   @override
-  Future<DateTime> markRead(String ownerId, String messageId) async {
+  Future<DateTime> markRead(
+    String ownerId,
+    String messageId, {
+    DateTime? expectedPublishedAt,
+  }) async {
     final requestClient = client;
     await _freshSession(requestClient, ownerId);
     final session = _session(requestClient, ownerId);
-    final result = await requestClient
-        .rpc('mark_editorial_inbox_read', params: {'p_message_id': messageId})
-        .setHeader('Authorization', 'Bearer ${session.accessToken}')
-        .timeout(_requestTimeout);
+    Future<dynamic> mark(String rpc, Map<String, dynamic> params) =>
+        requestClient
+            .rpc(rpc, params: params)
+            .setHeader('Authorization', 'Bearer ${session.accessToken}')
+            .timeout(_requestTimeout);
+    dynamic result;
+    if (expectedPublishedAt != null && _versionedReads) {
+      try {
+        result = await mark('mark_editorial_inbox_read_v2', {
+          'p_message_id': messageId,
+          'p_expected_published_at': expectedPublishedAt
+              .toUtc()
+              .toIso8601String(),
+        });
+      } on PostgrestException catch (error) {
+        if (!_isMissingFunction(error)) rethrow;
+        _versionedReads = false;
+      }
+    }
+    result ??= await mark('mark_editorial_inbox_read', {
+      'p_message_id': messageId,
+    });
     _session(requestClient, ownerId);
     // A null/invalid acknowledgement is a failure, not permission to clear dots.
     return DateTime.parse(result as String).toUtc();

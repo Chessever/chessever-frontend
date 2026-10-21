@@ -8,9 +8,8 @@ import 'package:chessever2/screens/tour_detail/games_tour/widgets/round_header_w
 import 'package:chessever2/widgets/positioned_list_scrollbar.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
-import 'package:chessever2/screens/tour_detail/games_tour/providers/games_app_bar_provider.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_list_presentation_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_grouped_provider.dart';
-import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_display_rounds.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_provider.dart';
 import 'package:chessever2/screens/group_event/widget/tour_loading_widget.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
@@ -39,22 +38,14 @@ class _GroupEventGamesTourContentBodyState
     extends ConsumerState<GroupEventGamesTourContentBody> {
   @override
   Widget build(BuildContext context) {
-    final gamesAppBar = ref.watch(gamesAppBarProvider);
     final groupedData = ref.watch(gamesTourGroupedProvider);
     if (groupedData.isLoading) {
       return const TourLoadingWidget();
     }
     final gamesByRound = groupedData.gamesByRound;
-    final selectedRoundId = gamesAppBar.value?.selectedId;
-    final userSelected = gamesAppBar.value?.userSelectedId ?? false;
-
-    final visibleRounds = selectGroupEventDisplayRounds(
-      rounds: groupedData.filteredRounds,
-      gamesByRound: gamesByRound,
-      upcomingPairingRoundIds: groupedData.upcomingPairingRoundIds,
-      selectedRoundId: selectedRoundId,
-      userSelected: userSelected,
-    );
+    // Same rounds, same order as an individual event's Games list: a live
+    // round whose boards have no moves yet stays on screen.
+    final visibleRounds = ref.watch(gamesTourDisplayRoundsProvider);
 
     if (visibleRounds.isEmpty) {
       return const SizedBox.shrink();

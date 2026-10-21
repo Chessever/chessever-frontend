@@ -24,16 +24,66 @@ export type PreferenceRow = {
  * Whether a user who already passed applyPreferences should receive a
  * per-game `game_started` push for a favorite-player board.
  *
- * A confirmed game-start window means either the combined `round_started`
- * notification or an earlier per-game fallback already covered this user.
- * Without that confirmation, keep the first per-game notification even when
- * several favorites play in the round; otherwise an early skipped
- * `round_started` row can suppress every start alert.
+ * A confirmed window for THIS board means its `round_started` board push
+ * already reached the user. Without one the user is kept, whatever other
+ * boards of the round they were already told about.
  */
 export function shouldReceiveGameStartedForPlayerFavorite(
   alreadyCoveredByGameStartWindow: boolean,
 ): boolean {
   return !alreadyCoveredByGameStartWindow;
+}
+
+/**
+ * A start window covers ONE BOARD for one user, never the whole round.
+ *
+ * Start alerts are per board: favorite two players on two boards and you get
+ * two "… is live." pushes, mirroring the two results at the end. The window
+ * exists only so the round_started board push and the later game_started row
+ * for the SAME board do not both reach you. It used to be keyed by round, so
+ * the first board alert a user got silenced every other favorite's board in
+ * that round. European Club Cup 2026 R3: 19 of 22 reachable Suleymanli
+ * favoriters got Mamedyarov's (or another favorite's) board and nothing for
+ * his; 252 of 609 board alerts went missing that weekend.
+ */
+export const GAME_START_WINDOW_PREFIX = "game_start:";
+
+export function gameStartWindowFamily(gameId: string): string {
+  return `${GAME_START_WINDOW_PREFIX}${gameId}`;
+}
+
+/** Board id of a per-board window; null for the old round-wide family. */
+export function gameIdFromWindowFamily(family: string): string | null {
+  if (!family.startsWith(GAME_START_WINDOW_PREFIX)) return null;
+  const gameId = family.slice(GAME_START_WINDOW_PREFIX.length);
+  return gameId.length > 0 ? gameId : null;
+}
+
+/** user → boards of this round whose start push already reached them. */
+export function coveredBoardsByUser(
+  rows: Iterable<{ user_id: string; family: string }>,
+): Map<string, Set<string>> {
+  const covered = new Map<string, Set<string>>();
+  for (const row of rows) {
+    const gameId = gameIdFromWindowFamily(row.family);
+    if (!gameId) continue;
+    const boards = covered.get(row.user_id);
+    if (boards) boards.add(gameId);
+    else covered.set(row.user_id, new Set([gameId]));
+  }
+  return covered;
+}
+
+/** Users whose start push for this one board has already gone out. */
+export function usersCoveredForBoard(
+  covered: Map<string, Set<string>>,
+  gameId: string,
+): Set<string> {
+  const users = new Set<string>();
+  for (const [userId, boards] of covered) {
+    if (boards.has(gameId)) users.add(userId);
+  }
+  return users;
 }
 
 /** Apply the confirmed-delivery window filter to game_started recipients. */

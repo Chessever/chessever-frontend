@@ -1,3 +1,4 @@
+import 'package:chessever2/screens/inbox/inbox_provider.dart';
 import 'package:chessever2/chat/botvinnik_chat_button.dart';
 import 'package:chessever2/chat/botvinnik_icon.dart';
 import 'package:chessever2/chat/botvinnik_provider.dart';
@@ -37,10 +38,12 @@ void main() {
     required ThemeData theme,
     VoidCallback? onPressed,
     bool enabled = true,
+    int unreadCount = 0,
     bool reduceMotion = false,
   }) {
     return ProviderScope(
       overrides: [
+        inboxUnreadCountProvider.overrideWithValue(unreadCount),
         botvinnikEnabledProvider.overrideWith(() => _FixedEnabled(enabled)),
       ],
       child: MaterialApp(
@@ -67,6 +70,34 @@ void main() {
       ),
     );
   }
+
+  testWidgets(
+    'red unread count badge tracks counts and announces exact total',
+    (tester) async {
+      final semantics = tester.ensureSemantics();
+      for (final count in [1, 12, 105, 0]) {
+        await tester.pumpWidget(
+          host(theme: AppTheme.darkTheme, unreadCount: count),
+        );
+        await tester.pumpAndSettle();
+        final badge = find.byKey(const ValueKey('botvinnik-unread-badge'));
+        expect(badge, count == 0 ? findsNothing : findsOneWidget);
+        if (count > 0) {
+          expect(find.text(count > 99 ? '99+' : '$count'), findsOneWidget);
+          expect(
+            find.bySemanticsLabel(
+              'Ask Botvinnik, $count unread Inbox messages',
+            ),
+            findsOneWidget,
+          );
+          final decoration =
+              tester.widget<Container>(badge).decoration as BoxDecoration;
+          expect(decoration.color, const Color(0xFFD32F2F));
+        }
+      }
+      semantics.dispose();
+    },
+  );
 
   for (final (name, theme) in [
     ('dark', AppTheme.darkTheme),

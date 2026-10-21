@@ -4,6 +4,7 @@ import 'package:chessever2/screens/my_space/actions/space_player_actions.dart'
     show spacePlayerRemover;
 import 'package:chessever2/screens/group_event/smart_event/smart_event_builder_sheet.dart';
 import 'package:chessever2/screens/my_space/models/space_shortcut.dart';
+import 'package:chessever2/screens/my_space/actions/space_shortcut_removal.dart';
 import 'package:chessever2/screens/my_space/navigation/space_shortcut_navigator.dart'
     show SpaceLine, openSpaceExplorerLine;
 import 'package:chessever2/screens/my_space/providers/space_auto_provider.dart'
@@ -158,12 +159,16 @@ class _SpaceAddSheetState extends ConsumerState<SpaceAddSheet> {
     if (ref.read(spaceShortcutExistsProvider(draft.key))) {
       session.update((s) => s?.withoutAdded(draft.key));
       HapticFeedbackService.light();
-      await store.removeTarget(draft.kind, draft.targetId);
+      await removeSpaceShortcut(ref, draft).written;
       return;
     }
     // Held back from the row before it lands, so it never flashes in behind
     // the sheet.
     session.update((s) => s?.withAdded(draft.key));
+    if (ref.read(spaceHiddenAutoKeysProvider).contains(draft.key)) {
+      ref.read(spaceHiddenAutoKeysProvider.notifier).unhide(draft.key);
+      session.update((s) => s?.withUnhidden(draft.key));
+    }
     HapticFeedbackService.success();
     widget.onAdded?.call(draft);
     await store.add(draft);
