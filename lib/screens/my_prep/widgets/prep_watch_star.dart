@@ -20,8 +20,9 @@ const double kPrepWatchStarSlot = 44;
 /// games are never news to them.
 bool prepHasWatchSlot(PrepProfile profile) => profile.kind != PrepKind.mine;
 
-/// Stars or unstars [profile]. A starred player is checked once a day, in
-/// the reader's evening, and a push says when they have new online games.
+/// Stars or unstars [profile]. A starred player is checked every hour, and a
+/// push says the same day, while the reader is awake, that they have new
+/// online games (twice a day at most). Unstarring stops it.
 /// Starring is asking for that push, so it also makes sure it can arrive.
 Future<void> togglePrepWatch(BuildContext context, PrepProfile profile) async {
   final allowed = await requireFullAuthGuard(context);

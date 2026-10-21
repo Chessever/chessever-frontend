@@ -1,5 +1,6 @@
 import 'package:chessever2/repository/supabase/base_repository.dart';
 import 'package:chessever2/repository/supabase/calendar_event/calendar_event.dart';
+import 'package:chessever2/repository/supabase/fetch_all_pages.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -82,12 +83,27 @@ class CalendarEventRepository extends BaseRepository {
     });
   }
 
-  /// Get all calendar events for a specific year
-  Future<List<CalendarEvent>> getCalendarEventsForYear({
+  /// Every calendar event that overlaps [year], read page by page.
+  ///
+  /// One capped request ordered by date silently drops the end of the year,
+  /// which is every upcoming event, as soon as the year outgrows the cap.
+  /// Rows come back ordered by `name`, the table's unique key, so paging is
+  /// stable; callers sort them themselves.
+  Future<List<CalendarEvent>> getCalendarEventsForYear({required int year}) {
+    return fetchAllPages<CalendarEvent>(
+      (offset, limit) => _getCalendarEventsForYearPage(
+        year: year,
+        offset: offset,
+        limit: limit,
+      ),
+      keyOf: (event) => event.name,
+    );
+  }
+
+  Future<List<CalendarEvent>> _getCalendarEventsForYearPage({
     required int year,
-    int limit = 500,
-    String orderBy = 'start_date',
-    bool ascending = true,
+    required int offset,
+    required int limit,
   }) async {
     return handleApiCall(() async {
       final startOfYear = DateTime(year, 1, 1);
@@ -104,8 +120,8 @@ class CalendarEventRepository extends BaseRepository {
             'and(end_date.is.null,start_date.gte.$startDateStr,start_date.lte.$endDateStr),'
             'and(start_date.is.null,end_date.gte.$startDateStr,end_date.lte.$endDateStr)',
           )
-          .order(orderBy, ascending: ascending)
-          .limit(limit);
+          .order('name', ascending: true)
+          .range(offset, offset + limit - 1);
 
       return (response as List)
           .map((json) => CalendarEvent.fromJson(json))

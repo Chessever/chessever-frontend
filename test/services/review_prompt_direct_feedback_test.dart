@@ -42,12 +42,8 @@ void main() {
                             return Scaffold(
                               body: Center(
                                 child: TextButton(
-                                  onPressed:
-                                      () =>
-                                          ReviewPromptService.instance
-                                              .openSidebarDirectFeedback(
-                                                drawerContext,
-                                              ),
+                                  onPressed: () => ReviewPromptService.instance
+                                      .openSidebarDirectFeedback(drawerContext),
                                   child: const Text('Feedback'),
                                 ),
                               ),
@@ -80,9 +76,13 @@ void main() {
 
       // The old bug returned before send when the drawer context was
       // unmounted. Getting here with the form gone means the relay ran;
-      // widget tests have no bot token, so Telegram logs "Not configured".
+      // the widget test HTTP override refuses delivery without contacting Telegram.
       expect(find.text('Your Feedback'), findsNothing);
       expect(find.text('Open drawer'), findsOneWidget);
+      expect(
+        find.text('Feedback could not be sent. Please try again.'),
+        findsOneWidget,
+      );
     },
   );
 }

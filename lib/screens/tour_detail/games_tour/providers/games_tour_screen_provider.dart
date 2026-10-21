@@ -3,6 +3,7 @@ import 'package:chessever2/providers/event_pin_refresh_provider.dart';
 import 'package:chessever2/repository/supabase/game/games.dart';
 import 'package:chessever2/screens/group_event/model/about_tour_model.dart';
 import 'package:chessever2/screens/group_event/model/tour_detail_view_model.dart';
+import 'package:chessever2/screens/gamebase/event_view/gamebase_virtual_event_id.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_app_bar_view_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/game_display_mode_provider.dart';
@@ -711,6 +712,24 @@ class GamesTourScreenProvider
     return models;
   }
 
+  /// Gamebase-only virtual events load their games straight from the gamebase
+  /// event view into [gamesTourProvider] and never touch the Supabase-backed
+  /// games cache, so searching that cache by a `gamebasev2::` id always came
+  /// back empty. Search the games already on screen for those instead.
+  Future<EnhancedGameSearchResult> _searchTourGames(
+    String tourId,
+    String query,
+  ) async {
+    if (isVirtualGamebaseId(tourId)) {
+      final loaded =
+          ref.read(gamesTourProvider(tourId)).valueOrNull ?? const <Games>[];
+      return searchGamesInList(loaded, query);
+    }
+    return ref
+        .read(gamesLocalStorage)
+        .searchGamesWithScoring(tourId: tourId, query: query);
+  }
+
   Future<void> searchGamesEnhanced(String query) async {
     if (aboutTourModel == null) return;
 
@@ -723,12 +742,10 @@ class GamesTourScreenProvider
       // Current pins for correct pin UI in search mode
       final pinnedIds = ref.read(gamesPinprovider(aboutTourModel!.id)).allPins;
 
-      final gamesLocal = ref.read(gamesLocalStorage);
-
       // Search in main tournament
-      final mainSearchResult = await gamesLocal.searchGamesWithScoring(
-        tourId: aboutTourModel!.id,
-        query: query,
+      final mainSearchResult = await _searchTourGames(
+        aboutTourModel!.id,
+        query,
       );
       final allResults = <GameSearchResult>[...mainSearchResult.results];
 
@@ -752,9 +769,9 @@ class GamesTourScreenProvider
         // Search each stage
         for (final stageTourId in stageTourIds) {
           try {
-            final stageSearchResult = await gamesLocal.searchGamesWithScoring(
-              tourId: stageTourId,
-              query: query,
+            final stageSearchResult = await _searchTourGames(
+              stageTourId,
+              query,
             );
             allResults.addAll(stageSearchResult.results);
           } catch (e) {

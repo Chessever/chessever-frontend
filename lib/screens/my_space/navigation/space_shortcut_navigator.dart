@@ -715,7 +715,8 @@ Future<bool> _openLink(BuildContext context, String raw) {
         preferGamebase: game.preferGamebase,
       );
   }
-  // Books, databases, folders and player profiles have no in-app opener yet.
+  // Books, databases, folders, collections and player profiles have no
+  // in-app opener yet.
   return Future.value(links.openLinkFromApp(uri));
 }
 
@@ -726,6 +727,7 @@ const _routableLinkRoots = {
   'folders',
   'broadcast',
   'player',
+  'collections',
 };
 
 /// Whether the app's deep-link router opens [uri]: chessever.com (or the

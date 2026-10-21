@@ -1,5 +1,4 @@
 import 'package:chessever2/providers/favorite_events_provider.dart';
-import 'package:chessever2/repository/favorites/models/favorite_event.dart';
 import 'package:chessever2/screens/group_event/smart_event/smart_aggregate_event_provider.dart';
 import 'package:chessever2/services/analytics/analytics_service.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
@@ -11,28 +10,14 @@ import 'package:chessever2/widgets/svg_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
-/// Whether a starred [request] can send notifications. The dispatcher
-/// matches a round to a smart event by its level and time controls; which
-/// opening a game becomes is not known when its round starts, so an opening
-/// smart event is starred without the question.
-bool smartEventCanNotify(SmartEventRequest request) => request.eco.isAll;
-
-/// The starred row of [request] when it can notify, for the focus menu's
-/// notifications row (see [starNotificationsMenuAction]); null otherwise.
-FavoriteEvent? smartEventNotifiableFavorite(
-  WidgetRef ref,
-  SmartEventRequest request,
-) => smartEventCanNotify(request)
-    ? ref.read(smartEventSavedFavoriteProvider(request.criteriaKey))
-    : null;
-
 /// Stars or unstars [request]: the one path behind every smart event star.
 ///
 /// A star is the smart event's favorites row (`smart_event:v2:<criteria>`),
 /// the row My Space lists it from (its only home: Today never lists starred
-/// smart events). Starring fills the star at once and then
-/// asks whether it should also notify; the answer is written onto the row
-/// once the row itself has landed.
+/// smart events). Starring is subscribing: each evening, in their own
+/// timezone, its owner hears how many new games it caught
+/// (`queue_smart_event_digests`). Unstarring is the only opt-out, so starring
+/// asks nothing; it only makes sure the push can arrive.
 Future<void> toggleSmartEventFavorite({
   required BuildContext context,
   required SmartEventRequest request,
@@ -87,24 +72,9 @@ Future<void> toggleSmartEventFavorite({
         },
       );
 
-  final wantsAlerts =
-      smartEventCanNotify(request) &&
-      await askStarNotifications(
-        context,
-        message:
-            'Get round start and result alerts for every event in '
-            '${request.displayName}.',
-      );
   if (!await added) return;
   track(true);
-  if (!wantsAlerts) return;
-  await setStarNotifications(
-    container: container,
-    messenger: messenger,
-    eventId: request.favoriteEventId,
-    enabled: true,
-    surface: 'smart_event',
-  );
+  await makeSmartEventStarReachable(container: container, messenger: messenger);
 }
 
 /// A smart event's star, the event card's star in the same place: filled

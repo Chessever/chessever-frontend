@@ -5,11 +5,11 @@ import 'package:flutter/foundation.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-/// Starring a Prep profile asks the server to watch the player: once a day,
-/// in the reader's evening, it compares the player's game totals on Lichess
-/// and Chess.com with the day before and pushes when they grew. Profiles
-/// live on the device, so a starred profile's online accounts are mirrored
-/// to `prep_profile_watches`
+/// Starring a Prep profile asks the server to watch the player: every hour
+/// it reads the player's game totals on Lichess and Chess.com, and when they
+/// grew it pushes the same day, while the reader is awake, twice a day at
+/// most. Profiles live on the device, so a starred profile's online accounts
+/// are mirrored to `prep_profile_watches`
 /// (`supabase/migrations/20261017120000_prep_profile_watches.sql`).
 
 /// Whether [profile] has anything the server can watch. The reader's own
@@ -35,7 +35,7 @@ List<Map<String, Object?>> prepWatchAccounts(PrepProfile profile) => [
 /// watched. A change means the server's copy must be written again.
 String? prepWatchSignature(PrepProfile profile) =>
     profile.watching && prepCanWatch(profile)
-    ? jsonEncode([profile.name, prepWatchAccounts(profile)])
+    ? jsonEncode([profile.name, profile.title, prepWatchAccounts(profile)])
     : null;
 
 /// Writes the server's copy of starred profiles. False when it could not
@@ -62,8 +62,9 @@ class PrepWatchRemote {
         params: {
           'p_profile_id': profile.id,
           'p_profile_name': profile.name,
+          'p_profile_title': profile.title,
           'p_accounts': prepWatchAccounts(profile),
-          // The reader's evening moves with them; every write carries it.
+          // The reader's day moves with them; every write carries it.
           'p_utc_offset_minutes': DateTime.now().timeZoneOffset.inMinutes,
         },
       );

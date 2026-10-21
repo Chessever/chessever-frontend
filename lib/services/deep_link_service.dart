@@ -4,8 +4,10 @@ import 'dart:io' show Platform;
 
 import 'package:app_links/app_links.dart';
 import 'package:chessever2/providers/auth_state_provider.dart';
+import 'package:chessever2/providers/favorite_events_provider.dart';
 import 'package:chessever2/repository/authentication/auth_repository.dart';
 import 'package:chessever2/repository/authentication/model/auth_state.dart';
+import 'package:chessever2/repository/favorites/models/favorite_event.dart';
 import 'package:chessever2/repository/supabase/chess_player/chess_player_repository.dart';
 import 'package:chessever2/repository/supabase/game/games.dart';
 import 'package:chessever2/repository/supabase/game/game_repository.dart';
@@ -21,12 +23,18 @@ import 'package:chessever2/screens/collections/collections_data.dart'
     show Collection, collectionsRepositoryProvider;
 import 'package:chessever2/screens/collections/collections_screen.dart'
     show CollectionScreen;
+import 'package:chessever2/screens/collections/collection_share.dart'
+    show collectionSlugFromUri;
+import 'package:chessever2/screens/group_event/smart_event/smart_aggregate_event_provider.dart'
+    show smartEventRequestFromPushData;
+import 'package:chessever2/screens/group_event/smart_event/smart_event_screen.dart'
+    show SmartEventScreen, smartEventGamesTab;
 import 'package:chessever2/screens/my_prep/models/prep_models.dart'
     show PrepProfile;
 import 'package:chessever2/screens/my_prep/my_prep_home_screen.dart'
     show MyPrepHomeScreen;
 import 'package:chessever2/screens/my_prep/prep_profile_screen.dart'
-    show PrepProfileScreen;
+    show PrepProfileScreen, prepProfileGamesTab;
 import 'package:chessever2/screens/my_prep/providers/prep_providers.dart'
     show prepProfilesProvider;
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
@@ -156,6 +164,18 @@ List<GamesTourModel> _buildSortedRoundGameModels(List<Games> roundGames) {
 /// Handles URLs like: `https://chessever.com/games/{id}`
 /// Handles URLs like: `https://chessever.com/databases/{id}`
 /// Handles notification data routing for games, events, rounds, and databases.
+/// Where a Prep "new games" push lands: the starred player's profile on its
+/// Games tab, or My Prep when this device no longer has or stars it.
+@visibleForTesting
+Widget prepPushDestination(PrepProfile? profile, {int? newGames}) =>
+    profile == null
+    ? const MyPrepHomeScreen()
+    : PrepProfileScreen(
+        profileId: profile.id,
+        newGames: newGames,
+        initialTab: prepProfileGamesTab,
+      );
+
 class DeepLinkService {
   static final DeepLinkService instance = DeepLinkService._();
   DeepLinkService._();
@@ -541,6 +561,10 @@ class DeepLinkService {
         bookShareToken = uri.pathSegments[1];
       }
 
+      // Universal link: https://chessever.com/collections/<slug>, and the web
+      // page's hand-off com.chessever.app://collections/<slug>.
+      final collectionSlug = collectionSlugFromUri(uri);
+
       // Universal link: https://chessever.com/databases/<folderId>
       if (uri.pathSegments.length >= 2 &&
           (uri.pathSegments[0] == 'databases' ||
@@ -638,6 +662,7 @@ class DeepLinkService {
           'gameId': _maskedValue(gameId),
           'bookShareToken': _maskedValue(bookShareToken),
           'folderId': _maskedValue(folderId),
+          'collectionSlug': collectionSlug,
           'broadcastId': _maskedValue(broadcastId),
           'teamName': teamName,
         },
@@ -682,6 +707,12 @@ class DeepLinkService {
           data: {'folderId': _maskedValue(folderId)},
         );
         _navigateToFolder(folderId, navigatorKey, ref);
+      } else if (collectionSlug != null) {
+        _addBreadcrumb(
+          'routing to collection',
+          data: {'collectionSlug': collectionSlug},
+        );
+        _navigateToCollection(collectionSlug, navigatorKey, ref);
       } else if (broadcastId != null &&
           broadcastId.isNotEmpty &&
           playerFideId != null) {
@@ -815,8 +846,9 @@ class DeepLinkService {
     }
   }
 
-  /// Opens the collection a "new games" push was sent for. A collection that
-  /// is no longer published (or cannot be read right now) lands on Home.
+  /// Opens the collection a "new games" push was sent for, or a shared
+  /// `chessever.com/collections/<slug>` link points at. A collection that is
+  /// no longer published (or cannot be read right now) lands on Home.
   Future<void> _navigateToCollection(
     String slug,
     GlobalKey<NavigatorState> navigatorKey,
@@ -857,6 +889,63 @@ class DeepLinkService {
       navigator.push(
         MaterialPageRoute<void>(
           builder: (_) => CollectionScreen(collection: opened),
+        ),
+      );
+    } finally {
+      _isNavigating = false;
+    }
+  }
+
+  /// Opens the smart event an evening "new games" push was sent for, on its
+  /// Games tab: the reader's own starred row once favorites have loaded, else
+  /// one rebuilt from the criteria the push carries.
+  Future<void> _navigateToSmartEvent(
+    Map<String, dynamic> data,
+    GlobalKey<NavigatorState> navigatorKey,
+    WidgetRef ref,
+  ) async {
+    if (_isNavigating) return;
+    _isNavigating = true;
+
+    try {
+      try {
+        await _appReadyCompleter.future.timeout(const Duration(seconds: 30));
+      } catch (_) {
+        debugPrint(
+          'DeepLinkService: Timed out waiting for app ready, proceeding',
+        );
+      }
+
+      final loaded = Completer<List<FavoriteEvent>?>();
+      final subscription = ref.listenManual(favoriteEventsProvider, (_, value) {
+        if (!value.isLoading && !loaded.isCompleted) {
+          loaded.complete(value.valueOrNull);
+        }
+      }, fireImmediately: true);
+      List<FavoriteEvent>? favorites;
+      try {
+        favorites = await loaded.future.timeout(const Duration(seconds: 10));
+      } catch (_) {
+        favorites = null;
+      } finally {
+        subscription.close();
+      }
+      final request = smartEventRequestFromPushData(
+        data,
+        favorites: favorites ?? const [],
+      );
+
+      final navigator = navigatorKey.currentState;
+      if (navigator == null) return;
+      // Over Home, so Back lands on the app rather than leaving it.
+      navigator.pushNamedAndRemoveUntil('/home_screen', (route) => false);
+      if (request == null) return;
+      navigator.push(
+        MaterialPageRoute<void>(
+          builder: (_) => SmartEventScreen(
+            request: request,
+            initialTab: smartEventGamesTab,
+          ),
         ),
       );
     } finally {
@@ -913,9 +1002,7 @@ class DeepLinkService {
       navigator.pushNamedAndRemoveUntil('/home_screen', (route) => false);
       navigator.push(
         MaterialPageRoute<void>(
-          builder: (_) => profile == null
-              ? const MyPrepHomeScreen()
-              : PrepProfileScreen(profileId: profile.id, newGames: newGames),
+          builder: (_) => prepPushDestination(profile, newGames: newGames),
         ),
       );
     } finally {
@@ -1532,6 +1619,19 @@ class DeepLinkService {
           _navigateToHome(
             navigatorKey,
             reason: 'notification_missing_collection_slug',
+            extras: {'type': type, 'appReady': wasAppReady},
+          );
+        }
+        return;
+      case 'smart_event_games':
+        if (smartEventRequestFromPushData(data) != null) {
+          _navigateToSmartEvent(data, navigatorKey, ref);
+        } else if (gameId != null && gameId.isNotEmpty) {
+          _navigateToGame(gameId, navigatorKey, ref);
+        } else {
+          _navigateToHome(
+            navigatorKey,
+            reason: 'notification_missing_smart_event',
             extras: {'type': type, 'appReady': wasAppReady},
           );
         }

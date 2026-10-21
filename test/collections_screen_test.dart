@@ -1,3 +1,4 @@
+import 'package:chessever2/services/deep_link_service.dart';
 import 'package:chessever2/screens/collections/collection_author_screen.dart';
 import 'package:chessever2/screens/tour_detail/widgets/event_search_bar.dart';
 import 'package:chessever2/widgets/simple_search_bar.dart';
@@ -284,6 +285,15 @@ CollectionGame _game(
   )!;
 }
 
+/// A collection unpublished since its push: the read fails.
+class _UnreadableCollection extends _FakeCollections {
+  _UnreadableCollection({required super.detail, required super.games});
+
+  @override
+  Future<Collection> fetchCollection(String slug) async =>
+      throw StateError('not published');
+}
+
 class _NoShortcuts extends SpaceShortcutsNotifier {
   @override
   Future<List<SpaceShortcut>> build() async => const [];
@@ -300,6 +310,8 @@ Future<void> _pump(
   CollectionsRepository Function()? repositoryFactory,
   NavigatorObserver? navigationObserver,
   bool? premium,
+  GlobalKey<NavigatorState>? navigatorKey,
+  RouteFactory? onGenerateRoute,
 }) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1;
@@ -334,6 +346,8 @@ Future<void> _pump(
     UncontrolledProviderScope(
       container: container,
       child: MaterialApp(
+        navigatorKey: navigatorKey,
+        onGenerateRoute: onGenerateRoute,
         navigatorObservers: [
           if (navigationObserver != null) navigationObserver,
         ],
@@ -1931,4 +1945,75 @@ void main() {
       await _teardown(tester);
     },
   );
+
+  group('tapping a "new games" collection push, through the notification '
+      'router', () {
+    const book = Collection(
+      id: '36092ff4-126c-4c24-b989-f9078472266d',
+      slug: 'us-chess-championships',
+      kind: CollectionKind.book,
+      title: 'US Chess Championships',
+      access: CollectionAccess.free,
+    );
+
+    /// The app, and the tap of the push onesignal-dispatch sends.
+    Future<void> tapPush(WidgetTester tester, _FakeCollections repo) async {
+      final navigatorKey = GlobalKey<NavigatorState>();
+      late WidgetRef captured;
+      DeepLinkService.instance.dispose();
+      addTearDown(DeepLinkService.instance.detachNotificationRouter);
+      addTearDown(DeepLinkService.instance.dispose);
+      final host = Consumer(
+        builder: (_, ref, _) {
+          captured = ref;
+          return const SizedBox.shrink();
+        },
+      );
+      await _pump(
+        tester,
+        repo,
+        home: host,
+        navigatorKey: navigatorKey,
+        onGenerateRoute: (settings) => MaterialPageRoute<void>(
+          settings: settings,
+          builder: (_) => host,
+        ),
+      );
+      DeepLinkService.instance.attachNotificationRouter(navigatorKey, captured);
+      DeepLinkService.notifyAppReady();
+      DeepLinkService.instance.ingestNotificationData(const {
+        'type': 'collection_games_added',
+        'collection_slug': 'us-chess-championships',
+        // Added by the notification service on the way to the phone.
+        'url': '',
+        'delivery_id': '5b1c9f0e-0d1a-4c7e-9a52-0f3c6d2e8a11',
+        'campaign_id': '856a94b6-a8e3-4529-9abb-b344b431c8bd',
+      });
+      for (var i = 0; i < 6; i++) {
+        await tester.pump(const Duration(milliseconds: 60));
+      }
+    }
+
+    testWidgets('a published collection opens', (tester) async {
+      final repo = _FakeCollections(detail: book, games: [_game('a')]);
+      await tapPush(tester, repo);
+      final screen = tester.widget<CollectionScreen>(
+        find.byType(CollectionScreen),
+      );
+      expect(screen.collection.slug, 'us-chess-championships');
+      expect(screen.collection.id, book.id);
+      expect(find.text('US Chess Championships'), findsWidgets);
+      expect(tester.takeException(), isNull);
+      await _teardown(tester);
+    });
+
+    testWidgets('one that cannot be read lands on Home, not a broken page', (
+      tester,
+    ) async {
+      await tapPush(tester, _UnreadableCollection(detail: book, games: []));
+      expect(find.byType(CollectionScreen), findsNothing);
+      expect(tester.takeException(), isNull);
+      await _teardown(tester);
+    });
+  });
 }

@@ -25,8 +25,9 @@ Actions -> **Mobile release** -> Run workflow, on `stable`.
 | `upload_symbols` | off | Keep R8 `mapping.txt` and dSYMs as run artifacts for 7 days |
 
 Codemagic built both platforms one after the other on a single Mac. Here they
-run in parallel, each on its own free runner. The same commands run in the
-same order:
+run in parallel, each on its own free runner. The release commands explicitly select the production flavor and `lib/main.dart`.
+Build-only runs retain the AAB and IPA for seven days. The remaining commands run
+in the same order:
 
 | Codemagic step | GitHub step |
 |---|---|
@@ -118,7 +119,7 @@ The workflows add:
   masks only the literal secret. The build scripts also mask each encoded
   define, so a failing native step cannot print them.
 - Anyone signed in to GitHub can download a public repository's artifacts.
-  Mobile keeps no binaries or logs, and symbols are opt-in. Desktop keeps
+  Mobile retains AAB/IPA files only for build-only runs, and symbols are opt-in. Desktop keeps
   only installers, and only from dry runs. No job uploads build logs.
 - Keystore, `key.properties`, Firebase files, keychain and certificates are
   deleted at the end of every job, pass or fail.
@@ -149,8 +150,6 @@ Identical in both Codemagic apps today.
 | `SUPABASE_URL` | Production Supabase project -> Settings -> API |
 | `SUPABASE_ANON_KEY` | Same page (anon key) |
 | `SENTRY_FLUTTER` | Sentry project DSN |
-| `TELEGRAM_FEEDBACK_BOT_TOKEN` | Feedback bot (BotFather) |
-| `TELEGRAM_FEEDBACK_CHAT_ID` | Feedback group ID |
 
 ### Organization secrets: `org-mobile/` (chessever-frontend)
 
@@ -214,6 +213,7 @@ Apple Distribution certificate whose private key you give it, and with
 | `R2_ACCESS_KEY_ID` | same | Cloudflare -> R2 -> API token, Object Read and Write on the releases bucket only |
 | `R2_SECRET_ACCESS_KEY` | same | Same token |
 | `TELEGRAM_BOT_TOKEN` | same | Release-notification bot |
+| `TELEGRAM_CHAT_ID` | same | Release-notification destination (CI only) |
 | `R2_BUCKET` (optional) | same | Defaults to `chessever-releases` |
 | `SENTRY_AUTH_TOKEN`, `SENTRY_ORG`, `SENTRY_PROJECT` (optional) | not set | Windows symbol upload; skipped when absent, as on Codemagic |
 
@@ -276,7 +276,8 @@ Run on a Mac (the script uses `plutil` to check the plist).
 1. Run **Mobile release** and **Desktop release** with `publish` off. This
    signs, notarizes and builds everything without uploading, so it checks
    every secret except the upload-only ones (Play service account, R2).
-   Desktop installers can be tried from the run artifacts.
+   Mobile AAB/IPA files and desktop installers are available as run artifacts.
+   An App Store IPA still requires store distribution or suitable provisioning to install.
 2. Run them again with `publish` on for a real release. Google Play and App
    Store Connect reject a build number they have already seen, and R2 refuses
    to overwrite an archive with different bytes, so bump `pubspec.yaml` as
@@ -287,11 +288,11 @@ reviewer clicks **Review deployments**.
 
 ## Known gaps
 
-- The feedback flow still compiles `TELEGRAM_FEEDBACK_BOT_TOKEN` into both
-  apps, as it did under Codemagic. That is the same exposure as the 2026-08-03
-  bot-token incident: anyone with a release build can extract the token. The
-  port keeps the behaviour unchanged. The fix is to relay feedback through a
-  server endpoint and drop the define, not anything in CI.
+- Feedback bot credentials are intentionally excluded from both apps. Feedback
+  goes through the production `chessever-feedback` Worker with bounded payloads,
+  per-address and aggregate rate limits, and server-configured destinations.
+  CI must never compile a bot token into a public app. Existing organization copies are not read by these workflows.
+  Desktop build notifications still use CI-only release environment secrets.
 - Free hosted macOS runners have 3 vCPUs and 7 GB of memory, so the iOS
   build is slower than on Codemagic's M2. The job timeout is 120 minutes.
 - The Android job keeps Codemagic's `JAVA_TOOL_OPTIONS=-Xmx10g`, which applies

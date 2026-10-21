@@ -4,6 +4,8 @@ import 'dart:io';
 
 import 'package:chessever2/providers/favorite_players_provider.dart';
 import 'package:chessever2/repository/favorites/models/favorite_player.dart';
+import 'package:chessever2/revenue_cat_service/offline_premium_cache.dart';
+import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
 import 'package:chessever2/repository/gamebase/gamebase_repository.dart';
 import 'package:chessever2/repository/supabase/chess_player/chess_player_repository.dart';
 import 'package:chessever2/screens/favorites/rankings/ranking_filters.dart';
@@ -19,6 +21,8 @@ import 'package:chessever2/screens/my_prep/providers/prep_known_accounts_provide
 import 'package:chessever2/screens/my_prep/providers/prep_providers.dart';
 import 'package:chessever2/screens/my_prep/services/prep_analysis.dart';
 import 'package:chessever2/screens/my_prep/services/prep_repository.dart';
+import 'package:chessever2/screens/my_prep/services/prep_watch.dart';
+import 'package:chessever2/services/deep_link_service.dart';
 import 'package:chessever2/screens/my_prep/tabs/prep_overview_tab.dart';
 import 'package:chessever2/screens/my_prep/tabs/prep_trees_tab.dart';
 import 'package:chessever2/screens/my_prep/widgets/prep_account_switch.dart';
@@ -55,6 +59,7 @@ import 'package:smooth_sheets/smooth_sheets.dart';
 import 'package:dio/dio.dart';
 
 import 'my_prep_sources_test.dart' show databasePlayer, sourceGame;
+import 'support/offline_premium_fakes.dart';
 
 class _PickerRepository extends PrepRepository {
   _PickerRepository()
@@ -150,6 +155,23 @@ class _Follows extends FavoritePlayersNotifierNew {
 class _SpaceShortcuts extends SpaceShortcutsNotifier {
   @override
   Future<List<SpaceShortcut>> build() async => const [];
+}
+
+/// The server's copy of starred profiles, as calls.
+class _WatchRemote extends PrepWatchRemote {
+  final calls = <String>[];
+
+  @override
+  Future<bool> watch(PrepProfile profile) async {
+    calls.add('watch ${profile.id}');
+    return true;
+  }
+
+  @override
+  Future<bool> unwatch(String profileId) async {
+    calls.add('unwatch $profileId');
+    return true;
+  }
 }
 
 FavoritePlayer _follow(String name, int fide, int rating) => FavoritePlayer(
@@ -300,6 +322,60 @@ void main() {
   );
 
   test(
+    'leaving the app mid-download pauses it and continues on return',
+    () async {
+      final binding = TestWidgetsFlutterBinding.instance;
+      void move(List<AppLifecycleState> states) {
+        for (final state in states) {
+          binding.handleAppLifecycleStateChanged(state);
+        }
+      }
+
+      move([AppLifecycleState.resumed]);
+      final container = ProviderContainer(
+        overrides: [prepRepositoryProvider.overrideWithValue(repo)],
+      );
+      addTearDown(container.dispose);
+      await _loaded(container);
+      final profiles = container.read(prepProfilesProvider.notifier);
+      const account = PrepAccount(
+        source: PrepSource.lichess,
+        username: 'ClubPlayer',
+      );
+      final profile = profiles.create(
+        kind: PrepKind.opponent,
+        name: 'ClubPlayer',
+        accounts: [account],
+      );
+      final gate = repo.syncGate = Completer<void>();
+      repo.syncFailure = const PrepException('Could not download games.');
+      final pending = container
+          .read(prepSyncProvider.notifier)
+          .syncAccount(profile.id, account, force: true);
+      // The system cuts the connection off once the app is in the background.
+      move([AppLifecycleState.inactive, AppLifecycleState.hidden]);
+      gate.complete();
+      await pumpEventQueue();
+      expect(
+        container.read(prepSyncProvider)[account.key]?.message,
+        startsWith('Paused'),
+      );
+      expect(profiles.byId(profile.id)!.accounts.single.error, isNull);
+      expect(repo.syncCalls, 1);
+
+      repo
+        ..syncGate = null
+        ..syncFailure = null;
+      move([AppLifecycleState.inactive, AppLifecycleState.resumed]);
+      expect(await pending, isNull);
+      expect(repo.syncCalls, 2);
+      expect(profiles.byId(profile.id)!.accounts.single.error, isNull);
+      expect(container.read(prepSyncProvider), isEmpty);
+      await profiles.debugDrainWrites();
+    },
+  );
+
+  test(
     'source analysis retains a duplicate game removed from Combined',
     () async {
       final container = ProviderContainer(
@@ -360,15 +436,23 @@ void main() {
     double scale = 1,
     List<FavoritePlayer> follows = const [],
     List<Override> overrides = const [],
+    GlobalKey<NavigatorState>? navigatorKey,
+    RouteFactory? onGenerateRoute,
+    SubscriptionNotifier Function()? subscription,
   }) async {
     await tester.binding.setSurfaceSize(const Size(320, 640));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     final container = ProviderContainer(
       overrides: [
         prepRepositoryProvider.overrideWithValue(repo),
-        premiumAccessProvider.overrideWithValue(premium),
-        // A Premium fixture is a subscriber: no limit applies either.
-        prepUnlimitedProvider.overrideWithValue(premium),
+        // A real subscription state decides Premium and the limits itself.
+        if (subscription != null)
+          subscriptionProvider.overrideWith((ref) => subscription())
+        else ...[
+          premiumAccessProvider.overrideWithValue(premium),
+          // A Premium fixture is a subscriber: no limit applies either.
+          prepUnlimitedProvider.overrideWithValue(premium),
+        ],
         prepPremiumPromptProvider.overrideWithValue((
           _,
           feature, {
@@ -401,6 +485,8 @@ void main() {
               },
             ),
           ),
+          navigatorKey: navigatorKey,
+          onGenerateRoute: onGenerateRoute,
           home: child,
         ),
       ),
@@ -1750,6 +1836,272 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byType(PrepGamesTab), findsOneWidget);
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('a subscriber without a connection opens statistics, Games and '
+      'Build Tree with no ad prompt', (tester) async {
+    const account = PrepAccount(
+      source: PrepSource.lichess,
+      username: 'ClubPlayer',
+    );
+    const profile = PrepProfile(
+      id: 'p',
+      kind: PrepKind.opponent,
+      name: 'Club Player',
+      createdAtMs: 1,
+      accounts: [account],
+    );
+    final games = [
+      for (var i = 0; i < 3; i++)
+        PrepGame(
+          index: i,
+          source: account.source,
+          sourcePath: PrepRepository.gamesFileName(account),
+          white: 'ClubPlayer',
+          black: 'Opponent $i',
+          result: i == 0 ? '0-1' : '1-0',
+          plies: 4,
+          speed: PrepTimeControl.rapid,
+          playerIsWhite: true,
+        ),
+    ];
+    final now = DateTime.now();
+    // Neither RevenueCat nor the entitlement function answers; only the
+    // Premium this device confirmed while it was last online remains.
+    final container = await pump(
+      tester,
+      const PrepProfileScreen(profileId: 'p'),
+      subscription: () => SubscriptionNotifier(
+        revenueCat: OfflineRevenueCat(() async => null),
+        offlineCache: MemoryPremiumCache({
+          'reader': OfflinePremiumSnapshot(
+            verifiedAt: now.subtract(const Duration(days: 1)),
+            expiresAt: now.add(const Duration(days: 20)),
+          ),
+        }),
+        currentUserId: () => 'reader',
+      ),
+      overrides: [
+        prepProfileProvider.overrideWith((ref, id) => profile),
+        prepAnalysisProvider.overrideWith(
+          (ref, id) async => PrepAnalysis(profileId: id, games: games),
+        ),
+      ],
+    );
+    await tester.pumpAndSettle();
+    expect(container.read(subscriptionProvider).isSubscribed, isTrue);
+
+    await tester.tap(find.text('Performance by colour'));
+    await tester.pumpAndSettle();
+    expect(find.text('Their White'), findsOneWidget);
+    await tester.tap(find.text('Wins'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('prep_filter_banner')), findsOneWidget);
+    await tester.tap(find.text('Games 2'));
+    await tester.pumpAndSettle();
+    expect(find.byType(PrepGamesTab), findsOneWidget);
+    await tester.tap(find.text('Build Tree'));
+    await tester.pumpAndSettle();
+    expect(find.text('Opening trees'), findsOneWidget);
+    expect(asked, isEmpty);
+    expect(tester.takeException(), isNull);
+    // The notifier's hourly sync timer goes with the container.
+    container.dispose();
+  });
+
+  group('a "new games" push opens the profile on Games', () {
+    const account = PrepAccount(
+      source: PrepSource.lichess,
+      username: 'durarbayli',
+    );
+    const profile = PrepProfile(
+      id: 'p',
+      kind: PrepKind.opponent,
+      name: 'Vasif Durarbayli',
+      createdAtMs: 1,
+      accounts: [account],
+    );
+    final games = [
+      for (var i = 0; i < 2; i++)
+        PrepGame(
+          index: i,
+          source: account.source,
+          sourcePath: PrepRepository.gamesFileName(account),
+          white: 'durarbayli',
+          black: 'Opponent $i',
+          result: '1-0',
+          plies: 4,
+          speed: PrepTimeControl.blitz,
+          playerIsWhite: true,
+        ),
+    ];
+    final overrides = [
+      prepProfileProvider.overrideWith((ref, id) => profile),
+      prepAnalysisProvider.overrideWith(
+        (ref, id) async => PrepAnalysis(profileId: id, games: games),
+      ),
+    ];
+
+    testWidgets('a Premium reader lands on Games at once', (tester) async {
+      await pump(
+        tester,
+        const PrepProfileScreen(
+          profileId: 'p',
+          initialTab: prepProfileGamesTab,
+        ),
+        premium: true,
+        overrides: overrides,
+      );
+      await tester.pumpAndSettle();
+      expect(find.byType(PrepGamesTab), findsOneWidget);
+      expect(asked, isEmpty);
+      expect(tester.takeException(), isNull);
+    });
+
+    for (final granted in [false, true]) {
+      testWidgets('a free reader is asked first, as the tab asks '
+          '(${granted ? 'granted' : 'declined'})', (tester) async {
+        grant = granted;
+        await pump(
+          tester,
+          const PrepProfileScreen(
+            profileId: 'p',
+            initialTab: prepProfileGamesTab,
+          ),
+          overrides: overrides,
+        );
+        await tester.pumpAndSettle();
+        expect(asked, [('prep_games', true)]);
+        expect(
+          find.byType(PrepGamesTab),
+          granted ? findsOneWidget : findsNothing,
+        );
+        expect(
+          find.text('Games analyzed'),
+          granted ? findsNothing : findsOneWidget,
+        );
+        expect(tester.takeException(), isNull);
+      });
+    }
+
+    testWidgets('opened any other way it starts on About', (tester) async {
+      await pump(
+        tester,
+        const PrepProfileScreen(profileId: 'p'),
+        premium: true,
+        overrides: overrides,
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('Games analyzed'), findsOneWidget);
+      expect(find.byType(PrepGamesTab), findsNothing);
+    });
+  });
+
+  group('tapping a Prep "new games" push, through the notification router', () {
+    const account = PrepAccount(
+      source: PrepSource.lichess,
+      username: 'durarbayli',
+    );
+    const player = PrepProfile(
+      id: 'vasif',
+      kind: PrepKind.opponent,
+      name: 'Vasif Durarbayli',
+      createdAtMs: 1,
+      accounts: [account],
+    );
+    final games = [
+      for (var i = 0; i < 2; i++)
+        PrepGame(
+          index: i,
+          source: account.source,
+          sourcePath: PrepRepository.gamesFileName(account),
+          white: 'durarbayli',
+          black: 'Opponent $i',
+          result: '1-0',
+          plies: 4,
+          speed: PrepTimeControl.blitz,
+          playerIsWhite: true,
+        ),
+    ];
+
+    /// The app with [profiles] on the device, and the tap of the push
+    /// onesignal-dispatch sends (FCM: every value a string).
+    Future<_WatchRemote> tapPush(
+      WidgetTester tester,
+      List<PrepProfile> profiles,
+    ) async {
+      File('${directory.path}/prep/profiles.json')
+        ..createSync(recursive: true)
+        ..writeAsStringSync(
+          jsonEncode({
+            'profiles': [for (final p in profiles) p.toJson()],
+          }),
+        );
+      final remote = _WatchRemote();
+      final navigatorKey = GlobalKey<NavigatorState>();
+      late WidgetRef captured;
+      DeepLinkService.instance.dispose();
+      addTearDown(DeepLinkService.instance.detachNotificationRouter);
+      addTearDown(DeepLinkService.instance.dispose);
+      final host = Consumer(
+        builder: (_, ref, _) {
+          captured = ref;
+          return const SizedBox.shrink();
+        },
+      );
+      await pump(
+        tester,
+        host,
+        premium: true,
+        navigatorKey: navigatorKey,
+        onGenerateRoute: (settings) =>
+            MaterialPageRoute<void>(settings: settings, builder: (_) => host),
+        overrides: [
+          prepWatchRemoteProvider.overrideWithValue(remote),
+          prepAnalysisProvider.overrideWith(
+            (ref, id) async => PrepAnalysis(profileId: id, games: games),
+          ),
+        ],
+      );
+      DeepLinkService.instance.attachNotificationRouter(navigatorKey, captured);
+      DeepLinkService.notifyAppReady();
+      DeepLinkService.instance.ingestNotificationData(const {
+        'type': 'prep_games_added',
+        'prep_profile_id': 'vasif',
+        'added': '7',
+        // Added by the notification service on the way to the phone.
+        'url': '',
+        'delivery_id': '5b1c9f0e-0d1a-4c7e-9a52-0f3c6d2e8a11',
+        'campaign_id': '856a94b6-a8e3-4529-9abb-b344b431c8bd',
+      });
+      await tester.pumpAndSettle();
+      return remote;
+    }
+
+    testWidgets('a starred player opens on their Games tab', (tester) async {
+      final remote = await tapPush(tester, [player.copyWith(watching: true)]);
+      final screen = tester.widget<PrepProfileScreen>(
+        find.byType(PrepProfileScreen),
+      );
+      expect(screen.profileId, 'vasif');
+      expect(screen.initialTab, prepProfileGamesTab);
+      expect(screen.newGames, 7);
+      expect(find.byType(PrepGamesTab), findsOneWidget);
+      expect(find.text('Vasif Durarbayli played 7 new games.'), findsOneWidget);
+      expect(remote.calls.where((c) => c.startsWith('unwatch')), isEmpty);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('a player no longer starred here opens My Prep and stops the '
+        'pushes', (tester) async {
+      final remote = await tapPush(tester, [player]);
+      expect(find.byType(PrepProfileScreen), findsNothing);
+      expect(find.byType(MyPrepHomeScreen), findsOneWidget);
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 50)),
+      );
+      expect(remote.calls, contains('unwatch vasif'));
+    });
   });
 
   testWidgets('a free reader is asked before a Prep database in the Library '

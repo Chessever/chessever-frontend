@@ -413,9 +413,24 @@ final prepSyncProvider =
     );
 
 class PrepSyncController extends StateNotifier<Map<String, PrepSyncStatus>> {
-  PrepSyncController(this._ref) : super(const {});
+  PrepSyncController(this._ref) : super(const {}) {
+    _lifecycle = AppLifecycleListener(
+      onHide: () => _hides++,
+      onResume: () {
+        final resumed = _resumed;
+        _resumed = null;
+        resumed?.complete();
+      },
+    );
+  }
 
   final Ref _ref;
+  late final AppLifecycleListener _lifecycle;
+
+  /// How many times the app has left the screen. A download that fails
+  /// after this moved was most likely cut off by the system, not refused.
+  int _hides = 0;
+  Completer<void>? _resumed;
 
   final Map<String, Completer<void>> _running = {};
 
@@ -424,6 +439,15 @@ class PrepSyncController extends StateNotifier<Map<String, PrepSyncStatus>> {
   /// one download after another instead of all of them at once.
   final List<(String, String)> _queue = [];
   bool _draining = false;
+
+  @override
+  void dispose() {
+    _lifecycle.dispose();
+    final resumed = _resumed;
+    _resumed = null;
+    resumed?.complete();
+    super.dispose();
+  }
 
   Future<void> cancelAndWait(PrepAccount account) async {
     cancel(account);
@@ -438,6 +462,11 @@ class PrepSyncController extends StateNotifier<Map<String, PrepSyncStatus>> {
   /// [prepRetryDelay]; a success resets it. A [background] refresh was not
   /// asked for by the reader, so its failure is never shown on the account:
   /// the games already downloaded stay as they were.
+  ///
+  /// Leaving the app mid-download pauses it instead of failing it: the
+  /// system cuts the connection off in the background, so a failure that
+  /// follows a trip away waits for the app to come back and continues from
+  /// there. The returned future completes with the resumed download.
   Future<String?> syncAccount(
     String profileId,
     PrepAccount account, {
@@ -464,43 +493,82 @@ class PrepSyncController extends StateNotifier<Map<String, PrepSyncStatus>> {
     }
 
     report('Checking ${account.source.label}…');
+    var refresh = force;
     try {
-      final synced = await _ref
-          .read(prepRepositoryProvider)
-          .sync(
+      while (true) {
+        final hides = _hides;
+        try {
+          final synced = await _ref
+              .read(prepRepositoryProvider)
+              .sync(
+                account,
+                forceRefresh: refresh,
+                frequent: profile.kind == PrepKind.mine,
+                onProgress: report,
+                cancelToken: cancel,
+                reinstall: reinstall,
+              );
+          profiles.edit(profileId, (p) {
+            final live = p.accounts
+                .where((a) => a.key == account.key)
+                .firstOrNull;
+            if (live == null) return p;
+            // Keep any download options changed while this ran; the next
+            // sync notices the new scope and replaces the games.
+            return p.replaceAccount(
+              live.copyWith(
+                lastSyncAtMs: synced.lastSyncAtMs,
+                syncedScope: live.preferences == account.preferences
+                    ? synced.syncedScope
+                    : 'stale',
+                gameCount: synced.gameCount,
+                clearError: true,
+                clearRetry: true,
+              ),
+            );
+          });
+          return null;
+        } catch (error) {
+          if (error is DioException && CancelToken.isCancel(error)) {
+            return null;
+          }
+          final failure = _failureOf(error);
+          if (_hides != hides && !failure.permanent && mounted) {
+            report('Paused · continues when you are back');
+            if (!await _untilResumed(cancel)) return null;
+            if (!_stillAttached(profileId, account)) return null;
+            // The server kept preparing while the app was away; asking for
+            // a fresh job again would only restart it.
+            refresh = false;
+            report('Checking ${account.source.label}…');
+            continue;
+          }
+          return _fail(
+            profileId,
             account,
-            forceRefresh: force,
-            frequent: profile.kind == PrepKind.mine,
-            onProgress: report,
-            cancelToken: cancel,
-            reinstall: reinstall,
+            failure.message,
+            background: background,
+            permanent: failure.permanent,
+            retryAfter: failure.retryAfter,
           );
-      profiles.edit(profileId, (p) {
-        final live = p.accounts.where((a) => a.key == account.key).firstOrNull;
-        if (live == null) return p;
-        // Keep any download options changed while this ran; the next sync
-        // notices the new scope and replaces the games.
-        return p.replaceAccount(
-          live.copyWith(
-            lastSyncAtMs: synced.lastSyncAtMs,
-            syncedScope: live.preferences == account.preferences
-                ? synced.syncedScope
-                : 'stale',
-            gameCount: synced.gameCount,
-            clearError: true,
-            clearRetry: true,
-          ),
-        );
-      });
-      return null;
-    } on DioException catch (error) {
-      if (CancelToken.isCancel(error)) return null;
+        }
+      }
+    } finally {
+      if (mounted) state = {...state}..remove(account.key);
+      _running.remove(account.key);
+      done.complete();
+    }
+  }
+
+  /// What a failed download tells the reader, and whether it may pass.
+  ({String message, bool permanent, Duration? retryAfter}) _failureOf(
+    Object error,
+  ) {
+    const generic = 'Could not download games. Try again.';
+    if (error is DioException) {
       final code = error.response?.statusCode;
-      return _fail(
-        profileId,
-        account,
-        'Could not download games. Try again.',
-        background: background,
+      return (
+        message: generic,
         // A refused request stays refused; a timeout, a dropped connection
         // or a server error may pass.
         permanent:
@@ -513,29 +581,35 @@ class PrepSyncController extends StateNotifier<Map<String, PrepSyncStatus>> {
             ? prepRetryAfter(error.response?.headers)
             : null,
       );
-    } on PrepException catch (error) {
-      return _fail(
-        profileId,
-        account,
-        error.message,
-        background: background,
+    }
+    if (error is PrepException) {
+      return (
+        message: error.message,
         permanent: error.permanent,
         retryAfter: error.retryAfter,
       );
-    } catch (error) {
-      debugPrint('[MyPrep] sync failed: $error');
-      return _fail(
-        profileId,
-        account,
-        'Could not download games. Try again.',
-        background: background,
-      );
-    } finally {
-      if (mounted) state = {...state}..remove(account.key);
-      _running.remove(account.key);
-      done.complete();
     }
+    debugPrint('[MyPrep] sync failed: $error');
+    return (message: generic, permanent: false, retryAfter: null);
   }
+
+  /// Waits until the app is on screen again. False when the download was
+  /// canceled meanwhile, or the controller went away.
+  Future<bool> _untilResumed(CancelToken cancel) async {
+    if (WidgetsBinding.instance.lifecycleState != AppLifecycleState.resumed) {
+      final resumed = _resumed ??= Completer<void>();
+      await Future.any([resumed.future, cancel.whenCancel]);
+    }
+    return mounted && !cancel.isCancelled;
+  }
+
+  bool _stillAttached(String profileId, PrepAccount account) =>
+      _ref
+          .read(prepProfilesProvider.notifier)
+          .byId(profileId)
+          ?.accounts
+          .any((a) => a.key == account.key) ??
+      false;
 
   String _fail(
     String profileId,

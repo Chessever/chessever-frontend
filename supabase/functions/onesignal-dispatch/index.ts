@@ -7,20 +7,21 @@ import {
   groupFavoriteBoardCopy,
 } from "./favorite_copy.ts";
 import { collectionStarRecipients } from "./collection_subscribers.ts";
-import { prepGamesAddedCopy } from "./prep_copy.ts";
+import { prepGamesAddedCopy, prepGamesPushFromPayload } from "./prep_copy.ts";
+import {
+  smartEventDigestCopy,
+  smartEventDigestFromPayload,
+} from "./smart_event_copy.ts";
+import { timezoneFromOneSignalUser } from "./user_timezone.ts";
 import { collectFavoriteMatches } from "./favorite_match.ts";
-import { filterGameStartedPlayerRecipients } from "./player_game_recipients.ts";
+import {
+  coveredBoardsByUser,
+  filterGameStartedPlayerRecipients,
+  gameStartWindowFamily,
+  usersCoveredForBoard,
+} from "./player_game_recipients.ts";
 import { chunk, packForUrlBudget } from "./postgrest_in.ts";
 import { pushImageUrl } from "./push_image.ts";
-import {
-  sameRoundStartSlot,
-  smartEventAverageRating,
-  type SmartEventRound,
-  smartEventsNeedGameAverages,
-  type SmartEventSubscription,
-  smartEventSubscribersForRound,
-  smartEventTimeControlOf,
-} from "./smart_event_match.ts";
 import {
   describeError,
   isTransientError,
@@ -107,12 +108,6 @@ const INVOCATION_DEADLINE_MS = 120_000;
 const STOP_CLAIMING_WITH_MS = 20_000;
 const ONESIGNAL_EXTERNAL_ID_CHUNK_SIZE = 1000;
 const ONESIGNAL_SUBSCRIPTION_ID_CHUNK_SIZE = 20000;
-/** Round alerts a starred smart event receives, like a starred event. */
-const SMART_EVENT_ROUND_TYPES = new Set([
-  "round_started",
-  "round_heads_up",
-  "round_finished",
-]);
 const dispatchTokenCache: { token: string | null; expiresAtMs: number } = {
   token: null,
   expiresAtMs: 0,
@@ -305,6 +300,15 @@ async function processItem(item: OutboxItem) {
   }
 
   try {
+    // A smart event's push is about its own games, never a tournament's.
+    if (item.event_type === "smart_event_digest") {
+      return await sendSmartEventDigest(item, sendOneSignal);
+    }
+    // Sends nothing: caches readers' timezones for the evening push above.
+    if (item.event_type === "user_timezone_refresh") {
+      return await refreshUserTimezones(item);
+    }
+
     const context = await buildContext(item);
     if (HISTORICAL_EVENT_TYPES.has(item.event_type)) {
       // Same DB policy as the producer also protects queued/manual replay rows.
@@ -424,15 +428,14 @@ async function processItem(item: OutboxItem) {
       const roundName = context.round?.name ?? "";
       const title = buildEventHeader(eventName, roundName) ?? eventName;
 
-      // Exclude player-favorite users who already received a game_started
-      // push for this round (recorded by the game_started handler).
-      const suppressedByWindow = await fetchUsersWithActiveGameStartWindow(
+      // Boards a game_started row (or an earlier pass of this row) already
+      // announced to each user. Only those boards are skipped for them: their
+      // other favorites' boards in this round still go out.
+      const coveredBoards = await fetchGameStartWindows(
         roundId,
         playerRecipients,
       );
-      const dedupedPlayerRecipients = playerRecipients.filter(
-        (uid) => !suppressedByWindow.has(uid),
-      );
+      const reachedPlayerRecipients = new Set<string>();
 
       // One notification PER BOARD for player-favorite users.
       //
@@ -446,11 +449,11 @@ async function processItem(item: OutboxItem) {
       //
       // Wording and payload match game_started exactly, so the same board reads
       // the same whichever row wins the race to dispatch it.
-      if (dedupedPlayerRecipients.length > 0) {
+      if (playerRecipients.length > 0) {
         const boardBatches = new Map<string, string[]>();
         const unresolved: string[] = []; // no favorite board → event fallback
 
-        for (const userId of dedupedPlayerRecipients) {
+        for (const userId of playerRecipients) {
           const favNames = context.playerFavoriteMap.get(userId) ?? [];
           const gameIds = new Set<string>();
           for (const name of favNames) {
@@ -459,13 +462,21 @@ async function processItem(item: OutboxItem) {
               if (context.roundBoards.has(gameId)) gameIds.add(gameId);
             }
           }
+          const covered = coveredBoards.get(userId);
 
           if (gameIds.size === 0) {
+            // A board alert already reached them this round (their favorite
+            // matched a board this index missed): the generic round
+            // template would only repeat it.
+            if (covered) continue;
             unresolved.push(userId);
+            reachedPlayerRecipients.add(userId);
             continue;
           }
 
           for (const gameId of gameIds) {
+            if (covered?.has(gameId)) continue;
+            reachedPlayerRecipients.add(userId);
             const batch = boardBatches.get(gameId);
             if (batch) batch.push(userId);
             else boardBatches.set(gameId, [userId]);
@@ -524,6 +535,10 @@ async function processItem(item: OutboxItem) {
               androidChannelId: channelForEvent("round_started"),
             });
           }
+          // Per board, right after its send: the game_started row for this
+          // board then skips exactly these users, and a continuation of this
+          // row after a timeout skips it too.
+          await recordGameStartWindow(userIds, roundId, gameId);
           sentBoards.add(gameId);
         }
 
@@ -545,24 +560,6 @@ async function processItem(item: OutboxItem) {
 
         progress.boards_sent = [...sentBoards];
         await saveRoundStartProgress(item, progress);
-      }
-
-      // Record game_start windows for every player recipient who just
-      // received this round_started notification.  This prevents
-      // game_started (which fires later, when the first move is played)
-      // from sending a duplicate push to the same users.
-      // TTL = 15 min — comfortably covers the gap between round start
-      // and first moves in any standard tournament format.
-      const progressAfterBoards = readRoundStartProgress(item);
-      if (
-        dedupedPlayerRecipients.length > 0 &&
-        !progressAfterBoards.windows_recorded
-      ) {
-        await recordGameStartWindow(dedupedPlayerRecipients, roundId);
-        await saveRoundStartProgress(item, {
-          ...progressAfterBoards,
-          windows_recorded: true,
-        });
       }
 
       // Event-only recipients (starred event, no favorites playing)
@@ -587,7 +584,7 @@ async function processItem(item: OutboxItem) {
       return {
         id: item.id,
         status: "sent",
-        recipients: dedupedPlayerRecipients.length + eventRecipients.length,
+        recipients: reachedPlayerRecipients.size + eventRecipients.length,
       };
     }
 
@@ -782,21 +779,19 @@ async function processItem(item: OutboxItem) {
         return { id: item.id, status: "skipped", reason: "no_recipients" };
       }
 
-      const added = typeof item.payload?.added === "number"
-        ? Math.max(1, Math.trunc(item.payload.added as number))
-        : 1;
-      const copy = prepGamesAddedCopy(
-        optionalPayloadString(item.payload, "profile_name") ?? "",
-        added,
-      );
+      const added = Number(item.payload?.added);
+      const copy = prepGamesAddedCopy(prepGamesPushFromPayload(item.payload));
       await sendOneSignal(eligible, {
         title: copy.title,
         body: copy.body,
         url: null,
+        // Strings only: FCM data carries nothing else.
         data: {
           type: "prep_games_added",
           prep_profile_id: profileId,
-          added,
+          added: String(
+            Number.isFinite(added) && added > 0 ? Math.trunc(added) : 1,
+          ),
         },
         androidChannelId: channelForEvent("prep_games_added"),
       });
@@ -1043,18 +1038,17 @@ async function processItem(item: OutboxItem) {
       return { id: item.id, status: "skipped", reason: "no_recipients" };
     }
 
-    // For game_started, suppress only users already covered by a confirmed
-    // combined round_started or an earlier per-game fallback. Favorite count
-    // alone is not proof of delivery: if round_started was waiting for moves,
-    // the first matching game_started becomes the safe one-per-round fallback.
-    if (item.event_type === "game_started" && item.round_id) {
-      const alreadyCovered = await fetchUsersWithActiveGameStartWindow(
+    // For game_started, drop only users whom round_started already told about
+    // THIS board. Another favorite's board in the same round is not cover:
+    // every favorite's board gets its own start alert.
+    if (item.event_type === "game_started" && item.round_id && item.game_id) {
+      const windows = await fetchGameStartWindows(
         item.round_id,
         Array.from(filteredUserIds),
       );
       const { keep } = filterGameStartedPlayerRecipients(
         filteredUserIds,
-        alreadyCovered,
+        usersCoveredForBoard(windows, item.game_id),
       );
       filteredUserIds.clear();
       for (const uid of keep) filteredUserIds.add(uid);
@@ -1095,14 +1089,18 @@ async function processItem(item: OutboxItem) {
       await sendOneSignal(Array.from(filteredUserIds), notification);
     }
 
-    // Record a cooldown window so that round_started skips these users.
-    // Only record for the users who actually received this push (1-favorite users).
-    if (item.event_type === "game_started" && item.round_id) {
+    // Record this board for the users who just got it, so a round_started
+    // still waiting for moves does not announce the same board again.
+    if (item.event_type === "game_started" && item.round_id && item.game_id) {
       const playerRecipients = Array.from(filteredUserIds).filter(
         (uid) => context.playerUserIds.has(uid),
       );
       if (playerRecipients.length > 0) {
-        await recordGameStartWindow(playerRecipients, item.round_id);
+        await recordGameStartWindow(
+          playerRecipients,
+          item.round_id,
+          item.game_id,
+        );
       }
     }
 
@@ -1165,7 +1163,6 @@ type RoundStartProgress = {
   event_sent?: boolean;
   boards_sent?: string[];
   unresolved_sent?: boolean;
-  windows_recorded?: boolean;
 };
 
 function readRoundStartProgress(item: OutboxItem): RoundStartProgress {
@@ -1178,7 +1175,6 @@ function readRoundStartProgress(item: OutboxItem): RoundStartProgress {
       ? boards.filter((id): id is string => typeof id === "string")
       : [],
     unresolved_sent: raw.unresolved_sent === true,
-    windows_recorded: raw.windows_recorded === true,
   };
 }
 
@@ -1297,23 +1293,45 @@ async function markFailed(id: string, attempts: number, error: string) {
       .eq("id", id));
 }
 
+// A board starts once, so a per-board window can only ever stop the same
+// board being announced twice. It has to outlive the gap between the round
+// push and that board's own first move (a late arrival, a relay that comes
+// online late), not the 15 minutes the old round-wide window allowed.
+const GAME_START_WINDOW_SECONDS = 4 * 60 * 60;
+const GAME_START_WINDOW_WRITE_ROWS = 500;
+
 // Written after the push went out, so this must never throw: a retry from
 // here would re-send. Lose the window and the worst case is one duplicate
 // board alert, which the per-board collapse_id folds into the same tray entry.
-async function recordGameStartWindow(userIds: string[], roundId: string) {
+async function recordGameStartWindow(
+  userIds: string[],
+  roundId: string,
+  gameId: string,
+) {
+  const family = gameStartWindowFamily(gameId);
+  const expiresAt = new Date(Date.now() + GAME_START_WINDOW_SECONDS * 1000)
+    .toISOString();
   try {
-    await runQuery(
-      "Game-start window record",
-      () =>
-        supabase.rpc("record_game_start_window", {
-          p_user_ids: userIds,
-          p_round_id: roundId,
-          p_cooldown_seconds: 900, // 15 min covers the gap to the round_started cron
-        }),
-    );
+    for (const batch of chunk(userIds, GAME_START_WINDOW_WRITE_ROWS)) {
+      await runQuery(
+        "Game-start window record",
+        () =>
+          supabase
+            .from("notification_user_windows")
+            .upsert(
+              batch.map((userId) => ({
+                user_id: userId,
+                round_id: roundId,
+                family,
+                expires_at: expiresAt,
+              })),
+              { onConflict: "user_id,round_id,family" },
+            ),
+      );
+    }
   } catch (error) {
     console.error(
-      `[onesignal-dispatch] game-start window for round ${roundId} not recorded (${userIds.length} users): ${
+      `[onesignal-dispatch] game-start window for board ${gameId} (round ${roundId}) not recorded (${userIds.length} users): ${
         describeError(error, 300)
       }`,
     );
@@ -1327,7 +1345,6 @@ async function buildContext(item: OutboxItem) {
   let eventName: string | null = null;
   let groupBroadcastId = item.group_broadcast_id ?? null;
   let groupSectionCount = 0;
-  let groupTourIds: string[] = [];
 
   // Every lookup here fails loud. They used to discard `error` and carry on
   // with a null row, so one dropped HTTP/2 stream on the games read turned a
@@ -1390,7 +1407,6 @@ async function buildContext(item: OutboxItem) {
     );
     groupSectionCount = (groupedTours ?? [])
       .filter((row) => !isCombinedTour(row as TourRow)).length;
-    groupTourIds = (groupedTours ?? []).map((row) => row.id);
   }
 
   const displayEventName = buildRoundEventDisplayName(
@@ -1419,7 +1435,6 @@ async function buildContext(item: OutboxItem) {
 
   let playerGameIds = new Map<string, Set<string>>();
   let roundBoards = new Map<string, RoundBoard>();
-  let roundGameAverages: number[] | null = null;
 
   if (
     (item.event_type === "round_started" ||
@@ -1427,7 +1442,6 @@ async function buildContext(item: OutboxItem) {
     item.round_id
   ) {
     const roundPlayers = await fetchRoundPlayers(item.round_id);
-    roundGameAverages = roundPlayers.gameAverages;
     for (const name of roundPlayers.playerNames) {
       playerNames.add(name);
     }
@@ -1438,27 +1452,12 @@ async function buildContext(item: OutboxItem) {
     roundBoards = roundPlayers.roundBoards;
   }
 
-  // Round-level alerts only: a board alert belongs to its players' followers.
-  const smartEventUserIds = groupBroadcastId && item.round_id &&
-      SMART_EVENT_ROUND_TYPES.has(item.event_type)
-    ? await resolveSmartEventSubscribers({
-      item,
-      roundId: item.round_id,
-      roundStartsAt: round?.starts_at ?? null,
-      groupBroadcastId,
-      groupTourIds,
-      tourId,
-      gameAverages: roundGameAverages,
-    })
-    : [];
-
   const { eventUserIds, playerUserIds, playerFavoriteRows } =
     await resolveRecipients({
       groupBroadcastId,
       eventName,
       fideIds: Array.from(fideIdSet),
       players: Array.from(playerNames),
-      smartEventUserIds,
     });
 
   // Per-user favorite names word board alerts as well as round heads-up.
@@ -1631,11 +1630,8 @@ async function fetchRoundPlayers(roundId: string) {
   // single id) because a knockout round can pair the same player twice.
   const playerGameIds = new Map<string, Set<string>>();
   const roundBoards = new Map<string, RoundBoard>();
-  // Each board's two-player average, for starred smart events' level floors.
-  const gameAverages: number[] = [];
 
   for (const row of (data ?? []) as RoundGameRow[]) {
-    gameAverages.push(smartEventAverageRating(row.players));
     if (row.player_white) playerNames.add(row.player_white);
     if (row.player_black) playerNames.add(row.player_black);
     for (const id of row.player_fide_ids ?? []) {
@@ -1670,189 +1666,7 @@ async function fetchRoundPlayers(roundId: string) {
     fideIds: Array.from(fideIds),
     playerGameIds,
     roundBoards,
-    gameAverages,
   };
-}
-
-/**
- * The users whose starred smart events gather this round and who turned
- * their notifications on. They join the event-starred audience, so the
- * round's mute, category and time-control rules apply to them unchanged.
- *
- * Never throws: a failed lookup costs these users one alert, not the round
- * its send.
- */
-async function resolveSmartEventSubscribers(args: {
-  item: OutboxItem;
-  roundId: string;
-  roundStartsAt: string | null;
-  groupBroadcastId: string | null;
-  groupTourIds: string[];
-  tourId: string | null;
-  gameAverages: number[] | null;
-}): Promise<string[]> {
-  try {
-    // Only the criteria: the row's event snapshot can run to kilobytes.
-    const subscriptions = (await fetchAllPages<unknown>(
-      "Smart event subscription lookup",
-      (from, to) =>
-        supabase
-          .from("user_favorite_events")
-          .select(
-            "user_id,min_elo:metadata->minElo,max_elo:metadata->maxElo," +
-              "formats:metadata->formatsAndStates,eco:metadata->ecoCode",
-          )
-          .eq("metadata->>type", "smart_event")
-          .eq("metadata->>notificationsEnabled", "true")
-          .order("id")
-          .range(from, to),
-    )) as SmartEventSubscription[];
-    if (subscriptions.length === 0) return [];
-
-    const phase = args.item.event_type === "round_finished"
-      ? "finish"
-      : "start";
-    const sections = [{
-      roundId: args.roundId,
-      tourId: args.tourId,
-      gameAverages: args.gameAverages,
-    }];
-    // A round start or heads-up is queued once per event and start time
-    // (`<type>:<group>:<epoch>`), carrying whichever section's round won the
-    // insert, and that one push reaches an event's starrers for every
-    // section. Match smart events against every section starting then too:
-    // otherwise a 2650+ smart event misses the Masters start whenever the
-    // Challengers round is the one queued. Results stay per round, since
-    // each section sends its own.
-    const startMs = Date.parse(args.roundStartsAt ?? "");
-    if (
-      phase === "start" && !Number.isNaN(startMs) &&
-      args.groupTourIds.length > 1
-    ) {
-      const siblings = await fetchAllPages<
-        { id: string; tour_id: string | null; starts_at: string | null }
-      >(
-        "Smart event section rounds lookup",
-        (from, to) =>
-          supabase
-            .from("rounds")
-            .select("id,tour_id,starts_at")
-            .in("tour_id", args.groupTourIds)
-            .gte("starts_at", new Date(startMs - 1000).toISOString())
-            .lte("starts_at", new Date(startMs + 1000).toISOString())
-            .order("id")
-            .range(from, to),
-      );
-      for (const row of siblings) {
-        if (row.id === args.roundId) continue;
-        if (!sameRoundStartSlot(row.starts_at, args.roundStartsAt)) continue;
-        sections.push({
-          roundId: row.id,
-          tourId: row.tour_id,
-          gameAverages: null,
-        });
-      }
-    }
-
-    const needAverages = smartEventsNeedGameAverages(subscriptions);
-    // The event's bucket, as the app gathers a smart event's games: the same
-    // for every section, whatever each section's own clock says.
-    const timeControl = smartEventTimeControlOf(
-      await fetchGroupTimeControl(args.groupBroadcastId),
-    );
-    const audience = new Set(
-      subscriptions.map((row) => row.user_id).filter(Boolean),
-    );
-    const userIds = new Set<string>();
-    for (const section of sections) {
-      let gameAverages = section.gameAverages;
-      if (!gameAverages && needAverages) {
-        gameAverages = await fetchRoundGameAverages(section.roundId);
-      }
-      // A heads-up can run before the pairings are up, when the section has
-      // no board to rate: its players' average stands in for them.
-      if (
-        needAverages && section.tourId &&
-        !(gameAverages ?? []).some((average) => average > 0)
-      ) {
-        const sectionAverage = await fetchTourAverageElo(section.tourId);
-        if (sectionAverage > 0) gameAverages = [sectionAverage];
-      }
-      const round: SmartEventRound = {
-        timeControl,
-        gameAverages: gameAverages ?? [],
-        phase,
-      };
-      for (
-        const userId of smartEventSubscribersForRound(subscriptions, round)
-      ) {
-        userIds.add(userId);
-      }
-      if (userIds.size >= audience.size) break;
-    }
-    return Array.from(userIds);
-  } catch (error) {
-    console.error(
-      `[onesignal-dispatch] smart event subscribers failed for ${args.item.event_type} ${args.roundId}; event stars still used: ${
-        describeError(error)
-      }`,
-    );
-    return [];
-  }
-}
-
-/** `group_broadcasts.time_control` of [groupBroadcastId]; null if unknown. */
-async function fetchGroupTimeControl(
-  groupBroadcastId: string | null,
-): Promise<string | null> {
-  if (!groupBroadcastId) return null;
-  const { data, error } = await runQuerySettled<
-    { time_control: string | null }
-  >("Smart event group time-control lookup", () =>
-    supabase
-      .from("group_broadcasts")
-      .select("time_control")
-      .eq("id", groupBroadcastId)
-      .maybeSingle());
-  if (error) {
-    // Unknown: smart events with no time control still match.
-    console.warn(
-      `[onesignal-dispatch] Smart event group time-control lookup failed for ${groupBroadcastId}: ${error.message}`,
-    );
-    return null;
-  }
-  return data?.time_control ?? null;
-}
-
-/** Each board's two-player average in [roundId] (0 = unrated). */
-async function fetchRoundGameAverages(roundId: string): Promise<number[]> {
-  const boards = await fetchAllPages<{ players: unknown }>(
-    "Smart event round boards lookup",
-    (from, to) =>
-      supabase
-        .from("games")
-        .select("id,players")
-        .eq("round_id", roundId)
-        .order("id")
-        .range(from, to),
-  );
-  return boards.map((row) => smartEventAverageRating(row.players));
-}
-
-/** A section's player average (`tours.avg_elo`); 0 when unknown. */
-async function fetchTourAverageElo(tourId: string): Promise<number> {
-  const { data, error } = await runQuerySettled<{ avg_elo: unknown }>(
-    "Tour average rating lookup",
-    () =>
-      supabase
-        .from("tours")
-        .select("avg_elo")
-        .eq("id", tourId)
-        .maybeSingle(),
-  );
-  if (error) return 0;
-  const average = Number(data?.avg_elo);
-  return Number.isFinite(average) && average > 0 ? Math.floor(average) : 0;
 }
 
 /** Calendar-card favorite id: cal_event_<sanitized name> (matches Flutter). */
@@ -1869,7 +1683,6 @@ async function resolveRecipients(args: {
   eventName?: string | null;
   fideIds: string[];
   players: string[];
-  smartEventUserIds?: string[];
 }) {
   const eventUserIds = new Set<string>();
   const playerUserIds = new Set<string>();
@@ -1905,7 +1718,8 @@ async function resolveRecipients(args: {
     // Also match by display name (case-insensitive) so renamed-id leftovers
     // and pure name-starred rows still receive round notifications. A starred
     // collection or smart event that shares the name is not this event's
-    // star: those rows notify only through their own opt-in.
+    // star: those rows send their own pushes (smart_event_digest,
+    // collection_games_added), never this event's round alerts.
     if (name) {
       const byName = await fetchAllPages<{ user_id: string | null }>(
         "Favorite event name lookup",
@@ -1922,11 +1736,6 @@ async function resolveRecipients(args: {
       for (const row of byName) {
         if (row.user_id) eventUserIds.add(row.user_id);
       }
-    }
-
-    // Added before the mute pass below, so a muted event stays muted.
-    for (const userId of args.smartEventUserIds ?? []) {
-      eventUserIds.add(userId);
     }
   }
 
@@ -2416,34 +2225,39 @@ async function fetchMutedUserIds(
   return muted;
 }
 
-async function fetchUsersWithActiveGameStartWindow(
+// user → boards of this round whose start push already reached them. Rows
+// of the old round-wide `game_start` family are ignored: they silenced every
+// other favorite's board for the round.
+async function fetchGameStartWindows(
   roundId: string,
   userIds: string[],
-): Promise<Set<string>> {
-  const suppressed = new Set<string>();
-  if (userIds.length === 0) return suppressed;
+): Promise<Map<string, Set<string>>> {
+  if (userIds.length === 0) return new Map();
   const nowIso = new Date().toISOString();
+  const rows: Array<{ user_id: string; family: string }> = [];
   for (const batch of packForUrlBudget(userIds)) {
     // A failed window read must fail the item (and retry) rather than treat
-    // covered users as uncovered and double-send. runQuery throws
+    // covered users as uncovered and double-send. fetchAllPages throws
     // `Game-start window lookup failed: …` once its in-process retries are
-    // spent.
-    const data = await runQuery<Array<{ user_id: string }>>(
-      "Game-start window lookup",
-      () =>
-        supabase
-          .from("notification_user_windows")
-          .select("user_id")
-          .eq("round_id", roundId)
-          .eq("family", "game_start")
-          .gt("expires_at", nowIso)
-          .in("user_id", batch),
+    // spent. One row per user AND board, so a page can pass PostgREST's
+    // silent 1000-row cap: walk every page.
+    rows.push(
+      ...await fetchAllPages<{ user_id: string; family: string }>(
+        "Game-start window lookup",
+        (from, to) =>
+          supabase
+            .from("notification_user_windows")
+            .select("user_id, family")
+            .eq("round_id", roundId)
+            .gt("expires_at", nowIso)
+            .in("user_id", batch)
+            .order("user_id")
+            .order("family")
+            .range(from, to),
+      ),
     );
-    for (const row of data ?? []) {
-      suppressed.add(row.user_id);
-    }
   }
-  return suppressed;
+  return coveredBoardsByUser(rows);
 }
 
 async function resolveRecursiveBookSubscribers(
@@ -2521,6 +2335,177 @@ async function filterCollectionRecipients(
     filtered.push(userId);
   }
   return filtered;
+}
+
+/**
+ * One starred smart event's four-hour push, queued by
+ * `public.queue_smart_event_digests` with the games its filter caught.
+ * Tapping it opens the smart event (data `smart_event_id`); app builds that
+ * predate the route open the strongest game instead (`game_id`).
+ */
+async function sendSmartEventDigest(
+  item: OutboxItem,
+  send: (userIds: string[], notification: NotificationPayload) => Promise<void>,
+) {
+  const userId = optionalPayloadString(item.payload, "user_id");
+  const smartEventId = optionalPayloadString(item.payload, "smart_event_id");
+  if (!userId || !smartEventId) {
+    await markSkipped(item.id, "missing_smart_event");
+    return { id: item.id, status: "skipped", reason: "missing_smart_event" };
+  }
+
+  const digest = smartEventDigestFromPayload(item.payload);
+  if (digest.games <= 0) {
+    await markSkipped(item.id, "no_games");
+    return { id: item.id, status: "skipped", reason: "no_games" };
+  }
+
+  // Unstarring is the opt-out: the star may have come off since the queue.
+  if (!await isSmartEventStarred(userId, smartEventId)) {
+    await markSkipped(item.id, "not_starred");
+    return { id: item.id, status: "skipped", reason: "not_starred" };
+  }
+
+  const eligible = await filterCollectionRecipients([userId]);
+  if (eligible.length === 0) {
+    await markSkipped(item.id, "no_recipients");
+    return { id: item.id, status: "skipped", reason: "no_recipients" };
+  }
+
+  const copy = smartEventDigestCopy(digest);
+  const topGameId = optionalPayloadString(item.payload, "top_game_id");
+  const smartEventName = optionalPayloadString(
+    item.payload,
+    "smart_event_name",
+  );
+  await send(eligible, {
+    title: copy.title,
+    body: copy.body,
+    url: null,
+    // Strings only, like every other push: FCM data carries nothing else
+    // (the notification service JSON-encodes anything that is not one).
+    data: {
+      type: "smart_event_games",
+      smart_event_id: smartEventId,
+      smart_event_kind: copy.kind,
+      games: String(digest.games),
+      // The criteria, so the app can open a smart event it no longer lists.
+      min_elo: String(digest.minElo),
+      max_elo: String(digest.maxElo),
+      formats: digest.formats.join(","),
+      ...(digest.ecoCode ? { eco_code: digest.ecoCode } : {}),
+      ...(digest.label ? { label: digest.label } : {}),
+      ...(smartEventName ? { smart_event_name: smartEventName } : {}),
+      // Builds without the smart event route open this game instead.
+      ...(topGameId ? { game_id: topGameId } : {}),
+    },
+    androidChannelId: channelForEvent("smart_event_digest"),
+  });
+
+  await markSent(item.id);
+  return { id: item.id, status: "sent", recipients: eligible.length };
+}
+
+/** Whether [userId] still stars [smartEventId]. */
+async function isSmartEventStarred(
+  userId: string,
+  smartEventId: string,
+): Promise<boolean> {
+  const rows = await runQuery<Array<{ id: string }>>(
+    "Smart event star lookup",
+    () =>
+      supabase
+        .from("user_favorite_events")
+        .select("id")
+        .eq("user_id", userId)
+        .eq("event_id", smartEventId)
+        .limit(1),
+  );
+  return (rows ?? []).length > 0;
+}
+
+const USER_ID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Looks up each reader's timezone in OneSignal and stores it in
+ * `user_timezones` (null when OneSignal has none). A lookup that fails is
+ * not stored, so the next run asks again. Sends no push.
+ */
+async function refreshUserTimezones(item: OutboxItem) {
+  const raw = Array.isArray(item.payload?.user_ids)
+    ? item.payload.user_ids as unknown[]
+    : [];
+  const userIds = raw.filter((id): id is string =>
+    typeof id === "string" && USER_ID_PATTERN.test(id)
+  );
+  if (userIds.length === 0) {
+    await markSkipped(item.id, "no_users");
+    return { id: item.id, status: "skipped", reason: "no_users" };
+  }
+
+  const found: { user_id: string; timezone: string | null }[] = [];
+  let failed = 0;
+  for (const batch of chunk(userIds, 5)) {
+    if (remainingInvocationMs() < STOP_CLAIMING_WITH_MS) break;
+    const results = await Promise.all(batch.map(async (userId) => {
+      try {
+        const res = await fetch(
+          `https://api.onesignal.com/apps/${ONESIGNAL_APP_ID}/users/by/external_id/${userId}`,
+          { headers: { Authorization: `Key ${ONESIGNAL_REST_API_KEY}` } },
+        );
+        if (res.status === 404) {
+          await res.body?.cancel();
+          return { user_id: userId, timezone: null };
+        }
+        if (!res.ok) {
+          await res.body?.cancel();
+          throw new Error(`OneSignal ${res.status}`);
+        }
+        return {
+          user_id: userId,
+          timezone: timezoneFromOneSignalUser(await res.json()),
+        };
+      } catch (error) {
+        console.warn(
+          `[onesignal-dispatch] timezone lookup failed for ${userId}: ${
+            describeError(error)
+          }`,
+        );
+        return null;
+      }
+    }));
+    for (const result of results) {
+      if (result) found.push(result);
+      else failed++;
+    }
+  }
+
+  if (found.length > 0) {
+    const checkedAt = new Date().toISOString();
+    await runQuery("User timezone upsert", () =>
+      supabase.from("user_timezones").upsert(
+        found.map((row) => ({
+          ...row,
+          source: "onesignal",
+          checked_at: checkedAt,
+        })),
+        { onConflict: "user_id" },
+      ));
+  }
+
+  const known = found.filter((row) => row.timezone !== null).length;
+  console.log(
+    `[onesignal-dispatch] timezones: ${known} known, ${
+      found.length - known
+    } unknown, ${failed} failed of ${userIds.length}`,
+  );
+  await markSent(item.id);
+  return {
+    id: item.id,
+    status: "sent",
+    timezones: { known, unknown: found.length - known, failed },
+  };
 }
 
 /** Whether [userId] still stars the My Prep profile [profileId]. */
@@ -2991,6 +2976,7 @@ function channelForEvent(eventType: string) {
       return ANDROID_CHANNELS.callToAction;
     case "collection_games_added":
     case "prep_games_added":
+    case "smart_event_digest":
       return ANDROID_CHANNELS.favorites;
     case "book_game_added":
     case "book_game_updated":

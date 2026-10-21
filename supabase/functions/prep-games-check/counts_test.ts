@@ -6,7 +6,6 @@ import {
   chessComTotals,
   gamesOver,
   lichessReadings,
-  outboxRow,
   planChecks,
   type Reading,
   type WatchRow,
@@ -67,109 +66,44 @@ Deno.test("an account's games follow the clocks it downloads", () => {
 
 function row(overrides: Partial<WatchRow>): WatchRow {
   return {
-    id: "row",
-    user_id: "user",
-    profile_id: "opponent-1",
-    profile_name: "Hikaru Nakamura",
-    source: "chesscom",
-    username: "Hikaru",
+    id: "w1",
+    source: "lichess",
+    username: "durarbayli",
     time_controls: ["blitz"],
     baseline_games: 100,
-    local_date: "2026-10-17",
-    daily: true,
     ...overrides,
   };
 }
 
-const totals = (blitz: number): Reading => ({
-  kind: "totals",
-  totals: { blitz, bullet: 999 },
-});
+function totals(blitz: number): Reading {
+  return { kind: "totals", totals: { blitz, bullet: 999 } };
+}
 
-Deno.test("a grown total is news, once per profile across its accounts", () => {
+Deno.test("each read account records its total over its own clocks", () => {
   const rows = [
-    row({ id: "a", baseline_games: 100 }),
-    row({ id: "b", source: "lichess", username: "x", baseline_games: 40 }),
-    row({ id: "c", profile_id: "opponent-2", baseline_games: 7 }),
+    row({ id: "a" }),
+    row({ id: "b", source: "chesscom", time_controls: [] }),
   ];
-  const readings: Record<string, Reading> = {
-    a: totals(103),
-    b: totals(42),
-    c: totals(7),
-  };
-  const { checks, notices } = planChecks(rows, (r) => readings[r.id]);
-  assertEquals(notices, [{
-    user_id: "user",
-    profile_id: "opponent-1",
-    profile_name: "Hikaru Nakamura",
-    added: 5,
-    local_date: "2026-10-17",
-  }]);
+  const checks = planChecks(rows, () => totals(103));
+  assertEquals(checks, [
+    { id: "a", games: 103, time_controls: ["blitz"] },
+    { id: "b", games: 1102, time_controls: [] },
+  ]);
+});
+
+Deno.test("an unread account waits for the next hour", () => {
+  assertEquals(planChecks([row({})], () => undefined), []);
+});
+
+Deno.test("a gone account is checked, its total kept", () => {
+  assertEquals(planChecks([row({})], () => ({ kind: "missing" })), [
+    { id: "w1", games: null, time_controls: ["blitz"] },
+  ]);
+});
+
+Deno.test("an account with no clocks of its own counts every clock", () => {
   assertEquals(
-    checks.map((c) => [c.id, c.games, c.checked_on]),
-    [["a", 103, "2026-10-17"], ["b", 42, "2026-10-17"], [
-      "c",
-      7,
-      "2026-10-17",
-    ]],
+    planChecks([row({ time_controls: null })], () => totals(5))[0].games,
+    1004,
   );
-});
-
-Deno.test("a first total is only remembered", () => {
-  const { checks, notices } = planChecks(
-    [row({ baseline_games: null, daily: false })],
-    () => totals(50),
-  );
-  assertEquals(notices, []);
-  assertEquals(checks, [{
-    id: "row",
-    games: 50,
-    checked_on: null,
-    time_controls: ["blitz"],
-  }]);
-});
-
-Deno.test("outside the daily check a known account is left alone", () => {
-  const { checks, notices } = planChecks(
-    [row({ daily: false })],
-    () => totals(150),
-  );
-  assertEquals(checks, []);
-  assertEquals(notices, []);
-});
-
-Deno.test("an unread account waits; a gone one closes the day quietly", () => {
-  const unread = planChecks([row({})], () => undefined);
-  assertEquals(unread, { checks: [], notices: [] });
-
-  const gone = planChecks([row({})], () => ({ kind: "missing" }));
-  assertEquals(gone.notices, []);
-  assertEquals(gone.checks, [{
-    id: "row",
-    games: null,
-    checked_on: "2026-10-17",
-    time_controls: ["blitz"],
-  }]);
-});
-
-Deno.test("a total that fell moves the baseline without a push", () => {
-  const { checks, notices } = planChecks([row({})], () => totals(90));
-  assertEquals(notices, []);
-  assertEquals(checks[0].games, 90);
-});
-
-Deno.test("one outbox row per profile per day", () => {
-  const queued = outboxRow({
-    user_id: "u",
-    profile_id: "opponent-1",
-    profile_name: "Hikaru",
-    added: 12,
-    local_date: "2026-10-17",
-  });
-  assertEquals(queued.event_type, "prep_games_added");
-  assertEquals(
-    queued.dedupe_key,
-    "prep_games_added:u:opponent-1:2026-10-17",
-  );
-  assertEquals(queued.payload.added, 12);
 });

@@ -1,4 +1,6 @@
 import 'package:chessever2/repository/supabase/tour/tour.dart';
+import 'package:chessever2/screens/standings/official_team_standings.dart';
+import 'package:chessever2/screens/standings/player_standing_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/knockout_tournament_state_provider.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -42,6 +44,7 @@ List<GamesTourModel> _teamMatchGames() => [
 ];
 
 void main() {
+  officialTeamTableTests();
   group('resolveIsTeamEvent — explicit teamTable signal', () {
     test('teamTable true is authoritative even against a player format', () {
       expect(
@@ -254,6 +257,71 @@ void main() {
     test('toJson round-trips the flag and omits it when null', () {
       expect(const TourInfo(teamTable: true).toJson()['teamTable'], isTrue);
       expect(const TourInfo().toJson().containsKey('teamTable'), isFalse);
+    });
+  });
+}
+
+/// A Russian Rapid Teams-shaped tour: Swiss format, no teamTable flag and no
+/// team labels anywhere in the feed; only the organizer's team table says so.
+TourInfo _infoWithOfficialTeams({String sourceTnr = '1494553'}) =>
+    TourInfo.fromJson({
+      'format': '9-round Swiss',
+      'standings':
+          'https://s1.chess-results.com/tnr1494553.aspx?lan=11&art=0&turdet=YES&SNode=S0',
+      'officialTeamStandings': {
+        'source': 'chess-results',
+        'sourceUrl':
+            'https://s1.chess-results.com/tnr$sourceTnr.aspx?lan=1&art=0&flag=NO&zeilen=99999',
+        'round': 4,
+        'fetchedAt': '2026-10-17T16:30:00+00:00',
+        'matchScoring': {'win': 2, 'draw': 1, 'loss': 0},
+        'teams': [
+          for (final (i, name) in [
+            'Свердловская область',
+            'Саратов',
+            'Северная корона',
+          ].indexed)
+            {
+              'name': name,
+              'rank': i == 2 ? 2 : i + 1,
+              'matchPoints': 8 - 2 * i,
+              'gamePoints': 10.5 - i,
+              'matchesPlayed': 4,
+              'wins': 4 - i,
+              'draws': 0,
+              'losses': i,
+            },
+        ],
+      },
+    });
+
+void officialTeamTableTests() {
+  group('resolveIsTeamEvent — official organizer team table', () {
+    bool resolve(TourInfo info, {bool? teamTable}) => resolveIsTeamEvent(
+      teamTable: teamTable,
+      formatString: info.format,
+      players: [_player('Voit, Daria'), _player('Gunina, Valentina')],
+      games: const [],
+      hasOfficialTeamTable:
+          buildOfficialTeamStandings(
+            info: info,
+            players: const <PlayerStandingModel>[],
+          ) !=
+          null,
+    );
+
+    test('a valid snapshot makes an unlabeled Swiss feed a team event', () {
+      expect(resolve(_infoWithOfficialTeams()), isTrue);
+      // Lichess' own leaderboard switch does not veto the organizer table.
+      expect(resolve(_infoWithOfficialTeams(), teamTable: false), isTrue);
+    });
+
+    test('a snapshot of another event proves nothing', () {
+      expect(resolve(_infoWithOfficialTeams(sourceTnr: '1494537')), isFalse);
+      expect(
+        resolve(TourInfo.fromJson({'format': '9-round Swiss'})),
+        isFalse,
+      );
     });
   });
 }

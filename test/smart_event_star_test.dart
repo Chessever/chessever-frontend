@@ -197,8 +197,9 @@ void main() {
     expect(tester.getSize(find.byType(SmartEventCard)), withChevron);
   });
 
-  testWidgets('starring saves the smart event at once, then asks; a yes is '
-      'written onto the row', (tester) async {
+  testWidgets('starring saves the smart event subscribed, and asks nothing', (
+    tester,
+  ) async {
     final request = _request();
     final store = await _pump(tester, starRequest: request);
 
@@ -207,54 +208,30 @@ void main() {
 
     expect(store.added.single.eventId, request.favoriteEventId);
     expect(store.added.single.metadata['type'], 'smart_event');
-    expect(starNotificationsEnabled(store.added.single), isFalse);
-    expect(_question, findsOneWidget);
-    expect(
-      find.text(
-        'Get round start and result alerts for every event in GM Games.',
-      ),
-      findsOneWidget,
-    );
-    expect(store.patches, isEmpty);
-
-    await tester.tap(find.text('Turn on'));
-    await _settle(tester);
-
+    expect(starNotificationsEnabled(store.added.single), isTrue);
     expect(_question, findsNothing);
-    final (patchedId, patch) = store.patches.single;
-    expect(patchedId, request.favoriteEventId);
-    expect(patch, {kStarNotificationsKey: true});
+    expect(store.patches, isEmpty);
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('"Not now" keeps the star and leaves it quiet', (tester) async {
-    final request = _request();
-    final store = await _pump(tester, starRequest: request);
-
-    await tester.tap(_star);
-    await _settle(tester);
-    await tester.tap(find.text('Not now'));
-    await _settle(tester);
-
-    expect(store.added, hasLength(1));
-    expect(store.removed, isEmpty);
-    expect(store.patches, isEmpty);
-    expect(_question, findsNothing);
-  });
-
-  testWidgets('dismissing the question is not an answer: still starred, '
-      'still quiet', (tester) async {
-    final store = await _pump(tester, starRequest: _request());
-
-    await tester.tap(_star);
-    await _settle(tester);
-    await tester.tapAt(const Offset(4, 4));
-    await _settle(tester);
-
-    expect(_question, findsNothing);
-    expect(store.added, hasLength(1));
-    expect(store.removed, isEmpty);
-    expect(store.patches, isEmpty);
+  test('a smart star always notifies: there is no switch, whatever an old '
+      'build saved', () {
+    final saved = _starred(_request());
+    expect(starNotificationsEnabled(saved), isTrue);
+    expect(
+      starNotificationsEnabled(
+        FavoriteEvent(
+          id: saved.id,
+          userId: saved.userId,
+          eventId: saved.eventId,
+          eventName: saved.eventName,
+          metadata: {...saved.metadata, kStarNotificationsKey: false},
+          createdAt: _stamp,
+          updatedAt: _stamp,
+        ),
+      ),
+      isTrue,
+    );
   });
 
   testWidgets('unstarring removes the row and asks nothing', (tester) async {
@@ -273,7 +250,7 @@ void main() {
     expect(_question, findsNothing);
   });
 
-  testWidgets('an opening smart event is starred without the question', (
+  testWidgets('an opening smart event is starred subscribed too', (
     tester,
   ) async {
     final request = _request(eco: GameEcoFilter.forCode('B90'));
@@ -283,7 +260,32 @@ void main() {
     await _settle(tester);
 
     expect(store.added.single.eventId, request.favoriteEventId);
+    expect(starNotificationsEnabled(store.added.single), isTrue);
     expect(_question, findsNothing);
-    expect(store.patches, isEmpty);
+  });
+
+  test('a push opens the smart event it names, from the saved row or from '
+      'its criteria', () {
+    final request = _request(eco: GameEcoFilter.forCode('B9'));
+    final saved = _starred(request);
+    final data = <String, dynamic>{
+      'type': 'smart_event_games',
+      'smart_event_id': request.favoriteEventId,
+      'smart_event_name': 'Sicilian: Najdorf Games',
+      'min_elo': 2500,
+      'max_elo': 3000,
+      'formats': ['standard'],
+      'eco_code': 'B9',
+      'label': 'GM',
+    };
+
+    final fromRow = smartEventRequestFromPushData(data, favorites: [saved]);
+    expect(fromRow?.criteriaKey, request.criteriaKey);
+
+    final fromPush = smartEventRequestFromPushData(data);
+    expect(fromPush?.criteriaKey, request.criteriaKey);
+    expect(fromPush?.favoriteEventId, request.favoriteEventId);
+
+    expect(smartEventRequestFromPushData({'type': 'smart_event_games'}), isNull);
   });
 }

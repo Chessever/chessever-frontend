@@ -382,6 +382,48 @@ void main() {
     await host.close(tester);
   });
 
+  // What a published message's push carries on the phone: the admin
+  // dashboard's data (chessever-admin-portal worker/editorial.ts, the same for
+  // everyone and for an audience), the type onesignal-dispatch or the
+  // campaign adds, and what the notification service adds on the way.
+  for (final cold in [true, false]) {
+    testWidgets('the push the admin dashboard sends opens its message '
+        '(${cold ? 'cold' : 'warm'})', (tester) async {
+      final source = FakeInboxSource();
+      final host = await _pumpHost(tester, source);
+      const delivered = <String, dynamic>{
+        'inbox_message_id': inboxIdA,
+        'inbox_record_id': '9d0f6c2e-5b1a-4f3e-8c7d-2a1b0e9f8c7d',
+        'type': 'call_to_action',
+        'url': '',
+        'delivery_id': '5b1c9f0e-0d1a-4c7e-9a52-0f3c6d2e8a11',
+        'campaign_id': '856a94b6-a8e3-4529-9abb-b344b431c8bd',
+      };
+      if (cold) {
+        DeepLinkService.instance.ingestNotificationData(delivered);
+        host.attach();
+      } else {
+        host.attach();
+      }
+      DeepLinkService.notifyAppReady();
+      if (!cold) DeepLinkService.instance.ingestNotificationData(delivered);
+      await tester.pumpAndSettle();
+
+      final detail = tester.widget<InboxMessageScreen>(
+        find.byType(InboxMessageScreen),
+      );
+      expect(detail.messageId, inboxIdA);
+      expect(find.text('Fixture: study a position'), findsOneWidget);
+      expect(source.marks, [(inboxOwnerA, inboxIdA)]);
+      expect(host.observer.pushed.skip(1), [
+        '/home_screen',
+        '/app/inbox',
+        '/app/inbox/$inboxIdA',
+      ]);
+      await host.close(tester);
+    });
+  }
+
   testWidgets('Inbox id takes precedence over legacy game and URL hints', (
     tester,
   ) async {

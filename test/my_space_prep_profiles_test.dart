@@ -6,6 +6,7 @@ import 'package:chessever2/screens/my_prep/models/prep_models.dart';
 import 'package:chessever2/screens/my_prep/prep_space_shortcut.dart';
 import 'package:chessever2/screens/my_prep/providers/prep_providers.dart';
 import 'package:chessever2/screens/my_prep/widgets/prep_profile_card.dart';
+import 'package:chessever2/screens/my_prep/widgets/prep_watch_star.dart';
 import 'package:chessever2/screens/my_space/models/space_shortcut.dart';
 import 'package:chessever2/screens/my_space/providers/space_auto_provider.dart';
 import 'package:chessever2/screens/my_space/providers/space_shortcuts_provider.dart';
@@ -230,4 +231,106 @@ void main() {
       await tester.pump(const Duration(seconds: 1));
     });
   }
+
+  /// One saved Prep row, as My Space draws it.
+  Future<void> pumpRow(
+    WidgetTester tester,
+    PrepProfile profile, {
+    double width = 358,
+    bool disclosure = true,
+  }) async {
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          spaceShortcutsProvider.overrideWith(_Store.new),
+          spaceHiddenAutoKeysProvider.overrideWith(_Hidden.new),
+          prepProfileProvider(profile.id).overrideWithValue(profile),
+        ],
+        child: MaterialApp(
+          theme: AppTheme.darkTheme,
+          home: Builder(
+            builder: (context) {
+              ResponsiveHelper.init(context);
+              return Scaffold(
+                body: MediaQuery(
+                  data: MediaQuery.of(
+                    context,
+                  ).copyWith(textScaler: const TextScaler.linear(1.5)),
+                  child: Center(
+                    child: SizedBox(
+                      width: width,
+                      child: SpaceSavedRow(
+                        shortcut: prepProfileSpaceDraft(profile),
+                        stacked: width < 200,
+                        disclosure: disclosure,
+                      ),
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+  }
+
+  final chevron = find.byIcon(Icons.chevron_right_rounded);
+  final star = find.byType(PrepWatchStar);
+
+  for (final source in [PrepSource.lichess, PrepSource.chesscom]) {
+    for (final width in [175.0, 358.0]) {
+      testWidgets('a ${source.name} player ends in its star at $width wide', (
+        tester,
+      ) async {
+        await pumpRow(
+          tester,
+          _profile(PrepKind.opponent, source)
+              .copyWith(name: 'Long named opponent preparation profile'),
+          width: width,
+        );
+        expect(star, findsOneWidget);
+        expect(chevron, findsNothing);
+        expect(tester.takeException(), isNull);
+      });
+    }
+  }
+
+  testWidgets('a player with no online account keeps its chevron', (
+    tester,
+  ) async {
+    await pumpRow(tester, _profile(PrepKind.opponent, PrepSource.manual));
+    expect(star, findsNothing);
+    expect(chevron, findsOneWidget);
+  });
+
+  testWidgets('your own games are never starred', (tester) async {
+    await pumpRow(tester, _profile(PrepKind.mine, PrepSource.lichess));
+    expect(star, findsNothing);
+    expect(chevron, findsOneWidget);
+  });
+
+  testWidgets('in Edit a Prep row has no star, a tap selects', (tester) async {
+    await pumpRow(
+      tester,
+      _profile(PrepKind.opponent, PrepSource.lichess),
+      disclosure: false,
+    );
+    expect(star, findsNothing);
+    expect(chevron, findsNothing);
+  });
+
+  testWidgets('screen readers get the star as an action of the row', (
+    tester,
+  ) async {
+    final handle = tester.ensureSemantics();
+    await pumpRow(tester, _profile(PrepKind.opponent, PrepSource.lichess));
+    final node = tester.getSemantics(find.byType(SpaceSavedRow));
+    expect(
+      node.getSemanticsData().customSemanticsActionIds,
+      isNotEmpty,
+    );
+    handle.dispose();
+  });
 }

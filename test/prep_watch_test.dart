@@ -4,7 +4,10 @@ import 'dart:io';
 
 import 'package:chessever2/screens/my_prep/models/prep_models.dart';
 import 'package:chessever2/screens/my_prep/providers/prep_providers.dart';
+import 'package:chessever2/screens/my_prep/my_prep_home_screen.dart';
+import 'package:chessever2/screens/my_prep/prep_profile_screen.dart';
 import 'package:chessever2/screens/my_prep/services/prep_watch.dart';
+import 'package:chessever2/services/deep_link_service.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -207,5 +210,17 @@ void main() {
       'unwatch gone-from-this-device',
       'unwatch opponent-1',
     ]);
+  });
+
+  test('a "new games" push lands on the player\'s Games tab', () {
+    final starred = _profile.copyWith(watching: true);
+    final screen = prepPushDestination(starred, newGames: 7);
+    expect(screen, isA<PrepProfileScreen>());
+    final profile = screen as PrepProfileScreen;
+    expect(profile.profileId, starred.id);
+    expect(profile.initialTab, prepProfileGamesTab);
+    expect(profile.newGames, 7);
+
+    expect(prepPushDestination(null), isA<MyPrepHomeScreen>());
   });
 }

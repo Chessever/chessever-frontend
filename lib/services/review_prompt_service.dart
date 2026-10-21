@@ -97,20 +97,27 @@ class ReviewPromptService {
     }
 
     debugPrint('[Feedback] relaying direct feedback to Telegram');
-    unawaited(
-      TelegramNotificationService.instance.sendDirectFeedbackNotification(
-        feedback: result.feedback,
-        source: ReviewPromptTrigger.sidebar.name,
-        sender: sender,
-        appVersion: packageInfo == null
-            ? null
-            : '${packageInfo.version} (${packageInfo.buildNumber})',
-        platform: Platform.operatingSystem,
-        pictureBytes: result.picture?.bytes,
-        pictureFileName: result.picture?.fileName,
-      ),
-    );
-    _showThanksSnackBarOn(messenger);
+    final sent = await TelegramNotificationService.instance
+        .sendDirectFeedbackNotification(
+          feedback: result.feedback,
+          source: ReviewPromptTrigger.sidebar.name,
+          sender: sender,
+          appVersion: packageInfo == null
+              ? null
+              : '${packageInfo.version} (${packageInfo.buildNumber})',
+          platform: Platform.operatingSystem,
+          pictureBytes: result.picture?.bytes,
+          pictureFileName: result.picture?.fileName,
+        );
+    if (sent) {
+      _showThanksSnackBarOn(messenger);
+    } else {
+      showAppSnackOn(
+        messenger,
+        'Feedback could not be sent. Please try again.',
+        tone: AppSnackTone.danger,
+      );
+    }
   }
 
   /// Increments the session (app-open) counter.

@@ -202,7 +202,7 @@ void main() {
   });
 
   test('a collection star notifies unless its owner said no; a smart event '
-      'star only after a yes (Trello #1225)', () {
+      'star until it is unstarred (Trello #1225)', () {
     // Starred before the question, on the desktop app or an older build.
     expect(
       starNotificationsEnabled(_row('collection:candidates-2026')),
@@ -223,15 +223,12 @@ void main() {
       ),
       isFalse,
     );
-    expect(
-      starNotificationsEnabled(_row('smart_event:v2:minElo=2700')),
-      isFalse,
-    );
+    // A smart event star is the subscription itself: only unstarring stops it.
     expect(
       starNotificationsEnabled(
         _row(
           'smart_event:v2:minElo=2700',
-          metadata: {kStarNotificationsKey: true},
+          metadata: {kStarNotificationsKey: false},
         ),
       ),
       isTrue,

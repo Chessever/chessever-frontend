@@ -19,6 +19,7 @@ import 'package:chessever2/providers/favorite_events_provider.dart';
 import 'package:chessever2/repository/favorites/models/favorite_event.dart';
 import 'package:chessever2/screens/collections/collection_bindings.dart';
 import 'package:chessever2/screens/collections/collection_plate_row.dart';
+import 'package:chessever2/screens/collections/collection_share.dart';
 export 'package:chessever2/screens/collections/collection_plate_row.dart';
 import 'package:chessever2/screens/collections/collections_data.dart';
 import 'package:chessever2/screens/collections/open_collection_game.dart';
@@ -549,6 +550,12 @@ class CollectionCard extends ConsumerWidget {
           label: 'Open',
           onSelected: open,
         ),
+        if (buildCollectionShareUrl(c.slug) != null)
+          LibraryMenuAction(
+            icon: Icons.ios_share_rounded,
+            label: 'Share',
+            onSelected: () => shareCollection(context, c),
+          ),
         starNotificationsMenuAction(
           context: menuContext,
           favorite: collectionFavorite(
@@ -1033,6 +1040,12 @@ class _CollectionScreenState extends ConsumerState<CollectionScreen> {
                 showLibraryContextMenu(
                   context: menuContext,
                   actions: [
+                    if (buildCollectionShareUrl(c.slug) != null)
+                      LibraryMenuAction(
+                        icon: Icons.ios_share_rounded,
+                        label: 'Share',
+                        onSelected: () => shareCollection(menuContext, c),
+                      ),
                     LibraryMenuAction(
                       icon: starred
                           ? Icons.star_rounded

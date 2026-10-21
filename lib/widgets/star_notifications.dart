@@ -14,19 +14,25 @@ import 'package:chessever2/widgets/app_snack.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
-/// The flag a starred smart event or collection carries in its favorites
-/// row's `metadata` once its owner has answered whether it notifies. The
-/// dispatcher reads it the way [starNotificationsEnabled] does.
+/// The flag a starred collection carries in its favorites row's `metadata`
+/// once its owner has answered whether it notifies. The dispatcher reads it
+/// the way [starNotificationsEnabled] does.
 const String kStarNotificationsKey = 'notificationsEnabled';
 
 /// Whether the starred row [favorite] sends notifications.
 ///
+/// A smart event's star always does: starring one is subscribing to its
+/// evening "new games" push and unstarring is the only opt-out, so it has no
+/// switch (and older builds' `notificationsEnabled: false` means nothing).
 /// A collection's star does unless its owner turned that off: starring one
 /// is asking to hear about its new games (Trello #1225), and a star made
 /// before the question, on the desktop app or on an older build never
-/// answered it. A smart event's star stays quiet until its owner says yes:
-/// a broad one can match every round of every event.
+/// answered it.
 bool starNotificationsEnabled(FavoriteEvent favorite) {
+  if (favorite.eventId.startsWith('smart_event:') ||
+      favorite.metadata['type'] == 'smart_event') {
+    return true;
+  }
   final flag = favorite.metadata[kStarNotificationsKey];
   if (flag is bool) return flag;
   return favorite.eventId.startsWith('collection:') ||
@@ -97,6 +103,13 @@ Future<void> setStarNotifications({
   final reachable = await _makeReachable(container, messenger);
   if (reachable && confirm) snack('Notifications turned on');
 }
+
+/// Makes a new smart event star's evening push reachable: starring one
+/// turns its pushes on, with no question. Sent under starred-event alerts.
+Future<bool> makeSmartEventStarReachable({
+  required ProviderContainer container,
+  required ScaffoldMessengerState? messenger,
+}) => _makeReachable(container, messenger);
 
 /// Makes a starred My Prep player's daily push reachable, as a yes does for
 /// a starred event. The dispatcher sends it under favorite-player alerts.

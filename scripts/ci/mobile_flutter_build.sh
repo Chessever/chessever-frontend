@@ -32,8 +32,6 @@ defines=(
   GAMEBASE_API_KEY=GAMEBASE_API_KEY
   CHESSEVER_CLOUDFLARE_API_BASE=CHESSEVER_CLOUDFLARE_API_BASE
   ANALYSIS_API_BASE=ANALYSIS_API_BASE
-  TELEGRAM_FEEDBACK_BOT_TOKEN=TELEGRAM_FEEDBACK_BOT_TOKEN
-  TELEGRAM_FEEDBACK_CHAT_ID=TELEGRAM_FEEDBACK_CHAT_ID
 )
 
 args=()
@@ -54,4 +52,4 @@ for entry in "${defines[@]}"; do
 done
 [ "$missing" -eq 0 ] || exit 1
 
-flutter build "$target" --release "$@" "${args[@]}"
+flutter build "$target" --release --flavor production --target lib/main.dart "$@" "${args[@]}"

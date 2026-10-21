@@ -6,7 +6,8 @@
  * `POST /api/users`, each with how many rated games they have played per
  * speed. Chess.com's `/pub/player/{name}/stats` holds each time class's
  * win/loss/draw record, updated as each game ends. A total that grew since
- * yesterday's check is the news; the push never says by how much.
+ * the last check is the news; `record_prep_watch_checks` adds the growth to
+ * the owner's day and `queue_prep_games_pushes` decides when to tell them.
  */
 
 /** The clocks My Prep downloads by, as PrepTimeControl names them. */
@@ -104,114 +105,45 @@ export function gamesOver(totals: Totals, clocks: readonly string[]): number {
   return picked.reduce<number>((sum, games) => sum + count(games), 0);
 }
 
-/** A row of due_prep_profile_watches. */
+/** A row of prep_watches_to_check. */
 export type WatchRow = {
   id: string;
-  user_id: string;
-  profile_id: string;
-  profile_name: string;
   source: string;
   username: string;
   time_controls: string[] | null;
   baseline_games: number | null;
-  /** The owner's date, `YYYY-MM-DD`. */
-  local_date: string;
-  /** Today's check, which may announce new games. */
-  daily: boolean;
 };
 
 /** One row for record_prep_watch_checks. */
 export type Check = {
   id: string;
+  /** Null: the account is gone, so its total stays as it was. */
   games: number | null;
-  checked_on: string | null;
   time_controls: string[];
 };
 
-/** One push: the profile's new games over all its accounts. */
-export type Notice = {
-  user_id: string;
-  profile_id: string;
-  profile_name: string;
-  added: number;
-  local_date: string;
-};
-
 /**
- * What to record and whom to tell, given what the sites said. An account
- * with no [Reading] could not be read this time and is left for the next
- * hour. A first total announces nothing: it is what tomorrow compares with.
- * A total that fell (a site recounting) only moves the baseline down.
+ * What to record, given what the sites said. An account with no [Reading]
+ * could not be read this time and is left for the next hour; one that is
+ * gone is recorded as checked with its total unchanged. Growth is worked
+ * out in the database, against the owner's local day.
  */
 export function planChecks(
   rows: readonly WatchRow[],
   readingOf: (row: WatchRow) => Reading | undefined,
-): { checks: Check[]; notices: Notice[] } {
+): Check[] {
   const checks: Check[] = [];
-  const notices = new Map<string, Notice>();
   for (const row of rows) {
     const clocks = row.time_controls ?? [];
     const reading = readingOf(row);
     if (!reading) continue;
-    const today = row.daily ? row.local_date : null;
-    if (reading.kind === "missing") {
-      checks.push({
-        id: row.id,
-        games: null,
-        checked_on: today,
-        time_controls: clocks,
-      });
-      continue;
-    }
-    const games = gamesOver(reading.totals, clocks);
-    if (row.baseline_games === null) {
-      checks.push({
-        id: row.id,
-        games,
-        checked_on: today,
-        time_controls: clocks,
-      });
-      continue;
-    }
-    // Came along with a sibling account that is due; nothing of its own.
-    if (!row.daily) continue;
     checks.push({
       id: row.id,
-      games,
-      checked_on: row.local_date,
+      games: reading.kind === "missing"
+        ? null
+        : gamesOver(reading.totals, clocks),
       time_controls: clocks,
     });
-    const added = games - row.baseline_games;
-    if (added <= 0) continue;
-    const key = `${row.user_id}:${row.profile_id}`;
-    const notice = notices.get(key);
-    if (notice) {
-      notice.added += added;
-    } else {
-      notices.set(key, {
-        user_id: row.user_id,
-        profile_id: row.profile_id,
-        profile_name: row.profile_name,
-        added,
-        local_date: row.local_date,
-      });
-    }
   }
-  return { checks, notices: [...notices.values()] };
-}
-
-/** The outbox row for [notice]: one per profile per local day. */
-export function outboxRow(notice: Notice) {
-  return {
-    event_type: "prep_games_added",
-    payload: {
-      user_id: notice.user_id,
-      profile_id: notice.profile_id,
-      profile_name: notice.profile_name,
-      added: notice.added,
-      local_date: notice.local_date,
-    },
-    dedupe_key:
-      `prep_games_added:${notice.user_id}:${notice.profile_id}:${notice.local_date}`,
-  };
+  return checks;
 }
