@@ -1,0 +1,176 @@
+[Event "U.S. Chess Championship"]
+[Site "Saint Louis, United States"]
+[Date "2026.10.19"]
+[Round "9.6"]
+[White "Oparin, Grigoriy"]
+[Black "Shankland, Sam"]
+[Result "1-0"]
+[WhiteElo "2638"]
+[BlackElo "2646"]
+[WhiteTitle "GM"]
+[BlackTitle "GM"]
+[WhiteFideId "24125890"]
+[BlackFideId "2004887"]
+[ECO "E94"]
+[Opening "King's Indian, orthodox variation"]
+[BlackClock "00:00:39"]
+[BlackFed "USA"]
+[Board "6"]
+[BroadcastName "2026 U.S. Chess Championships"]
+[BroadcastURL "https://broadcast.chessever.com/2026-us-chess-championship/round-9/9DDpFY3q"]
+[ClockRule "40/1800"]
+[GameURL "https://broadcast.chessever.com/2026-us-chess-championship/round-9/9DDpFY3q?game=9DDpFY3q-19gxety"]
+[ReferenceTime "W/2026-10-19T17:14:33.552-05:00"]
+[Subround ""]
+[UTCDate "2026.10.19"]
+[Variant "Standard"]
+[WhiteClock "00:03:39"]
+[WhiteFed "USA"]
+[ChessEverClassification "1=247 2=247 3=247 4=247 5=247 6=247 7=247 8=247 9=247 10=247 11=247 12=247 13=247 14=247 16=242 20=241 25=241 27=244 33=242 35=241 39=241 42=241 50=244 66=242 72=244 73=242 75=241 81=243 82=244 89=242 94=241 97=243 102=244 103=241 106=241 107=241 108=241 111=243 112=241 114=241 116=241 117=241 120=241 140=246 147=242 148=241 149=242 151=242 153=242"]
+
+1. d4 { [%eval 0.32] [%clk 01:30:57] } 1... Nf6 { [%eval 0.37] } 2. c4
+{ [%eval 0.33] } 2... g6 { [%eval 0.46] [%clk 01:31:11] } 3. Nc3
+{ [%eval 0.39] [%clk 01:31:47] } 3... Bg7 { [%eval 0.59] [%clk 01:31:28] } 4. e4
+{ [%eval 0.69] } 4... d6 { [%eval 0.60] [%clk 01:31:53] } 5. Nf3
+{ [%eval 0.65] [%clk 01:32:36] } 5... O-O { [%eval 0.58] [%clk 01:32:07] }
+{ I am quite surprised to see how many players choose the King's Indian in the 2026 US Chess Championship. It is considered a risky opening choice for Black since the engine always gives White an advantage. }
+6. Be2 { [%eval 0.56] [%clk 01:33:00] } 6... e5 { [%eval 0.61] [%clk 01:32:16] }
+7. O-O { [%eval 0.55] [%clk 01:33:24] } 7... h6 { [%eval 0.62] [%clk 01:32:22] }
+8. Qc2 $5 { [%eval 0.16] [%clk 01:32:19] } ( 8. Re1 { Main line. } ) 8... Nc6
+{ [%eval 0.41] [%clk 01:23:09] }
+{ Seems like Shankland was out of preparation already, though he played the most logical move, which is often the best move, and this is the case here too. }
+9. dxe5 { [%eval 0.21] [%clk 01:32:20] } 9... dxe5 { [%eval 0.30] } 10. Rd1
+{ [%eval 0.19] [%clk 01:32:44] } 10... Nd4 $1 { [%eval 0.11] [%clk 01:23:56] }
+11. Nxd4 { [%eval 0.03] [%clk 01:33:09] } 11... exd4
+{ [%eval 0.13] [%clk 01:24:23] } 12. Bf4 { [%eval 0.29] [%clk 01:33:10] }
+12... Ne8 { [%eval 0.54] [%clk 01:22:06] }
+{ Preparing against Nb5, at the same time defending d4 so the queen can move away from the d-file at some point. The engine suggests g5 and Ng4 as its first two lines, which are hard to play when you don't know them. }
+( 12... c5 $6 13. Nd5 $14 ) 13. c5 $1 { [%eval 0.65] }
+{ Oparin is still in his prep and grabs space and prepares the Nb5 idea. Previously there was c5. }
+13... c6 { [%eval 0.54] [%clk 01:19:48] } ( 13... Bd7 14. Nb5 $14 { [%csl Gd4] }
+) 14. e5 $6 { [%eval -0.29] [%clk 01:02:48] }
+{ The first OTB move, and White gives up the advantage. It happens all the time. As soon as the opening line ends, one side goes into a deep tank and ends up playing a suboptimal move. }
+( 14. Bf1 $1 14... Nc7 15. Ne2 Re8 ( 15... Ne6 $2 16. Bd6 Re8 17. e5 $18 )
+16. Bd6 $1 { Gains a tempo. } 16... Nb5 17. Bg3 Nc7 18. a4 Na6 ( 18... Ne6
+19. a5 $16 ) 19. Nf4 $14 { [%cal Gf1a6,Gf2f3,Gf4d3] } ) 14... Bf5 $2
+{ [%eval 0.62] [%clk 01:11:46] } ( 14... Nc7 $1
+{ Black does not have any problem. } 15. Ne4 Bf5 { [%csl Ge4] } ) 15. Qa4
+{ [%eval 0.63] [%clk 01:02:42] } { [%csl Gd4] } { No way to defend d4. }
+15... Nc7 { [%eval 0.77] [%clk 01:11:28] } 16. Rxd4
+{ [%eval 0.79] [%clk 00:59:31] } 16... Qe7 { [%eval 0.76] [%clk 01:10:19] }
+17. g4 $1 { [%eval 0.89] [%clk 00:52:23] } 17... Bc8
+{ [%eval 0.98] [%clk 01:09:18] } 18. Bg3 $1 { [%eval 0.92] [%clk 00:40:27] }
+18... Re8 { [%eval 1.10] } 19. Ne4 $2 { [%eval 0.19] [%clk 00:31:15] }
+{ Gives up the wrong pawn. } ( 19. Re1 Ne6 ( 19... Qxc5 20. Ne4 Qb6 21. Nd6 $16
+
+
+) ( 19... Bxe5 $4 20. Re4 Qxc5 21. Bc4 b5 22. Qa5 $18 ) 20. Rd6 Nxc5 21. Qc4 $16
+) 19... Bxe5 { [%eval 0.25] [%clk 01:01:11] } 20. Bf3 $1
+{ [%eval 0.16] [%clk 00:28:17] } 20... Nb5 $1 { [%eval 0.10] [%clk 00:48:41] } (
+20... Bxd4 $6 21. Qxd4 Nd5
+{ The engine says Black is fine, but I would not like to play a position with the dark squares like a colander. }
+) 21. Rd3 { [%eval 0.09] [%clk 00:19:54] } 21... Bxg3 $1
+{ [%eval 0.10] [%clk 00:36:29] } 22. hxg3 { [%eval 0.08] [%clk 00:20:20] }
+22... Be6 { [%eval 0.50] [%clk 00:35:57] } ( 22... Bxg4 $1
+{ Black has an exchange sacrifice idea that would have solved all the issues. }
+23. Nd6 Bxf3 24. Nxe8 Bd5 25. Re3 Be6 26. Nd6 Nxd6 27. cxd6 Qxd6 $10 ) 23. Nd6
+{ [%eval 0.17] } 23... Nxd6 { [%eval 0.21] [%clk 00:35:18] } 24. cxd6
+{ [%eval 0.13] [%clk 00:19:42] } 24... Qf6 { [%eval 0.19] [%clk 00:35:32] }
+25. Qb4 { [%eval 0.08] [%clk 00:18:57] } 25... Rab8 $6
+{ [%eval 0.82] [%clk 00:35:04] } { Too passive. } ( 25... Rad8 $1 26. Qxb7 Bc4
+27. Rc3 Rxd6 28. Qxa7 Rd2 $44 ) 26. Re1 { [%eval 0.80] [%clk 00:18:27] }
+26... Red8 { [%eval 1.01] [%clk 00:32:49] } 27. a4
+{ [%eval 0.52] [%clk 00:17:23] } 27... a5 { [%eval 0.66] } 28. Qxa5
+{ [%eval 0.70] [%clk 00:13:51] } 28... Bc4 { [%eval 0.57] [%clk 00:26:56] }
+29. Qc3 { [%eval 0.59] [%clk 00:13:49] } 29... Qxc3
+{ [%eval 0.83] [%clk 00:26:21] } 30. Rxc3 { [%eval 0.62] [%clk 00:14:16] }
+30... Be6 { [%eval 0.79] [%clk 00:26:19] } 31. Rd3
+{ [%eval 0.58] [%clk 00:11:11] } 31... Ra8 { [%eval 0.57] [%clk 00:26:23] }
+32. Ra1 { [%eval 0.64] } 32... Rd7 { [%eval 0.76] [%clk 00:23:25] } 33. a5
+{ [%eval 0.42] [%clk 00:10:04] } ( 33. b4 $5 { Was a good idea to stop c5. } )
+33... c5 { [%eval 0.29] [%clk 00:22:21] } 34. Rc3
+{ [%eval 0.40] [%clk 00:09:36] } 34... c4 { [%eval 0.35] [%clk 00:22:06] }
+35. Rcc1 { [%eval 0.25] [%clk 00:05:34] } 35... Ra6
+{ [%eval 0.28] [%clk 00:18:43] } 36. Rd1 { [%eval 0.30] [%clk 00:05:49] }
+36... b5 $6 { [%eval 1.02] [%clk 00:18:30] } ( 36... Kg7 $1
+{ [%cal Gg7f6,Gf6e5] } { [%csl Gd6] } 37. Ra3 Kf6 38. Kf1 Ke5 39. Ke1 g5 $10
+{ It looks like White cannot make progress, and b6 is coming. } ) 37. Be2
+{ [%eval 0.85] [%clk 00:02:27] } { [%cal Gf2f4,Gg1f2,Gf2e3,Ge3d4,Gd4c5] }
+37... Rda7 { [%eval 0.73] } 38. f4 $1 { [%eval 0.84] [%clk 00:02:03] } 38... Kf8
+{ [%eval 0.72] [%clk 00:12:57] } 39. Kf2 { [%eval 0.76] [%clk 00:01:56] }
+39... Rb7 $2 { [%eval 1.57] [%clk 00:08:32] } ( 39... Bd7 $1 40. Rd5 $1 (
+40. Ke3 Rxa5 ) 40... Ke8 ( 40... Rxa5 41. Rxa5 Rxa5 42. Bxc4 $18 ) 41. g5 hxg5
+42. fxg5 $16 { White has a promising position but far from losing. } ) 40. Bf3
+{ [%eval 1.59] [%clk 00:31:16] } 40... Rba7 { [%eval 1.50] [%clk 00:37:50] }
+41. Be2 { [%eval 0.88] [%clk 00:28:37] } ( 41. Ke3 $1 41... Ke8 42. Kd4 Rxd6+
+43. Kc5 Rxd1 44. Bxd1 $18 ) 41... Rb7 $6 { [%eval 1.68] [%clk 00:36:21] }
+42. Ke3 $1 { [%eval 1.39] }
+{ Did not miss this time. Bf3 then Ke3, or Ke3 right away, is the same idea. }
+42... Ke8 { [%eval 1.88] [%clk 00:34:55] } 43. Kd4
+{ [%eval 1.88] [%clk 00:24:02] } 43... Kd7 { [%eval 2.02] [%clk 00:34:09] }
+44. Kc5 { [%eval 1.90] [%clk 00:20:50] } 44... b4
+{ [%eval 1.91] [%clk 00:33:12] } 45. f5 { [%eval 1.65] [%clk 00:21:16] }
+45... gxf5 { [%eval 1.78] [%clk 00:29:39] } 46. gxf5
+{ [%eval 1.45] [%clk 00:21:42] } 46... Bxf5 { [%eval 2.00] [%clk 00:29:06] }
+47. Kxc4 { [%eval 2.30] [%clk 00:16:35] } 47... Rc6+ $1 { [%eval 2.16] } 48. Kd4
+{ [%eval 2.05] [%clk 00:16:24] } 48... Rc2 { [%eval 2.22] [%clk 00:27:43] }
+49. Bf3 { [%eval 1.36] [%clk 00:10:05] } ( 49. a6 $1 49... Ra7 50. Ke3 Rxb2 (
+50... Rxe2+ 51. Kxe2 Bg4+ 52. Kd2 Bxd1 53. Kxd1 Kxd6 54. Kc2 Kc5 55. Kb3 Kb5 (
+55... h5 56. Ra5+ Kb6 57. Kxb4 $18 ) 56. g4 f6 57. Ra4 $18 ) 51. Bb5+ Kd8
+52. Rh1 $18 ) 49... Ra7 { [%eval 1.09] [%clk 00:27:17] } 50. Ke5
+{ [%eval 0.78] [%clk 00:10:20] } 50... Be6 { [%eval 1.01] [%clk 00:26:18] }
+51. a6 { [%eval 0.99] [%clk 00:09:17] } 51... Rxb2 $6
+{ [%eval 1.65] [%clk 00:25:33] } 52. Rdc1 $1 { [%eval 1.68] } 52... f6+
+{ [%eval 1.95] [%clk 00:24:24] } 53. Kf4 { [%eval 1.48] [%clk 00:09:51] }
+53... Rf2 $1 { [%eval 2.73] [%clk 00:21:28] } 54. Ke3 $1
+
+
+{ [%eval 1.93] [%clk 00:09:45] } 54... Rxf3+ $1 { [%eval 2.29] [%clk 00:21:29] }
+55. Kxf3 { [%eval 2.36] [%clk 00:10:11] } 55... Kxd6
+{ [%eval 1.80] [%clk 00:21:24] } 56. Ke3 { [%eval 0.50] [%clk 00:09:51] } (
+56. Kf4 $3 { You may wonder why it has two exclamation marks. } 56... b3 57. Ra5
+Ke7 58. Rc6 b2 59. Rb6 Bc8 60. Rxb2 Rxa6 61. Rxa6 Bxa6
+{ It is almost like the same position as in the game, but the difference is that White is in time to penetrate to the enemy side. }
+62. Kg4 Kf7 63. Kh5 Kg7 64. Rc2 $7 64... Bd3 65. Rc7+ Kf8 66. Kxh6 $18 )
+56... b3 $1 { [%eval 0.33] } 57. Ra5 { [%eval 0.55] [%clk 00:10:04] } 57... Ke7
+$1 { [%eval 0.30] [%clk 00:15:14] } 58. Rc6 { [%eval 0.40] [%clk 00:02:20] }
+58... b2 $1 { [%eval 0.38] [%clk 00:14:54] } 59. Rb6 $1
+{ [%eval 0.62] [%clk 00:02:46] } 59... Bc8 { [%eval 0.48] [%clk 00:14:46] }
+60. Rxb2 { [%eval 0.69] [%clk 00:03:02] } 60... Rxa6 $1
+{ [%eval 0.44] [%clk 00:15:09] } 61. Rxa6 { [%eval 0.66] } 61... Bxa6
+{ [%eval 0.48] [%clk 00:15:35] } 62. Rh2 { [%eval 0.59] [%clk 00:03:23] }
+62... Kf7 { [%eval 0.40] [%clk 00:15:33] } 63. Rxh6
+{ [%eval 0.60] [%clk 00:03:48] } 63... Kg7 { [%eval 0.43] [%clk 00:15:45] }
+64. Rh5 { [%eval 0.18] [%clk 00:03:50] } 64... Bc8
+{ [%eval 0.39] [%clk 00:15:29] } 65. Ra5 { [%eval 0.49] [%clk 00:02:25] }
+65... Kg6 { [%eval 0.29] } 66. Kd4 { [%eval 0.42] } 66... Bh3 $6
+{ [%eval 0.28] [%clk 00:15:35] }
+{ This is not a bad move, but this demands more accuracy from Black. } (
+66... Be6 $1 67. Kc5 Kf7 68. Kd6 Bb3 69. Ra7+ Kf8
+{ Not letting the king get closer, and White cannot create zugzwang like in the game. }
+( 69... Kg6 $10 ) 70. Rc7 Ba2 71. Kc5 Bb3 72. Kd4 Ba2 73. Ke4 Be6 74. Kf4 Ke8 $7
+( 74... Kg8 $4 75. Re7 $18 ) 75. Rg7 Kf8 76. Rc7 Ke8 $10 ) 67. Kd5
+{ [%eval 0.27] [%clk 00:02:24] } 67... Kg5 { [%eval 0.27] [%clk 00:14:31] }
+68. Ra4 { [%eval 0.29] [%clk 00:02:43] } 68... Kg6
+{ [%eval 0.27] [%clk 00:13:12] } 69. Kd6 { [%eval 0.25] [%clk 00:03:05] }
+69... Kf7 { [%eval 0.26] [%clk 00:13:14] } 70. Ra7+
+{ [%eval 0.29] [%clk 00:03:21] } 70... Kf8 $4 { [%eval 3.49] } ( 70... Kg6 $7
+71. Ke7 Kg5 72. Ra4 Bc8
+{ This is a fortress as well, but there are some tricks Black must know. That's why the dubious-move annotation for 66...Bh3 was well deserved. }
+( 72... Bg2 73. Kf7 Bd5+ ( 73... f5 ) 74. Kg7 Bc6 75. Rb4 Be8 ) 73. Kf7 Bh3
+74. Rf4 ( 74. Kg7 Bf5 $4 ( 74... Bd7 75. Rf4 Bf5 76. Kf7 Bh3 ) 75. Ra5 Kg4
+76. Kxf6 Bc8 77. Ra3 Bb7 78. Ra7 Bc8 79. Rc7 $1 79... Ba6 80. Rg7+ $18 )
+74... Bf5 $1 ( 74... Bc8 $4 75. Rxf6 Kg4 76. Rc6 Bf5 77. Kf6 $18 ) 75. Kg7 (
+75. Ke7 Bh3 ) 75... Bh3 76. Rxf6 Kg4 77. Rg6+ Kf3 $10 { [%cal Gh3g4] } ) 71. Rh7
+$3 { [%eval 4.86] [%clk 00:03:46] }
+{ The difference with the bishop being on the longer diagonal. } 71... Bf5
+{ [%eval 4.18] [%clk 00:12:39] } 72. Rh5 $1 { [%eval 4.73] [%clk 00:04:09] }
+72... Bg6 { [%eval 3.27] [%clk 00:12:38] } 73. Ra5
+{ [%eval 4.91] [%clk 00:04:00] } { Black cannot stop the king approaching. }
+73... Bc2 { [%eval 4.25] [%clk 00:09:35] } ( 73... Bf7 74. Rf5 Kg7 75. Ke7 $18 )
+74. Ke6 $1 { [%eval 4.89] [%clk 00:03:49] } 74... Kg7 $1
+{ [%eval 4.39] [%clk 00:10:00] } 75. Rc5 $1 { [%eval 4.94] } 75... Bd3
+{ [%eval 4.45] [%clk 00:03:06] } 76. Rc3 $1 { [%eval 4.29] [%clk 00:03:48] }
+76... Bf1 { [%eval 4.96] [%clk 00:01:27] } 77. Kf5 $1
+{ [%eval 5.12] [%clk 00:03:40] } 77... Bg2 { [%eval 5.30] [%clk 00:00:39] }
+78. g4 $18 { [%eval 5.29] [%clk 00:03:32] } { [%cal Gc3c7] } 1-0

@@ -49,7 +49,7 @@ class ChessGame {
                     ChessMove.fromJson((move as Map).cast<String, dynamic>()),
               )
               .toList(),
-    );
+    )._restoreClassificationHeader();
   }
 
   Map<String, dynamic> toJson() => {
@@ -125,6 +125,71 @@ class ChessGame {
 
   String? get timeControl => metadata['TimeControl'] as String?;
 
+  /// Desktop's external-compatible PGN carries exact report classes in a
+  /// private header because standard NAGs cannot distinguish all eight badges.
+  /// Normalize both PGN imports and older saved JSON into native move NAGs, so
+  /// every consumer (board, notation, report and export) sees the same verdict.
+  ChessGame _restoreClassificationHeader() {
+    final headerKeys = metadata.keys
+        .where((key) => key.toLowerCase() == 'chesseverclassification')
+        .toSet();
+    if (headerKeys.isEmpty) return this;
+
+    final codes = <String, int>{};
+    final keyPattern = RegExp(r'^\d+(?:v\d+\.\d+)*$');
+    final header = metadata[headerKeys.first]?.toString() ?? '';
+    for (final part in header.split(RegExp(r'[\s,]+'))) {
+      final pair = part.split('=');
+      if (pair.length != 2 || !keyPattern.hasMatch(pair[0])) continue;
+      final code = int.tryParse(pair[1]);
+      if (code == null || !_isClassificationNag(code)) continue;
+      codes.putIfAbsent(pair[0], () => code);
+    }
+
+    // Once restored, the native NAGs own the verdict. Keeping the carrier in
+    // metadata would let a later clear/edit revive stale classes on reopen.
+    return copyWith(
+      metadata: {
+        for (final entry in metadata.entries)
+          if (!headerKeys.contains(entry.key)) entry.key: entry.value,
+      },
+      mainline: analysisCleared || codes.isEmpty
+          ? mainline
+          : _restoreClassificationLine(mainline, codes),
+    );
+  }
+
+  static bool _isClassificationNag(int nag) => nag >= 240 && nag <= 247;
+
+  static ChessLine _restoreClassificationLine(
+    ChessLine line,
+    Map<String, int> codes, {
+    String prefix = '',
+  }) => [
+    for (var i = 0; i < line.length; i++)
+      (() {
+        final move = line[i];
+        final code = codes['$prefix${i + 1}'];
+        final nags = move.nags ?? const <int>[];
+        return move.copyWith(
+          nags: code != null && !nags.any(_isClassificationNag)
+              ? [...nags, code]
+              : move.nags,
+          variations: [
+            for (var v = 0; v < (move.variations?.length ?? 0); v++)
+              _restoreClassificationLine(
+                move.variations![v],
+                codes,
+                // The model hangs an alternative on the preceding move;
+                // the header addresses it from the move it replaces.
+                prefix: '$prefix${i + 2}v${v + 1}.',
+              ),
+          ],
+          overrideVariations: move.variations != null,
+        );
+      })(),
+  ];
+
   factory ChessGame.fromPgn(String gameId, String pgn) {
     final pgnGame = PgnGame.parsePgn(pgn);
     final startingPosition = PgnGame.startingPosition(pgnGame.headers);
@@ -136,7 +201,7 @@ class ChessGame {
       startingFen: startingPosition.fen,
       metadata: pgnGame.headers,
       mainline: mainline,
-    );
+    )._restoreClassificationHeader();
   }
 
   static List<ChessMove> _parsePgnNodes(
