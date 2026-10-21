@@ -1,4 +1,5 @@
 import 'package:chessever2/repository/supabase/tour/published_tiebreak.dart';
+import 'package:chessever2/screens/standings/official_team_feed_link.dart';
 import 'package:chessever2/screens/standings/player_standing_model.dart';
 
 /// One row in the team-event "Standings" tab: a team's collected score plus its
@@ -30,6 +31,11 @@ class TeamStandingModel {
 
   final List<PlayerStandingModel> players;
 
+  /// How an official row's boards are found in the broadcast, whose team
+  /// labels can differ from the organizer's spelling. Null for rows built
+  /// from the broadcast itself, where [teamName] is the label.
+  final OfficialTeamFeedLink? feedLink;
+
   const TeamStandingModel({
     required this.teamName,
     required this.rank,
@@ -42,6 +48,7 @@ class TeamStandingModel {
     required this.matchesLost,
     required this.boardsPlayed,
     required this.players,
+    this.feedLink,
   });
 
   String get matchPointsLabel => matchPoints % 1 == 0

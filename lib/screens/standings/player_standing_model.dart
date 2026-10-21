@@ -8,6 +8,11 @@ class PlayerStandingModel {
   final int score;
   final int scoreChange;
   final bool hasRatingDiff;
+
+  /// False when the source had no rating at all. [score] then holds 0 only so
+  /// sorting keeps treating the player as lowest; the row leaves the rating
+  /// blank, like Chess-Results, instead of printing a rating of 0.
+  final bool hasRating;
   final String? matchScore;
   final int? fideId;
   final String? gamebasePlayerId;
@@ -35,6 +40,7 @@ class PlayerStandingModel {
     required this.score,
     required this.scoreChange,
     this.hasRatingDiff = true,
+    this.hasRating = true,
     required this.matchScore,
     this.fideId,
     this.gamebasePlayerId,
@@ -55,6 +61,7 @@ class PlayerStandingModel {
       score: player.rating ?? 0, // ELO rating for display
       scoreChange: player.ratingDiff ?? 0,
       hasRatingDiff: player.ratingDiff != null,
+      hasRating: player.rating != null,
       matchScore: _formatTournamentScore(player.score, player.played),
       fideId: player.fideId,
       gamebasePlayerId: null,
@@ -90,6 +97,7 @@ class PlayerStandingModel {
     int? score,
     int? scoreChange,
     bool? hasRatingDiff,
+    bool? hasRating,
     String? matchScore,
     int? fideId,
     String? gamebasePlayerId,
@@ -108,6 +116,7 @@ class PlayerStandingModel {
       score: score ?? this.score,
       scoreChange: scoreChange ?? this.scoreChange,
       hasRatingDiff: hasRatingDiff ?? this.hasRatingDiff,
+      hasRating: hasRating ?? this.hasRating,
       matchScore: matchScore ?? this.matchScore,
       fideId: fideId ?? this.fideId,
       gamebasePlayerId: gamebasePlayerId ?? this.gamebasePlayerId,
@@ -131,6 +140,7 @@ class PlayerStandingModel {
       scoreChange: (json['scoreChange'] as int?) ?? 0,
       hasRatingDiff:
           json['hasRatingDiff'] as bool? ?? json['scoreChange'] != null,
+      hasRating: json['hasRating'] as bool? ?? true,
       matchScore: json['matchScore'] as String?,
       fideId: json['fideId'] as int?,
       gamebasePlayerId: json['gamebasePlayerId'] as String?,
@@ -153,6 +163,7 @@ class PlayerStandingModel {
       'score': score,
       'scoreChange': scoreChange,
       'hasRatingDiff': hasRatingDiff,
+      if (!hasRating) 'hasRating': false,
       'matchScore': matchScore,
       'fideId': fideId,
       'gamebasePlayerId': gamebasePlayerId,
@@ -177,6 +188,7 @@ class PlayerStandingModel {
         other.score == score &&
         other.scoreChange == scoreChange &&
         other.hasRatingDiff == hasRatingDiff &&
+        other.hasRating == hasRating &&
         other.matchScore == matchScore &&
         other.fideId == fideId &&
         other.gamebasePlayerId == gamebasePlayerId &&
@@ -198,6 +210,7 @@ class PlayerStandingModel {
       score,
       scoreChange,
       hasRatingDiff,
+      hasRating,
       matchScore,
       fideId,
       gamebasePlayerId,
