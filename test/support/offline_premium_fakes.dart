@@ -38,6 +38,7 @@ class OfflineRevenueCat implements RevenueCatService {
   /// The notifier's customer info listener, for a test to call as the SDK
   /// would with its cached customer info.
   void Function(CustomerInfo)? customerInfoListener;
+  CustomerInfo? customerInfo;
 
   @override
   bool get isSdkReady => false;
@@ -47,10 +48,13 @@ class OfflineRevenueCat implements RevenueCatService {
       customerInfoListener = listener;
 
   @override
-  Future<CustomerInfo?> getCustomerInfo() async => null;
+  Future<CustomerInfo?> getCustomerInfo() async => customerInfo;
 
   @override
   Future<CustomerInfo?> syncPurchases() async => null;
+
+  @override
+  Future<bool> restorePurchases() async => false;
 
   @override
   Future<BackendEntitlementSnapshot?> getBackendEntitlement() => _backend();

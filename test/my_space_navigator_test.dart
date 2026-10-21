@@ -156,7 +156,9 @@ void main() {
         'https://chessever.com/broadcast/olympiad-2026/abc123?tab=standings',
         'https://chessever.com/player/1503014',
         'https://chessever.com/games/AbCdEfGh',
+        'https://chessever.com/collections/tata-steel-2026',
         'com.chessever.app://broadcast/abc123',
+        'com.chessever.app://collections/tata-steel-2026',
       ]) {
         expect(isRoutableSpaceLink(Uri.parse(url)), isTrue, reason: url);
       }
@@ -297,6 +299,16 @@ void main() {
         ),
         'https://chessever.com/player/1',
       );
+      expect(
+        spaceShortcutShareUrl(
+          _s(
+            SpaceShortcutKind.collection,
+            'c1',
+            params: {'slug': 'tata-steel-2026'},
+          ),
+        ),
+        'https://chessever.com/collections/tata-steel-2026',
+      );
     });
 
     test('are withheld where no one else could open them', () {
@@ -308,6 +320,7 @@ void main() {
         _s(SpaceShortcutKind.position, 'fen'),
         _s(SpaceShortcutKind.link, 'com.chessever.app://games/abc'),
         _s(SpaceShortcutKind.game, 'saved_analysis_1'),
+        _s(SpaceShortcutKind.collection, 'c1'),
       ]) {
         expect(spaceShortcutShareUrl(s), isNull, reason: s.key);
       }

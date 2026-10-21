@@ -6,10 +6,30 @@ import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
 import 'package:chessever2/services/rewarded_premium/rewarded_access_provider.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:purchases_flutter/purchases_flutter.dart' show CustomerInfo;
 
 import 'support/offline_premium_fakes.dart';
 
 void main() {
+  test(
+    'lifetime does not renew and expired payment failures are not grace',
+    () {
+      expect(
+        BackendEntitlementSnapshot.fromJson({
+          'is_premium': true,
+          'interval': 'lifetime',
+        }).willRenew,
+        isFalse,
+      );
+      expect(
+        BackendEntitlementSnapshot.fromJson({
+          'is_premium': false,
+          'status': 'past_due',
+        }).inBillingGracePeriod,
+        isFalse,
+      );
+    },
+  );
   final now = DateTime.now();
   final paid = OfflinePremiumSnapshot(
     verifiedAt: now.subtract(const Duration(days: 2)),
@@ -21,15 +41,18 @@ void main() {
     required MemoryPremiumCache cache,
     Future<BackendEntitlementSnapshot?> Function()? backend,
     String? userId = 'reader',
+    String? Function()? currentAccount,
+    CustomerInfo? customerInfo,
   }) {
-    final revenueCat = OfflineRevenueCat(backend ?? () async => null);
+    final revenueCat = OfflineRevenueCat(backend ?? () async => null)
+      ..customerInfo = customerInfo;
     final container = ProviderContainer(
       overrides: [
         subscriptionProvider.overrideWith(
           (ref) => SubscriptionNotifier(
             revenueCat: revenueCat,
             offlineCache: cache,
-            currentUserId: () => userId,
+            currentUserId: currentAccount ?? () => userId,
           ),
         ),
       ],
@@ -37,6 +60,137 @@ void main() {
     addTearDown(container.dispose);
     return (container: container, revenueCat: revenueCat);
   }
+
+  test('a stale SDK callback cannot resurrect an online revocation', () async {
+    final cache = MemoryPremiumCache({});
+    final app = launch(
+      cache: cache,
+      customerInfo: premiumCustomerInfo(
+        expiresAt: now.add(const Duration(days: 20)),
+      ),
+      backend: () async => const BackendEntitlementSnapshot(isActive: false),
+    );
+    app.container.read(subscriptionProvider);
+    await pumpEventQueue();
+    app.revenueCat.customerInfoListener!(app.revenueCat.customerInfo!);
+    await pumpEventQueue();
+    expect(app.container.read(premiumAccessProvider), isFalse);
+    expect(cache.snapshots, isEmpty);
+  });
+
+  test(
+    'lifetime replaces an expiring plan without borrowing its expiry',
+    () async {
+      final expiry = now.add(const Duration(days: 20));
+      BackendEntitlementSnapshot answer = BackendEntitlementSnapshot(
+        isActive: true,
+        provider: 'apple',
+        expiresAt: expiry,
+      );
+      final cache = MemoryPremiumCache({});
+      final app = launch(
+        cache: cache,
+        customerInfo: premiumCustomerInfo(expiresAt: expiry),
+        backend: () async => answer,
+      );
+      app.container.read(subscriptionProvider);
+      await pumpEventQueue();
+      expect(app.container.read(subscriptionProvider).expirationDate, expiry);
+      answer = const BackendEntitlementSnapshot(
+        isActive: true,
+        provider: 'stripe',
+      );
+      await app.container
+          .read(subscriptionProvider.notifier)
+          .refresh(force: false);
+      expect(app.container.read(subscriptionProvider).expirationDate, isNull);
+      expect(cache.snapshots['reader']?.expiresAt, isNull);
+    },
+  );
+
+  test(
+    'late entitlement responses cannot grant Premium to another account',
+    () async {
+      String? account = 'a';
+      final late = Completer<BackendEntitlementSnapshot?>();
+      final cache = MemoryPremiumCache({});
+      final app = launch(
+        cache: cache,
+        currentAccount: () => account,
+        backend: () => account == 'a'
+            ? late.future
+            : Future.value(const BackendEntitlementSnapshot(isActive: false)),
+      );
+      app.container.read(subscriptionProvider);
+      await pumpEventQueue();
+      account = 'b';
+      await app.container
+          .read(subscriptionProvider.notifier)
+          .refresh(force: false);
+      late.complete(
+        const BackendEntitlementSnapshot(isActive: true, provider: 'stripe'),
+      );
+      await pumpEventQueue();
+      expect(app.container.read(premiumAccessProvider), isFalse);
+      expect(cache.snapshots.containsKey('b'), isFalse);
+    },
+  );
+
+  test(
+    'restoring an empty app store cannot revoke an existing web purchase',
+    () async {
+      final app = launch(
+        cache: MemoryPremiumCache({}),
+        backend: () async => const BackendEntitlementSnapshot(
+          isActive: true,
+          provider: 'stripe',
+        ),
+      );
+      app.container.read(subscriptionProvider);
+      await pumpEventQueue();
+      expect(
+        await app.container
+            .read(subscriptionProvider.notifier)
+            .restorePurchases(),
+        isTrue,
+      );
+      expect(app.container.read(subscriptionProvider).provider, 'stripe');
+    },
+  );
+
+  test('payment recovery clears the old grace warning and timestamp', () async {
+    BackendEntitlementSnapshot answer = BackendEntitlementSnapshot(
+      isActive: true,
+      provider: 'apple',
+      inBillingGracePeriod: true,
+      billingIssueDetectedAt: now,
+    );
+    final app = launch(
+      cache: MemoryPremiumCache({}),
+      backend: () async => answer,
+    );
+    app.container.read(subscriptionProvider);
+    await pumpEventQueue();
+    expect(
+      app.container.read(subscriptionProvider).inBillingGracePeriod,
+      isTrue,
+    );
+    answer = const BackendEntitlementSnapshot(
+      isActive: true,
+      provider: 'apple',
+    );
+    await app.container
+        .read(subscriptionProvider.notifier)
+        .refresh(force: false);
+    expect(
+      app.container.read(subscriptionProvider).inBillingGracePeriod,
+      isFalse,
+    );
+    expect(
+      app.container.read(subscriptionProvider).billingIssueDetectedAt,
+      isNull,
+    );
+  });
 
   test('an offline launch keeps a remembered subscriber Premium', () async {
     final cache = MemoryPremiumCache({'reader': paid});
