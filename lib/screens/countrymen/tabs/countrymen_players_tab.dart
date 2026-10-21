@@ -121,9 +121,13 @@ class CountrymenPlayersState {
 }
 
 class CountrymenPlayersNotifier extends StateNotifier<CountrymenPlayersState> {
-  CountrymenPlayersNotifier(this._ref)
+  CountrymenPlayersNotifier(this._ref, {this.federation})
     : super(const CountrymenPlayersState(isLoading: true)) {
     _loadInitial();
+
+    // A profile's federation list stays on that exact FIDE federation,
+    // independently of country exploration elsewhere in the app.
+    if (federation != null) return;
 
     // Listen to effective country changes (includes temporary selections).
     _ref.listen(effectiveCountryProvider, (previous, next) {
@@ -136,6 +140,7 @@ class CountrymenPlayersNotifier extends StateNotifier<CountrymenPlayersState> {
   }
 
   final Ref _ref;
+  final String? federation;
   static const int _pageSize = 30;
 
   /// Bumped by every call that invalidates the visible page (filters, search,
@@ -145,6 +150,7 @@ class CountrymenPlayersNotifier extends StateNotifier<CountrymenPlayersState> {
   int _requestGeneration = 0;
 
   String? _getCountryCode() {
+    if (federation != null) return federation;
     final country = _ref.read(effectiveCountryProvider).valueOrNull;
     if (country == null) return null;
     // Convert to FIDE federation code.
@@ -837,8 +843,9 @@ class _CountrymenPlayersTabState extends ConsumerState<CountrymenPlayersTab>
   }
 
   Widget _buildEmptyState(RankingFilters filters) {
-    final countryAsync = ref.watch(effectiveCountryProvider);
-    final countryName = countryAsync.valueOrNull?.name ?? 'your country';
+    final code = ref.read(countrymenPlayersProvider.notifier)._getCountryCode();
+    final name = CountryUtils.getCountryName(code ?? '');
+    final countryName = name.isEmpty ? 'your country' : name;
     // An empty page under a narrowed filter is not the same claim as an empty
     // federation — say which one it is rather than blaming the country.
     final message =

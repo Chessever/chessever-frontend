@@ -7,6 +7,7 @@ import 'package:chessever2/screens/my_space/actions/space_menu_action.dart';
 import 'package:chessever2/screens/player_profile/tabs/memorial_player_about_tab.dart';
 import 'package:chessever2/screens/player_profile/player_profile_data_source.dart';
 import 'package:chessever2/screens/player_profile/provider/player_profile_provider.dart';
+import 'package:chessever2/screens/player_profile/widgets/player_profile_info_row.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/utils/game_space_shortcut.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card.dart';
@@ -18,7 +19,6 @@ import 'package:motor/motor.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
-import 'package:chessever2/utils/country_utils.dart';
 import 'package:chessever2/utils/eco_openings.dart';
 import 'package:chessever2/utils/png_asset.dart';
 import 'package:chessever2/utils/number_format_utils.dart';
@@ -31,7 +31,6 @@ import 'package:chessever2/widgets/game_filter/game_filter_model.dart';
 import 'package:chessever2/widgets/player_initials_avatar.dart';
 import 'package:chessever2/widgets/scroll_to_top_bus.dart';
 import 'package:chessever2/widgets/space_shortcut_drafts.dart';
-import 'package:country_flags/country_flags.dart';
 import 'package:heroine/heroine.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
@@ -1067,14 +1066,6 @@ class _PlayerHeaderSectionState extends ConsumerState<_PlayerHeaderSection> {
         (widget.profileData?.title?.trim().isNotEmpty ?? false)
             ? widget.profileData!.title!.trim()
             : (widget.title?.trim() ?? '');
-    final countryCode =
-        effectiveFederation.isNotEmpty
-            ? CountryUtils.toIso2Code(effectiveFederation)
-            : '';
-    final countryName =
-        effectiveFederation.isNotEmpty
-            ? CountryUtils.getCountryName(effectiveFederation)
-            : '';
 
     // Use profile data ratings, fallback to the rating passed from search/navigation
     final classicalRating =
@@ -1195,75 +1186,10 @@ class _PlayerHeaderSectionState extends ConsumerState<_PlayerHeaderSection> {
 
         SizedBox(height: 16.h),
 
-        // Player info row
-        Container(
-          padding: EdgeInsets.all(16.sp),
-          decoration: BoxDecoration(
-            color: context.colors.surface,
-            borderRadius: BorderRadius.circular(12.br),
-          ),
-          child: Row(
-            children: [
-              // Country
-              if (countryCode.isNotEmpty) ...[
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(2.br),
-                  child: CountryFlag.fromCountryCode(
-                    countryCode,
-                    theme: ImageTheme(height: 20.h, width: 28.w),
-                  ),
-                ),
-                SizedBox(width: 10.w),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        countryName.isNotEmpty
-                            ? countryName
-                            : effectiveFederation,
-                        style: AppTypography.textSmMedium.copyWith(
-                          color: context.colors.textPrimary,
-                        ),
-                      ),
-                      Text(
-                        'Federation',
-                        style: AppTypography.textXsRegular.copyWith(
-                          color: context.textInk(0.5),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-
-              // FIDE ID
-              Container(
-                padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 6.h),
-                decoration: BoxDecoration(
-                  color: context.colors.surfaceRecessed,
-                  borderRadius: BorderRadius.circular(8.br),
-                ),
-                child: Column(
-                  children: [
-                    Text(
-                      displayFideId?.toString() ?? 'Not assigned',
-                      style: AppTypography.textSmBold.copyWith(
-                        color: context.colors.textPrimary,
-                        fontFamily: 'monospace',
-                      ),
-                    ),
-                    Text(
-                      isMemorial ? 'Historical FIDE ID' : 'FIDE ID',
-                      style: AppTypography.textXsRegular.copyWith(
-                        color: context.textInk(0.5),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
+        PlayerProfileInfoRow(
+          fideId: displayFideId,
+          federation: effectiveFederation,
+          isMemorial: isMemorial,
         ),
       ],
     );
