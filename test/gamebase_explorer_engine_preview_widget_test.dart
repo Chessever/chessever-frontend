@@ -1,4 +1,5 @@
 import 'package:chessever2/providers/board_settings_provider_new.dart';
+import 'package:chessever2/providers/board_engine_lines_visibility_provider.dart';
 import 'package:chessever2/providers/engine_settings_provider.dart';
 import 'package:chessever2/repository/gamebase/gamebase_repository.dart';
 import 'package:chessever2/repository/gamebase/search/gamebase_search_models.dart';
@@ -135,6 +136,11 @@ class _SubscribedNotifier extends SubscriptionNotifier {
   }
 }
 
+class _HiddenBoardLines extends BoardEngineLinesVisibleNotifier {
+  @override
+  Future<bool> build() async => false;
+}
+
 class _CardEngineSettingsNotifier extends EngineSettingsNotifierNew {
   _CardEngineSettingsNotifier({this.settings = _defaultSettings});
 
@@ -207,6 +213,7 @@ ProviderContainer _createContainer({
 }) {
   return ProviderContainer(
     overrides: [
+      boardEngineLinesVisibleProvider.overrideWith(_HiddenBoardLines.new),
       gamebaseRepositoryProvider.overrideWithValue(
         _FakeGamebaseRepository(inlineGames: inlineGames),
       ),
@@ -246,6 +253,41 @@ Future<void> _pumpExplorer(
 }
 
 void main() {
+  for (final style in EngineLinesView.values) {
+    testWidgets('in-game Off leaves standalone Explorer $style visible', (
+      tester,
+    ) async {
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = const Size(390, 844);
+      addTearDown(tester.view.reset);
+      final container = _createContainer(
+        engineSettings: EngineSettings(engineLinesView: style),
+      );
+      addTearDown(container.dispose);
+      await container.read(boardEngineLinesVisibleProvider.future);
+      await _pumpExplorer(tester, container);
+      expect(
+        container.read(boardEngineLinesVisibleProvider).requireValue,
+        isFalse,
+      );
+      expect(
+        find.byKey(const ValueKey('e2e_opening_explorer_engine_lines')),
+        findsOneWidget,
+      );
+      expect(container.read(explorerEvalProvider).pvLines, hasLength(3));
+      expect(
+        container.read(engineSettingsProviderNew).requireValue.engineLinesView,
+        style,
+      );
+      expect(
+        find.byType(EnginePvListView),
+        style == EngineLinesView.list ? findsOneWidget : findsNothing,
+      );
+      await tester.pumpWidget(const SizedBox.shrink());
+      container.dispose();
+      await tester.pump();
+    });
+  }
   testWidgets('explorer scroll handoff tolerates two attached positions', (
     tester,
   ) async {

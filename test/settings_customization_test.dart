@@ -5,6 +5,7 @@ import 'package:chessever2/chat/botvinnik_provider.dart';
 import 'package:chessever2/providers/auto_pin_preferences_provider.dart';
 import 'package:chessever2/providers/board_settings_provider_new.dart';
 import 'package:chessever2/providers/engine_settings_provider.dart';
+import 'package:chessever2/providers/board_engine_lines_visibility_provider.dart';
 import 'package:chessever2/providers/notification_permission_provider.dart';
 import 'package:chessever2/providers/notification_preferences_provider.dart';
 import 'package:chessever2/repository/local_storage/auto_pin_preferences/auto_pin_preferences_repository.dart';
@@ -32,6 +33,11 @@ class _Board extends BoardSettingsNotifierNew {
 class _Engine extends EngineSettingsNotifierNew {
   @override
   Future<EngineSettings> build() async => const EngineSettings();
+}
+
+class _BoardLinesVisibility extends BoardEngineLinesVisibleNotifier {
+  @override
+  Future<bool> build() async => true;
 }
 
 class _Notifications extends NotificationPreferencesNotifier {
@@ -110,6 +116,7 @@ Future<ProviderContainer> _pumpSettings(
     overrides: [
       boardSettingsProviderNew.overrideWith(_Board.new),
       engineSettingsProviderNew.overrideWith(_Engine.new),
+      boardEngineLinesVisibleProvider.overrideWith(_BoardLinesVisibility.new),
       notificationPreferencesProvider.overrideWith(_Notifications.new),
       notificationPermissionProvider.overrideWith((_) => _Permission()),
       subscriptionProvider.overrideWith((_) => _Subscription()),

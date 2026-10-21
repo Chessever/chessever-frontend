@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import 'package:chessever2/providers/engine_settings_provider.dart';
+import 'package:chessever2/providers/board_engine_lines_visibility_provider.dart';
 import 'package:chessever2/screens/chessboard/game_review/classification_style.dart';
 import 'package:chessever2/screens/chessboard/game_review/game_analysis_report.dart';
 import 'package:chessever2/screens/chessboard/models/like_tag.dart';
@@ -371,6 +372,7 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
+            boardEngineLinesVisibleProvider.overrideWith(_VisibleBoardLines.new),
             engineSettingsProviderNew.overrideWith(
               () => _FakeEngineSettingsNotifier(const EngineSettings()),
             ),
@@ -564,6 +566,11 @@ void main() {
     final darkChevron = tester.widget<Icon>(find.byType(Icon).last);
     expect(darkChevron.color, dark.textPrimary.withValues(alpha: 0.5));
   });
+}
+
+class _VisibleBoardLines extends BoardEngineLinesVisibleNotifier {
+  @override
+  Future<bool> build() async => true;
 }
 
 class _FakeEngineSettingsNotifier extends EngineSettingsNotifierNew {

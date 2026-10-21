@@ -1,3 +1,4 @@
+import 'package:chessever2/providers/board_engine_lines_visibility_provider.dart';
 import 'package:chessever2/providers/engine_settings_provider.dart';
 import 'package:chessever2/screens/settings/widgets/settings_primitives.dart';
 import 'package:chessever2/theme/app_colors.dart';
@@ -47,6 +48,8 @@ class EngineSettingsBody extends ConsumerWidget {
     EngineSettings settings,
   ) {
     final notifier = ref.read(engineSettingsProviderNew.notifier);
+    final linesVisible = ref.watch(boardEngineLinesVisibleProvider);
+    final linesVisibility = ref.read(boardEngineLinesVisibleProvider.notifier);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -170,7 +173,7 @@ class EngineSettingsBody extends ConsumerWidget {
               ),
               SizedBox(height: 4.h),
               Text(
-                'How engine analysis lines appear on boards and the opening explorer.',
+                'Off hides in-game lines only. Cards/List also sets the opening explorer style. Evaluation and arrows stay independent.',
                 style: AppTypography.textSmRegular.copyWith(
                   color: context.colors.textSecondary,
                   fontSize: 11.f,
@@ -179,8 +182,13 @@ class EngineSettingsBody extends ConsumerWidget {
               SizedBox(height: 14.h),
               _EngineLinesToggle(
                 value: settings.engineLinesView,
+                visible: linesVisible.valueOrNull ?? true,
+                onOff: () {
+                  trackPersist(linesVisibility.setVisible(false));
+                },
                 onChanged: (view) {
                   trackPersist(notifier.setEngineLinesView(view));
+                  trackPersist(linesVisibility.setVisible(true));
                 },
               ),
             ],
@@ -388,11 +396,18 @@ class EngineSettingsBody extends ConsumerWidget {
   }
 }
 
-/// Two-segment toggle for the engine-lines layout (Cards vs List).
+/// Off affects only in-game visibility; Cards/List retains the shared layout.
 class _EngineLinesToggle extends StatelessWidget {
-  const _EngineLinesToggle({required this.value, required this.onChanged});
+  const _EngineLinesToggle({
+    required this.value,
+    required this.visible,
+    required this.onOff,
+    required this.onChanged,
+  });
 
   final EngineLinesView value;
+  final bool visible;
+  final VoidCallback onOff;
   final ValueChanged<EngineLinesView> onChanged;
 
   @override
@@ -407,9 +422,17 @@ class _EngineLinesToggle extends StatelessWidget {
         children: [
           _segment(
             context,
+            label: 'Off',
+            icon: Icons.visibility_off_outlined,
+            selected: !visible,
+            onTap: onOff,
+          ),
+          SizedBox(width: 4.w),
+          _segment(
+            context,
             label: 'Cards',
             icon: Icons.view_carousel_outlined,
-            selected: value == EngineLinesView.cards,
+            selected: visible && value == EngineLinesView.cards,
             onTap: () => onChanged(EngineLinesView.cards),
           ),
           SizedBox(width: 4.w),
@@ -417,7 +440,7 @@ class _EngineLinesToggle extends StatelessWidget {
             context,
             label: 'List',
             icon: Icons.view_agenda_outlined,
-            selected: value == EngineLinesView.list,
+            selected: visible && value == EngineLinesView.list,
             onTap: () => onChanged(EngineLinesView.list),
           ),
         ],
