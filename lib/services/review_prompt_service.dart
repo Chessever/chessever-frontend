@@ -21,9 +21,11 @@ enum ReviewPromptTrigger {
 }
 
 class ReviewPromptService {
-  ReviewPromptService._();
+  ReviewPromptService({TelegramNotificationService? notifications})
+    : _notifications = notifications ?? TelegramNotificationService.instance;
 
-  static final ReviewPromptService instance = ReviewPromptService._();
+  static final ReviewPromptService instance = ReviewPromptService();
+  final TelegramNotificationService _notifications;
 
   // Cooldown between prompts
   static const Duration _cooldown = Duration(days: 30);
@@ -97,18 +99,17 @@ class ReviewPromptService {
     }
 
     debugPrint('[Feedback] relaying direct feedback to Telegram');
-    final sent = await TelegramNotificationService.instance
-        .sendDirectFeedbackNotification(
-          feedback: result.feedback,
-          source: ReviewPromptTrigger.sidebar.name,
-          sender: sender,
-          appVersion: packageInfo == null
-              ? null
-              : '${packageInfo.version} (${packageInfo.buildNumber})',
-          platform: Platform.operatingSystem,
-          pictureBytes: result.picture?.bytes,
-          pictureFileName: result.picture?.fileName,
-        );
+    final sent = await _notifications.sendDirectFeedbackNotification(
+      feedback: result.feedback,
+      source: ReviewPromptTrigger.sidebar.name,
+      sender: sender,
+      appVersion: packageInfo == null
+          ? null
+          : '${packageInfo.version} (${packageInfo.buildNumber})',
+      platform: Platform.operatingSystem,
+      pictureBytes: result.picture?.bytes,
+      pictureFileName: result.picture?.fileName,
+    );
     if (sent) {
       _showThanksSnackBarOn(messenger);
     } else {
@@ -346,7 +347,7 @@ class ReviewPromptService {
 
       // Send Telegram notification for immediate alert
       debugPrint('[Feedback] Sending Telegram notification...');
-      await TelegramNotificationService.instance.sendFeedbackNotification(
+      await _notifications.sendFeedbackNotification(
         rating: rating,
         feedback: feedback,
         source: trigger.name,
