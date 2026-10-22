@@ -24,8 +24,13 @@ function equal(actual: unknown, expected: unknown) {
 
 async function deliver(
   event: Record<string, unknown>,
-  options: { authorized?: boolean; syncFails?: boolean; duplicate?: boolean } =
-    {},
+  options: {
+    authorized?: boolean;
+    syncFails?: boolean;
+    duplicate?: boolean;
+    installAt?: string;
+    ledger?: Record<string, unknown>[];
+  } = {},
 ) {
   const environment = {
     SUPABASE_URL: "https://webhook.test",
@@ -39,6 +44,7 @@ async function deliver(
     Deno.env.set(key, value);
   }
   const calls: Call[] = [];
+  const ledger = structuredClone(options.ledger ?? []);
   const originalFetch = globalThis.fetch;
   // supabase-js starts background auth timers even for a service-role client.
   // Track and close them so each delivery keeps Deno's leak checks enabled.
@@ -81,7 +87,7 @@ async function deliver(
     if (url.pathname === "/rest/v1/affiliate_referrals" && method === "GET") {
       return Promise.resolve(Response.json([{
         affiliate_code: "partner",
-        install_at: "2026-10-21T12:00:00Z",
+        install_at: options.installAt ?? "2026-10-21T12:00:00Z",
         created_at: "2026-10-21T12:00:00Z",
         appsflyer_data: { af_status: "Non-organic" },
         platform: null,
@@ -100,7 +106,33 @@ async function deliver(
           Response.json({ code: "23505" }, { status: 409 }),
         );
       }
-      return Promise.resolve(Response.json([]));
+      const matching = ledger.filter((row) =>
+        [
+          "referred_user_id",
+          "affiliate_code",
+          "is_trial_period",
+          "is_sandbox",
+          "product_id",
+          "event_type",
+          "status",
+        ].every((key) => {
+          const filter = url.searchParams.get(key);
+          if (!filter) return true;
+          if (filter.startsWith("eq.")) {
+            return filter.slice(3) === String(row[key]);
+          }
+          if (filter.startsWith("in.(")) {
+            return filter.slice(4, -1).split(",").includes(String(row[key]));
+          }
+          throw new Error(`Unsupported fixture filter: ${filter}`);
+        })
+      );
+      if (method === "PATCH") {
+        for (const row of matching) Object.assign(row, body);
+      } else if (method === "POST") {
+        ledger.push(body as Record<string, unknown>);
+      }
+      return Promise.resolve(Response.json(method === "GET" ? matching : []));
     }
     throw new Error(`Unexpected request: ${method} ${url}`);
   };
@@ -130,7 +162,12 @@ async function deliver(
         }),
       }),
     );
-    return { status: response.status, body: await response.json(), calls };
+    return {
+      status: response.status,
+      body: await response.json(),
+      calls,
+      ledger,
+    };
   } finally {
     await new Promise((resolve) => originalTimeout(resolve, 0));
     for (const id of timers) {
@@ -245,4 +282,90 @@ Deno.test("Stripe refund without a product cannot reverse unrelated commissions"
   });
   equal(result.status, 200);
   equal(result.calls.length, 1);
+});
+
+function commission(isSandbox: boolean, status = "pending") {
+  return {
+    id: isSandbox ? "sandbox-row" : "production-row",
+    referred_user_id: userId,
+    affiliate_code: "partner",
+    product_id: "test-only-product",
+    event_type: "INITIAL_PURCHASE",
+    is_trial_period: status === "trial",
+    status,
+    is_sandbox: isSandbox,
+  };
+}
+
+for (const sandbox of [false, true]) {
+  Deno.test(`${sandbox ? "sandbox" : "production"} refund cannot reverse the other environment`, async () => {
+    const result = await deliver({
+      store: "APP_STORE",
+      type: "CANCELLATION",
+      cancel_reason: "REFUND",
+      environment: sandbox ? "SANDBOX" : "PRODUCTION",
+    }, { ledger: [commission(false), commission(true)] });
+    equal(result.status, 200);
+    equal(
+      result.ledger.find((row) => row.is_sandbox === sandbox)?.status,
+      "refunded",
+    );
+    equal(
+      result.ledger.find((row) => row.is_sandbox !== sandbox)?.status,
+      "pending",
+    );
+  });
+
+  Deno.test(`${sandbox ? "sandbox" : "production"} trial cancellation cannot cancel the other environment`, async () => {
+    const result = await deliver({
+      store: "PLAY_STORE",
+      type: "TRIAL_CANCELLED",
+      environment: sandbox ? "SANDBOX" : "PRODUCTION",
+    }, { ledger: [commission(false, "trial"), commission(true, "trial")] });
+    equal(result.status, 200);
+    equal(
+      result.ledger.find((row) => row.is_sandbox === sandbox)?.status,
+      "refunded",
+    );
+    equal(
+      result.ledger.find((row) => row.is_sandbox !== sandbox)?.status,
+      "trial",
+    );
+  });
+
+  Deno.test(`${sandbox ? "sandbox" : "production"} renewal cannot qualify from the other environment's purchase`, async () => {
+    const result = await deliver({
+      store: "APP_STORE",
+      type: "RENEWAL",
+      environment: sandbox ? "SANDBOX" : "PRODUCTION",
+    }, { installAt: "2026-09-01T12:00:00Z", ledger: [commission(!sandbox)] });
+    equal(result.status, 200);
+    equal(result.body.message, "Affiliate attribution window expired");
+    equal(result.ledger.length, 1);
+  });
+}
+
+for (const sandbox of [false, true]) {
+  Deno.test(`${sandbox ? "sandbox" : "production"} trial conversion cannot promote the other environment`, async () => {
+    const result = await deliver({
+      store: "PLAY_STORE",
+      type: "RENEWAL",
+      is_trial_conversion: true,
+      environment: sandbox ? "SANDBOX" : "PRODUCTION",
+    }, { ledger: [commission(false, "trial"), commission(true, "trial")] });
+    equal(result.status, 200);
+    const trials = result.ledger.filter((row) => row.is_trial_period);
+    equal(trials.find((row) => row.is_sandbox === sandbox)?.status, "cleared");
+    equal(trials.find((row) => row.is_sandbox !== sandbox)?.status, "trial");
+  });
+}
+
+Deno.test("a prior production purchase still qualifies its own renewal after the window", async () => {
+  const result = await deliver({ store: "APP_STORE", type: "RENEWAL" }, {
+    installAt: "2026-09-01T12:00:00Z",
+    ledger: [commission(false)],
+  });
+  equal(result.status, 200);
+  equal(result.body.message, "Conversion recorded");
+  equal(result.ledger.length, 2);
 });

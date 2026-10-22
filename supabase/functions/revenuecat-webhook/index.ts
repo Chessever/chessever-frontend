@@ -272,6 +272,7 @@ Deno.serve(async (req) => {
         .from("affiliate_conversions")
         .update({ status: "refunded" })
         .eq("referred_user_id", appUserId)
+        .eq("is_sandbox", isSandbox)
         .in("status", ["pending", "cleared"]);
       if (productId) query = query.eq("product_id", productId);
       // A Stripe subscription refund belongs to its invoice handler. Only
@@ -290,6 +291,7 @@ Deno.serve(async (req) => {
         .from("affiliate_conversions")
         .update({ status: "refunded" })
         .eq("referred_user_id", appUserId)
+        .eq("is_sandbox", isSandbox)
         .eq("status", "trial");
       if (productId) query = query.eq("product_id", productId);
       await query;
@@ -370,6 +372,7 @@ Deno.serve(async (req) => {
         .eq("referred_user_id", appUserId)
         .eq("affiliate_code", affiliateCode)
         .eq("is_trial_period", false)
+        .eq("is_sandbox", isSandbox)
         .in("status", ["pending", "cleared", "paid"])
         .limit(1)
         .maybeSingle();
@@ -497,6 +500,7 @@ Deno.serve(async (req) => {
           .update({ status: "cleared" })
           .eq("referred_user_id", appUserId)
           .eq("product_id", productId)
+          .eq("is_sandbox", isSandbox)
           .eq("status", "trial");
       }
 
