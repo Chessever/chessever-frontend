@@ -414,6 +414,7 @@ class AppsflyerService {
       if (attrs.isEmpty) return;
 
       await Purchases.setAttributes(attrs);
+      await _forwardAttributionToRevenueCat(metadata);
       debugPrint('AppsflyerService: install metadata sent to RevenueCat');
     } catch (e) {
       debugPrint(
@@ -807,13 +808,6 @@ class AppsflyerService {
     if (isFirstLaunch) {
       debugPrint('AppsflyerService: First launch attribution: $payload');
       await _cacheFirstInstallAttribution(payload);
-
-      // Forward attribution context to RevenueCat so the customer profile
-      // there carries media_source / campaign / etc. RC then surfaces this
-      // in its dashboard and forwards through the AppsFlyer integration.
-      if (appsFlyerIsNonOrganic(payload)) {
-        unawaited(_forwardAttributionToRevenueCat(payload));
-      }
     }
 
     if (payload.containsKey('link')) {
