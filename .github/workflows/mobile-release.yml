@@ -106,7 +106,7 @@ jobs:
     needs: preflight
     if: inputs.android
     runs-on: ubuntu-24.04
-    timeout-minutes: 120
+    timeout-minutes: 30
     environment: release
     concurrency:
       group: mobile-release-android
@@ -197,6 +197,7 @@ jobs:
           } > android/key.properties
 
       - name: Build App Bundle
+        timeout-minutes: 20
         if: inputs.source_run == ''
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
@@ -218,6 +219,7 @@ jobs:
         run: python3 scripts/ci/mobile_artifact_download.py android
 
       - name: Upload Android draft or submit for review
+        timeout-minutes: 10
         if: inputs.publish
         env:
           GOOGLE_PLAY_SERVICE_ACCOUNT_CREDENTIALS: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}
@@ -252,7 +254,7 @@ jobs:
     needs: preflight
     if: inputs.ios
     runs-on: macos-26
-    timeout-minutes: 120
+    timeout-minutes: 30
     environment: release
     concurrency:
       group: mobile-release-ios
@@ -335,6 +337,7 @@ jobs:
           xcode-project use-profiles --export-options-plist "$RUNNER_TEMP/export_options.plist"
 
       - name: Build IPA
+        timeout-minutes: 20
         if: inputs.source_run == ''
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
@@ -381,6 +384,7 @@ jobs:
           fi
 
       - name: Submit to App Store review (manual release)
+        timeout-minutes: 10
         if: inputs.publish
         env:
           REPLACE_PENDING_IOS_REVIEW: ${{ inputs.replace_pending_ios_review }}

@@ -113,7 +113,7 @@ def find_build(api, app, platform, version, number):
 
 
 def wait_build(api, app, platform, version, number, sleep):
-    for attempt in range(121):
+    for attempt in range(21):
         build = find_build(api, app, platform, version, number)
         if build:
             attrs = build['attributes']
@@ -121,7 +121,7 @@ def wait_build(api, app, platform, version, number, sleep):
                 raise ReviewError('Uploaded build is expired or invalid; review was preserved.')
             if attrs['processingState'] == 'VALID':
                 return build
-        if attempt == 120:
+        if attempt == 20:
             raise ReviewError('Build processing timed out; review was preserved.')
         if attempt % 10 == 0:
             print('Waiting for the uploaded build to become VALID.', flush=True)
@@ -215,7 +215,7 @@ def submit(api, platform, package, version, number, notes, replace=False,
     if not already_reviewed:
         publisher(['publish', '--path', str(package), '--skip-package-upload', '--app-store',
                    '--platform', platform, '--release-type', 'MANUAL', '--whats-new', '@file:' + str(notes),
-                   '--max-find-build-wait', '30', '--max-build-processing-wait', '60'])
+                   '--max-find-build-wait', '2', '--max-build-processing-wait', '2'])
     for attempt in range(61):
         target = next((row for row in versions(api, app, platform)
                        if row['attributes']['versionString'] == version), None)
