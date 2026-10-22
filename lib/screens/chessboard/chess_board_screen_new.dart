@@ -17091,7 +17091,6 @@ class _EventInfoSheet extends ConsumerWidget {
 
     final locationService = ref.read(locationServiceProvider);
     final urlLauncher = ref.read(urlLauncherProvider);
-    final writerLabel = ref.watch(selectedBroadcastWriterAttributionProvider);
 
     return DraggableScrollableSheet(
       initialChildSize: 0.55,
@@ -17128,7 +17127,6 @@ class _EventInfoSheet extends ConsumerWidget {
                       context,
                       scrollController,
                       locationService,
-                      writerLabel,
                     )
                   : _buildTourContent(
                       context,
@@ -17137,7 +17135,6 @@ class _EventInfoSheet extends ConsumerWidget {
                       aboutModel,
                       locationService,
                       urlLauncher,
-                      writerLabel,
                     ),
             ),
           ],
@@ -17151,7 +17148,6 @@ class _EventInfoSheet extends ConsumerWidget {
     BuildContext context,
     ScrollController scrollController,
     LocationService locationService,
-    String writerLabel,
   ) {
     final headers = _parseHeadersFromPgn();
 
@@ -17174,13 +17170,6 @@ class _EventInfoSheet extends ConsumerWidget {
             style: AppTypography.textLgBold.copyWith(
               color: context.colors.textPrimary,
             ),
-          ),
-        ),
-        SizedBox(height: 4.h),
-        Text(
-          writerLabel,
-          style: AppTypography.textXsRegular.copyWith(
-            color: context.textInk(0.52),
           ),
         ),
         SizedBox(height: 16.h),
@@ -17416,7 +17405,6 @@ class _EventInfoSheet extends ConsumerWidget {
     AboutTourModel aboutModel,
     dynamic locationService,
     dynamic urlLauncher,
-    String writerLabel,
   ) {
     return ListView(
       controller: scrollController,
@@ -17481,13 +17469,6 @@ class _EventInfoSheet extends ConsumerWidget {
                 ),
               ],
             ),
-          ),
-        ),
-        SizedBox(height: 4.h),
-        Text(
-          writerLabel,
-          style: AppTypography.textXsRegular.copyWith(
-            color: context.textInk(0.52),
           ),
         ),
         SizedBox(height: 12.h),
