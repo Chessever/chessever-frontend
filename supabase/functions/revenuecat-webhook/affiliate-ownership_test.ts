@@ -448,6 +448,14 @@ Deno.test("a provider-confirmed mapped native code credits a new user without in
     offer_code: "NATIVE-PARTNER",
     verified_store: "APP_STORE",
   });
+  const reportIndex = result.calls.findIndex((call) =>
+    call.url.pathname === "/functions/v1/payment-analytics"
+  );
+  const creditIndex = result.calls.findIndex((call) =>
+    call.url.pathname === "/rest/v1/affiliate_conversions" &&
+    call.method === "POST"
+  );
+  equal(creditIndex >= 0 && reportIndex > creditIndex, true);
 });
 for (
   const [name, mapping] of Object.entries({
@@ -509,6 +517,12 @@ for (const dbFailure of ["referral", "affiliate", "refund"] as const) {
       { dbFailure },
     );
     equal(result.status, 500);
+    equal(
+      result.calls.some((call) =>
+        call.url.pathname === "/functions/v1/payment-analytics"
+      ),
+      false,
+    );
   });
 }
 Deno.test("a competing referral is re-read on provider retry before awarding commission", async () => {

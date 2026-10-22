@@ -3,6 +3,25 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   group('AppsFlyer attribution helpers', () {
+    test(
+      'a website handoff retains its first qualifying time without changing the actual install time',
+      () {
+        final payload = deferredAppsFlyerAffiliatePayload({
+          'is_deferred': true,
+          'deep_link_sub1': 'rookreview',
+          'deep_link_sub2': '2026-10-10T00:00:00Z',
+        }, DateTime.utc(2026, 10, 22))!;
+        expect(payload['install_time'], '2026-10-22T00:00:00.000Z');
+        expect(payload['attribution_at'], '2026-10-10T00:00:00.000Z');
+        final future = deferredAppsFlyerAffiliatePayload({
+          'is_deferred': true,
+          'deep_link_sub1': 'rookreview',
+          'deep_link_sub2': '2027-01-01T00:00:00Z',
+        }, DateTime.utc(2026, 10, 22))!;
+        expect(future.containsKey('attribution_at'), isFalse);
+      },
+    );
+
     test('only treats non-organic payloads as affiliate-eligible', () {
       expect(
         appsFlyerIsNonOrganic({

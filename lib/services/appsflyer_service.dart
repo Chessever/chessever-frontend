@@ -662,6 +662,12 @@ class AppsflyerService {
   /// Sync cached affiliate data to Supabase on signup.
   Future<void> _syncAffiliateDataToSupabase(String userId) async {
     try {
+      final account = Supabase.instance.client.auth.currentUser;
+      // Keep the cache through guest onboarding. Recording a disposable guest
+      // would inflate signup counts and consume attribution before real sign-in.
+      if (account == null || account.isAnonymous || account.id != userId) {
+        return;
+      }
       final prefs = await SharedPreferencesService.instance.ensureInitialized();
       if (prefs == null) return;
 

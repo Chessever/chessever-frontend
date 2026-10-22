@@ -1,6 +1,9 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.39.0";
-import { recordPaymentAnalytics } from "../_shared/payment-analytics.ts";
+import {
+  type PaymentAnalyticsEvent,
+  recordPaymentAnalytics,
+} from "../_shared/payment-analytics.ts";
 import {
   affectedAccounts,
   syncSubscriptionEvent,
@@ -148,6 +151,7 @@ async function findActiveAffiliate(
 }
 
 Deno.serve(async (req) => {
+  let analyticsEvent: PaymentAnalyticsEvent | null = null;
   try {
     if (req.method !== "POST") {
       return new Response(JSON.stringify({ error: "Method not allowed" }), {
@@ -251,7 +255,7 @@ Deno.serve(async (req) => {
         : String(event.store).toUpperCase() === "APP_STORE"
         ? "id6752567269"
         : Deno.env.get("APPSFLYER_MAC_APP_ID") ?? null;
-      await recordPaymentAnalytics({
+      analyticsEvent = {
         event_key: `revenuecat:${eventId}`,
         channel: "mobile",
         provider: "revenuecat",
@@ -271,7 +275,7 @@ Deno.serve(async (req) => {
           ? dateFromMillis(event.event_timestamp_ms) ?? convertedAt
           : convertedAt).toISOString(),
         is_sandbox: isSandbox,
-      });
+      };
     }
 
     // Stripe mirrors receipts into RevenueCat, but stripe-webhook already owns
@@ -615,10 +619,13 @@ Deno.serve(async (req) => {
       headers: { "Content-Type": "application/json" },
     });
   } catch (err) {
+    analyticsEvent = null;
     console.error("Critical Function Error:", err);
     return new Response(JSON.stringify({ error: "Internal Server Error" }), {
       status: 500,
       headers: { "Content-Type": "application/json" },
     });
+  } finally {
+    if (analyticsEvent) await recordPaymentAnalytics(analyticsEvent);
   }
 });
