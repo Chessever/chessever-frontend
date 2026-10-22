@@ -148,7 +148,7 @@ are on R2.
   Whole runs are queued (`concurrency: desktop-release`) so two versions never
   prune each other.
 - **Runner sizes.** Free macOS runners have 3 vCPUs and 7 GB of memory, far
-  less than Codemagic's `mac_mini_m4`. The macOS timeout is 180 minutes.
+  less than Codemagic's `mac_mini_m4`. Every platform job has a 30-minute hard limit; build steps stop after 20 minutes.
 - **Linux.** `codemagic_publish_linux.sh` launches the built app with
   `--verify-release-env`, and the GTK runner opens a window first. Hosted
   Ubuntu has no display, so the publish step runs under `xvfb-run`.
@@ -396,7 +396,12 @@ reviewer clicks **Review deployments**.
   CI must never compile a bot token into a public app. Existing organization copies are not read by these workflows.
   Desktop build notifications still use CI-only release environment secrets.
 - Free hosted macOS runners have 3 vCPUs and 7 GB of memory, so the iOS
-  build is slower than on Codemagic's M2. The job timeout is 120 minutes.
+  build is slower than on Codemagic's M2. The job has a 30-minute hard limit and a 20-minute build limit.
 - The Android job keeps Codemagic's `JAVA_TOOL_OPTIONS=-Xmx10g`, which applies
   to every JVM including the Kotlin daemon. The runner has 16 GB. If a build
   is killed for memory, drop that line first.
+
+Platform jobs stop after 30 minutes, including setup, packaging and upload.
+Build steps stop after 20 minutes; mobile and Mac App Store upload/review steps
+stop after 10 minutes. Apple processing is external: a timeout is a failed run,
+not proof of submission. An already uploaded build is reused on a submission retry.
