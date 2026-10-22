@@ -193,6 +193,26 @@ class BoardFeatureTeachingTracker {
         await _store.write(progress);
       });
 
+  /// The first board opened from Discovery Likes is a specific once-only
+  /// introduction, not the visit-paced reminder. Reuse the local progress and
+  /// interruption budget, while preserving existing opt-outs/learned gestures.
+  Future<bool> tryShowDiscoveryLikes(bool Function() show) =>
+      _serialised(false, () async {
+        final progress = await _load();
+        final record = _feature(progress, BoardTeachingFeature.like);
+        if (progress['discoveryLikesIntroduced'] == true ||
+            record['disabled'] == true ||
+            record['learned'] == true ||
+            !show()) {
+          return false;
+        }
+        progress['discoveryLikesIntroduced'] = true;
+        progress['lastShown'] = _now().millisecondsSinceEpoch;
+        progress['lastPromptVisit'] = _number(progress, 'visits');
+        await _store.write(progress);
+        return true;
+      });
+
   /// Existing Swipe/Pinch teachings also buy a quiet week for these lessons.
   Future<void> recordOtherTeaching() => _serialised<void>(null, () async {
     final progress = await _load();

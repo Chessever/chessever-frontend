@@ -1400,6 +1400,9 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
   int _pipRecoveryGeneration = 0;
 
   bool _hasCheckedWalkthrough = false;
+  // Reserve teaching while the asynchronous once-only preference checks run.
+  bool _walkthroughCheckPending = true;
+  bool _pinchTutorialCheckPending = false;
   bool _showTutorialOverlay = false;
   // REMOVED (Trello nl3WwXwQ): PiP/Live Activity teaching dialog discontinued.
   // bool _liveWidgetsIntroShown = false;
@@ -1519,6 +1522,14 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
   }
 
   Future<void> _checkAndShowWalkthrough(BuildContext context) async {
+    try {
+      await _checkWalkthroughPreferences(context);
+    } finally {
+      _walkthroughCheckPending = false;
+    }
+  }
+
+  Future<void> _checkWalkthroughPreferences(BuildContext context) async {
     if (!_canShowTeachingsForCurrentGame()) return;
 
     final prefs = ref.read(sharedPreferencesRepository);
@@ -1635,6 +1646,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
   /// unconditionally after step 1 dismisses.
   void _requestPinchTutorial() {
     if (!mounted || !_canShowTeachingsForCurrentGame()) return;
+    _pinchTutorialCheckPending = true;
     ref.read(boardPinchTutorialRequestProvider.notifier).update((v) => v + 1);
   }
 
@@ -1652,6 +1664,14 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
   /// fires (after Swipe dismisses or is skipped). Self-gates on its own prefs
   /// so it is shown only once.
   Future<void> _maybeStartPinchTutorial() async {
+    try {
+      await _checkPinchTutorialPreferences();
+    } finally {
+      _pinchTutorialCheckPending = false;
+    }
+  }
+
+  Future<void> _checkPinchTutorialPreferences() async {
     if (!mounted ||
         _showPinchTutorial ||
         _showTutorialOverlay ||
@@ -3221,6 +3241,9 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
                 isEligibleVisit: _canShowTeachingsForCurrentGame,
                 eligibleFeatures: _eligibleFeatureTeachings,
                 canShowContextual: () =>
+                    !_walkthroughCheckPending &&
+                    !_pinchTutorialCheckPending &&
+                    ref.read(likeNudgeOfferProvider(_currentPageIndex)) == null &&
                     !_showTutorialOverlay &&
                     !_showPinchTutorial &&
                     !_gameSwitcher.isOpen &&
