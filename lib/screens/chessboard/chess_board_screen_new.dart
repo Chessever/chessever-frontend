@@ -3243,6 +3243,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
                 canShowContextual: () =>
                     !_walkthroughCheckPending &&
                     !_pinchTutorialCheckPending &&
+                    ref.read(likeNudgeOfferProvider(_currentPageIndex)) == null &&
                     !_showTutorialOverlay &&
                     !_showPinchTutorial &&
                     !_gameSwitcher.isOpen &&
