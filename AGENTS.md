@@ -44,26 +44,23 @@ the user explicitly requests historical test-environment work.
 - Never use the abandoned `main` branch for development, merging, or releases.
   Keep credentials and local environment files out of commits and published assets.
 
-## Branches: feature branches → PRs into `stable`
+## Branches: work directly on `stable`
 
-**`stable` is the production integration and release branch.** Development work,
-including documentation and tooling changes, stays on feature branches based on
-`stable` and reaches `stable` through pull requests. Production GitHub Actions
-builds target `stable` (`--ref stable`). ChessEver Test workflows are retired
-and are not release targets.
+**`stable` is the main branch: development, integration, and release all happen
+on it.** The local checkout stays on `stable`. Edit, commit, and push there
+directly. Production GitHub Actions builds target `stable` (`--ref stable`).
+ChessEver Test workflows are retired and are not release targets.
 
-- Before editing, check the current branch. Reuse a suitable feature branch;
-  if on `stable`, create a feature branch from it, preserving unrelated local
-  changes. Use the `codex/` prefix for new agent-created branches unless the user
-  requests another name.
-- Commit changes on the feature branch. Set every PR's base explicitly to
-  `stable`; do not rely on GitHub's default base.
-- **Never commit directly to `stable` or push directly to `stable` unless the
-  user explicitly asks for that operation.** A generic request to commit, push,
-  merge a PR, or ship a release does not authorize bypassing the PR workflow.
-- A request to push authorizes pushing the feature branch. A request to merge
-  a PR authorizes merging through the PR into `stable`, not a direct Git push
-  to `stable`.
+- When the user says "main", "the main branch", or "latest main", they mean
+  `stable`. Fast-forward it first (`git pull --ff-only origin stable`).
+- **Do not create feature branches, PRs, or extra worktrees** unless the user
+  deliberately asks for a PR. If the checkout is on another branch, get back to
+  `stable` (tree clean) before editing.
+- Commit on `stable` and push to `origin stable`. Stage explicit paths only;
+  other automation may dirty the tree mid-session.
+- Only when the user explicitly asks for a PR: branch from `stable`, set the
+  PR base to `stable` explicitly (never GitHub's default), and delete the branch
+  and any worktree once it merges.
 
 `main` is an **abandoned branch**, not a release line. As of 2026-08-11 it sits
 at `36a466da` (2026-06-16, `pubspec` version `21.0.0+2100`) — **383 commits
@@ -74,12 +71,12 @@ its GitHub "default branch" badge as a leftover, not a signal.
 
 `dev` is likewise stale (167 behind `stable`, 12 ahead) but is still the base
 GitHub picks for contributor PRs. Override that default with `stable`. Work
-already merged into `dev` must be ported through a feature branch and PR into
-`stable` before it can ship.
+already merged into `dev` must be ported onto `stable` (cherry-pick) before it
+can ship.
 
 When a request says "**the main production app**", that means the **production
 flavor** — the counterpart to the test-flavored app — and never the `main`
-branch. Read it that way and work on a feature branch targeting `stable`.
+branch. Read it that way and work on `stable`.
 
 ## Validation
 
@@ -191,13 +188,10 @@ chessever_frontend_desktop_oss/scripts/which_repo_owns_function.sh <slug>
   Prep players have no separate switch). The star is the thing's own
   favorite; the shortcut stays when it is unstarred.
 
-## Local commits and PR delivery
+## Commits and delivery
 
-- Commit completed changes locally on the feature branch after validation,
-  including the required version bump when shipped code changes.
-- Keep commits local unless the user asks to push, create a PR, merge a PR, or
-  ship a release. Those requests authorize feature-branch pushes needed for the
-  task; PRs must target `stable`.
-- Direct commits or pushes to `stable` require an explicit user request for
-  that operation, even when the user has authorized a release or other pushes.
+- Commit completed changes on `stable` after validation, including the required
+  version bump when shipped code changes.
+- Push `stable` when the user asks to push, merge, or ship. Open a PR only when
+  the user deliberately asks for one; it must target `stable`.
 - Exclude credentials and local environment configuration, and preserve unrelated working-tree changes.
