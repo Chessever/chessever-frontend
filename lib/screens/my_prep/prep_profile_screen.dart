@@ -119,6 +119,19 @@ class _PrepProfileScreenState extends ConsumerState<PrepProfileScreen> {
   PrepStats? _stats;
   String? _statsRating;
 
+  /// What the games About last read say of each source's clocks, read once
+  /// per games list: the ratings the identity falls back on.
+  List<PrepGame>? _ratedFrom;
+  Map<String, Map<PrepTimeControl, int>> _gameRatings = const {};
+
+  Map<String, Map<PrepTimeControl, int>> _gameRatingsOf(List<PrepGame> games) {
+    if (!identical(games, _ratedFrom)) {
+      _ratedFrom = games;
+      _gameRatings = prepGameRatings(games);
+    }
+    return _gameRatings;
+  }
+
   /// [_filter] as About reads it, within the source its statistics are of.
   PrepFilter? _aboutFrom;
   String? _aboutKey;
@@ -255,12 +268,15 @@ class _PrepProfileScreenState extends ConsumerState<PrepProfileScreen> {
     );
   }
 
-  /// Opening a profile brings stale games up to date in the background.
+  /// Opening a profile brings stale games and the sources' details up to
+  /// date in the background.
   void _checkFreshness(PrepProfile profile) {
     if (_checkedFreshness) return;
     _checkedFreshness = true;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
+      // Ratings, titles and photos as the sources have them today.
+      prepReadDetails(ref, profile);
       final added = widget.newGames;
       if (added == null || added < 1) {
         ref.read(prepSyncProvider.notifier).refreshStale([profile]);
@@ -297,6 +313,7 @@ class _PrepProfileScreenState extends ConsumerState<PrepProfileScreen> {
   }) => PrepIdentity(
     profile: profile,
     accountKey: _account,
+    gameRatings: _gameRatingsOf(_shown?.games ?? const []),
     fideId: kPrepFavorites
         .where((f) => f.id == profile.favoriteId)
         .firstOrNull

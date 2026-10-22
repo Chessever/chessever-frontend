@@ -268,6 +268,37 @@ PrepTimeControl? prepSpeedOf({
   return speed == null ? null : PrepTimeControl.values[speed];
 }
 
+/// What each source's games say of the player's clocks, by the name of the
+/// source's games file: every clock played, with the player's rating in the
+/// newest game of it that carries one, or 0 where none does. A provider's
+/// own figure is fresher; this stands in where a source has none.
+Map<String, Map<PrepTimeControl, int>> prepGameRatings(List<PrepGame> games) {
+  final ratings = <String, Map<PrepTimeControl, int>>{};
+  final dated = <String, Map<PrepTimeControl, DateTime?>>{};
+  for (final g in games) {
+    final speed = g.speed;
+    if (speed == null) continue;
+    final path = g.sourcePath;
+    final file = path.substring(path.lastIndexOf('/') + 1);
+    final clocks = ratings.putIfAbsent(file, () => {});
+    clocks.putIfAbsent(speed, () => 0);
+    // Whose rating it is is only known once the player's side is.
+    final rating = g.playerIsWhite == null ? null : g.playerElo;
+    if (rating == null || rating <= 0) continue;
+    final when = dated.putIfAbsent(file, () => {});
+    final kept = when[speed];
+    // Games arrive newest first: a later one replaces the rating kept only
+    // when it is dated after it, or the kept one has no date.
+    if (clocks[speed]! > 0 &&
+        (g.date == null || (kept != null && !g.date!.isAfter(kept)))) {
+      continue;
+    }
+    clocks[speed] = rating;
+    when[speed] = g.date;
+  }
+  return ratings;
+}
+
 /// The explorer's three clock filters, which fold the fast and slow ends in.
 String? prepExplorerTimeControl(PrepTimeControl? speed) =>
     switch (TreeSpeed.explorerClock(speed?.index)) {
@@ -462,8 +493,9 @@ class PrepStats {
 
   /// One rating per day on a single ladder of one source: the scoped clock,
   /// else the preferred one when it was played, else the most played of
-  /// classical, rapid and blitz. A classical preference follows every rated
-  /// game when the rated history begins before the classical games do.
+  /// classical, rapid and blitz, else the most played clock of all. A
+  /// classical preference follows every rated game when the rated history
+  /// begins before the classical games do.
   ///
   /// [rated] is one source's games: ratings from two accounts or providers
   /// are separate scales and are never drawn as one line.
@@ -494,6 +526,19 @@ class PrepStats {
         selected = order
             .where(counts.containsKey)
             .reduce((a, b) => counts[a]! >= counts[b]! ? a : b);
+      } else {
+        // Only the fastest or the slowest clocks: still one ladder, the
+        // most played, not bullet and daily drawn as one line.
+        for (final g in rated) {
+          if (g.speed case final speed?) {
+            counts[speed] = (counts[speed] ?? 0) + 1;
+          }
+        }
+        if (counts.isNotEmpty) {
+          selected = counts.keys.reduce(
+            (a, b) => counts[a]! >= counts[b]! ? a : b,
+          );
+        }
       }
       if (selected != null) {
         final own = [

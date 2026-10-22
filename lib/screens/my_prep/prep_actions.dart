@@ -66,6 +66,7 @@ Future<void> prepAddMine(
     profiles.attach(existing.id, result.accounts);
     profileId = existing.id;
   }
+  _readNewDetails(ref, profileId, result.accounts);
   // The card itself reports the download; no snack is needed.
   await prepStartDownloads(
     context,
@@ -128,6 +129,7 @@ Future<PrepProfile?> _prepPickPlayer(
             ? favoriteId
             : null,
       );
+  _readNewDetails(ref, profile.id, result.accounts);
   await prepStartDownloads(
     context,
     ref,
@@ -171,6 +173,7 @@ Future<void> prepAddAccountTo(
     showAppSnack(context, '$error', tone: AppSnackTone.danger);
     return;
   }
+  _readNewDetails(ref, profile.id, result.accounts);
   await prepStartDownloads(
     context,
     ref,
@@ -261,8 +264,6 @@ Future<void> _addRanked(
     favoriteId: kPrepFavoritesByFide[fide]?.id ?? fide,
   );
   if (profile == null) return;
-  // Refresh ratings and avatars quietly; the curated values stand in.
-  unawaited(_refreshProfiles(ref, profile.id));
   if (messenger != null) {
     showAppSnackOn(messenger, '${profile.name} added to Profiles');
   }
@@ -307,6 +308,7 @@ Future<void> _moveToOpponents(
   ref
       .read(prepProfilesProvider.notifier)
       .edit(profile.id, (p) => p.copyWith(kind: PrepKind.opponent));
+  _readNewDetails(ref, profile.id, profile.accounts);
   unawaited(prepAttachFavoriteDatabase(ref, profile));
   if (messenger != null) {
     showAppSnackOn(messenger, '${profile.name} added to Profiles');
@@ -424,14 +426,28 @@ Future<String?> _refreshProfiles(
   WidgetRef ref,
   String profileId, {
   PrepAccount? only,
+}) => _refreshDetails(
+  ref.read(prepProfilesProvider.notifier),
+  ref.read(prepRepositoryProvider),
+  profileId,
+  only: only == null ? null : {only.key},
+);
+
+/// Reads the details of [profileId]'s accounts, or of those keyed in [only],
+/// into the profile. Returns the first failure; [onFailed] hears of each
+/// account that could not be read.
+Future<String?> _refreshDetails(
+  PrepProfilesNotifier profiles,
+  PrepRepository repo,
+  String profileId, {
+  Set<String>? only,
+  void Function(PrepAccount account)? onFailed,
 }) async {
-  final profiles = ref.read(prepProfilesProvider.notifier);
-  final repo = ref.read(prepRepositoryProvider);
   final profile = profiles.byId(profileId);
   if (profile == null) return 'This profile was removed.';
   String? firstError;
   for (final account in profile.accounts.where(
-    (a) => only == null || a.key == only.key,
+    (a) => only == null || only.contains(a.key),
   )) {
     try {
       final fresh = await repo.refreshDetails(account);
@@ -444,7 +460,10 @@ Future<String?> _refreshProfiles(
             avatarUrl: fresh.avatarUrl,
             title: fresh.title,
             country: fresh.country,
-            ratings: fresh.ratings,
+            // A provider that sent no ratings this time (Chess.com's
+            // statistics answer apart from its profile) leaves the last
+            // ones known in place.
+            ratings: fresh.ratings.isEmpty ? null : fresh.ratings,
             playerAliases: {
               ...live.playerAliases,
               ...fresh.playerAliases,
@@ -453,6 +472,7 @@ Future<String?> _refreshProfiles(
         );
       });
     } catch (error) {
+      onFailed?.call(account);
       // Keep the last known details, and report explicit refresh failures.
       firstError ??= error is PrepException
           ? error.message
@@ -461,6 +481,52 @@ Future<String?> _refreshProfiles(
   }
   return firstError;
 }
+
+/// Accounts whose ratings, title and photo were read in this run of the app.
+final Set<String> _detailsRead = {};
+
+/// Reads [accounts]' ratings, title and photo in the background, each once
+/// a run of the app. An account added from a known handle has none until
+/// then, and every stored figure drifts as the player plays on.
+void _readDetailsOf(
+  WidgetRef ref,
+  String profileId,
+  Iterable<PrepAccount> accounts,
+) {
+  final due = {
+    for (final account in accounts)
+      if (account.source != PrepSource.manual &&
+          _detailsRead.add(account.key))
+        account.key,
+  };
+  if (due.isEmpty) return;
+  unawaited(
+    _refreshDetails(
+      ref.read(prepProfilesProvider.notifier),
+      ref.read(prepRepositoryProvider),
+      profileId,
+      only: due,
+      // Offline, or the provider busy: the next open tries again.
+      onFailed: (account) => _detailsRead.remove(account.key),
+    ),
+  );
+}
+
+/// Brings an opened profile's ratings, titles and photos up to date, once a
+/// run of the app.
+void prepReadDetails(WidgetRef ref, PrepProfile profile) =>
+    _readDetailsOf(ref, profile.id, profile.accounts);
+
+/// What a known handle adds carries no ratings yet: they are read at once.
+void _readNewDetails(
+  WidgetRef ref,
+  String profileId,
+  Iterable<PrepAccount> accounts,
+) => _readDetailsOf(
+  ref,
+  profileId,
+  accounts.where((account) => account.ratings.isEmpty),
+);
 
 /// Re-reads every account's profile (ratings, title, avatar).
 Future<String?> prepRefreshProfileDetails(
