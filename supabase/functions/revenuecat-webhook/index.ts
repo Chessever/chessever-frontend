@@ -101,7 +101,9 @@ function referralInstallDate(referral: ReferralRow): Date | null {
 
 function installDateFromAttributes(attrs: SubscriberAttributes): Date | null {
   return (
-    parseDate(attrValue(attrs, "appsflyer_install_at")) ??
+    parseDate(attrValue(attrs, "appsflyer_attribution_at")) ??
+      parseDate(attrValue(attrs, "redemption_attribution_at")) ??
+      parseDate(attrValue(attrs, "appsflyer_install_at")) ??
       parseDate(attrValue(attrs, "redemption_install_at")) ??
       parseDate(attrValue(attrs, "install_at"))
   );

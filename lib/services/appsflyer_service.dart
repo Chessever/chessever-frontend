@@ -95,6 +95,10 @@ Map<String, dynamic>? deferredAppsFlyerAffiliatePayload(
     'af_status': 'Non-organic',
     'deep_link_sub1': code,
     'install_time': observedAt.toUtc().toIso8601String(),
+    if (parseAppsFlyerInstallTime(clickEvent['deep_link_sub2'])
+        case final origin?
+        when !origin.isAfter(observedAt.add(const Duration(minutes: 1))))
+      'attribution_at': origin.toIso8601String(),
     'attribution_source': 'deferred_deep_link',
   };
 }
@@ -617,6 +621,7 @@ class AppsflyerService {
           'campaign',
           'media_source',
           'install_at',
+          'attribution_at',
           'af_status',
         ]) {
           final value = _nonEmptyString(cachedInstall[key]);
@@ -679,6 +684,7 @@ class AppsflyerService {
       }
 
       final installAt =
+          parseAppsFlyerInstallTime(cachedData['attribution_at']) ??
           parseAppsFlyerInstallTime(cachedData['install_time']) ??
           DateTime.now().toUtc();
 
@@ -734,8 +740,19 @@ class AppsflyerService {
     final installAt =
         parseAppsFlyerInstallTime(payload['install_time']) ??
         DateTime.now().toUtc();
+    final origin =
+        parseAppsFlyerInstallTime(payload['attribution_at']) ??
+        parseAppsFlyerInstallTime(payload['deep_link_sub2']);
     final metadata = <String, String>{
       'install_at': installAt.toIso8601String(),
+      'attribution_at':
+          (origin != null &&
+                      !origin.isAfter(
+                        DateTime.now().toUtc().add(const Duration(minutes: 1)),
+                      )
+                  ? origin
+                  : installAt)
+              .toIso8601String(),
     };
 
     final status = _nonEmptyString(payload['af_status']);
@@ -771,6 +788,7 @@ class AppsflyerService {
       };
       final merged = mergeAppsFlyerInstallAttribution(previousPayload, payload);
       final metadata = _installMetadataFromPayload(merged);
+      merged['attribution_at'] = metadata['attribution_at'];
       await prefs.setString(_kCachedInstallMetadataKey, jsonEncode(metadata));
       if (appsFlyerIsNonOrganic(merged) &&
           appsFlyerAffiliateCode(merged) != null) {
