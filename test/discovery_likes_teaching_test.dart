@@ -14,6 +14,16 @@ class Store implements BoardFeatureTeachingStore {
   Future<void> write(Map<String, Object?> value) async => this.value = value;
 }
 
+class CountingTracker extends BoardFeatureTeachingTracker {
+  CountingTracker(super.store);
+  int checks = 0;
+  @override
+  Future<bool> tryShowDiscoveryLikes(bool Function() show) {
+    checks++;
+    return super.tryShowDiscoveryLikes(show);
+  }
+}
+
 void main() {
   late Store store;
   late BoardFeatureTeachingTracker tracker;
@@ -100,6 +110,19 @@ void main() {
       await tester.pumpWidget(const SizedBox());
     },
   );
+  testWidgets('already introduced devices stop checking after one look', (
+    tester,
+  ) async {
+    store.value = {'discoveryLikesIntroduced': true};
+    final counting = CountingTracker(store);
+    tracker = counting;
+    await tester.pumpWidget(app());
+    await show(tester);
+    await tester.pump(const Duration(seconds: 10));
+    expect(find.byType(DoubleTapHeartTeachingDemo), findsNothing);
+    expect(counting.checks, 1);
+    await tester.pumpWidget(const SizedBox());
+  });
   testWidgets('other entry points do not consume or show the lesson', (
     tester,
   ) async {

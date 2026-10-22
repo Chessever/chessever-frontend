@@ -81,9 +81,11 @@ class _DiscoveryLikesTeachingState extends ConsumerState<DiscoveryLikesTeaching>
     }
     if (_finished || _checking || !_ready) return;
     _checking = true;
+    var due = false;
     try {
       await ref.read(boardFeatureTeachingTrackerProvider).tryShowDiscoveryLikes(
         () {
+          due = true;
           if (!_ready) return false;
           _finished = true;
           _announce?.call(true);
@@ -94,6 +96,12 @@ class _DiscoveryLikesTeachingState extends ConsumerState<DiscoveryLikesTeaching>
           return true;
         },
       );
+      // The tracker asks to show only while the lesson is still due; once it
+      // was introduced, learned or opted out, stop polling for this board.
+      if (!due) {
+        _finished = true;
+        _watch?.cancel();
+      }
     } finally {
       _checking = false;
     }
