@@ -19,11 +19,12 @@ class BoardFeatureTeachingHost extends ConsumerStatefulWidget {
   });
 
   final bool Function()? canShowContextual;
-  static bool allowsContextual(BuildContext context) {
+  static bool allowsContextual(BuildContext context, {Object? owner}) {
     final host = context
         .findAncestorStateOfType<_BoardFeatureTeachingHostState>();
     return host == null ||
         (host._dialog == null &&
+            host._contextualOwners.every((item) => identical(item, owner)) &&
             (host.widget.canShowContextual?.call() ?? true));
   }
 
