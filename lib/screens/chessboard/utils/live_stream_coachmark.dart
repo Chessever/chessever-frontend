@@ -30,6 +30,9 @@ class LiveStreamCoachmarkTracker {
   bool _reservedInProcess = false;
   bool _shownInProcess = false;
 
+  /// Already shown or known seen in this process; [claim] can only refuse.
+  bool get settled => _shownInProcess;
+
   Future<bool> claim() async {
     if (_reservedInProcess || _shownInProcess) return false;
     _reservedInProcess = true;

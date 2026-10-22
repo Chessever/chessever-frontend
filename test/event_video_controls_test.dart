@@ -61,6 +61,7 @@ void main() {
               return Scaffold(
                 bottomNavigationBar: ChessBoardBottomNavBar(
                   gameIndex: 0,
+                  coachingGameId: 'actual-phone-game',
                   onLeftMove: () {},
                   onRightMove: () => next++,
                   onFlip: () => flips++,
@@ -137,6 +138,7 @@ void main() {
             return Scaffold(
               bottomNavigationBar: ChessBoardBottomNavBar(
                 gameIndex: 0,
+                coachingGameId: 'actual-phone-game',
                 onLeftMove: () {},
                 onRightMove: () {},
                 onFlip: () {},
@@ -158,18 +160,12 @@ void main() {
     // No stream: no camera, no bubble.
     await tester.pumpWidget(app(hasVideo: false, visible: false));
     await tester.pump();
-    expect(
-      find.text('Turn off the stream by clicking camera icon.'),
-      findsNothing,
-    );
+    expect(find.text('Tap the camera to hide the stream.'), findsNothing);
 
     // Stream metadata arrives with video showing: bubble points at camera.
     await tester.pumpWidget(app(hasVideo: true, visible: true));
     await tester.pump();
-    expect(
-      find.text('Turn off the stream by clicking camera icon.'),
-      findsOneWidget,
-    );
+    expect(find.text('Tap the camera to hide the stream.'), findsOneWidget);
     expect(
       find.byKey(const ValueKey('live_stream_toggle_coachmark_arrow')),
       findsOneWidget,
@@ -201,7 +197,7 @@ void main() {
             as BoxDecoration;
     expect(bubbleDecoration.color, kBlack3Color);
     final bubbleLabel = tester.widget<Text>(
-      find.text('Turn off the stream by clicking camera icon.'),
+      find.text('Tap the camera to hide the stream.'),
     );
     expect(bubbleLabel.style?.color, kWhiteColor);
     expect(store.seen, isTrue);
@@ -210,10 +206,7 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('board_video_toggle')));
     await tester.pumpAndSettle();
     expect(toggles, 1);
-    expect(
-      find.text('Turn off the stream by clicking camera icon.'),
-      findsNothing,
-    );
+    expect(find.text('Tap the camera to hide the stream.'), findsNothing);
     expect(
       tester.widget<Icon>(find.byIcon(Icons.videocam_off_outlined)).color,
       Colors.white,
@@ -225,10 +218,7 @@ void main() {
     expect(find.text('Turn on the live stream'), findsNothing);
     await tester.pumpWidget(app(hasVideo: true, visible: true));
     await tester.pump();
-    expect(
-      find.text('Turn off the stream by clicking camera icon.'),
-      findsNothing,
-    );
+    expect(find.text('Tap the camera to hide the stream.'), findsNothing);
     expect(
       tester.widget<Icon>(find.byIcon(Icons.videocam_off_outlined)).color,
       Colors.white,
@@ -258,6 +248,7 @@ void main() {
               ),
               bottomNavigationBar: ChessBoardBottomNavBar(
                 gameIndex: 0,
+                coachingGameId: 'actual-phone-game',
                 onLeftMove: () {},
                 onRightMove: () {},
                 onFlip: () {},
@@ -277,29 +268,17 @@ void main() {
     );
     await tester.pumpWidget(freshApp(false));
     await tester.pump();
-    expect(
-      find.text('Turn off the stream by clicking camera icon.'),
-      findsNothing,
-    );
+    expect(find.text('Tap the camera to hide the stream.'), findsNothing);
     await tester.pumpWidget(freshApp(true));
     await tester.pump();
-    expect(
-      find.text('Turn off the stream by clicking camera icon.'),
-      findsOneWidget,
-    );
+    expect(find.text('Tap the camera to hide the stream.'), findsOneWidget);
 
-    // The coachmark has no timer and remains until explicitly dismissed.
+    // The copy remains after its short pulse until explicitly dismissed.
     await tester.pump(const Duration(minutes: 1));
-    expect(
-      find.text('Turn off the stream by clicking camera icon.'),
-      findsOneWidget,
-    );
+    expect(find.text('Tap the camera to hide the stream.'), findsOneWidget);
     await tester.tap(find.byKey(const ValueKey('close_live_stream_coachmark')));
     await tester.pump();
-    expect(
-      find.text('Turn off the stream by clicking camera icon.'),
-      findsNothing,
-    );
+    expect(find.text('Tap the camera to hide the stream.'), findsNothing);
     expect(backgroundTaps, 0);
 
     await tester.pumpWidget(const SizedBox());
