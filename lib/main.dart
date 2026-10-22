@@ -3,6 +3,7 @@ import 'package:chessever2/widgets/paywall/rewarded_premium/rewarded_access_ui.d
 import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
 import 'services/direct_push_service.dart';
 import 'dart:async';
+import 'screens/chessboard/contextual_swipe_coaching.dart';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:ui';
@@ -1372,6 +1373,7 @@ class MyApp extends HookConsumerWidget {
           navigatorObservers: [
             RewardedNavigationObserver.instance,
             routeObserver,
+            contextualSwipeCoaching,
             pageRouteObserver,
             HeroineController(),
             AnalyticsService.instance.routeObserver,
