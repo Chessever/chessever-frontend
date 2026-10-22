@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:chessever2/screens/chessboard/contextual_swipe_coaching.dart';
 
 import 'package:chessever2/providers/for_you_games_logic.dart';
 import 'package:chessever2/repository/local_storage/tournament/games/games_local_storage.dart';
@@ -460,9 +461,11 @@ class _GameCardWrapperProvider {
     var boardGamesAtPop = launch.currentGames;
     final callerRoute = ModalRoute.of(context);
     var callerWasRevealed = false;
+    SwipeCoachingVisit? swipeCoachingVisit;
     final boardRoute = MaterialPageRoute<int>(
       builder:
           (_) => _ExpandingChessBoardScreen(
+            swipeCoachingVisit: swipeCoachingVisit,
             initialGames: launch.immediateGames,
             initialIndex: launch.immediateIndex,
             expandedNavigation: launch.expanded,
@@ -475,6 +478,21 @@ class _GameCardWrapperProvider {
             showClock: showClock,
             savedAnalysisData: savedAnalysisData,
           ),
+    );
+    // Route and scrollable identity survive list-model refreshes, but separate
+    // actual list surfaces/tabs. Never use the incidental List object identity.
+    swipeCoachingVisit = contextualSwipeCoaching.begin(
+      board: boardRoute,
+      caller: callerRoute,
+      listIdentity: (
+        callerRoute,
+        Scrollable.maybeOf(context),
+        viewSource,
+        (orderedGames.map((game) => game.gameId).toSet().toList()..sort()).join(
+          '\u0000',
+        ),
+      ),
+      gameId: tappedGame.gameId,
     );
     try {
       returnedIndex = await Navigator.push<int>(context, boardRoute);
@@ -538,6 +556,7 @@ class _GameCardWrapperProvider {
 /// preserving the opened [gameId] as current.
 class _ExpandingChessBoardScreen extends StatefulWidget {
   const _ExpandingChessBoardScreen({
+    this.swipeCoachingVisit,
     required this.initialGames,
     required this.initialIndex,
     required this.expandedNavigation,
@@ -551,6 +570,7 @@ class _ExpandingChessBoardScreen extends StatefulWidget {
     this.savedAnalysisData,
   });
 
+  final SwipeCoachingVisit? swipeCoachingVisit;
   final List<GamesTourModel> initialGames;
   final int initialIndex;
   final Future<({List<GamesTourModel> games, int index})> expandedNavigation;
@@ -695,6 +715,7 @@ class _ExpandingChessBoardScreenState
   @override
   Widget build(BuildContext context) {
     return ChessBoardScreenNew(
+      swipeCoachingVisit: widget.swipeCoachingVisit,
       games: _games,
       currentIndex: _index,
       viewSource: widget.viewSource,

@@ -4,6 +4,7 @@ import 'package:chessever2/config/feature_flags.dart';
 import 'package:chessever2/providers/country_dropdown_provider.dart';
 import 'widgets/notation_scroll.dart';
 import 'dart:async';
+import 'contextual_swipe_coaching.dart';
 import 'package:chessever2/screens/chessboard/widgets/stream_scroll_coaching_host.dart';
 import 'dart:developer' as developer;
 // import 'dart:io'; // UNUSED: Removed with old dialog approach
@@ -1139,6 +1140,7 @@ Future<bool?> _showAnalysisConfirmationDialog({
 }
 
 class ChessBoardScreenNew extends ConsumerStatefulWidget {
+  final SwipeCoachingVisit? swipeCoachingVisit;
   final int currentIndex;
   final List<GamesTourModel> games;
 
@@ -1184,6 +1186,7 @@ class ChessBoardScreenNew extends ConsumerStatefulWidget {
   final ValueChanged<String>? onVisibleGameChanged;
 
   const ChessBoardScreenNew({
+    this.swipeCoachingVisit,
     required this.currentIndex,
     required this.games,
     required this.viewSource,
@@ -1399,7 +1402,9 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
   bool _pipSessionMayNeedRecovery = false;
   int _pipRecoveryGeneration = 0;
 
-  bool _hasCheckedWalkthrough = false;
+  bool _checkingWalkthrough = false;
+  bool _didShowWalkthrough = false;
+  final _swipeLearningGesture = SwipeLearningGesture();
   bool _showTutorialOverlay = false;
   // REMOVED (Trello nl3WwXwQ): PiP/Live Activity teaching dialog discontinued.
   // bool _liveWidgetsIntroShown = false;
@@ -1413,18 +1418,12 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
   final GlobalKey _featureTeachingHostKey = GlobalKey();
   late final LikeFlightAnchor _likeFlightAnchor;
 
-  // Step 2/2 ("Pinch to Resize") — chained after the Swipe step via
+  // Independent "Pinch to Resize" requests arrive via
   // [boardPinchTutorialRequestProvider]. Hosted here (not in the board
-  // subtree) so the whole teaching flow is orchestrated from one place and
-  // shown back-to-back as centered dialog cards.
+  // subtree). Swipe dismissal never requests or suppresses this lesson.
   OverlayEntry? _pinchTutorialEntry;
   int _lastPinchTutorialRequest = 0;
   bool _showPinchTutorial = false;
-
-  static const String _kWalkthroughShownDateKey =
-      'swipable_walkthrough_shown_date';
-  static const String _kWalkthroughDontShowKey =
-      'swipable_walkthrough_dont_show';
 
   @override
   void initState() {
@@ -1519,23 +1518,43 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
   }
 
   Future<void> _checkAndShowWalkthrough(BuildContext context) async {
-    if (!_canShowTeachingsForCurrentGame()) return;
-
-    final prefs = ref.read(sharedPreferencesRepository);
-    final dontShow = await prefs.getBool(_kWalkthroughDontShowKey) ?? false;
-    final lastShownMs = await prefs.getInt(_kWalkthroughShownDateKey);
-
-    // Show each instruction once. Display step 1 only if it has never been seen
-    // and isn't opted out. Otherwise hand off to step 2 so any later unseen
-    // steps still appear — in order, one at a time (each self-gates on its key).
-    if (dontShow || lastShownMs != null) {
-      _requestPinchTutorial();
+    if (_checkingWalkthrough ||
+        _didShowWalkthrough ||
+        widget.swipeCoachingVisit?.eligible != true ||
+        widget.swipeCoachingVisit?.active != true) {
       return;
     }
-
-    final now = DateTime.now();
-
-    if (context.mounted) {
+    bool ready() =>
+        mounted &&
+        context.mounted &&
+        ModalRoute.of(context)?.isCurrent == true &&
+        !_isRouteCovered &&
+        !_isLifecycleBackgrounded &&
+        !_showPinchTutorial &&
+        !_gameSwitcher.isOpen &&
+        BoardFeatureTeachingHost.allowsContextual(context) &&
+        widget.games.map((g) => g.gameId).toSet().length > 1 &&
+        _resolveGameForIndex(_currentPageIndex).gameId ==
+            widget.swipeCoachingVisit?.gameId &&
+        _canShowTeachingsForCurrentGame() &&
+        ref
+            .read(
+              chessBoardScreenProviderNew(
+                _createParams(
+                  _resolveGameForIndex(_currentPageIndex),
+                  _currentPageIndex,
+                ),
+              ),
+            )
+            .hasValue;
+    _checkingWalkthrough = true;
+    final show = await contextualSwipeCoaching.claim(
+      widget.swipeCoachingVisit,
+      ready: ready,
+    );
+    _checkingWalkthrough = false;
+    if (show && ready()) {
+      _didShowWalkthrough = true;
       // Trigger local overlay instead of ShowcaseView
       setState(() {
         _showTutorialOverlay = true;
@@ -1564,8 +1583,6 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
 
       _swipeController.addStatusListener(statusListener);
       _swipeController.forward();
-
-      await prefs.setInt(_kWalkthroughShownDateKey, now.millisecondsSinceEpoch);
     }
   }
 
@@ -1629,28 +1646,12 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
     }
   }
 
-  /// Signals the chained "Pinch to Resize" walkthrough (step 2/2) to run.
-  /// Bumping the counter triggers the listener in [build]; the handler
-  /// re-checks its own prefs guard before showing, so this is safe to call
-  /// unconditionally after step 1 dismisses.
-  void _requestPinchTutorial() {
-    if (!mounted || !_canShowTeachingsForCurrentGame()) return;
-    ref.read(boardPinchTutorialRequestProvider.notifier).update((v) => v + 1);
-  }
-
   Future<void> _suppressWalkthrough() async {
-    final prefs = ref.read(sharedPreferencesRepository);
-    // "Don't show again" on step 1 must also suppress step 2 so the user
-    // isn't immediately shown another tutorial they just opted out of.
-    await Future.wait([
-      prefs.setBool(_kWalkthroughDontShowKey, true),
-      prefs.setBool(kPinchWalkthroughDontShowKey, true),
-    ]);
+    await contextualSwipeCoaching.disable();
   }
 
-  /// Step 2/2: shows the "Pinch to Resize" teaching once the chained request
-  /// fires (after Swipe dismisses or is skipped). Self-gates on its own prefs
-  /// so it is shown only once.
+  /// Independently requested "Pinch to Resize" teaching, self-gated on its
+  /// own preferences. Contextual stream/resize coaching remains separate.
   Future<void> _maybeStartPinchTutorial() async {
     if (!mounted ||
         _showPinchTutorial ||
@@ -1680,8 +1681,8 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
   void _insertPinchTutorialOverlay() {
     _pinchTutorialEntry = OverlayEntry(
       builder: (_) => BoardPinchCoachmark(
-        currentStep: 2,
-        totalSteps: 2,
+        currentStep: 1,
+        totalSteps: 1,
         onDismiss: _onPinchTutorialFinished,
         onDontShowAgain: () async {
           final prefs = ref.read(sharedPreferencesRepository);
@@ -2986,6 +2987,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
   @override
   void didPushNext() {
     _isRouteCovered = true;
+    if (_showTutorialOverlay) _onWalkthroughFinished();
     // Another route pushed on top (e.g. Player Profile, Explorer).
     // Pause Stockfish so it doesn't compete with the foreground screen.
     _handleLifecyclePaused(preserveVisibleGameReview: true);
@@ -3105,6 +3107,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
   }
 
   void _navigateToGame(int gameIndex) {
+    _swipeLearningGesture.reset();
     debugPrint(
       '🎯 _navigateToGame called with gameIndex: $gameIndex, current: $_currentPageIndex',
     );
@@ -3490,8 +3493,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
                 ShowCaseWidget(
                   onFinish: _onWalkthroughFinished,
                   builder: (context) {
-                    if (!_hasCheckedWalkthrough) {
-                      _hasCheckedWalkthrough = true;
+                    if (!_didShowWalkthrough && !_checkingWalkthrough) {
                       WidgetsBinding.instance.addPostFrameCallback((_) async {
                         await _checkAndShowWalkthrough(context);
                         // REMOVED (Trello nl3WwXwQ): PiP/Live Activity teaching dialog discontinued.
@@ -3512,84 +3514,128 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
                             // in; app-bar chips measure their anchor against it.
                             key: _gameSwitcher.panelSpaceKey,
                             children: [
-                              PageView.builder(
-                                key: boardGamesPageViewTestKey,
-                                padEnds: true,
-                                // PERF: Disabled implicit scrolling entirely - it pre-renders adjacent
-                                // pages for accessibility which is too expensive for complex chess views.
-                                // This significantly reduces memory pressure during rapid swiping.
-                                allowImplicitScrolling: false,
-                                dragStartBehavior: DragStartBehavior.down,
-                                // Allow swiping on tablet as well; landscape block caused gestures to
-                                // feel broken on larger devices. Keep physics simple to avoid half-drags.
-                                physics: isTablet
-                                    ? const PageScrollPhysics(
-                                        parent: ClampingScrollPhysics(),
-                                      )
-                                    : const PageScrollPhysics(),
-                                controller: _pageController,
-                                onPageChanged: _onPageChanged,
-                                itemCount: syncedGames.length,
-                                itemBuilder: (context, index) {
-                                  // Build current page and adjacent pages
-                                  if (index == _currentPageIndex - 1 ||
-                                      index == _currentPageIndex ||
-                                      index == _currentPageIndex + 1) {
-                                    final game = syncedGames[index];
-                                    final params = _createParams(game, index);
+                              NotificationListener<ScrollNotification>(
+                                onNotification: (notification) {
+                                  if (_showTutorialOverlay ||
+                                      _isProgrammaticPageJump ||
+                                      _isRouteCovered ||
+                                      _isLifecycleBackgrounded ||
+                                      ModalRoute.of(context)?.isCurrent != true) {
+                                    _swipeLearningGesture.reset();
+                                    return false;
+                                  }
+                                  if (_swipeLearningGesture.observe(
+                                    notification,
+                                    _resolveGameForIndex(
+                                      _currentPageIndex,
+                                    ).gameId,
+                                  )) {
+                                    unawaited(
+                                      contextualSwipeCoaching.disable(
+                                        learned: true,
+                                      ),
+                                    );
+                                  }
+                                  return false;
+                                },
+                                child: PageView.builder(
+                                  key: boardGamesPageViewTestKey,
+                                  padEnds: true,
+                                  // PERF: Disabled implicit scrolling entirely - it pre-renders adjacent
+                                  // pages for accessibility which is too expensive for complex chess views.
+                                  // This significantly reduces memory pressure during rapid swiping.
+                                  allowImplicitScrolling: false,
+                                  dragStartBehavior: DragStartBehavior.down,
+                                  // Allow swiping on tablet as well; landscape block caused gestures to
+                                  // feel broken on larger devices. Keep physics simple to avoid half-drags.
+                                  physics: isTablet
+                                      ? const PageScrollPhysics(
+                                          parent: ClampingScrollPhysics(),
+                                        )
+                                      : const PageScrollPhysics(),
+                                  controller: _pageController,
+                                  onPageChanged: _onPageChanged,
+                                  itemCount: syncedGames.length,
+                                  itemBuilder: (context, index) {
+                                    // Build current page and adjacent pages
+                                    if (index == _currentPageIndex - 1 ||
+                                        index == _currentPageIndex ||
+                                        index == _currentPageIndex + 1) {
+                                      final game = syncedGames[index];
+                                      final params = _createParams(game, index);
 
-                                    // PERFORMANCE FIX: Wrap each page in Consumer to isolate rebuilds.
-                                    // This way, evaluation/PV updates only rebuild the affected page,
-                                    // not the entire PageView and all siblings.
-                                    return Consumer(
-                                      builder: (context, ref, _) {
-                                        try {
-                                          final stateAsync = ref.watch(
-                                            chessBoardScreenProviderNew(params),
-                                          );
-                                          return stateAsync.when(
-                                            data: (chessBoardState) {
-                                              _ensureLatestMoveSelected(
-                                                ref: ref,
-                                                pageIndex: index,
-                                                state: chessBoardState,
-                                              );
-                                              _maybeShowSaveAnalysisOnLoad(
-                                                pageIndex: index,
-                                                state: chessBoardState,
-                                              );
-                                              // PERFORMANCE FIX: Removed useless setState for analysisMode.
-                                              // The variable was tracked but never used for rendering,
-                                              // causing full parent rebuilds on every analysis mode change.
-                                              return _GamePage(
-                                                game: chessBoardState.game,
-                                                state: chessBoardState,
-                                                games: syncedGames,
-                                                scoreCardViewSource:
-                                                    widget.viewSource,
+                                      // PERFORMANCE FIX: Wrap each page in Consumer to isolate rebuilds.
+                                      // This way, evaluation/PV updates only rebuild the affected page,
+                                      // not the entire PageView and all siblings.
+                                      return Consumer(
+                                        builder: (context, ref, _) {
+                                          try {
+                                            final stateAsync = ref.watch(
+                                              chessBoardScreenProviderNew(
+                                                params,
+                                              ),
+                                            );
+                                            return stateAsync.when(
+                                              data: (chessBoardState) {
+                                                _ensureLatestMoveSelected(
+                                                  ref: ref,
+                                                  pageIndex: index,
+                                                  state: chessBoardState,
+                                                );
+                                                _maybeShowSaveAnalysisOnLoad(
+                                                  pageIndex: index,
+                                                  state: chessBoardState,
+                                                );
+                                                // PERFORMANCE FIX: Removed useless setState for analysisMode.
+                                                // The variable was tracked but never used for rendering,
+                                                // causing full parent rebuilds on every analysis mode change.
+                                                return _GamePage(
+                                                  game: chessBoardState.game,
+                                                  state: chessBoardState,
+                                                  games: syncedGames,
+                                                  scoreCardViewSource:
+                                                      widget.viewSource,
+                                                  currentGameIndex: index,
+                                                  currentPageIndex:
+                                                      _currentPageIndex,
+                                                  lastViewedIndex:
+                                                      _lastViewedIndex,
+                                                  hideEventInfo:
+                                                      widget.hideEventInfo,
+                                                  playerProfileDataSource: widget
+                                                      .playerProfileDataSource,
+                                                  onToggleGamebase:
+                                                      _toggleGamebase,
+                                                  showGamebaseButton:
+                                                      widget.showGamebaseButton,
+                                                  showClock: widget.showClock,
+                                                  allowGameExport:
+                                                      widget.allowGameExport,
+                                                  savedAnalysisData:
+                                                      _getSavedAnalysisDataForIndex(
+                                                        index,
+                                                      ),
+                                                );
+                                              },
+                                              loading: () => _LoadingScreen(
+                                                games: liveGames,
                                                 currentGameIndex: index,
-                                                currentPageIndex:
-                                                    _currentPageIndex,
                                                 lastViewedIndex:
                                                     _lastViewedIndex,
                                                 hideEventInfo:
                                                     widget.hideEventInfo,
-                                                playerProfileDataSource: widget
-                                                    .playerProfileDataSource,
-                                                onToggleGamebase:
-                                                    _toggleGamebase,
-                                                showGamebaseButton:
-                                                    widget.showGamebaseButton,
-                                                showClock: widget.showClock,
-                                                allowGameExport:
-                                                    widget.allowGameExport,
-                                                savedAnalysisData:
-                                                    _getSavedAnalysisDataForIndex(
-                                                      index,
-                                                    ),
-                                              );
-                                            },
-                                            loading: () => _LoadingScreen(
+                                                isActivePage:
+                                                    index == _currentPageIndex,
+                                              ),
+                                              error: (e, _) => _GameLoadFailure(
+                                                error: e,
+                                                onRetry: () =>
+                                                    _reloadGameAt(index),
+                                              ),
+                                            );
+                                          } catch (e) {
+                                            // Fallback for when provider isn't ready
+                                            return _LoadingScreen(
                                               games: liveGames,
                                               currentGameIndex: index,
                                               lastViewedIndex: _lastViewedIndex,
@@ -3597,41 +3643,26 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
                                                   widget.hideEventInfo,
                                               isActivePage:
                                                   index == _currentPageIndex,
-                                            ),
-                                            error: (e, _) => _GameLoadFailure(
-                                              error: e,
-                                              onRetry: () =>
-                                                  _reloadGameAt(index),
-                                            ),
-                                          );
-                                        } catch (e) {
-                                          // Fallback for when provider isn't ready
-                                          return _LoadingScreen(
-                                            games: liveGames,
-                                            currentGameIndex: index,
-                                            lastViewedIndex: _lastViewedIndex,
-                                            hideEventInfo: widget.hideEventInfo,
-                                            isActivePage:
-                                                index == _currentPageIndex,
-                                          );
-                                        }
-                                      },
+                                            );
+                                          }
+                                        },
+                                      );
+                                    }
+                                    // Outside the ±1 build window. This page is only
+                                    // ever on screen for the frame or two between a
+                                    // jump landing and [_currentPageIndex] catching
+                                    // up, so it must still paint the game's chrome —
+                                    // an empty box here reads as the whole screen
+                                    // going black.
+                                    return _LoadingScreen(
+                                      games: syncedGames,
+                                      currentGameIndex: index,
+                                      lastViewedIndex: _lastViewedIndex,
+                                      hideEventInfo: widget.hideEventInfo,
+                                      isActivePage: false,
                                     );
-                                  }
-                                  // Outside the ±1 build window. This page is only
-                                  // ever on screen for the frame or two between a
-                                  // jump landing and [_currentPageIndex] catching
-                                  // up, so it must still paint the game's chrome —
-                                  // an empty box here reads as the whole screen
-                                  // going black.
-                                  return _LoadingScreen(
-                                    games: syncedGames,
-                                    currentGameIndex: index,
-                                    lastViewedIndex: _lastViewedIndex,
-                                    hideEventInfo: widget.hideEventInfo,
-                                    isActivePage: false,
-                                  );
-                                },
+                                  },
+                                ),
                               ),
                               // Game Analysis report. A sibling of the PageView, not
                               // a modal route: there is no barrier, so the board
@@ -3710,14 +3741,11 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
                                     currentPageIndex: _currentPageIndex,
                                     totalItems: syncedGames.length,
                                     currentStep: 1,
-                                    totalSteps: 2,
-                                    onDismiss: () {
-                                      _onWalkthroughFinished();
-                                      _requestPinchTutorial();
-                                    },
+                                    totalSteps: 1,
+                                    onDismiss: _onWalkthroughFinished,
                                     onDontShowAgain: () async {
                                       await _suppressWalkthrough();
-                                      _onWalkthroughFinished();
+                                      if (mounted) _onWalkthroughFinished();
                                     },
                                   ),
                                 ),
@@ -3947,7 +3975,7 @@ class _SwipeTutorialOverlayState extends State<_SwipeTutorialOverlay>
                                           ),
                                           SizedBox(height: 8.h),
                                           Text(
-                                            'Explore other games in this tournament by swiping horizontally.',
+                                            'Swipe left or right to browse other games in this list.',
                                             style: AppTypography.textSmMedium
                                                 .copyWith(
                                                   color: kBlackColor.withValues(
@@ -4107,7 +4135,7 @@ class _SwipeTutorialOverlayState extends State<_SwipeTutorialOverlay>
                                 ),
                               ),
                               child: Text(
-                                'Got it',
+                                'OK',
                                 style: AppTypography.textSmBold,
                               ),
                             ),

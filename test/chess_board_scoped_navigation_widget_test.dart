@@ -1,5 +1,7 @@
 import 'package:chessever2/providers/country_dropdown_provider.dart';
 import 'dart:async';
+import 'package:chessever2/screens/chessboard/contextual_swipe_coaching.dart';
+import 'package:chessever2/repository/local_storage/local_storage_repository.dart';
 
 import 'package:chessever2/e2e/e2e_ids.dart';
 import 'package:chessever2/main.dart' show routeObserver;
@@ -31,7 +33,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'support/board_feature_teaching_store.dart';
@@ -50,6 +51,110 @@ void main() {
   });
 
   tearDownAll(GameAnalysisReportStore.debugResetInstance);
+
+  testWidgets(
+    'contextual coaching opens only on third distinct card, dismisses without pinch, manual swipe learns',
+    (tester) async {
+      final prefs = (await SharedPreferencesService.instance.initialize())!;
+      await prefs.clear();
+      await prefs.setInt('swipable_walkthrough_shown_date', 1);
+      final raw = List.generate(
+        3,
+        (i) => _rawGame(
+          id: 'contextual-$i',
+          tourId: 'contextual-tour',
+          round: 'round-1',
+          board: i + 1,
+        ),
+      );
+      final games = raw.map(GamesTourModel.fromGame).toList();
+      final container = _boardTestContainer(
+        gamesByTour: {'contextual-tour': raw},
+        gameRepository: _ImmediateGameRepository({
+          for (final game in raw) game.id: game,
+        }),
+      );
+      final navigator = GlobalKey<NavigatorState>();
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: MaterialApp(
+            navigatorKey: navigator,
+            navigatorObservers: [routeObserver, contextualSwipeCoaching],
+            theme: ThemeData.dark().copyWith(
+              extensions: const [AppColors.dark],
+            ),
+            home: Consumer(
+              builder: (context, ref, _) {
+                ResponsiveHelper.init(context);
+                final navigation = ref.watch(gameCardWrapperProvider);
+                return Scaffold(
+                  body: ListView(
+                    children: [
+                      for (var i = 0; i < 3; i++)
+                        Builder(
+                          builder: (listContext) => TextButton(
+                            onPressed: () => navigation.navigateToChessBoard(
+                              context: listContext,
+                              orderedGames: List.of(games),
+                              gameIndex: i,
+                              onReturnFromChessboard: null,
+                              viewSource: ChessboardView.tour,
+                              listPolicy: BoardNavigationListPolicy.preserve,
+                              disableGamebaseOverlayByDefault: true,
+                            ),
+                            child: Text('Open $i'),
+                          ),
+                        ),
+                    ],
+                  ),
+                );
+              },
+            ),
+          ),
+        ),
+      );
+      for (var i = 0; i < 3; i++) {
+        await tester.tap(find.text('Open $i'));
+        for (var frame = 0; frame < 12; frame++) {
+          await tester.pump(const Duration(milliseconds: 100));
+        }
+        expect(
+          find.text('Swipe to Browse'),
+          i == 2 ? findsOneWidget : findsNothing,
+        );
+        if (i < 2) {
+          navigator.currentState!.pop();
+          for (var frame = 0; frame < 5; frame++) {
+            await tester.pump(const Duration(milliseconds: 100));
+          }
+        }
+      }
+      await tester.tap(find.text('OK'));
+      for (var frame = 0; frame < 30; frame++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+      expect(find.text('Swipe to Browse'), findsNothing);
+      expect(find.text('Pinch to Resize'), findsNothing);
+      expect(prefs.getBool(swipeCoachingLearnedKey), isNot(true));
+      // A switcher/programmatic jump preserves the unlearned state.
+      final pages = find.byKey(boardGamesPageViewTestKey);
+      tester.widget<PageView>(pages).controller!.jumpToPage(1);
+      for (var frame = 0; frame < 5; frame++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+      expect(prefs.getBool(swipeCoachingLearnedKey), isNot(true));
+      await tester.drag(pages, const Offset(-600, 0));
+      for (var frame = 0; frame < 10; frame++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+      expect(prefs.getBool(swipeCoachingLearnedKey), isTrue);
+      await tester.pumpWidget(const SizedBox.shrink());
+      container.dispose();
+      await tester.pump();
+      await prefs.setBool(swipeCoachingDisabledKey, true);
+    },
+  );
 
   testWidgets('hardware arrows reuse board callbacks and selection reset', (
     tester,
