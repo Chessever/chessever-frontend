@@ -1,4 +1,5 @@
 import 'package:chessever2/utils/pgn_clock_utils.dart';
+import 'package:collection/collection.dart';
 
 /// Secondary ("40-move") period of a classical tournament time control.
 ///
@@ -15,6 +16,7 @@ class TimeControlSecondaryPeriod {
   const TimeControlSecondaryPeriod({
     required this.afterMoves,
     required this.bonusSeconds,
+    this.baseSeconds,
   });
 
   /// Move number a player must complete to be credited (typically 40).
@@ -23,19 +25,25 @@ class TimeControlSecondaryPeriod {
   /// Extra time credited on completing [afterMoves] moves, in seconds.
   final int bonusSeconds;
 
+  /// The first period's length (`5400` for `90 min / 40 moves`), when the
+  /// string names it. Read only by [secondaryPeriodFitsGame]; `null` means the
+  /// first bonus stands in for it.
+  final int? baseSeconds;
+
   @override
   bool operator ==(Object other) =>
       other is TimeControlSecondaryPeriod &&
       other.afterMoves == afterMoves &&
-      other.bonusSeconds == bonusSeconds;
+      other.bonusSeconds == bonusSeconds &&
+      other.baseSeconds == baseSeconds;
 
   @override
-  int get hashCode => Object.hash(afterMoves, bonusSeconds);
+  int get hashCode => Object.hash(afterMoves, bonusSeconds, baseSeconds);
 
   @override
   String toString() =>
       'TimeControlSecondaryPeriod(afterMoves: $afterMoves, '
-      'bonusSeconds: $bonusSeconds)';
+      'bonusSeconds: $bonusSeconds, baseSeconds: $baseSeconds)';
 }
 
 /// Lower bound for a credible secondary block. Anything shorter is almost
@@ -90,9 +98,13 @@ final RegExp _tcTokenRegex = RegExp(
 /// `SD` is unambiguous — it always names the final period's minutes — so the
 /// numbers can be read positionally with no risk of confusing them for a base.
 final RegExp _suddenDeathRegex = RegExp(
-  r'^\s*(\d{1,2})\s*/\s*\d+[^;,]*[;,]\s*sd\s*/?\s*(\d+)',
+  r'^\s*(\d{1,2})\s*/\s*(\d+)[^;,]*[;,]\s*sd\s*/?\s*(\d+)',
   caseSensitive: false,
 );
+
+/// `90+30 …` with no unit on the base: the compact FIDE spelling some
+/// organisers lead with before describing the bonus in prose.
+final RegExp _compactBaseRegex = RegExp(r'^\D*?(\d{2,3})\s*\+\s*\d');
 
 final RegExp _bonusAfterMoveRegex = RegExp(
   r'(\d+)\s*(minutes|minuten|minutos|minuti|mins|min|hours|hour|hrs|hr)\b'
@@ -134,7 +146,8 @@ TimeControlSecondaryPeriod? parseSecondaryTimePeriod(String? tcText) {
   final suddenDeath = _suddenDeathRegex.firstMatch(normalized);
   if (suddenDeath != null) {
     final moves = int.tryParse(suddenDeath.group(1)!);
-    final minutes = int.tryParse(suddenDeath.group(2)!);
+    final baseMinutes = int.tryParse(suddenDeath.group(2)!);
+    final minutes = int.tryParse(suddenDeath.group(3)!);
     if (moves != null &&
         minutes != null &&
         moves >= _minAfterMoves &&
@@ -142,6 +155,7 @@ TimeControlSecondaryPeriod? parseSecondaryTimePeriod(String? tcText) {
       final period = _buildPeriod(
         afterMoves: moves,
         bonusSeconds: minutes * 60,
+        baseSeconds: baseMinutes == null ? null : baseMinutes * 60,
       );
       if (period != null) return period;
     }
@@ -162,17 +176,28 @@ TimeControlSecondaryPeriod? parseSecondaryTimePeriod(String? tcText) {
 
     // Primary shape: the bonus follows the move count.
     //   "90 min / 40 moves + 30 min + 30 sec / move"
+    // The base is the nearest period before the move count, or, in the
+    // "40 moves in 2 hours" phrasing, the period that is skipped after it.
     var skip = _movesInPhraseRegex.hasMatch(normalized) ? 1 : 0;
+    int? primaryBase = skip > 0
+        ? null
+        : tokens
+              .take(movesIndex)
+              .lastWhereOrNull((t) => t.unit == _TcUnit.minutes)
+              ?.seconds;
+    primaryBase ??= skip > 0 ? null : _compactBaseSeconds(normalized);
     for (var i = movesIndex + 1; i < tokens.length; i++) {
       final token = tokens[i];
       if (token.unit != _TcUnit.minutes) continue;
       if (skip > 0) {
         skip--;
+        primaryBase = token.seconds;
         continue;
       }
       final period = _buildPeriod(
         afterMoves: afterMoves,
         bonusSeconds: token.seconds,
+        baseSeconds: primaryBase,
       );
       if (period != null) return period;
       break;
@@ -192,6 +217,10 @@ TimeControlSecondaryPeriod? parseSecondaryTimePeriod(String? tcText) {
         final period = _buildPeriod(
           afterMoves: afterMoves,
           bonusSeconds: candidate.seconds,
+          baseSeconds: tokens
+              .take(movesIndex - 1)
+              .firstWhereOrNull((t) => t.unit == _TcUnit.minutes)
+              ?.seconds,
         );
         if (period != null) return period;
       }
@@ -214,7 +243,17 @@ TimeControlSecondaryPeriod? parseSecondaryTimePeriod(String? tcText) {
       final keyword = prose.group(0)!.contains('from') ? 1 : 0;
       final afterMoves = moveNumber - keyword;
       if (afterMoves >= _minAfterMoves && afterMoves <= _maxAfterMoves) {
-        return _buildPeriod(afterMoves: afterMoves, bonusSeconds: bonusSeconds);
+        // The base is the first period named before the bonus clause.
+        final before = normalized.substring(0, prose.start);
+        return _buildPeriod(
+          afterMoves: afterMoves,
+          bonusSeconds: bonusSeconds,
+          baseSeconds:
+              _tokenize(
+                before,
+              ).firstWhereOrNull((t) => t.unit == _TcUnit.minutes)?.seconds ??
+              _compactBaseSeconds(normalized),
+        );
       }
     }
   }
@@ -225,14 +264,28 @@ TimeControlSecondaryPeriod? parseSecondaryTimePeriod(String? tcText) {
 TimeControlSecondaryPeriod? _buildPeriod({
   required int afterMoves,
   required int bonusSeconds,
+  int? baseSeconds,
 }) {
   if (bonusSeconds < _minBonusSeconds || bonusSeconds > _maxBonusSeconds) {
     return null;
   }
+  // A base outside a minute..six hours was misread; the bonus stands in.
+  final base =
+      baseSeconds != null && baseSeconds >= 60 && baseSeconds <= 6 * 3600
+      ? baseSeconds
+      : null;
   return TimeControlSecondaryPeriod(
     afterMoves: afterMoves,
     bonusSeconds: bonusSeconds,
+    baseSeconds: base,
   );
+}
+
+int? _compactBaseSeconds(String normalized) {
+  final minutes = int.tryParse(
+    _compactBaseRegex.firstMatch(normalized)?.group(1) ?? '',
+  );
+  return minutes == null ? null : minutes * 60;
 }
 
 String _normalizeTcText(String raw) {
@@ -244,6 +297,12 @@ String _normalizeTcText(String raw) {
   text = text.replaceAll('"', ' sec ');
   text = text.replaceAll("''", ' sec ');
   text = text.replaceAll("'", ' min ');
+  // "1,5 h" / "1.5 hours" spell 90 minutes. Without this the tokenizer reads
+  // the "5 h" alone as five hours.
+  text = text.replaceAllMapped(
+    RegExp(r'(\d+)[.,](\d)\s*(?:hours|hour|hrs|hr|h)\b'),
+    (m) => '${int.parse(m.group(1)!) * 60 + int.parse(m.group(2)!) * 6} min ',
+  );
   // "1h40" spells 100 minutes; expand so the tokenizer sees both halves.
   text = text.replaceAllMapped(
     RegExp(r'(\d+)\s*h\s*(\d{1,2})\b'),
@@ -311,6 +370,51 @@ List<_TcToken> _tokenize(String normalized) {
   return tokens;
 }
 
+/// Moves per side whose clock can still say which control a game is at.
+const int _fitOpeningMoves = 10;
+
+/// Whether this game is actually being played at [period]'s time control.
+///
+/// `tours.info->>'tc'` names the event's MAIN control, and every game of the
+/// event inherits it here. A playoff, rapid tiebreak or armageddon under the
+/// same tour is a different control: on 2026-10-22 the U.S. Championship's
+/// 15+10 rapid playoff inherited "90 minutes for 40 moves, then 30 minutes",
+/// and from move 40 the app showed 30:48 for a player with 0:48.
+///
+/// Same rule as ingest (chessever-broadcasting
+/// `packages/domain/src/clockRule.ts`) and chessever.com
+/// (`src/broadcast/lib/clock-rule.ts`); keep the three identical. Take each
+/// side's earliest reading in its first ten moves. When every side that has one
+/// is under half the base (or under the bonus when no base is named), the game
+/// is a shorter control. One low side is a late arrival; no reading at all
+/// leaves the period standing.
+///
+/// [plySeconds] is indexed by ply (`0` = White's first move), `null` where a
+/// move has no clock.
+bool secondaryPeriodFitsGame(
+  TimeControlSecondaryPeriod period,
+  List<int?> plySeconds,
+) {
+  final base = period.baseSeconds;
+  final floor = base != null ? base / 2 : period.bonusSeconds;
+  var readings = 0;
+  var low = 0;
+  for (var side = 0; side < 2; side++) {
+    for (
+      var ply = side;
+      ply < plySeconds.length && ply < _fitOpeningMoves * 2;
+      ply += 2
+    ) {
+      final seconds = plySeconds[ply];
+      if (seconds == null || seconds <= 0) continue;
+      readings++;
+      if (seconds < floor) low++;
+      break;
+    }
+  }
+  return readings == 0 || low < readings;
+}
+
 /// Index in [playerClocks] at which the broadcast source already credited the
 /// secondary bonus, or `null` when it never did.
 ///
@@ -373,6 +477,11 @@ List<String> applySecondaryBonusToMoveClocks(
   TimeControlSecondaryPeriod? period,
 ) {
   if (period == null || moveClockDisplays.isEmpty) return moveClockDisplays;
+  final plySeconds = [
+    for (final display in moveClockDisplays)
+      hasUsableClockDisplay(display) ? parsePgnClockToSeconds(display) : null,
+  ];
+  if (!secondaryPeriodFitsGame(period, plySeconds)) return moveClockDisplays;
 
   final adjusted = List<String>.of(moveClockDisplays);
   var changed = false;
@@ -443,13 +552,18 @@ int completedMovesForSide(int totalPlies, int side) {
 
   final plyClocks = extractPgnClockStringsFromText(pgn ?? '');
   if (plyClocks.isEmpty) return (white: whiteSeconds, black: blackSeconds);
+  final plySeconds = [
+    for (final clock in plyClocks) parsePgnClockToSeconds(clock),
+  ];
+  if (!secondaryPeriodFitsGame(period, plySeconds)) {
+    return (white: whiteSeconds, black: blackSeconds);
+  }
 
   int? adjust(int? seconds, int side) {
     if (seconds == null || seconds <= 0) return seconds;
-    final series = <int?>[];
-    for (var ply = side; ply < plyClocks.length; ply += 2) {
-      series.add(parsePgnClockToSeconds(plyClocks[ply]));
-    }
+    final series = <int?>[
+      for (var ply = side; ply < plySeconds.length; ply += 2) plySeconds[ply],
+    ];
     final offset = secondaryBonusOffsetSeconds(
       period: period,
       playerClocks: series,

@@ -188,6 +188,38 @@ chessever_frontend_desktop_oss/scripts/which_repo_owns_function.sh <slug>
   Prep players have no separate switch). The star is the thing's own
   favorite; the shortcut stays when it is unstarred.
 
+## Broadcast clocks: the event's time control is only a guess for a game
+
+`lib/utils/time_control_bonus.dart` adds a classical event's second period
+("+30 min after move 40") to clocks the relay has not credited yet. It reads
+the period from `tours.info->>'tc'`, the EVENT's main control, and applies it
+to every game of the event.
+
+**What broke (2026-10-22).** The U.S. Championship's 15+10 rapid playoff ran
+under the same tour as the classical rounds. From move 40 the app, chessever.com
+and the spectator site showed **30:48 for a player with 0:48**. The broadcast
+delay was not the cause.
+
+- **The guard.** `secondaryPeriodFitsGame` gates both clock paths:
+  `applySecondaryBonusToLiveClocks` (cards and countdowns) and
+  `applySecondaryBonusToMoveClocks` (move lists and shares). Take each side's
+  earliest reading in its first 10 moves. When every side that has one is
+  under half the parsed base (or under the bonus when no base is named), the
+  game is a shorter control and keeps its raw clocks. One low side is a late arrival
+  and still gets the bonus.
+- **Three copies, one rule.** The same logic lives in chessever-broadcasting
+  `packages/domain/src/clockRule.ts` (ingest) and chessever_web_frontend
+  `src/broadcast/lib/clock-rule.ts` (chessever.com). Change one, change all
+  three, each with a test in `test/time_control_bonus_test.dart`.
+- **A new clock surface must go through one of the two helpers.** Calling
+  `secondaryBonusOffsetSeconds` directly skips the fit check.
+- **Clock off by exactly one period** (30:00, 15:00, 50:00): the cause is this
+  rule, not delay. Compare the organizer file and Lichess for the same board
+  before changing anything.
+- **Old builds stay wrong until users update.** The emergency fix is data:
+  rewrite `tours.info.tc` into a form the parser declines, e.g.
+  `Rounds 1-11: … | Playoff: 15+10 …`, since a `|` or `Round N-M` is rejected.
+
 ## Commits and delivery
 
 - Commit completed changes on `stable` after validation, including the required

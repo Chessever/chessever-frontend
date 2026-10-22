@@ -11,12 +11,10 @@ void main() {
   group('parseSecondaryTimePeriod — real tours.info->>\'tc\' strings', () {
     void expectPeriod(String tc, int afterMoves, int bonusMinutes) {
       final parsed = parseSecondaryTimePeriod(tc);
+      expect(parsed, isNotNull, reason: 'tc: "$tc"');
       expect(
-        parsed,
-        TimeControlSecondaryPeriod(
-          afterMoves: afterMoves,
-          bonusSeconds: bonusMinutes * 60,
-        ),
+        (parsed!.afterMoves, parsed.bonusSeconds),
+        (afterMoves, bonusMinutes * 60),
         reason: 'tc: "$tc"',
       );
     }
@@ -163,6 +161,81 @@ void main() {
         40,
         30,
       );
+    });
+  });
+
+  group('parseSecondaryTimePeriod — base period', () {
+    void expectBase(String tc, int? baseMinutes) {
+      expect(
+        parseSecondaryTimePeriod(tc)?.baseSeconds,
+        baseMinutes == null ? isNull : baseMinutes * 60,
+        reason: 'tc: "$tc"',
+      );
+    }
+
+    test('every phrasing names its first period', () {
+      expectBase('90 min / 40 moves + 30 min + 30 sec / move', 90);
+      expectBase('(100min + 30sec)/40 moves + (30min+30sec)', 100);
+      expectBase('90 min + 30 sec, +15 min after 40 moves', 90);
+      expectBase('40 moves in 2 hours f.b. 1 hour to complete the game', 120);
+      expectBase('1h40/40 moves + 30min (+30sec/move)', 100);
+      expectBase('2x 1,5 h/40 + 30 min + 30 s/move', 90);
+      expectBase('90+30 (15 minutes added after move 40)', 90);
+      expectBase('90 min + 30 sec/move, 30 min after move 40', 90);
+      expectBase('40/90, SD/30; +30', 90);
+      expectBase('40/80/d30, SD30/d30', 80);
+      expectBase('90+30 for 40 moves then 15 minutes', 90);
+    });
+
+    test('the U.S. Championship string', () {
+      final period = parseSecondaryTimePeriod(
+        '90 minutes for 40 moves, then 30 minutes for the rest; '
+        '30-second increment from move 1',
+      );
+      expect(
+        period,
+        const TimeControlSecondaryPeriod(
+          afterMoves: 40,
+          bonusSeconds: 1800,
+          baseSeconds: 5400,
+        ),
+      );
+    });
+  });
+
+  group('secondaryPeriodFitsGame', () {
+    const period = TimeControlSecondaryPeriod(
+      afterMoves: 40,
+      bonusSeconds: 1800,
+      baseSeconds: 5400,
+    );
+
+    List<int?> opening(int white, int black) => [white, black, white - 5];
+
+    test('a 15+10 playoff under a 90-minute tour is not this control', () {
+      expect(secondaryPeriodFitsGame(period, opening(908, 904)), isFalse);
+    });
+
+    test('a classical game is', () {
+      expect(secondaryPeriodFitsGame(period, opening(5398, 5380)), isTrue);
+    });
+
+    test('one low side is a late arrival, not a different control', () {
+      expect(secondaryPeriodFitsGame(period, opening(2280, 5380)), isTrue);
+    });
+
+    test('no opening reading leaves the period standing', () {
+      expect(secondaryPeriodFitsGame(period, const [null, null]), isTrue);
+      expect(secondaryPeriodFitsGame(period, const []), isTrue);
+    });
+
+    test('without a base the bonus is the floor', () {
+      const noBase = TimeControlSecondaryPeriod(
+        afterMoves: 40,
+        bonusSeconds: 1800,
+      );
+      expect(secondaryPeriodFitsGame(noBase, opening(908, 904)), isFalse);
+      expect(secondaryPeriodFitsGame(noBase, opening(2700, 2640)), isTrue);
     });
   });
 
@@ -408,6 +481,22 @@ void main() {
       final displays = buildDisplays(40);
       expect(applySecondaryBonusToMoveClocks(displays, period), same(displays));
     });
+
+    test('a rapid playoff under a classical tour keeps its raw clocks', () {
+      // U.S. Championship, 2026-10-22: 15+10 boards under a 90-minute tour.
+      final displays = List<String>.generate(82, (ply) => '00:00:48');
+      displays[0] = '00:15:08';
+      displays[1] = '00:15:04';
+      const classical = TimeControlSecondaryPeriod(
+        afterMoves: 40,
+        bonusSeconds: 1800,
+        baseSeconds: 5400,
+      );
+      expect(
+        applySecondaryBonusToMoveClocks(displays, classical),
+        same(displays),
+      );
+    });
   });
 
   group('applySecondaryBonusToLiveClocks — real broadcast PGNs', () {
@@ -453,6 +542,29 @@ void main() {
       );
       expect(clocks.white, 1486, reason: 'bonus already inside the reading');
       expect(clocks.black, 1725);
+    });
+
+    test('a rapid playoff under a classical tour keeps its raw clocks', () {
+      // U.S. Championship, 2026-10-22: the app showed 30:48 for 0:48.
+      final pgn = [
+        '{ [%clk 0:15:08] }',
+        '{ [%clk 0:15:04] }',
+        for (var i = 0; i < 80; i++) '{ [%clk 0:00:48] }',
+      ].join(' ');
+      const classical = TimeControlSecondaryPeriod(
+        afterMoves: 40,
+        bonusSeconds: 1800,
+        baseSeconds: 5400,
+      );
+      expect(
+        applySecondaryBonusToLiveClocks(
+          pgn: pgn,
+          whiteSeconds: 48,
+          blackSeconds: 75,
+          period: classical,
+        ),
+        (white: 48, black: 75),
+      );
     });
 
     test('null period and empty pgn are no-ops', () {
