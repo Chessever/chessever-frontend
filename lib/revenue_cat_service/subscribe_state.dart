@@ -704,12 +704,8 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
       ),
     );
 
-    // Mirror the direct-purchase path so partner ROAS dashboards keyed off
-    // af_subscribe / af_purchase still see the redemption as a subscription
-    // event. Price is the package's standard price — for paid offer codes the
-    // actual charged amount is lower, but partners rely on RC's webhook for
-    // the authoritative revenue figure (affiliate_conversions.revenue_usd),
-    // so this is intentionally an upper-bound heuristic.
+    // Track the activation funnel without treating the package list price as
+    // revenue. RevenueCat's confirmed receipt supplies the actual paid amount.
     if (productId != null) {
       Package? matchedPackage;
       for (final pkg in state.products) {

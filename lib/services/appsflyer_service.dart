@@ -65,12 +65,56 @@ abstract class AFParams {
 @visibleForTesting
 String? appsFlyerAffiliateCode(Map payload) {
   for (final key in const ['af_sub1', 'deep_link_sub1']) {
-    final value = payload[key]?.toString().trim();
-    if (value != null && value.isNotEmpty && value != 'null') {
+    final value = payload[key]?.toString().trim().toLowerCase();
+    if (value != null &&
+        RegExp(r'^[a-z0-9_-]{1,48}$').hasMatch(value) &&
+        value != 'null') {
       return value;
     }
   }
   return null;
+}
+
+/// UDL deliberately omits af_status/af_sub1 on privacy-restricted new installs.
+/// Only the SDK's deferred-install callback may establish this attribution;
+/// opening a link in an already installed app cannot replace the first partner.
+@visibleForTesting
+Map<String, dynamic>? deferredAppsFlyerAffiliatePayload(
+  Map clickEvent,
+  DateTime observedAt,
+) {
+  if (clickEvent['is_deferred'] != true &&
+      clickEvent['is_deferred'] != 'true') {
+    return null;
+  }
+  final code = appsFlyerAffiliateCode({
+    'deep_link_sub1': clickEvent['deep_link_sub1'],
+  });
+  if (code == null) return null;
+  return {
+    'af_status': 'Non-organic',
+    'deep_link_sub1': code,
+    'install_time': observedAt.toUtc().toIso8601String(),
+    'attribution_source': 'deferred_deep_link',
+  };
+}
+
+@visibleForTesting
+Map<String, dynamic> mergeAppsFlyerInstallAttribution(
+  Map existing,
+  Map incoming,
+) {
+  // GCD callbacks may arrive after UDL with only Organic/privacy data. Keep the
+  // first eligible partner and original timestamp regardless of callback order.
+  if (appsFlyerIsNonOrganic(existing) &&
+      appsFlyerAffiliateCode(existing) != null) {
+    return Map<String, dynamic>.from(existing);
+  }
+  return {
+    ...Map<String, dynamic>.from(incoming),
+    if (existing['install_time'] != null)
+      'install_time': existing['install_time'],
+  };
 }
 
 @visibleForTesting
@@ -129,6 +173,8 @@ class AppsflyerService {
   // initializing. Flushed when startSDK fires so the install event carries
   // the identifier.
   String? _pendingCustomerUserId;
+
+  Future<void> _attributionWrite = Future<void>.value();
 
   static const String _kCachedAffiliateDataKey =
       'appsflyer_cached_affiliate_data';
@@ -206,6 +252,8 @@ class AppsflyerService {
       );
 
       _isInitialized = true;
+      RevenueCatService().onAttributionSyncRequested = _forwardUidToRevenueCat;
+      if (RevenueCatService().isSdkReady) unawaited(_forwardUidToRevenueCat());
       debugPrint('AppsflyerService: SDK initialized');
 
       _appsflyerSdk?.onInstallConversionData((data) {
@@ -474,10 +522,8 @@ class AppsflyerService {
     });
   }
 
-  /// Fire on successful subscription. Sends both `af_purchase` (generic
-  /// revenue event) and `af_subscribe` (subscription-specific) so AppsFlyer
-  /// dashboards and affiliate partners see the revenue under whichever
-  /// event they configured.
+  /// Client funnel confirmation only. Verified RevenueCat receipts own revenue,
+  /// so a trial or discounted offer never reports the package's list price.
   Future<void> logSubscriptionPurchase({
     required String productId,
     required double price,
@@ -486,7 +532,7 @@ class AppsflyerService {
     bool isTrial = false,
   }) async {
     final base = <String, dynamic>{
-      AFParams.revenue: price,
+      AFParams.price: price,
       AFParams.currency: currency,
       AFParams.contentId: productId,
       AFParams.contentType: packageType ?? 'subscription',
@@ -496,8 +542,7 @@ class AppsflyerService {
     if (isTrial) {
       await logEvent(AFEvents.startTrial, base);
     } else {
-      await logEvent(AFEvents.purchase, base);
-      await logEvent(AFEvents.subscribe, base);
+      await logEvent('chessever_purchase_completed', base);
     }
   }
 
@@ -636,12 +681,11 @@ class AppsflyerService {
           parseAppsFlyerInstallTime(cachedData['install_time']) ??
           DateTime.now().toUtc();
 
-      final platform =
-          Platform.isIOS
-              ? 'ios'
-              : Platform.isAndroid
-              ? 'android'
-              : 'unknown';
+      final platform = Platform.isIOS
+          ? 'ios'
+          : Platform.isAndroid
+          ? 'android'
+          : 'unknown';
 
       await Supabase.instance.client.from('affiliate_referrals').insert({
         'referred_user_id': userId,
@@ -676,8 +720,8 @@ class AppsflyerService {
       if (e is PostgrestException && e.code == '23505') {
         // UNIQUE(referred_user_id) — already attributed; safe to drop cache.
         debugPrint('AppsflyerService: Referral already exists for user.');
-        final prefs =
-            await SharedPreferencesService.instance.ensureInitialized();
+        final prefs = await SharedPreferencesService.instance
+            .ensureInitialized();
         await prefs?.remove(_kCachedAffiliateDataKey);
       } else {
         debugPrint('AppsflyerService: Failed to sync affiliate data: $e');
@@ -709,12 +753,39 @@ class AppsflyerService {
     return metadata;
   }
 
-  Future<void> _cacheInstallMetadata(
-    SharedPreferences prefs,
-    Map payload,
-  ) async {
-    final metadata = _installMetadataFromPayload(payload);
-    await prefs.setString(_kCachedInstallMetadataKey, jsonEncode(metadata));
+  Future<void> _cacheFirstInstallAttribution(Map payload) {
+    final operation = _attributionWrite.then((_) async {
+      final prefs = await SharedPreferencesService.instance.ensureInitialized();
+      if (prefs == null) return;
+      final raw = prefs.getString(_kCachedInstallMetadataKey);
+      final previous = raw == null
+          ? <String, dynamic>{}
+          : Map<String, dynamic>.from(jsonDecode(raw) as Map);
+      final previousPayload = {
+        ...previous,
+        if (previous['affiliate_code'] != null)
+          'af_sub1': previous['affiliate_code'],
+        if (previous['install_at'] != null)
+          'install_time': previous['install_at'],
+      };
+      final merged = mergeAppsFlyerInstallAttribution(previousPayload, payload);
+      final metadata = _installMetadataFromPayload(merged);
+      await prefs.setString(_kCachedInstallMetadataKey, jsonEncode(metadata));
+      if (appsFlyerIsNonOrganic(merged) &&
+          appsFlyerAffiliateCode(merged) != null) {
+        await prefs.setString(_kCachedAffiliateDataKey, jsonEncode(merged));
+        final user = Supabase.instance.client.auth.currentUser;
+        if (user != null) await _syncAffiliateDataToSupabase(user.id);
+      }
+      await _forwardCachedInstallMetadataToRevenueCat();
+    });
+    // Keep later callbacks retryable after a storage or network failure.
+    _attributionWrite = operation.catchError((Object error) {
+      debugPrint(
+        'AppsflyerService: Failed to cache install attribution: $error',
+      );
+    });
+    return _attributionWrite;
   }
 
   void _handleConversionData(
@@ -735,32 +806,7 @@ class AppsflyerService {
         payload['is_first_launch'] == 'true';
     if (isFirstLaunch) {
       debugPrint('AppsflyerService: First launch attribution: $payload');
-      try {
-        final prefs =
-            await SharedPreferencesService.instance.ensureInitialized();
-        if (prefs != null) {
-          await _cacheInstallMetadata(prefs, payload);
-          unawaited(_forwardCachedInstallMetadataToRevenueCat());
-
-          if (appsFlyerIsNonOrganic(payload) &&
-              appsFlyerAffiliateCode(payload) != null) {
-            final encodableData = Map<String, dynamic>.from(payload);
-            await prefs.setString(
-              _kCachedAffiliateDataKey,
-              jsonEncode(encodableData),
-            );
-
-            final user = Supabase.instance.client.auth.currentUser;
-            if (user != null) {
-              unawaited(_syncAffiliateDataToSupabase(user.id));
-            }
-          } else {
-            await prefs.remove(_kCachedAffiliateDataKey);
-          }
-        }
-      } catch (e) {
-        debugPrint('AppsflyerService: Failed to cache conversion data: $e');
-      }
+      await _cacheFirstInstallAttribution(payload);
 
       // Forward attribution context to RevenueCat so the customer profile
       // there carries media_source / campaign / etc. RC then surfaces this
@@ -784,6 +830,11 @@ class AppsflyerService {
     WidgetRef ref,
   ) {
     if (deepLink == null) return;
+    final deferred = deferredAppsFlyerAffiliatePayload(
+      deepLink.clickEvent,
+      DateTime.now().toUtc(),
+    );
+    if (deferred != null) unawaited(_cacheFirstInstallAttribution(deferred));
     final String? deepLinkValue = deepLink.deepLinkValue;
     debugPrint('AppsflyerService: Unified deep link value: $deepLinkValue');
     if (deepLinkValue == null || deepLinkValue.isEmpty) return;
@@ -791,7 +842,9 @@ class AppsflyerService {
     if (deepLinkValue.startsWith('http')) {
       _routeToDeepLink(deepLinkValue, navigatorKey, ref);
     } else {
-      final uri = Uri.tryParse('https://chessever.com/$deepLinkValue');
+      final uri = Uri.tryParse(
+        'https://chessever.com/${deepLinkValue.replaceFirst(RegExp(r"^/+"), "")}',
+      );
       if (uri != null) {
         DeepLinkService.instance.handleDeepLink(uri, navigatorKey, ref);
       }

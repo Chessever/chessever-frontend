@@ -30,11 +30,17 @@ async function deliver(
     duplicate?: boolean;
     installAt?: string;
     ledger?: Record<string, unknown>[];
+    referral?: Record<string, unknown> | null;
+    mapping?: Record<string, unknown> | null;
+    mappingFails?: boolean;
+    dbFailure?: "referral" | "affiliate" | "refund";
+    referralConflict?: boolean;
   } = {},
 ) {
   const environment = {
     SUPABASE_URL: "https://webhook.test",
     SUPABASE_SERVICE_ROLE_KEY: "test-only-service-key",
+    PAYMENT_ANALYTICS_TOKEN: "test-only-reporting-token",
     REVENUECAT_WEBHOOK_AUTH: "test-only-webhook-secret",
     REVENUECAT_SYNC_TOKEN: "test-only-sync-secret",
   };
@@ -77,6 +83,27 @@ async function deliver(
       ? JSON.parse(request.body)
       : null;
     calls.push({ url, method, body });
+    if (url.pathname === "/functions/v1/payment-analytics") {
+      return Promise.resolve(Response.json({ status: "queued" }));
+    }
+    if (
+      (options.dbFailure === "referral" &&
+        url.pathname === "/rest/v1/affiliate_referrals" && method === "GET") ||
+      (options.dbFailure === "affiliate" &&
+        url.pathname === "/rest/v1/affiliates") ||
+      (options.dbFailure === "refund" &&
+        url.pathname === "/rest/v1/affiliate_conversions" && method === "PATCH")
+    ) {
+      return Promise.resolve(
+        Response.json({ message: "temporary database failure" }, {
+          status: 503,
+        }),
+      );
+    }
+    if (
+      options.referralConflict &&
+      url.pathname === "/rest/v1/affiliate_referrals" && method === "POST"
+    ) return Promise.resolve(Response.json({ code: "23505" }, { status: 409 }));
     if (url.pathname === "/functions/v1/revenuecat-sync") {
       return Promise.resolve(
         options.syncFails
@@ -85,13 +112,37 @@ async function deliver(
       );
     }
     if (url.pathname === "/rest/v1/affiliate_referrals" && method === "GET") {
-      return Promise.resolve(Response.json([{
-        affiliate_code: "partner",
-        install_at: options.installAt ?? "2026-10-21T12:00:00Z",
-        created_at: "2026-10-21T12:00:00Z",
-        appsflyer_data: { af_status: "Non-organic" },
-        platform: null,
-      }]));
+      return Promise.resolve(
+        Response.json(
+          options.referral === null ? [] : [
+            options.referral ?? {
+              affiliate_code: "partner",
+              is_sandbox: event.environment === "SANDBOX",
+              install_at: options.installAt ?? "2026-10-21T12:00:00Z",
+              created_at: "2026-10-21T12:00:00Z",
+              appsflyer_data: { af_status: "Non-organic" },
+              platform: null,
+            },
+          ],
+        ),
+      );
+    }
+    if (url.pathname === "/rest/v1/affiliate_referrals" && method === "POST") {
+      return Promise.resolve(Response.json([]));
+    }
+    if (url.pathname === "/rest/v1/affiliate_native_offer_codes") {
+      if (options.mappingFails) {
+        return Promise.resolve(
+          Response.json({ message: "database unavailable" }, { status: 503 }),
+        );
+      }
+      const mapping = options.mapping;
+      const matches = mapping &&
+        ["code", "store", "is_active"].every((key) =>
+          !url.searchParams.has(key) ||
+          url.searchParams.get(key) === `eq.${mapping[key]}`
+        );
+      return Promise.resolve(Response.json(matches ? [mapping] : []));
     }
     if (url.pathname === "/rest/v1/affiliates" && method === "GET") {
       return Promise.resolve(Response.json([{
@@ -368,4 +419,103 @@ Deno.test("a prior production purchase still qualifies its own renewal after the
   equal(result.status, 200);
   equal(result.body.message, "Conversion recorded");
   equal(result.ledger.length, 2);
+});
+
+const nativeMapping = {
+  affiliate_id: "partner-id",
+  code: "native-partner",
+  store: "APP_STORE",
+  is_active: true,
+  product_ids: ["test-only-product"],
+  expires_at: null,
+  created_at: "2026-10-20T12:00:00Z",
+};
+Deno.test("a provider-confirmed mapped native code credits a new user without install attribution", async () => {
+  const result = await deliver({
+    store: "APP_STORE",
+    offer_code: "NATIVE-PARTNER",
+  }, { referral: null, mapping: nativeMapping });
+  equal(result.status, 200);
+  equal(result.ledger.length, 1);
+  equal(result.ledger[0].affiliate_code, "partner");
+  const referral = result.calls.find((c) =>
+    c.url.pathname === "/rest/v1/affiliate_referrals" && c.method === "POST"
+  );
+  equal((referral?.body as Record<string, unknown>)?.appsflyer_data, {
+    source: "offer_code",
+    via: "redemption",
+    af_status: "Non-organic",
+    offer_code: "NATIVE-PARTNER",
+    verified_store: "APP_STORE",
+  });
+});
+for (
+  const [name, mapping] of Object.entries({
+    inactive: { ...nativeMapping, is_active: false },
+    wrongStore: { ...nativeMapping, store: "PLAY_STORE" },
+    wrongProduct: { ...nativeMapping, product_ids: ["other"] },
+    expired: { ...nativeMapping, expires_at: "2026-10-21T00:00:00Z" },
+  })
+) {
+  Deno.test(`native code cannot credit an ${name} mapping`, async () => {
+    const result = await deliver({
+      store: "APP_STORE",
+      offer_code: "native-partner",
+    }, { referral: null, mapping });
+    equal(result.ledger.length, 0);
+  });
+}
+Deno.test("a native renewal cannot establish a fresh code-only referral", async () => {
+  const result = await deliver({
+    store: "APP_STORE",
+    type: "RENEWAL",
+    offer_code: "native-partner",
+  }, { referral: null, mapping: nativeMapping });
+  equal(result.ledger.length, 0);
+});
+Deno.test("client-stamped redemption code cannot establish native financial attribution", async () => {
+  const result = await deliver({
+    store: "APP_STORE",
+    subscriber_attributes: { redemption_code: { value: "native-partner" } },
+  }, { referral: null, mapping: nativeMapping });
+  equal(result.ledger.length, 0);
+});
+Deno.test("native code mapping database failures request provider retry", async () => {
+  const result = await deliver({
+    store: "APP_STORE",
+    offer_code: "native-partner",
+  }, { referral: null, mappingFails: true });
+  equal(result.status, 500);
+  equal(result.ledger.length, 0);
+});
+Deno.test("sandbox referrals cannot qualify production purchases", async () => {
+  const result = await deliver({ store: "APP_STORE" }, {
+    referral: {
+      affiliate_code: "partner",
+      is_sandbox: true,
+      appsflyer_data: { af_status: "Non-organic" },
+      install_at: "2026-10-21T12:00:00Z",
+    },
+  });
+  equal(result.ledger.length, 0);
+});
+
+for (const dbFailure of ["referral", "affiliate", "refund"] as const) {
+  Deno.test(`a ${dbFailure} database failure retries instead of silently losing attribution`, async () => {
+    const result = await deliver(
+      dbFailure === "refund"
+        ? { store: "APP_STORE", type: "CANCELLATION", cancel_reason: "REFUND" }
+        : { store: "APP_STORE" },
+      { dbFailure },
+    );
+    equal(result.status, 500);
+  });
+}
+Deno.test("a competing referral is re-read on provider retry before awarding commission", async () => {
+  const result = await deliver({
+    store: "APP_STORE",
+    offer_code: "native-partner",
+  }, { referral: null, mapping: nativeMapping, referralConflict: true });
+  equal(result.status, 500);
+  equal(result.ledger.length, 0);
 });

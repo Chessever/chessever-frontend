@@ -1,18 +1,23 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.39.0";
-import { syncSubscriptionEvent } from "./subscription-sync.ts";
+import { recordPaymentAnalytics } from "../_shared/payment-analytics.ts";
+import {
+  affectedAccounts,
+  syncSubscriptionEvent,
+} from "./subscription-sync.ts";
 
 console.log("RevenueCat Webhook Function Started!");
 
 const ATTRIBUTION_WINDOW_MS = 14 * 24 * 60 * 60 * 1000;
 
 type Platform = "ios" | "android" | "web" | "unknown";
-type AttributionSource = "install" | "stamp";
+type AttributionSource = "install" | "stamp" | "offer_code";
 
 type SubscriberAttributes = Record<string, { value?: string }>;
 
 type ReferralRow = {
   affiliate_code: string;
+  is_sandbox: boolean;
   created_at: string | null;
   install_at: string | null;
   appsflyer_data: Record<string, unknown> | null;
@@ -129,13 +134,14 @@ async function findActiveAffiliate(
   const variants = Array.from(
     new Set([code, code.toLowerCase(), code.toUpperCase()]),
   );
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from("affiliates")
     .select("code, commission_rate, is_active")
     .in("code", variants)
     .eq("is_active", true)
     .limit(1)
     .maybeSingle();
+  if (error) throw error;
   return data as AffiliateRow | null;
 }
 
@@ -185,7 +191,8 @@ Deno.serve(async (req) => {
 
     const isSandbox = event.environment === "SANDBOX";
     const eventType = String(event.type ?? "");
-    const appUserId = String(event.app_user_id ?? "");
+    const appUserId = affectedAccounts(event)[0] ??
+      String(event.app_user_id ?? "");
     const eventId = String(event.id ?? "");
     const productId = nonEmpty(event.product_id);
     const price = typeof event.price === "number" ? event.price : 0;
@@ -227,6 +234,43 @@ Deno.serve(async (req) => {
       supabaseUrl,
       Deno.env.get("REVENUECAT_SYNC_TOKEN") ?? "",
     );
+
+    // Native receipts, including refunds, are recorded independently of affiliate
+    // eligibility. Stripe owns every web revenue postback, including Lifetime.
+    if (
+      !isStripe && affectedAccounts(event).length &&
+      ((isPurchase && !isTrialPeriod) || isRefund)
+    ) {
+      const paid = typeof event.price_in_purchased_currency === "number"
+        ? event.price_in_purchased_currency
+        : price;
+      const nativeAppId = String(event.store).toUpperCase() === "PLAY_STORE"
+        ? "com.chessEver.app"
+        : String(event.store).toUpperCase() === "APP_STORE"
+        ? "id6752567269"
+        : Deno.env.get("APPSFLYER_MAC_APP_ID") ?? null;
+      await recordPaymentAnalytics({
+        event_key: `revenuecat:${eventId}`,
+        channel: "mobile",
+        provider: "revenuecat",
+        user_id: appUserId,
+        appsflyer_id: attrValue(
+          (event.subscriber_attributes ?? {}) as SubscriberAttributes,
+          "$appsflyerId",
+        ),
+        app_id: nativeAppId,
+        event_name: isRefund ? "refund" : "purchase",
+        transaction_id: String(event.transaction_id ?? eventId),
+        amount: isRefund ? -Math.abs(paid) : paid,
+        currency: (typeof event.price_in_purchased_currency === "number"
+          ? currency
+          : "USD").toUpperCase(),
+        occurred_at: (isRefund
+          ? dateFromMillis(event.event_timestamp_ms) ?? convertedAt
+          : convertedAt).toISOString(),
+        is_sandbox: isSandbox,
+      });
+    }
 
     // Stripe mirrors receipts into RevenueCat, but stripe-webhook already owns
     // subscription commissions, trials and invoice refunds. Synchronize access
@@ -278,7 +322,8 @@ Deno.serve(async (req) => {
       // A Stripe subscription refund belongs to its invoice handler. Only
       // reverse RevenueCat's lifetime purchase here, never recurring invoices.
       if (isStripe) query = query.eq("event_type", "NON_RENEWING_PURCHASE");
-      await query;
+      const { error } = await query;
+      if (error) throw error;
 
       return new Response(JSON.stringify({ message: "Refund processed" }), {
         status: 200,
@@ -294,7 +339,8 @@ Deno.serve(async (req) => {
         .eq("is_sandbox", isSandbox)
         .eq("status", "trial");
       if (productId) query = query.eq("product_id", productId);
-      await query;
+      const { error } = await query;
+      if (error) throw error;
 
       return new Response(JSON.stringify({ message: "Trial cancelled" }), {
         status: 200,
@@ -318,16 +364,22 @@ Deno.serve(async (req) => {
     let installAt: Date | null = null;
     let referralPlatform: Platform | null = null;
 
-    const { data: referral } = await supabase
+    const { data: referral, error: referralReadError } = await supabase
       .from("affiliate_referrals")
       .select(
-        "affiliate_code, install_at, created_at, appsflyer_data, platform",
+        "affiliate_code, install_at, created_at, appsflyer_data, platform, is_sandbox",
       )
       .eq("referred_user_id", appUserId)
       .maybeSingle();
 
+    if (referralReadError) throw referralReadError;
     if (referral) {
       const referralRow = referral as ReferralRow;
+      if (referralRow.is_sandbox !== isSandbox) {
+        return Response.json({
+          message: "Referral belongs to another environment",
+        });
+      }
       if (referralIsNonOrganic(referralRow)) {
         affiliateCode = referralRow.affiliate_code;
         installAt = referralInstallDate(referralRow);
@@ -338,7 +390,7 @@ Deno.serve(async (req) => {
     }
 
     if (
-      !affiliateCode &&
+      !referral && !affiliateCode &&
       stampedAffiliateCode &&
       attributesAreNonOrganic(subAttrs)
     ) {
@@ -350,6 +402,43 @@ Deno.serve(async (req) => {
         affiliateCode = affiliate.code;
         installAt = installDateFromAttributes(subAttrs);
         attributionSource = "stamp";
+      }
+    }
+
+    // Only a store-confirmed code may establish code-only native attribution.
+    // Client redemption attributes are informational and cannot grant commission.
+    if (
+      !referral && !affiliateCode && (isInitial || isNonRenew || isTrialStarted)
+    ) {
+      const offerCode = nonEmpty(event.offer_code)?.toLowerCase();
+      if (offerCode && platform !== "web" && productId) {
+        const { data: mapping, error: mappingError } = await supabase.from(
+          "affiliate_native_offer_codes",
+        )
+          .select("affiliate_id, product_ids, expires_at, created_at")
+          .eq("code", offerCode).eq("store", String(event.store).toUpperCase())
+          .eq("is_active", true).maybeSingle();
+        if (mappingError) throw mappingError;
+        if (
+          mapping && mapping.product_ids.includes(productId) &&
+          (!mapping.expires_at ||
+            convertedAt <= new Date(mapping.expires_at)) &&
+          convertedAt >= new Date(mapping.created_at)
+        ) {
+          const { data: owner, error: ownerError } = await supabase.from(
+            "affiliates",
+          )
+            .select("code, commission_rate, is_active").eq(
+              "id",
+              mapping.affiliate_id,
+            ).eq("is_active", true).maybeSingle();
+          if (ownerError) throw ownerError;
+          if (owner) {
+            affiliateCode = owner.code;
+            installAt = convertedAt;
+            attributionSource = "offer_code";
+          }
+        }
       }
     }
 
@@ -366,7 +455,7 @@ Deno.serve(async (req) => {
 
     let hasPriorPaidConversion = false;
     if (isRenewal && !isTrialConverted) {
-      const { data: priorConversion } = await supabase
+      const { data: priorConversion, error: priorReadError } = await supabase
         .from("affiliate_conversions")
         .select("id")
         .eq("referred_user_id", appUserId)
@@ -376,6 +465,7 @@ Deno.serve(async (req) => {
         .in("status", ["pending", "cleared", "paid"])
         .limit(1)
         .maybeSingle();
+      if (priorReadError) throw priorReadError;
       hasPriorPaidConversion = !!priorConversion;
     }
 
@@ -406,15 +496,23 @@ Deno.serve(async (req) => {
           appsflyer_data: {
             source: attributionSource,
             via: "redemption",
-            af_status: attrValue(subAttrs, "redemption_af_status") ??
-              attrValue(subAttrs, "appsflyer_af_status"),
+            af_status: "Non-organic",
+            ...(attributionSource === "offer_code"
+              ? { offer_code: event.offer_code, verified_store: event.store }
+              : {}),
           },
           install_at: installAt?.toISOString(),
           is_sandbox: isSandbox,
           platform,
         });
       if (backfillErr && backfillErr.code !== "23505") {
-        console.warn(`Referral back-fill failed: ${backfillErr.message}`);
+        throw backfillErr;
+      } else if (backfillErr?.code === "23505") {
+        // Re-evaluate the winning referral and its original timestamp on retry.
+        // Continuing with the losing stamp could reset the qualifying window.
+        throw new Error(
+          "Referral established concurrently; retry to evaluate first attribution",
+        );
       } else {
         console.log(
           `Back-filled affiliate_referrals via ${attributionSource} for ${appUserId} -> ${affiliateCode}`,

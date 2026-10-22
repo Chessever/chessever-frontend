@@ -146,11 +146,17 @@ class RevenueCatService {
   /// use this to re-run whatever they gave up on.
   void Function()? onSdkStateChanged;
 
+  /// Re-stamp attribution when configuration or the RevenueCat account changes.
+  /// Separate from the subscription UI listener so neither replaces the other.
+  Future<void> Function()? onAttributionSyncRequested;
+
   /// Mark the Purchases SDK as configured. Call once after successful
   /// `Purchases.configure` in app startup.
   void markSdkReady() {
     _sdkReady = true;
     _sdkConfigurationError = null;
+    final syncAttribution = onAttributionSyncRequested;
+    if (syncAttribution != null) unawaited(syncAttribution());
     final pending = _pendingCustomerInfoListener;
     if (pending != null) {
       _pendingCustomerInfoListener = null;
@@ -201,6 +207,11 @@ class RevenueCatService {
           await Purchases.collectDeviceIdentifiers();
         } catch (e) {
           debugPrint('RevenueCatService: collectDeviceIdentifiers failed: $e');
+        }
+        try {
+          await onAttributionSyncRequested?.call();
+        } catch (e) {
+          debugPrint('RevenueCatService: attribution sync failed: $e');
         }
 
         // Forward the device's OneSignal subscription ID to the new RC customer

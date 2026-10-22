@@ -24,6 +24,68 @@ void main() {
       expect(appsFlyerAffiliateCode({'af_sub1': '  '}), isNull);
     });
 
+    test(
+      'accepts privacy restricted deferred UDL with only deep_link_sub1',
+      () {
+        final observed = DateTime.utc(2026, 10, 22);
+        final payload = deferredAppsFlyerAffiliatePayload({
+          'is_deferred': true,
+          'deep_link_sub1': 'RookReview',
+        }, observed)!;
+        expect(appsFlyerAffiliateCode(payload), 'rookreview');
+        expect(appsFlyerIsNonOrganic(payload), isTrue);
+        expect(payload['install_time'], observed.toIso8601String());
+        expect(
+          deferredAppsFlyerAffiliatePayload({
+            'is_deferred': false,
+            'deep_link_sub1': 'other',
+          }, observed),
+          isNull,
+        );
+        expect(
+          deferredAppsFlyerAffiliatePayload({
+            'deep_link_sub1': 'other',
+          }, observed),
+          isNull,
+        );
+        expect(
+          deferredAppsFlyerAffiliatePayload({
+            'is_deferred': true,
+            'deep_link_sub1': '<invalid>',
+          }, observed),
+          isNull,
+        );
+      },
+    );
+    test(
+      'callback order cannot erase or replace the first partner or restart its window',
+      () {
+        final first = {
+          'af_status': 'Non-organic',
+          'deep_link_sub1': 'rookreview',
+          'install_time': '2026-10-20T00:00:00Z',
+        };
+        expect(
+          mergeAppsFlyerInstallAttribution(first, {'af_status': 'Organic'}),
+          first,
+        );
+        expect(
+          mergeAppsFlyerInstallAttribution(first, {
+            'af_status': 'Non-organic',
+            'af_sub1': 'other',
+          }),
+          first,
+        );
+        expect(
+          mergeAppsFlyerInstallAttribution({
+            'af_status': 'Organic',
+            'install_time': '2026-10-19T00:00:00Z',
+          }, first)['install_time'],
+          '2026-10-19T00:00:00Z',
+        );
+      },
+    );
+
     test('parses AppsFlyer install timestamps as UTC', () {
       expect(
         parseAppsFlyerInstallTime('2026-04-20 12:30:10.123')?.toIso8601String(),
