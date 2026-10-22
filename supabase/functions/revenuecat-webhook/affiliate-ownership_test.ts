@@ -1,0 +1,248 @@
+// Exercise the deployed entrypoint with all outbound requests intercepted.
+let handleWebhook: (request: Request) => Promise<Response>;
+const originalServe = Deno.serve;
+try {
+  Deno.serve = ((handler: typeof handleWebhook) => {
+    handleWebhook = handler;
+  }) as typeof Deno.serve;
+  await import("./index.ts");
+} finally {
+  Deno.serve = originalServe;
+}
+
+const userId = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
+const purchasedAt = Date.parse("2026-10-22T12:00:00Z");
+type Call = { url: URL; method: string; body: unknown };
+
+function equal(actual: unknown, expected: unknown) {
+  if (JSON.stringify(actual) !== JSON.stringify(expected)) {
+    throw new Error(
+      `Expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`,
+    );
+  }
+}
+
+async function deliver(
+  event: Record<string, unknown>,
+  options: { authorized?: boolean; syncFails?: boolean; duplicate?: boolean } =
+    {},
+) {
+  const environment = {
+    SUPABASE_URL: "https://webhook.test",
+    SUPABASE_SERVICE_ROLE_KEY: "test-only-service-key",
+    REVENUECAT_WEBHOOK_AUTH: "test-only-webhook-secret",
+    REVENUECAT_SYNC_TOKEN: "test-only-sync-secret",
+  };
+  const previous = new Map<string, string | undefined>();
+  for (const [key, value] of Object.entries(environment)) {
+    previous.set(key, Deno.env.get(key));
+    Deno.env.set(key, value);
+  }
+  const calls: Call[] = [];
+  const originalFetch = globalThis.fetch;
+  // supabase-js starts background auth timers even for a service-role client.
+  // Track and close them so each delivery keeps Deno's leak checks enabled.
+  const originalTimeout = globalThis.setTimeout;
+  const originalInterval = globalThis.setInterval;
+  const timers = new Set<number>();
+  globalThis.setTimeout = ((
+    callback: (...args: unknown[]) => void,
+    delay?: number,
+    ...args: unknown[]
+  ) => {
+    const id = originalTimeout(callback, delay, ...args);
+    timers.add(id);
+    return id;
+  }) as typeof setTimeout;
+  globalThis.setInterval = ((
+    callback: (...args: unknown[]) => void,
+    delay?: number,
+    ...args: unknown[]
+  ) => {
+    const id = originalInterval(callback, delay, ...args);
+    timers.add(id);
+    return id;
+  }) as typeof setInterval;
+  globalThis.fetch = (input, init) => {
+    const url = new URL(input instanceof Request ? input.url : String(input));
+    const request = init as { method?: string; body?: unknown } | undefined;
+    const method = request?.method ?? "GET";
+    const body = typeof request?.body === "string"
+      ? JSON.parse(request.body)
+      : null;
+    calls.push({ url, method, body });
+    if (url.pathname === "/functions/v1/revenuecat-sync") {
+      return Promise.resolve(
+        options.syncFails
+          ? new Response(null, { status: 503 })
+          : Response.json({ summary: { error: 0 } }),
+      );
+    }
+    if (url.pathname === "/rest/v1/affiliate_referrals" && method === "GET") {
+      return Promise.resolve(Response.json([{
+        affiliate_code: "partner",
+        install_at: "2026-10-21T12:00:00Z",
+        created_at: "2026-10-21T12:00:00Z",
+        appsflyer_data: { af_status: "Non-organic" },
+        platform: null,
+      }]));
+    }
+    if (url.pathname === "/rest/v1/affiliates" && method === "GET") {
+      return Promise.resolve(Response.json([{
+        code: "partner",
+        is_active: true,
+        commission_rate: 0.15,
+      }]));
+    }
+    if (url.pathname === "/rest/v1/affiliate_conversions") {
+      if (options.duplicate && method === "POST") {
+        return Promise.resolve(
+          Response.json({ code: "23505" }, { status: 409 }),
+        );
+      }
+      return Promise.resolve(Response.json([]));
+    }
+    throw new Error(`Unexpected request: ${method} ${url}`);
+  };
+  try {
+    const response = await handleWebhook(
+      new Request("https://webhook.test", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          ...(options.authorized === false
+            ? {}
+            : { authorization: environment.REVENUECAT_WEBHOOK_AUTH }),
+        },
+        body: JSON.stringify({
+          event: {
+            id: "test-only-event",
+            app_user_id: userId,
+            environment: "PRODUCTION",
+            store: "STRIPE",
+            type: "INITIAL_PURCHASE",
+            product_id: "test-only-product",
+            purchased_at_ms: purchasedAt,
+            price: 10,
+            currency: "USD",
+            ...event,
+          },
+        }),
+      }),
+    );
+    return { status: response.status, body: await response.json(), calls };
+  } finally {
+    await new Promise((resolve) => originalTimeout(resolve, 0));
+    for (const id of timers) {
+      clearTimeout(id);
+      clearInterval(id);
+    }
+    globalThis.setTimeout = originalTimeout;
+    globalThis.setInterval = originalInterval;
+    globalThis.fetch = originalFetch;
+    for (const [key, value] of previous) {
+      if (value === undefined) Deno.env.delete(key);
+      else Deno.env.set(key, value);
+    }
+  }
+}
+
+const stripeSubscriptionEvents = [
+  { type: "INITIAL_PURCHASE" },
+  { type: "RENEWAL" },
+  { type: "INITIAL_PURCHASE", period_type: "TRIAL" },
+  { type: "TRIAL_STARTED" },
+  { type: "TRIAL_CONVERTED" },
+  { type: "RENEWAL", is_trial_conversion: true },
+  { type: "TRIAL_CANCELLED" },
+  { type: "EXPIRATION" },
+];
+for (const event of stripeSubscriptionEvents) {
+  Deno.test(`Stripe ${JSON.stringify(event)} syncs access without affiliate reads or writes`, async () => {
+    // Retries must be acknowledged without ever adding a second commission.
+    for (let delivery = 0; delivery < 2; delivery++) {
+      const result = await deliver(event);
+      equal(result.status, 200);
+      equal(result.body.message, "Affiliate event handled by Stripe");
+      equal(result.calls.length, 1);
+      equal(result.calls[0].url.pathname, "/functions/v1/revenuecat-sync");
+      equal(result.calls[0].body, { userIds: [userId], concurrency: 4 });
+    }
+  });
+}
+
+Deno.test("Stripe still retries failed entitlement synchronization", async () => {
+  const result = await deliver({}, { syncFails: true });
+  equal(result.status, 500);
+  equal(result.calls.length, 1);
+});
+
+Deno.test("unauthenticated Stripe events cannot reach subscription or affiliate storage", async () => {
+  const result = await deliver({}, { authorized: false });
+  equal(result.status, 401);
+  equal(result.calls.length, 0);
+});
+
+for (
+  const event of [
+    { store: "STRIPE", type: "NON_RENEWING_PURCHASE" },
+    { store: "APP_STORE", type: "INITIAL_PURCHASE" },
+    { store: "PLAY_STORE", type: "RENEWAL" },
+    { store: "RC_BILLING", type: "INITIAL_PURCHASE" },
+  ]
+) {
+  Deno.test(`${event.store} ${event.type} keeps its RevenueCat commission`, async () => {
+    const result = await deliver(event);
+    equal(result.status, 200);
+    equal(result.body.message, "Conversion recorded");
+    const inserts = result.calls.filter((call) =>
+      call.method === "POST" &&
+      call.url.pathname === "/rest/v1/affiliate_conversions"
+    );
+    equal(inserts.length, 1);
+    const row = inserts[0].body as Record<string, unknown>;
+    equal(row.event_type, event.type);
+    equal(row.affiliate_code, "partner");
+    equal(row.commission_usd, 1.5);
+  });
+}
+
+Deno.test("lifetime retries retain RevenueCat event-id deduplication", async () => {
+  const result = await deliver({ type: "NON_RENEWING_PURCHASE" }, {
+    duplicate: true,
+  });
+  equal(result.status, 200);
+  equal(result.body.message, "Event already processed");
+});
+
+for (const store of ["STRIPE", "APP_STORE", "PLAY_STORE"]) {
+  Deno.test(`${store} refund preserves store ownership`, async () => {
+    const result = await deliver({
+      store,
+      type: "CANCELLATION",
+      cancel_reason: "REFUND",
+    });
+    equal(result.status, 200);
+    const updates = result.calls.filter((call) => call.method === "PATCH");
+    equal(updates.length, 1);
+    equal(updates[0].body, { status: "refunded" });
+    equal(
+      updates[0].url.searchParams.get("product_id"),
+      "eq.test-only-product",
+    );
+    equal(
+      updates[0].url.searchParams.get("event_type"),
+      store === "STRIPE" ? "eq.NON_RENEWING_PURCHASE" : null,
+    );
+  });
+}
+
+Deno.test("Stripe refund without a product cannot reverse unrelated commissions", async () => {
+  const result = await deliver({
+    type: "CANCELLATION",
+    cancel_reason: "REFUND",
+    product_id: null,
+  });
+  equal(result.status, 200);
+  equal(result.calls.length, 1);
+});

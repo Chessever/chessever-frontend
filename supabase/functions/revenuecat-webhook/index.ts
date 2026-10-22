@@ -191,6 +191,7 @@ Deno.serve(async (req) => {
     const price = typeof event.price === "number" ? event.price : 0;
     const currency = nonEmpty(event.currency) ?? "USD";
     const cancelReason = nonEmpty(event.cancel_reason);
+    const isStripe = nonEmpty(event.store)?.toUpperCase() === "STRIPE";
     const platform = storeToPlatform(nonEmpty(event.store) ?? undefined);
     const periodType = nonEmpty(event.period_type);
     const convertedAt = eventDate(event);
@@ -227,6 +228,20 @@ Deno.serve(async (req) => {
       Deno.env.get("REVENUECAT_SYNC_TOKEN") ?? "",
     );
 
+    // Stripe mirrors receipts into RevenueCat, but stripe-webhook already owns
+    // subscription commissions, trials and invoice refunds. Synchronize access
+    // above, then leave that ledger to Stripe. Lifetime commissions still live
+    // here: Stripe grants access for one-time payments without crediting them.
+    if (isStripe && !isNonRenew && !(isRefund && productId)) {
+      return new Response(
+        JSON.stringify({ message: "Affiliate event handled by Stripe" }),
+        {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        },
+      );
+    }
+
     // EXPIRATION fires when the user's entitlement actually ends (auto-renew
     // off + period_end reached, or revoked). The subscription row above is
     // all that changes: nothing the user saved, liked or followed is removed.
@@ -259,6 +274,9 @@ Deno.serve(async (req) => {
         .eq("referred_user_id", appUserId)
         .in("status", ["pending", "cleared"]);
       if (productId) query = query.eq("product_id", productId);
+      // A Stripe subscription refund belongs to its invoice handler. Only
+      // reverse RevenueCat's lifetime purchase here, never recurring invoices.
+      if (isStripe) query = query.eq("event_type", "NON_RENEWING_PURCHASE");
       await query;
 
       return new Response(JSON.stringify({ message: "Refund processed" }), {
