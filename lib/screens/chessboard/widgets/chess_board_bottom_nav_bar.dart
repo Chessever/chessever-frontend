@@ -251,15 +251,23 @@ class _ChessBoardBottomNavBarState extends ConsumerState<ChessBoardBottomNavBar>
   /// persistent, anchored hint. Tapping its close button or camera clears it.
   void _scheduleVideoCoachmark({bool restore = false}) {
     if (_videoCoachmarkScheduled || _videoCoachmarkEntry != null) return;
+    final tracker = restore ? _restoreTracker : _coachmarkTracker;
+    // Seen users must not keep the retry timer (and its frames) alive.
+    if (tracker.settled) {
+      _hintWatch?.cancel();
+      _hintWatch = null;
+      return;
+    }
     _videoCoachmarkScheduled = true;
     _restoringVideo = restore;
     final generation = ++_coachmarkGeneration;
-    final tracker = restore ? _restoreTracker : _coachmarkTracker;
     WidgetsBinding.instance.scheduleFrame();
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       if (!mounted || generation != _coachmarkGeneration) return;
       if (!_canShowCoachmark(restore)) {
         _videoCoachmarkScheduled = false;
+        _hintWatch?.cancel();
+        _hintWatch = null;
         return;
       }
       _watchHint();
