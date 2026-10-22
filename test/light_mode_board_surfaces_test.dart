@@ -361,10 +361,7 @@ void main() {
         ],
         settle: false,
       );
-      expect(
-        find.text('Turn off the stream by clicking camera icon.'),
-        findsOneWidget,
-      );
+      expect(find.text('Tap the camera to hide the stream.'), findsOneWidget);
       expectNoContrastMisses(audit(tester), where: 'ChessBoardBottomNavBar');
       await tester.pumpWidget(const SizedBox());
     });

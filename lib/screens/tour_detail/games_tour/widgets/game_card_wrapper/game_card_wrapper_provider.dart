@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:chessever2/screens/chessboard/contextual_swipe_coaching.dart';
+import 'package:chessever2/screens/chessboard/widgets/discovery_likes_teaching.dart';
 
 import 'package:chessever2/providers/for_you_games_logic.dart';
 import 'package:chessever2/repository/local_storage/tournament/games/games_local_storage.dart';
@@ -396,6 +397,7 @@ class _GameCardWrapperProvider {
     BoardNavigationListPolicy listPolicy =
         BoardNavigationListPolicy.sourceDefault,
     bool hideEventInfo = false,
+    bool teachDiscoveryLikes = false,
     PlayerProfileDataSource playerProfileDataSource =
         PlayerProfileDataSource.supabase,
     bool showGamebaseButton = false,
@@ -463,21 +465,25 @@ class _GameCardWrapperProvider {
     var callerWasRevealed = false;
     SwipeCoachingVisit? swipeCoachingVisit;
     final boardRoute = MaterialPageRoute<int>(
-      builder:
-          (_) => _ExpandingChessBoardScreen(
-            swipeCoachingVisit: swipeCoachingVisit,
-            initialGames: launch.immediateGames,
-            initialIndex: launch.immediateIndex,
-            expandedNavigation: launch.expanded,
-            navigationSnapshot: launch._latest,
-            viewSource: viewSource,
-            hideEventInfo: hideEventInfo,
-            playerProfileDataSource: playerProfileDataSource,
-            showGamebaseButton: showGamebaseButton,
-            disableGamebaseOverlayByDefault: disableGamebaseOverlayByDefault,
-            showClock: showClock,
-            savedAnalysisData: savedAnalysisData,
-          ),
+      builder: (_) {
+        final board = _ExpandingChessBoardScreen(
+          swipeCoachingVisit: swipeCoachingVisit,
+          initialGames: launch.immediateGames,
+          initialIndex: launch.immediateIndex,
+          expandedNavigation: launch.expanded,
+          navigationSnapshot: launch._latest,
+          viewSource: viewSource,
+          hideEventInfo: hideEventInfo,
+          playerProfileDataSource: playerProfileDataSource,
+          showGamebaseButton: showGamebaseButton,
+          disableGamebaseOverlayByDefault: disableGamebaseOverlayByDefault,
+          showClock: showClock,
+          savedAnalysisData: savedAnalysisData,
+        );
+        return teachDiscoveryLikes
+            ? DiscoveryLikesTeachingScope(child: board)
+            : board;
+      },
     );
     // Route and scrollable identity survive list-model refreshes, but separate
     // actual list surfaces/tabs. Never use the incidental List object identity.

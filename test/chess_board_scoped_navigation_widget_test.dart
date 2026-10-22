@@ -123,6 +123,17 @@ void main() {
           find.text('Swipe to Browse'),
           i == 2 ? findsOneWidget : findsNothing,
         );
+        // An ordinary board open still hands off to the once-only pinch lesson.
+        expect(
+          find.text('Pinch to Resize'),
+          i == 0 ? findsOneWidget : findsNothing,
+        );
+        if (i == 0) {
+          await tester.tap(find.text('Got it'));
+          for (var frame = 0; frame < 5; frame++) {
+            await tester.pump(const Duration(milliseconds: 100));
+          }
+        }
         if (i < 2) {
           navigator.currentState!.pop();
           for (var frame = 0; frame < 5; frame++) {

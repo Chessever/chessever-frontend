@@ -1,4 +1,6 @@
+import 'dart:async';
 import 'dart:math' as math;
+import 'board_feature_teaching_host.dart';
 import 'package:chessever2/screens/chessboard/utils/stream_scroll_coaching.dart';
 import 'package:chessever2/e2e/e2e_ids.dart';
 import 'package:chessever2/providers/engine_settings_provider.dart';
@@ -85,7 +87,7 @@ class ChessBoardBottomNavBar extends ConsumerStatefulWidget {
 }
 
 class _ChessBoardBottomNavBarState extends ConsumerState<ChessBoardBottomNavBar>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   final GlobalKey _videoToggleTargetKey = GlobalKey();
   OverlayEntry? _videoCoachmarkEntry;
   bool _videoCoachmarkScheduled = false;
@@ -94,10 +96,49 @@ class _ChessBoardBottomNavBarState extends ConsumerState<ChessBoardBottomNavBar>
   EventVideoSession? _videoSession;
   int _chipDismissals = 0;
   bool _contextPulseRequested = false;
-  late final AnimationController _cameraPulse = AnimationController(
-    vsync: this,
-    duration: const Duration(milliseconds: 1000),
-  );
+  ValueChanged<bool>? _announce;
+  Timer? _hintWatch;
+  Timer? _pulseEnd;
+  bool _foreground = true;
+
+  bool get _teachingAllowed =>
+      _foreground &&
+      (ModalRoute.of(context)?.isCurrent ?? true) &&
+      BoardFeatureTeachingHost.allowsContextual(context, owner: this) &&
+      (widget.coachingGameId == null ||
+          (!ref
+                  .read(streamScrollCoachingProvider(widget.coachingGameId!))
+                  .showing &&
+              !ref
+                  .read(streamScrollCoachingProvider(widget.coachingGameId!))
+                  .pulsing));
+
+  // Retry only while waiting for another tutorial, or watching a visible hint.
+  // This also removes root-overlay content when another route covers the board.
+  void _watchHint() {
+    _hintWatch ??= Timer.periodic(const Duration(milliseconds: 500), (_) {
+      if (!mounted) return;
+      if (_videoCoachmarkEntry != null) {
+        if (!_teachingAllowed || !_canShowCoachmark(_restoringVideo)) {
+          _hideVideoCoachmark();
+        }
+      } else if (_canShowCoachmark(_restoringVideo) && _teachingAllowed) {
+        _scheduleVideoCoachmark(restore: _restoringVideo);
+      }
+    });
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    _foreground = state == AppLifecycleState.resumed;
+    if (!_foreground) {
+      _hideVideoCoachmark();
+    } else if (_canShowCoachmark(false)) {
+      _scheduleVideoCoachmark();
+    }
+  }
+
+  late final AnimationController _cameraPulse;
   late final Animation<double> _cameraScale = TweenSequence<double>([
     TweenSequenceItem(
       tween: Tween(
@@ -129,6 +170,12 @@ class _ChessBoardBottomNavBarState extends ConsumerState<ChessBoardBottomNavBar>
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
+    _announce ??= BoardFeatureTeachingHost.contextualVisibility(context, this);
+    if (_videoCoachmarkEntry != null && !_teachingAllowed) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && !_teachingAllowed) _hideVideoCoachmark();
+      });
+    }
     final session = EventVideoScope.maybeOf(context)?.session;
     if (!identical(session, _videoSession)) {
       _videoSession = session;
@@ -147,7 +194,16 @@ class _ChessBoardBottomNavBarState extends ConsumerState<ChessBoardBottomNavBar>
   @override
   void initState() {
     super.initState();
-    if (_hasVideoToggle && widget.videoVisible && widget.coachingGameId == null) {
+    // Create while the element is active, even on pages without a stream.
+    _cameraPulse = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1000),
+    );
+    WidgetsBinding.instance.addObserver(this);
+    _foreground =
+        WidgetsBinding.instance.lifecycleState == null ||
+        WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed;
+    if (_hasVideoToggle && widget.videoVisible) {
       _scheduleVideoCoachmark();
     }
   }
@@ -172,8 +228,7 @@ class _ChessBoardBottomNavBarState extends ConsumerState<ChessBoardBottomNavBar>
     final becameActive = !oldWidget.isActivePage;
     final streamOpened = widget.videoVisible && !oldWidget.videoVisible;
     final gameChanged = widget.gameIndex != oldWidget.gameIndex;
-    if (widget.coachingGameId == null &&
-        widget.videoVisible &&
+    if (widget.videoVisible &&
         (toggleAppeared || becameActive || streamOpened || gameChanged)) {
       _scheduleVideoCoachmark();
     }
@@ -181,6 +236,10 @@ class _ChessBoardBottomNavBarState extends ConsumerState<ChessBoardBottomNavBar>
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _hintWatch?.cancel();
+    _pulseEnd?.cancel();
+    _announce?.call(false);
     _coachmarkGeneration++;
     _videoCoachmarkEntry?.remove();
     _videoCoachmarkEntry = null;
@@ -191,19 +250,29 @@ class _ChessBoardBottomNavBarState extends ConsumerState<ChessBoardBottomNavBar>
   /// Readers miss the camera switch, so its first live appearance gets one
   /// persistent, anchored hint. Tapping its close button or camera clears it.
   void _scheduleVideoCoachmark({bool restore = false}) {
-    if (_videoCoachmarkScheduled) return;
+    if (_videoCoachmarkScheduled || _videoCoachmarkEntry != null) return;
+    final tracker = restore ? _restoreTracker : _coachmarkTracker;
+    // Seen users must not keep the retry timer (and its frames) alive.
+    if (tracker.settled) {
+      _hintWatch?.cancel();
+      _hintWatch = null;
+      return;
+    }
     _videoCoachmarkScheduled = true;
     _restoringVideo = restore;
     final generation = ++_coachmarkGeneration;
-    final tracker = restore ? _restoreTracker : _coachmarkTracker;
+    WidgetsBinding.instance.scheduleFrame();
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       if (!mounted || generation != _coachmarkGeneration) return;
       if (!_canShowCoachmark(restore)) {
         _videoCoachmarkScheduled = false;
+        _hintWatch?.cancel();
+        _hintWatch = null;
         return;
       }
+      _watchHint();
       final route = ModalRoute.of(context);
-      if (route != null && !route.isCurrent) {
+      if (!_teachingAllowed) {
         _videoCoachmarkScheduled = false;
         return;
       }
@@ -213,8 +282,13 @@ class _ChessBoardBottomNavBarState extends ConsumerState<ChessBoardBottomNavBar>
         return;
       }
       _videoCoachmarkScheduled = false;
-      if (!claimed ||
-          !_canShowCoachmark(restore) ||
+      if (!claimed) {
+        _hintWatch?.cancel();
+        _hintWatch = null;
+        return;
+      }
+      if (!_canShowCoachmark(restore) ||
+          !_teachingAllowed ||
           (route != null && !route.isCurrent)) {
         if (claimed) tracker.release();
         return;
@@ -230,14 +304,21 @@ class _ChessBoardBottomNavBarState extends ConsumerState<ChessBoardBottomNavBar>
           onClose: _hideVideoCoachmark,
           message: restore
               ? 'Show video here'
-              : 'Turn off the stream by clicking camera icon.',
+              : 'Tap the camera to hide the stream.',
         ),
       );
+      _announce?.call(true);
       overlay.insert(_videoCoachmarkEntry!);
-      if (restore &&
-          !MediaQuery.disableAnimationsOf(context) &&
+      if (!MediaQuery.disableAnimationsOf(context) &&
           !MediaQuery.accessibleNavigationOf(context)) {
-        _cameraPulse.forward(from: 0);
+        if (restore) {
+          _cameraPulse.forward(from: 0);
+        } else {
+          _cameraPulse.repeat();
+          _pulseEnd = Timer(const Duration(milliseconds: 2500), () {
+            if (mounted) _cameraPulse.reset();
+          });
+        }
       }
       setState(() {});
       await tracker.markShown();
@@ -247,6 +328,11 @@ class _ChessBoardBottomNavBarState extends ConsumerState<ChessBoardBottomNavBar>
   void _hideVideoCoachmark() {
     _coachmarkGeneration++;
     _videoCoachmarkScheduled = false;
+    _hintWatch?.cancel();
+    _hintWatch = null;
+    _pulseEnd?.cancel();
+    _pulseEnd = null;
+    _announce?.call(false);
     _cameraPulse.reset();
     if (_videoCoachmarkEntry == null) return;
     _videoCoachmarkEntry?.remove();

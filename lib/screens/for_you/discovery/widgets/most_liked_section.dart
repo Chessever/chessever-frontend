@@ -320,7 +320,7 @@ class _PageBody extends ConsumerWidget {
     int index,
   ) async {
     if (!await _access(context) || !context.mounted) return;
-    openDiscoveryGame(context, ref, games, index);
+    openDiscoveryGame(context, ref, games, index, teachDiscoveryLikes: true);
   }
 
   List<LibraryMenuAction> _gameMenu(

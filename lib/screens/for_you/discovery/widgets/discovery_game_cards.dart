@@ -38,8 +38,9 @@ void openDiscoveryGame(
   BuildContext context,
   WidgetRef ref,
   List<GamesTourModel> games,
-  int index,
-) {
+  int index, {
+  bool teachDiscoveryLikes = false,
+}) {
   if (index < 0 || index >= games.length) return;
   ref
       .read(gameCardWrapperProvider)
@@ -50,6 +51,7 @@ void openDiscoveryGame(
         onReturnFromChessboard: null,
         viewSource: ChessboardView.forYou,
         listPolicy: BoardNavigationListPolicy.preserve,
+        teachDiscoveryLikes: teachDiscoveryLikes,
         playerProfileDataSource: discoveryProfileSource(games[index]),
       );
 }

@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:math' as math;
+import 'package:chessever2/screens/chessboard/widgets/discovery_likes_teaching.dart';
 
 import 'package:chessever2/screens/chessboard/utils/board_feature_teaching_tracker.dart';
 import 'package:chessever2/theme/app_colors.dart';
@@ -236,7 +237,15 @@ class _BoardFeatureTeachingHostState
         _lastInteraction = _time;
         return false;
       },
-      child: widget.child,
+      child: DiscoveryLikesTeachingScope.contains(context)
+          ? DiscoveryLikesTeaching(
+              isEligible: () =>
+                  _routeIsReady &&
+                  _dialog == null &&
+                  (widget.canShowContextual?.call() ?? true),
+              child: widget.child,
+            )
+          : widget.child,
     ),
   );
 }

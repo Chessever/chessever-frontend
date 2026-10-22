@@ -1405,6 +1405,9 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
   bool _checkingWalkthrough = false;
   bool _didShowWalkthrough = false;
   final _swipeLearningGesture = SwipeLearningGesture();
+  // Reserve teaching until the board-open swipe/pinch decision has been made.
+  bool _walkthroughCheckPending = true;
+  bool _pinchTutorialCheckPending = false;
   bool _showTutorialOverlay = false;
   // REMOVED (Trello nl3WwXwQ): PiP/Live Activity teaching dialog discontinued.
   // bool _liveWidgetsIntroShown = false;
@@ -1419,8 +1422,9 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
   late final LikeFlightAnchor _likeFlightAnchor;
 
   // Independent "Pinch to Resize" requests arrive via
-  // [boardPinchTutorialRequestProvider]. Hosted here (not in the board
-  // subtree). Swipe dismissal never requests or suppresses this lesson.
+  // [boardPinchTutorialRequestProvider] on board opens that are not swipe-lesson
+  // visits. Hosted here (not in the board subtree). Swipe dismissal never
+  // requests or suppresses this lesson.
   OverlayEntry? _pinchTutorialEntry;
   int _lastPinchTutorialRequest = 0;
   bool _showPinchTutorial = false;
@@ -1518,12 +1522,18 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
   }
 
   Future<void> _checkAndShowWalkthrough(BuildContext context) async {
-    if (_checkingWalkthrough ||
-        _didShowWalkthrough ||
-        widget.swipeCoachingVisit?.eligible != true ||
-        widget.swipeCoachingVisit?.active != true) {
+    if (_checkingWalkthrough || _didShowWalkthrough) return;
+    final visit = widget.swipeCoachingVisit;
+    if (visit?.eligible != true || visit?.active != true) {
+      // Not a swipe-lesson visit: board open hands off to the once-only pinch
+      // lesson, which self-gates on its own preferences.
+      if (_walkthroughCheckPending) _requestPinchTutorial();
+      _walkthroughCheckPending = false;
       return;
     }
+    // ready() consults the host, which honours this reservation. The claim
+    // rechecks readiness after its storage read, so other teachings can't race.
+    _walkthroughCheckPending = false;
     bool ready() =>
         mounted &&
         context.mounted &&
@@ -1646,6 +1656,15 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
     }
   }
 
+  /// Signals the independent "Pinch to Resize" lesson to run. Bumping the
+  /// counter triggers the listener in [build]; the handler re-checks its own
+  /// prefs guard before showing, so this is safe to call on every board open.
+  void _requestPinchTutorial() {
+    if (!mounted || !_canShowTeachingsForCurrentGame()) return;
+    _pinchTutorialCheckPending = true;
+    ref.read(boardPinchTutorialRequestProvider.notifier).update((v) => v + 1);
+  }
+
   Future<void> _suppressWalkthrough() async {
     await contextualSwipeCoaching.disable();
   }
@@ -1653,6 +1672,14 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
   /// Independently requested "Pinch to Resize" teaching, self-gated on its
   /// own preferences. Contextual stream/resize coaching remains separate.
   Future<void> _maybeStartPinchTutorial() async {
+    try {
+      await _checkPinchTutorialPreferences();
+    } finally {
+      _pinchTutorialCheckPending = false;
+    }
+  }
+
+  Future<void> _checkPinchTutorialPreferences() async {
     if (!mounted ||
         _showPinchTutorial ||
         _showTutorialOverlay ||
@@ -3224,6 +3251,9 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
                 isEligibleVisit: _canShowTeachingsForCurrentGame,
                 eligibleFeatures: _eligibleFeatureTeachings,
                 canShowContextual: () =>
+                    !_walkthroughCheckPending &&
+                    !_pinchTutorialCheckPending &&
+                    ref.read(likeNudgeOfferProvider(_currentPageIndex)) == null &&
                     !_showTutorialOverlay &&
                     !_showPinchTutorial &&
                     !_gameSwitcher.isOpen &&
