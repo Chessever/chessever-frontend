@@ -29,7 +29,7 @@ wait for a person to release it in the store console.
 | `publish` | on | Submit Google Play `production` and App Store versions for review, held for manual release |
 | `managed_publishing_confirmed` | off | Confirm Managed publishing is ON in the production app's Play Console; required for Android submissions on every run |
 | `android_draft` | off | Upload Android to Play Console as a draft, without review or rollout; does not require Managed publishing confirmation |
-| `replace_pending_ios_review` | off | Explicitly replace a pending iOS review with this version; release remains MANUAL |
+| `replace_pending_ios_review` | off | Explicitly replace an earlier review or approved manual hold with this version; release remains MANUAL |
 | `source_run` | empty | Reuse the AAB/IPA from a successful Mobile release run instead of compiling again |
 | `source_sha` | empty | Full reviewed source commit SHA; required with `source_run` |
 | `upload_symbols` | off | Keep R8 `mapping.txt` and dSYMs as run artifacts for 7 days |
@@ -84,6 +84,22 @@ does not block Android; two submissions for the same platform stay serialized.
   version in Pending Developer Release. There is no automatic-release option
   in the submission script. Replacing an existing review requires the separate,
   explicit `replace_pending_ios_review` input.
+
+Apple can approve the previous version while the next binary is building.
+The shared `scripts/ci/app_store_review.py` controller handles that race on iOS
+and Mac: it verifies the production package identity and full source version,
+uploads only when that build is absent, and waits for a VALID build before
+replacing anything. Explicit replacement withdraws the older unreleased version
+and updates its existing version slot, preserving screenshots and review details.
+It never releases a version. A retry of the same submitted build leaves its
+review intact. Apple documents withdrawal from
+[Pending Developer Release](https://developer.apple.com/help/app-store-connect/manage-submissions-to-app-review/remove-a-submission-from-review/).
+
+The publisher runs silently with its stdout/stderr captured in memory. Public
+logs contain a selected receipt (app, platform, version, build, review state and
+MANUAL release), rather than App Store resource dumps containing callback URLs
+or review-account metadata. Failed commands expose only numeric error codes.
+
 - Release notes live in `scripts/ci/mobile_release_notes.txt` and the matching
   Play JSON file. Update them when preparing the next store submission.
 - Both jobs require the protected `release` environment. Inspect the exact

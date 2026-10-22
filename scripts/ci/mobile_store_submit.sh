@@ -34,18 +34,11 @@ case "${1:-}" in
       echo '::error::Expected exactly one production IPA.'
       exit 1
     fi
-    release_args=(publish
-      --path "${packages[0]}" \
-      --app-store \
-      --platform IOS \
-      --release-type MANUAL \
-      --whats-new @file:scripts/ci/mobile_release_notes.txt \
-      --max-find-build-wait 30 \
-      --max-build-processing-wait 60)
-    if [ "${REPLACE_PENDING_IOS_REVIEW:-}" = true ]; then
-      release_args+=(--cancel-previous-submissions)
-    fi
-    app-store-connect "${release_args[@]}"
+    script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    python3 "$script_dir/app_store_review.py" --package "${packages[0]}" \
+      --platform IOS --release-type MANUAL \
+      --notes scripts/ci/mobile_release_notes.txt \
+      --replace-pending "${REPLACE_PENDING_IOS_REVIEW:-false}"
     ;;
   *)
     echo 'usage: mobile_store_submit.sh <android|ios>' >&2

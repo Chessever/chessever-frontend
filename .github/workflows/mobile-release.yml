@@ -32,7 +32,7 @@ on:
         type: boolean
         default: false
       replace_pending_ios_review:
-        description: Explicitly cancel and replace an earlier pending iOS review (release stays manual)
+        description: Explicitly replace an earlier iOS review or approved manual hold (release stays manual)
         type: boolean
         default: false
       source_run:
@@ -99,7 +99,7 @@ jobs:
           persist-credentials: false
 
       - name: Test store submission safeguards
-        run: python3 -m unittest discover -s scripts/ci -p 'test_mobile_*.py'
+        run: python3 -m unittest discover -s scripts/ci -p 'test_*.py'
 
   android:
     name: Android App Bundle
