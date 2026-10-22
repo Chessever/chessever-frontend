@@ -4,6 +4,7 @@ import json
 import os
 from pathlib import Path
 import subprocess
+import sys
 import tempfile
 import unittest
 
@@ -19,10 +20,10 @@ class StoreSubmissionTest(unittest.TestCase):
         self.bin = self.root / "bin"
         self.bin.mkdir()
         self.calls = self.root / "calls.json"
-        for name in ("google-play", "app-store-connect"):
+        for name in ("google-play", "app-store-connect", "python3"):
             tool = self.bin / name
             tool.write_text(
-                "#!/usr/bin/env python3\n"
+                f"#!{sys.executable}\n"
                 "import json, os, sys\n"
                 "from pathlib import Path\n"
                 "Path(os.environ['CALLS_FILE']).write_text(json.dumps(sys.argv))\n"
@@ -84,10 +85,11 @@ class StoreSubmissionTest(unittest.TestCase):
         result = self.submit("ios")
         self.assertEqual(result.returncode, 0, result.stderr)
         args = json.loads(self.calls.read_text())
-        self.assertIn("--app-store", args)
+        self.assertTrue(args[1].endswith("app_store_review.py"))
         self.assertEqual(args[args.index("--release-type") + 1], "MANUAL")
         self.assertEqual(args[args.index("--platform") + 1], "IOS")
         self.assertNotIn("--cancel-previous-submissions", args)
+        self.assertEqual(args[args.index("--replace-pending") + 1], "false")
 
     def test_ios_missing_or_ambiguous_ipa_never_uploads(self):
         self.assertNotEqual(self.submit("ios").returncode, 0)
@@ -105,8 +107,7 @@ class StoreSubmissionTest(unittest.TestCase):
         result = self.submit("ios", REPLACE_PENDING_IOS_REVIEW="true")
         self.assertEqual(result.returncode, 0, result.stderr)
         args = json.loads(self.calls.read_text())
-        self.assertIn("--cancel-previous-submissions", args)
-        self.assertIn("--app-store", args)
+        self.assertEqual(args[args.index("--replace-pending") + 1], "true")
         self.assertEqual(args[args.index("--release-type") + 1], "MANUAL")
 
 
