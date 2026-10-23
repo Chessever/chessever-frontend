@@ -2092,11 +2092,37 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
-    testWidgets('a player no longer starred here opens My Prep and stops the '
-        'pushes', (tester) async {
+    testWidgets('a player held here but no longer starred still opens on '
+        'their Games tab, and the pushes stop', (tester) async {
       final remote = await tapPush(tester, [player]);
+      final screen = tester.widget<PrepProfileScreen>(
+        find.byType(PrepProfileScreen),
+      );
+      expect(screen.profileId, 'vasif');
+      expect(screen.initialTab, prepProfileGamesTab);
+      expect(screen.newGames, 7);
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 50)),
+      );
+      expect(remote.calls, contains('unwatch vasif'));
+    });
+
+    testWidgets('a player starred on another device opens My Prep, says so, '
+        'and keeps the star until the reader stops it', (tester) async {
+      final remote = await tapPush(tester, const []);
       expect(find.byType(PrepProfileScreen), findsNothing);
       expect(find.byType(MyPrepHomeScreen), findsOneWidget);
+      expect(
+        find.text('This player is starred on another of your devices.'),
+        findsOneWidget,
+      );
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 50)),
+      );
+      expect(remote.calls.where((c) => c.startsWith('unwatch')), isEmpty);
+
+      await tester.tap(find.text('Stop alerts'));
+      await tester.pumpAndSettle();
       await tester.runAsync(
         () => Future<void>.delayed(const Duration(milliseconds: 50)),
       );

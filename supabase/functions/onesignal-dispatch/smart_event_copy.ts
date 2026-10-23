@@ -2,13 +2,13 @@
  * The words of a starred smart event's evening push.
  *
  * A smart event is a filter over games, so its push is about games: how many
- * the filter caught today (the 24 hours since the reader's last evening
- * push), then the strongest of them. Each mix
+ * the filter caught today (since midnight where the reader lives), then the
+ * strongest of them. Each mix
  * of filters (an opening, a rating band, time controls, live or finished)
  * gets its own line, named by [smartEventDigestKind] — a Najdorf star hears
  * about the Najdorf, a GM Blitz star about GM-level blitz.
  *
- * The counts come from `public.smart_event_digest_rows`.
+ * The counts come from `public.smart_event_digest_rows_since`.
  */
 
 export type SmartEventDigest = {
@@ -38,6 +38,8 @@ export type SmartEventDigestShape = {
   opening: string | null;
   /** "at GM level", "at 2450+", "at 2200–2400", "rated 1800 or less". */
   level: string | null;
+  /** "GM", "IM", ... when the level is a named floor with no cap. */
+  tier: string | null;
   /** "Classical", "Rapid", "Blitz", or two of them joined. */
   timeControl: string | null;
   state: SmartEventDigestState;
@@ -103,19 +105,21 @@ export function smartEventDigestShape(
   const hasRange = digest.minElo > 0 || digest.maxElo < OPEN_MAX_ELO;
   const floor = hasRange && digest.minElo > 0 ? digest.minElo : null;
   const cap = hasRange && digest.maxElo < OPEN_MAX_ELO ? digest.maxElo : null;
+  const tier = floor !== null && cap === null
+    ? TIER_FLOORS.get(floor) ?? null
+    : null;
   let level: string | null = null;
   if (floor !== null && cap !== null) level = `at ${floor}–${cap}`;
-  else if (floor !== null) {
-    const tier = TIER_FLOORS.get(floor);
-    level = tier ? `at ${tier} level` : `at ${floor}+`;
-  } else if (cap !== null) level = `rated ${cap} or less`;
+  else if (tier) level = `at ${tier} level`;
+  else if (floor !== null) level = `at ${floor}+`;
+  else if (cap !== null) level = `rated ${cap} or less`;
 
   const ecoCode = digest.ecoCode?.trim() ?? "";
   const opening = ecoCode === ""
     ? null
     : digest.label?.trim() || ecoCode.toUpperCase();
 
-  return { opening, level, timeControl, state };
+  return { opening, level, tier, timeControl, state };
 }
 
 /** `opening+level+time:live` style id of [shape], one per filter mix. */
@@ -128,44 +132,61 @@ export function smartEventDigestKind(shape: SmartEventDigestShape): string {
   return `${parts.length ? parts.join("+") : "all"}:${shape.state}`;
 }
 
-function games(n: number, timeControl: string | null = null): string {
-  const kind = timeControl ? `${timeControl} ` : "";
-  return `${n} ${kind}${n === 1 ? "game" : "games"}`;
+/** "4 GM-level Blitz games", "1 game": the count, then what it counts. */
+function counted(
+  n: number,
+  shape: SmartEventDigestShape,
+  noun: [string, string] = ["game", "games"],
+): string {
+  const tier = shape.tier ? `${shape.tier}-level ` : "";
+  const tc = shape.timeControl ? `${shape.timeControl} ` : "";
+  return `${n} ${tier}${tc}${n === 1 ? noun[0] : noun[1]}`;
 }
 
-/** The title line for [shape] with [n] games. */
+/**
+ * The title line for [shape] with [n] games, number first so it is read
+ * first: "Caro-Kann has been played 4 times today", "28 GM-level games
+ * played today", "6 Blitz games are live right now".
+ */
 export function smartEventDigestTitle(
   shape: SmartEventDigestShape,
   n: number,
 ): string {
-  const { opening, level, timeControl: tc, state } = shape;
-  const at = level ? ` ${level}` : "";
+  const { opening, state } = shape;
+  // A named level ("GM") reads as an adjective on the count; any other band
+  // ("2450+", "2200–2400") trails the line.
+  const at = shape.level && !shape.tier ? ` ${shape.level}` : "";
+  const narrowed = Boolean(shape.tier || shape.timeControl);
 
   if (opening) {
     switch (state) {
       case "played":
-        return `${opening} played in ${games(n, tc)}${at} today`;
-      case "live":
+        if (narrowed) {
+          return `${opening} has been played in ${
+            counted(n, shape)
+          } today${at}`;
+        }
         return n === 1
-          ? `${opening} is live in 1 ${tc ? `${tc} ` : ""}game${at}`
-          : `${opening} is live on ${n} ${tc ? `${tc} ` : ""}boards${at}`;
+          ? `${opening} has been played once today${at}`
+          : `${opening} has been played ${n} times today${at}`;
+      case "live":
+        return `${opening} is live on ${
+          counted(n, shape, ["board", "boards"])
+        } right now${at}`;
       case "finished":
-        return `${opening}: ${games(n, tc)}${at} finished today`;
+        return `${counted(n, shape)} in the ${opening} finished today${at}`;
     }
   }
 
   switch (state) {
     case "played":
-      if (level) return `${games(n, tc)} played today ${level}`;
-      if (tc) return `${games(n, tc)} played today`;
-      return `${games(n)} played today`;
+      return `${counted(n, shape)} played today${at}`;
     case "live":
-      if (level) return `${games(n, tc)} live now ${level}`;
-      return `${games(n, tc)} live right now`;
+      return `${counted(n, shape)} ${
+        n === 1 ? "is" : "are"
+      } live right now${at}`;
     case "finished":
-      if (level) return `${games(n, tc)} ${level} finished today`;
-      if (tc) return `${n} ${tc} ${n === 1 ? "result" : "results"} today`;
-      return `${games(n)} finished today`;
+      return `${counted(n, shape)} finished today${at}`;
   }
 }
 
@@ -182,18 +203,41 @@ export function smartEventPlayerName(name: string | null): string {
   return parts[parts.length - 1];
 }
 
-/** The body line: the strongest game, or how the finished ones went. */
+/**
+ * The body line: the strongest game (or how a finished batch went), then
+ * what the tap opens. "Top game: Yakubboev beat Godart (2551 avg). 3 still
+ * live. Tap to see all 28."
+ */
 export function smartEventDigestBody(
   shape: SmartEventDigestShape,
   digest: SmartEventDigest,
 ): string {
-  const n = digest.otherSmartEvents;
-  const others = n === 1
-    ? " Another of your smart events had new games too."
-    : n > 1
-    ? ` ${n} more of your smart events had new games too.`
-    : "";
-  return `${smartEventDigestHighlight(shape, digest)}.${others} Tap to see.`;
+  const total = Math.max(1, digest.games);
+  const parts = [`${smartEventDigestHighlight(shape, digest)}.`];
+
+  // On a "played" filter the live share is news; a live-only filter already
+  // said so in its title.
+  if (shape.state === "played" && digest.liveGames > 0 && total > 1) {
+    parts.push(
+      digest.liveGames >= total
+        ? "All still live."
+        : `${digest.liveGames} still live.`,
+    );
+  }
+
+  const others = digest.otherSmartEvents;
+  if (others === 1) {
+    parts.push("Another of your smart events caught games too.");
+  }
+  if (others > 1) {
+    parts.push(`${others} more of your smart events caught games too.`);
+  }
+
+  if (total === 1) {
+    parts.push(shape.state === "live" ? "Tap to watch it." : "Tap to see it.");
+  } else if (shape.state === "live") parts.push(`Tap to watch all ${total}.`);
+  else parts.push(`Tap to see all ${total}.`);
+  return parts.join(" ");
 }
 
 function smartEventDigestHighlight(
@@ -208,12 +252,20 @@ function smartEventDigestHighlight(
     const draws = digest.draws === 1 ? "1 draw" : `${digest.draws} draws`;
     return `White won ${digest.whiteWins}, Black ${digest.blackWins}, ${draws}`;
   }
-  if (digest.topStatus === "1-0") return `${white} beat ${black}${rated}`;
-  if (digest.topStatus === "0-1") return `${black} beat ${white}${rated}`;
-  if (digest.topStatus === "1/2-1/2" || digest.topStatus === "½-½") {
-    return `${white} drew ${black}${rated}`;
+  const lead = digest.games <= 1
+    ? ""
+    : shape.state === "live"
+    ? "Top board: "
+    : "Top game: ";
+  if (digest.topStatus === "1-0") {
+    return `${lead}${white} beat ${black}${rated}`;
   }
-  const lead = digest.games === 1 ? "" : "Top game: ";
+  if (digest.topStatus === "0-1") {
+    return `${lead}${black} beat ${white}${rated}`;
+  }
+  if (digest.topStatus === "1/2-1/2" || digest.topStatus === "½-½") {
+    return `${lead}${white} drew ${black}${rated}`;
+  }
   return `${lead}${white} vs ${black}${rated}`;
 }
 

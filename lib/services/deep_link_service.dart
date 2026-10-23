@@ -76,6 +76,7 @@ import 'package:chessever2/widgets/event_card/event_context_menu.dart'
     show kEventTabQueryParam;
 import 'package:chessever2/widgets/paywall/premium_game_access.dart';
 import 'package:chessever2/widgets/paywall/past_event_access.dart';
+import 'package:chessever2/widgets/app_snack.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:sentry_flutter/sentry_flutter.dart';
@@ -164,8 +165,8 @@ List<GamesTourModel> _buildSortedRoundGameModels(List<Games> roundGames) {
 /// Handles URLs like: `https://chessever.com/games/{id}`
 /// Handles URLs like: `https://chessever.com/databases/{id}`
 /// Handles notification data routing for games, events, rounds, and databases.
-/// Where a Prep "new games" push lands: the starred player's profile on its
-/// Games tab, or My Prep when this device no longer has or stars it.
+/// Where a Prep "new games" push lands: the player's profile on its Games
+/// tab, or My Prep when this device does not hold the profile.
 @visibleForTesting
 Widget prepPushDestination(PrepProfile? profile, {int? newGames}) =>
     profile == null
@@ -175,6 +176,42 @@ Widget prepPushDestination(PrepProfile? profile, {int? newGames}) =>
         newGames: newGames,
         initialTab: prepProfileGamesTab,
       );
+
+/// What a Prep push says when this device does not hold the profile: it is
+/// starred on another of the reader's devices (profiles live on the device).
+@visibleForTesting
+String prepPushElsewhereMessage(String? profileName) {
+  final name = profileName?.trim();
+  final who = name == null || name.isEmpty ? 'This player' : name;
+  return '$who is starred on another of your devices.';
+}
+
+/// 1240 → "1,240".
+String _thousands(int n) => n.toString().replaceAllMapped(
+  RegExp(r'\B(?=(\d{3})+(?!\d))'),
+  (_) => ',',
+);
+
+/// What a collection push says once the collection is open: the count it
+/// announced. Null when the push carried none.
+@visibleForTesting
+String? collectionPushArrivalMessage({int? added, String? title}) {
+  if (added == null || added < 1) return null;
+  final games = added == 1 ? '1 new game' : '${_thousands(added)} new games';
+  final name = title?.trim();
+  return name == null || name.isEmpty
+      ? '$games just landed.'
+      : '$games just landed in $name.';
+}
+
+/// What a collection push says when the collection cannot be opened.
+@visibleForTesting
+String collectionPushFailedMessage(String? title) {
+  final name = title?.trim();
+  return name == null || name.isEmpty
+      ? 'That collection could not be opened right now.'
+      : '$name could not be opened right now.';
+}
 
 class DeepLinkService {
   static final DeepLinkService instance = DeepLinkService._();
@@ -847,13 +884,18 @@ class DeepLinkService {
   }
 
   /// Opens the collection a "new games" push was sent for, or a shared
-  /// `chessever.com/collections/<slug>` link points at. A collection that is
-  /// no longer published (or cannot be read right now) lands on Home.
+  /// `chessever.com/collections/<slug>` link points at. A push names its
+  /// count again once the collection is open ([added], [title]). A
+  /// collection that is no longer published (or cannot be read right now)
+  /// lands on Home and, from a push, says so with a way to try again.
   Future<void> _navigateToCollection(
     String slug,
     GlobalKey<NavigatorState> navigatorKey,
-    WidgetRef ref,
-  ) async {
+    WidgetRef ref, {
+    int? added,
+    String? title,
+    bool fromPush = false,
+  }) async {
     if (_isNavigating) return;
     _isNavigating = true;
 
@@ -885,15 +927,61 @@ class DeepLinkService {
       // Over Home, so Back lands on the app rather than leaving it.
       navigator.pushNamedAndRemoveUntil('/home_screen', (route) => false);
       final opened = collection;
-      if (opened == null) return;
+      if (opened == null) {
+        if (fromPush) {
+          _snackAfterNavigation(
+            navigatorKey,
+            collectionPushFailedMessage(title),
+            tone: AppSnackTone.danger,
+            actionLabel: 'Try again',
+            onAction: () => _navigateToCollection(
+              slug,
+              navigatorKey,
+              ref,
+              added: added,
+              title: title,
+              fromPush: true,
+            ),
+          );
+        }
+        return;
+      }
       navigator.push(
         MaterialPageRoute<void>(
           builder: (_) => CollectionScreen(collection: opened),
         ),
       );
+      final arrived = collectionPushArrivalMessage(
+        added: added,
+        title: title ?? opened.title,
+      );
+      if (fromPush && arrived != null) {
+        _snackAfterNavigation(navigatorKey, arrived);
+      }
     } finally {
       _isNavigating = false;
     }
+  }
+
+  /// Shows a snack over whatever the navigator lands on, once it has drawn.
+  void _snackAfterNavigation(
+    GlobalKey<NavigatorState> navigatorKey,
+    String message, {
+    AppSnackTone tone = AppSnackTone.neutral,
+    String? actionLabel,
+    FutureOr<void> Function()? onAction,
+  }) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final context = navigatorKey.currentContext;
+      if (context == null || !context.mounted) return;
+      showAppSnack(
+        context,
+        message,
+        tone: tone,
+        actionLabel: actionLabel,
+        onAction: onAction,
+      );
+    });
   }
 
   /// Opens the smart event an evening "new games" push was sent for, on its
@@ -953,15 +1041,18 @@ class DeepLinkService {
     }
   }
 
-  /// Opens the starred My Prep profile a daily "new games" push was sent
-  /// for. Profiles live on the device: one this device no longer has, or no
-  /// longer stars, opens My Prep instead and is unstarred on the server, so
-  /// the pushes stop.
+  /// Opens the My Prep profile a "new games" push was sent for, on its Games
+  /// tab. One this device holds but no longer stars is unstarred on the
+  /// server again, so the pushes stop. Profiles live on the device, so one
+  /// this device does not hold is starred on another of the reader's
+  /// devices: My Prep opens and says so, and the star is left alone unless
+  /// the reader stops its alerts from there.
   Future<void> _navigateToPrepProfile(
     String profileId,
     GlobalKey<NavigatorState> navigatorKey,
     WidgetRef ref, {
     int? newGames,
+    String? profileName,
   }) async {
     if (_isNavigating) return;
     _isNavigating = true;
@@ -989,9 +1080,7 @@ class DeepLinkService {
       } finally {
         subscription.close();
       }
-      final profile = profiles
-          ?.where((p) => p.id == profileId && p.watching)
-          .firstOrNull;
+      final profile = profiles?.where((p) => p.id == profileId).firstOrNull;
       if (profiles != null) {
         ref.read(prepProfilesProvider.notifier).settleWatch(profileId);
       }
@@ -1005,6 +1094,15 @@ class DeepLinkService {
           builder: (_) => prepPushDestination(profile, newGames: newGames),
         ),
       );
+      if (profiles != null && profile == null) {
+        final notifier = ref.read(prepProfilesProvider.notifier);
+        _snackAfterNavigation(
+          navigatorKey,
+          prepPushElsewhereMessage(profileName),
+          actionLabel: 'Stop alerts',
+          onAction: () => notifier.stopWatch(profileId),
+        );
+      }
     } finally {
       _isNavigating = false;
     }
@@ -1614,7 +1712,17 @@ class DeepLinkService {
         return;
       case 'collection_games_added':
         if (collectionSlug != null) {
-          _navigateToCollection(collectionSlug, navigatorKey, ref);
+          final added = data['added'];
+          _navigateToCollection(
+            collectionSlug,
+            navigatorKey,
+            ref,
+            added: added is num
+                ? added.toInt()
+                : int.tryParse('${added ?? ''}'),
+            title: _firstNonEmptyString([data['collection_title']]),
+            fromPush: true,
+          );
         } else {
           _navigateToHome(
             navigatorKey,
@@ -1646,6 +1754,7 @@ class DeepLinkService {
             newGames: added is num
                 ? added.toInt()
                 : int.tryParse('${added ?? ''}'),
+            profileName: _firstNonEmptyString([data['profile_name']]),
           );
         } else {
           _navigateToHome(
