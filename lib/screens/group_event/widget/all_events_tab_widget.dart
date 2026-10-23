@@ -3,6 +3,7 @@ import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/scroll_cache.dart';
 import 'package:chessever2/widgets/event_card/event_card.dart';
+import 'package:chessever2/widgets/layout_swap_scroll_keeper.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -54,12 +55,16 @@ class _AllEventsTabWidgetState extends ConsumerState<AllEventsTabWidget> {
       phoneCount: 1,
     );
 
-    // Use grid layout for tablets, list layout for phones
-    if (isTablet && crossAxisCount > 1) {
-      return _buildTabletGridLayout(bottomPadding, crossAxisCount);
-    }
-
-    return _buildPhoneListLayout(bottomPadding);
+    // Use grid layout for tablets, list layout for phones. iPhone Duo swaps
+    // between them as it closes and opens; the keeper holds the reader's place.
+    final useGrid = isTablet && crossAxisCount > 1;
+    return LayoutSwapScrollKeeper(
+      controller: widget.scrollController,
+      layout: useGrid ? crossAxisCount : 1,
+      child: useGrid
+          ? _buildTabletGridLayout(bottomPadding, crossAxisCount)
+          : _buildPhoneListLayout(bottomPadding),
+    );
   }
 
   Widget _buildTabletGridLayout(double bottomPadding, int crossAxisCount) {

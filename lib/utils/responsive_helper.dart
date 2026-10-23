@@ -18,18 +18,30 @@ class ResponsiveHelper {
   static late DeviceType _deviceType;
   static late Orientation _orientation;
 
-  /// Reads only the two aspects it needs.
+  /// Reads only the one aspect it needs.
   ///
   /// `MediaQuery.of` subscribes the calling element to *every* aspect of the
   /// MediaQueryData, `viewInsets` included — so every screen that called this
   /// in its build method rebuilt on each frame of the software keyboard
-  /// sliding in or out. `sizeOf`/`orientationOf` subscribe to one aspect each,
-  /// and neither of them changes while the keyboard animates.
+  /// sliding in or out. `sizeOf` subscribes to size alone, which does not
+  /// change while the keyboard animates; orientation is derived from it.
   static void init(BuildContext context) {
-    final size = MediaQuery.sizeOf(context);
+    initFromSize(MediaQuery.sizeOf(context));
+  }
+
+  /// Same as [init], for a window size already in hand.
+  ///
+  /// [AdaptiveWindowScope] calls this every time the window changes size
+  /// (iPhone Duo folding or opening, iPad Split View, a foldable), so the
+  /// scale factors and [isTablet] always describe the window the app is
+  /// actually drawn in, not the one it launched in.
+  static void initFromSize(Size size) {
     _screenWidth = size.width;
     _screenHeight = size.height;
-    _orientation = MediaQuery.orientationOf(context);
+    // Mirrors MediaQueryData.orientation, which is derived from size alone.
+    _orientation = size.width > size.height
+        ? Orientation.landscape
+        : Orientation.portrait;
 
     // Calculate scale factors
     _scaleWidth = _screenWidth / baseWidth;

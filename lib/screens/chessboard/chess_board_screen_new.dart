@@ -99,6 +99,7 @@ import 'package:chessever2/providers/pip_mode_provider.dart';
 // import 'package:chessever2/providers/keyboard_total_height_provider.dart'; // UNUSED: Removed with old dialog
 import 'package:chessever2/utils/figurine_notation.dart';
 import 'package:chessever2/utils/pgn_export_utils.dart';
+import 'package:chessever2/utils/adaptive_window.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/share_card.dart';
 import 'package:chessever2/utils/string_utils.dart';
@@ -5943,22 +5944,28 @@ class _TabletPopupMenuWrapperState extends State<_TabletPopupMenuWrapper>
     with WidgetsBindingObserver {
   bool _wasPopupOpen = false;
 
+  /// Whether [initState] registered the observer. The device class can change
+  /// while this is mounted (iPhone Duo folding), so [dispose] must not decide
+  /// from [ResponsiveHelper.isTablet] again or it leaks the observer.
+  bool _observing = false;
+
   @override
   void initState() {
     super.initState();
     if (ResponsiveHelper.isTablet) {
       WidgetsBinding.instance.addObserver(this);
+      _observing = true;
     }
   }
 
   @override
   void dispose() {
-    if (ResponsiveHelper.isTablet) {
+    if (_observing) {
       WidgetsBinding.instance.removeObserver(this);
-      // Clean up if we had marked a popup as open
-      if (_wasPopupOpen) {
-        _ChessBoardPopupState.markClosed();
-      }
+    }
+    // Clean up if we had marked a popup as open
+    if (_wasPopupOpen) {
+      _ChessBoardPopupState.markClosed();
     }
     super.dispose();
   }
@@ -8549,10 +8556,35 @@ class _AnalysisGameBody extends ConsumerWidget {
           final evalBarWidth = 20.sp;
 
           // Board size is the height-constrained value (square board)
-          final optimalBoardSize = math.max(200.0, maxBoardFromHeight);
+          var optimalBoardSize = math.max(200.0, maxBoardFromHeight);
+          final leadingPadding = 12.sp;
+          final boardChrome = evalBarWidth + 24.sp;
+          var sectionGap = 12.sp;
+
+          // iPhone Duo opened like a book (and Android book foldables): keep
+          // the board, its eval bar and both player cards on the leading side
+          // of the hinge, and start the analysis after it, so nothing
+          // interactive sits on the crease when the device is partly folded.
+          final fold = AdaptiveWindow.verticalFoldOf(context);
+          if (fold != null) {
+            final leadingExtent = fold.leadingExtentFrom(leadingPadding)!;
+            final boardForFold = leadingExtent - boardChrome;
+            if (boardForFold >= 200.0) {
+              optimalBoardSize = math.min(optimalBoardSize, boardForFold);
+              final sectionEnd =
+                  leadingPadding + optimalBoardSize + boardChrome;
+              sectionGap = math.max(
+                sectionGap,
+                fold.trailingStart! - sectionEnd,
+              );
+            }
+          }
 
           return Padding(
-            padding: EdgeInsets.symmetric(horizontal: 12.sp, vertical: 8.sp),
+            padding: EdgeInsets.symmetric(
+              horizontal: leadingPadding,
+              vertical: 8.sp,
+            ),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -8561,9 +8593,7 @@ class _AnalysisGameBody extends ConsumerWidget {
                 // ─────────────────────────────────────────────────────────────
                 SizedBox(
                   width:
-                      optimalBoardSize +
-                      evalBarWidth +
-                      24.sp, // board + eval + margins
+                      optimalBoardSize + boardChrome, // board + eval + margins
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
@@ -8610,7 +8640,7 @@ class _AnalysisGameBody extends ConsumerWidget {
                   ),
                 ),
 
-                SizedBox(width: 12.sp),
+                SizedBox(width: sectionGap),
 
                 // ─────────────────────────────────────────────────────────────
                 // RIGHT SECTION: PV cards + Moves display and analysis
@@ -11407,9 +11437,22 @@ class _AnalysisSwipePanelsState extends ConsumerState<_AnalysisSwipePanels> {
   int _currentPage = 0;
   bool _userPanelDrag = false;
 
+  /// Where this game's notation/explorer choice is kept in the route's
+  /// [PageStorage]. The phone, tablet-portrait and tablet-landscape layouts
+  /// each mount their own copy of this widget, so a rotation or an iPhone Duo
+  /// fold replaces it; reading the choice back keeps the explorer open
+  /// instead of dropping the reader back on the notation.
+  String get _pageStorageId => 'analysis_panels_page_${widget.gameId}';
+
   @override
   void initState() {
     super.initState();
+    final restored = PageStorage.maybeOf(
+      context,
+    )?.readState(context, identifier: _pageStorageId);
+    if (restored is int && (restored == 0 || restored == 1)) {
+      _currentPage = restored;
+    }
     _pageController = PageController(initialPage: _currentPage);
     // Seed visibility for bottom-nav translucency (post-frame: ref write safe).
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -11474,6 +11517,9 @@ class _AnalysisSwipePanelsState extends ConsumerState<_AnalysisSwipePanels> {
         physics: const ClampingScrollPhysics(),
         onPageChanged: (page) {
           _currentPage = page;
+          PageStorage.maybeOf(
+            context,
+          )?.writeState(context, page, identifier: _pageStorageId);
           // Only the active game publishes chrome/arrow ownership. Preloaded
           // adjacent games must not steal the visible game's focused card.
           if (widget.isActivePage) {

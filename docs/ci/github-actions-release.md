@@ -37,6 +37,7 @@ stay separate: every submitted version must wait for a person to release it.
 | `source_run` | empty | Reuse the AAB/IPA from a successful Mobile release run instead of compiling again |
 | `source_sha` | empty | Full reviewed source commit SHA; required with `source_run` |
 | `upload_symbols` | off | Keep R8 `mapping.txt` and dSYMs as run artifacts for 7 days |
+| `xcode` | `26.6` | iOS only. Xcode on the `macos-26` runner. `27.1` builds with the iOS 27.1 SDK, the first one iPhone Duo draws edge to edge; the job fails fast if the image does not carry the version |
 
 Codemagic built both platforms one after the other on a single Mac. Here they
 run in parallel, each on its own free runner. Independent setup steps also use
