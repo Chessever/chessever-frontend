@@ -28,6 +28,7 @@ import 'package:chessever2/widgets/event_card/event_card.dart';
 import 'package:chessever2/widgets/generic_error_widget.dart';
 import 'package:chessever2/widgets/skeleton_widget.dart';
 import 'package:chessever2/widgets/paywall/past_game_access.dart';
+import 'package:chessever2/widgets/layout_swap_scroll_keeper.dart';
 import 'package:flutter/material.dart';
 // Stable Flutter's material.dart does not export this type (only newer SDKs
 // do), so it is imported explicitly, as in lib/utils/scroll_cache.dart.
@@ -351,11 +352,17 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
       onRefresh: () => ref.read(forYouEventsProvider.notifier).refresh(),
       color: context.colors.accentText,
       backgroundColor: context.colors.surface,
-      child: _buildEventsList(
-        events,
-        showNativeAd: showNativeAd,
-        viewMode: viewMode,
-        showLoadingMore: state.hasMore && !state.isLoading,
+      // The phone list and the tablet two-column layout are separate
+      // scrollables; iPhone Duo swaps them as it closes and opens.
+      child: LayoutSwapScrollKeeper(
+        controller: widget.scrollController,
+        layout: ResponsiveHelper.isTablet,
+        child: _buildEventsList(
+          events,
+          showNativeAd: showNativeAd,
+          viewMode: viewMode,
+          showLoadingMore: state.hasMore && !state.isLoading,
+        ),
       ),
     );
   }

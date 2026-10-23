@@ -41,6 +41,7 @@ import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_mode
 import 'package:chessever2/screens/gamebase/services/player_opening_tree.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
+import 'package:chessever2/utils/adaptive_window.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/screen_wrapper.dart';
 import 'package:chessever2/repository/local_storage/local_storage_repository.dart';
@@ -635,14 +636,31 @@ class _GamebaseExplorerScreenState extends ConsumerState<GamebaseExplorerScreen>
     final boardFen = preview?.currentFen ?? state.currentFen;
     final availableHeight = constraints.maxHeight;
     final verticalPadding = 8.sp * 2; // top + bottom
-    final boardSize = (availableHeight - verticalPadding).clamp(
+    var boardSize = (availableHeight - verticalPadding).clamp(
       200.0,
       double.infinity,
     );
-    final leftWidth = boardSize + _evalBarWidth + 4.sp + 24.sp;
+    final leadingPadding = 12.sp;
+    final boardChrome = _evalBarWidth + 4.sp + 24.sp;
+    var columnGap = 12.sp;
+
+    // iPhone Duo opened like a book: the height-fitted board ran well past
+    // the middle of the inner display. Keep it on the leading side of the
+    // hinge and start the stats panel after it.
+    final fold = AdaptiveWindow.verticalFoldOf(context);
+    if (fold != null) {
+      final boardForFold =
+          fold.leadingExtentFrom(leadingPadding)! - boardChrome;
+      if (boardForFold >= 200.0) {
+        boardSize = math.min(boardSize, boardForFold);
+        final columnEnd = leadingPadding + boardSize + boardChrome;
+        columnGap = math.max(columnGap, fold.trailingStart! - columnEnd);
+      }
+    }
+    final leftWidth = boardSize + boardChrome;
 
     return Padding(
-      padding: EdgeInsets.symmetric(horizontal: 12.sp, vertical: 8.sp),
+      padding: EdgeInsets.symmetric(horizontal: leadingPadding, vertical: 8.sp),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -676,7 +694,7 @@ class _GamebaseExplorerScreenState extends ConsumerState<GamebaseExplorerScreen>
               ],
             ),
           ),
-          SizedBox(width: 12.sp),
+          SizedBox(width: columnGap),
           // Right column: stats panel
           Expanded(
             child: Container(

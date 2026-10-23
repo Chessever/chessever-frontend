@@ -73,6 +73,12 @@ class HomeScreen extends ConsumerStatefulWidget {
 
 class _HomeScreenState extends ConsumerState<HomeScreen> {
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
+
+  /// Carries the open section across the phone and tablet shells. iPhone Duo
+  /// switches between them as it closes and opens; without a global key the
+  /// section's whole subtree (its tab, scroll position, search text) was
+  /// rebuilt from scratch on every fold.
+  final GlobalKey _sectionKey = GlobalKey(debugLabel: 'home-section');
   static const int _favoritePromptThreshold = 5;
 
   @override
@@ -259,7 +265,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               Expanded(
                 child: KeyedSubtree(
                   key: e2eKey(E2eIds.homeRoot),
-                  child: BottomNavBarView(),
+                  child: KeyedSubtree(
+                    key: _sectionKey,
+                    child: const BottomNavBarView(),
+                  ),
                 ),
               ),
             ],
@@ -279,7 +288,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       body: BillingIssueGate(
         child: KeyedSubtree(
           key: e2eKey(E2eIds.homeRoot),
-          child: BottomNavBarView(),
+          child: KeyedSubtree(
+            key: _sectionKey,
+            child: const BottomNavBarView(),
+          ),
         ),
       ),
     );
