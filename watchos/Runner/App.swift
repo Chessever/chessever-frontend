@@ -1,0 +1,57 @@
+import SwiftUI
+
+#if !arch(arm64_32)
+// The Flutter host (frame display, input, native overlays) — compiled by
+// flutter-watchos into watchos/Flutter/, like Flutter.framework itself.
+import FlutterWatchOS
+#endif
+
+@main
+struct ChessEverApp: App {
+    #if !arch(arm64_32)
+    // Remote-notification plumbing (APNs device token, notification payloads)
+    // for plugins that need it, e.g. firebase_messaging. Safe to keep even if
+    // no plugin uses notifications.
+    @WKApplicationDelegateAdaptor(FlutterWatchOSAppDelegate.self)
+    private var flutterAppDelegate
+
+    init() {
+        // Native platform views: register a SwiftUI factory for every
+        // `viewType` your Dart code embeds with WatchPlatformView
+        // (package:flutter_watchos). Example:
+        //
+        // WatchPlatformViewRegistry.register("my-gauge") { params in
+        //     AnyView(MyGaugeView(params: params))
+        // }
+    }
+    #endif
+
+    var body: some Scene {
+        WindowGroup {
+            #if arch(arm64_32)
+            // 32-bit watches (Series 4–8 / SE) are not supported.
+            UnsupportedDeviceView()
+            #else
+            // Holds a black launch placeholder over the screen until Flutter's
+            // first frame is ready, then fades it out. Supply your own to
+            // replace it: `FlutterHostView { MyLaunchScreen() }`.
+            FlutterHostView()
+            #endif
+        }
+    }
+}
+
+// Shown on 32-bit watches (Series 4–8 / SE), which this app does not support.
+struct UnsupportedDeviceView: View {
+    var body: some View {
+        VStack(spacing: 8) {
+            Text("ChessEver")
+                .font(.headline)
+            Text("Requires Apple Watch Series 9, Ultra 2, SE 3, or later.")
+                .font(.footnote)
+                .multilineTextAlignment(.center)
+                .foregroundStyle(.secondary)
+        }
+        .padding()
+    }
+}

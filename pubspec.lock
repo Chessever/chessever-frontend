@@ -225,6 +225,13 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "0.8.1"
+  chessever_watch_bridge:
+    dependency: "direct main"
+    description:
+      path: "packages/chessever_watch_bridge"
+      relative: true
+    source: path
+    version: "0.1.0"
   chessground:
     dependency: "direct main"
     description:
@@ -726,6 +733,23 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "5.1.1"
+  flutter_watch_link:
+    dependency: "direct main"
+    description:
+      name: flutter_watch_link
+      sha256: "514f969546a52cb73176adf2d6d5488420688e7745a38672573e213e36cdb6aa"
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.1.1"
+  flutter_watchos:
+    dependency: "direct main"
+    description:
+      path: "packages/flutter_watchos"
+      ref: ad4dffc3550ffb8b44004c08fab406a695ce8fbc
+      resolved-ref: ad4dffc3550ffb8b44004c08fab406a695ce8fbc
+      url: "https://github.com/flutterwatch/flutter-watchos.git"
+    source: git
+    version: "0.1.0"
   flutter_web_plugins:
     dependency: transitive
     description: flutter
@@ -1523,6 +1547,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "2.4.2"
+  shared_preferences_watchos:
+    dependency: "direct main"
+    description:
+      name: shared_preferences_watchos
+      sha256: "2931ff28d0fc0fe51ef5ce1f65c8ce6b61fce1561cdfbc933d5f5606b3706a9e"
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.1.1"
   shared_preferences_web:
     dependency: transitive
     description:

@@ -29,6 +29,7 @@ stay separate: every submitted version must wait for a person to release it.
 |---|---|---|
 | `android` | on | Build the App Bundle on `ubuntu-24.04` |
 | `ios` | on | Build the IPA on `macos-26` (Xcode 26.6) |
+| `watch` | off | Also build the Apple Watch app with flutter-watchos and embed it in the IPA. Needs `ios` and the `FLUTTERWATCH_TOKEN` secret. Off, the IPA ships without the watch app |
 | `store` | `testing` | `testing`: upload the IPA to TestFlight and the AAB to the Play `internal` track, no review. `review`: submit Google Play `production` and App Store versions for review, held for manual release. `build-only`: upload nothing and keep the AAB/IPA as run artifacts |
 | `managed_publishing_confirmed` | off | `review` only. Confirm Managed publishing is ON in the production app's Play Console; required for Android submissions on every run |
 | `android_draft` | off | `review` only. Upload Android to Play production as a draft, without review or rollout; does not require Managed publishing confirmation |
@@ -88,6 +89,32 @@ does not block Android; two submissions for the same platform stay serialized.
   minutes; `ITSAppUsesNonExemptEncryption` is `false` in `Info.plist`, so no
   export-compliance question blocks it. To ship it, pick that build for the
   next version in App Store Connect and submit it with manual release.
+
+### Apple Watch app (`watch`)
+
+The watch companion (`docs/watch-companion.md`) ships inside the IPA. With
+`watch` on, the iOS job also:
+
+1. clones flutter-watchos at the commit `pubspec.yaml` pins for
+   `flutter_watchos` and signs in from `FLUTTERWATCH_TOKEN`;
+2. builds `lib/main_watch.dart` in release mode, unsigned, before code signing
+   (flutter-watchos forces automatic signing, which would need an Xcode account
+   and mint a development certificate per run);
+3. registers the `com.chessever.app.watchkitapp` bundle ID if it is missing,
+   so `fetch-signing-files` creates its App Store profile and `use-profiles`
+   assigns it and adds it to the export options;
+4. signs the watch app with that profile, builds the IPA with
+   `CHESSEVER_WATCH=require` so the embed phase refuses a missing or
+   mismatched watch app, and checks the watch app inside the IPA.
+
+With `watch` off the embed phase is told `CHESSEVER_WATCH=skip` and the IPA is
+iPhone-only, as before. Once a build with the watch app has been released, keep
+`watch` on: an iPhone update without it removes the app from users' watches.
+App Store review (not TestFlight) also needs Apple Watch screenshots.
+
+The **Watch companion check** workflow compiles the watch app for the Simulator
+and embeds it in a Simulator iPhone build on every push that touches the watch
+code. It needs no secrets and signs or uploads nothing.
 
 ### Review without automatic release
 
@@ -288,6 +315,7 @@ production values before using them.
 | `APP_STORE_CONNECT_KEY_IDENTIFIER` | Same page (key ID) |
 | `APP_STORE_CONNECT_PRIVATE_KEY` | The key's `AuthKey_<id>.p8` (downloadable once; create a new App Manager key if it is gone) |
 | `IOS_DISTRIBUTION_CERTIFICATE_KEY` | PEM private key of the Apple Distribution certificate (below) |
+| `FLUTTERWATCH_TOKEN` (optional) | flutterwatch.dev account token for the Apple Watch app's release engines: run `flutter-watchos login` on a Mac, then copy `token` from `~/.flutter-watchos/credentials.json`. Only `watch` runs read it |
 
 **`IOS_DISTRIBUTION_CERTIFICATE_KEY`.** `fetch-signing-files` reuses the
 Apple Distribution certificate whose private key you give it, and with

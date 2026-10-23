@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import '../services/watch_companion_service.dart';
 
 import 'package:chessever2/repository/sqlite/app_database.dart';
 import 'package:flutter/foundation.dart';
@@ -365,6 +366,7 @@ class NotificationPreferencesNotifier
         'notify_blitz': updated.fpBlitz && updated.seBlitz,
         'heads_up_lead_minutes': updated.headsUpLeadMinutes,
       }, onConflict: 'user_id');
+      WatchCompanionService.instance.scheduleSync();
     } catch (e, st) {
       debugPrint('[NotificationPreferences] Update failed: $e');
       debugPrintStack(stackTrace: st);

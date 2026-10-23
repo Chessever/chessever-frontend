@@ -2,6 +2,9 @@ import 'package:chessever2/widgets/paywall/rewarded_premium/rewarded_navigation.
 import 'package:chessever2/widgets/paywall/rewarded_premium/rewarded_access_ui.dart';
 import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
 import 'services/direct_push_service.dart';
+import 'services/watch_companion_service.dart';
+import 'package:flutter_watchos/flutter_watchos.dart';
+import 'main_watch.dart' as watch;
 import 'dart:async';
 import 'screens/chessboard/contextual_swipe_coaching.dart';
 import 'dart:convert';
@@ -276,7 +279,13 @@ void _e2eStartupLog(String message) {
   debugPrint(line);
 }
 
-Future<void> main() => runChessEver(AppFlavor.production);
+Future<void> main() async {
+  if (FlutterWatchosPlatform.isWatch) {
+    watch.main();
+    return;
+  }
+  await runChessEver(AppFlavor.production);
+}
 
 Future<void> runChessEver(AppFlavor flavor) async {
   AppEnvironment.configure(flavor);
@@ -755,6 +764,14 @@ Future<void> _bootstrapE2eSession(WidgetRef ref) async {
 
 void _initializePostStartupServices(WidgetRef ref) {
   final supabaseUrl = _getEnv('SUPABASE_URL');
+  if (!AppEnvironment.isTest && !E2eConfig.isEnabled) {
+    unawaited(WatchCompanionService.instance.initialize(
+      client: Supabase.instance.client,
+      publicKey: _getEnv('SUPABASE_ANON_KEY'), url: supabaseUrl,
+      openGame: (id) => DeepLinkService.instance.handleNotificationData(
+        {'type': 'game_started', 'game_id': id}, navigatorKey, ref),
+    ));
+  }
   final persistSessionKey = _buildPersistSessionKey(supabaseUrl);
 
   // ONE-TIME MIGRATION: Clean up all SharedPreferences except Supabase auth token

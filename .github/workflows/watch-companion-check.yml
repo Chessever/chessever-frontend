@@ -1,0 +1,100 @@
+# Compiles the Apple Watch app with flutter-watchos and embeds it in a
+# Simulator build of the iPhone app, the way Mobile release does for the
+# device. No secrets: the Simulator engine needs no flutterwatch.dev account,
+# and nothing is signed or uploaded. See docs/watch-companion.md.
+name: Watch companion check
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - lib/watch/**
+      - lib/main_watch.dart
+      - lib/services/watch_companion_service.dart
+      - packages/chessever_watch_bridge/**
+      - test/watch/**
+      - watchos/**
+      - scripts/embed_watch_companion.sh
+      - scripts/ci/watch_build.sh
+      - .github/workflows/watch-companion-check.yml
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+concurrency:
+  group: watch-companion-check-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  watch:
+    name: Watch app in a Simulator iPhone build
+    runs-on: macos-26
+    timeout-minutes: 60
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Select Xcode 26.6
+        # The same Xcode as Mobile release.
+        run: |
+          sudo xcode-select --switch /Applications/Xcode_26.6.app
+          xcodebuild -version
+          xcodebuild -showsdks | grep -i watch
+
+      - name: Set up Flutter (stable)
+        uses: ./.github/actions/setup-flutter
+        with:
+          channel: stable
+
+      - name: Watch tests
+        run: flutter test test/watch
+
+      - name: Set up flutter-watchos (Simulator engine)
+        timeout-minutes: 15
+        run: bash scripts/ci/watch_build.sh toolchain
+
+      - name: Build the watch app for the Simulator
+        timeout-minutes: 15
+        run: bash scripts/ci/watch_build.sh simulator
+
+      - name: Build the iPhone app for the Simulator with the watch app
+        timeout-minutes: 25
+        env:
+          # The embed phase must find the watch app, as a release build does.
+          CHESSEVER_WATCH: require
+        run: |
+          # The Firebase phase copies this file. A placeholder compiles; the app
+          # built here is never run.
+          cat > ios/Runner/GoogleService-Info.plist <<'PLIST'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>BUNDLE_ID</key>
+            <string>com.chessever.app</string>
+            <key>PROJECT_ID</key>
+            <string>placeholder</string>
+          </dict>
+          </plist>
+          PLIST
+          flutter build ios --simulator --debug --flavor production --target lib/main.dart
+          watch=build/ios/iphonesimulator/Runner.app/Watch/Runner.app
+          if [ ! -d "$watch" ]; then
+            echo '::error::The iPhone app does not contain the watch app.'
+            exit 1
+          fi
+          echo "Embedded: $(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$watch/Info.plist")" \
+            "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$watch/Info.plist")+$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$watch/Info.plist")"
+
+      - name: Files the toolchain or CocoaPods changed
+        if: always()
+        run: |
+          rm -f ios/Runner/GoogleService-Info.plist
+          git status --short
+          git diff -- ios/Podfile.lock ios/Runner.xcodeproj watchos

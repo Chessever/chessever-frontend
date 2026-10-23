@@ -1,0 +1,20 @@
+name: chessever_watch_bridge
+description: ChessEver watch notification tap bridge for the FlutterWatch host.
+version: 0.1.0
+publish_to: none
+environment:
+  sdk: '>=3.12.0 <4.0.0'
+dependencies:
+  flutter:
+    sdk: flutter
+  ffi: ^2.1.4
+flutter:
+  plugin:
+    platforms:
+      watchos:
+        ffiPlugin: true
+        dartPluginClass: ChesseverWatchBridge
+        ffiSymbols:
+          - chessever_watch_listen
+          - chessever_watch_stop
+          - chessever_watch_free

@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import '../services/watch_companion_service.dart';
 import 'package:chessever2/repository/favorites/models/favorite_event.dart';
 import 'package:chessever2/repository/sqlite/app_database.dart';
 import 'package:chessever2/services/analytics/analytics_service.dart';
@@ -212,6 +213,7 @@ class FavoriteEventsNotifier extends AsyncNotifier<List<FavoriteEvent>> {
       // STEP 3: Fetch fresh data from Supabase (without loading state)
       final freshEvents = await _loadFavorites();
       state = AsyncValue.data(freshEvents);
+      WatchCompanionService.instance.scheduleSync();
       _syncFavoriteCountAnalytics(freshEvents.length);
     } catch (e, st) {
       debugPrint('[FavoriteEvents] Error adding event: $e');
@@ -278,6 +280,7 @@ class FavoriteEventsNotifier extends AsyncNotifier<List<FavoriteEvent>> {
       }
 
       debugPrint('[FavoriteEvents] Removed event $eventId from Supabase');
+      WatchCompanionService.instance.scheduleSync();
 
       // STEP 3: Fetch fresh data from Supabase (without loading state)
       final freshEvents = await _loadFavorites();
@@ -333,6 +336,7 @@ class FavoriteEventsNotifier extends AsyncNotifier<List<FavoriteEvent>> {
           .eq('user_id', userId)
           .eq('event_id', eventId);
       debugPrint('[FavoriteEvents] Updated metadata for $eventId');
+      WatchCompanionService.instance.scheduleSync();
     } catch (e, st) {
       debugPrint('[FavoriteEvents] Error updating metadata: $e');
       debugPrint('[FavoriteEvents] Stack: $st');

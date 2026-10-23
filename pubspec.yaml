@@ -16,7 +16,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-version: 37.2.1+3727
+version: 37.2.2+3728
 environment:
   sdk: ^3.12.0
   flutter: '>=3.44.0'
@@ -30,6 +30,16 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  # Apple Watch companion. Phone plugins never initialize in main_watch.dart.
+  flutter_watchos:
+    git:
+      url: https://github.com/flutterwatch/flutter-watchos.git
+      ref: ad4dffc3550ffb8b44004c08fab406a695ce8fbc
+      path: packages/flutter_watchos
+  flutter_watch_link: ^0.1.1
+  shared_preferences_watchos: ^0.1.1
+  chessever_watch_bridge:
+    path: packages/chessever_watch_bridge
   flutter_markdown_plus: ^1.0.12
   flutter_localizations:
     sdk: flutter

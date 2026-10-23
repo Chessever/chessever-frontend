@@ -21,6 +21,10 @@ on:
         description: Build iOS (IPA)
         type: boolean
         default: true
+      watch:
+        description: "iOS: build the Apple Watch app and embed it in the IPA (needs the FLUTTERWATCH_TOKEN secret)"
+        type: boolean
+        default: false
       store:
         description: "Destination: testing = TestFlight + Play internal testing (no review); review = Play production + App Store review, manual release; build-only = keep the AAB/IPA as run artifacts"
         type: choice
@@ -82,6 +86,7 @@ jobs:
           RELEASE_REF: ${{ github.ref }}
           BUILD_ANDROID: ${{ inputs.android }}
           BUILD_IOS: ${{ inputs.ios }}
+          BUILD_WATCH: ${{ inputs.watch }}
           STORE: ${{ inputs.store }}
           MANAGED_PUBLISHING_CONFIRMED: ${{ inputs.managed_publishing_confirmed }}
           ANDROID_DRAFT: ${{ inputs.android_draft }}
@@ -93,6 +98,10 @@ jobs:
           fi
           if [ "$BUILD_ANDROID" != true ] && [ "$BUILD_IOS" != true ]; then
             echo '::error::Select at least one platform.'
+            exit 1
+          fi
+          if [ "$BUILD_WATCH" = true ] && [ "$BUILD_IOS" != true ]; then
+            echo '::error::The Apple Watch app ships inside the iOS build; select iOS too.'
             exit 1
           fi
           if [ "$STORE" != review ] && { [ "$ANDROID_DRAFT" = true ] || [ "$REPLACE_PENDING_IOS_REVIEW" = true ]; }; then
@@ -266,7 +275,8 @@ jobs:
     needs: preflight
     if: inputs.ios
     runs-on: macos-26
-    timeout-minutes: 30
+    # The Apple Watch app adds the flutter-watchos toolchain and a second build.
+    timeout-minutes: ${{ inputs.watch && 60 || 30 }}
     environment: release
     concurrency:
       group: mobile-release-ios
@@ -323,6 +333,24 @@ jobs:
             exit 1
           fi
 
+      - name: Set up flutter-watchos
+        if: inputs.watch && inputs.source_run == ''
+        timeout-minutes: 15
+        env:
+          FLUTTERWATCH_TOKEN: ${{ secrets.FLUTTERWATCH_TOKEN }}
+        run: bash scripts/ci/watch_build.sh toolchain
+
+      - name: Build Apple Watch app (unsigned)
+        if: inputs.watch && inputs.source_run == ''
+        timeout-minutes: 15
+        # Before code signing on purpose: `xcode-project use-profiles` switches
+        # the watch project to manual signing, which flutter-watchos's forced
+        # automatic signing would conflict with. The next steps sign it.
+        env:
+          FLUTTERWATCH_TOKEN: ${{ secrets.FLUTTERWATCH_TOKEN }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+        run: bash scripts/ci/watch_build.sh release
+
       - name: Set up code signing
         if: inputs.source_run == ''
         # Same commands Codemagic ran: fetch the App Store certificate and
@@ -333,6 +361,7 @@ jobs:
           APP_STORE_CONNECT_KEY_IDENTIFIER: ${{ secrets.APP_STORE_CONNECT_KEY_IDENTIFIER }}
           APP_STORE_CONNECT_PRIVATE_KEY: ${{ secrets.APP_STORE_CONNECT_PRIVATE_KEY }}
           CERTIFICATE_PRIVATE_KEY: ${{ secrets.IOS_DISTRIBUTION_CERTIFICATE_KEY }}
+          BUILD_WATCH: ${{ inputs.watch }}
         run: |
           for name in APP_STORE_CONNECT_ISSUER_ID APP_STORE_CONNECT_KEY_IDENTIFIER APP_STORE_CONNECT_PRIVATE_KEY CERTIFICATE_PRIVATE_KEY; do
             if [ -z "${!name:-}" ]; then
@@ -341,12 +370,27 @@ jobs:
             fi
           done
           keychain initialize --path "$RUNNER_TEMP/signing.keychain-db"
+          if [ "$BUILD_WATCH" = true ]; then
+            # fetch-signing-files matches com.chessever.app.* only among
+            # registered bundle IDs, so the watch app's must exist first.
+            watch_id=com.chessever.app.watchkitapp
+            if ! app-store-connect bundle-ids list --bundle-id-identifier "$watch_id" \
+                --strict-match-identifier --platform IOS --json |
+              python3 -I -c 'import json, sys; sys.exit(0 if any(b["attributes"]["identifier"] == sys.argv[1] for b in json.load(sys.stdin)) else 1)' "$watch_id"; then
+              app-store-connect bundle-ids create "$watch_id" --name "ChessEver Watch" --platform IOS
+            fi
+          fi
           app-store-connect fetch-signing-files com.chessever.app \
             --type IOS_APP_STORE \
             --platform IOS \
             --create
           keychain add-certificates --path "$RUNNER_TEMP/signing.keychain-db"
           xcode-project use-profiles --export-options-plist "$RUNNER_TEMP/export_options.plist"
+
+      - name: Sign Apple Watch app
+        if: inputs.watch && inputs.source_run == ''
+        timeout-minutes: 10
+        run: bash scripts/ci/watch_build.sh sign
 
       - name: Build IPA
         timeout-minutes: 20
@@ -360,6 +404,8 @@ jobs:
           CLARITY_PROJECT_ID: ${{ secrets.CLARITY_PROJECT_ID }}
           ONESIGNAL_APP_ID: ${{ secrets.ONESIGNAL_APP_ID }}
           APPSFLYER_DEV_KEY: ${{ secrets.APPSFLYER_DEV_KEY }}
+          # Read by scripts/embed_watch_companion.sh inside the Xcode build.
+          CHESSEVER_WATCH: ${{ inputs.watch && 'require' || 'skip' }}
         run: bash scripts/ci/mobile_flutter_build.sh ipa --export-options-plist "$RUNNER_TEMP/export_options.plist"
 
       - name: Download verified iOS build
@@ -373,6 +419,8 @@ jobs:
       - name: Check IPA signing
         # Codemagic post-build check: the embedded profile must carry
         # production APNs or push notifications silently stop working.
+        env:
+          BUILD_WATCH: ${{ inputs.watch }}
         run: |
           ipa=(build/ios/ipa/*.ipa)
           check_dir="$RUNNER_TEMP/ipa_check"
@@ -393,6 +441,11 @@ jobs:
           if [ "$aps" != "production" ]; then
             echo "::error::Embedded profile APNs is '$aps' (expected 'production')"
             exit 1
+          fi
+          if [ "$BUILD_WATCH" = true ]; then
+            bash scripts/ci/watch_build.sh check-ipa "${ipa[0]}"
+          elif [ -d "$check_dir/Payload/Runner.app/Watch" ]; then
+            echo 'This IPA also carries the Apple Watch app.'
           fi
 
       - name: Upload to TestFlight, or submit for App Store review (manual release)
@@ -430,3 +483,5 @@ jobs:
           keychain delete --path "$RUNNER_TEMP/signing.keychain-db" || true
           keychain use-login || true
           rm -rf "$HOME/Library/Developer/Xcode/UserData/Certificates" ios/Runner/GoogleService-Info.plist
+          # Delete, never `flutter-watchos logout`: that revokes the token.
+          rm -rf "$HOME/.flutter-watchos"

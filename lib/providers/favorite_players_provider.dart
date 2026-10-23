@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import '../services/watch_companion_service.dart';
 import 'package:chessever2/repository/favorites/models/favorite_player.dart';
 import 'package:chessever2/repository/sqlite/app_database.dart';
 import 'package:chessever2/screens/favorites/favorite_players_provider.dart';
@@ -248,6 +249,7 @@ class FavoritePlayersNotifierNew extends AsyncNotifier<List<FavoritePlayer>> {
           );
 
       debugPrint('[FavoritePlayers] Added player $playerName to Supabase');
+      WatchCompanionService.instance.scheduleSync();
 
       // Refresh state
       await refresh();
@@ -307,6 +309,7 @@ class FavoritePlayersNotifierNew extends AsyncNotifier<List<FavoritePlayer>> {
       }
 
       debugPrint('[FavoritePlayers] Removed player $playerName from Supabase');
+      WatchCompanionService.instance.scheduleSync();
 
       // Refresh state
       await refresh();
