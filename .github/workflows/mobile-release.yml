@@ -57,6 +57,10 @@ on:
         description: Keep R8 mapping and dSYMs as run artifacts (any signed-in GitHub user can download them)
         type: boolean
         default: false
+      xcode:
+        description: "iOS only: Xcode version on the runner. 27.1 (iOS 27.1 SDK) fills iPhone Duo's displays edge to edge once the runner image carries it"
+        type: string
+        default: "26.6"
 
 permissions:
   contents: read
@@ -91,6 +95,7 @@ jobs:
           MANAGED_PUBLISHING_CONFIRMED: ${{ inputs.managed_publishing_confirmed }}
           ANDROID_DRAFT: ${{ inputs.android_draft }}
           REPLACE_PENDING_IOS_REVIEW: ${{ inputs.replace_pending_ios_review }}
+          XCODE_VERSION: ${{ inputs.xcode }}
         run: |
           if [ "$RELEASE_REF" != refs/heads/stable ]; then
             echo '::error::Mobile releases must run from stable.'
@@ -110,6 +115,10 @@ jobs:
           fi
           if [ "$STORE" = review ] && [ "$BUILD_ANDROID" = true ] && [ "$ANDROID_DRAFT" != true ] && [ "$MANAGED_PUBLISHING_CONFIRMED" != true ]; then
             echo '::error::Verify Managed publishing is ON in Google Play Publishing overview before submitting Android.'
+            exit 1
+          fi
+          if ! [[ "$XCODE_VERSION" =~ ^[0-9]+(\.[0-9]+){0,2}$ ]]; then
+            echo "::error::xcode must be a version such as 26.6 or 27.1, not '$XCODE_VERSION'."
             exit 1
           fi
 
@@ -287,12 +296,23 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Select Xcode 26.6
+      - name: Select Xcode ${{ inputs.xcode }}
         background: true
         # Codemagic's "latest" resolved to 26.6 (17F113) when this was ported.
         # Move deliberately; App Store Connect enforces a minimum SDK.
+        # iPhone Duo: only an iOS 27.1 SDK build (Xcode 27.1) is drawn edge to
+        # edge with the side controls; older builds run in a compatibility
+        # window. The default stays 26.6 until a 27.1 build has been verified.
+        env:
+          XCODE_VERSION: ${{ inputs.xcode }}
         run: |
-          sudo xcode-select --switch /Applications/Xcode_26.6.app
+          app="/Applications/Xcode_${XCODE_VERSION}.app"
+          if [ ! -d "$app" ]; then
+            echo "::error::Xcode $XCODE_VERSION is not installed on this runner image. Installed:"
+            ls -d /Applications/Xcode*.app
+            exit 1
+          fi
+          sudo xcode-select --switch "$app"
           xcodebuild -version
 
       - name: Set up Flutter (stable)
