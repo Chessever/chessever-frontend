@@ -1041,7 +1041,29 @@ class _GamesAppBarNotifier
     }
   }
 
-  Map<String, bool> _buildRoundCompletion(List<GamesAppBarModel> loadedModels) {
+  /// Per round: whether every board is decided, and whether any board has
+  /// moved or been decided. Published pairings alone are not play, so a round
+  /// that holds only pairings stays the next round (see
+  /// [pickUpcomingRoundForPromotion]) whatever its date says.
+  _RoundProgress _buildRoundProgress(List<GamesAppBarModel> loadedModels) {
+    final boardStates = _buildRoundBoardStates(loadedModels);
+    return (
+      completion: <String, bool>{
+        for (final entry in boardStates.entries)
+          entry.key:
+              entry.value.isNotEmpty &&
+              entry.value.every((board) => board.finished),
+      },
+      activity: <String, bool>{
+        for (final entry in boardStates.entries)
+          entry.key: entry.value.any((board) => board.finished || board.moved),
+      },
+    );
+  }
+
+  Map<String, List<_RoundBoardState>> _buildRoundBoardStates(
+    List<GamesAppBarModel> loadedModels,
+  ) {
     final isKnockout =
         tourId != null
             ? ref.read(knockoutTournamentStateProvider(tourId!)).isKnockout
@@ -1058,10 +1080,10 @@ class _GamesAppBarNotifier
               ?.tours
               .map((tour) => tour.tour.id) ??
           const <String>[];
-      return <String, bool>{
+      return <String, List<_RoundBoardState>>{
         for (final model in loadedModels)
-          model.id: () {
-            final roundGames = itemsForTournamentDisplayRound<GamesTourModel>(
+          model.id: [
+            for (final game in itemsForTournamentDisplayRound<GamesTourModel>(
               round: model,
               selectedTourId: tourId!,
               knownTourIds: knownTourIds,
@@ -1072,10 +1094,9 @@ class _GamesAppBarNotifier
                       ref
                           .read(knockoutTournamentStateProvider(stageTourId))
                           .allGames,
-            );
-            return roundGames.isNotEmpty &&
-                roundGames.every((game) => game.gameStatus.isFinished);
-          }(),
+            ))
+              _RoundBoardState.of(game.gameStatus, game.lastMove),
+          ],
       };
     }
 
@@ -1084,32 +1105,29 @@ class _GamesAppBarNotifier
             ? null
             : ref.read(gamesAppBarGamesProvider(tourId!)).valueOrNull;
     if (rawGames != null) {
-      return <String, bool>{
+      return <String, List<_RoundBoardState>>{
         for (final model in loadedModels)
-          model.id: () {
-            final roundGames = rawGames.where(
-              (game) => model.sourceRoundIds.contains(game.roundId),
-            );
-            return roundGames.isNotEmpty &&
-                roundGames.every(
-                  (game) => GameStatus.fromString(game.status).isFinished,
-                );
-          }(),
+          model.id: [
+            for (final game in rawGames)
+              if (model.sourceRoundIds.contains(game.roundId))
+                _RoundBoardState.of(
+                  GameStatus.fromString(game.status),
+                  game.lastMove,
+                ),
+          ],
       };
     }
 
     final games =
         ref.read(gamesTourScreenProvider).valueOrNull?.gamesTourModels ??
         const <GamesTourModel>[];
-    return <String, bool>{
+    return <String, List<_RoundBoardState>>{
       for (final model in loadedModels)
-        model.id: () {
-          final roundGames = games.where(
-            (game) => model.sourceRoundIds.contains(game.roundId),
-          );
-          return roundGames.isNotEmpty &&
-              roundGames.every((game) => game.gameStatus.isFinished);
-        }(),
+        model.id: [
+          for (final game in games)
+            if (model.sourceRoundIds.contains(game.roundId))
+              _RoundBoardState.of(game.gameStatus, game.lastMove),
+        ],
     };
   }
 
@@ -1167,23 +1185,25 @@ class _GamesAppBarNotifier
     List<GamesAppBarModel> models,
     Map<String, int> counts,
   ) {
-    final completion = _buildRoundCompletion(models);
+    final progress = _buildRoundProgress(models);
     return pickPreferredRoundForSelection(
       models,
       resolveDate: _roundEventDateTime,
       hasGames: (model) => _hasGames(model.id, counts),
-      isRoundFullyPlayed: (model) => completion[model.id] ?? false,
+      isRoundFullyPlayed: (model) => progress.completion[model.id] ?? false,
+      hasStartedActivity: (model) => progress.activity[model.id] ?? false,
     );
   }
 
   void _sortRounds(List<GamesAppBarModel> models) {
     final counts = _buildRoundGameCounts(models);
-    final completion = _buildRoundCompletion(models);
+    final progress = _buildRoundProgress(models);
     final sorted = sortRoundsForDisplay(
       models,
       resolveDate: _roundEventDateTime,
       hasGames: (model) => _hasGames(model.id, counts),
-      isRoundFullyPlayed: (model) => completion[model.id] ?? false,
+      isRoundFullyPlayed: (model) => progress.completion[model.id] ?? false,
+      hasStartedActivity: (model) => progress.activity[model.id] ?? false,
     );
     models
       ..clear()
@@ -1402,30 +1422,46 @@ class _GamesAppBarNotifier
       return;
     }
 
+    // The next round, once every started round is played out and its boards
+    // are published, sits on top of the list; land on it whether or not the
+    // rounds carry start times ("start after previous" rounds have none).
     final allHaveStartTimes = models.every(
       (m) => _roundEventDateTime(m) != null,
     );
-    if (allHaveStartTimes) {
-      final completion = _buildRoundCompletion(models);
-      final preconfiguredFocus = pickPreferredRoundForSelection(
-        models,
-        resolveDate: _roundEventDateTime,
-        hasGames: (model) => _hasGames(model.id, counts),
-        isRoundFullyPlayed: (model) => completion[model.id] ?? false,
+    final progress = _buildRoundProgress(models);
+    bool hasGames(GamesAppBarModel model) => _hasGames(model.id, counts);
+    bool isRoundFullyPlayed(GamesAppBarModel model) =>
+        progress.completion[model.id] ?? false;
+    bool hasStartedActivity(GamesAppBarModel model) =>
+        progress.activity[model.id] ?? false;
+    final preconfiguredFocus =
+        allHaveStartTimes
+            ? pickPreferredRoundForSelection(
+              models,
+              resolveDate: _roundEventDateTime,
+              hasGames: hasGames,
+              isRoundFullyPlayed: isRoundFullyPlayed,
+              hasStartedActivity: hasStartedActivity,
+            )
+            : pickUpcomingRoundForPromotion(
+              models,
+              resolveDate: _roundEventDateTime,
+              hasGames: hasGames,
+              isRoundFullyPlayed: isRoundFullyPlayed,
+              hasStartedActivity: hasStartedActivity,
+            );
+    if (preconfiguredFocus != null) {
+      state = AsyncValue.data(
+        GamesAppBarViewModel(
+          gamesAppBarModels: models,
+          selectedId: preconfiguredFocus.id,
+          userSelectedId: false,
+        ),
       );
-      if (preconfiguredFocus != null) {
-        state = AsyncValue.data(
-          GamesAppBarViewModel(
-            gamesAppBarModels: models,
-            selectedId: preconfiguredFocus.id,
-            userSelectedId: false,
-          ),
-        );
-        if (scrollSelection) {
-          _scrollToRound(preconfiguredFocus.id);
-        }
-        return;
+      if (scrollSelection) {
+        _scrollToRound(preconfiguredFocus.id);
       }
+      return;
     }
 
     // 3) Try to get the latest round by last move activity
@@ -1893,6 +1929,22 @@ int _compareStageRanks(int? a, int? b) {
   if (a == null) return 1;
   if (b == null) return -1;
   return a.compareTo(b);
+}
+
+typedef _RoundProgress =
+    ({Map<String, bool> completion, Map<String, bool> activity});
+
+class _RoundBoardState {
+  const _RoundBoardState({required this.finished, required this.moved});
+
+  factory _RoundBoardState.of(GameStatus status, String? lastMove) =>
+      _RoundBoardState(
+        finished: status.isFinished,
+        moved: lastMove?.trim().isNotEmpty ?? false,
+      );
+
+  final bool finished;
+  final bool moved;
 }
 
 class _RoundSortMeta {

@@ -1,1 +1,1 @@
-Improvements to Discovery Likes, player profiles and board analysis.
+Starred events, players and collections now tell you how many new games they added today, counted from your local midnight. The Games tab puts the next round on top as soon as its pairings are out. Clock fixes for rapid playoff boards, plus other improvements.
