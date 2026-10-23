@@ -19,17 +19,20 @@ docs local, so the shared guide lives here).
 Actions -> **Mobile release** -> Run workflow, on `stable`.
 
 GitHub Actions is the production mobile build service. Do not trigger Codemagic.
-Store submission and public release are separate: every submitted version must
-wait for a person to release it in the store console.
+By default a run uploads to **TestFlight** and **Google Play internal testing**
+and submits nothing for review. Submitting for review is a deliberate choice
+(`store: review`), usually made instead in the store consoles by promoting a
+build that testers have already checked. Store submission and public release
+stay separate: every submitted version must wait for a person to release it.
 
 | Input | Default | Effect |
 |---|---|---|
 | `android` | on | Build the App Bundle on `ubuntu-24.04` |
 | `ios` | on | Build the IPA on `macos-26` (Xcode 26.6) |
-| `publish` | on | Submit Google Play `production` and App Store versions for review, held for manual release |
-| `managed_publishing_confirmed` | off | Confirm Managed publishing is ON in the production app's Play Console; required for Android submissions on every run |
-| `android_draft` | off | Upload Android to Play Console as a draft, without review or rollout; does not require Managed publishing confirmation |
-| `replace_pending_ios_review` | off | Explicitly replace an earlier review or approved manual hold with this version; release remains MANUAL |
+| `store` | `testing` | `testing`: upload the IPA to TestFlight and the AAB to the Play `internal` track, no review. `review`: submit Google Play `production` and App Store versions for review, held for manual release. `build-only`: upload nothing and keep the AAB/IPA as run artifacts |
+| `managed_publishing_confirmed` | off | `review` only. Confirm Managed publishing is ON in the production app's Play Console; required for Android submissions on every run |
+| `android_draft` | off | `review` only. Upload Android to Play production as a draft, without review or rollout; does not require Managed publishing confirmation |
+| `replace_pending_ios_review` | off | `review` only. Explicitly replace an earlier review or approved manual hold with this version; release remains MANUAL |
 | `source_run` | empty | Reuse the AAB/IPA from a successful Mobile release run instead of compiling again |
 | `source_sha` | empty | Full reviewed source commit SHA; required with `source_run` |
 | `upload_symbols` | off | Keep R8 `mapping.txt` and dSYMs as run artifacts for 7 days |
@@ -42,8 +45,9 @@ The release commands explicitly select the production flavor and `lib/main.dart`
 Build-only runs retain the AAB and IPA for seven days. The remaining commands run
 in the same order:
 
-To submit an already validated build, set `source_run` and `source_sha` to
-the successful build-only run and its exact commit, with `publish` on.
+To upload an already validated build, set `source_run` and `source_sha` to
+the successful build-only run and its exact commit, with `store` set to
+`testing` or `review`.
 The downloader requires a successful manual `stable` run of this workflow in
 this repository and verifies the complete version plus build number against
 the current `pubspec.yaml`. Pull-request, fork, failed, and mismatched-version
@@ -66,10 +70,28 @@ does not block Android; two submissions for the same platform stay serialized.
 | `flutter build appbundle --release <defines>` | `scripts/ci/mobile_flutter_build.sh appbundle` (public client defines; upstream Gamebase key excluded) |
 | `flutter build ipa --release --export-options-plist ... <defines>` | `scripts/ci/mobile_flutter_build.sh ipa --export-options-plist ...` |
 | Post-build: embedded profile must carry production APNs | "Check IPA signing" |
-| Store upload | `scripts/ci/mobile_store_submit.sh`: Android production review with Managed publishing confirmed; iOS App Store review with explicit `--release-type MANUAL` |
+| Store upload | `scripts/ci/mobile_store_submit.sh <platform> <testing\|review>`: `testing` uploads Android to the `internal` track and iOS to TestFlight (`scripts/ci/testflight_upload.py`); `review` submits Android production with Managed publishing confirmed and iOS App Store review with explicit `--release-type MANUAL` |
 | Email to info@, brky29cn@, flutterdev77@ | Not ported. GitHub emails the person who started a failed run. |
 
+### Testing builds (the default)
+
+- **Android:** the bundle goes to the `internal` track as a completed release.
+  Internal testing is not covered by Managed publishing and skips review, so
+  testers on the internal list get it within minutes (Google reviews only the
+  first internal release, or the next one after a rejection). To ship it,
+  promote that release to production in Play Console and send it for review
+  there; do not upload the same version code again.
+- **iOS:** `testflight_upload.py` verifies the production package identity and
+  full source version, uploads only when that build is absent, and stops. It
+  never adds `--app-store` or `--testflight` (external beta review). Internal
+  testers see the build once Apple finishes processing, usually 5 to 15
+  minutes; `ITSAppUsesNonExemptEncryption` is `false` in `Info.plist`, so no
+  export-compliance question blocks it. To ship it, pick that build for the
+  next version in App Store Connect and submit it with manual release.
+
 ### Review without automatic release
+
+Applies only to `store: review`.
 
 - **Android:** Before starting a submission, open production ChessEver in Google
   Play Console -> Publishing overview and verify **Managed publishing is on**.

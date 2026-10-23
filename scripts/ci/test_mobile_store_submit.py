@@ -35,9 +35,9 @@ class StoreSubmissionTest(unittest.TestCase):
             "GITHUB_REF": "refs/heads/stable",
         }
 
-    def submit(self, platform, **env):
+    def submit(self, platform, destination="review", **env):
         return subprocess.run(
-            ["bash", str(SCRIPT), platform],
+            ["bash", str(SCRIPT), platform, destination],
             cwd=self.root,
             env={**self.env, **env},
             text=True,
@@ -45,11 +45,58 @@ class StoreSubmissionTest(unittest.TestCase):
             check=False,
         )
 
+    def ipa(self):
+        ipa = self.root / "build/ios/ipa/ChessEver.ipa"
+        ipa.parent.mkdir(parents=True)
+        ipa.touch()
+
     def test_other_branches_cannot_submit(self):
         for platform in ("android", "ios"):
-            result = self.submit(platform, GITHUB_REF="refs/heads/main")
-            self.assertNotEqual(result.returncode, 0)
-            self.assertFalse(self.calls.exists())
+            for destination in ("testing", "review"):
+                result = self.submit(
+                    platform, destination, GITHUB_REF="refs/heads/main"
+                )
+                self.assertNotEqual(result.returncode, 0)
+                self.assertFalse(self.calls.exists())
+
+    def test_destination_is_required(self):
+        self.ipa()
+        for platform in ("android", "ios"):
+            for destination in ("", "production", "Testing"):
+                result = self.submit(platform, destination)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertFalse(self.calls.exists())
+
+    def test_android_testing_uploads_to_internal_without_confirmation(self):
+        result = self.submit(
+            "android", "testing", MANAGED_PUBLISHING_CONFIRMED="false"
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        args = json.loads(self.calls.read_text())
+        self.assertEqual(args[1:3], ["bundles", "publish"])
+        self.assertEqual(args[args.index("--track") + 1], "internal")
+        self.assertNotIn("production", args)
+        self.assertNotIn("--rollout-fraction", args)
+
+    def test_android_testing_ignores_draft_and_never_reaches_production(self):
+        result = self.submit("android", "testing", ANDROID_SUBMIT_DRAFT="true")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        args = json.loads(self.calls.read_text())
+        self.assertEqual(args[args.index("--track") + 1], "internal")
+
+    def test_ios_testing_uploads_to_testflight_without_review(self):
+        self.ipa()
+        result = self.submit("ios", "testing", REPLACE_PENDING_IOS_REVIEW="true")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        args = json.loads(self.calls.read_text())
+        self.assertTrue(args[1].endswith("testflight_upload.py"))
+        self.assertEqual(args[args.index("--package") + 1], "build/ios/ipa/ChessEver.ipa")
+        for review_flag in ("--release-type", "--replace-pending", "--app-store", "--notes"):
+            self.assertNotIn(review_flag, args)
+
+    def test_ios_testing_missing_ipa_never_uploads(self):
+        self.assertNotEqual(self.submit("ios", "testing").returncode, 0)
+        self.assertFalse(self.calls.exists())
 
     def test_android_without_publishing_confirmation_never_uploads(self):
         for confirmation in ("", "false"):
@@ -79,9 +126,7 @@ class StoreSubmissionTest(unittest.TestCase):
         self.assertNotIn("--rollout-fraction", args)
 
     def test_ios_submits_for_review_with_manual_release(self):
-        ipa = self.root / "build/ios/ipa/ChessEver.ipa"
-        ipa.parent.mkdir(parents=True)
-        ipa.touch()
+        self.ipa()
         result = self.submit("ios")
         self.assertEqual(result.returncode, 0, result.stderr)
         args = json.loads(self.calls.read_text())
@@ -101,9 +146,7 @@ class StoreSubmissionTest(unittest.TestCase):
         self.assertFalse(self.calls.exists())
 
     def test_ios_replacing_pending_review_still_requires_manual_release(self):
-        ipa = self.root / "build/ios/ipa/ChessEver.ipa"
-        ipa.parent.mkdir(parents=True)
-        ipa.touch()
+        self.ipa()
         result = self.submit("ios", REPLACE_PENDING_IOS_REVIEW="true")
         self.assertEqual(result.returncode, 0, result.stderr)
         args = json.loads(self.calls.read_text())

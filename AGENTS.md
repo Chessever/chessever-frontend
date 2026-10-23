@@ -29,10 +29,14 @@ the user explicitly requests historical test-environment work.
 
 - Mobile releases use `stable`, the production flavor/entrypoint (`lib/main.dart`),
   and GitHub Actions `.github/workflows/mobile-release.yml`. Codemagic is retired.
-- Submit both stores for review and hold for manual release. iOS must use
-  `--release-type MANUAL`. Before each Android production submission, verify
-  Google Play Managed publishing is ON; the publishing API cannot read it.
-  Read `docs/ci/github-actions-release.md` before changing or triggering releases.
+- The workflow's default `store: testing` uploads to TestFlight and Google Play
+  internal testing and submits nothing for review (product decision,
+  2026-10-23). Never make review submission the default again. When a review is
+  explicitly requested (`store: review`), hold both stores for manual release:
+  iOS must use `--release-type MANUAL`, and before each Android production
+  submission verify Google Play Managed publishing is ON; the publishing API
+  cannot read it. Read `docs/ci/github-actions-release.md` before changing or
+  triggering releases.
 - App, Supabase, and companion broadcasting work at `../chessever-broadcasting`
   targets the intended production configuration when that work is in scope.
 - Verify the exact project, URL, credentials, topic, migration target, and release

@@ -1,4 +1,6 @@
-# Production mobile review submission, held for manual release on both stores.
+# Production mobile builds. By default they go to TestFlight and Google Play
+# internal testing, with no review submission. Review submission (held for
+# manual release on both stores) is a separate, explicit choice.
 # GitHub Actions replaces Codemagic's
 # "Flutter-Default Workflow" (app chessever-frontend-mobile).
 #
@@ -19,20 +21,24 @@ on:
         description: Build iOS (IPA)
         type: boolean
         default: true
-      publish:
-        description: Submit to Google Play production and App Store review (manual release only)
-        type: boolean
-        default: true
+      store:
+        description: "Destination: testing = TestFlight + Play internal testing (no review); review = Play production + App Store review, manual release; build-only = keep the AAB/IPA as run artifacts"
+        type: choice
+        default: testing
+        options:
+          - testing
+          - review
+          - build-only
       managed_publishing_confirmed:
-        description: I verified Google Play Managed publishing is ON for production ChessEver
+        description: "review only: I verified Google Play Managed publishing is ON for production ChessEver"
         type: boolean
         default: false
       android_draft:
-        description: Upload Android as a draft only, without review or release
+        description: "review only: upload Android to production as a draft, without review or release"
         type: boolean
         default: false
       replace_pending_ios_review:
-        description: Explicitly replace an earlier iOS review or approved manual hold (release stays manual)
+        description: "review only: explicitly replace an earlier iOS review or approved manual hold (release stays manual)"
         type: boolean
         default: false
       source_run:
@@ -71,14 +77,15 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
-      - name: Require stable and a manual publishing hold
+      - name: Require stable and valid store options
         env:
           RELEASE_REF: ${{ github.ref }}
           BUILD_ANDROID: ${{ inputs.android }}
           BUILD_IOS: ${{ inputs.ios }}
-          SUBMIT: ${{ inputs.publish }}
+          STORE: ${{ inputs.store }}
           MANAGED_PUBLISHING_CONFIRMED: ${{ inputs.managed_publishing_confirmed }}
           ANDROID_DRAFT: ${{ inputs.android_draft }}
+          REPLACE_PENDING_IOS_REVIEW: ${{ inputs.replace_pending_ios_review }}
         run: |
           if [ "$RELEASE_REF" != refs/heads/stable ]; then
             echo '::error::Mobile releases must run from stable.'
@@ -88,7 +95,11 @@ jobs:
             echo '::error::Select at least one platform.'
             exit 1
           fi
-          if [ "$SUBMIT" = true ] && [ "$BUILD_ANDROID" = true ] && [ "$ANDROID_DRAFT" != true ] && [ "$MANAGED_PUBLISHING_CONFIRMED" != true ]; then
+          if [ "$STORE" != review ] && { [ "$ANDROID_DRAFT" = true ] || [ "$REPLACE_PENDING_IOS_REVIEW" = true ]; }; then
+            echo '::error::android_draft and replace_pending_ios_review only apply when store is review.'
+            exit 1
+          fi
+          if [ "$STORE" = review ] && [ "$BUILD_ANDROID" = true ] && [ "$ANDROID_DRAFT" != true ] && [ "$MANAGED_PUBLISHING_CONFIRMED" != true ]; then
             echo '::error::Verify Managed publishing is ON in Google Play Publishing overview before submitting Android.'
             exit 1
           fi
@@ -142,7 +153,7 @@ jobs:
           channel: stable
 
       - name: Set up Python
-        if: inputs.publish
+        if: inputs.store != 'build-only'
         background: true
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
@@ -152,7 +163,7 @@ jobs:
         wait-all:
 
       - name: Install store CLI tools
-        if: inputs.publish
+        if: inputs.store != 'build-only'
         background: true
         # 0.70.0, the release Codemagic's machines run, hash-locked with every
         # dependency because these tools handle the store credentials.
@@ -218,17 +229,18 @@ jobs:
           SOURCE_COMMIT: ${{ inputs.source_sha }}
         run: python3 scripts/ci/mobile_artifact_download.py android
 
-      - name: Upload Android draft or submit for review
+      - name: Upload to Google Play internal testing, or submit for review
         timeout-minutes: 10
-        if: inputs.publish
+        if: inputs.store != 'build-only'
         env:
           GOOGLE_PLAY_SERVICE_ACCOUNT_CREDENTIALS: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}
+          STORE: ${{ inputs.store }}
           MANAGED_PUBLISHING_CONFIRMED: ${{ inputs.managed_publishing_confirmed }}
           ANDROID_SUBMIT_DRAFT: ${{ inputs.android_draft }}
-        run: bash scripts/ci/mobile_store_submit.sh android
+        run: bash scripts/ci/mobile_store_submit.sh android "$STORE"
 
       - name: Keep App Bundle (build only)
-        if: ${{ !inputs.publish }}
+        if: inputs.store == 'build-only'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: android-app-bundle
@@ -383,18 +395,19 @@ jobs:
             exit 1
           fi
 
-      - name: Submit to App Store review (manual release)
+      - name: Upload to TestFlight, or submit for App Store review (manual release)
         timeout-minutes: 10
-        if: inputs.publish
+        if: inputs.store != 'build-only'
         env:
+          STORE: ${{ inputs.store }}
           REPLACE_PENDING_IOS_REVIEW: ${{ inputs.replace_pending_ios_review }}
           APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
           APP_STORE_CONNECT_KEY_IDENTIFIER: ${{ secrets.APP_STORE_CONNECT_KEY_IDENTIFIER }}
           APP_STORE_CONNECT_PRIVATE_KEY: ${{ secrets.APP_STORE_CONNECT_PRIVATE_KEY }}
-        run: bash scripts/ci/mobile_store_submit.sh ios
+        run: bash scripts/ci/mobile_store_submit.sh ios "$STORE"
 
       - name: Keep IPA (build only)
-        if: ${{ !inputs.publish }}
+        if: inputs.store == 'build-only'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ios-ipa
