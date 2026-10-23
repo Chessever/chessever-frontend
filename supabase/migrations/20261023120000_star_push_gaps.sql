@@ -30,8 +30,10 @@
 --     player says "N more" and gives the day's total, and a push about a
 --     different player never says "more".
 --
--- Additive: three new functions, two new columns, three functions replaced
--- with the same signatures. The cron jobs are unchanged.
+-- Additive: three new functions, two new columns (nullable, or with a
+-- default), three functions replaced with the same signatures, grants and
+-- payload keys (new keys only). Nothing is dropped or deleted. The cron jobs
+-- are unchanged.
 
 begin;
 
@@ -630,9 +632,10 @@ grant execute on function public.queue_prep_games_pushes() to service_role;
 
 -- Moves every star of the collection [p_from] to its new slug [p_to]: the
 -- `collection:<slug>` rows and the older rows the app still reads as the
--- star (`metadata.kind: collection`, `metadata.slug`). A reader who already
--- stars the new slug keeps that row. Called by gamebase (service key) after
--- a rename commits; returns how many stars moved.
+-- star (`metadata.kind: collection`, `metadata.slug`). Nothing is deleted: a
+-- reader who already stars the new slug keeps both rows as they are. Called
+-- by gamebase (service key) after a rename commits; returns how many stars
+-- moved.
 create or replace function public.rename_collection_stars(p_from text, p_to text)
 returns integer
 language plpgsql
@@ -648,13 +651,6 @@ begin
     return 0;
   end if;
 
-  delete from public.user_favorite_events f
-   where (f.event_id = 'collection:' || v_from
-          or (f.metadata->>'kind' = 'collection' and f.metadata->>'slug' = v_from))
-     and exists (
-       select 1 from public.user_favorite_events o
-        where o.user_id = f.user_id and o.event_id = 'collection:' || v_to);
-
   update public.user_favorite_events f
      set event_id = case
            when f.event_id = 'collection:' || v_from then 'collection:' || v_to
@@ -666,8 +662,11 @@ begin
            else f.metadata
          end,
          updated_at = now()
-   where f.event_id = 'collection:' || v_from
-      or (f.metadata->>'kind' = 'collection' and f.metadata->>'slug' = v_from);
+   where (f.event_id = 'collection:' || v_from
+          or (f.metadata->>'kind' = 'collection' and f.metadata->>'slug' = v_from))
+     and not exists (
+       select 1 from public.user_favorite_events o
+        where o.user_id = f.user_id and o.event_id = 'collection:' || v_to);
   get diagnostics v_moved = row_count;
   return v_moved;
 end;
