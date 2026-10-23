@@ -338,7 +338,13 @@ jobs:
         timeout-minutes: 15
         env:
           FLUTTERWATCH_TOKEN: ${{ secrets.FLUTTERWATCH_TOKEN }}
-        run: bash scripts/ci/watch_build.sh toolchain
+        run: |
+          # Fail before the toolchain download, not after it.
+          if [ -z "$FLUTTERWATCH_TOKEN" ]; then
+            echo '::error::FLUTTERWATCH_TOKEN is not set in the release environment (docs/watch-companion.md).'
+            exit 1
+          fi
+          bash scripts/ci/watch_build.sh toolchain
 
       - name: Build Apple Watch app (unsigned)
         if: inputs.watch && inputs.source_run == ''
