@@ -5,6 +5,7 @@ import 'package:chessever2/repository/library/library_game_event.dart';
 import 'package:chessever2/repository/gamebase/search/gamebase_search_models.dart';
 import 'package:chessever2/screens/gamebase/models/models.dart';
 import 'package:chessever2/screens/gamebase/services/player_opening_tree.dart';
+import 'package:chessever2/screens/gamebase/utils/explorer_access_depth.dart';
 import 'package:chessever2/utils/audio_player_service.dart';
 import 'package:chessever2/utils/logger/logger.dart';
 import 'package:chessever2/utils/user_error_message.dart';
@@ -129,6 +130,14 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
 
   int get effectiveMoveNumber =>
       state.currentMoveNumber + _accessMoveNumberOffset;
+
+  /// Plies played at the current position, as Premium access counts them:
+  /// [effectiveMoveNumber] floored by what the position's FEN proves. See
+  /// [explorerAccessPly].
+  int get accessPly => explorerAccessPly(
+    treePly: effectiveMoveNumber - 1,
+    fen: state.currentFen,
+  );
 
   void _syncQueryMovesFromTree() {
     if (state.game != null && _isInitialFen(state.game!.startingFen)) {

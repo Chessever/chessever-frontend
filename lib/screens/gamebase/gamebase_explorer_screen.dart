@@ -46,6 +46,7 @@ import 'package:chessever2/widgets/screen_wrapper.dart';
 import 'package:chessever2/repository/local_storage/local_storage_repository.dart';
 import 'package:chessever2/widgets/game_filter/rating_tier_filter.dart';
 import 'package:chessever2/widgets/game_filter/wheel_range_filter.dart';
+import 'package:chessever2/screens/gamebase/providers/explorer_depth_access.dart';
 import 'package:chessever2/screens/gamebase/providers/explorer_game_focus_provider.dart';
 import 'package:chessever2/screens/gamebase/providers/gamebase_providers.dart';
 import 'package:chessever2/screens/gamebase/providers/gamebase_explorer_state.dart';
@@ -393,15 +394,8 @@ class _GamebaseExplorerScreenState extends ConsumerState<GamebaseExplorerScreen>
   void _stopLongPressForward() => _forwardMoveHold.stop();
 
   /// Returns true when a single forward ply from the current explorer state
-  /// would land past the free-tier move limit for a non-subscriber.
-  bool _forwardStepWouldCrossFreeLimit() {
-    if (kDebugMode) return false;
-    if (ref.read(featureAccessStateProvider).isSubscribed) return false;
-    final currentMoveNumber = ref
-        .read(gamebaseExplorerProvider.notifier)
-        .effectiveMoveNumber;
-    return currentMoveNumber >= kFreeExplorerMoveNumberLimit;
-  }
+  /// would land past move 10 for a reader without Premium.
+  bool _forwardStepWouldCrossFreeLimit() => explorerNextStepNeedsPremium(ref);
 
   /// Gate for any user action that advances the explorer by a single ply.
   /// If the next step would cross the free-tier boundary, the paywall is
@@ -1474,23 +1468,13 @@ class _GamebaseChessBoardState extends ConsumerState<_GamebaseChessBoard>
                     if (ref.read(explorerEvalProvider).pvPreview != null) {
                       return;
                     }
-                    // Playing this move would land past the free-tier
-                    // boundary: ask for Premium before advancing.
-                    // Chessground snaps the piece back when state doesn't
-                    // change.
-                    if (!kDebugMode &&
-                        !ref.read(featureAccessStateProvider).isSubscribed) {
-                      final currentMoveNumber = ref
-                          .read(gamebaseExplorerProvider.notifier)
-                          .effectiveMoveNumber;
-                      if (currentMoveNumber >= kFreeExplorerMoveNumberLimit) {
-                        if (!context.mounted) return;
-                        final unlocked = await requirePremiumGuard(
-                          context,
-                          ref,
-                        );
-                        if (!unlocked) return;
-                      }
+                    // Playing this move would land past move 10: ask for
+                    // Premium before advancing. Chessground snaps the piece
+                    // back when state doesn't change.
+                    if (explorerNextStepNeedsPremium(ref)) {
+                      if (!context.mounted) return;
+                      final unlocked = await requirePremiumGuard(context, ref);
+                      if (!unlocked) return;
                     }
                     notifier.makeMove(move.uci);
                   },
@@ -2629,15 +2613,10 @@ class _ExplorerEngineLinesState extends ConsumerState<_ExplorerEngineLines> {
       if (line.uciMoves.isEmpty) return;
       final firstUci = line.uciMoves.first.trim().toLowerCase();
       if (!_uciRegex.hasMatch(firstUci)) return;
-      if (!kDebugMode && !ref.read(featureAccessStateProvider).isSubscribed) {
-        final currentMoveNumber = ref
-            .read(gamebaseExplorerProvider.notifier)
-            .effectiveMoveNumber;
-        if (currentMoveNumber >= kFreeExplorerMoveNumberLimit) {
-          if (!context.mounted) return;
-          final unlocked = await requirePremiumGuard(context, ref);
-          if (!unlocked) return;
-        }
+      if (explorerNextStepNeedsPremium(ref)) {
+        if (!context.mounted) return;
+        final unlocked = await requirePremiumGuard(context, ref);
+        if (!unlocked) return;
       }
       ref
           .read(explorerEvalProvider.notifier)

@@ -1,4 +1,4 @@
-import 'package:chessever2/services/rewarded_premium/rewarded_access_provider.dart';
+import 'package:chessever2/services/rewarded_premium/rewarded_ads.dart';
 import 'dart:async';
 
 import 'package:chessever2/providers/board_settings_provider_new.dart';
@@ -22,6 +22,7 @@ import 'package:intl/intl.dart';
 import '../../../theme/app_theme.dart';
 import '../../../utils/responsive_helper.dart';
 import '../models/models.dart';
+import '../providers/explorer_depth_access.dart';
 import '../providers/explorer_game_focus_provider.dart';
 import '../providers/gamebase_explorer_state.dart';
 
@@ -30,6 +31,7 @@ import 'package:motor/motor.dart';
 import '../providers/explorer_games_cache.dart';
 import '../providers/explorer_games_prefetch.dart';
 import '../providers/gamebase_providers.dart';
+import '../utils/explorer_access_depth.dart';
 import '../utils/explorer_games_paging.dart';
 import '../utils/explorer_move_sort.dart';
 import 'explorer_game_card.dart';
@@ -51,12 +53,6 @@ const double _kColumnGap = 4;
 /// the header carries 11pt labels, not data, and a full 44dp band left a
 /// visible gap between the last engine line and the first move.
 const double _kHeaderRowHeight = 34;
-
-/// Free accounts step through the explorer up to the 10th full move. Once
-/// `currentMoveNumber` (`ply + 1`) reaches this value, the next step forward
-/// asks for Premium. Reading the table is never gated: it builds the same for
-/// every account at any depth.
-const int kFreeExplorerMoveNumberLimit = 20;
 
 /// When this many games (or fewer) remain in the explored position, the panel
 /// appends an inline games section under the move table (Trello #984).
@@ -215,6 +211,123 @@ class _ExplorerEmpty extends StatelessWidget {
                     ),
                   ),
                 ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+/// What [MoveStatisticsPanel] shows past [kFreeExplorerMaxPly] to a reader
+/// without Premium. The button opens the same choice every Premium gate does
+/// (watch an ad for temporary Premium, or subscribe), and the panel turns back
+/// into the table as soon as access lands.
+class _ExplorerDepthLocked extends HookConsumerWidget {
+  const _ExplorerDepthLocked({required this.bottomPadding});
+
+  /// Clearance for the board's translucent bottom nav, as the table keeps.
+  final double bottomPadding;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final promptOpen = useRef(false);
+    final rewarded = RewardedAdsConfig.available;
+
+    Future<void> unlock() async {
+      if (promptOpen.value) return;
+      promptOpen.value = true;
+      try {
+        await requirePremiumGuard(
+          context,
+          ref,
+          featureId: 'opening_explorer_depth',
+        );
+      } finally {
+        promptOpen.value = false;
+      }
+    }
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final maxHeight = constraints.maxHeight;
+        final compact = maxHeight.isFinite && maxHeight < 180;
+        final fillHeight =
+            maxHeight.isFinite
+                ? (maxHeight - bottomPadding).clamp(0.0, maxHeight)
+                : 0.0;
+
+        // Scrolls only when the panel is shorter than its content, so the
+        // button is never clipped under the bottom nav.
+        return SingleChildScrollView(
+          padding: EdgeInsets.only(bottom: bottomPadding),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(minHeight: fillHeight),
+            child: Center(
+              child: Padding(
+                padding: EdgeInsets.symmetric(
+                  horizontal: 24.sp,
+                  vertical: (compact ? 10 : 24).sp,
+                ),
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(maxWidth: 360.w),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (!compact) ...[
+                        Icon(
+                          Icons.lock_outline_rounded,
+                          size: 24.ic,
+                          color: context.colors.textSecondary,
+                        ),
+                        SizedBox(height: 10.sp),
+                      ],
+                      Text(
+                        'Explorer past move 10 is Premium',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: context.colors.textPrimary,
+                          fontSize: 13.f,
+                          fontWeight: FontWeight.w600,
+                          height: 1.2,
+                        ),
+                      ),
+                      SizedBox(height: 4.sp),
+                      Text(
+                        rewarded
+                            ? 'Watch an ad or upgrade to see the moves and '
+                                'games from here.'
+                            : 'Upgrade to see the moves and games from here.',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: context.colors.textSecondary,
+                          fontSize: 11.f,
+                          height: 1.3,
+                        ),
+                      ),
+                      SizedBox(height: (compact ? 8 : 14).sp),
+                      FilledButton(
+                        key: const ValueKey<String>('explorer_depth_unlock'),
+                        onPressed: unlock,
+                        style: FilledButton.styleFrom(
+                          backgroundColor: context.colors.brand,
+                          foregroundColor: context.colors.inkOnAccent,
+                          minimumSize: Size(0, 40.sp),
+                          padding: EdgeInsets.symmetric(horizontal: 20.sp),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8.br),
+                          ),
+                          textStyle: TextStyle(
+                            fontSize: 14.f,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        child: Text(rewarded ? 'Unlock' : 'Upgrade'),
+                      ),
+                    ],
+                  ),
+                ),
               ),
             ),
           ),
@@ -510,9 +623,62 @@ double? _measureExplorerGamesAnchor(GlobalKey gamesSectionKey) {
 
 /// Panel displaying move statistics for the current position.
 /// Shows each possible move with game count and win/draw/loss bar.
-class MoveStatisticsPanel extends HookConsumerWidget {
+///
+/// Past the 10th full move ([kFreeExplorerMaxPly]) the whole panel is
+/// Premium: a reader without it gets [_ExplorerDepthLocked] instead of the
+/// table, its games strip and its games sheets, however the position was
+/// reached (stepping through a game, moves played on the board, a set-up or
+/// pasted position). The table is not built at all there, so none of its
+/// games requests start either.
+class MoveStatisticsPanel extends ConsumerWidget {
   const MoveStatisticsPanel({
     super.key,
+    this.onMove,
+    this.onFilter,
+    this.hasActiveFilters = false,
+    this.listBottomPadding,
+    this.gamesPageHeight,
+  });
+
+  /// See [_MoveStatisticsTable.onMove].
+  final void Function(String uci)? onMove;
+
+  /// See [_MoveStatisticsTable.onFilter].
+  final VoidCallback? onFilter;
+
+  final bool hasActiveFilters;
+
+  /// See [_MoveStatisticsTable.listBottomPadding].
+  final double? listBottomPadding;
+
+  /// See [_MoveStatisticsTable.gamesPageHeight].
+  final double? gamesPageHeight;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    // Depth lives partly on the notifier (a set-up position's carried
+    // offset), so rebuild on every state change and read it from there.
+    ref.watch(gamebaseExplorerProvider);
+    final accessPly = ref.read(gamebaseExplorerProvider.notifier).accessPly;
+    final locked =
+        !ref.watch(explorerDepthUnlockedProvider) &&
+        explorerPlyLocked(accessPly);
+    if (locked) {
+      return _ExplorerDepthLocked(bottomPadding: listBottomPadding ?? 8.sp);
+    }
+    return _MoveStatisticsTable(
+      onMove: onMove,
+      onFilter: onFilter,
+      hasActiveFilters: hasActiveFilters,
+      listBottomPadding: listBottomPadding,
+      gamesPageHeight: gamesPageHeight,
+    );
+  }
+}
+
+/// The Explorer table itself, for a position the reader may read.
+class _MoveStatisticsTable extends HookConsumerWidget {
+  const _MoveStatisticsTable({
     this.onMove,
     this.onFilter,
     this.hasActiveFilters = false,
@@ -704,20 +870,14 @@ class MoveStatisticsPanel extends HookConsumerWidget {
       state.currentFen,
     );
 
-    final isSubscribed = ref.watch(
-      featureAccessStateProvider.select((s) => s.isSubscribed),
-    );
-    final effectiveMoveNumber =
-        ref.read(gamebaseExplorerProvider.notifier).effectiveMoveNumber;
-    // True when playing a move from here would step past move 10. The table
-    // builds the same for every account; this only decides whether a move-row
-    // tap asks for Premium first. Mirrors `requirePremiumGuard`: bypassed in
-    // debug so engineers can exercise deep positions without a live
-    // RevenueCat subscription.
+    final explorerNotifier = ref.read(gamebaseExplorerProvider.notifier);
+    final effectiveMoveNumber = explorerNotifier.effectiveMoveNumber;
+    // True when playing a move from here would step past move 10, the last
+    // position [MoveStatisticsPanel] shows without Premium: a move-row tap
+    // asks for it first.
     final nextStepCrossesLimit =
-        !isSubscribed &&
-        !kDebugMode &&
-        effectiveMoveNumber >= kFreeExplorerMoveNumberLimit;
+        !ref.watch(explorerDepthUnlockedProvider) &&
+        explorerNextStepLocked(explorerNotifier.accessPly);
 
     // Start the inline page alongside statistics. A resolved small page can
     // render immediately, without waiting for the independent aggregate query.
@@ -1229,8 +1389,8 @@ class MoveStatisticsPanel extends HookConsumerWidget {
     }
 
     // Inline games section once few enough games remain in this position.
-    // Listed for every account at any depth; each card asks for Premium when
-    // it is opened or walked.
+    // Listed for every account the table is shown to; each card asks for
+    // Premium when it is opened or walked.
     if (showInlineGames) {
       // No rows above (statistics still loading): no rule to draw under them,
       // and none to drop when the strip becomes the whole table.
