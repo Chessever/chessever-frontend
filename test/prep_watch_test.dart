@@ -197,20 +197,39 @@ void main() {
     expect((jsonDecode(again.readAsStringSync()) as Map)['unwatch'], isNull);
   });
 
-  test('a push for a profile this device does not star unstars it', () async {
-    final remote = _Remote();
-    final (container, _) = await _container({
-      'profiles': [_profile.toJson()],
-    }, remote);
-    final profiles = container.read(prepProfilesProvider.notifier);
-    profiles.settleWatch('gone-from-this-device');
-    profiles.settleWatch(_profile.id);
-    await profiles.debugDrainWatches();
-    expect(remote.calls, [
-      'unwatch gone-from-this-device',
-      'unwatch opponent-1',
-    ]);
-  });
+  test(
+    'a push for a profile this device holds but does not star unstars it',
+    () async {
+      final remote = _Remote();
+      final (container, _) = await _container({
+        'profiles': [_profile.toJson()],
+      }, remote);
+      final profiles = container.read(prepProfilesProvider.notifier);
+      profiles.settleWatch(_profile.id);
+      await profiles.debugDrainWatches();
+      expect(remote.calls, ['unwatch opponent-1']);
+    },
+  );
+
+  test(
+    'a push for a profile another device holds leaves its star alone',
+    () async {
+      final remote = _Remote();
+      final (container, _) = await _container({
+        'profiles': [_profile.toJson()],
+      }, remote);
+      final profiles = container.read(prepProfilesProvider.notifier);
+      // Tapped on a tablet that never had the profile the phone stars.
+      profiles.settleWatch('starred-on-another-device');
+      await profiles.debugDrainWatches();
+      expect(remote.calls, isEmpty);
+
+      // Only the reader stops it, from the push's snack.
+      profiles.stopWatch('starred-on-another-device');
+      await profiles.debugDrainWatches();
+      expect(remote.calls, ['unwatch starred-on-another-device']);
+    },
+  );
 
   test('a "new games" push lands on the player\'s Games tab', () {
     final starred = _profile.copyWith(watching: true);
@@ -222,5 +241,16 @@ void main() {
     expect(profile.newGames, 7);
 
     expect(prepPushDestination(null), isA<MyPrepHomeScreen>());
+  });
+
+  test('a push for a profile on another device says where it is starred', () {
+    expect(
+      prepPushElsewhereMessage('Magnus Carlsen'),
+      'Magnus Carlsen is starred on another of your devices.',
+    );
+    expect(
+      prepPushElsewhereMessage(null),
+      'This player is starred on another of your devices.',
+    );
   });
 }

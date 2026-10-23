@@ -287,11 +287,21 @@ CollectionGame _game(
 
 /// A collection unpublished since its push: the read fails.
 class _UnreadableCollection extends _FakeCollections {
-  _UnreadableCollection({required super.detail, required super.games});
+  _UnreadableCollection({
+    required super.detail,
+    required super.games,
+    this.failures = -1,
+  });
+
+  /// Reads that fail before one succeeds; negative never succeeds.
+  int failures;
 
   @override
-  Future<Collection> fetchCollection(String slug) async =>
-      throw StateError('not published');
+  Future<Collection> fetchCollection(String slug) async {
+    if (failures == 0) return super.fetchCollection(slug);
+    if (failures > 0) failures--;
+    throw StateError('not published');
+  }
 }
 
 class _NoShortcuts extends SpaceShortcutsNotifier {
@@ -312,6 +322,7 @@ Future<void> _pump(
   bool? premium,
   GlobalKey<NavigatorState>? navigatorKey,
   RouteFactory? onGenerateRoute,
+  ValueChanged<WidgetRef>? rootRef,
 }) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1;
@@ -342,29 +353,38 @@ Future<void> _pump(
   );
   addTearDown(container.dispose);
 
+  final app = MaterialApp(
+    navigatorKey: navigatorKey,
+    onGenerateRoute: onGenerateRoute,
+    navigatorObservers: [if (navigationObserver != null) navigationObserver],
+    theme: light ? AppTheme.lightTheme : AppTheme.darkTheme,
+    builder: (context, child) => MediaQuery(
+      data: MediaQuery.of(
+        context,
+      ).copyWith(textScaler: TextScaler.linear(textScale)),
+      child: child!,
+    ),
+    home: Builder(
+      builder: (context) {
+        ResponsiveHelper.init(context);
+        return home ?? CollectionScreen(collection: repo.detail);
+      },
+    ),
+  );
   await tester.pumpWidget(
     UncontrolledProviderScope(
       container: container,
-      child: MaterialApp(
-        navigatorKey: navigatorKey,
-        onGenerateRoute: onGenerateRoute,
-        navigatorObservers: [
-          if (navigationObserver != null) navigationObserver,
-        ],
-        theme: light ? AppTheme.lightTheme : AppTheme.darkTheme,
-        builder: (context, child) => MediaQuery(
-          data: MediaQuery.of(
-            context,
-          ).copyWith(textScaler: TextScaler.linear(textScale)),
-          child: child!,
-        ),
-        home: Builder(
-          builder: (context) {
-            ResponsiveHelper.init(context);
-            return home ?? CollectionScreen(collection: repo.detail);
-          },
-        ),
-      ),
+      // The app's own ref, above every route, as main.dart hands the
+      // notification router.
+      child: rootRef == null
+          ? app
+          : Consumer(
+              builder: (_, ref, child) {
+                rootRef(ref);
+                return child!;
+              },
+              child: app,
+            ),
     ),
   );
   for (var i = 0; i < 6; i++) {
@@ -1957,33 +1977,33 @@ void main() {
     );
 
     /// The app, and the tap of the push onesignal-dispatch sends.
-    Future<void> tapPush(WidgetTester tester, _FakeCollections repo) async {
+    Future<void> tapPush(
+      WidgetTester tester,
+      _FakeCollections repo, {
+      Map<String, String> extra = const {},
+    }) async {
       final navigatorKey = GlobalKey<NavigatorState>();
       late WidgetRef captured;
       DeepLinkService.instance.dispose();
       addTearDown(DeepLinkService.instance.detachNotificationRouter);
       addTearDown(DeepLinkService.instance.dispose);
-      final host = Consumer(
-        builder: (_, ref, _) {
-          captured = ref;
-          return const SizedBox.shrink();
-        },
-      );
+      // Home is a Scaffold, so a snack raised over it has somewhere to show.
+      const host = Scaffold(body: SizedBox.shrink());
       await _pump(
         tester,
         repo,
         home: host,
+        rootRef: (ref) => captured = ref,
         navigatorKey: navigatorKey,
-        onGenerateRoute: (settings) => MaterialPageRoute<void>(
-          settings: settings,
-          builder: (_) => host,
-        ),
+        onGenerateRoute: (settings) =>
+            MaterialPageRoute<void>(settings: settings, builder: (_) => host),
       );
       DeepLinkService.instance.attachNotificationRouter(navigatorKey, captured);
       DeepLinkService.notifyAppReady();
-      DeepLinkService.instance.ingestNotificationData(const {
+      DeepLinkService.instance.ingestNotificationData({
         'type': 'collection_games_added',
         'collection_slug': 'us-chess-championships',
+        ...extra,
         // Added by the notification service on the way to the phone.
         'url': '',
         'delivery_id': '5b1c9f0e-0d1a-4c7e-9a52-0f3c6d2e8a11',
@@ -2007,11 +2027,64 @@ void main() {
       await _teardown(tester);
     });
 
+    testWidgets('the count the push announced is said again once it is open', (
+      tester,
+    ) async {
+      final repo = _FakeCollections(detail: book, games: [_game('a')]);
+      await tapPush(
+        tester,
+        repo,
+        extra: const {
+          'added': '4',
+          'collection_title': 'US Chess Championships',
+        },
+      );
+      await tester.pump(const Duration(seconds: 1));
+      expect(find.byType(CollectionScreen), findsOneWidget);
+      expect(
+        find.text('4 new games just landed in US Chess Championships.'),
+        findsOneWidget,
+      );
+      expect(tester.takeException(), isNull);
+      await _teardown(tester);
+    });
+
     testWidgets('one that cannot be read lands on Home, not a broken page', (
       tester,
     ) async {
-      await tapPush(tester, _UnreadableCollection(detail: book, games: []));
+      await tapPush(
+        tester,
+        _UnreadableCollection(detail: book, games: []),
+        extra: const {'collection_title': 'US Chess Championships'},
+      );
+      await tester.pump(const Duration(seconds: 1));
       expect(find.byType(CollectionScreen), findsNothing);
+      expect(
+        find.text('US Chess Championships could not be opened right now.'),
+        findsOneWidget,
+      );
+      expect(tester.takeException(), isNull);
+      await _teardown(tester);
+    });
+
+    testWidgets('Try again opens it once it can be read', (tester) async {
+      await tapPush(
+        tester,
+        _UnreadableCollection(detail: book, games: [_game('a')], failures: 1),
+        extra: const {'added': '2'},
+      );
+      await tester.pump(const Duration(seconds: 1));
+      expect(find.byType(CollectionScreen), findsNothing);
+      await tester.tap(find.text('Try again'));
+      for (var i = 0; i < 6; i++) {
+        await tester.pump(const Duration(milliseconds: 60));
+      }
+      await tester.pump(const Duration(seconds: 1));
+      expect(find.byType(CollectionScreen), findsOneWidget);
+      expect(
+        find.text('2 new games just landed in US Chess Championships.'),
+        findsOneWidget,
+      );
       expect(tester.takeException(), isNull);
       await _teardown(tester);
     });

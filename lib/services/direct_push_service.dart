@@ -6,6 +6,7 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:flutter_timezone/flutter_timezone.dart';
 import 'package:http/http.dart' as http;
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -170,14 +171,23 @@ class DirectPushService with WidgetsBindingObserver {
         return;
       }
       final package = await PackageInfo.fromPlatform();
-      final response = await http.post(Uri.parse('$_url/v1/devices'),headers:{
+      final timezone = await deviceTimezone();
+      Future<http.Response> register({required bool withTimezone}) async =>
+        http.post(Uri.parse('$_url/v1/devices'),headers:{
         'authorization':'Bearer ${session.accessToken}','content-type':'application/json'},body:jsonEncode({
           ...await _proof(), 'token':token, 'oneSignalSubscriptionId':_oneSignalId,
           'platform':defaultTargetPlatform == TargetPlatform.iOS ? 'ios' : 'android',
           'optedIn':_optedIn && [AuthorizationStatus.authorized,AuthorizationStatus.provisional].contains(settings.authorizationStatus),
           'appVersion':'${package.version}+${package.buildNumber}',
           'language':WidgetsBinding.instance.platformDispatcher.locale.toLanguageTag(),
+          // Pushes timed to the reader's day (smart events, Prep) read it.
+          if (withTimezone && timezone != null) 'timezone':timezone,
         })).timeout(const Duration(seconds:15));
+      var response = await register(withTimezone: true);
+      // A zone the service does not accept never costs the registration.
+      if (response.statusCode == 400 && timezone != null) {
+        response = await register(withTimezone: false);
+      }
       if (response.statusCode >= 300) {
         debugPrint('[DirectPush] Registration rejected (HTTP ${response.statusCode}).');
         throw StateError('Registration rejected');
@@ -198,6 +208,24 @@ class DirectPushService with WidgetsBindingObserver {
     }
     finally { _syncing = false; if (_syncAgain) { _syncAgain=false; unawaited(sync()); } }
   }
+
+  /// The phone's IANA timezone ("Asia/Baku"), or null when the platform
+  /// gives something else (an abbreviation, a bare offset).
+  @visibleForTesting
+  static Future<String?> deviceTimezone({Future<String> Function()? read}) async {
+    try {
+      final zone = await (read ?? () async => (await FlutterTimezone.getLocalTimezone()).identifier)()
+          .timeout(const Duration(seconds: 2));
+      return isIanaTimezone(zone) ? zone : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// "Europe/Berlin", "America/Argentina/Buenos_Aires", "Etc/GMT-4" or "UTC".
+  @visibleForTesting
+  static bool isIanaTimezone(String zone) =>
+      zone == 'UTC' || RegExp(r'^[A-Za-z][A-Za-z0-9_+\-]*(/[A-Za-z0-9][A-Za-z0-9_+\-]*)+$').hasMatch(zone);
 
   Future<bool> detach() async {
     if (!configured) return false;

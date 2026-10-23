@@ -195,14 +195,21 @@ class PrepProfilesNotifier
   void setWatching(String profileId, bool watching) =>
       edit(profileId, (p) => p.copyWith(watching: watching));
 
-  /// A push arrived for [profileId]. If this device no longer stars it (or
-  /// no longer has it), the server is told again, so the pushes stop.
+  /// A push arrived for [profileId]. If this device holds it but no longer
+  /// stars it, the server is told again, so the pushes stop. A profile this
+  /// device does not hold is starred on another of the reader's devices
+  /// (profiles live on the device) and is left alone: only the reader stops
+  /// it, with [stopWatch].
   void settleWatch(String profileId) {
     final profile = byId(profileId);
-    if (profile == null || prepWatchSignature(profile) == null) {
+    if (profile != null && prepWatchSignature(profile) == null) {
       _queueUnwatch(profileId);
     }
   }
+
+  /// The reader stopped the alerts of [profileId], a profile this device
+  /// does not hold, from its push.
+  void stopWatch(String profileId) => _queueUnwatch(profileId);
 
   /// Tells the server about every star that changed between [before] and
   /// [after]: a new or edited starred profile is written again, one that

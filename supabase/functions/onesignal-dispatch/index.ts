@@ -7,6 +7,10 @@ import {
   groupFavoriteBoardCopy,
 } from "./favorite_copy.ts";
 import { collectionStarRecipients } from "./collection_subscribers.ts";
+import {
+  collectionGamesAddedCopy,
+  collectionGamesPushFromPayload,
+} from "./collection_copy.ts";
 import { prepGamesAddedCopy, prepGamesPushFromPayload } from "./prep_copy.ts";
 import {
   smartEventDigestCopy,
@@ -743,11 +747,20 @@ async function processItem(item: OutboxItem) {
         return { id: item.id, status: "skipped", reason: "no_recipients" };
       }
 
+      const push = collectionGamesPushFromPayload(item.payload);
+      const copy = collectionGamesAddedCopy(push);
       await sendOneSignal(eligible, {
-        title: optionalPayloadString(item.payload, "title") ?? "Collection",
-        body: collectionGamesAddedBody(item.payload?.added),
+        title: copy.title,
+        body: copy.body,
         url: null,
-        data: { type: "collection_games_added", collection_slug: slug },
+        // Strings only: FCM data carries nothing else. The app names the
+        // count again when the collection opens.
+        data: {
+          type: "collection_games_added",
+          collection_slug: slug,
+          ...(push.title.trim() ? { collection_title: push.title.trim() } : {}),
+          ...(push.added !== null ? { added: String(push.added) } : {}),
+        },
         androidChannelId: channelForEvent("collection_games_added"),
       });
 
@@ -780,7 +793,8 @@ async function processItem(item: OutboxItem) {
       }
 
       const added = Number(item.payload?.added);
-      const copy = prepGamesAddedCopy(prepGamesPushFromPayload(item.payload));
+      const push = prepGamesPushFromPayload(item.payload);
+      const copy = prepGamesAddedCopy(push);
       await sendOneSignal(eligible, {
         title: copy.title,
         body: copy.body,
@@ -792,6 +806,10 @@ async function processItem(item: OutboxItem) {
           added: String(
             Number.isFinite(added) && added > 0 ? Math.trunc(added) : 1,
           ),
+          // Named on a device that does not hold the profile.
+          ...(push.profileName.trim()
+            ? { profile_name: push.profileName.trim() }
+            : {}),
         },
         androidChannelId: channelForEvent("prep_games_added"),
       });
@@ -2298,22 +2316,41 @@ async function resolveRecursiveBookSubscribers(
 
 /**
  * The users who starred the collection `slug`, except those who turned its
- * notifications off (see collection_subscribers.ts).
+ * notifications off (see collection_subscribers.ts). A star is the row keyed
+ * `collection:<slug>`, or an older row the app still reads as the star
+ * (`metadata.kind: collection` with the slug in `metadata.slug`).
  */
 async function resolveCollectionSubscribers(slug: string): Promise<string[]> {
-  const rows = await fetchAllPages<
-    { user_id: string | null; notifications: unknown }
-  >(
+  type StarRow = { user_id: string | null; notifications: unknown };
+  const select = "user_id, notifications:metadata->notificationsEnabled";
+  const keyed = await fetchAllPages<StarRow>(
     "Collection subscription lookup",
     (from, to) =>
       supabase
         .from("user_favorite_events")
-        .select("user_id, notifications:metadata->notificationsEnabled")
+        .select(select)
         .eq("event_id", `collection:${slug}`)
         .order("id")
         .range(from, to),
   );
-  return collectionStarRecipients(rows);
+  const legacy = await fetchAllPages<StarRow>(
+    "Collection legacy star lookup",
+    (from, to) =>
+      supabase
+        .from("user_favorite_events")
+        .select(select)
+        .eq("metadata->>kind", "collection")
+        .eq("metadata->>slug", slug)
+        .neq("event_id", `collection:${slug}`)
+        .order("id")
+        .range(from, to),
+  );
+  // A reader with both rows answered on the current one: it decides.
+  const current = new Set(keyed.map((row) => row.user_id));
+  return collectionStarRecipients([
+    ...keyed,
+    ...legacy.filter((row) => !current.has(row.user_id)),
+  ]);
 }
 
 /** A starred collection is a starred event to the settings: same switch. */
@@ -2543,16 +2580,6 @@ async function filterPrepRecipients(userIds: string[]): Promise<string[]> {
     filtered.push(userId);
   }
   return filtered;
-}
-
-/** "3 new games added." A count the importer could not give is left out. */
-function collectionGamesAddedBody(added: unknown): string {
-  const count = typeof added === "number" && Number.isFinite(added)
-    ? Math.trunc(added)
-    : 0;
-  if (count === 1) return "1 new game added.";
-  if (count > 1) return `${count} new games added.`;
-  return "New games added.";
 }
 
 async function filterBookUpdateRecipients(
