@@ -36,15 +36,16 @@ start-position boards. Gate = systemd drop-ins setting `FAST_DETECT_PAIRING_SYNC
 ## TODO after BOTH store releases are approved & published
 
 1. ```bash
-   # FAST-DETECTOR (hop via DATA-HUB-MAIN; direct ssh rejects local keys)
-   ssh -i ~/.ssh/datahub_key root@157.230.224.162 \
-     "ssh -i /root/.ssh/id_ed25519 root@10.116.0.3 \
+   # FAST-DETECTOR, reached through DATA-HUB-MAIN. Set both to your SSH host
+   # aliases; server addresses stay out of this public repo.
+   ssh "$DATA_HUB_MAIN" \
+     "ssh \"$FAST_DETECTOR\" \
        'rm /etc/systemd/system/chessever-fast-detector.service.d/pairing.conf && \
         systemctl daemon-reload && systemctl restart chessever-fast-detector'"
    ```
 2. ```bash
    # DATA-HUB-MAIN
-   ssh -i ~/.ssh/datahub_key root@157.230.224.162 \
+   ssh "$DATA_HUB_MAIN" \
      "rm /etc/systemd/system/chessever-data-hub.service.d/pairing.conf && \
       systemctl daemon-reload && systemctl restart chessever-data-hub"
    ```
