@@ -5,6 +5,9 @@ typedef RoundHasGames = bool Function(GamesAppBarModel model);
 typedef RoundIsFullyPlayed = bool Function(GamesAppBarModel model);
 typedef RoundHasStartedActivity = bool Function(GamesAppBarModel model);
 
+/// How far ahead the Games tab fetches a scheduled round's pairings straight
+/// from Lichess while the database has none yet. Promotion itself has no
+/// window; see [pickUpcomingRoundForPromotion].
 const Duration upcomingRoundPromotionWindow = Duration(hours: 2);
 
 List<GamesAppBarModel> sortRoundsForDisplay(
@@ -49,7 +52,7 @@ List<GamesAppBarModel> sortRoundsForDisplay(
     );
     return <GamesAppBarModel>[
       if (promoted != null) promoted,
-      ...started,
+      ...started.where((round) => round.id != promoted?.id),
       ...future.where((round) => round.id != promoted?.id),
     ];
   }
@@ -76,7 +79,7 @@ List<GamesAppBarModel> sortRoundsForDisplay(
 
   return <GamesAppBarModel>[
     if (promoted != null) promoted,
-    ...started,
+    ...started.where((round) => round.id != promoted?.id),
     ...future.where((round) => round.id != promoted?.id),
   ];
 }
@@ -86,6 +89,7 @@ GamesAppBarModel? pickPreferredRoundForSelection(
   required RoundDateResolver resolveDate,
   RoundHasGames? hasGames,
   RoundIsFullyPlayed? isRoundFullyPlayed,
+  RoundHasStartedActivity? hasStartedActivity,
   DateTime? now,
 }) {
   if (models.isEmpty) return null;
@@ -105,6 +109,20 @@ GamesAppBarModel? pickPreferredRoundForSelection(
     return liveRounds.first;
   }
 
+  // The display order pins this round on top, so selection lands on it too,
+  // with or without start times.
+  final promoted = pickUpcomingRoundForPromotion(
+    models,
+    resolveDate: resolveDate,
+    hasGames: hasGames,
+    isRoundFullyPlayed: isRoundFullyPlayed,
+    hasStartedActivity: hasStartedActivity,
+    now: effectiveNow,
+  );
+  if (promoted != null) {
+    return promoted;
+  }
+
   if (allHaveStartTimes) {
     final startedRounds =
         models
@@ -121,18 +139,7 @@ GamesAppBarModel? pickPreferredRoundForSelection(
             return _compareByStart(a, b, false, resolveDate);
           });
     if (startedRounds.isNotEmpty) {
-      final latestStarted = startedRounds.first;
-      final promoted = pickUpcomingRoundForPromotion(
-        models,
-        resolveDate: resolveDate,
-        hasGames: hasGames,
-        isRoundFullyPlayed: isRoundFullyPlayed,
-        now: effectiveNow,
-      );
-      if (promoted != null) {
-        return promoted;
-      }
-      return latestStarted;
+      return startedRounds.first;
     }
 
     final upcomingRounds =
@@ -172,6 +179,16 @@ GamesAppBarModel? pickPreferredRoundForSelection(
   return fallback.first;
 }
 
+/// The round pinned above every other one: the next round, as soon as its
+/// boards are published and every round that has started is played out.
+///
+/// There is no start-time window. Rounds set to "start after previous" have
+/// no start time at all (Khelo Chess India 94.0, round 9), and pairings out
+/// the evening before are still the next thing to watch. A live round always
+/// keeps the top slot.
+///
+/// [hasStartedActivity], when the caller has it, decides which rounds have
+/// started: published pairings are not play, whatever the round's date says.
 GamesAppBarModel? pickUpcomingRoundForPromotion(
   List<GamesAppBarModel> models, {
   required RoundDateResolver resolveDate,
@@ -185,6 +202,10 @@ GamesAppBarModel? pickUpcomingRoundForPromotion(
   bool fullyPlayed(GamesAppBarModel model) =>
       isRoundFullyPlayed?.call(model) ??
       model.roundStatus == RoundStatus.completed;
+  bool started(GamesAppBarModel model) =>
+      hasStartedActivity != null
+          ? hasStartedActivity(model)
+          : _isStartedRound(model, effectiveNow, resolveDate);
 
   // A live round always owns the top slot. Check this before (and independently
   // of) the fully-played gate below, which is not a reliable live signal: a
@@ -197,33 +218,17 @@ GamesAppBarModel? pickUpcomingRoundForPromotion(
   }
 
   final startedRounds = models.where(
-    (model) =>
-        include(model) &&
-        _isStartedRound(
-          model,
-          effectiveNow,
-          resolveDate,
-          hasStartedActivity: hasStartedActivity,
-        ),
+    (model) => include(model) && started(model),
   );
   if (startedRounds.isEmpty || !startedRounds.every(fullyPlayed)) {
     return null;
   }
 
-  final soonUpcoming =
-      models.where((model) {
-          if (!include(model) || model.roundStatus != RoundStatus.upcoming) {
-            return false;
-          }
-          final startsAt = resolveDate(model);
-          if (startsAt == null) return false;
-          final timeUntilStart = startsAt.difference(effectiveNow);
-          return timeUntilStart >= Duration.zero &&
-              timeUntilStart <= upcomingRoundPromotionWindow;
-        }).toList()
+  final nextRounds =
+      models.where((model) => include(model) && !started(model)).toList()
         ..sort((a, b) => _compareByStart(a, b, true, resolveDate));
 
-  return soonUpcoming.isEmpty ? null : soonUpcoming.first;
+  return nextRounds.isEmpty ? null : nextRounds.first;
 }
 
 bool _isStartedRound(
