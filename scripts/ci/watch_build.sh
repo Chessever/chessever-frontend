@@ -17,6 +17,10 @@
 # distribution certificate and profile the iPhone build already uses.
 set -euo pipefail
 
+# flutter-watchos reports each release build (bundle id, version, build mode)
+# to the flutterwatch.dev account. Nothing needs it, so CI sends nothing.
+export FLUTTER_WATCHOS_BUILD_REGISTRY=0
+
 WATCH_BUNDLE_ID=com.chessever.app.watchkitapp
 toolchain_dir="${FLUTTER_WATCHOS_HOME:-${RUNNER_TEMP:-/tmp}/flutter-watchos}"
 flutter_watchos="$toolchain_dir/bin/flutter-watchos"
