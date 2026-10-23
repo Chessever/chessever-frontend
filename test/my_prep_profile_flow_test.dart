@@ -53,6 +53,7 @@ import 'package:chessever2/widgets/card_context_menu.dart'
     show CardActionButton, CardMoreButton;
 import 'package:chessever2/widgets/figma_player_card.dart';
 import 'package:chessever2/widgets/popover_add_fab.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:smooth_sheets/smooth_sheets.dart';
@@ -3675,5 +3676,258 @@ void main() {
     await tester.pump();
     expect(received, ('ClubPlayer', 'Club games', '[White "ClubPlayer"]'));
     expect(tester.takeException(), isNull);
+  });
+
+  group('PGN as the fourth source', () {
+    /// Attaches the games pasted on the import page, which reads them off
+    /// the UI isolate and closes once they are attached.
+    Future<void> attachPasted(WidgetTester tester) async {
+      // The button sits under the pasted games, past what the list builds.
+      final page = tester
+          .state<ScrollableState>(
+            find
+                .descendant(
+                  of: find.byType(PrepImportDialog),
+                  matching: find.byType(Scrollable),
+                )
+                .first,
+          )
+          .position;
+      page.jumpTo(page.maxScrollExtent);
+      await tester.pump();
+      await tester.ensureVisible(find.text('Attach pasted games'));
+      await tester.tap(find.text('Attach pasted games'));
+      for (
+        var i = 0;
+        i < 100 && find.byType(PrepImportDialog).evaluate().isNotEmpty;
+        i++
+      ) {
+        await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 50)),
+        );
+        await tester.pump();
+      }
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('the add sheet offers PGN, marked Premium, and hands the '
+        'import back with the accounts chosen before it', (tester) async {
+      PrepAddResult? result;
+      await pump(
+        tester,
+        Scaffold(
+          body: Builder(
+            builder: (context) => TextButton(
+              onPressed: () async {
+                result = await showPrepSourcePicker(
+                  context,
+                  kind: PrepKind.opponent,
+                  multiple: true,
+                );
+              },
+              child: const Text('Start'),
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.text('Start'));
+      await tester.pumpAndSettle();
+      for (final source in PrepSource.addSources) {
+        expect(
+          find.byKey(ValueKey('prep_source_chip_${source.name}')),
+          findsOneWidget,
+        );
+      }
+      // An account chosen first is kept for the import.
+      await tester.tap(find.text('Lichess'));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const ValueKey('prep_source_query')),
+        'ClubPlayer',
+      );
+      await tester.pump(const Duration(milliseconds: 450));
+      await tester.pump();
+      await tester.tap(find.text('Club Player'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('prep_source_chip_manual')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('prep_source_query')), findsNothing);
+      expect(find.byKey(const ValueKey('prep_source_pgn')), findsOneWidget);
+      expect(find.text('Importing PGN is a Premium feature.'), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('prep_pending_lichess:clubplayer')),
+        findsOneWidget,
+      );
+      expect(tester.takeException(), isNull);
+      await tapOnPage(
+        tester,
+        find.byKey(const ValueKey('prep_source_import_pgn')),
+      );
+      // The account's download choices come first, as for any account.
+      await confirmScopes(tester, 1);
+      expect(result?.importPgn, isTrue);
+      expect(result?.accounts.single.key, 'lichess:clubplayer');
+      // Nothing is asked of Premium until the import itself opens.
+      expect(asked, isEmpty);
+    });
+
+    testWidgets('PGN alone closes the sheet without accounts', (tester) async {
+      PrepAddResult? result;
+      await pump(
+        tester,
+        Scaffold(
+          body: Builder(
+            builder: (context) => TextButton(
+              onPressed: () async {
+                result = await showPrepSourcePicker(
+                  context,
+                  kind: PrepKind.mine,
+                  multiple: true,
+                );
+              },
+              child: const Text('Start'),
+            ),
+          ),
+        ),
+        premium: true,
+      );
+      await tester.tap(find.text('Start'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('PGN'));
+      await tester.pumpAndSettle();
+      // Premium readers are not told about Premium.
+      expect(find.text('Importing PGN is a Premium feature.'), findsNothing);
+      // The header carries PGN's own mark, a page with a pawn.
+      final svg = tester.widget<SvgPicture>(
+        find.descendant(
+          of: find.byType(PrepSourceMark),
+          matching: find.byType(SvgPicture),
+        ),
+      );
+      expect(
+        (svg.bytesLoader as SvgAssetLoader).assetName,
+        'assets/svgs/pgn_file.svg',
+      );
+      await tester.tap(find.text('Import PGN'));
+      await tester.pumpAndSettle();
+      expect(result?.importPgn, isTrue);
+      expect(result?.accounts, isEmpty);
+    });
+
+    testWidgets('My Games imports a PGN from the floating button only with '
+        'Premium, and the file joins the profile', (tester) async {
+      final container = await pump(tester, const MyPrepHomeScreen());
+      await tester.runAsync(() async {
+        final profiles = container.read(prepProfilesProvider.notifier);
+        profiles.create(
+          kind: PrepKind.mine,
+          name: 'ClubPlayer',
+          accounts: const [
+            PrepAccount(
+              source: PrepSource.lichess,
+              username: 'ClubPlayer',
+              lastSyncAtMs: 1,
+            ),
+          ],
+        );
+        await profiles.debugDrainWrites();
+      });
+      await tester.pumpAndSettle();
+      final fab = find.byKey(const ValueKey('prep_add_floating'));
+      final choices = tester.widget<PopoverAddFab<PrepSource>>(fab).choices;
+      expect(choices.map((c) => c.value), PrepSource.addSources);
+      expect(choices.last.label, 'Import PGN');
+      // Its own mark, not a stock icon.
+      expect(
+        (choices.last.leading as PrepSourceMark).source,
+        PrepSource.manual,
+      );
+      await tester.tap(fab);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Import PGN'));
+      await tester.pumpAndSettle();
+      // Declined: the ad-or-subscribe sheet asked, and nothing opened.
+      expect(asked, [('prep_pgn_import', true)]);
+      expect(find.text('Player name in the PGN'), findsNothing);
+      grant = true;
+      await tester.tap(fab);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Import PGN'));
+      await tester.pumpAndSettle();
+      expect(asked, hasLength(2));
+      expect(find.text('Player name in the PGN'), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byType(AppBar),
+          matching: find.byType(PrepSourceMark),
+        ),
+        findsOneWidget,
+      );
+      await tester.enterText(
+        find.byKey(const ValueKey('prep_import_pgn')),
+        sourceGame('ClubPlayer', 'Opponent'),
+      );
+      await tester.pump();
+      await attachPasted(tester);
+      expect(find.text('Player name in the PGN'), findsNothing);
+      final mine = container.read(prepProfilesProvider).requireValue.single;
+      expect(mine.accounts.map((a) => a.source), [
+        PrepSource.lichess,
+        PrepSource.manual,
+      ]);
+      expect(mine.accounts.last.gameCount, 1);
+      expect(mine.accounts.last.playerAliases, ['ClubPlayer']);
+      expect(tester.takeException(), isNull);
+      await tester.runAsync(
+        () => container.read(prepProfilesProvider.notifier).debugDrainWrites(),
+      );
+    });
+
+    testWidgets('an opponent can start from a PGN alone, named after the '
+        'player in it', (tester) async {
+      final container = await pump(
+        tester,
+        const MyPrepHomeScreen(),
+        premium: true,
+      );
+      await tester.runAsync(() async {
+        final profiles = container.read(prepProfilesProvider.notifier);
+        profiles.create(
+          kind: PrepKind.opponent,
+          name: 'My study player',
+          accounts: [],
+        );
+        await profiles.debugDrainWrites();
+      });
+      await tester.tap(find.text('Profiles'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('prep_add_floating')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Import PGN'));
+      await tester.pumpAndSettle();
+      expect(asked, isEmpty);
+      await tester.enterText(
+        find.byKey(const ValueKey('prep_import_alias')),
+        'Rival, Club',
+      );
+      await tester.enterText(
+        find.byKey(const ValueKey('prep_import_pgn')),
+        sourceGame('Opponent', 'Rival, Club', result: '0-1'),
+      );
+      await tester.pump();
+      await attachPasted(tester);
+      final created = container
+          .read(prepProfilesProvider)
+          .requireValue
+          .where((p) => p.name == 'Rival, Club')
+          .single;
+      expect(created.kind, PrepKind.opponent);
+      expect(created.accounts.single.source, PrepSource.manual);
+      expect(created.accounts.single.gameCount, 1);
+      expect(tester.takeException(), isNull);
+      await tester.runAsync(
+        () => container.read(prepProfilesProvider.notifier).debugDrainWrites(),
+      );
+    });
   });
 }

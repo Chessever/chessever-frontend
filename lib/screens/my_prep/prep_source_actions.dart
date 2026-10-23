@@ -330,28 +330,88 @@ Future<void> prepExportProfile(
 int _exportCombined((String, List<String>) input) =>
     writeCombinedPrepGames(path: input.$1, sources: input.$2);
 
-/// Manual sources use an explicit PGN player name, so their side is never guessed.
-/// Each imported file is a source, so My Games counts it towards
-/// [kFreePrepOwnAccounts].
+/// Imports PGN files or pasted games into [profile] as manual sources.
 Future<void> prepImportSource(
   BuildContext context,
   WidgetRef ref,
   PrepProfile profile,
+) {
+  final profiles = ref.read(prepProfilesProvider.notifier);
+  return _prepImportPgn(
+    context,
+    kind: profile.kind,
+    held: profile.accounts.length,
+    playerName: profile.databaseAccount?.username ?? profile.name,
+    attach: (_, accounts) => profiles.attach(profile.id, accounts),
+  );
+}
+
+/// A profile made from a PGN alone, named after the player the reader names
+/// in it. My Games keeps one profile, so there the files join it when one
+/// exists by the time they are read. Resolves to the profile they joined.
+Future<PrepProfile?> prepImportNewProfile(
+  BuildContext context,
+  WidgetRef ref,
+  PrepKind kind,
 ) async {
-  final mine = profile.kind == PrepKind.mine;
-  final held = profile.accounts.length;
+  final container = ProviderScope.containerOf(context, listen: false);
+  final profiles = ref.read(prepProfilesProvider.notifier);
+  PrepProfile? joined;
+  await _prepImportPgn(
+    context,
+    kind: kind,
+    held: 0,
+    playerName: '',
+    attach: (alias, accounts) {
+      final mine = kind == PrepKind.mine
+          ? container
+                .read(prepProfilesProvider)
+                .valueOrNull
+                ?.where((p) => p.kind == PrepKind.mine)
+                .firstOrNull
+          : null;
+      if (mine == null) {
+        joined = profiles.create(kind: kind, name: alias, accounts: accounts);
+      } else {
+        profiles.attach(mine.id, accounts);
+        joined = profiles.byId(mine.id);
+      }
+    },
+  );
+  return joined;
+}
+
+/// The PGN import page, and the manual sources made from what it reads:
+/// [attach] hands them to their profile once every file has been read.
+/// Importing is Premium ([ensurePrepPgnAccess]). Each file is a source, so
+/// My Games also counts it towards [kFreePrepOwnAccounts], of which the
+/// profile already [held] some. Manual sources use an explicit PGN player
+/// name, so their side is never guessed.
+Future<void> _prepImportPgn(
+  BuildContext context, {
+  required PrepKind kind,
+  required int held,
+  required String playerName,
+  required void Function(String alias, List<PrepAccount> accounts) attach,
+}) async {
+  final mine = kind == PrepKind.mine;
+  final container = ProviderScope.containerOf(context, listen: false);
+  // Already at the limit, only a subscription lets the reader on, and it is
+  // Premium as well: the second ask is skipped then. It may not have reached
+  // the subscription state yet either, so the files are not counted against
+  // the free limit.
+  final subscribedPastLimit =
+      mine &&
+      held >= kFreePrepOwnAccounts &&
+      !container.read(prepUnlimitedProvider);
   if (mine && !await prepMayHoldOwnAccounts(context, held + 1)) return;
   if (!context.mounted) return;
-  // Already at the limit, the check above only let the reader on through a
-  // subscription, which may not have reached the subscription state yet:
-  // the files are not counted against the free limit then.
-  final subscribedPastLimit = held >= kFreePrepOwnAccounts;
-  final container = ProviderScope.containerOf(context, listen: false);
-  final repo = ref.read(prepRepositoryProvider);
-  final profiles = ref.read(prepProfilesProvider.notifier);
+  if (!subscribedPastLimit && !await ensurePrepPgnAccess(context)) return;
+  if (!context.mounted) return;
+  final repo = container.read(prepRepositoryProvider);
   await showPrepImportDialog(
     context,
-    playerName: profile.databaseAccount?.username ?? profile.name,
+    playerName: playerName,
     onImport: ({required alias, required label, pgn}) async {
       final inputs = <(String, String)>[];
       if (pgn != null) {
@@ -419,11 +479,8 @@ Future<void> prepImportSource(
           );
           accounts.add(account);
         }
-        if (profiles.byId(profile.id) == null) {
-          throw const PrepException('This profile was removed.');
-        }
         // Validate every selected database before attaching any of them.
-        profiles.attach(profile.id, accounts);
+        attach(alias, accounts);
       } catch (_) {
         for (final account in prepared) {
           await repo.deleteGames(account);

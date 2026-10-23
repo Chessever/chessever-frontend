@@ -115,10 +115,15 @@ class PrepSourceMark extends StatelessWidget {
               ],
             ),
           ),
-          PrepSource.manual => Icon(
-            Icons.description_outlined,
-            size: size,
-            color: context.colors.textPrimary,
+          // ChessEver's own mark for imported games: a page with a pawn.
+          PrepSource.manual => SvgPicture.asset(
+            'assets/svgs/pgn_file.svg',
+            width: size,
+            height: size,
+            colorFilter: ColorFilter.mode(
+              context.colors.textPrimary,
+              BlendMode.srcIn,
+            ),
           ),
         },
       ),

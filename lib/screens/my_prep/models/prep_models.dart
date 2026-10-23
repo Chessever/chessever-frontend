@@ -15,6 +15,10 @@ enum PrepSource {
   bool get online => this == lichess || this == chesscom;
   static const playerSources = [lichess, chessever, chesscom];
 
+  /// What a profile can be given: the player sources, then a PGN import as
+  /// the fourth.
+  static const addSources = [...playerSources, manual];
+
   GamebaseExternalPlayerSource get gamebase => switch (this) {
     PrepSource.lichess => GamebaseExternalPlayerSource.lichess,
     PrepSource.chesscom => GamebaseExternalPlayerSource.chesscom,

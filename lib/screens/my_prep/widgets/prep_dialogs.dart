@@ -9,18 +9,29 @@ import 'package:flutter/material.dart';
 /// What the add sheet hands back: a display name and the accounts the
 /// reader typed, each already confirmed to exist.
 class PrepAddResult {
-  const PrepAddResult(this.name, this.accounts);
+  const PrepAddResult(this.name, this.accounts, {this.importPgn = false});
 
   /// A profile is named after its ChessEver player when it has one.
-  factory PrepAddResult.named(List<PrepAccount> accounts) {
+  factory PrepAddResult.named(
+    List<PrepAccount> accounts, {
+    bool importPgn = false,
+  }) {
     final named =
         accounts.where((a) => a.source == PrepSource.chessever).firstOrNull ??
         accounts.first;
-    return PrepAddResult(named.displayName ?? named.username, accounts);
+    return PrepAddResult(
+      named.displayName ?? named.username,
+      accounts,
+      importPgn: importPgn,
+    );
   }
 
   final String name;
   final List<PrepAccount> accounts;
+
+  /// The reader chose PGN: its import opens once [accounts], if any, are
+  /// added.
+  final bool importPgn;
 }
 
 /// Renames a profile.

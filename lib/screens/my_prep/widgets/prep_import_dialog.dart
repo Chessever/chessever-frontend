@@ -1,3 +1,5 @@
+import 'package:chessever2/screens/my_prep/models/prep_models.dart';
+import 'package:chessever2/screens/my_prep/widgets/prep_common.dart';
 import 'package:chessever2/screens/my_prep/widgets/prep_dialogs.dart';
 import 'package:chessever2/screens/my_prep/services/prep_repository.dart';
 import 'package:chessever2/theme/app_colors.dart';
@@ -81,7 +83,16 @@ class _PrepImportDialogState extends State<PrepImportDialog> {
   @override
   Widget build(BuildContext context) => Scaffold(
     backgroundColor: context.colors.background,
-    appBar: AppBar(title: const Text('Import PGN')),
+    appBar: AppBar(
+      title: const Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          PrepSourceMark(source: PrepSource.manual, size: 22),
+          SizedBox(width: 10),
+          Flexible(child: Text('Import PGN')),
+        ],
+      ),
+    ),
     body: SafeArea(
       top: false,
       child: ListView(

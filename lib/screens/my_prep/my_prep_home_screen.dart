@@ -131,10 +131,12 @@ class _MyPrepHomeScreenState extends ConsumerState<MyPrepHomeScreen> {
               key: const ValueKey('prep_add_floating'),
               label: _addLabel,
               choices: [
-                for (final source in PrepSource.playerSources)
+                for (final source in PrepSource.addSources)
                   PopoverAddChoice(
                     leading: PrepSourceMark(source: source, size: 22),
-                    label: source.label,
+                    label: source == PrepSource.manual
+                        ? 'Import PGN'
+                        : source.label,
                     value: source,
                   ),
               ],
@@ -242,8 +244,8 @@ class _MyGamesTab extends ConsumerWidget {
       return _EmptyState(
         title: 'Attach your own usernames',
         body:
-            'Add your Lichess and Chess.com accounts here. Their games stay together. You can also attach your ChessEver player record.',
-        sources: PrepSource.playerSources,
+            'Add your Lichess and Chess.com accounts here. Their games stay together. You can also attach your ChessEver player record or import a PGN.',
+        sources: PrepSource.addSources,
         actionLabel: 'Attach your username',
         onAction: () => prepAddMine(context, ref),
       );
@@ -291,8 +293,8 @@ class _OpponentsTab extends ConsumerWidget {
       return _EmptyState(
         title: 'Prepare for your next opponent',
         body:
-            'Find them in ChessEver or start with a Lichess or Chess.com username. Attach all their sources to one profile.',
-        sources: PrepSource.playerSources,
+            'Find them in ChessEver, start with a Lichess or Chess.com username, or import a PGN of their games. Attach all their sources to one profile.',
+        sources: PrepSource.addSources,
         actionLabel: 'Add opponent',
         onAction: () => prepAddOpponent(context, ref),
       );

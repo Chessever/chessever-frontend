@@ -11,6 +11,7 @@ import 'package:chessever2/screens/my_prep/widgets/prep_common.dart';
 import 'package:chessever2/screens/my_prep/widgets/prep_dialogs.dart';
 import 'package:chessever2/screens/my_prep/widgets/prep_options_dialog.dart';
 import 'package:chessever2/screens/standings/player_standing_model.dart';
+import 'package:chessever2/services/rewarded_premium/rewarded_access_provider.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
@@ -23,7 +24,9 @@ import 'package:motor/motor.dart';
 import 'package:smooth_sheets/smooth_sheets.dart';
 
 /// Asks for a player or username in a bottom sheet. With [only] the source
-/// is already chosen; otherwise the sheet offers all three. With [askScope]
+/// is already chosen; otherwise the sheet offers all three, and PGN as a
+/// fourth, which closes it asking for the import ([PrepAddResult.importPgn])
+/// with whatever accounts were chosen before. With [askScope]
 /// the sheet then pushes a page per chosen account for its clocks and period,
 /// and hands the accounts back carrying them. [initial] accounts are already
 /// chosen when the sheet opens, for a player whose accounts are known.
@@ -74,12 +77,18 @@ class _PickerFlow {
   final VoidCallback cancel;
   final scopes = <String, PrepDownloadPreferences>{};
 
+  /// Whether the sheet closes asking for a PGN import as well.
+  bool importPgn = false;
+
   /// Ticks on every change to [scopes]. Each page sizes itself by all of
   /// them, the ones under the top page included.
   final scopesChanged = ValueNotifier(0);
 
-  void finishWith(List<PrepAccount> accounts) =>
-      finish(PrepAddResult.named(accounts));
+  void finishWith(List<PrepAccount> accounts) => finish(
+    accounts.isEmpty
+        ? PrepAddResult('', const [], importPgn: importPgn)
+        : PrepAddResult.named(accounts, importPgn: importPgn),
+  );
 }
 
 Route<void> _pickerPage(WidgetBuilder builder) =>
@@ -281,7 +290,7 @@ class _SourcePickerState extends ConsumerState<_SourcePicker> {
     _generation++;
     _query.clear();
     setState(() {
-      _source = PrepSource.playerSources[index];
+      _source = PrepSource.addSources[index];
       _results = const [];
       _selected = null;
       _error = null;
@@ -412,13 +421,27 @@ class _SourcePickerState extends ConsumerState<_SourcePicker> {
 
   void _confirmPending() {
     if (_pending.isEmpty) return;
+    widget.flow.importPgn = false;
     _chosen(List.unmodifiable(_pending));
   }
 
   void _confirm() {
     final account = _selected;
     if (account == null || _unavailable(account) != null) return;
+    widget.flow.importPgn = false;
     _chosen([account]);
+  }
+
+  /// A PGN is read on its own page once the sheet has closed. Accounts
+  /// chosen before it are added first, with their download choices.
+  void _importPgn() {
+    widget.flow.importPgn = true;
+    if (_pending.isEmpty) {
+      FocusScope.of(context).unfocus();
+      widget.flow.finishWith(const []);
+    } else {
+      _chosen(List.unmodifiable(_pending));
+    }
   }
 
   void _chosen(List<PrepAccount> accounts) {
@@ -441,10 +464,12 @@ class _SourcePickerState extends ConsumerState<_SourcePicker> {
     final colors = context.colors;
     final inset = 20.sp;
     final database = _source == PrepSource.chessever;
+    final pgn = _source == PrepSource.manual;
     final selected = _selected;
     final noMatch =
-        _error != null ||
-        (!_busy && _query.text.trim().length >= 2 && _results.isEmpty);
+        !pgn &&
+        (_error != null ||
+            (!_busy && _query.text.trim().length >= 2 && _results.isEmpty));
     final queued = widget.multiple && _pending.isNotEmpty;
     // A sheet that takes one source has no list to add a handle to.
     final known = widget.multiple
@@ -509,14 +534,15 @@ class _SourcePickerState extends ConsumerState<_SourcePicker> {
             padding: EdgeInsets.fromLTRB(inset, 16.h, inset, 0),
             // Filled-ink chips, as in the prep filter dialogs: the
             // text-only tab strip left the selection unreadable here.
-            // Equal widths keep all three on one row at dialog width.
+            // Equal widths keep all four on one row at dialog width.
             child: Row(
               children: [
                 for (final (index, source)
-                    in PrepSource.playerSources.indexed) ...[
+                    in PrepSource.addSources.indexed) ...[
                   if (index > 0) SizedBox(width: 6.w),
                   Expanded(
                     child: _SourceChip(
+                      key: ValueKey('prep_source_chip_${source.name}'),
                       label: source.label,
                       selected: source == _source,
                       onTap: () {
@@ -528,57 +554,63 @@ class _SourcePickerState extends ConsumerState<_SourcePicker> {
               ],
             ),
           ),
-        Padding(
-          padding: EdgeInsets.fromLTRB(inset, 16.h, inset, 0),
-          child: TextField(
-            // One field across every source: a per-source key remounts
-            // it, dropping focus and bouncing the keyboard on tab switch.
-            key: const ValueKey('prep_source_query'),
-            controller: _query,
-            // Accounts already chosen are reviewed first; the keyboard
-            // would cover them.
-            autofocus: widget.initial.isEmpty,
-            autocorrect: false,
-            enableSuggestions: false,
-            textInputAction: TextInputAction.search,
-            onChanged: _changed,
-            onSubmitted: (_) {
-              _debounce?.cancel();
-              if (_query.text.trim().length >= 2) {
-                setState(() => _busy = true);
-                unawaited(_search(++_generation));
-              }
-            },
-            style: AppTypography.textMdMedium.copyWith(
-              color: colors.textPrimary,
-            ),
-            cursorColor: colors.accentText,
-            decoration: prepInputDecoration(
-              context,
-              hint: database
-                  ? 'Player name or FIDE ID'
-                  : 'Username or profile URL',
-              suffix: _busy
-                  ? const Padding(
-                      padding: EdgeInsets.all(14),
-                      child: SizedBox.square(
-                        dimension: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2),
+        if (pgn)
+          _PgnPanel(
+            mine: widget.kind == PrepKind.mine,
+            withAccounts: _pending.isNotEmpty,
+          )
+        else
+          Padding(
+            padding: EdgeInsets.fromLTRB(inset, 16.h, inset, 0),
+            child: TextField(
+              // One field across every source: a per-source key remounts
+              // it, dropping focus and bouncing the keyboard on tab switch.
+              key: const ValueKey('prep_source_query'),
+              controller: _query,
+              // Accounts already chosen are reviewed first; the keyboard
+              // would cover them.
+              autofocus: widget.initial.isEmpty,
+              autocorrect: false,
+              enableSuggestions: false,
+              textInputAction: TextInputAction.search,
+              onChanged: _changed,
+              onSubmitted: (_) {
+                _debounce?.cancel();
+                if (_query.text.trim().length >= 2) {
+                  setState(() => _busy = true);
+                  unawaited(_search(++_generation));
+                }
+              },
+              style: AppTypography.textMdMedium.copyWith(
+                color: colors.textPrimary,
+              ),
+              cursorColor: colors.accentText,
+              decoration: prepInputDecoration(
+                context,
+                hint: database
+                    ? 'Player name or FIDE ID'
+                    : 'Username or profile URL',
+                suffix: _busy
+                    ? const Padding(
+                        padding: EdgeInsets.all(14),
+                        child: SizedBox.square(
+                          dimension: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
+                      )
+                    : _query.text.isEmpty
+                    ? null
+                    : IconButton(
+                        tooltip: 'Clear search',
+                        onPressed: () {
+                          _query.clear();
+                          _changed('');
+                        },
+                        icon: const Icon(Icons.close_rounded),
                       ),
-                    )
-                  : _query.text.isEmpty
-                  ? null
-                  : IconButton(
-                      tooltip: 'Clear search',
-                      onPressed: () {
-                        _query.clear();
-                        _changed('');
-                      },
-                      icon: const Icon(Icons.close_rounded),
-                    ),
+              ),
             ),
           ),
-        ),
         Padding(
           padding: EdgeInsets.fromLTRB(8.w, 8.h, 8.w, 0),
           child: Column(
@@ -620,47 +652,48 @@ class _SourcePickerState extends ConsumerState<_SourcePicker> {
                     ],
                   ),
                 ),
-              for (final account in selected == null ? _results : [selected])
-                FigmaPlayerCard(
-                  key: ValueKey(account.key),
-                  player: PlayerStandingModel(
-                    name: account.displayName ?? account.username,
-                    countryCode: account.country ?? '',
-                    title: account.title,
-                    score: account.bestRating ?? 0,
-                    scoreChange: 0,
-                    matchScore: null,
-                    fideId: int.tryParse(account.fideId ?? ''),
+              if (!pgn)
+                for (final account in selected == null ? _results : [selected])
+                  FigmaPlayerCard(
+                    key: ValueKey(account.key),
+                    player: PlayerStandingModel(
+                      name: account.displayName ?? account.username,
+                      countryCode: account.country ?? '',
+                      title: account.title,
+                      score: account.bestRating ?? 0,
+                      scoreChange: 0,
+                      matchScore: null,
+                      fideId: int.tryParse(account.fideId ?? ''),
+                    ),
+                    rank: null,
+                    showRank: false,
+                    reserveRankSpace: false,
+                    hideMissingRating: true,
+                    detail:
+                        _unavailable(account) ??
+                        (account.displayName != null &&
+                                account.displayName != account.username
+                            ? account.username
+                            : null),
+                    avatar: PrepAvatar(
+                      name: account.displayName ?? account.username,
+                      size: 56.w,
+                      fideId: account.fideId,
+                      photoUrl: account.avatarUrl,
+                      title: account.title,
+                    ),
+                    trailing: _unavailable(account) != null
+                        ? null
+                        : Icon(
+                            selected?.key == account.key
+                                ? Icons.check_circle_rounded
+                                : Icons.add_rounded,
+                            color: colors.textPrimary,
+                            size: 22.ic,
+                          ),
+                    onTap: () => _select(account),
                   ),
-                  rank: null,
-                  showRank: false,
-                  reserveRankSpace: false,
-                  hideMissingRating: true,
-                  detail:
-                      _unavailable(account) ??
-                      (account.displayName != null &&
-                              account.displayName != account.username
-                          ? account.username
-                          : null),
-                  avatar: PrepAvatar(
-                    name: account.displayName ?? account.username,
-                    size: 56.w,
-                    fideId: account.fideId,
-                    photoUrl: account.avatarUrl,
-                    title: account.title,
-                  ),
-                  trailing: _unavailable(account) != null
-                      ? null
-                      : Icon(
-                          selected?.key == account.key
-                              ? Icons.check_circle_rounded
-                              : Icons.add_rounded,
-                          color: colors.textPrimary,
-                          size: 22.ic,
-                        ),
-                  onTap: () => _select(account),
-                ),
-              if (ownHandles.isNotEmpty)
+              if (!pgn && ownHandles.isNotEmpty)
                 _KnownHandles(accounts: ownHandles, onAdd: _quickAdd),
               for (final account in _pending) ...[
                 Padding(
@@ -699,7 +732,7 @@ class _SourcePickerState extends ConsumerState<_SourcePicker> {
                   ),
                 ),
                 // Right under the player they belong to.
-                if (identical(account, chosenPlayer))
+                if (!pgn && identical(account, chosenPlayer))
                   if (_suggested(known, fideId: account.fideId, player: account)
                       case final handles when handles.isNotEmpty)
                     _KnownHandles(accounts: handles, onAdd: _quickAdd),
@@ -728,14 +761,20 @@ class _SourcePickerState extends ConsumerState<_SourcePicker> {
               ),
             ),
           ),
-          if (queued || selected != null) ...[
+          if (pgn || queued || selected != null) ...[
             SizedBox(width: 12.w),
             Expanded(
               flex: 2,
               child: FilledButton(
-                key: queued ? const ValueKey('prep_attach_accounts') : null,
+                key: pgn
+                    ? const ValueKey('prep_source_import_pgn')
+                    : queued
+                    ? const ValueKey('prep_attach_accounts')
+                    : null,
                 onPressed: !saved.hasValue
                     ? null
+                    : pgn
+                    ? _importPgn
                     : queued
                     ? _confirmPending
                     : _unavailable(selected!) == null
@@ -750,7 +789,10 @@ class _SourcePickerState extends ConsumerState<_SourcePicker> {
                   ),
                 ),
                 child: Text(
-                  queued && (widget.attaching || widget.kind == PrepKind.mine)
+                  pgn
+                      ? 'Import PGN'
+                      : queued &&
+                            (widget.attaching || widget.kind == PrepKind.mine)
                       ? _pending.length == 1
                             ? 'Attach account'
                             : 'Attach ${_pending.length} accounts'
@@ -995,9 +1037,67 @@ class _ScopePageState extends State<_ScopePage> {
   }
 }
 
+/// What the PGN choice does, in place of the search: the import itself is
+/// its own page, behind Premium.
+class _PgnPanel extends ConsumerWidget {
+  const _PgnPanel({required this.mine, required this.withAccounts});
+
+  final bool mine;
+
+  /// Whether accounts are chosen already; they are added with the PGN.
+  final bool withAccounts;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final colors = context.colors;
+    final premium = ref.watch(premiumAccessProvider);
+    final inset = 20.sp;
+    return Padding(
+      key: const ValueKey('prep_source_pgn'),
+      padding: EdgeInsets.fromLTRB(inset, 16.h, inset, 0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '${mine ? 'Bring your own games' : 'Bring their games'} from PGN '
+            'files or pasted PGN. Only the games of the player you name are '
+            'kept.${withAccounts ? ' The accounts below are added too.' : ''}',
+            style: AppTypography.textSmRegular.copyWith(
+              color: colors.textSecondary,
+              height: 20 / 14,
+            ),
+          ),
+          if (!premium) ...[
+            SizedBox(height: 10.h),
+            Row(
+              children: [
+                Icon(
+                  Icons.workspace_premium_rounded,
+                  size: 18.ic,
+                  color: colors.accentText,
+                ),
+                SizedBox(width: 8.w),
+                Expanded(
+                  child: Text(
+                    'Importing PGN is a Premium feature.',
+                    style: AppTypography.textXsRegular.copyWith(
+                      color: colors.textPrimary,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
 /// [PrepChip]'s look, stretched to fill an equal share of the row.
 class _SourceChip extends StatelessWidget {
   const _SourceChip({
+    super.key,
     required this.label,
     required this.selected,
     required this.onTap,

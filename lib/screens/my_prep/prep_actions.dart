@@ -12,7 +12,11 @@ import 'package:chessever2/screens/my_prep/prep_profile_screen.dart';
 import 'package:chessever2/screens/my_prep/prep_space_shortcut.dart';
 import 'package:chessever2/screens/my_space/actions/space_menu_action.dart';
 import 'package:chessever2/screens/my_prep/prep_source_actions.dart'
-    show prepExportProfile, prepStartDownloads;
+    show
+        prepExportProfile,
+        prepImportNewProfile,
+        prepImportSource,
+        prepStartDownloads;
 import 'package:chessever2/screens/my_prep/providers/prep_known_accounts_provider.dart';
 import 'package:chessever2/screens/my_prep/providers/prep_providers.dart';
 import 'package:chessever2/screens/my_prep/services/prep_repository.dart';
@@ -36,6 +40,17 @@ Future<void> prepAddMine(
   final profiles = ref.read(prepProfilesProvider.notifier);
   final mine = ref.read(prepProfilesOfKindProvider(PrepKind.mine)) ?? const [];
   final existing = mine.isEmpty ? null : mine.first;
+  // A PGN asks for its own room and for Premium.
+  Future<void> importPgn() async {
+    final current = existing == null ? null : profiles.byId(existing.id);
+    if (current == null) {
+      await prepImportNewProfile(context, ref, PrepKind.mine);
+    } else {
+      await prepImportSource(context, ref, current);
+    }
+  }
+
+  if (source == PrepSource.manual) return importPgn();
   final held = existing?.accounts.length ?? 0;
   if (!await prepMayHoldOwnAccounts(context, held + 1) || !context.mounted) {
     return;
@@ -51,6 +66,10 @@ Future<void> prepAddMine(
     mayAdd: (chosen) => prepMayHoldOwnAccounts(context, held + chosen + 1),
   );
   if (result == null || !context.mounted) return;
+  if (result.accounts.isEmpty) {
+    if (result.importPgn) await importPgn();
+    return;
+  }
   await _releaseFromFavorites(ref, result.accounts);
   if (!context.mounted) return;
   final String profileId;
@@ -75,6 +94,20 @@ Future<void> prepAddMine(
     result.accounts,
     scoped: true,
   );
+  if (context.mounted) await _importAfter(context, ref, result, profileId);
+}
+
+/// The PGN import the add sheet asked for, into the profile its accounts
+/// just joined.
+Future<void> _importAfter(
+  BuildContext context,
+  WidgetRef ref,
+  PrepAddResult result,
+  String profileId,
+) async {
+  if (!result.importPgn) return;
+  final profile = ref.read(prepProfilesProvider.notifier).byId(profileId);
+  if (profile != null) await prepImportSource(context, ref, profile);
 }
 
 /// Adds an opponent with every account the reader typed. They stay on the
@@ -94,6 +127,10 @@ Future<void> _prepAddPlayer(
 ) async {
   HapticFeedbackService.buttonPress();
   if (!await prepMayAddOpponent(context) || !context.mounted) return;
+  if (source == PrepSource.manual) {
+    await prepImportNewProfile(context, ref, kind);
+    return;
+  }
   await _prepPickPlayer(context, ref, kind, only: source);
 }
 
@@ -116,6 +153,9 @@ Future<PrepProfile?> _prepPickPlayer(
     initial: initial,
   );
   if (result == null || !context.mounted) return null;
+  if (result.accounts.isEmpty) {
+    return result.importPgn ? prepImportNewProfile(context, ref, kind) : null;
+  }
   await _releaseFromFavorites(ref, result.accounts);
   if (!context.mounted) return null;
   final known = {for (final account in initial) account.key};
@@ -137,6 +177,7 @@ Future<PrepProfile?> _prepPickPlayer(
     result.accounts,
     scoped: true,
   );
+  if (context.mounted) await _importAfter(context, ref, result, profile.id);
   return profile;
 }
 
@@ -165,6 +206,10 @@ Future<void> prepAddAccountTo(
         : null,
   );
   if (result == null || !context.mounted) return;
+  if (result.accounts.isEmpty) {
+    if (result.importPgn) await prepImportSource(context, ref, profile);
+    return;
+  }
   await _releaseFromFavorites(ref, result.accounts);
   if (!context.mounted) return;
   try {
@@ -181,6 +226,7 @@ Future<void> prepAddAccountTo(
     result.accounts,
     scoped: true,
   );
+  if (context.mounted) await _importAfter(context, ref, result, profile.id);
 }
 
 /// A ranked player already added opens their profile. Anyone else opens the
@@ -495,8 +541,7 @@ void _readDetailsOf(
 ) {
   final due = {
     for (final account in accounts)
-      if (account.source != PrepSource.manual &&
-          _detailsRead.add(account.key))
+      if (account.source != PrepSource.manual && _detailsRead.add(account.key))
         account.key,
   };
   if (due.isEmpty) return;

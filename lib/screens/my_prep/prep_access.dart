@@ -55,6 +55,12 @@ Future<bool> ensurePrepAccess(
   return _prompt(context, feature, rewarded: true);
 }
 
+/// Importing a PGN as a source is Premium, with the same watch-an-ad unlock.
+/// Files imported earlier stay attached; their games open behind
+/// [ensurePrepAccess] like every other source's.
+Future<bool> ensurePrepPgnAccess(BuildContext context) =>
+    ensurePrepAccess(context, feature: 'prep_pgn_import');
+
 /// Only a paid subscription lifts Prep's limits. A watched ad does not, as
 /// with Favorites and saved games, so ten minutes of access never leaves
 /// more behind than a free reader keeps.
