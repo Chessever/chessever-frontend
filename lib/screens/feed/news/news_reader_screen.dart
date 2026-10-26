@@ -47,8 +47,11 @@ Future<void> shareNews(BuildContext context, FeedNews news) async {
 
 /// A news article, read in the app: cover, headline, byline and the full
 /// body, with the web's rich blocks (team results and pairings, section
-/// headings, videos) rendered natively. A partner's article carries the
-/// partner's mark and name and ends with a link to it on the partner's site.
+/// headings, videos) rendered natively.
+///
+/// A partner's article carries the partner's mark and name and always
+/// links to the original on the partner's site: under the headline, and as
+/// a button at its end.
 class NewsReaderScreen extends ConsumerStatefulWidget {
   const NewsReaderScreen({super.key, required this.news});
 
@@ -185,6 +188,12 @@ class _NewsReaderScreenState extends ConsumerState<NewsReaderScreen> {
         sourceUri != null &&
         newsArticleAt(sourceUri, [news])?.key != news.key;
     final publisher = news.publisher;
+    final body = <Widget>[
+      for (var i = 0; i < _blocks.length; i++) ...[
+        if (i > 0) SizedBox(height: 20.sp),
+        _block(_blocks[i]),
+      ],
+    ];
 
     final children = <Widget>[
       NewsPublisherLine(news: news, style: AppTypography.textSmMedium),
@@ -200,6 +209,13 @@ class _NewsReaderScreenState extends ConsumerState<NewsReaderScreen> {
           ),
         ),
       ),
+      if (publisher.isPartner && webUri != null) ...[
+        SizedBox(height: 4.sp),
+        _ReadOriginalLink(
+          publisher: publisher,
+          onTap: () => _openExternal(webUri),
+        ),
+      ],
       if (_author case final NewsAuthor author) ...[
         SizedBox(height: 12.sp),
         Text.rich(
@@ -232,24 +248,29 @@ class _NewsReaderScreenState extends ConsumerState<NewsReaderScreen> {
         ),
       ],
       SizedBox(height: 24.sp),
-      for (var i = 0; i < _blocks.length; i++) ...[
-        if (i > 0) SizedBox(height: 20.sp),
-        _block(_blocks[i]),
+      ...body,
+      if (publisher.isPartner) ...[
+        if (webUri != null) ...[
+          SizedBox(height: 32.sp),
+          _ReadOriginalButton(
+            publisher: publisher,
+            onTap: () => _openExternal(webUri),
+          ),
+        ],
+      ] else ...[
+        if (showSource || webUri != null) SizedBox(height: 36.sp),
+        if (showSource)
+          _ReaderLinkRow(
+            label: newsSourceContextLabel(sourceHref),
+            onTap: () => _openLink(sourceUri),
+          ),
+        if (showSource && webUri != null) SizedBox(height: 8.sp),
+        if (webUri != null)
+          _ReaderLinkRow(
+            label: 'Open on chessever.com',
+            onTap: () => _openExternal(webUri),
+          ),
       ],
-      if (showSource || webUri != null) SizedBox(height: 36.sp),
-      if (showSource)
-        _ReaderLinkRow(
-          label: newsSourceContextLabel(sourceHref),
-          onTap: () => _openLink(sourceUri),
-        ),
-      if (showSource && webUri != null) SizedBox(height: 8.sp),
-      if (webUri != null)
-        _ReaderLinkRow(
-          label: publisher.isPartner
-              ? 'Read on ${publisher.name}'
-              : 'Open on chessever.com',
-          onTap: () => _openExternal(webUri),
-        ),
     ];
 
     return Scaffold(
@@ -387,6 +408,103 @@ class _ReaderCover extends StatelessWidget {
                 ),
         );
       },
+    );
+  }
+}
+
+/// "Read original article", under a partner's headline: the article is
+/// the partner's, and its own page is one tap away from the first screen.
+class _ReadOriginalLink extends StatelessWidget {
+  const _ReadOriginalLink({required this.publisher, required this.onTap});
+
+  final NewsPublisher publisher;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.colors;
+    final label = 'Read original article on ${publisher.name}';
+    return Semantics(
+      link: true,
+      label: label,
+      excludeSemantics: true,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onTap,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: 44),
+          child: Row(
+            children: [
+              Flexible(
+                child: Text(
+                  label,
+                  style: AppTypography.textSmMedium.copyWith(
+                    color: colors.textSecondary,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 6),
+              NewsOutArrow(color: colors.textSecondary, size: 12),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// "Read original article" at the foot of a partner's article, under the
+/// partner's mark: the way on to the article on the partner's site.
+class _ReadOriginalButton extends StatelessWidget {
+  const _ReadOriginalButton({required this.publisher, required this.onTap});
+
+  final NewsPublisher publisher;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.colors;
+    final mark = publisher.mark;
+    return Semantics(
+      link: true,
+      label: 'Read original article on ${publisher.name}',
+      excludeSemantics: true,
+      child: NewsPressable(
+        onTap: onTap,
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            color: colors.textPrimary,
+            borderRadius: BorderRadius.circular(4),
+          ),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: 52),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+              child: Row(
+                children: [
+                  if (mark != null) ...[
+                    Image.asset(
+                      mark,
+                      height: 20,
+                      width: 20 * publisher.markAspectRatio,
+                    ),
+                    const SizedBox(width: 10),
+                  ],
+                  Expanded(
+                    child: Text(
+                      'Read original article',
+                      style: AppTypography.textMdBold.copyWith(
+                        color: colors.textInverse,
+                      ),
+                    ),
+                  ),
+                  NewsOutArrow(color: colors.textInverse, size: 14),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
     );
   }
 }

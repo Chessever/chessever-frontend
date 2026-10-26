@@ -502,7 +502,7 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
-    testWidgets('the reader credits RookReview and links back to it', (
+    testWidgets('the reader credits RookReview and always links the original', (
       tester,
     ) async {
       final news = _partner();
@@ -526,13 +526,47 @@ void main() {
         findsOneWidget,
       );
 
+      // The whole article, and the original one tap away from the top...
+      expect(
+        find.textContaining('Timur Turlov', findRichText: true),
+        findsWidgets,
+      );
+      expect(find.text('Read original article on RookReview'), findsOneWidget);
+      expect(
+        tester.getTopLeft(find.text('Read original article on RookReview')).dy,
+        lessThan(tester.getTopLeft(find.text(news.title)).dy + 200),
+      );
+      // ...and at the end.
       await tester.scrollUntilVisible(
-        find.text('Read on RookReview'),
+        find.text('Read original article'),
         200,
         scrollable: find.byType(Scrollable).first,
       );
-      expect(find.text('Read on RookReview'), findsOneWidget);
+      expect(find.text('Read original article'), findsOneWidget);
+      expect(
+        find.bySemanticsLabel('Read original article on RookReview'),
+        findsNWidgets(2),
+      );
+      expect(find.text('Read on RookReview'), findsNothing);
       expect(find.text('Open on chessever.com'), findsNothing);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('ChessEver articles carry no partner link', (tester) async {
+      final news = FeedNews(
+        id: 41,
+        title: 'Our own story',
+        summary: '',
+        content: 'Every word of it.\n\nThe last paragraph.',
+        publishedAt: DateTime.utc(2026, 10, 25),
+      );
+      await pump(tester, NewsReaderScreen(news: news), [news]);
+
+      expect(
+        find.textContaining('The last paragraph.', findRichText: true),
+        findsOneWidget,
+      );
+      expect(find.textContaining('Read original article'), findsNothing);
       expect(tester.takeException(), isNull);
     });
   });
