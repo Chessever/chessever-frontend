@@ -61,3 +61,10 @@ verify_jwt = false
 # and starred Prep players would never notify. NEVER set this to true.
 [functions.prep-games-check]
 verify_jwt = false
+
+# Started every ten minutes by pg_cron (kick_partner_news_sync) with the
+# dispatcher's x-stream-token, never a user JWT. Gateway verification would 401
+# every run and partner news (RookReview) would silently stop updating. NEVER
+# set this to true.
+[functions.partner-news-sync]
+verify_jwt = false
