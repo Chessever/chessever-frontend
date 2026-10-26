@@ -1,10 +1,13 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:ui' as ui;
 import 'package:chessever2/watch/core/watch_account.dart';
 import 'package:chessever2/watch/core/watch_repository.dart';
 import 'package:chessever2/watch/ui/watch_board.dart';
+import 'package:chessever2/watch/ui/watch_event_boards_page.dart';
 import 'package:chessever2/watch/ui/watch_home_page.dart';
+import 'package:chessever2/watch/ui/watch_widgets.dart';
 import 'package:chessever2/watch/watch_app.dart';
 import 'package:chessever2/watch/watch_controller.dart';
 import 'package:flutter/cupertino.dart';
@@ -232,12 +235,14 @@ void main() {
         await show(tester, event);
         await tester.tap(event);
         await tester.pumpAndSettle();
-        await show(tester, find.text('Open section'));
-        await tester.tap(find.text('Open section'));
-        await tester.pumpAndSettle();
-        await screenshot(tester, 'rounds-${screen.width.toInt()}');
-        await show(tester, find.text('Players & scores'));
-        await tester.tap(find.text('Players & scores'));
+        // One tap from Current lands directly on a complete board.
+        expect(find.byType(WatchBoardTile), findsOneWidget);
+        final tile = tester.getRect(find.byType(WatchBoardTile));
+        expect(tile.top, greaterThanOrEqualTo(40));
+        expect(tile.bottom, lessThanOrEqualTo(screen.height + 8));
+        await screenshot(tester, 'event-boards-${screen.width.toInt()}');
+        await show(tester, find.text('Standings'));
+        await tester.tap(find.text('Standings'));
         await tester.pumpAndSettle();
         await show(tester, find.text('Show followed players'));
         await tester.tap(find.text('Show followed players'));
@@ -249,10 +254,7 @@ void main() {
         await show(tester, find.text('Back'));
         await tester.tap(find.text('Back'));
         await tester.pumpAndSettle();
-        await show(tester, find.text('Round 1'));
-        await tester.tap(find.text('Round 1'));
-        await tester.pumpAndSettle();
-        final game = find.text('Player One\nPlayer Two');
+        final game = find.byType(WatchBoardTile).first;
         await show(tester, game);
         await tester.tap(game);
         await tester.pumpAndSettle();
@@ -292,12 +294,65 @@ void main() {
         await show(tester, find.text('Back to games'));
         await tester.tap(find.text('Back to games'));
         await tester.pumpAndSettle();
+        expect(find.byType(WatchBoardTile), findsOneWidget);
+        await show(tester, find.text('Back to Current'));
+        await tester.tap(find.text('Back to Current'));
+        await tester.pumpAndSettle();
         expect(find.byType(WatchBoard), findsNothing);
         expect(tester.takeException(), isNull);
         await tester.pumpWidget(const SizedBox.shrink());
       },
     );
   }
+
+  testWidgets('headings, notes and card copy align; chevrons stay centered', (
+    tester,
+  ) async {
+    await size(tester, const Size(184, 224));
+    await tester.pumpWidget(
+      CupertinoApp(
+        home: WatchPage(
+          title: 'Scores',
+          root: true,
+          children: [
+            const WatchNote('Updated'),
+            WatchRow(
+              label: 'Huang, Renjie',
+              detail: 'GM · 2500 · 5½ / 6',
+              onTap: () {},
+            ),
+          ],
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final title = tester.getTopLeft(find.text('Scores')).dx;
+    expect(tester.getTopLeft(find.text('Updated')).dx, title);
+    expect(tester.getTopLeft(find.text('Huang, Renjie')).dx, title);
+    final button = find.ancestor(
+      of: find.text('Huang, Renjie'),
+      matching: find.byType(CupertinoButton),
+    );
+    final chevron = find.byIcon(CupertinoIcons.chevron_forward);
+    expect(tester.getCenter(chevron).dy, tester.getCenter(button).dy);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('background refresh keeps loaded event rows in place', (
+    tester,
+  ) async {
+    await size(tester, const Size(184, 224));
+    await controller.initialize();
+    await tester.pumpWidget(ChessEverWatchApp(controller: controller));
+    await tester.pumpAndSettle();
+    final event = find.text('European Club Championship');
+    final before = tester.getTopLeft(event);
+    controller.loading = true;
+    controller.notifyListeners();
+    await tester.pump();
+    expect(tester.getTopLeft(event), before);
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
 
   testWidgets('large text preserves controls and readable event names', (
     tester,
@@ -327,6 +382,69 @@ void main() {
         .first;
     expect(tester.getSize(target).height, greaterThanOrEqualTo(44));
     expect(tester.getSize(target).width, greaterThanOrEqualTo(44));
+  });
+
+  testWidgets('pull refresh works on short pages and waits for completion', (
+    tester,
+  ) async {
+    await size(tester, const Size(184, 224));
+    var calls = 0;
+    final completed = Completer<void>();
+    await tester.pumpWidget(
+      CupertinoApp(
+        home: WatchPage(
+          title: 'Current',
+          root: true,
+          onRefresh: () {
+            calls++;
+            return completed.future;
+          },
+          children: const [WatchNote('No current events.')],
+        ),
+      ),
+    );
+    await tester.drag(find.byType(CustomScrollView), const Offset(0, 20));
+    await tester.pumpAndSettle();
+    expect(calls, 0);
+    await tester.drag(find.byType(CustomScrollView), const Offset(0, 170));
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 1));
+    expect(calls, 1);
+    await tester.drag(find.byType(CustomScrollView), const Offset(0, 170));
+    await tester.pump(const Duration(seconds: 1));
+    expect(calls, 1);
+    completed.complete();
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('Crown-style overscroll refreshes without finger drag details', (
+    tester,
+  ) async {
+    await size(tester, const Size(184, 224));
+    var calls = 0;
+    await tester.pumpWidget(
+      CupertinoApp(
+        home: WatchPage(
+          title: 'Current',
+          root: true,
+          onRefresh: () async {
+            calls++;
+          },
+          children: const [WatchNote('No current events.')],
+        ),
+      ),
+    );
+    // The watch host drives the ScrollPosition directly, including negative
+    // offsets at the top; it does not synthesize a Flutter finger drag.
+    final position = tester
+        .state<ScrollableState>(find.byType(Scrollable))
+        .position;
+    position.jumpTo(-75);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 30));
+    await tester.pumpAndSettle();
+    expect(calls, 1);
   });
 
   testWidgets('More current events loads another page through a real row tap', (

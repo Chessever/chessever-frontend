@@ -1,9 +1,11 @@
+import 'dart:math' as math;
 import 'package:flutter/cupertino.dart';
 import 'package:flutter_watchos/flutter_watchos.dart';
 
 /// watchOS is always dark. Quiet neutral surfaces leave the real chess position
 /// and reported scores as the identity; the system face preserves Dynamic Type.
 abstract final class WatchStyle {
+  static const contentInset = 11.0;
   static const background = Color(0xFF000000);
   static const surface = Color(0xFF1B1B1B);
   static const secondary = Color(0xFFB7B7B7);
@@ -38,73 +40,189 @@ class WatchPage extends StatelessWidget {
     required this.title,
     required this.children,
     this.onRefresh,
+    this.refreshing = false,
     this.root = false,
     this.boardFirst = false,
+    this.boardBackLabel = 'Back to games',
+    this.scrollController,
   });
   final String title;
   final List<Widget> children;
-  final VoidCallback? onRefresh;
+  final Future<void> Function()? onRefresh;
+  final bool refreshing;
   final bool root;
   final bool boardFirst;
+  final String boardBackLabel;
+  final ScrollController? scrollController;
 
   @override
   Widget build(BuildContext context) {
     final insets = MediaQuery.paddingOf(context);
     return CupertinoPageScaffold(
       backgroundColor: WatchStyle.background,
-      child: WatchCrownScroll(
-        child: ListView(
-          padding: EdgeInsets.fromLTRB(
-            insets.left + 5,
-            WatchStatusBar.heightOf(context) + 4,
-            insets.right + 5,
-            insets.bottom + 16,
-          ),
-          children: [
-            if (!root && !boardFirst)
-              Align(
-                alignment: Alignment.centerLeft,
-                child: CupertinoButton(
-                  padding: EdgeInsets.zero,
-                  minimumSize: const Size(44, 44),
-                  onPressed: () => Navigator.of(context).maybePop(),
-                  child: const Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        CupertinoIcons.chevron_back,
-                        size: 18,
-                        color: WatchStyle.ink,
+      child: _ClockEdge(
+        child: WatchCrownScroll(
+          child: CustomScrollView(
+            controller: scrollController,
+            physics: const WatchScrollPhysics(
+              parent: AlwaysScrollableScrollPhysics(),
+            ),
+            slivers: [
+              // Native Crown overscroll and finger drags share the same scroll
+              // position. The Cupertino control arms beyond the threshold and
+              // refreshes once on release, retaining its extent until completion.
+              if (onRefresh != null)
+                CupertinoSliverRefreshControl(
+                  refreshTriggerPullDistance: 52,
+                  refreshIndicatorExtent: 32,
+                  onRefresh: onRefresh,
+                ),
+              SliverPadding(
+                padding: EdgeInsets.fromLTRB(
+                  insets.left + 5,
+                  WatchStatusBar.heightOf(context) + 4,
+                  insets.right + 5,
+                  insets.bottom + 16,
+                ),
+                sliver: SliverList.list(
+                  children: [
+                    if (!root && !boardFirst)
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: CupertinoButton(
+                          padding: EdgeInsets.zero,
+                          minimumSize: const Size(44, 44),
+                          onPressed: () => Navigator.of(context).maybePop(),
+                          child: const Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                CupertinoIcons.chevron_back,
+                                size: 18,
+                                color: WatchStyle.ink,
+                              ),
+                              SizedBox(width: 4),
+                              Text('Back', style: WatchStyle.body),
+                            ],
+                          ),
+                        ),
                       ),
-                      SizedBox(width: 4),
-                      Text('Back', style: WatchStyle.body),
-                    ],
-                  ),
+                    if (!boardFirst)
+                      Semantics(
+                        header: true,
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(
+                            WatchStyle.contentInset,
+                            0,
+                            WatchStyle.contentInset,
+                            12,
+                          ),
+                          child: Text(title, style: WatchStyle.heading),
+                        ),
+                      ),
+                    ...children,
+                    if (boardFirst)
+                      WatchRow(
+                        label: boardBackLabel,
+                        icon: CupertinoIcons.chevron_back,
+                        onTap: () => Navigator.of(context).maybePop(),
+                      ),
+                    if (onRefresh != null)
+                      WatchRow(
+                        label: 'Refresh',
+                        icon: CupertinoIcons.refresh,
+                        onTap: refreshing ? null : onRefresh,
+                        trailing: refreshing
+                            ? const CupertinoActivityIndicator(radius: 7)
+                            : null,
+                      ),
+                  ],
                 ),
               ),
-            if (!boardFirst)
-              Semantics(
-                header: true,
-                child: Padding(
-                  padding: const EdgeInsets.only(bottom: 12),
-                  child: Text(title, style: WatchStyle.heading),
-                ),
-              ),
-            ...children,
-            if (boardFirst)
-              WatchRow(
-                label: 'Back to games',
-                icon: CupertinoIcons.chevron_back,
-                onTap: () => Navigator.of(context).maybePop(),
-              ),
-            if (onRefresh != null)
-              WatchRow(
-                label: 'Refresh',
-                icon: CupertinoIcons.refresh,
-                onTap: onRefresh,
-              ),
-          ],
+            ],
+          ),
         ),
+      ),
+    );
+  }
+}
+
+/// watchOS fades a list out under the system clock as it scrolls; without
+/// it a row runs straight into the time. The page is pure black, so a black
+/// veil over the band reads as the content fading. At
+/// rest it is invisible: the band row (mark or back chevron) stays crisp.
+class _ClockEdge extends StatefulWidget {
+  const _ClockEdge({required this.child});
+  final Widget child;
+  @override
+  State<_ClockEdge> createState() => _ClockEdgeState();
+}
+
+class _ClockEdgeState extends State<_ClockEdge> {
+  final _scrolled = ValueNotifier<double>(0);
+  double _nextStrength = 0;
+  bool _queued = false;
+
+  @override
+  void dispose() {
+    _scrolled.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final band = WatchStatusBar.heightOf(context);
+    return NotificationListener<ScrollNotification>(
+      onNotification: (notification) {
+        if (notification.depth == 0) {
+          final pixels = notification.metrics.pixels;
+          _nextStrength = (pixels / math.max(band, 1)).clamp(0.0, 1.0);
+          // Refresh slivers may correct their extent during layout. Update
+          // the veil after that frame, rather than rebuilding during layout.
+          if (!_queued) {
+            _queued = true;
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              _queued = false;
+              if (mounted) _scrolled.value = _nextStrength;
+            });
+          }
+        }
+        return false;
+      },
+      child: Stack(
+        children: [
+          widget.child,
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            height: band,
+            child: IgnorePointer(
+              child: ValueListenableBuilder<double>(
+                valueListenable: _scrolled,
+                builder: (context, strength, _) => strength == 0
+                    ? const SizedBox.shrink()
+                    : Opacity(
+                        opacity: strength,
+                        child: const DecoratedBox(
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              begin: Alignment.topCenter,
+                              end: Alignment.bottomCenter,
+                              colors: [
+                                WatchStyle.background,
+                                WatchStyle.background,
+                                Color(0x00000000),
+                              ],
+                              stops: [0, 0.62, 1],
+                            ),
+                          ),
+                        ),
+                      ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -116,6 +234,7 @@ class WatchRow extends StatelessWidget {
     required this.label,
     this.detail,
     this.trailing,
+    this.visual,
     this.icon,
     this.onTap,
     this.semanticLabel,
@@ -123,6 +242,7 @@ class WatchRow extends StatelessWidget {
   final String label;
   final String? detail;
   final Widget? trailing;
+  final Widget? visual;
   final IconData? icon;
   final VoidCallback? onTap;
   final String? semanticLabel;
@@ -141,7 +261,7 @@ class WatchRow extends StatelessWidget {
     final content = Container(
       width: double.infinity,
       constraints: const BoxConstraints(minHeight: 48),
-      padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 11),
+      padding: const EdgeInsets.all(WatchStyle.contentInset),
       decoration: BoxDecoration(
         color: WatchStyle.surface,
         borderRadius: BorderRadius.circular(13),
@@ -156,33 +276,23 @@ class WatchRow extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                if (detail != null)
-                  Text(label, style: WatchStyle.body)
-                else
-                  Row(
-                    children: [
-                      Expanded(child: Text(label, style: WatchStyle.body)),
-                      if (accessory != null) ...[
-                        const SizedBox(width: 6),
-                        accessory,
-                      ],
-                    ],
-                  ),
+                _WatchRowLabel(label),
                 if (detail != null) ...[
                   const SizedBox(height: 3),
                   Row(
                     children: [
-                      Expanded(child: Text(detail!, style: WatchStyle.caption)),
-                      if (accessory != null) ...[
+                      if (visual != null) ...[
+                        ExcludeSemantics(child: visual!),
                         const SizedBox(width: 6),
-                        accessory,
                       ],
+                      Expanded(child: Text(detail!, style: WatchStyle.caption)),
                     ],
                   ),
                 ],
               ],
             ),
           ),
+          if (accessory != null) ...[const SizedBox(width: 6), accessory],
         ],
       ),
     );
@@ -206,12 +316,43 @@ class WatchRow extends StatelessWidget {
   }
 }
 
+/// Fit only an overlong word, retaining normal wrapping and Dynamic Type.
+class _WatchRowLabel extends StatelessWidget {
+  const _WatchRowLabel(this.text);
+  final String text;
+
+  @override
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, constraints) {
+      final painter = TextPainter(
+        text: TextSpan(
+          text: text.split(RegExp(r'\s+')).join('\n'),
+          style: WatchStyle.body,
+        ),
+        textDirection: Directionality.of(context),
+        textScaler: MediaQuery.textScalerOf(context),
+      )..layout();
+      final widest = painter.width;
+      painter.dispose();
+      final size = widest > constraints.maxWidth
+          ? (16 * constraints.maxWidth / widest).clamp(13.0, 16.0)
+          : 16.0;
+      return Text(text, style: WatchStyle.body.copyWith(fontSize: size));
+    },
+  );
+}
+
 class WatchNote extends StatelessWidget {
   const WatchNote(this.text, {super.key});
   final String text;
   @override
   Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.fromLTRB(2, 6, 2, 12),
+    padding: const EdgeInsets.fromLTRB(
+      WatchStyle.contentInset,
+      6,
+      WatchStyle.contentInset,
+      12,
+    ),
     child: Text(text, style: WatchStyle.caption),
   );
 }
@@ -273,9 +414,10 @@ class _WatchDataPageState<T> extends State<WatchDataPage<T>> {
   @override
   Widget build(BuildContext context) => WatchPage(
     title: widget.title,
-    onRefresh: _busy ? null : () => _load(),
+    onRefresh: () => _load(),
+    refreshing: _busy,
     children: [
-      if (_busy)
+      if (_busy && _data.isEmpty)
         const Padding(
           padding: EdgeInsets.all(12),
           child: Center(child: CupertinoActivityIndicator()),

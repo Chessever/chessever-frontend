@@ -26,6 +26,33 @@ toolchain_dir="${FLUTTER_WATCHOS_HOME:-${RUNNER_TEMP:-/tmp}/flutter-watchos}"
 flutter_watchos="$toolchain_dir/bin/flutter-watchos"
 release_app=build/watchos/Release-watchos/Runner.app
 
+# FFI lookups do not create linker references. A successful build can still
+# ship without the notification bridge, which used to crash on first launch.
+check_native_bridge() {
+  local app="$1" executable symbols
+  executable="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$app/Info.plist")"
+  symbols="$(mktemp)"
+  local binaries=("$app/$executable")
+  if [ -f "$app/$executable.debug.dylib" ]; then
+    binaries+=("$app/$executable.debug.dylib")
+  fi
+  if ! nm -gU "${binaries[@]}" > "$symbols"; then
+    rm -f "$symbols"
+    echo '::error::Could not inspect the watch native binary.'
+    return 1
+  fi
+  local symbol
+  for symbol in chessever_watch_listen chessever_watch_stop chessever_watch_free; do
+    if ! grep -Eq "[[:space:]]_${symbol}$" "$symbols"; then
+      rm -f "$symbols"
+      echo "::error::Watch notification bridge symbol $symbol is missing. Check its watchos/Package.swift."
+      return 1
+    fi
+  done
+  rm -f "$symbols"
+  echo 'Watch native notification bridge verified.'
+}
+
 # The watch CLI and the flutter_watchos package must come from one commit.
 pinned_ref() {
   sed -n '/^  flutter_watchos:/,/^  [a-z]/s/^ *ref: *//p' pubspec.yaml | head -1
@@ -82,6 +109,7 @@ case "${1:-}" in
     defines=()
     while IFS= read -r define; do defines+=("$define"); done < <(watch_defines)
     "$flutter_watchos" build watchos --simulator --target lib/main_watch.dart ${defines[@]+"${defines[@]}"}
+    check_native_bridge build/watchos/Debug-watchsimulator/Runner.app
     ;;
 
   release)
@@ -99,10 +127,15 @@ case "${1:-}" in
     printf 'CODE_SIGNING_ALLOWED = NO\nCODE_SIGNING_REQUIRED = NO\n' > "$unsigned"
     XCODE_XCCONFIG_FILE="$unsigned" \
       "$flutter_watchos" build watchos --release --target lib/main_watch.dart ${defines[@]+"${defines[@]}"}
+    check_native_bridge "$release_app"
     if ! git diff --quiet -- watchos ios/Runner.xcodeproj; then
       echo '::warning::flutter-watchos rewrote the watch wiring; commit what it changed:'
       git diff --stat -- watchos ios/Runner.xcodeproj
     fi
+    ;;
+
+  check-native)
+    check_native_bridge "${2:?usage: watch_build.sh check-native <Runner.app>}"
     ;;
 
   sign)
@@ -176,7 +209,7 @@ case "${1:-}" in
     ;;
 
   *)
-    echo 'usage: watch_build.sh <toolchain|simulator|release|sign|check-ipa <ipa>>' >&2
+    echo 'usage: watch_build.sh <toolchain|simulator|release|sign|check-native <app>|check-ipa <ipa>>' >&2
     exit 1
     ;;
 esac

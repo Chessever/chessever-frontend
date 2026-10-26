@@ -1,82 +1,14 @@
 import 'package:flutter/cupertino.dart';
 import '../../repository/supabase/game/games.dart';
 import '../core/watch_models.dart';
-import '../core/watch_repository.dart';
 import '../watch_controller.dart';
 import 'watch_game_page.dart';
 import 'watch_widgets.dart';
+import 'watch_visuals.dart';
+import 'watch_event_boards_page.dart';
 
 Widget watchEventPage(WatchController controller, WatchEvent event) =>
-    WatchDataPage<WatchTour>(
-      title: event.name,
-      load: (_) => controller.repository.tours(event.id),
-      empty: 'Sections have not been published yet.',
-      items: (context, tours) => [
-        for (final tour in tours)
-          WatchRow(
-            label: tour.name,
-            detail: '${tour.players.length} players',
-            onTap: () => watchPush(context, watchTourPage(controller, tour)),
-          ),
-      ],
-    );
-
-Widget watchTourPage(
-  WatchController controller,
-  WatchTour tour,
-) => WatchDataPage<WatchRound>(
-  title: tour.name,
-  load: (_) => controller.repository.rounds(tour.id),
-  items: (context, rounds) => [
-    WatchRow(
-      label: 'Players & scores',
-      icon: CupertinoIcons.person_2,
-      onTap: () => watchPush(context, watchStandingsPage(controller, tour)),
-    ),
-    const WatchNote('Rounds'),
-    // Latest scheduled/played rounds first on a small display. The canonical
-    // source order is retained for scorecards below.
-    for (final round in rounds.reversed)
-      WatchRow(
-        label: round.name,
-        detail: round.startsAt == null ? null : _roundDate(round.startsAt!),
-        onTap: () =>
-            watchPush(context, watchRoundPage(controller, tour, round)),
-      ),
-  ],
-);
-
-String _roundDate(DateTime date) {
-  final local = date.toLocal();
-  return '${local.day}/${local.month} · '
-      '${local.hour.toString().padLeft(2, '0')}:${local.minute.toString().padLeft(2, '0')}';
-}
-
-Widget watchRoundPage(
-  WatchController controller,
-  WatchTour tour,
-  WatchRound round,
-) => WatchDataPage<Games>(
-  title: round.name,
-  pageSize: WatchRepository.pageSize,
-  load: (offset) => controller.repository.games(round.id, offset: offset),
-  empty: 'Pairings have not been published yet.',
-  items: (context, games) => [
-    for (final game in games)
-      WatchRow(
-        label: _pairing(game),
-        detail: 'Board ${game.boardNr ?? '—'} · ${watchResult(game.status)}',
-        onTap: () => watchPush(
-          context,
-          WatchGamePage(controller: controller, game: game, tour: tour),
-        ),
-      ),
-  ],
-);
-
-String _pairing(Games game) => game.players == null || game.players!.length < 2
-    ? game.name ?? 'Game'
-    : '${game.players![0].name}\n${game.players![1].name}';
+    WatchEventBoardsPage(controller: controller, event: event);
 
 Widget watchStandingsPage(WatchController controller, WatchTour initialTour) =>
     _StandingsPage(controller: controller, tour: initialTour);
@@ -133,12 +65,12 @@ Widget _standingsContent(
       ))
         WatchRow(
           label: player.name,
+          visual: watchFederation(player.federation),
           detail: [
             if (player.rank != null) '#${player.rank}',
             if (player.title.isNotEmpty) player.title,
             if (player.rating != null) '${player.rating}',
-            if (player.score != null)
-              '${watchScore(player.score)} / ${player.played}',
+            if (player.score != null) watchStandingScore(player),
           ].join(' · '),
           trailing: controller.account.followsPlayer(player.fideId, player.name)
               ? const Icon(
@@ -188,13 +120,18 @@ Widget watchScorecardPage(
       Semantics(
         label:
             'Published score ${watchScore(card.player.score)} '
-            'from ${card.player.played} games',
+            '${card.player.played == null ? '' : 'from ${card.player.played} games'}',
         child: Padding(
-          padding: const EdgeInsets.only(bottom: 12),
+          padding: const EdgeInsets.fromLTRB(
+            WatchStyle.contentInset,
+            0,
+            WatchStyle.contentInset,
+            12,
+          ),
           child: Text(
             card.player.score == null
                 ? 'Score unavailable'
-                : '${watchScore(card.player.score)} / ${card.player.played}',
+                : watchStandingScore(card.player),
             style: const TextStyle(
               fontSize: 32,
               color: WatchStyle.ink,

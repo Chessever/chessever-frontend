@@ -7,6 +7,7 @@ import '../watch_controller.dart';
 import 'watch_board.dart';
 import 'watch_event_pages.dart';
 import 'watch_widgets.dart';
+import 'watch_visuals.dart';
 
 class WatchGamePage extends StatefulWidget {
   const WatchGamePage({
@@ -99,7 +100,8 @@ class _WatchGamePageState extends State<WatchGamePage>
   Widget build(BuildContext context) => WatchPage(
     title: 'Board ${_game.boardNr ?? '—'}',
     boardFirst: true,
-    onRefresh: _busy ? null : _refresh,
+    onRefresh: _refresh,
+    refreshing: _busy,
     children: [
       WatchBoard(fen: _game.fen, lastMove: _game.lastMove, flipped: _flipped),
       const SizedBox(height: 8),
@@ -146,6 +148,7 @@ class _WatchGamePageState extends State<WatchGamePage>
     final selected = standing;
     return WatchRow(
       label: player.name,
+      visual: watchFederation(player.fed),
       detail:
           '${white ? 'White' : 'Black'}'
           '${player.rating > 0 ? ' · ${player.rating}' : ''}'

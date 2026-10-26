@@ -2,6 +2,7 @@ import 'package:flutter/cupertino.dart';
 import '../watch_controller.dart';
 import 'watch_event_pages.dart';
 import 'watch_widgets.dart';
+import 'watch_visuals.dart';
 
 class WatchHomePage extends StatelessWidget {
   const WatchHomePage({super.key, required this.controller});
@@ -13,9 +14,10 @@ class WatchHomePage extends StatelessWidget {
     builder: (context, _) => WatchPage(
       title: 'Current',
       root: true,
-      onRefresh: controller.loading ? null : () => controller.refresh(),
+      onRefresh: () => controller.refresh(),
+      refreshing: controller.loading,
       children: [
-        if (controller.loading)
+        if (controller.loading && controller.events.isEmpty)
           const Padding(
             padding: EdgeInsets.all(12),
             child: Center(child: CupertinoActivityIndicator()),
@@ -32,6 +34,10 @@ class WatchHomePage extends StatelessWidget {
         for (final event in controller.visibleEvents)
           WatchRow(
             label: event.name,
+            visual: WatchEventArtwork(
+              repository: controller.repository,
+              eventId: event.id,
+            ),
             detail: event.timeControl == 'standard'
                 ? 'Classical'
                 : event.timeControl,
@@ -121,7 +127,7 @@ class _WatchAccountPageState extends State<WatchAccountPage> {
             label: connection.reachable
                 ? 'iPhone connected'
                 : 'iPhone unavailable',
-            detail: connection.counterpartInstalled
+            detail: (connection.counterpartInstalled || connection.reachable)
                 ? 'ChessEver companion installed'
                 : 'Install ChessEver on your paired iPhone',
           ),

@@ -24,6 +24,7 @@ class WatchController extends ChangeNotifier {
   SharedPreferences? _storage;
   final List<StreamSubscription<dynamic>> _subscriptions = [];
   Future<void> _persisting = Future.value();
+  Future<bool>? _syncRequest;
 
   List<WatchEvent> get visibleEvents {
     final result = favoritesOnly
@@ -75,7 +76,15 @@ class WatchController extends ChangeNotifier {
 
   void _merge(Map<String, dynamic> json) {
     if (_disposed || json['kind'] != WatchAccount.kind) return;
-    final next = WatchAccount.fromJson(json);
+    final WatchAccount next;
+    try {
+      next = WatchAccount.fromJson(json);
+    } on FormatException {
+      return;
+    } on TypeError {
+      // Ignore a damaged snapshot without losing the last complete account.
+      return;
+    }
     if (next.revision <= account.revision) return;
     final wasConfigured = repository.configured;
     account = next;
@@ -93,9 +102,18 @@ class WatchController extends ChangeNotifier {
     if (!wasConfigured && repository.configured) unawaited(refresh());
   }
 
-  Future<bool> requestSync() async {
+  Future<bool> requestSync() =>
+      _syncRequest ??= _requestSync().whenComplete(() {
+        _syncRequest = null;
+      });
+
+  Future<bool> _requestSync() async {
     await _receiveContext();
-    if (!connection.activated || !connection.counterpartReady) return false;
+    if (_disposed ||
+        !connection.activated ||
+        (!connection.counterpartReady && !connection.reachable)) {
+      return false;
+    }
     try {
       if (connection.reachable) {
         await _link.sendMessage({
@@ -109,7 +127,8 @@ class WatchController extends ChangeNotifier {
         });
       }
       return true;
-    } catch (_) {
+    } catch (error) {
+      if (kDebugMode) debugPrint('[Watch] Phone sync unavailable: $error');
       return false;
     }
   }
@@ -117,14 +136,13 @@ class WatchController extends ChangeNotifier {
   Future<bool> openOnPhone(String gameId) async {
     if (!connection.reachable) return false;
     try {
-      final reply = await _link
-          .sendMessageWithReply({
-            'kind': 'chessever.open-game.v1',
-            'gameId': gameId,
-          })
-          .timeout(const Duration(seconds: 8));
+      final reply = await _link.sendMessageWithReply({
+        'kind': 'chessever.open-game.v1',
+        'gameId': gameId,
+      }, timeout: const Duration(seconds: 8));
       return reply['accepted'] == true;
-    } catch (_) {
+    } catch (error) {
+      if (kDebugMode) debugPrint('[Watch] Phone handoff unavailable: $error');
       return false;
     }
   }

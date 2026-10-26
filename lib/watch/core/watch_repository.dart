@@ -16,7 +16,30 @@ class WatchRepository {
       'last_clock_black';
   String apiKey;
   final http.Client _client;
+  final _artwork = <String, Future<String?>>{};
   bool get configured => apiKey.isNotEmpty;
+
+  /// Only visible rows request artwork. Reuse it through navigation and keep
+  /// images optional so a missing tournament photo never blocks the feed.
+  Future<String?> eventArtwork(String eventId) =>
+      _artwork.putIfAbsent(eventId, () async {
+        try {
+          final rows = await _get('tours', {
+            'select': 'image',
+            'group_broadcast_id': 'eq.$eventId',
+            'image': 'not.is.null',
+            'order': 'avg_elo.desc.nullslast,id.asc',
+            'limit': '1',
+          });
+          final image = rows.firstOrNull?['image'];
+          return image is String && Uri.tryParse(image)?.scheme == 'https'
+              ? image
+              : null;
+        } catch (_) {
+          _artwork.remove(eventId);
+          return null;
+        }
+      });
 
   Future<List<Map<String, dynamic>>> _get(
     String table,

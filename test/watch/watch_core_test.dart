@@ -136,6 +136,12 @@ void main() {
       );
       expect(watchScore(4.5), '4½');
       expect(watchScore(null), 'Unavailable');
+      final scoreOnly = WatchStanding.fromJson({'name': 'P', 'score': 3.5});
+      expect(watchStandingScore(scoreOnly), '3½');
+      expect(
+        watchStandingScore(const WatchStanding(name: 'P', score: 0, played: 0)),
+        '0 / 0',
+      );
     },
   );
 
@@ -153,6 +159,13 @@ void main() {
       isTrue,
     );
     expect(watchResult('1/2-1/2'), '½–½');
+    expect(
+      watchPlayerMatches(
+        game.players!.first,
+        const WatchStanding(name: 'Player One', fideId: '0'),
+      ),
+      isTrue,
+    );
   });
 
   test(

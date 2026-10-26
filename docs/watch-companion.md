@@ -6,6 +6,10 @@ This adds a compact companion to the production iPhone app. It uses
 [`flutter_watch_link`](https://github.com/flutterwatch/plugins/tree/main/packages/flutter_watch_link)
 WatchConnectivity implementation.
 
+## Current audit
+
+The 26 October audit and evidence are in [watch-release-audit-2026-10-26.md](watch-release-audit-2026-10-26.md). Events now open directly into a vertical board feed; round selection and standings are secondary actions between boards. Crown/finger pull-to-refresh complements the Refresh button. The latest focused suite has 24 passing tests. The older implementation notes and counts below describe the initial companion and are superseded by that audit.
+
 ## What is on the watch
 
 - Current events from `group_broadcasts_current`, in the phone feed's Elo order.

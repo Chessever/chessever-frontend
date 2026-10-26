@@ -49,7 +49,12 @@ class _ChessEverWatchAppState extends State<ChessEverWatchApp>
         _pendingTap = payload;
         _openPending();
       });
-      _notifications!.start();
+      try {
+        _notifications!.start();
+      } on ArgumentError catch (error) {
+        // An incomplete native binary must not make public browsing unusable.
+        debugPrint('Watch notification bridge unavailable: $error');
+      }
     }
   }
 

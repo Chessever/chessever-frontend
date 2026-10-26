@@ -27,6 +27,8 @@ class WatchCompanionService with WidgetsBindingObserver {
   int _accountGeneration = 0;
   void Function(String gameId)? _openGame;
   String? _lastUserId;
+  bool get _canSync =>
+      _state.activated && (_state.counterpartReady || _state.reachable);
 
   Future<void> initialize({
     required SupabaseClient client,
@@ -52,7 +54,7 @@ class WatchCompanionService with WidgetsBindingObserver {
       _revision = (previous?['revision'] as num?)?.toInt() ?? 0;
       _link.states.listen((state) {
         _state = state;
-        if (state.activated && state.counterpartReady) scheduleSync();
+        if (_canSync) scheduleSync();
       });
       _link.errors.listen((_) => scheduleSync());
       _link.messages.listen((message) {
@@ -128,7 +130,7 @@ class WatchCompanionService with WidgetsBindingObserver {
   }
 
   Future<void> _clearAccount() async {
-    if (!_state.activated || !_state.counterpartReady) return;
+    if (!_canSync) return;
     try {
       await _publish(
         WatchAccount(
@@ -175,7 +177,7 @@ class WatchCompanionService with WidgetsBindingObserver {
   }
 
   Future<void> _sync() async {
-    if (!_state.activated || !_state.counterpartReady || _client == null) {
+    if (!_canSync || _client == null) {
       return;
     }
     if (_sending) {

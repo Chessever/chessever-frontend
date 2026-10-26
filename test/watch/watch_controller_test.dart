@@ -122,6 +122,49 @@ void main() {
   );
 
   test(
+    'a reachable phone can sync while installation metadata catches up',
+    () async {
+      link.state = const WatchLinkState(
+        activated: true,
+        reachable: true,
+        counterpartInstalled: false,
+        counterpartPaired: true,
+      );
+      await controller.initialize();
+      expect(await controller.requestSync(), isTrue);
+      expect(link.sent.any((p) => p['kind'] == 'chessever.sync.v1'), isTrue);
+    },
+  );
+
+  test('simultaneous offline sync requests queue only one transfer', () async {
+    link.state = const WatchLinkState(
+      activated: true,
+      reachable: false,
+      counterpartInstalled: true,
+      counterpartPaired: true,
+    );
+    await controller.initialize();
+    expect(
+      await Future.wait(List.generate(5, (_) => controller.requestSync())),
+      everyElement(isTrue),
+    );
+    expect(link.queued, hasLength(1));
+  });
+
+  test('a malformed account message does not prevent later sync', () async {
+    await controller.initialize();
+    link.incoming.add(
+      WatchLinkMessage(
+        payload: {'kind': WatchAccount.kind, 'revision': 99, 'userId': 42},
+        tier: WatchLinkTier.message,
+      ),
+    );
+    deliver(const WatchAccount(revision: 10, userId: 'valid', name: 'Valid'));
+    expect(controller.account.userId, 'valid');
+    expect(controller.account.name, 'Valid');
+  });
+
+  test(
     'requesting sync offline queues one request and game handoff requires reachability',
     () async {
       link.state = const WatchLinkState(

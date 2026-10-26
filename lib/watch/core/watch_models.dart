@@ -62,7 +62,7 @@ class WatchStanding {
     this.rank,
     this.rating,
     this.score,
-    this.played = 0,
+    this.played,
     this.performance,
     this.ratingDiff,
     this.title = '',
@@ -88,7 +88,7 @@ class WatchStanding {
       rank: watchInt(json['rank']),
       rating: watchInt(json['rating']),
       score: double.tryParse(json['score']?.toString() ?? ''),
-      played: watchInt(json['played']) ?? 0,
+      played: watchInt(json['played']),
       performance: metric('performance', 'performances'),
       ratingDiff: metric('ratingDiff', 'ratingDiffs'),
       title: json['title'] as String? ?? '',
@@ -100,7 +100,7 @@ class WatchStanding {
   final int? rank;
   final int? rating;
   final double? score;
-  final int played;
+  final int? played;
   final int? performance;
   final int? ratingDiff;
   final String title;
@@ -138,7 +138,11 @@ String watchScore(double? value) {
   return value.toString();
 }
 
+String watchStandingScore(WatchStanding player) =>
+    '${watchScore(player.score)}'
+    '${player.played == null ? '' : ' / ${player.played}'}';
+
 bool watchPlayerMatches(Player player, WatchStanding standing) =>
-    standing.fideId != null && player.fideId > 0
+    (int.tryParse(standing.fideId ?? '') ?? 0) > 0 && player.fideId > 0
     ? player.fideId.toString() == standing.fideId
     : player.name.trim().toLowerCase() == standing.name.trim().toLowerCase();
