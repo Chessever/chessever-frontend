@@ -10,6 +10,10 @@
  * styles, forms, embeds other than YouTube) is dropped. The picture that
  * opens the body becomes the cover and leaves the body.
  *
+ * Only the opening half of an article is kept (EXCERPT_SHARE). The apps
+ * show it and send the reader to the partner's site for the rest, so
+ * ChessEver never stands in for the partner's own page.
+ *
  * An item is kept only when its link is https on the partner's own site, so
  * a feed can never make the apps credit the partner with somebody else's
  * page. Pictures load only from the partner's asset hosts.
@@ -28,7 +32,10 @@ export interface PartnerArticle {
   url: string;
   title: string;
   summary: string;
-  /** Markdown, paragraphs separated by one blank line. */
+  /**
+   * The article's opening half as markdown, paragraphs separated by one
+   * blank line. The rest is read on the partner's site.
+   */
   content: string;
   imageUrl: string | null;
   /** ISO 8601, never later than the parse time. */
@@ -38,7 +45,15 @@ export interface PartnerArticle {
 export interface ParseOptions {
   now?: Date;
   maxItems?: number;
+  /** Share of each article kept; EXCERPT_SHARE unless a test asks for all. */
+  share?: number;
 }
+
+/**
+ * How much of a partner's article ChessEver shows, by its words. The apps
+ * end the excerpt with a link to the article on the partner's site.
+ */
+export const EXCERPT_SHARE = 0.5;
 
 const MAX_TITLE = 400;
 const MAX_SUMMARY = 600;
@@ -689,14 +704,14 @@ class Blocks {
 }
 
 /**
- * [html] as ChessEver article markdown, and the picture that opened it (now
- * the cover, no longer in the body). [base] resolves relative links.
+ * [html] as ChessEver article markdown blocks, and the picture that opened
+ * it (now the cover, no longer in the body). [base] resolves relative links.
  */
-export function htmlToMarkdown(
+export function htmlToBlocks(
   html: string,
   base: string,
   assetHosts: readonly string[],
-): { markdown: string; leadImage: string | null } {
+): { blocks: string[]; leadImage: string | null } {
   const blocks = new Blocks({ base, assetHosts });
   blocks.walk(parseMarkup(html, true).children);
   blocks.flush();
@@ -708,14 +723,177 @@ export function htmlToMarkdown(
     leadImage = lead[1];
     out.shift();
   }
+  return { blocks: out, leadImage };
+}
 
+/** Blocks as one markdown document, at most MAX_CONTENT long. */
+function joinBlocks(blocks: readonly string[]): string {
   let markdown = "";
-  for (const block of out) {
+  for (const block of blocks) {
     const next = markdown ? `${markdown}\n\n${block}` : block;
     if (next.length > MAX_CONTENT) break;
     markdown = next;
   }
-  return { markdown, leadImage };
+  return markdown;
+}
+
+/** [html] as one ChessEver article markdown document; see htmlToBlocks. */
+export function htmlToMarkdown(
+  html: string,
+  base: string,
+  assetHosts: readonly string[],
+): { markdown: string; leadImage: string | null } {
+  const { blocks, leadImage } = htmlToBlocks(html, base, assetHosts);
+  return { markdown: joinBlocks(blocks), leadImage };
+}
+
+// ---------------------------------------------------------------------------
+// Excerpt
+// ---------------------------------------------------------------------------
+
+/** Letters and digits a reader sees in [markdown]; links count their text. */
+export function readableLength(markdown: string): number {
+  const text = markdown
+    .replace(/<!--[\s\S]*?-->/g, "")
+    .replace(/!\[(?:\\.|[^\]\\])*\]\([^)\s]*\)/g, "")
+    .replace(/\]\([^)\s]*\)/g, "]");
+  return text.match(/[\p{L}\p{N}]/gu)?.length ?? 0;
+}
+
+/** True unless [markdown] stops inside a link, code span or emphasis. */
+function closed(markdown: string): boolean {
+  const plain = markdown
+    .replace(/\\./g, "")
+    .replace(/\[[^\]]*\]\([^)\s]*\)/g, "");
+  if (/[[\]]/.test(plain)) return false;
+  const count = (pattern: RegExp, text = plain) =>
+    text.match(pattern)?.length ?? 0;
+  return count(/`+/g) % 2 === 0 &&
+    count(/~~/g) % 2 === 0 &&
+    count(/\*\*/g) % 2 === 0 &&
+    count(/\*/g, plain.replaceAll("**", "")) % 2 === 0;
+}
+
+/** Where sentences end in a line of inline markdown. */
+const SENTENCE_END = /[.!?…]["'”’)*_~]*(?=\s|\\\n|$)/g;
+
+/**
+ * The longest run of whole sentences opening [text] that reads within
+ * [budget] letters, or the first sentence when [first] and none fits.
+ */
+function sentencesWithin(text: string, budget: number, first = false): string | null {
+  let best: string | null = null;
+  for (const match of text.matchAll(SENTENCE_END)) {
+    const prefix = text.slice(0, (match.index ?? 0) + match[0].length);
+    if (!closed(prefix)) continue;
+    if (readableLength(prefix) > budget) return best ?? (first ? prefix : null);
+    best = prefix;
+  }
+  return best;
+}
+
+const QUOTE_PARAGRAPHS = "\n>\n";
+
+function isQuote(block: string): boolean {
+  return block.startsWith(">");
+}
+
+function isList(block: string): boolean {
+  return /^(?:- |\d{1,9}\. )/.test(block);
+}
+
+/** A paragraph of running text, the only kind cut between its sentences. */
+function isProse(block: string): boolean {
+  return !/^(?:#|\||```|~~~|!\[|<!--|---$|> ?|- |\d{1,9}\. )/.test(block);
+}
+
+/**
+ * Text that may close an excerpt: not a picture, video, heading or rule,
+ * nor a line introducing what comes next ("The standings are:").
+ */
+function endsOnWords(block: string): boolean {
+  return !/^(?:#|!\[|<!--|---$)/.test(block) && !/:\s*$/.test(block);
+}
+
+/** As much of [block] as reads within [budget], or null for none of it. */
+function cutBlock(block: string, budget: number): string | null {
+  if (isQuote(block)) {
+    const kept: string[] = [];
+    let left = budget;
+    for (const paragraph of block.split(QUOTE_PARAGRAPHS)) {
+      const length = readableLength(paragraph);
+      if (length <= left) {
+        kept.push(paragraph);
+        left -= length;
+        continue;
+      }
+      const text = paragraph.replace(/^> ?/gm, "");
+      const part = isProse(text) ? sentencesWithin(text, left) : null;
+      if (part) kept.push(part.split("\n").map((line) => `> ${line}`).join("\n"));
+      break;
+    }
+    return kept.length ? kept.join(QUOTE_PARAGRAPHS) : null;
+  }
+  if (block.startsWith("|")) {
+    // The header and its rule, then whole rows.
+    const [header, rule, ...rows] = block.split("\n");
+    const kept: string[] = [];
+    let left = budget - readableLength(header);
+    for (const row of rows) {
+      const length = readableLength(row);
+      if (length > left) break;
+      kept.push(row);
+      left -= length;
+    }
+    return kept.length ? [header, rule, ...kept].join("\n") : null;
+  }
+  if (isList(block)) {
+    const kept: string[] = [];
+    let left = budget;
+    for (const line of block.split("\n")) {
+      const length = readableLength(line);
+      if (length > left) break;
+      kept.push(line);
+      left -= length;
+    }
+    return kept.length ? kept.join("\n") : null;
+  }
+  return isProse(block) ? sentencesWithin(block, budget) : null;
+}
+
+/**
+ * The opening [share] of an article's blocks, by readable letters: whole
+ * blocks while they fit, then the next one cut between sentences (between
+ * paragraphs in a quote, items in a list, rows in a table). It ends on
+ * words, never inside a link or emphasis. An article too short to cut
+ * keeps its first sentence.
+ */
+export function excerptBlocks(
+  blocks: readonly string[],
+  share = EXCERPT_SHARE,
+): string[] {
+  if (share >= 1) return [...blocks];
+  const total = blocks.reduce((sum, block) => sum + readableLength(block), 0);
+  const budget = total * share;
+  const kept: string[] = [];
+  let used = 0;
+  for (const block of blocks) {
+    const length = readableLength(block);
+    if (used + length <= budget) {
+      kept.push(block);
+      used += length;
+      continue;
+    }
+    const part = cutBlock(block, budget - used);
+    if (part) kept.push(part);
+    break;
+  }
+  while (kept.length && !endsOnWords(kept[kept.length - 1])) kept.pop();
+  if (kept.some((block) => readableLength(block) > 0)) return kept;
+
+  const opening = blocks.find((block) => isProse(block) && readableLength(block) > 0);
+  if (!opening) return blocks.slice(0, 1);
+  return [sentencesWithin(opening, budget, true) ?? opening];
 }
 
 /** The readable text of an HTML fragment, on one line. */
@@ -832,7 +1010,10 @@ export function parsePartnerFeed(
 
     const description = fieldText(item, "description");
     const body = fieldText(item, "content:encoded", "encoded") || description;
-    const { markdown, leadImage } = htmlToMarkdown(body, url, assetHosts);
+    const { blocks, leadImage } = htmlToBlocks(body, url, assetHosts);
+    const markdown = joinBlocks(
+      excerptBlocks(blocks, options.share ?? EXCERPT_SHARE),
+    );
     if (!markdown) continue;
 
     // The description, else the body's first paragraph.

@@ -3,9 +3,11 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import {
   decodeEntities,
+  excerptBlocks,
   htmlToMarkdown,
   type PartnerSource,
   parsePartnerFeed,
+  readableLength,
   youtubeId,
 } from "./feed.ts";
 
@@ -47,7 +49,8 @@ test("reads the real RookReview feed", async () => {
     new URL("./testdata/rookreview_feed.xml", import.meta.url),
     "utf8",
   );
-  const articles = parsePartnerFeed(xml, rookReview, { now });
+  // The whole articles, to check the conversion; what is stored is below.
+  const articles = parsePartnerFeed(xml, rookReview, { now, share: 1 });
   assert.equal(articles.length, 3);
 
   const [quote, table, links] = articles;
@@ -89,6 +92,110 @@ test("reads the real RookReview feed", async () => {
 
   assert.equal(links.title, "Lichess Ends Its Boycott of US Chess");
   assert.equal(links.content.split("\n\n").length, 6);
+});
+
+test("stores only the opening half of each real RookReview article", async () => {
+  const xml = await readFile(
+    new URL("./testdata/rookreview_feed.xml", import.meta.url),
+    "utf8",
+  );
+  const whole = parsePartnerFeed(xml, rookReview, { now, share: 1 });
+  const stored = parsePartnerFeed(xml, rookReview, { now });
+  assert.equal(stored.length, whole.length);
+  for (const [i, article] of stored.entries()) {
+    const share = readableLength(article.content) / readableLength(whole[i].content);
+    assert.ok(share > 0.3 && share <= 0.5, `${article.title}: ${share}`);
+    assert.ok(whole[i].content.startsWith(article.content));
+    // Everything else about the article is whole.
+    assert.deepEqual({ ...article, content: "" }, { ...whole[i], content: "" });
+  }
+
+  const [quote, table] = stored;
+  // Cut inside the quote, between its sentences; the ending stays theirs.
+  assert.match(quote.content, /\n>\n> He is in the top, .* I don’t think he is top-1\.$/);
+  assert.doesNotMatch(quote.content, /Credit:|Olexandr Bortnyk — Ukrainian GM/);
+  // Cut inside the standings, between rows.
+  assert.match(table.content, /\n\| --- \| --- \| --- \| --- \| --- \|\n\| 1\. \|/);
+  assert.ok(
+    (table.content.match(/^\| /gm)?.length ?? 0) <
+      (whole[1].content.match(/^\| /gm)?.length ?? 0),
+  );
+});
+
+test("an excerpt keeps whole blocks, then cuts the next between sentences", () => {
+  assert.deepEqual(
+    excerptBlocks([
+      "Aaaa bbbb cccc dddd.",
+      "Eeee ffff. Gggg hhhh. Iiii jjjj.",
+      "Kkkk llll mmmm nnnn oooo pppp.",
+    ]),
+    ["Aaaa bbbb cccc dddd.", "Eeee ffff. Gggg hhhh."],
+  );
+  // Quotes between their paragraphs (then sentences), lists between
+  // items, tables between rows.
+  assert.deepEqual(
+    excerptBlocks([
+      "Aaaa bbbb cccc dddd.",
+      "> Eeee ffff.\n>\n> Gggg hhhh. Iiii jjjj.\n>\n> *Kkkk*",
+      "Llll mmmm nnnn oooo pppp qqqq rrrr ssss.",
+    ]),
+    ["Aaaa bbbb cccc dddd.", "> Eeee ffff.\n>\n> Gggg hhhh."],
+  );
+  assert.deepEqual(
+    excerptBlocks([
+      "Aaaa bbbb cccc dddd.",
+      "- Eeee ffff\n- Gggg hhhh\n- Iiii jjjj\n- Kkkk llll",
+      "Mmmm nnnn oooo pppp qqqq rrrr ssss tttt.",
+    ]),
+    ["Aaaa bbbb cccc dddd.", "- Eeee ffff\n- Gggg hhhh\n- Iiii jjjj"],
+  );
+  assert.deepEqual(
+    excerptBlocks([
+      "Aaaa bbbb cccc dddd.",
+      "| Pp | Qq |\n| --- | --- |\n| Aaaa | Bbbb |\n| Cccc | Dddd |\n| Eeee | Ffff |",
+      "Gggg hhhh iiii jjjj kkkk llll mmmm nnnn oooo.",
+    ]),
+    ["Aaaa bbbb cccc dddd.", "| Pp | Qq |\n| --- | --- |\n| Aaaa | Bbbb |\n| Cccc | Dddd |"],
+  );
+  // The whole article when asked.
+  assert.deepEqual(excerptBlocks(["A.", "B."], 1), ["A.", "B."]);
+});
+
+test("an excerpt never stops inside a link or emphasis, nor on a heading", () => {
+  for (const opening of [
+    "Aaaa *bbbb. cccc* dddd.",
+    "Aaaa [bbbb. cccc](https://rookreview.com/news/b) dddd.",
+    "Aaaa **bbbb. cccc** dddd.",
+  ]) {
+    assert.deepEqual(excerptBlocks([`${opening} Eeee ffff gggg hhhh.`]), [opening]);
+  }
+  // A picture, heading or a line introducing what follows does not end it.
+  assert.deepEqual(
+    excerptBlocks([
+      "Aaaa bbbb.",
+      "## Heading",
+      "![](https://rookreview.b-cdn.net/a.jpg)",
+      "Cccc dddd eeee ffff gggg hhhh iiii jjjj.",
+    ]),
+    ["Aaaa bbbb."],
+  );
+  assert.deepEqual(
+    excerptBlocks([
+      "Aaaa bbbb cccc dddd.",
+      "The standings are:",
+      `| A | B |\n| --- | --- |\n| ${"x".repeat(40)} | y |`,
+    ]),
+    ["Aaaa bbbb cccc dddd."],
+  );
+});
+
+test("an article too short to halve keeps its first sentence", () => {
+  assert.deepEqual(excerptBlocks(["Aaaa bbbb cccc. Dddd."]), ["Aaaa bbbb cccc."]);
+  assert.deepEqual(excerptBlocks(["Aaaa bbbb."]), ["Aaaa bbbb."]);
+  assert.deepEqual(
+    excerptBlocks(["![](https://rookreview.b-cdn.net/a.jpg)", "Aaaa bbbb cccc. Dddd."]),
+    ["Aaaa bbbb cccc."],
+  );
 });
 
 test("paragraphs never leak markup or start a block by accident", () => {
@@ -223,7 +330,7 @@ test("summary falls back to the first paragraph; body to the description", () =>
   const [fromBody] = parsePartnerFeed(
     feed(item({ description: "", "content:encoded": "<![CDATA[<p></p><p>First &amp; <b>real</b> one.</p><p>Second.</p>]]>" })),
     rookReview,
-    { now },
+    { now, share: 1 },
   );
   assert.equal(fromBody.summary, "First & real one.");
   assert.equal(fromBody.content, "First & **real** one.\n\nSecond.");
