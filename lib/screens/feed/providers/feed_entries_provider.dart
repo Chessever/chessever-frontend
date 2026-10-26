@@ -32,7 +32,7 @@ class FeedEntriesNotifier extends Notifier<List<FeedEntry>> {
   /// Articles the viewer reached in an arrangement a refresh has replaced.
   /// The next arrangement opens its news slots with the ones not reached
   /// yet ([feedNewsUnseenFirst]), so a refresh is new past its games too.
-  final Set<int> _newsReached = <int>{};
+  final Set<String> _newsReached = <String>{};
 
   @override
   List<FeedEntry> build() {
@@ -79,7 +79,7 @@ class FeedEntriesNotifier extends Notifier<List<FeedEntry>> {
     final reached = math.min(_frozenThrough, _last.length);
     for (var i = 0; i < reached; i++) {
       final entry = _last[i];
-      if (entry is FeedNewsEntry) _newsReached.add(entry.news.id);
+      if (entry is FeedNewsEntry) _newsReached.add(entry.news.key);
     }
     _last = const [];
     _frozenThrough = -1;
@@ -133,12 +133,15 @@ final feedAdWithdrawnProvider = StateProvider<Set<String>>(
 /// order (newest first), so a fresh arrangement brings articles the viewer
 /// has not had yet and comes back round to the others once all are read.
 @visibleForTesting
-List<FeedNews> feedNewsUnseenFirst(List<FeedNews> news, Set<int> reached) {
+List<FeedNews> feedNewsUnseenFirst(
+  List<FeedNews> news,
+  Set<String> reached,
+) {
   if (reached.isEmpty) return news;
   return [
     for (final article in news)
-      if (!reached.contains(article.id)) article,
+      if (!reached.contains(article.key)) article,
     for (final article in news)
-      if (reached.contains(article.id)) article,
+      if (reached.contains(article.key)) article,
   ];
 }

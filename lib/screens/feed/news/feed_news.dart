@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:math' as math;
 
+import 'package:chessever2/screens/feed/news/news_content.dart';
 import 'package:chessever2/screens/feed/news/news_cover.dart';
 import 'package:chessever2/screens/feed/news/news_models.dart';
 import 'package:chessever2/screens/feed/news/news_reader_screen.dart';
@@ -143,6 +144,69 @@ class _FeedNewsRefreshSchedule with WidgetsBindingObserver {
 String formatNewsDate(DateTime date) =>
     DateFormat('MMMM d, y').format(date.toLocal());
 
+/// Whose article this is, and when: `ChessEver News · September 23, 2026`,
+/// or for a partner its own mark before its name. The first thing on every
+/// article, in the Feed and in the reader.
+class NewsPublisherLine extends StatelessWidget {
+  const NewsPublisherLine({
+    super.key,
+    required this.news,
+    required this.style,
+    this.maxLines,
+  });
+
+  final FeedNews news;
+  final TextStyle style;
+  final int? maxLines;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.colors;
+    final publisher = news.publisher;
+    final text = Text.rich(
+      TextSpan(
+        children: [
+          TextSpan(
+            text: publisher.name,
+            style: TextStyle(
+              color: colors.textPrimary,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          TextSpan(
+            text: '  \u00b7  ${formatNewsDate(news.publishedAt)}',
+            style: TextStyle(color: colors.textSecondary),
+          ),
+        ],
+      ),
+      maxLines: maxLines,
+      overflow: maxLines == null ? null : TextOverflow.ellipsis,
+      style: style,
+    );
+    final mark = publisher.mark;
+    if (mark == null) return text;
+
+    // The mark stands as tall as the line's capitals plus a little, centred
+    // on the line box, so it reads as part of the words beside it.
+    final scaler = MediaQuery.textScalerOf(context);
+    final markHeight = scaler.scale(style.fontSize ?? 14) * 1.3;
+    return Row(
+      children: [
+        Image.asset(
+          mark,
+          height: markHeight,
+          width: markHeight * publisher.markAspectRatio,
+          fit: BoxFit.contain,
+          filterQuality: FilterQuality.medium,
+          excludeFromSemantics: true,
+        ),
+        SizedBox(width: markHeight * 0.45),
+        Flexible(child: text),
+      ],
+    );
+  }
+}
+
 /// One Feed page: a news article card that opens the in-app reader.
 ///
 /// Full bleed: the cover sits at the top and dissolves into the Feed's dark
@@ -170,8 +234,21 @@ class FeedNewsPage extends ConsumerWidget {
     final reduceMotion = MediaQuery.disableAnimationsOf(context);
     final settled = reduceMotion || (isCurrent && isVisible);
 
+    if (news.publisher.coverAspectRatio != null) {
+      return GestureDetector(
+        key: ValueKey('feed_news_${news.key}'),
+        behavior: HitTestBehavior.opaque,
+        onTap: () => NewsReaderScreen.open(context, news),
+        child: _PartnerNewsLayout(
+          news: news,
+          settled: settled,
+          reduceMotion: reduceMotion,
+        ),
+      );
+    }
+
     return GestureDetector(
-      key: ValueKey('feed_news_${news.id}'),
+      key: ValueKey('feed_news_${news.key}'),
       behavior: HitTestBehavior.opaque,
       onTap: () => NewsReaderScreen.open(context, news),
       child: LayoutBuilder(
@@ -265,24 +342,9 @@ class _Headline extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text.rich(
-          TextSpan(
-            children: [
-              TextSpan(
-                text: 'ChessEver News',
-                style: TextStyle(
-                  color: colors.textPrimary,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              TextSpan(
-                text: '  \u00b7  ${formatNewsDate(news.publishedAt)}',
-                style: TextStyle(color: colors.textSecondary),
-              ),
-            ],
-          ),
+        NewsPublisherLine(
+          news: news,
           maxLines: 1,
-          overflow: TextOverflow.ellipsis,
           style: AppTypography.textSmMedium.copyWith(
             fontSize: 13,
             height: 18 / 13,
@@ -320,35 +382,219 @@ class _Headline extends StatelessWidget {
           ),
         ],
         const SizedBox(height: 18),
-        Row(
-          children: [
-            _ReadButton(onTap: () => NewsReaderScreen.open(context, news)),
-            const SizedBox(width: 6),
-            Builder(
-              builder: (buttonContext) => Semantics(
-                button: true,
-                label: 'Share article',
-                excludeSemantics: true,
-                child: GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onTap: () => shareNews(buttonContext, news),
-                  child: SizedBox.square(
-                    dimension: 44,
-                    child: Center(
-                      child: FeedGlyph(
-                        FeedGlyphs.share,
-                        width: 22,
-                        height: 22,
-                        color: colors.textPrimary,
-                      ),
-                    ),
+        _NewsActions(news: news),
+      ],
+    );
+  }
+}
+
+/// Read and Share, at the foot of every article page.
+class _NewsActions extends StatelessWidget {
+  const _NewsActions({required this.news});
+
+  final FeedNews news;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.colors;
+    return Row(
+      children: [
+        _ReadButton(onTap: () => NewsReaderScreen.open(context, news)),
+        const SizedBox(width: 6),
+        Builder(
+          builder: (buttonContext) => Semantics(
+            button: true,
+            label: 'Share article',
+            excludeSemantics: true,
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () => shareNews(buttonContext, news),
+              child: SizedBox.square(
+                dimension: 44,
+                child: Center(
+                  child: FeedGlyph(
+                    FeedGlyphs.share,
+                    width: 22,
+                    height: 22,
+                    color: colors.textPrimary,
                   ),
                 ),
               ),
             ),
-          ],
+          ),
         ),
       ],
+    );
+  }
+}
+
+/// A partner's article as a Feed page.
+///
+/// Partners' covers are small and wide (RookReview's are 675x300), so the
+/// page does not stretch one over the screen, which would blow it up five
+/// times and crop people out of it. The cover runs edge to edge at its own
+/// shape, feathered into the Feed's surface like ChessEver's; the partner's
+/// mark, the headline and the article's opening words follow, the words
+/// filling whatever height the screen has and fading where they run out of
+/// room. Read and Share sit at the foot, where they sit on every article.
+class _PartnerNewsLayout extends StatelessWidget {
+  const _PartnerNewsLayout({
+    required this.news,
+    required this.settled,
+    required this.reduceMotion,
+  });
+
+  final FeedNews news;
+  final bool settled;
+  final bool reduceMotion;
+
+  static const double _gutter = FeedNewsPage._gutter;
+
+  /// Where the words start, as a share of the cover's height: on its
+  /// feathered foot, the way ChessEver's headlines rise out of theirs.
+  static const double _textStart = 0.84;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.colors;
+    final shadows = [
+      Shadow(
+        color: colors.background.withValues(alpha: 0.85),
+        blurRadius: 10,
+        offset: const Offset(0, 1),
+      ),
+    ];
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final width = constraints.maxWidth;
+        final height = constraints.maxHeight;
+        final hasCover = news.imageUrl != null;
+        final dpr = MediaQuery.devicePixelRatioOf(context);
+        final coverHeight = hasCover
+            ? (math.min(
+                            width / news.publisher.coverAspectRatio!,
+                            height * 0.42,
+                          ) *
+                          dpr)
+                      .floorToDouble() /
+                  dpr
+            : 0.0;
+        const quiet = SizedBox.shrink();
+        final cover = reduceMotion
+            ? NewsCover(
+                imageUrl: news.imageUrl,
+                fadeTop: 0.12,
+                fadeBottom: 0.4,
+                fallback: quiet,
+              )
+            : SingleMotionBuilder(
+                value: settled ? 1.0 : 1.05,
+                motion: const CupertinoMotion.smooth(
+                  duration: Duration(milliseconds: 900),
+                ),
+                builder: (context, scale, _) => NewsCover(
+                  imageUrl: news.imageUrl,
+                  fadeTop: 0.12,
+                  fadeBottom: 0.4,
+                  fallback: quiet,
+                  scale: scale,
+                ),
+              );
+
+        return Stack(
+          children: [
+            if (hasCover)
+              Positioned(
+                top: 0,
+                left: 0,
+                right: 0,
+                height: coverHeight,
+                child: cover,
+              ),
+            Positioned(
+              top: hasCover ? coverHeight * _textStart : 24,
+              left: _gutter,
+              right: _gutter,
+              bottom: 22,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  NewsPublisherLine(
+                    news: news,
+                    maxLines: 1,
+                    style: AppTypography.textSmMedium.copyWith(
+                      fontSize: 13,
+                      height: 18 / 13,
+                      shadows: shadows,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Semantics(
+                    header: true,
+                    child: NewsFittedTitle(
+                      title: news.title,
+                      style: AppTypography.displaySmBold.copyWith(
+                        color: colors.textPrimary,
+                        letterSpacing: -0.2,
+                        shadows: shadows,
+                      ),
+                      sizes: const [28, 26, 24, 22, 20],
+                      lineHeight: 1.16,
+                      maxLines: 2,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Expanded(child: _PartnerExcerpt(news: news)),
+                  const SizedBox(height: 18),
+                  _NewsActions(news: news),
+                ],
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+/// The partner article's opening words, as many whole lines as the space
+/// holds. When the article goes on, the last line fades out (the Read button
+/// is right below); a gap of under two lines shows nothing at all.
+class _PartnerExcerpt extends StatelessWidget {
+  const _PartnerExcerpt({required this.news});
+
+  final FeedNews news;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.colors;
+    final paragraphs = [
+      if (news.summary.isNotEmpty &&
+          !newsSummaryRepeatsBody(news.summary, news.content))
+        news.summary,
+      ...newsPlainParagraphs(news.content).take(8),
+    ];
+    if (paragraphs.isEmpty) return const SizedBox.shrink();
+    final style = AppTypography.textMdRegular.copyWith(
+      fontSize: 15,
+      height: 22 / 15,
+      color: colors.textPrimaryMuted,
+    );
+    final line = MediaQuery.textScalerOf(context).scale(15) * (22 / 15);
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final lines = ((constraints.maxHeight + 0.5) / line).floor();
+        if (lines < 2) return const SizedBox.shrink();
+        return Align(
+          alignment: Alignment.topLeft,
+          child: Text(
+            paragraphs.join('\n\n'),
+            maxLines: lines,
+            overflow: TextOverflow.fade,
+            style: style,
+          ),
+        );
+      },
     );
   }
 }

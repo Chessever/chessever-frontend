@@ -94,6 +94,115 @@ FeedNews? normalizeNewsRow(Map<String, dynamic> row) {
   );
 }
 
+/// A `partner_news` row as a Feed article. Null when this build cannot show
+/// it: a partner it does not know, a link off the partner's own site, or no
+/// id, title, body or date. A cover off the partner's picture hosts is
+/// dropped, not loaded.
+FeedNews? normalizePartnerNewsRow(Map<String, dynamic> row) {
+  final publisher = NewsPublisher.ofSource(row['source_id']);
+  if (publisher == null) return null;
+  final id = _rowId(row['id']);
+  final title = cleanNewsText(row['title']);
+  final content = cleanNewsContent(row['content']);
+  final url = _httpUrl(row['url']);
+  final uri = url == null ? null : Uri.tryParse(url);
+  if (id == null || title.isEmpty || content.isEmpty) return null;
+  if (uri == null || uri.scheme != 'https' || !publisher.ownsUri(uri)) {
+    return null;
+  }
+  final publishedRaw = row['published_at'];
+  if (publishedRaw is! String || publishedRaw.isEmpty) return null;
+  final publishedAt = DateTime.tryParse(publishedRaw);
+  if (publishedAt == null) return null;
+  final updatedRaw = row['updated_at'];
+  final updatedAt = updatedRaw is String && updatedRaw.isNotEmpty
+      ? DateTime.tryParse(updatedRaw) ?? publishedAt
+      : publishedAt;
+
+  final image = _httpUrl(row['image_url']);
+  final imageUri = image == null ? null : Uri.tryParse(image);
+  final coverAllowed =
+      imageUri != null &&
+      imageUri.scheme == 'https' &&
+      publisher.imageHosts.contains(imageUri.host.toLowerCase());
+
+  return FeedNews(
+    id: id,
+    title: title,
+    summary: cleanNewsText(row['summary']),
+    content: content,
+    publishedAt: publishedAt,
+    updatedAt: updatedAt,
+    imageUrl: coverAllowed ? image : null,
+    webUrl: url,
+    publisher: publisher,
+  );
+}
+
+/// The prose of an article body as plain text, one string per paragraph:
+/// pictures, tables, headings, code and markers left out, quotes unwrapped
+/// (a quote's paragraphs become paragraphs), markdown syntax removed.
+List<String> newsPlainParagraphs(String content) {
+  final out = <String>[];
+  void add(String markdown) {
+    final text = _plainInline(markdown);
+    if (text.isNotEmpty) out.add(text);
+  }
+
+  for (final paragraph in _contentParagraphs(content)) {
+    if (_skipsPlainText.hasMatch(paragraph)) continue;
+    if (!paragraph.startsWith('>')) {
+      add(paragraph);
+      continue;
+    }
+    final lines = <String>[];
+    for (final line in paragraph.split('\n')) {
+      final unwrapped = line.replaceFirst(RegExp(r'^>\s?'), '');
+      if (unwrapped.trim().isEmpty) {
+        add(lines.join('\n'));
+        lines.clear();
+      } else {
+        lines.add(unwrapped);
+      }
+    }
+    add(lines.join('\n'));
+  }
+  return out;
+}
+
+final RegExp _skipsPlainText = RegExp(r'^(?:<!--|\||!\[|#{1,6}\s|`{3}|~{3})');
+final RegExp _markdownImage = RegExp(r'!\[(?:\\.|[^\]\\])*\]\([^)\s]*\)');
+final RegExp _markdownLink = RegExp(r'\[((?:\\.|[^\]\\])*)\]\([^)\s]*\)');
+final RegExp _markdownMarks = RegExp(r'(?<!\\)(?:\*\*|\*|~~|`)');
+final RegExp _markdownEscape = RegExp(r'\\([!-/:-@\[-`{-~])');
+
+String _plainInline(String markdown) => cleanNewsText(
+  markdown
+      .replaceAll(_markdownImage, '')
+      .replaceAllMapped(_markdownLink, (m) => m.group(1)!)
+      .replaceAll(_markdownMarks, '')
+      .replaceAll('\\\n', ' ')
+      .replaceAllMapped(_markdownEscape, (m) => m.group(1)!),
+);
+
+/// Whether [summary] only repeats how [content] opens. RookReview's summary
+/// is its first paragraph word for word, give or take straight quotes where
+/// the body has curly ones; showing both would print it twice.
+bool newsSummaryRepeatsBody(String summary, String content) {
+  String fold(String value) => cleanNewsText(
+    value
+        .toLowerCase()
+        .replaceAll(RegExp('[\u2018\u2019\u201a\u2032]'), "'")
+        .replaceAll(RegExp('[\u201c\u201d\u201e\u2033]'), '"')
+        .replaceAll(RegExp('[\u2013\u2014]'), '-')
+        .replaceAll('\u2026', '...'),
+  );
+  var lead = fold(summary);
+  if (lead.isEmpty) return false;
+  if (lead.endsWith('...')) lead = lead.substring(0, lead.length - 3).trim();
+  return fold(newsPlainParagraphs(content).join(' ')).startsWith(lead);
+}
+
 int? _rowId(Object? value) {
   final id = switch (value) {
     final int v => v,
@@ -1001,6 +1110,29 @@ int? newsArticleIdOf(Uri uri) {
   final segments = uri.pathSegments.where((s) => s.isNotEmpty).toList();
   if (segments.length < 2 || segments.first != 'news') return null;
   return int.tryParse(segments[1]);
+}
+
+/// The article [uri] points at among [items]: a ChessEver News link by its
+/// id, a partner's by its page on the partner's site. Null for anything
+/// else.
+FeedNews? newsArticleAt(Uri uri, Iterable<FeedNews> items) {
+  final articleId = newsArticleIdOf(uri);
+  if (articleId != null) {
+    for (final item in items) {
+      if (!item.publisher.isPartner && item.id == articleId) return item;
+    }
+    return null;
+  }
+  String page(Uri u) =>
+      '${u.host.toLowerCase().replaceFirst(RegExp(r'^www\.'), '')}'
+      '${u.path.replaceFirst(RegExp(r'/+$'), '')}';
+  final target = page(uri);
+  for (final item in items) {
+    if (!item.publisher.isPartner || !item.publisher.ownsUri(uri)) continue;
+    final web = Uri.tryParse(item.webUrl ?? '');
+    if (web != null && page(web) == target) return item;
+  }
+  return null;
 }
 
 /// `normalizeInternalHref` from news.ts: a chessever.com link as a

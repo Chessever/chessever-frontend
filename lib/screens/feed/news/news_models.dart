@@ -1,11 +1,91 @@
+import 'package:chessever2/utils/png_asset.dart';
 import 'package:flutter/foundation.dart';
 
-/// A published ChessEver News article (the web's `news` table, status
-/// 'published'), shown in the Feed.
+/// Who published an article in the Feed: ChessEver itself (the `news`
+/// table), or a partner publication whose articles `partner-news-sync`
+/// brings into `partner_news`. A partner's articles carry its name and mark
+/// and link back to its site.
 ///
-/// Built by `normalizeNewsRow` so title, summary and content are cleaned the
-/// same way chessever.com cleans them, and [webUrl] matches the web's
-/// canonical `/news/<id>/<slug>` path.
+/// The app shows only partners listed here: a `partner_news` source this
+/// build does not know is left out rather than shown unbranded.
+enum NewsPublisher {
+  chessever(name: 'ChessEver News'),
+  rookReview(
+    name: 'RookReview',
+    sourceId: 'rookreview',
+    siteHost: 'rookreview.com',
+    imageHosts: {'rookreview.com', 'rookreview.b-cdn.net'},
+    mark: PngAsset.rookReviewMark,
+    markAspectRatio: 102 / 113,
+    coverAspectRatio: 675 / 300,
+  );
+
+  const NewsPublisher({
+    required this.name,
+    this.sourceId,
+    this.siteHost,
+    this.imageHosts = const {},
+    this.mark,
+    this.markAspectRatio = 1,
+    this.coverAspectRatio,
+  });
+
+  /// As the publisher writes it, shown on its articles.
+  final String name;
+
+  /// `partner_news_sources.id`; null for ChessEver.
+  final String? sourceId;
+
+  /// The partner's site: its articles must live on it (or a subdomain).
+  final String? siteHost;
+
+  /// Hosts the partner's pictures load from.
+  final Set<String> imageHosts;
+
+  /// The partner's own mark, as published.
+  final String? mark;
+  final double markAspectRatio;
+
+  /// The shape of the partner's covers. RookReview's are 675x300: drawn at
+  /// that shape they are whole and sharp, where the Feed's tall full-bleed
+  /// crop would blow them up five times and cut people out of them.
+  final double? coverAspectRatio;
+
+  bool get isPartner => sourceId != null;
+
+  /// The partner a `partner_news.source_id` names, if this build knows it.
+  static NewsPublisher? ofSource(Object? sourceId) {
+    if (sourceId is! String) return null;
+    for (final publisher in values) {
+      if (publisher.sourceId == sourceId) return publisher;
+    }
+    return null;
+  }
+
+  /// Every partner's `source_id`, for the `partner_news` query.
+  static List<String> get partnerSourceIds => [
+    for (final publisher in values)
+      if (publisher.sourceId case final String id) id,
+  ];
+
+  /// Whether [uri] is on this partner's site.
+  bool ownsUri(Uri uri) {
+    final site = siteHost;
+    if (site == null) return false;
+    final host = uri.host.toLowerCase();
+    return host == site || host.endsWith('.$site');
+  }
+}
+
+/// An article in the Feed: a published ChessEver News article (the web's
+/// `news` table, status 'published'), or a partner's ([publisher]) from
+/// `partner_news`.
+///
+/// ChessEver articles are built by `normalizeNewsRow` so title, summary and
+/// content are cleaned the same way chessever.com cleans them, and [webUrl]
+/// matches the web's canonical `/news/<id>/<slug>` path. Partner articles
+/// are built by `normalizePartnerNewsRow`; their [webUrl] is the article on
+/// the partner's site.
 @immutable
 class FeedNews {
   const FeedNews({
@@ -18,8 +98,11 @@ class FeedNews {
     this.webUrl,
     this.updatedAt,
     this.sourceUrl,
+    this.publisher = NewsPublisher.chessever,
   });
 
+  /// The row id in [publisher]'s table: ids of different publishers can
+  /// coincide, so tell articles apart by [key].
   final int id;
   final String title;
 
@@ -31,7 +114,8 @@ class FeedNews {
   final DateTime publishedAt;
   final String? imageUrl;
 
-  /// `https://chessever.com/news/<id>/<slug>`
+  /// `https://chessever.com/news/<id>/<slug>`, or for a partner's article
+  /// the article on its site.
   final String? webUrl;
 
   /// Last edit; equals [publishedAt] when the row carries none.
@@ -41,6 +125,12 @@ class FeedNews {
   /// standings or outside page the story is about. Resolve it with
   /// `newsSourceContextHref` before showing it.
   final String? sourceUrl;
+
+  final NewsPublisher publisher;
+
+  /// Unique across publishers: `7` for ChessEver's article 7 (as it always
+  /// was), `rookreview:7` for RookReview's.
+  String get key => publisher.isPartner ? '${publisher.sourceId}:$id' : '$id';
 
   Map<String, Object?> toJson() => {
     'id': id,
@@ -52,11 +142,17 @@ class FeedNews {
     'imageUrl': imageUrl,
     'webUrl': webUrl,
     'sourceUrl': sourceUrl,
+    if (publisher.isPartner) 'publisher': publisher.sourceId,
   };
 
   /// Reads one cached item back; null when the entry is not a complete item.
   static FeedNews? fromJson(Object? json) {
     if (json is! Map) return null;
+    // Absent before partners existed: ChessEver's own article.
+    final publisher = json['publisher'] == null
+        ? NewsPublisher.chessever
+        : NewsPublisher.ofSource(json['publisher']);
+    if (publisher == null) return null;
     final id = json['id'];
     final title = json['title'];
     final summary = json['summary'];
@@ -89,6 +185,7 @@ class FeedNews {
       imageUrl: imageUrl is String && imageUrl.isNotEmpty ? imageUrl : null,
       webUrl: webUrl is String && webUrl.isNotEmpty ? webUrl : null,
       sourceUrl: sourceUrl is String && sourceUrl.isNotEmpty ? sourceUrl : null,
+      publisher: publisher,
     );
   }
 
@@ -104,7 +201,8 @@ class FeedNews {
           other.updatedAt == updatedAt &&
           other.imageUrl == imageUrl &&
           other.webUrl == webUrl &&
-          other.sourceUrl == sourceUrl;
+          other.sourceUrl == sourceUrl &&
+          other.publisher == publisher;
 
   @override
   int get hashCode => Object.hash(
@@ -117,10 +215,11 @@ class FeedNews {
     imageUrl,
     webUrl,
     sourceUrl,
+    publisher,
   );
 
   @override
-  String toString() => 'FeedNews($id, $title)';
+  String toString() => 'FeedNews($key, $title)';
 }
 
 /// Byline resolved from a `<!-- news-author: ... -->` marker.

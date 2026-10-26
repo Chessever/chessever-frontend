@@ -45,9 +45,10 @@ Future<void> shareNews(BuildContext context, FeedNews news) async {
   }
 }
 
-/// A ChessEver News article, read in the app: cover, headline, byline and
-/// the full body, with the web's rich blocks (team results and pairings,
-/// section headings, videos) rendered natively.
+/// A news article, read in the app: cover, headline, byline and the full
+/// body, with the web's rich blocks (team results and pairings, section
+/// headings, videos) rendered natively. A partner's article carries the
+/// partner's mark and name and ends with a link to it on the partner's site.
 class NewsReaderScreen extends ConsumerStatefulWidget {
   const NewsReaderScreen({super.key, required this.news});
 
@@ -57,7 +58,7 @@ class NewsReaderScreen extends ConsumerStatefulWidget {
     unawaited(HapticFeedbackService.cardTap());
     return Navigator.of(context).push(
       MaterialPageRoute<void>(
-        settings: RouteSettings(name: '/news/${news.id}'),
+        settings: RouteSettings(name: '/news/${news.key}'),
         builder: (_) => NewsReaderScreen(news: news),
       ),
     );
@@ -92,25 +93,26 @@ class _NewsReaderScreenState extends ConsumerState<NewsReaderScreen> {
     _blocks = newsReaderBlocks(news.content);
     _author = resolveNewsAuthor(news.content);
     // A summary the row did not set is the body's first words; skip it then.
+    // A partner's summary is usually its first paragraph, quotes aside.
     _showLead =
         news.summary.isNotEmpty &&
-        !cleanNewsText(newsContentText(news.content)).startsWith(news.summary);
+        (news.publisher.isPartner
+            ? !newsSummaryRepeatsBody(news.summary, news.content)
+            : !cleanNewsText(
+                newsContentText(news.content),
+              ).startsWith(news.summary));
   }
 
   // ----------------------------------------------------------------- links
 
   Future<void> _openLink(Uri uri) async {
     unawaited(HapticFeedbackService.buttonPress());
-    final articleId = newsArticleIdOf(uri);
-    if (articleId != null) {
-      if (articleId == widget.news.id) return;
-      final items = ref.read(feedNewsProvider).valueOrNull ?? const [];
-      for (final item in items) {
-        if (item.id == articleId) {
-          unawaited(NewsReaderScreen.open(context, item));
-          return;
-        }
-      }
+    final items = ref.read(feedNewsProvider).valueOrNull ?? const [];
+    final article = newsArticleAt(uri, [widget.news, ...items]);
+    if (article != null) {
+      if (article.key == widget.news.key) return;
+      unawaited(NewsReaderScreen.open(context, article));
+      return;
     }
     final route = newsInAppRoute(uri);
     if (route != null && DeepLinkService.instance.openLinkFromApp(route)) {
@@ -181,27 +183,11 @@ class _NewsReaderScreenState extends ConsumerState<NewsReaderScreen> {
     final showSource =
         sourceHref != null &&
         sourceUri != null &&
-        newsArticleIdOf(sourceUri) != news.id;
+        newsArticleAt(sourceUri, [news])?.key != news.key;
+    final publisher = news.publisher;
 
     final children = <Widget>[
-      Text.rich(
-        TextSpan(
-          children: [
-            TextSpan(
-              text: 'ChessEver News',
-              style: TextStyle(
-                color: colors.textPrimary,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            TextSpan(
-              text: '  ·  ${formatNewsDate(news.publishedAt)}',
-              style: TextStyle(color: colors.textSecondary),
-            ),
-          ],
-        ),
-        style: AppTypography.textSmMedium,
-      ),
+      NewsPublisherLine(news: news, style: AppTypography.textSmMedium),
       SizedBox(height: 10.sp),
       Semantics(
         header: true,
@@ -259,7 +245,9 @@ class _NewsReaderScreenState extends ConsumerState<NewsReaderScreen> {
       if (showSource && webUri != null) SizedBox(height: 8.sp),
       if (webUri != null)
         _ReaderLinkRow(
-          label: 'Open on chessever.com',
+          label: publisher.isPartner
+              ? 'Read on ${publisher.name}'
+              : 'Open on chessever.com',
           onTap: () => _openExternal(webUri),
         ),
     ];
@@ -322,7 +310,12 @@ class _NewsReaderScreenState extends ConsumerState<NewsReaderScreen> {
             ],
           ),
           if (news.imageUrl case final String imageUrl)
-            SliverToBoxAdapter(child: _ReaderCover(imageUrl: imageUrl))
+            SliverToBoxAdapter(
+              child: _ReaderCover(
+                imageUrl: imageUrl,
+                aspectRatio: publisher.coverAspectRatio,
+              ),
+            )
           else
             SliverToBoxAdapter(child: SizedBox(height: 12.sp)),
           SliverPadding(
@@ -353,9 +346,13 @@ class _NewsReaderScreenState extends ConsumerState<NewsReaderScreen> {
 /// The cover under the bar: feathered at the top into the bar and at the
 /// bottom into the page, so the headline rises out of the picture.
 class _ReaderCover extends StatelessWidget {
-  const _ReaderCover({required this.imageUrl});
+  const _ReaderCover({required this.imageUrl, this.aspectRatio});
 
   final String imageUrl;
+
+  /// The cover's own shape, when it is known (a partner's); drawn at it the
+  /// picture is whole. Otherwise the reader's band, cropped to fill.
+  final double? aspectRatio;
 
   /// A cover that fails to load leaves quiet space, not the black brand
   /// slab (the reader follows the app theme, which may be light).
@@ -366,7 +363,10 @@ class _ReaderCover extends StatelessWidget {
     final reduceMotion = MediaQuery.disableAnimationsOf(context);
     return LayoutBuilder(
       builder: (context, constraints) {
-        final height = (constraints.maxWidth * 0.62).clamp(180.0, 420.0);
+        final aspect = aspectRatio;
+        final height = aspect == null
+            ? (constraints.maxWidth * 0.62).clamp(180.0, 420.0)
+            : (constraints.maxWidth / aspect).clamp(120.0, 420.0);
         return SizedBox(
           height: height,
           child: reduceMotion

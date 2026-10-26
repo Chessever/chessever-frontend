@@ -30,22 +30,36 @@ class FeedNewsSnapshot {
   final DateTime fetchedAt;
 }
 
-/// Published ChessEver News for the Feed: Supabase for truth, SQLite for an
+/// Published news for the Feed, ChessEver's own (`news`) and its partners'
+/// (`partner_news`), merged newest first: Supabase for truth, SQLite for an
 /// instant first paint, memory so a rebuild hands back the very same item
 /// instances (Feed pages keyed on them do not remount on refresh).
 class FeedNewsRepository {
   /// [fetchStamps] reads the same rows as [fetchRows] without their bodies,
   /// for the cheap change check; with a custom [fetchRows] and no
   /// [fetchStamps] there is no check and every refresh fetches in full.
+  /// [fetchPartnerRows] and [fetchPartnerStamps] are the same for
+  /// `partner_news`; a custom [fetchRows] reads no partners unless given
+  /// them.
   FeedNewsRepository({
     NewsRowsFetcher? fetchRows,
     NewsRowsFetcher? fetchStamps,
+    NewsRowsFetcher? fetchPartnerRows,
+    NewsRowsFetcher? fetchPartnerStamps,
     NewsCacheStore? cache,
     DateTime Function()? clock,
   }) : _fetchRows = fetchRows ?? _fetchPublishedNewsRows,
        _fetchStamps =
            fetchStamps ??
            (fetchRows == null ? _fetchPublishedNewsStamps : null),
+       _fetchPartnerRows =
+           fetchPartnerRows ??
+           (fetchRows == null ? _fetchPartnerNewsRows : null),
+       _fetchPartnerStamps =
+           fetchPartnerStamps ??
+           (fetchRows == null && fetchPartnerRows == null
+               ? _fetchPartnerNewsStamps
+               : null),
        _cache = cache ?? const _AppDatabaseNewsCache(),
        _clock = clock ?? DateTime.now;
 
@@ -60,11 +74,14 @@ class FeedNewsRepository {
   /// a body that did not touch `updated_at` still lands.
   static const Duration fullRefreshEvery = Duration(hours: 6);
 
+  /// Newest articles read from each table.
   static const int limit = 20;
   static const String cacheKey = 'feed_news_v1';
 
   final NewsRowsFetcher _fetchRows;
   final NewsRowsFetcher? _fetchStamps;
+  final NewsRowsFetcher? _fetchPartnerRows;
+  final NewsRowsFetcher? _fetchPartnerStamps;
   final NewsCacheStore _cache;
   final DateTime Function() _clock;
 
@@ -75,6 +92,10 @@ class FeedNewsRepository {
   /// in full; null until a full fetch in this process.
   String? _stamps;
   DateTime? _fullAt;
+
+  /// [_partnerStampsOf] the partner rows behind [_memory]; null until they
+  /// were fetched in full, and again after a partner fetch failed.
+  String? _partnerStamps;
 
   DateTime now() => _clock();
 
@@ -106,7 +127,9 @@ class FeedNewsRepository {
 
   /// Fetches the latest list and stores it. Null when the fetch failed; the
   /// previous list stays in place then. A missing `news` table (the test
-  /// flavour) is an empty list, not a failure.
+  /// flavour) is an empty list, not a failure. Partner articles are extra:
+  /// when only they fail, the ones already shown stay and the refresh still
+  /// succeeds.
   ///
   /// When the list was fetched in full earlier in this process, the bodies
   /// are fetched only if the rows without them changed: an unchanged list
@@ -144,12 +167,47 @@ class FeedNewsRepository {
       return null;
     }
 
-    final snapshot = FeedNewsSnapshot(_reuse(items), now());
+    final partners = await _fetchPartners();
+    final partnerItems =
+        partners?.items ??
+        [...?previous?.items.where((item) => item.publisher.isPartner)];
+
+    final snapshot = FeedNewsSnapshot(
+      _reuse(mergeFeedNews(items, partnerItems)),
+      now(),
+    );
     _memory = snapshot;
     _stamps = _stampsOrNull(rows);
+    _partnerStamps = partners?.stamps;
     _fullAt = snapshot.fetchedAt;
     unawaited(_write(snapshot.items));
     return snapshot;
+  }
+
+  /// The partners' articles and their stamps; null when they could not be
+  /// read. No partner fetcher (a custom [_fetchRows] alone) is no partners.
+  Future<({List<FeedNews> items, String? stamps})?> _fetchPartners() async {
+    final fetch = _fetchPartnerRows;
+    if (fetch == null) return (items: const <FeedNews>[], stamps: null);
+    try {
+      final rows = await fetch(limit);
+      return (
+        items: [
+          for (final row in rows)
+            if (normalizePartnerNewsRow(row) case final FeedNews item) item,
+        ],
+        stamps: _partnerStampsOrNull(rows),
+      );
+    } on PostgrestException catch (error) {
+      if (_isMissingTable(error)) {
+        return (items: const <FeedNews>[], stamps: _partnerStampsOf(const []));
+      }
+      debugPrint('[FeedNews] partner fetch failed: ${error.code}');
+      return null;
+    } catch (error) {
+      debugPrint('[FeedNews] partner fetch failed: $error');
+      return null;
+    }
   }
 
   /// Whether the rows behind [_memory] are still what the server returns,
@@ -162,13 +220,33 @@ class FeedNewsRepository {
     if (fetchStamps == null || stamps == null || fullAt == null) return false;
     if (now().difference(fullAt) >= fullRefreshEvery) return false;
     try {
-      return _newsStampsOf(await fetchStamps(limit)) == stamps;
+      if (_newsStampsOf(await fetchStamps(limit)) != stamps) return false;
     } on PostgrestException catch (error) {
-      if (_isMissingTable(error)) return stamps == _newsStampsOf(const []);
-      debugPrint('[FeedNews] change check failed: ${error.code}');
-      return false;
+      if (!_isMissingTable(error)) {
+        debugPrint('[FeedNews] change check failed: ${error.code}');
+        return false;
+      }
+      if (stamps != _newsStampsOf(const [])) return false;
     } catch (error) {
       debugPrint('[FeedNews] change check failed: $error');
+      return false;
+    }
+    return _partnersUnchanged();
+  }
+
+  Future<bool> _partnersUnchanged() async {
+    if (_fetchPartnerRows == null) return true;
+    final fetchStamps = _fetchPartnerStamps;
+    final stamps = _partnerStamps;
+    if (fetchStamps == null || stamps == null) return false;
+    try {
+      return _partnerStampsOf(await fetchStamps(limit)) == stamps;
+    } on PostgrestException catch (error) {
+      if (_isMissingTable(error)) return stamps == _partnerStampsOf(const []);
+      debugPrint('[FeedNews] partner change check failed: ${error.code}');
+      return false;
+    } catch (error) {
+      debugPrint('[FeedNews] partner change check failed: $error');
       return false;
     }
   }
@@ -182,16 +260,25 @@ class FeedNewsRepository {
     }
   }
 
+  static String? _partnerStampsOrNull(List<Map<String, dynamic>> rows) {
+    try {
+      return _partnerStampsOf(rows);
+    } catch (error) {
+      debugPrint('[FeedNews] partner stamps unavailable: $error');
+      return null;
+    }
+  }
+
   /// Keeps the previous instances for unchanged items, and the previous list
   /// itself when nothing changed at all.
   List<FeedNews> _reuse(List<FeedNews> fresh) {
     final previous = _memory?.items;
     if (previous == null) return List.unmodifiable(fresh);
     if (listEquals(previous, fresh)) return previous;
-    final byId = {for (final item in previous) item.id: item};
+    final byKey = {for (final item in previous) item.key: item};
     return List.unmodifiable([
       for (final item in fresh)
-        if (byId[item.id] case final FeedNews old when old == item)
+        if (byKey[item.key] case final FeedNews old when old == item)
           old
         else
           item,
@@ -212,6 +299,22 @@ class FeedNewsRepository {
   /// empty Feed.
   static bool _isMissingTable(PostgrestException error) =>
       error.code == '42P01' || error.code == 'PGRST205';
+}
+
+/// [own] and [partners] as one list, newest first; on an equal date
+/// ChessEver's article leads. Each list keeps its own order otherwise.
+List<FeedNews> mergeFeedNews(List<FeedNews> own, List<FeedNews> partners) {
+  if (partners.isEmpty) return own;
+  final indexed = [
+    for (var i = 0; i < own.length; i++) (item: own[i], rank: i),
+    for (var i = 0; i < partners.length; i++)
+      (item: partners[i], rank: own.length + i),
+  ];
+  indexed.sort((a, b) {
+    final byDate = b.item.publishedAt.compareTo(a.item.publishedAt);
+    return byDate != 0 ? byDate : a.rank.compareTo(b.rank);
+  });
+  return [for (final entry in indexed) entry.item];
 }
 
 String encodeFeedNewsCache(List<FeedNews> items) =>
@@ -262,6 +365,42 @@ Future<List<Map<String, dynamic>>> _selectPublishedNews(
       .eq('status', 'published')
       .order('published_at', ascending: false, nullsFirst: false)
       .order('created_at', ascending: false)
+      .limit(limit)
+      .timeout(const Duration(seconds: 12));
+  return List<Map<String, dynamic>>.from(rows);
+}
+
+/// Every `partner_news` column the Feed reads except the bodies.
+const String _partnerStampColumns =
+    'id,source_id,url,title,summary,image_url,published_at,updated_at';
+
+Future<List<Map<String, dynamic>>> _fetchPartnerNewsRows(int limit) =>
+    _selectPartnerNews('$_partnerStampColumns,content', limit);
+
+Future<List<Map<String, dynamic>>> _fetchPartnerNewsStamps(int limit) =>
+    _selectPartnerNews(_partnerStampColumns, limit);
+
+String _partnerStampsOf(List<Map<String, dynamic>> rows) {
+  final columns = _partnerStampColumns.split(',');
+  return jsonEncode([
+    for (final row in rows) [for (final column in columns) row[column]],
+  ]);
+}
+
+/// Published articles of the partners this build can brand
+/// ([NewsPublisher.partnerSourceIds]); row-level security also hides a
+/// disabled partner's.
+Future<List<Map<String, dynamic>>> _selectPartnerNews(
+  String columns,
+  int limit,
+) async {
+  final rows = await Supabase.instance.client
+      .from('partner_news')
+      .select(columns)
+      .eq('status', 'published')
+      .inFilter('source_id', NewsPublisher.partnerSourceIds)
+      .order('published_at', ascending: false)
+      .order('id', ascending: false)
       .limit(limit)
       .timeout(const Duration(seconds: 12));
   return List<Map<String, dynamic>>.from(rows);

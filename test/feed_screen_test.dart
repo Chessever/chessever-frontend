@@ -13,6 +13,7 @@ import 'package:chessever2/screens/feed/feed_screen.dart';
 import 'package:chessever2/screens/feed/models/feed_entry.dart';
 import 'package:chessever2/screens/feed/models/feed_models.dart';
 import 'package:chessever2/screens/feed/news/feed_news.dart';
+import 'package:chessever2/screens/feed/news/news_models.dart';
 import 'package:chessever2/screens/feed/providers/feed_entries_provider.dart';
 import 'package:chessever2/screens/feed/providers/feed_eval_provider.dart';
 import 'package:chessever2/screens/feed/providers/feed_provider.dart';
@@ -959,6 +960,25 @@ void main() {
         'game:g12',
         'puzzle:p3',
         'news:2',
+      ]);
+    });
+
+    test('a partner article sharing a ChessEver id gets its own slot', () {
+      final partner = FeedNews(
+        id: 1,
+        title: 'RookReview story',
+        summary: '',
+        content: 'Body.',
+        publishedAt: DateTime.utc(2026, 10, 26),
+        publisher: NewsPublisher.rookReview,
+      );
+      final entries = composeFeedEntries(
+        games: games,
+        news: [news.first, partner],
+      );
+      expect(keys(entries).where((key) => key.startsWith('news:')), [
+        'news:1',
+        'news:rookreview:1',
       ]);
     });
 

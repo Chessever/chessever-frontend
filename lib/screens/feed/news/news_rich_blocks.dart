@@ -129,7 +129,8 @@ class NewsMarkdown extends StatelessWidget {
 
 /// Hosts an article's inline pictures may load from on their own: the
 /// ChessEver site, Supabase Storage of either app flavour (a test build can
-/// read rows copied from production) and YouTube's thumbnail CDN.
+/// read rows copied from production) and YouTube's thumbnail CDN; partners'
+/// own picture hosts ([NewsPublisher.imageHosts]) are allowed beside them.
 ///
 /// A picture anywhere else would be fetched the moment the article opens,
 /// handing each reader's IP address and user agent to that host (a tracking
@@ -156,6 +157,10 @@ bool isNewsImageSourceAllowed(Uri uri) {
     return false;
   }
   final host = uri.host.toLowerCase();
+  // A partner's own picture hosts: its articles' pictures live there.
+  if (NewsPublisher.values.any((p) => p.imageHosts.contains(host))) {
+    return true;
+  }
   if (!_newsImageHosts.contains(host)) return false;
   if (host.endsWith('.supabase.co')) {
     return _supabaseImagePaths.any(uri.path.startsWith);

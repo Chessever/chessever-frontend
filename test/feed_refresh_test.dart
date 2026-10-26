@@ -259,12 +259,15 @@ void main() {
     test('articles the viewer reached go to the back of the line', () {
       final news = [for (var id = 1; id <= 3; id++) _news(id)];
       expect(feedNewsUnseenFirst(news, const {}).map((n) => n.id), [1, 2, 3]);
-      expect(feedNewsUnseenFirst(news, const {1}).map((n) => n.id), [2, 3, 1]);
-      expect(feedNewsUnseenFirst(news, const {1, 2, 3}).map((n) => n.id), [
-        1,
+      expect(feedNewsUnseenFirst(news, const {'1'}).map((n) => n.id), [
         2,
         3,
+        1,
       ]);
+      expect(
+        feedNewsUnseenFirst(news, const {'1', '2', '3'}).map((n) => n.id),
+        [1, 2, 3],
+      );
     });
 
     test('a refresh opens its news slot on an article not read yet', () async {

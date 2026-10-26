@@ -38,7 +38,7 @@ final class FeedNewsEntry extends FeedEntry {
   final FeedNews news;
 
   @override
-  String get key => 'news:${news.id}';
+  String get key => 'news:${news.key}';
 }
 
 /// An ad on a page of its own, laid between posts by [withFeedAds]. Never
@@ -121,7 +121,7 @@ List<FeedEntry> composeFeedEntries({
 }) {
   final out = <FeedEntry>[];
   final usedPuzzles = <String>{};
-  final usedNews = <int>{};
+  final usedNews = <String>{};
   var placedGames = 0;
 
   // ---------------------------------------------------------- frozen prefix
@@ -144,7 +144,7 @@ List<FeedEntry> composeFeedEntries({
         usedPuzzles.add(puzzle.id);
         out.add(entry);
       case FeedNewsEntry(news: final article):
-        usedNews.add(article.id);
+        usedNews.add(article.key);
         out.add(entry);
       // Laid over an arrangement, never part of one ([withFeedAds]).
       case FeedAdEntry():
@@ -171,7 +171,7 @@ List<FeedEntry> composeFeedEntries({
   FeedNews? nextNews() {
     while (newsCursor < news.length) {
       final candidate = news[newsCursor++];
-      if (usedNews.add(candidate.id)) return candidate;
+      if (usedNews.add(candidate.key)) return candidate;
     }
     return null;
   }

@@ -22,4 +22,9 @@ class PngAsset {
   static const classicalIconLight = 'assets/pngs/classical_light.png';
   static const rapidIconLight = 'assets/pngs/rapid_light.png';
   static const bK = 'assets/pngs/bK.png';
+
+  // RookReview's own mark (rookreview.b-cdn.net/assets/rr_logo.png), shown
+  // beside its articles in the Feed. A partner's mark is used as published,
+  // never redrawn or recoloured.
+  static const rookReviewMark = 'assets/pngs/partner_rookreview.png';
 }
