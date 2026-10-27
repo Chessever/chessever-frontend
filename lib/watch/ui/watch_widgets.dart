@@ -92,7 +92,10 @@ class WatchPage extends StatelessWidget {
                         child: CupertinoButton(
                           padding: EdgeInsets.zero,
                           minimumSize: const Size(44, 44),
-                          onPressed: () => Navigator.of(context).maybePop(),
+                          onPressed: () {
+                            WatchHaptics.click();
+                            Navigator.of(context).maybePop();
+                          },
                           child: const Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
@@ -124,12 +127,14 @@ class WatchPage extends StatelessWidget {
                     if (boardFirst)
                       WatchRow(
                         label: boardBackLabel,
+                        showChevron: false,
                         icon: CupertinoIcons.chevron_back,
                         onTap: () => Navigator.of(context).maybePop(),
                       ),
                     if (onRefresh != null)
                       WatchRow(
                         label: 'Refresh',
+                        showChevron: false,
                         icon: CupertinoIcons.refresh,
                         onTap: refreshing ? null : onRefresh,
                         trailing: refreshing
@@ -238,6 +243,7 @@ class WatchRow extends StatelessWidget {
     this.icon,
     this.onTap,
     this.semanticLabel,
+    this.showChevron = true,
   });
   final String label;
   final String? detail;
@@ -246,12 +252,13 @@ class WatchRow extends StatelessWidget {
   final IconData? icon;
   final VoidCallback? onTap;
   final String? semanticLabel;
+  final bool showChevron;
 
   @override
   Widget build(BuildContext context) {
     final accessory =
         trailing ??
-        (onTap == null
+        (onTap == null || !showChevron
             ? null
             : const Icon(
                 CupertinoIcons.chevron_forward,

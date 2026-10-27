@@ -56,6 +56,7 @@ class WatchHomePage extends StatelessWidget {
             controller.error == null)
           WatchRow(
             label: 'More current events',
+            showChevron: false,
             onTap: () => controller.refresh(more: true),
           ),
         WatchRow(
@@ -76,6 +77,7 @@ class WatchHomePage extends StatelessWidget {
                 ? CupertinoIcons.list_bullet
                 : CupertinoIcons.star,
             onTap: controller.toggleFavorites,
+            showChevron: false,
           ),
         if (controller.updatedAt != null)
           WatchNote(
@@ -99,6 +101,7 @@ class _WatchAccountPageState extends State<WatchAccountPage> {
   String? _message;
   bool _busy = false;
   Future<void> _sync() async {
+    if (_busy) return;
     setState(() => _busy = true);
     final sent = await widget.controller.requestSync();
     if (mounted) {
@@ -119,6 +122,8 @@ class _WatchAccountPageState extends State<WatchAccountPage> {
       final connection = widget.controller.connection;
       return WatchPage(
         title: 'My iPhone',
+        onRefresh: _sync,
+        refreshing: _busy,
         children: [
           WatchNote(
             account.signedIn ? account.name : 'Sign in to ChessEver on iPhone.',
@@ -160,6 +165,7 @@ class _WatchAccountPageState extends State<WatchAccountPage> {
           ],
           WatchRow(
             label: _busy ? 'Requesting…' : 'Sync with iPhone',
+            showChevron: false,
             icon: CupertinoIcons.refresh,
             onTap: _busy ? null : _sync,
           ),

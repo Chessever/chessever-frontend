@@ -14,6 +14,7 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter_watchos/flutter_watchos.dart';
 import 'package:flutter_watch_link/flutter_watch_link.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -54,6 +55,7 @@ void main() {
   });
 
   setUp(() {
+    WatchCrown.instance.debugAutoTick = false;
     publishedScore = 4.5;
     SharedPreferences.setMockInitialValues({});
     link = FakeWatchLink();
@@ -110,13 +112,16 @@ void main() {
                   'starts_at': '2026-10-14T16:00:00Z',
                 },
               ]
-            : [fixtureGame('game1')];
+            : [
+                {...fixtureGame('game1'), 'pgn': '1. e4 e5 2. Nf3 Nc6 *'},
+              ];
         return http.Response(jsonEncode(data), 200);
       }),
     );
     controller = WatchController(repository: repository);
   });
   tearDown(() async {
+    WatchCrown.instance.debugAutoTick = true;
     controller.dispose();
     await link.dispose();
     WatchLink.backendOverride = null;
@@ -214,6 +219,14 @@ void main() {
         await tester.tap(phone);
         await tester.pumpAndSettle();
         expect(find.text('Account connected'), findsNothing);
+        final accountPage = tester.widget<WatchPage>(
+          find.byType(WatchPage).last,
+        );
+        expect(accountPage.onRefresh, isNotNull);
+        final beforeSync = link.sent.length;
+        await accountPage.onRefresh!();
+        await tester.pumpAndSettle();
+        expect(link.sent.length, beforeSync + 1);
         await show(tester, find.text('Event alerts'));
         expect(find.text('Event alerts'), findsOneWidget);
         await screenshot(tester, 'account-${screen.width.toInt()}');
@@ -263,6 +276,22 @@ void main() {
         expect(boardBounds.top, greaterThanOrEqualTo(40));
         expect(boardBounds.bottom, lessThanOrEqualTo(screen.height - 9));
         await screenshot(tester, 'game-${screen.width.toInt()}');
+        await show(tester, find.text('Review moves'));
+        await tester.tap(find.text('Review moves'));
+        await tester.pumpAndSettle();
+        expect(WatchCrown.instance.isEnabled, isTrue);
+        await screenshot(tester, 'replay-${screen.width.toInt()}');
+        await show(tester, find.bySemanticsLabel('Previous move'));
+        await Scrollable.ensureVisible(
+          tester.element(find.bySemanticsLabel('Previous move')),
+          alignment: 0.5,
+        );
+        await tester.pumpAndSettle();
+        await screenshot(tester, 'replay-controls-${screen.width.toInt()}');
+        await show(tester, find.text('Done'));
+        await tester.tap(find.text('Done'));
+        await tester.pumpAndSettle();
+        expect(WatchCrown.instance.isEnabled, isFalse);
         await show(tester, find.text('White · 2750 · 0:00'));
         expect(find.text('White · 2750 · 0:00'), findsOneWidget);
         await show(tester, find.text('Black at bottom'));

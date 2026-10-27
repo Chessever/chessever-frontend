@@ -115,6 +115,16 @@ class WatchRepository {
         'limit': '$pageSize',
       })).map(Games.fromJson).toList();
 
+  /// Load history only on demand; board lists and live polling stay compact.
+  Future<String?> gamePgn(String id) async {
+    final rows = await _get('games', {
+      'select': 'pgn',
+      'id': 'eq.$id',
+      'limit': '1',
+    });
+    return rows.firstOrNull?['pgn'] as String?;
+  }
+
   Future<Games?> game(String id) async {
     final rows = await _get('games', {
       'select': gameColumns,

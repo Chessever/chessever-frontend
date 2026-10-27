@@ -3,6 +3,8 @@
 import 'dart:ffi';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter_watchos/flutter_watchos.dart';
+import 'package:chessever2/watch/ui/watch_replay_page.dart';
 import 'package:chessever2/watch/core/watch_repository.dart';
 import 'package:chessever2/watch/core/watch_models.dart';
 import 'package:chessever2/watch/watch_controller.dart';
@@ -103,6 +105,40 @@ Future<void> main() async {
   await tapTarget(find.byType(WatchBoardTile).first);
   await waitFor(find.byType(WatchBoard));
   await pause('Full real game tools');
+  await tap('Review moves');
+  await waitFor(find.byType(WatchReplayPage));
+  await waitFor(find.byType(WatchBoard));
+  final replayFen = driver.widget<WatchBoard>(find.byType(WatchBoard)).fen;
+  if (!WatchCrown.instance.isEnabled) {
+    throw StateError('Replay did not claim Crown');
+  }
+  await pause('Recorded game snapshot, Crown controls moves');
+  final crownDelta = native
+      .lookupFunction<Void Function(Double), void Function(double)>(
+        'flutter_watchos_crown_push_delta',
+      );
+  crownDelta(-0.75);
+  await driver.pump(const Duration(milliseconds: 500));
+  if (driver.widget<WatchBoard>(find.byType(WatchBoard)).fen == replayFen) {
+    throw StateError('Native Crown delta did not change the replay position');
+  }
+  await pause(
+    'Simulated Crown delta through native FFI moved back three plies',
+  );
+  await tapTarget(find.bySemanticsLabel('Next move'));
+  await pause('Touch button advances the same recorded game');
+  await tapTarget(find.byType(WatchBoard));
+  if (WatchCrown.instance.isEnabled) {
+    throw StateError('Board tap did not release Crown');
+  }
+  await pause('Board tap restores native Crown scrolling');
+  await tap('Crown: scroll');
+  await pause('Move review reactivated without changing the selected move');
+  await tap('Done');
+  if (WatchCrown.instance.isEnabled) {
+    throw StateError('Done did not release Crown');
+  }
+  await pause('Done restores game tools and Crown scrolling');
   final players = selectedGame.players!;
   await tap('Black at bottom');
   driver

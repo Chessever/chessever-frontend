@@ -8,7 +8,7 @@ WatchConnectivity implementation.
 
 ## Current audit
 
-The 26 October audit and evidence are in [watch-release-audit-2026-10-26.md](watch-release-audit-2026-10-26.md). Events now open directly into a vertical board feed; round selection and standings are secondary actions between boards. Crown/finger pull-to-refresh complements the Refresh button. The latest focused suite has 24 passing tests. The older implementation notes and counts below describe the initial companion and are superseded by that audit.
+The 26 October audit and evidence are in [watch-release-audit-2026-10-26.md](watch-release-audit-2026-10-26.md). Events now open directly into a vertical board feed; round selection and standings are secondary actions between boards. Crown/finger pull-to-refresh complements the Refresh button. The latest focused suite has 30 passing tests. [Watch controls](watch-controls.md) documents the Crown replay, pull-to-sync, touch alternatives and input lifecycle checks. The older implementation notes and counts below describe the initial companion and are superseded by that audit.
 
 ## What is on the watch
 

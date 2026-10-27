@@ -8,6 +8,7 @@ import 'watch_board.dart';
 import 'watch_event_pages.dart';
 import 'watch_widgets.dart';
 import 'watch_visuals.dart';
+import 'watch_replay_page.dart';
 
 class WatchGamePage extends StatefulWidget {
   const WatchGamePage({
@@ -122,12 +123,26 @@ class _WatchGamePageState extends State<WatchGamePage>
         ),
       if (_error != null) WatchNote(_error!),
       WatchRow(
+        label: 'Review moves',
+        icon: CupertinoIcons.gobackward,
+        detail: 'Turn the Crown through the game',
+        onTap: () => watchPush(
+          context,
+          WatchReplayPage(
+            loadPgn: () => widget.controller.repository.gamePgn(_game.id),
+            flipped: _flipped,
+          ),
+        ),
+      ),
+      WatchRow(
         label: _flipped ? 'White at bottom' : 'Black at bottom',
+        showChevron: false,
         icon: CupertinoIcons.arrow_up_arrow_down,
         onTap: () => setState(() => _flipped = !_flipped),
       ),
       WatchRow(
         label: _sending ? 'Sending…' : 'Open on iPhone',
+        showChevron: false,
         icon: CupertinoIcons.device_phone_portrait,
         onTap: _sending ? null : _sendToPhone,
       ),
