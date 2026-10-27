@@ -332,15 +332,19 @@ int _exportCombined((String, List<String>) input) =>
 
 /// Manual sources use an explicit PGN player name, so their side is never guessed.
 /// Each imported file is a source, so My Games counts it towards
-/// [kFreePrepOwnAccounts].
+/// [kFreePrepOwnAccounts]. Without a [profile] the files start a new one of
+/// [kind], named after the player in the PGN.
 Future<void> prepImportSource(
   BuildContext context,
   WidgetRef ref,
-  PrepProfile profile,
-) async {
-  final mine = profile.kind == PrepKind.mine;
-  final held = profile.accounts.length;
+  PrepProfile? profile, {
+  PrepKind kind = PrepKind.opponent,
+}) async {
+  final mine = (profile?.kind ?? kind) == PrepKind.mine;
+  final held = profile?.accounts.length ?? 0;
   if (mine && !await prepMayHoldOwnAccounts(context, held + 1)) return;
+  if (!context.mounted) return;
+  if (!mine && profile == null && !await prepMayAddOpponent(context)) return;
   if (!context.mounted) return;
   // Already at the limit, the check above only let the reader on through a
   // subscription, which may not have reached the subscription state yet:
@@ -351,7 +355,7 @@ Future<void> prepImportSource(
   final profiles = ref.read(prepProfilesProvider.notifier);
   await showPrepImportDialog(
     context,
-    playerName: profile.databaseAccount?.username ?? profile.name,
+    playerName: profile?.databaseAccount?.username ?? profile?.name ?? '',
     onImport: ({required alias, required label, pgn}) async {
       final inputs = <(String, String)>[];
       if (pgn != null) {
@@ -419,11 +423,19 @@ Future<void> prepImportSource(
           );
           accounts.add(account);
         }
-        if (profiles.byId(profile.id) == null) {
-          throw const PrepException('This profile was removed.');
+        if (profile == null) {
+          profiles.create(
+            kind: mine ? PrepKind.mine : PrepKind.opponent,
+            name: alias,
+            accounts: accounts,
+          );
+        } else {
+          if (profiles.byId(profile.id) == null) {
+            throw const PrepException('This profile was removed.');
+          }
+          // Validate every selected database before attaching any of them.
+          profiles.attach(profile.id, accounts);
         }
-        // Validate every selected database before attaching any of them.
-        profiles.attach(profile.id, accounts);
       } catch (_) {
         for (final account in prepared) {
           await repo.deleteGames(account);

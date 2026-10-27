@@ -136,8 +136,13 @@ class _PrepTreesTabState extends ConsumerState<PrepTreesTab> {
                   : 'No games yet',
               color: color,
               clock: clock,
-              onSources: () =>
-                  prepDownloadSource(context, ref, profile, account),
+              // A PGN has nothing to download; its games come from a file.
+              onSources: account.source == PrepSource.manual
+                  ? widget.onSources
+                  : () => prepDownloadSource(context, ref, profile, account),
+              actionLabel: account.source == PrepSource.manual
+                  ? 'Sources'
+                  : 'Download',
             ),
             SizedBox(height: 8.h),
           ],
@@ -222,6 +227,7 @@ class _TreeRow extends ConsumerWidget {
     this.marks,
     this.semanticsLabel,
     this.emptyLabel = 'No games yet',
+    this.actionLabel = 'Download',
     this.color,
     this.clock,
   });
@@ -240,6 +246,9 @@ class _TreeRow extends ConsumerWidget {
 
   /// The status line while there are no games to build from.
   final String emptyLabel;
+
+  /// The button standing in for Build Tree while there are no games.
+  final String actionLabel;
   final GamebasePlayerColor? color;
   final TimeControl? clock;
   final VoidCallback onSources;
@@ -322,7 +331,7 @@ class _TreeRow extends ConsumerWidget {
                 tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                 textStyle: AppTypography.textSmMedium,
               ),
-              child: const Text('Download'),
+              child: Text(actionLabel),
             ),
         ],
       ),
