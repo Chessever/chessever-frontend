@@ -1,0 +1,8 @@
+{
+  "controls": [
+    { "sid": "logoColor", "label": "Logo squares" },
+    { "sid": "kingColor", "label": "King" },
+    { "sid": "glowColor", "label": "Pulse ring" },
+    { "sid": "bgColor", "label": "Background color" }
+  ]
+}
