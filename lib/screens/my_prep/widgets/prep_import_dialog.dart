@@ -1,70 +1,91 @@
-import 'package:chessever2/screens/my_prep/widgets/prep_dialogs.dart';
+import 'package:chessever2/screens/my_prep/services/prep_pgn_player.dart';
 import 'package:chessever2/screens/my_prep/services/prep_repository.dart';
+import 'package:chessever2/screens/my_prep/widgets/prep_common.dart';
+import 'package:chessever2/screens/my_prep/widgets/prep_dialogs.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/app_typography.dart';
+import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:flutter/material.dart';
 
-typedef PrepManualImporter =
-    Future<bool> Function({
-      required String alias,
-      required String label,
-      String? pgn,
+/// One PGN to import: a chosen file, or the pasted text.
+typedef PrepPgnInput = ({String label, String pgn});
+
+/// The reader's chosen files, read; null when they chose none.
+typedef PrepPgnPicker = Future<List<PrepPgnInput>?> Function();
+
+/// Imports [inputs] as [player]'s games, or as whoever they belong to when
+/// [player] is null. A reading that is not resolved holds the names to
+/// choose between, and nothing was imported.
+typedef PrepPgnImporter =
+    Future<PrepPgnReading> Function(
+      List<PrepPgnInput> inputs, {
+      String? player,
     });
 
 Future<void> showPrepImportDialog(
   BuildContext context, {
-  required String playerName,
-  required PrepManualImporter onImport,
+  required PrepPgnPicker pickFiles,
+  required PrepPgnImporter onImport,
 }) => Navigator.of(context).push<void>(
   MaterialPageRoute(
-    builder: (_) =>
-        PrepImportDialog(playerName: playerName, onImport: onImport),
+    builder: (_) => PrepImportDialog(pickFiles: pickFiles, onImport: onImport),
   ),
 );
 
-/// A keyboard-safe editor for either local databases or pasted games.
+/// Paste games or choose files; whose games they are is read from the PGN.
 class PrepImportDialog extends StatefulWidget {
   const PrepImportDialog({
     super.key,
-    required this.playerName,
+    required this.pickFiles,
     required this.onImport,
   });
-  final String playerName;
-  final PrepManualImporter onImport;
+  final PrepPgnPicker pickFiles;
+  final PrepPgnImporter onImport;
 
   @override
   State<PrepImportDialog> createState() => _PrepImportDialogState();
 }
 
 class _PrepImportDialogState extends State<PrepImportDialog> {
-  late final _alias = TextEditingController(text: widget.playerName);
-  final _label = TextEditingController(text: 'Manual PGN');
   final _pgn = TextEditingController();
   bool _busy = false;
   String? _error;
 
+  /// The games waiting on the reader to say whose they are.
+  List<PrepPgnInput>? _pending;
+  List<PrepPgnCandidate> _candidates = const [];
+
+  bool get _pasted => _pgn.text.trim().isNotEmpty;
+
   @override
   void dispose() {
-    _alias.dispose();
-    _label.dispose();
     _pgn.dispose();
     super.dispose();
   }
 
-  Future<void> _submit({required bool files}) async {
-    if (_busy || _alias.text.trim().isEmpty) return;
+  Future<void> _run(
+    Future<List<PrepPgnInput>?> Function() read, {
+    String? player,
+  }) async {
+    if (_busy) return;
     FocusScope.of(context).unfocus();
     setState(() {
       _busy = true;
       _error = null;
     });
     try {
-      final imported = await widget.onImport(
-        alias: _alias.text.trim(),
-        label: _label.text.trim().isEmpty ? 'Manual PGN' : _label.text.trim(),
-        pgn: files ? null : _pgn.text.trim(),
-      );
-      if (mounted && imported) Navigator.of(context).pop();
+      final inputs = await read();
+      if (inputs == null || !mounted) return;
+      final reading = await widget.onImport(inputs, player: player);
+      if (!mounted) return;
+      if (reading.resolved) {
+        Navigator.of(context).pop();
+      } else {
+        setState(() {
+          _pending = inputs;
+          _candidates = reading.candidates;
+        });
+      }
     } catch (error) {
       if (mounted) {
         setState(
@@ -78,92 +99,150 @@ class _PrepImportDialogState extends State<PrepImportDialog> {
     }
   }
 
+  void _import() => _pasted
+      ? _run(() async => [(label: 'Pasted PGN', pgn: _pgn.text.trim())])
+      : _run(widget.pickFiles);
+
+  void _choose(PrepPgnCandidate candidate) {
+    final inputs = _pending;
+    if (inputs == null) return;
+    _run(() async => inputs, player: candidate.name);
+  }
+
+  void _back() => setState(() {
+    _pending = null;
+    _candidates = const [];
+    _error = null;
+  });
+
   @override
-  Widget build(BuildContext context) => Scaffold(
-    backgroundColor: context.colors.background,
-    appBar: AppBar(title: const Text('Import PGN')),
-    body: SafeArea(
-      top: false,
-      child: ListView(
-        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-        padding: const EdgeInsets.fromLTRB(16, 20, 16, 32),
-        children: [
-          Text(
-            'Use the player’s name exactly as it appears in the PGN. Only their games are attached.',
-            style: AppTypography.textSmRegular.copyWith(
-              color: context.colors.textSecondary,
+  Widget build(BuildContext context) {
+    final colors = context.colors;
+    final choosing = _pending != null;
+    return PopScope(
+      canPop: !choosing,
+      onPopInvokedWithResult: (popped, _) {
+        if (!popped && choosing) _back();
+      },
+      child: Scaffold(
+        backgroundColor: colors.background,
+        appBar: AppBar(title: const Text('Import PGN')),
+        body: SafeArea(
+          top: false,
+          child: Padding(
+            padding: EdgeInsets.fromLTRB(16.w, 12.h, 16.w, 16.h),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                if (choosing) ...[
+                  Text(
+                    'Whose games are these?',
+                    style: AppTypography.textMdBold.copyWith(
+                      color: colors.textPrimary,
+                    ),
+                  ),
+                  SizedBox(height: 16.h),
+                  Expanded(
+                    child: ListView.separated(
+                      itemCount: _candidates.length,
+                      separatorBuilder: (_, _) => SizedBox(height: 8.h),
+                      itemBuilder: (context, index) => _CandidateRow(
+                        candidate: _candidates[index],
+                        onTap: _busy ? null : () => _choose(_candidates[index]),
+                      ),
+                    ),
+                  ),
+                ] else
+                  Expanded(
+                    child: Semantics(
+                      label: 'PGN',
+                      textField: true,
+                      child: TextField(
+                        key: const ValueKey('prep_import_pgn'),
+                        controller: _pgn,
+                        enabled: !_busy,
+                        expands: true,
+                        maxLines: null,
+                        textAlignVertical: TextAlignVertical.top,
+                        keyboardType: TextInputType.multiline,
+                        onChanged: (_) => setState(() {}),
+                        style: AppTypography.textSmRegular.copyWith(
+                          color: colors.textPrimary,
+                        ),
+                        decoration: prepInputDecoration(
+                          context,
+                          hint: 'Paste PGN',
+                        ),
+                      ),
+                    ),
+                  ),
+                if (_error != null)
+                  Padding(
+                    padding: EdgeInsets.only(top: 12.h),
+                    child: Text(
+                      _error!,
+                      style: AppTypography.textSmRegular.copyWith(
+                        color: colors.danger,
+                      ),
+                    ),
+                  ),
+                SizedBox(height: 16.h),
+                if (!choosing)
+                  PrepDialogActions(
+                    confirmLabel: _pasted ? 'Import' : 'Choose files',
+                    busy: _busy,
+                    onConfirm: _busy ? null : _import,
+                  ),
+              ],
             ),
           ),
-          const SizedBox(height: 20),
-          const PrepFieldLabel('Player name in the PGN'),
-          TextField(
-            key: const ValueKey('prep_import_alias'),
-            controller: _alias,
-            enabled: !_busy,
-            onChanged: (_) => setState(() {}),
-            decoration: prepInputDecoration(context, hint: 'Player name'),
-          ),
-          const SizedBox(height: 12),
-          TextButton.icon(
-            onPressed: _busy || _alias.text.trim().isEmpty
-                ? null
-                : () => _submit(files: true),
-            icon: const Icon(Icons.file_open_outlined),
-            label: const Text('Choose PGN files'),
-            style: TextButton.styleFrom(
-              minimumSize: const Size(44, 48),
-              foregroundColor: context.colors.textPrimary,
-            ),
-          ),
-          Text(
-            'PGN, PGN.bz2 and PGN.zst. Multiple files can be attached together.',
-            style: AppTypography.textXsRegular.copyWith(
-              color: context.colors.textSecondary,
-            ),
-          ),
-          const SizedBox(height: 28),
-          const PrepFieldLabel('Source label'),
-          TextField(
-            key: const ValueKey('prep_import_label'),
-            controller: _label,
-            enabled: !_busy,
-            decoration: prepInputDecoration(context, hint: 'Manual PGN'),
-          ),
-          const SizedBox(height: 20),
-          const PrepFieldLabel('Paste PGN'),
-          TextField(
-            key: const ValueKey('prep_import_pgn'),
-            controller: _pgn,
-            enabled: !_busy,
-            minLines: 6,
-            maxLines: 12,
-            onChanged: (_) => setState(() {}),
-            decoration: prepInputDecoration(
-              context,
-              hint: 'Paste one or more games',
-            ),
-          ),
-          if (_error != null)
-            Padding(
-              padding: const EdgeInsets.only(top: 12),
-              child: Text(
-                _error!,
-                style: AppTypography.textSmRegular.copyWith(
-                  color: context.colors.textPrimary,
+        ),
+      ),
+    );
+  }
+}
+
+/// A name the games could belong to, as a source row reads.
+class _CandidateRow extends StatelessWidget {
+  const _CandidateRow({required this.candidate, required this.onTap});
+
+  final PrepPgnCandidate candidate;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.colors;
+    return Material(
+      color: colors.surface,
+      borderRadius: BorderRadius.circular(12.br),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        key: ValueKey('prep_import_player_${candidate.name}'),
+        onTap: onTap,
+        child: Padding(
+          padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 14.h),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  candidate.name,
+                  style: AppTypography.textSmBold.copyWith(
+                    color: colors.textPrimary,
+                  ),
                 ),
               ),
-            ),
-          const SizedBox(height: 24),
-          PrepDialogActions(
-            confirmLabel: 'Attach pasted games',
-            busy: _busy,
-            onConfirm:
-                _busy || _alias.text.trim().isEmpty || _pgn.text.trim().isEmpty
-                ? null
-                : () => _submit(files: false),
+              SizedBox(width: 12.w),
+              Text(
+                prepGamesLabel(candidate.games),
+                style: AppTypography.textXsRegular.copyWith(
+                  color: colors.textSecondary,
+                  fontFeatures: const [FontFeature.tabularFigures()],
+                ),
+              ),
+            ],
           ),
-        ],
+        ),
       ),
-    ),
-  );
+    );
+  }
 }

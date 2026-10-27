@@ -8,6 +8,7 @@ import 'package:chessever2/screens/my_prep/providers/prep_providers.dart';
 import 'package:chessever2/screens/my_prep/services/prep_repository.dart';
 import 'package:chessever2/screens/my_prep/widgets/prep_import_dialog.dart';
 import 'package:chessever2/screens/my_prep/services/prep_pgn_intake.dart';
+import 'package:chessever2/screens/my_prep/services/prep_pgn_player.dart';
 import 'package:chessever2/screens/my_prep/widgets/prep_options_dialog.dart';
 import 'package:chessever2/screens/my_prep/widgets/prep_source_picker.dart';
 import 'package:chessever2/widgets/alert_dialog/alert_modal.dart';
@@ -330,8 +331,9 @@ Future<void> prepExportProfile(
 int _exportCombined((String, List<String>) input) =>
     writeCombinedPrepGames(path: input.$1, sources: input.$2);
 
-/// Manual sources use an explicit PGN player name, so their side is never guessed.
-/// Each imported file is a source, so My Games counts it towards
+/// Whose games a PGN holds is read from the games themselves (see
+/// [readPrepPgnPlayer]), so their side is never guessed and nobody types a
+/// name. Each imported file is a source, so My Games counts it towards
 /// [kFreePrepOwnAccounts]. Without a [profile] the files start a new one of
 /// [kind], named after the player in the PGN.
 Future<void> prepImportSource(
@@ -355,68 +357,80 @@ Future<void> prepImportSource(
   final profiles = ref.read(prepProfilesProvider.notifier);
   await showPrepImportDialog(
     context,
-    playerName: profile?.databaseAccount?.username ?? profile?.name ?? '',
-    onImport: ({required alias, required label, pgn}) async {
-      final inputs = <(String, String)>[];
-      if (pgn != null) {
-        if (pgn.length > kPrepImportMaxBytes) {
-          throw const PrepException('Paste a PGN smaller than 64 MB.');
-        }
-        inputs.add((label, pgn));
-      } else {
-        final files = await FilePicker.platform.pickFiles(
-          type: FileType.custom,
-          allowedExtensions: ['pgn', 'bz2', 'zst'],
-          allowMultiple: true,
-          withData: false,
+    pickFiles: () async {
+      final files = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['pgn', 'bz2', 'zst'],
+        allowMultiple: true,
+        withData: false,
+      );
+      if (files == null || files.files.isEmpty) return null;
+      if (mine &&
+          !subscribedPastLimit &&
+          held + files.files.length > kFreePrepOwnAccounts &&
+          !container.read(prepUnlimitedProvider)) {
+        final room = kFreePrepOwnAccounts - held;
+        throw PrepException(
+          'Games keeps $kFreePrepOwnAccounts of your sources without '
+          'Premium. ${room == 1 ? 'Choose one file.' : 'Choose up to $room files.'}',
         );
-        if (files == null || files.files.isEmpty) return false;
-        if (mine &&
-            !subscribedPastLimit &&
-            held + files.files.length > kFreePrepOwnAccounts &&
-            !container.read(prepUnlimitedProvider)) {
-          final room = kFreePrepOwnAccounts - held;
-          throw PrepException(
-            'Games keeps $kFreePrepOwnAccounts of your sources without '
-            'Premium. ${room == 1 ? 'Choose one file.' : 'Choose up to $room files.'}',
-          );
-        }
-        for (final file in files.files) {
-          if (file.size > kPrepImportMaxBytes) {
-            throw PrepException('${file.name} is larger than 64 MB.');
-          }
-          final bytes =
-              file.bytes ??
-              (file.path == null ? null : await File(file.path!).readAsBytes());
-          if (bytes == null) {
-            throw PrepException('Could not read ${file.name}.');
-          }
-          inputs.add((
-            file.name,
-            await compute(decodePrepPgn, (file.name, bytes)),
-          ));
-        }
       }
+      final inputs = <PrepPgnInput>[];
+      for (final file in files.files) {
+        if (file.size > kPrepImportMaxBytes) {
+          throw PrepException('${file.name} is larger than 64 MB.');
+        }
+        final bytes =
+            file.bytes ??
+            (file.path == null ? null : await File(file.path!).readAsBytes());
+        if (bytes == null) {
+          throw PrepException('Could not read ${file.name}.');
+        }
+        inputs.add((
+          label: file.name,
+          pgn: await compute(decodePrepPgn, (file.name, bytes)),
+        ));
+      }
+      return inputs;
+    },
+    onImport: (inputs, {player}) async {
+      if (inputs.any((input) => input.pgn.length > kPrepImportMaxBytes)) {
+        throw const PrepException('Paste a PGN smaller than 64 MB.');
+      }
+      final reading = await compute(_readPlayer, (
+        [for (final input in inputs) input.pgn],
+        player != null ? [player] : [...?profile?.aliases],
+      ));
+      if (!reading.resolved) return reading;
       final accounts = <PrepAccount>[];
       final prepared = <PrepAccount>[];
       try {
         for (final (i, input) in inputs.indexed) {
           var account = PrepAccount(
             source: PrepSource.manual,
-            username: input.$1,
+            username: input.label,
             externalId: '${DateTime.now().microsecondsSinceEpoch}-$i',
-            playerAliases: [alias],
+            playerAliases: reading.names,
             preferences: const PrepDownloadPreferences(
               range: PrepDateRange.all,
             ),
           );
           prepared.add(account);
           final target = await repo.gamesFile(account);
-          final count = await compute(_saveManual, (
-            target.path,
-            input.$2,
-            alias,
-          ));
+          final int count;
+          try {
+            count = await compute(_saveManual, (
+              target.path,
+              input.pgn,
+              reading.names,
+            ));
+          } on PrepException catch (error) {
+            throw inputs.length == 1
+                ? error
+                : PrepException(
+                    'No games by ${reading.name} in ${input.label}.',
+                  );
+          }
           account = account.copyWith(
             gameCount: count,
             lastSyncAtMs: DateTime.now().millisecondsSinceEpoch,
@@ -426,7 +440,7 @@ Future<void> prepImportSource(
         if (profile == null) {
           profiles.create(
             kind: mine ? PrepKind.mine : PrepKind.opponent,
-            name: alias,
+            name: reading.name,
             accounts: accounts,
           );
         } else {
@@ -442,10 +456,16 @@ Future<void> prepImportSource(
         }
         rethrow;
       }
-      return true;
+      return reading;
     },
   );
 }
 
-int _saveManual((String, String, String) input) =>
-    writeImportedPrepGames(path: input.$1, pgn: input.$2, playerName: input.$3);
+PrepPgnReading _readPlayer((List<String>, List<String>) input) =>
+    readPrepPgnPlayer(input.$1, known: input.$2);
+
+int _saveManual((String, String, List<String>) input) => writeImportedPrepGames(
+  path: input.$1,
+  pgn: input.$2,
+  playerNames: input.$3,
+);

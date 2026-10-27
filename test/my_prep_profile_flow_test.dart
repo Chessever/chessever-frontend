@@ -20,6 +20,7 @@ import 'package:chessever2/screens/my_prep/prep_sources_screen.dart';
 import 'package:chessever2/screens/my_prep/providers/prep_known_accounts_provider.dart';
 import 'package:chessever2/screens/my_prep/providers/prep_providers.dart';
 import 'package:chessever2/screens/my_prep/services/prep_analysis.dart';
+import 'package:chessever2/screens/my_prep/services/prep_pgn_player.dart';
 import 'package:chessever2/screens/my_prep/services/prep_repository.dart';
 import 'package:chessever2/screens/my_prep/services/prep_watch.dart';
 import 'package:chessever2/services/deep_link_service.dart';
@@ -3630,76 +3631,47 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('pasted PGN remains editable after an import error', (
+  testWidgets('pasted PGN imports without a name and asks only on a tie', (
     tester,
   ) async {
     var calls = 0;
-    (String, String, String?)? received;
+    final received = <(String, String?)>[];
     await pump(
       tester,
       PrepImportDialog(
-        playerName: 'ClubPlayer',
-        onImport: ({required alias, required label, pgn}) async {
+        pickFiles: () async => null,
+        onImport: (inputs, {player}) async {
           calls++;
-          if (calls == 1) throw const PrepException('No matching player');
-          return false;
+          received.add((inputs.single.pgn, player));
+          if (calls == 1) throw const PrepException('No playable games');
+          if (player == null) {
+            return const PrepPgnReading(
+              candidates: [
+                PrepPgnCandidate('Carlsen, Magnus', 14),
+                PrepPgnCandidate('Nepomniachtchi, Ian', 14),
+              ],
+            );
+          }
+          return PrepPgnReading(names: [player], games: 14);
         },
       ),
       scale: 1.8,
     );
-    final labelField = find.byKey(const ValueKey('prep_import_label'));
     final pgnField = find.byKey(const ValueKey('prep_import_pgn'));
-    await tester.scrollUntilVisible(
-      labelField,
-      160,
-      scrollable: find.byType(Scrollable).first,
-    );
-    await tester.enterText(labelField, 'Club games');
-    await tester.scrollUntilVisible(
-      pgnField,
-      160,
-      scrollable: find.byType(Scrollable).first,
-    );
-    await tester.enterText(pgnField, '[White "ClubPlayer"]');
+    expect(find.text('Choose files'), findsOneWidget);
+    await tester.enterText(pgnField, '[White "A"]');
     await tester.pump();
-    await tester.ensureVisible(find.text('Attach pasted games'));
-    await tester.tap(find.text('Attach pasted games'));
+    await tester.tap(find.text('Import'));
     await tester.pump();
-    expect(find.text('No matching player'), findsOneWidget);
-    expect(
-      tester.widget<TextField>(pgnField).controller!.text,
-      '[White "ClubPlayer"]',
-    );
-    expect(tester.takeException(), isNull);
-    await pump(
-      tester,
-      PrepImportDialog(
-        key: const ValueKey('second-import'),
-        playerName: 'ClubPlayer',
-        onImport: ({required alias, required label, pgn}) async {
-          received = (alias, label, pgn);
-          return false;
-        },
-      ),
-      scale: 1.8,
-    );
-    await tester.scrollUntilVisible(
-      labelField,
-      160,
-      scrollable: find.byType(Scrollable).first,
-    );
-    await tester.enterText(labelField, 'Club games');
-    await tester.scrollUntilVisible(
-      pgnField,
-      160,
-      scrollable: find.byType(Scrollable).first,
-    );
-    await tester.enterText(pgnField, '[White "ClubPlayer"]');
-    await tester.pump();
-    await tester.ensureVisible(find.text('Attach pasted games'));
-    await tester.tap(find.text('Attach pasted games'));
-    await tester.pump();
-    expect(received, ('ClubPlayer', 'Club games', '[White "ClubPlayer"]'));
+    expect(find.text('No playable games'), findsOneWidget);
+    expect(tester.widget<TextField>(pgnField).controller!.text, '[White "A"]');
+
+    await tester.tap(find.text('Import'));
+    await tester.pumpAndSettle();
+    expect(find.text('Whose games are these?'), findsOneWidget);
+    await tester.tap(find.text('Nepomniachtchi, Ian'));
+    await tester.pumpAndSettle();
+    expect(received.last, ('[White "A"]', 'Nepomniachtchi, Ian'));
     expect(tester.takeException(), isNull);
   });
 }
