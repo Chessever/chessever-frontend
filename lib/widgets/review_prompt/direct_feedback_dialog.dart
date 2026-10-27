@@ -62,7 +62,9 @@ Future<FeedbackPicture?> pickFeedbackPicture() async {
   final fileName = raw['fileName'];
   return FeedbackPicture(
     bytes: bytes,
-    fileName: fileName is String && fileName.isNotEmpty ? fileName : 'photo.jpg',
+    fileName: fileName is String && fileName.isNotEmpty
+        ? fileName
+        : 'photo.jpg',
   );
 }
 
@@ -171,6 +173,7 @@ class _DirectFeedbackDialogState extends State<DirectFeedbackDialog> {
   Widget build(BuildContext context) {
     return Container(
       constraints: BoxConstraints(maxWidth: 360.w, maxHeight: 680.h),
+      clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
         color: context.colors.background,
         borderRadius: BorderRadius.circular(20.br),
@@ -182,209 +185,222 @@ class _DirectFeedbackDialogState extends State<DirectFeedbackDialog> {
         boxShadow: [
           context.isLightTheme
               ? BoxShadow(
-                color: context.colors.shadow,
-                blurRadius: 8,
-                offset: const Offset(0, 2),
-              )
+                  color: context.colors.shadow,
+                  blurRadius: 8,
+                  offset: const Offset(0, 2),
+                )
               : BoxShadow(
-                color: Colors.black.withValues(alpha: 0.3),
-                blurRadius: 24,
-                offset: const Offset(0, 12),
-              ),
+                  color: Colors.black.withValues(alpha: 0.3),
+                  blurRadius: 24,
+                  offset: const Offset(0, 12),
+                ),
         ],
       ),
-      child: SingleChildScrollView(
-        child: Padding(
-          padding: EdgeInsets.all(20.sp),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
+      // Only the form scrolls; Send stays pinned below it so a short space
+      // above the keyboard can never slice the button.
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Flexible(
+            child: SingleChildScrollView(
+              padding: EdgeInsets.fromLTRB(20.sp, 20.sp, 20.sp, 0),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Expanded(
-                    child: Text(
-                      'Your Feedback',
-                      style: AppTypography.textLgBold.copyWith(
-                        color: context.colors.textPrimary,
-                      ),
-                    ),
-                  ),
-                  IconButton(
-                    tooltip: 'Close',
-                    onPressed: () => Navigator.of(context).pop(),
-                    icon: Icon(
-                      Icons.close_rounded,
-                      color: context.colors.iconPrimary,
-                    ),
-                  ),
-                ],
-              ),
-              SizedBox(height: 4.sp),
-              Text(
-                'Tell us what happened or what we can improve.',
-                style: AppTypography.textSmRegular.copyWith(
-                  color: context.textInk(0.6),
-                ),
-              ),
-              SizedBox(height: 16.sp),
-              TextField(
-                controller: _feedbackController,
-                autofocus: true,
-                onChanged: (value) {
-                  final canSend = value.trim().isNotEmpty;
-                  if (canSend != _canSend) setState(() => _canSend = canSend);
-                },
-                textInputAction: TextInputAction.newline,
-                maxLines: 5,
-                minLines: 4,
-                maxLength: 500,
-                style: AppTypography.textSmRegular.copyWith(
-                  color: context.colors.textPrimary,
-                ),
-                decoration: InputDecoration(
-                  hintText: 'Type your feedback here...',
-                  hintStyle: AppTypography.textSmRegular.copyWith(
-                    color: context.textInk(0.35),
-                  ),
-                  filled: true,
-                  fillColor: context.colors.surface,
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12.br),
-                    borderSide: BorderSide(
-                      color: context.colors.textPrimary.withValues(alpha: 0.08),
-                    ),
-                  ),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12.br),
-                    borderSide: BorderSide(
-                      color: context.colors.textPrimary.withValues(alpha: 0.08),
-                    ),
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12.br),
-                    borderSide: BorderSide(
-                      color:
-                          context.isLightTheme
-                              ? context.colors.accentText
-                              : kPrimaryColor,
-                    ),
-                  ),
-                  counterStyle: AppTypography.textXsRegular.copyWith(
-                    color: context.textInk(0.35),
-                  ),
-                ),
-              ),
-              SizedBox(height: 8.sp),
-              if (_picture == null)
-                OutlinedButton.icon(
-                  onPressed: _isPicking ? null : _pickPicture,
-                  icon:
-                      _isPicking
-                          ? SizedBox(
-                            width: 18.ic,
-                            height: 18.ic,
-                            child: const CircularProgressIndicator(
-                              strokeWidth: 2,
-                            ),
-                          )
-                          : const Icon(Icons.add_photo_alternate_outlined),
-                  label: const Text('Add picture'),
-                )
-              else
-                Container(
-                  padding: EdgeInsets.all(8.sp),
-                  decoration: BoxDecoration(
-                    color: context.colors.surface,
-                    borderRadius: BorderRadius.circular(12.br),
-                    border: Border.all(
-                      color: context.colors.textPrimary.withValues(alpha: 0.08),
-                    ),
-                  ),
-                  child: Row(
+                  Row(
                     children: [
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(8.br),
-                        child: Image.memory(
-                          _picture!.bytes,
-                          width: 52.w,
-                          height: 52.w,
-                          fit: BoxFit.cover,
-                          errorBuilder:
-                              (_, __, ___) => SizedBox(
-                                width: 52.w,
-                                height: 52.w,
-                                child: const Icon(Icons.image_outlined),
-                              ),
-                        ),
-                      ),
-                      SizedBox(width: 10.w),
                       Expanded(
                         child: Text(
-                          _picture!.fileName,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: AppTypography.textSmMedium.copyWith(
+                          'Your Feedback',
+                          style: AppTypography.textLgBold.copyWith(
                             color: context.colors.textPrimary,
                           ),
                         ),
                       ),
-                      TextButton(
-                        onPressed: _removePicture,
-                        child: const Text('Remove'),
+                      IconButton(
+                        tooltip: 'Close',
+                        onPressed: () => Navigator.of(context).pop(),
+                        icon: Icon(
+                          Icons.close_rounded,
+                          color: context.colors.iconPrimary,
+                        ),
                       ),
                     ],
                   ),
-                ),
-              SizedBox(height: 4.sp),
-              Text(
-                'A picture can help us understand the issue faster. Optional.',
-                style: AppTypography.textXsRegular.copyWith(
-                  color: context.textInk(0.5),
-                ),
-              ),
-              if (_pictureError != null) ...[
-                SizedBox(height: 6.sp),
-                Text(
-                  _pictureError!,
-                  style: AppTypography.textXsRegular.copyWith(
-                    color: context.colors.danger,
-                  ),
-                ),
-                if (_photoPermissionDenied)
-                  TextButton(
-                    onPressed: () => AppSettings.openAppSettings(),
-                    child: const Text('Open Settings'),
-                  ),
-              ],
-              SizedBox(height: 18.sp),
-              SizedBox(
-                width: double.infinity,
-                child: TextButton(
-                  onPressed: _canSend ? _send : null,
-                  style: TextButton.styleFrom(
-                    padding: EdgeInsets.symmetric(vertical: 12.sp),
-                    backgroundColor:
-                        _canSend
-                            ? kPrimaryColor
-                            : context.colors.surfaceRecessed,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12.br),
+                  SizedBox(height: 4.sp),
+                  Text(
+                    'Tell us what happened or what we can improve.',
+                    style: AppTypography.textSmRegular.copyWith(
+                      color: context.textInk(0.6),
                     ),
                   ),
-                  child: Text(
-                    'Send',
-                    style: AppTypography.textSmMedium.copyWith(
-                      // Black on the recessed fill vanished in dark (1.3:1).
-                      color:
-                          _canSend ? kBlackColor : context.colors.textSecondary,
+                  SizedBox(height: 16.sp),
+                  TextField(
+                    controller: _feedbackController,
+                    autofocus: true,
+                    onChanged: (value) {
+                      final canSend = value.trim().isNotEmpty;
+                      if (canSend != _canSend)
+                        setState(() => _canSend = canSend);
+                    },
+                    textInputAction: TextInputAction.newline,
+                    maxLines: 5,
+                    minLines: 4,
+                    maxLength: 500,
+                    style: AppTypography.textSmRegular.copyWith(
+                      color: context.colors.textPrimary,
+                    ),
+                    decoration: InputDecoration(
+                      hintText: 'Type your feedback here...',
+                      hintStyle: AppTypography.textSmRegular.copyWith(
+                        color: context.textInk(0.35),
+                      ),
+                      filled: true,
+                      fillColor: context.colors.surface,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12.br),
+                        borderSide: BorderSide(
+                          color: context.colors.textPrimary.withValues(
+                            alpha: 0.08,
+                          ),
+                        ),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12.br),
+                        borderSide: BorderSide(
+                          color: context.colors.textPrimary.withValues(
+                            alpha: 0.08,
+                          ),
+                        ),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12.br),
+                        borderSide: BorderSide(
+                          color: context.isLightTheme
+                              ? context.colors.accentText
+                              : kPrimaryColor,
+                        ),
+                      ),
+                      counterStyle: AppTypography.textXsRegular.copyWith(
+                        color: context.textInk(0.35),
+                      ),
                     ),
                   ),
-                ),
+                  SizedBox(height: 8.sp),
+                  if (_picture == null)
+                    OutlinedButton.icon(
+                      onPressed: _isPicking ? null : _pickPicture,
+                      icon: _isPicking
+                          ? SizedBox(
+                              width: 18.ic,
+                              height: 18.ic,
+                              child: const CircularProgressIndicator(
+                                strokeWidth: 2,
+                              ),
+                            )
+                          : const Icon(Icons.add_photo_alternate_outlined),
+                      label: const Text('Add picture'),
+                    )
+                  else
+                    Container(
+                      padding: EdgeInsets.all(8.sp),
+                      decoration: BoxDecoration(
+                        color: context.colors.surface,
+                        borderRadius: BorderRadius.circular(12.br),
+                        border: Border.all(
+                          color: context.colors.textPrimary.withValues(
+                            alpha: 0.08,
+                          ),
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(8.br),
+                            child: Image.memory(
+                              _picture!.bytes,
+                              width: 52.w,
+                              height: 52.w,
+                              fit: BoxFit.cover,
+                              errorBuilder: (_, __, ___) => SizedBox(
+                                width: 52.w,
+                                height: 52.w,
+                                child: const Icon(Icons.image_outlined),
+                              ),
+                            ),
+                          ),
+                          SizedBox(width: 10.w),
+                          Expanded(
+                            child: Text(
+                              _picture!.fileName,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: AppTypography.textSmMedium.copyWith(
+                                color: context.colors.textPrimary,
+                              ),
+                            ),
+                          ),
+                          TextButton(
+                            onPressed: _removePicture,
+                            child: const Text('Remove'),
+                          ),
+                        ],
+                      ),
+                    ),
+                  SizedBox(height: 4.sp),
+                  Text(
+                    'A picture can help us understand the issue faster. Optional.',
+                    style: AppTypography.textXsRegular.copyWith(
+                      color: context.textInk(0.5),
+                    ),
+                  ),
+                  if (_pictureError != null) ...[
+                    SizedBox(height: 6.sp),
+                    Text(
+                      _pictureError!,
+                      style: AppTypography.textXsRegular.copyWith(
+                        color: context.colors.danger,
+                      ),
+                    ),
+                    if (_photoPermissionDenied)
+                      TextButton(
+                        onPressed: () => AppSettings.openAppSettings(),
+                        child: const Text('Open Settings'),
+                      ),
+                  ],
+                ],
               ),
-            ],
+            ),
           ),
-        ),
+          Padding(
+            padding: EdgeInsets.fromLTRB(20.sp, 18.sp, 20.sp, 20.sp),
+            child: SizedBox(
+              width: double.infinity,
+              child: TextButton(
+                onPressed: _canSend ? _send : null,
+                style: TextButton.styleFrom(
+                  padding: EdgeInsets.symmetric(vertical: 12.sp),
+                  backgroundColor: _canSend
+                      ? kPrimaryColor
+                      : context.colors.surfaceRecessed,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12.br),
+                  ),
+                ),
+                child: Text(
+                  'Send',
+                  style: AppTypography.textSmMedium.copyWith(
+                    // Black on the recessed fill vanished in dark (1.3:1).
+                    color: _canSend
+                        ? kBlackColor
+                        : context.colors.textSecondary,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

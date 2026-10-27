@@ -90,46 +90,52 @@ class _SmoothAlertWrapperState<T> extends State<_SmoothAlertWrapper<T>> {
         return Material(
           color: Colors.transparent,
           child: GestureDetector(
-            onTap:
-                widget.barrierDismissible ? () => Navigator.pop(context) : null,
+            onTap: widget.barrierDismissible
+                ? () => Navigator.pop(context)
+                : null,
             child: Stack(
               children: [
                 // Backdrop with blur
                 Positioned.fill(
-                  child:
-                      widget.useBlur
-                          ? BackdropFilter(
-                            filter: ImageFilter.blur(
-                              sigmaX: blurAmount,
-                              sigmaY: blurAmount,
-                            ),
-                            child: Container(
-                              color: widget.barrierColor.withValues(
-                                alpha: opacity * 0.7,
-                              ),
-                            ),
-                          )
-                          : Container(
+                  child: widget.useBlur
+                      ? BackdropFilter(
+                          filter: ImageFilter.blur(
+                            sigmaX: blurAmount,
+                            sigmaY: blurAmount,
+                          ),
+                          child: Container(
                             color: widget.barrierColor.withValues(
                               alpha: opacity * 0.7,
                             ),
                           ),
+                        )
+                      : Container(
+                          color: widget.barrierColor.withValues(
+                            alpha: opacity * 0.7,
+                          ),
+                        ),
                 ),
-                // Dialog content
-                Center(
-                  child: Padding(
-                    padding: EdgeInsets.symmetric(
-                      horizontal: widget.horizontalPadding.w,
-                      vertical: widget.verticalPadding.h,
-                    ),
-                    child: Opacity(
-                      // Live controls stay visible even if motion is paused.
-                      opacity: 1,
-                      child: Transform.scale(
-                        scale: scale,
-                        child: GestureDetector(
-                          onTap: () {}, // Absorb tap
-                          child: widget.child,
+                // Dialog content. Centered in the space above the keyboard so
+                // a dialog with a text field never slides its actions under it.
+                Padding(
+                  padding: EdgeInsets.only(
+                    bottom: MediaQuery.viewInsetsOf(context).bottom,
+                  ),
+                  child: Center(
+                    child: Padding(
+                      padding: EdgeInsets.symmetric(
+                        horizontal: widget.horizontalPadding.w,
+                        vertical: widget.verticalPadding.h,
+                      ),
+                      child: Opacity(
+                        // Live controls stay visible even if motion is paused.
+                        opacity: 1,
+                        child: Transform.scale(
+                          scale: scale,
+                          child: GestureDetector(
+                            onTap: () {}, // Absorb tap
+                            child: widget.child,
+                          ),
                         ),
                       ),
                     ),
@@ -163,7 +169,10 @@ Future<bool?> showSmoothConfirmDialog({
       decoration: BoxDecoration(
         color: context.colors.surface,
         borderRadius: BorderRadius.circular(16.br),
-        border: Border.all(color: context.colors.textPrimary.withValues(alpha: 0.1), width: 1),
+        border: Border.all(
+          color: context.colors.textPrimary.withValues(alpha: 0.1),
+          width: 1,
+        ),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -262,18 +271,16 @@ class _DialogButtonState extends State<_DialogButton> {
         child: Container(
           padding: EdgeInsets.symmetric(vertical: 14.h),
           decoration: BoxDecoration(
-            color:
-                widget.isOutlined
-                    ? Colors.transparent
-                    : (widget.color ?? kPrimaryColor),
+            color: widget.isOutlined
+                ? Colors.transparent
+                : (widget.color ?? kPrimaryColor),
             borderRadius: BorderRadius.circular(12.br),
-            border:
-                widget.isOutlined
-                    ? Border.all(
-                      color: context.colors.textPrimary.withValues(alpha: 0.3),
-                      width: 1,
-                    )
-                    : null,
+            border: widget.isOutlined
+                ? Border.all(
+                    color: context.colors.textPrimary.withValues(alpha: 0.3),
+                    width: 1,
+                  )
+                : null,
           ),
           child: Center(
             child: Text(

@@ -1,0 +1,23 @@
+# Production feedback relay for the mobile and desktop apps
+# (lib/services/feedback_relay.dart). Bot credentials live only here, as
+# Worker secrets: TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, TELEGRAM_THREAD_ID.
+# Deploy: CLOUDFLARE_ACCOUNT_ID=091ffffd15ccb45cae080adb653b17db wrangler deploy
+name = "chessever-feedback"
+main = "index.js"
+compatibility_date = "2026-10-21"
+workers_dev = true
+preview_urls = false
+no_bundle = true
+
+[observability]
+enabled = true
+
+[[ratelimits]]
+name = "PER_IP"
+namespace_id = "2026102101"
+simple = { limit = 3, period = 60 }
+
+[[ratelimits]]
+name = "TOTAL"
+namespace_id = "2026102102"
+simple = { limit = 30, period = 60 }
