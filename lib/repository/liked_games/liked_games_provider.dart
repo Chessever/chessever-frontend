@@ -295,6 +295,30 @@ class LikedGamesNotifier extends AsyncNotifier<List<SavedAnalysis>> {
     }
   }
 
+  /// Removes several liked games at once (My Likes' select-and-remove).
+  /// Optimistic like [removeAnalysis]: the rows leave the list immediately,
+  /// and a failure reloads the folder so the list shows what the server
+  /// actually kept (a chunked delete can stop part way). Returns `false` on
+  /// failure.
+  Future<bool> removeAnalyses(Iterable<SavedAnalysis> analyses) async {
+    final ids = <String>{
+      for (final a in analyses)
+        if (a.id.isNotEmpty) a.id,
+    };
+    if (ids.isEmpty) return true;
+    final list = List<SavedAnalysis>.from(state.valueOrNull ?? const [])
+      ..removeWhere((a) => ids.contains(a.id));
+    state = AsyncValue.data(list);
+    try {
+      await _repo.deleteSavedAnalyses(ids.toList(growable: false));
+      return true;
+    } catch (e) {
+      debugPrint('[LikedGames] removeAnalyses failed: $e');
+      await _reload();
+      return false;
+    }
+  }
+
   /// Sets the classification [tags] on the liked game identified by [likeId]
   /// (its `sourceGameId`). Additive — only touches the existing `tags` column,
   /// nothing else about the saved analysis changes.

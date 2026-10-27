@@ -17,6 +17,10 @@ import 'package:chessever2/screens/my_likes/widgets/date_section_header.dart'
     show DateSectionHeader, formatLikedDateHeader;
 import 'package:chessever2/screens/my_likes/widgets/my_likes_archive_boundary.dart';
 import 'package:chessever2/screens/my_likes/widgets/my_likes_game_card.dart';
+import 'package:chessever2/screens/my_likes/widgets/my_likes_selectable_card.dart';
+import 'package:chessever2/screens/my_likes/widgets/my_likes_selection_bar.dart';
+import 'package:chessever2/widgets/alert_dialog/alert_modal.dart'
+    show showSmoothConfirmDialog;
 import 'package:chessever2/screens/my_space/models/space_shortcut.dart';
 import 'package:chessever2/repository/library/library_game_event.dart';
 import 'package:chessever2/screens/for_you/discovery/models/discovery_models.dart'
@@ -87,6 +91,17 @@ class _MyLikesGamesPageState extends ConsumerState<MyLikesGamesPage>
   /// [SwipeActionCard]); the fresh data just omits it.
   MyLikesData? _lastData;
   Map<String, int> _lastTagCounts = const <String, int>{};
+
+  /// Choosing likes to remove several at once. While on, a card tap toggles
+  /// it instead of opening the game, and swipes and menus are off.
+  bool _selecting = false;
+
+  /// Chosen saved-analysis ids. Only the ones still selectable count (see
+  /// [_selectableIds]), so narrowing the list never removes hidden likes.
+  final Set<String> _selectedIds = <String>{};
+
+  /// A bulk remove is in flight.
+  bool _removing = false;
 
   @override
   void initState() {
@@ -229,6 +244,149 @@ class _MyLikesGamesPageState extends ConsumerState<MyLikesGamesPage>
     }
   }
 
+  // ------------------------------------------------------------ selection
+
+  void _startSelecting() {
+    HapticFeedbackService.selection();
+    _searchFocusNode.unfocus();
+    setState(() {
+      _selecting = true;
+      _selectedIds.clear();
+    });
+  }
+
+  void _stopSelecting() {
+    if (_removing) return;
+    setState(() {
+      _selecting = false;
+      _selectedIds.clear();
+    });
+  }
+
+  void _toggleSelected(String id) {
+    if (id.isEmpty || _removing) return;
+    HapticFeedbackService.selection();
+    setState(() {
+      if (!_selectedIds.remove(id)) _selectedIds.add(id);
+    });
+  }
+
+  /// The likes on this page, in every date section (collapsed ones too) and
+  /// the locked preview under the archive boundary.
+  Set<String> _pageIds(MyLikesData data) => {
+    for (final section in data.sections)
+      for (final e in section.value)
+        if (e.analysis.id.isNotEmpty) e.analysis.id,
+    for (final e in data.lockedPreview)
+      if (e.analysis.id.isNotEmpty) e.analysis.id,
+  };
+
+  /// What "Select all" chooses: with nothing narrowing the list, every like
+  /// (a free user's archived ones too, so "all" really empties My Likes);
+  /// under a search, filter or tag, only the likes that match on the page.
+  Set<String> _selectableIds(MyLikesData data) {
+    if (!data.isNarrowed) {
+      final all = ref.read(likedGamesProvider).valueOrNull;
+      if (all != null && all.isNotEmpty) {
+        return {
+          for (final a in all)
+            if (a.id.isNotEmpty) a.id,
+        };
+      }
+    }
+    return _pageIds(data);
+  }
+
+  void _toggleSelectAll(MyLikesData data) {
+    HapticFeedbackService.selection();
+    final selectable = _selectableIds(data);
+    final allChosen =
+        selectable.isNotEmpty && selectable.every(_selectedIds.contains);
+    setState(() {
+      _selectedIds.clear();
+      if (!allChosen) _selectedIds.addAll(selectable);
+    });
+  }
+
+  Future<void> _confirmRemoveSelected(MyLikesData data) async {
+    if (_removing) return;
+    final chosen = _selectableIds(data).intersection(_selectedIds);
+    if (chosen.isEmpty) return;
+    HapticFeedbackService.buttonPress();
+
+    // The analyses to remove, from the full list (archived likes are only
+    // there) and the page (in case the list is mid-reload).
+    final byId = <String, SavedAnalysis>{
+      for (final a
+          in ref.read(likedGamesProvider).valueOrNull ??
+              const <SavedAnalysis>[])
+        a.id: a,
+      for (final section in data.sections)
+        for (final e in section.value) e.analysis.id: e.analysis,
+      for (final e in data.lockedPreview) e.analysis.id: e.analysis,
+    };
+    final targets = [
+      for (final id in chosen)
+        if (byId[id] != null) byId[id]!,
+    ];
+    if (targets.isEmpty) return;
+
+    final count = targets.length;
+    final everything = !data.isNarrowed && count >= data.totalLiked;
+    // Archived likes (past a free user's window) in the selection: the
+    // locked preview shows only a few, so name them all in the dialog.
+    final openable = {
+      for (final section in data.sections)
+        for (final e in section.value) e.analysis.id,
+    };
+    final hidden = chosen.difference(openable).length;
+    final noun = count == 1 ? 'like' : 'likes';
+    final games = count == 1 ? 'This game' : 'These $count games';
+    final confirmed = await showSmoothConfirmDialog(
+      context: context,
+      title: everything ? 'Remove all likes?' : 'Remove $count $noun?',
+      message: [
+        '$games will leave My Likes.',
+        if (hidden > 0)
+          'This includes $hidden older ${hidden == 1 ? 'like' : 'likes'} '
+              'kept past your free window.',
+        "This can't be undone.",
+      ].join(' '),
+      confirmText: everything ? 'Remove all' : 'Remove',
+      isDangerous: true,
+    );
+    if (confirmed != true || !mounted) return;
+
+    setState(() => _removing = true);
+    final ok = await ref
+        .read(likedGamesProvider.notifier)
+        .removeAnalyses(targets);
+    if (!mounted) return;
+    ref.invalidate(myLikesViewProvider);
+    ref.invalidate(myLikesTagCountsProvider);
+    setState(() {
+      _removing = false;
+      if (ok) {
+        _selecting = false;
+        _selectedIds.clear();
+      }
+    });
+    if (ok) {
+      HapticFeedbackService.success();
+      showAppSnack(
+        context,
+        count == 1 ? 'Removed 1 like' : 'Removed $count likes',
+        tone: AppSnackTone.success,
+      );
+    } else {
+      showAppSnack(
+        context,
+        "Couldn't remove all of them. Please try again.",
+        tone: AppSnackTone.danger,
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     // The hub's other pages narrow this one by setting the search; the
@@ -243,6 +401,8 @@ class _MyLikesGamesPageState extends ConsumerState<MyLikesGamesPage>
       }
     });
     final viewAsync = ref.watch(myLikesViewProvider);
+    // Select all reaches into the full list (archived likes too).
+    if (_selecting) ref.watch(likedGamesProvider);
     // Keep the last good data across reloads: a swipe-remove invalidates the
     // view, and dropping to the spinner here is what made the whole page (chip
     // row included) blink out and back. Once we have data we keep showing it;
@@ -479,7 +639,12 @@ class _MyLikesGamesPageState extends ConsumerState<MyLikesGamesPage>
                   padding: EdgeInsets.symmetric(horizontal: 16.w),
                   child: _buildSearchBar(),
                 ),
-                if (data.totalLiked <= 5) ...[
+                if (_selecting)
+                  Padding(
+                    padding: EdgeInsets.fromLTRB(16.w, 12.h, 16.w, 0),
+                    child: _buildSelectionBar(data),
+                  ),
+                if (data.totalLiked <= 5 && !_selecting) ...[
                   Padding(
                     padding: EdgeInsets.fromLTRB(16.w, 12.h, 16.w, 0),
                     child: Text(
@@ -524,7 +689,14 @@ class _MyLikesGamesPageState extends ConsumerState<MyLikesGamesPage>
       );
     }
 
-    return content;
+    // Back leaves the selection before it leaves My Likes.
+    return PopScope(
+      canPop: !_selecting,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) _stopSelecting();
+      },
+      child: content,
+    );
   }
 
   Widget _buildSearchBar() {
@@ -535,6 +707,59 @@ class _MyLikesGamesPageState extends ConsumerState<MyLikesGamesPage>
       onChanged: _onSearchChanged,
       onClear: _clearSearch,
       onFilterTap: _showFilterDialog,
+      trailing: _buildSelectButton(),
+    );
+  }
+
+  /// The square beside the filter that starts (or ends) choosing likes to
+  /// remove, in the filter button's own anatomy.
+  Widget _buildSelectButton() {
+    final colors = context.colors;
+    final on = _selecting;
+    return Tooltip(
+      message: on ? 'Done selecting' : 'Select likes',
+      child: Semantics(
+        button: true,
+        toggled: on,
+        label: on ? 'Done selecting' : 'Select likes',
+        excludeSemantics: true,
+        child: GestureDetector(
+          key: const ValueKey('my_likes_select_toggle'),
+          onTap: on ? _stopSelecting : _startSelecting,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 140),
+            decoration: BoxDecoration(
+              color: on
+                  ? colors.accentText.withValues(alpha: 0.12)
+                  : colors.background,
+              borderRadius: BorderRadius.circular(12.br),
+              border: Border.all(
+                color: on
+                    ? colors.accentText.withValues(alpha: 0.6)
+                    : colors.surfaceRecessed,
+              ),
+            ),
+            child: Icon(
+              Icons.checklist_rounded,
+              size: 20.sp,
+              color: on ? colors.accentText : colors.textSecondary,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSelectionBar(MyLikesData data) {
+    final selectable = _selectableIds(data);
+    final chosen = selectable.intersection(_selectedIds).length;
+    return MyLikesSelectionBar(
+      selectedCount: chosen,
+      allSelected: selectable.isNotEmpty && chosen == selectable.length,
+      removing: _removing,
+      onClose: _stopSelecting,
+      onToggleAll: () => _toggleSelectAll(data),
+      onRemove: () => _confirmRemoveSelected(data),
     );
   }
 
@@ -688,8 +913,8 @@ class _MyLikesGamesPageState extends ConsumerState<MyLikesGamesPage>
 
     void addGames(List<MyLikesEntry> entries) {
       for (final entry in entries) {
-        items.add(
-          () => MyLikesGameCard(
+        items.add(() {
+          final card = MyLikesGameCard(
             key: ValueKey('mylikes_${entry.analysis.id}'),
             analysis: entry.analysis,
             game: entry.game,
@@ -697,8 +922,16 @@ class _MyLikesGamesPageState extends ConsumerState<MyLikesGamesPage>
             tagCounts: tagCounts,
             onOpen: () => _openAnalysis(entry.analysis),
             onRemove: () => _removeAnalysis(entry.analysis),
-          ),
-        );
+          );
+          if (!_selecting) return card;
+          return MyLikesSelectableCard(
+            key: ValueKey('mylikes_select_${entry.analysis.id}'),
+            selected: _selectedIds.contains(entry.analysis.id),
+            onToggle: () => _toggleSelected(entry.analysis.id),
+            semanticsLabel: entry.analysis.title,
+            child: card,
+          );
+        });
       }
     }
 
@@ -762,27 +995,40 @@ class _MyLikesGamesPageState extends ConsumerState<MyLikesGamesPage>
       padded: false,
       streamEnabled: false,
       allowStockfishFallback: false,
-      onOpen: (_, index) => _openAnalysis(entries[index].analysis),
+      onOpen: (_, index) => _selecting
+          ? _toggleSelected(entries[index].analysis.id)
+          : _openAnalysis(entries[index].analysis),
       labelFor: (index) => _likeLine(entries[index], tagCounts),
       rowLabelFor: (index) => _likeLine(entries[index], tagCounts),
       lockedFor: (index) => entries[index].isLocked,
-      menuActionsFor: (menuContext, index) {
-        final analysis = entries[index].analysis;
-        return savedGameMenuActions(
-          context: menuContext,
-          ref: ref,
-          analysis: analysis,
-          onOpen: () => _openAnalysis(analysis),
-          onDelete: () => _removeAnalysis(analysis),
-          deleteLabel: 'Remove from likes',
-          deleteIcon: Icons.heart_broken_rounded,
-          locked: entries[index].isLocked,
-          showSpaceAction: false,
-          showShareAction: false,
-        );
-      },
+      menuActionsFor: _selecting
+          ? null
+          : (menuContext, index) {
+              final analysis = entries[index].analysis;
+              return savedGameMenuActions(
+                context: menuContext,
+                ref: ref,
+                analysis: analysis,
+                onOpen: () => _openAnalysis(analysis),
+                onDelete: () => _removeAnalysis(analysis),
+                deleteLabel: 'Remove from likes',
+                deleteIcon: Icons.heart_broken_rounded,
+                locked: entries[index].isLocked,
+                showSpaceAction: false,
+                showShareAction: false,
+              );
+            },
       wrapCard: (index, card) {
         final analysis = entries[index].analysis;
+        if (_selecting) {
+          return MyLikesSelectableCard(
+            key: ValueKey('mylikes_select_${analysis.id}'),
+            selected: _selectedIds.contains(analysis.id),
+            onToggle: () => _toggleSelected(analysis.id),
+            semanticsLabel: analysis.title,
+            child: card,
+          );
+        }
         return SwipeActionCard(
           dismissKey: ValueKey('mylikes_remove_${analysis.id}'),
           icon: Icons.heart_broken_rounded,

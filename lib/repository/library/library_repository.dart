@@ -716,6 +716,26 @@ class LibraryRepository extends BaseRepository {
             .eq('user_id', userId);
       });
 
+  /// Deletes several saved analyses at once (My Likes' bulk remove), in
+  /// chunks so a long selection never builds one enormous `IN (...)` query.
+  /// Scoped to the signed-in user like [deleteSavedAnalysis].
+  Future<void> deleteSavedAnalyses(List<String> analysisIds) =>
+      handleApiCall(() async {
+        if (analysisIds.isEmpty) return;
+        final userId = supabase.auth.currentUser?.id;
+        if (userId == null) throw Exception('User not authenticated');
+
+        const chunkSize = 200;
+        for (var i = 0; i < analysisIds.length; i += chunkSize) {
+          final end = (i + chunkSize).clamp(0, analysisIds.length);
+          await supabase
+              .from('user_saved_analyses')
+              .delete()
+              .eq('user_id', userId)
+              .inFilter('id', analysisIds.sublist(i, end));
+        }
+      });
+
   /// Move analysis to a different folder. `folderId` is required — the DB
   /// rejects NULL on user_saved_analyses.folder_id. Previously this accepted
   /// nullable folderId; callers used `null` to "remove from folder" which

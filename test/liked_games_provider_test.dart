@@ -82,6 +82,16 @@ class _FakeLibraryRepository extends LibraryRepository {
     _saved.removeWhere((item) => item.id == analysisId);
   }
 
+  final List<List<String>> bulkDeletes = <List<String>>[];
+  bool failBulkDelete = false;
+
+  @override
+  Future<void> deleteSavedAnalyses(List<String> analysisIds) async {
+    bulkDeletes.add(List<String>.from(analysisIds));
+    if (failBulkDelete) throw Exception('network');
+    _saved.removeWhere((item) => analysisIds.contains(item.id));
+  }
+
   @override
   Future<SavedAnalysis> updateSavedAnalysisTags({
     required String analysisId,
@@ -114,11 +124,14 @@ class _FakeLibraryRepository extends LibraryRepository {
     lastLikedViewTags = List<String>.from(tags);
 
     var rows = _saved.where((item) => item.folderId == folderId).toList();
-    final selectedTags =
-        tags.map((tag) => tag.trim()).where((tag) => tag.isNotEmpty).toSet();
+    final selectedTags = tags
+        .map((tag) => tag.trim())
+        .where((tag) => tag.isNotEmpty)
+        .toSet();
     if (selectedTags.isNotEmpty) {
-      rows =
-          rows.where((item) => item.tags.any(selectedTags.contains)).toList();
+      rows = rows
+          .where((item) => item.tags.any(selectedTags.contains))
+          .toList();
     }
     return rows;
   }
@@ -248,6 +261,64 @@ void main() {
     expect(progress.hasEverLiked, isTrue);
     expect(progress.completedSinceLike, 0);
     expect(progress.nextPromptAt, LikeLearningPromptTracker.promptInterval);
+  });
+
+  test('removeAnalyses drops the chosen likes in one bulk delete', () async {
+    final a = _savedAnalysis(
+      game: _game(gameId: 'g-a'),
+      id: 'saved-a',
+    );
+    final b = _savedAnalysis(
+      game: _game(gameId: 'g-b'),
+      id: 'saved-b',
+    );
+    final c = _savedAnalysis(
+      game: _game(gameId: 'g-c'),
+      id: 'saved-c',
+    );
+    final repository = _FakeLibraryRepository(initial: [a, b, c]);
+    final container = _container(repository);
+    addTearDown(container.dispose);
+    await container.read(likedGamesProvider.future);
+
+    final ok = await container.read(likedGamesProvider.notifier).removeAnalyses(
+      [a, c],
+    );
+
+    expect(ok, isTrue);
+    expect(repository.bulkDeletes, [
+      ['saved-a', 'saved-c'],
+    ]);
+    expect(repository.deleteCalls, 0);
+    expect(container.read(likedGamesProvider).valueOrNull!.map((x) => x.id), [
+      'saved-b',
+    ]);
+  });
+
+  test('a failed bulk remove restores what the server kept', () async {
+    final a = _savedAnalysis(
+      game: _game(gameId: 'g-a'),
+      id: 'saved-a',
+    );
+    final b = _savedAnalysis(
+      game: _game(gameId: 'g-b'),
+      id: 'saved-b',
+    );
+    final repository = _FakeLibraryRepository(initial: [a, b])
+      ..failBulkDelete = true;
+    final container = _container(repository);
+    addTearDown(container.dispose);
+    await container.read(likedGamesProvider.future);
+
+    final ok = await container.read(likedGamesProvider.notifier).removeAnalyses(
+      [a, b],
+    );
+
+    expect(ok, isFalse);
+    expect(container.read(likedGamesProvider).valueOrNull!.map((x) => x.id), [
+      'saved-a',
+      'saved-b',
+    ]);
   });
 
   test('rapid repeated unlikes delete one liked game', () async {
