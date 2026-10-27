@@ -1,0 +1,12 @@
+{
+  "controls": [
+    {
+      "sid": "accentColor",
+      "label": "Accent (trail / pieces)"
+    },
+    {
+      "sid": "bgColor",
+      "label": "Background color"
+    }
+  ]
+}
