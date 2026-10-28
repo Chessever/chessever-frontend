@@ -9,6 +9,7 @@ import 'package:chessever2/repository/authentication/model/app_user.dart';
 import 'package:chessever2/screens/inbox/inbox_message.dart';
 import 'package:chessever2/screens/inbox/inbox_provider.dart';
 import 'package:chessever2/screens/inbox/inbox_screen.dart';
+import 'package:chessever2/services/attention_policy.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:flutter/material.dart';
@@ -33,6 +34,7 @@ class _Harness {
                   isAnonymous: true,
                 );
         }),
+        attentionClockProvider.overrideWithValue(inboxFixtureNow),
         inboxSourceProvider.overrideWithValue(source),
         inboxCacheProvider.overrideWithValue(FakeInboxCache()),
       ],

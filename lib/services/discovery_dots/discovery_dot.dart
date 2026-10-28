@@ -255,6 +255,52 @@ acknowledgeDiscoveryAnchor(
   );
 }
 
+/// [seen] with every dot in [dots] marked as reached at its revision. What a
+/// new account's quiet week does with whatever is published: none of it
+/// lights later.
+Map<String, int> absorbDiscoveryDots(
+  List<DiscoveryDot> dots,
+  Map<String, int> seen,
+) => {
+  ...seen,
+  for (final dot in dots)
+    if ((seen[dot.id] ?? 0) < dot.rev) dot.id: dot.rev,
+};
+
+/// Key under which this device remembers when it first received [dot] at its
+/// revision. Raising the revision starts a new shelf life.
+String discoveryDotDeliveryKey(DiscoveryDot dot) => '${dot.rev}:${dot.id}';
+
+/// The one campaign allowed to light: of the dots not yet reached, the one
+/// this device received first, unless it has gone unseen for longer than
+/// [shelfLife]. One at a time, so no screen fills up with dots, and an
+/// expired campaign never blocks the next.
+///
+/// [delivered] maps [discoveryDotDeliveryKey] to milliseconds since epoch; a
+/// dot missing from it counts as received [now].
+DiscoveryDot? nextDiscoveryDot(
+  List<DiscoveryDot> dots, {
+  required Map<String, int> seen,
+  required Map<String, int> delivered,
+  required DateTime now,
+  required Duration shelfLife,
+}) {
+  final nowMs = now.millisecondsSinceEpoch;
+  DiscoveryDot? next;
+  var nextAt = 0;
+  for (final dot in dots) {
+    if ((seen[dot.id] ?? 0) >= dot.rev) continue;
+    final at = delivered[discoveryDotDeliveryKey(dot)] ?? nowMs;
+    if (nowMs - at > shelfLife.inMilliseconds) continue;
+    // Strictly earlier, so publication order breaks a tie.
+    if (next == null || at < nextAt) {
+      next = dot;
+      nextAt = at;
+    }
+  }
+  return next;
+}
+
 final _nonIdChars = RegExp('[^a-z0-9]+');
 final _edgeUnderscores = RegExp(r'^_+|_+$');
 

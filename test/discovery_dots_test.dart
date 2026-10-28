@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:chessever2/services/attention_policy.dart';
 import 'package:chessever2/services/discovery_dots/discovery_dot.dart';
 import 'package:chessever2/services/discovery_dots/discovery_dots_provider.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
@@ -56,6 +57,12 @@ class _FakeMatcher implements DiscoveryAudienceMatcher {
     return answer(audiences);
   }
 }
+
+/// An account long past its quiet first week, with a fresh delivery memory.
+List<Override> _settledAccount() => [
+  accountCreatedAtProvider.overrideWithValue(DateTime.utc(2020)),
+  discoveryDotsDeliveryStoreProvider.overrideWithValue(_MemoryStore()),
+];
 
 const _feed = {
   'id': 'feed',
@@ -266,6 +273,7 @@ void main() {
           overrides: [
             discoveryDotsSourceProvider.overrideWithValue(source),
             discoveryDotsSeenStoreProvider.overrideWithValue(store),
+            ..._settledAccount(),
             if (openLink != null)
               editorialLinkOpenerProvider.overrideWithValue(openLink),
           ],
@@ -399,6 +407,7 @@ void main() {
             overrides: [
               discoveryDotsSourceProvider.overrideWithValue(source),
               discoveryDotsSeenStoreProvider.overrideWithValue(_MemoryStore()),
+              ..._settledAccount(),
             ],
             child: MaterialApp(
               home: Builder(
@@ -546,6 +555,7 @@ void main() {
             overrides: [
               discoveryDotsSourceProvider.overrideWithValue(source),
               discoveryDotsSeenStoreProvider.overrideWithValue(_MemoryStore()),
+              ..._settledAccount(),
             ],
             child: MaterialApp(
               home: Builder(
@@ -666,9 +676,10 @@ void main() {
       required String? viewer,
       required Set<String> Function(Map<String, String>) answer,
       List<Map<String, Object?>>? targeted,
+      List<Map<String, Object?>> everyone = const [_feed],
     }) async {
       targeted ??= [premium, android];
-      final source = _FakeSource(_config([_feed], targeted));
+      final source = _FakeSource(_config(everyone, targeted));
       final matcher = _FakeMatcher(answer);
       final container = ProviderContainer(
         overrides: [
@@ -676,6 +687,7 @@ void main() {
           discoveryDotsSeenStoreProvider.overrideWithValue(_MemoryStore()),
           discoveryAudienceMatcherProvider.overrideWithValue(matcher),
           discoveryAudienceViewerProvider.overrideWith((ref) => viewer),
+          ..._settledAccount(),
         ],
       );
       addTearDown(container.dispose);
@@ -690,11 +702,11 @@ void main() {
         final (container, _, matcher) = await load(
           viewer: 'user-1',
           answer: (_) => {'premium-reports'},
+          everyone: const [],
         );
         final lit = container.read(discoveryDotsProvider).lit;
         expect(lit, contains('discovery.tile.reports'));
         expect(lit, isNot(contains('my_space.tile.my_prep')));
-        expect(lit, contains('home.tab.discovery'));
         expect(matcher.asked.last, {
           'premium-reports': premiumAudience,
           'android-prep': androidAudience,
@@ -728,11 +740,12 @@ void main() {
       final (container, source, matcher) = await load(
         viewer: 'user-1',
         answer: (audiences) => audiences.keys.toSet(),
+        everyone: const [],
       );
-      expect(
-        container.read(discoveryDotsProvider).lit,
-        containsAll(['discovery.tile.reports', 'my_space.tile.my_prep']),
-      );
+      // Both match; one campaign lights at a time, in publication order.
+      expect(container.read(discoveryDotsProvider).lit, {
+        'discovery.tile.reports',
+      });
       matcher.answer = (_) => {};
       source.controller.add(
         _config(
@@ -747,6 +760,161 @@ void main() {
       expect(
         container.read(discoveryDotsProvider).lit,
         isNot(contains('discovery.tile.reports')),
+      );
+    });
+  });
+
+  group('attention rules', () {
+    const today = {'id': 'today', 'rev': 1, 'target': 'home.tab.today'};
+    const prep = {'id': 'prep', 'rev': 1, 'target': 'my_space.tile.my_prep'};
+    final now = DateTime.utc(2026, 10, 28, 12);
+    final nowMs = now.millisecondsSinceEpoch;
+    final day = const Duration(days: 1).inMilliseconds;
+
+    /// One app launch: a fresh notifier over the device's [seen] and
+    /// [delivered] memory.
+    Future<(ProviderContainer, StateProvider<DateTime?>)> launch(
+      List<Map<String, Object?>> dots, {
+      required DateTime? createdAt,
+      _MemoryStore? seen,
+      _MemoryStore? delivered,
+    }) async {
+      final account = StateProvider<DateTime?>((ref) => createdAt);
+      final container = ProviderContainer(
+        overrides: [
+          discoveryDotsSourceProvider.overrideWithValue(
+            _FakeSource(_config(dots)),
+          ),
+          discoveryDotsSeenStoreProvider.overrideWithValue(
+            seen ?? _MemoryStore(),
+          ),
+          discoveryDotsDeliveryStoreProvider.overrideWithValue(
+            delivered ?? _MemoryStore(),
+          ),
+          attentionClockProvider.overrideWithValue(() => now),
+          accountCreatedAtProvider.overrideWith((ref) => ref.watch(account)),
+        ],
+      );
+      addTearDown(container.dispose);
+      container.listen(discoveryDotsProvider, (_, _) {});
+      await pumpEventQueue();
+      return (container, account);
+    }
+
+    test(
+      'a new account absorbs its first week; only later dots light',
+      () async {
+        final seen = _MemoryStore();
+        final (first, _) = await launch(
+          [_feed, today],
+          createdAt: now.subtract(const Duration(days: 2)),
+          seen: seen,
+        );
+        expect(first.read(discoveryDotsProvider).lit, isEmpty);
+        expect(seen.seen, {'feed': 1, 'today': 1});
+
+        final (later, _) = await launch(
+          [_feed, today, prep],
+          createdAt: now.subtract(const Duration(days: 8)),
+          seen: seen,
+        );
+        expect(later.read(discoveryDotsProvider).lit, {
+          'my_space.tile.my_prep',
+        });
+      },
+    );
+
+    test('dots wait for an account instead of guessing its age', () async {
+      final seen = _MemoryStore();
+      final (container, account) = await launch(
+        [_feed],
+        createdAt: null,
+        seen: seen,
+      );
+      expect(container.read(discoveryDotsProvider).lit, isEmpty);
+      expect(seen.seen, isEmpty);
+
+      container.read(account.notifier).state = DateTime.utc(2020);
+      await pumpEventQueue();
+      expect(container.read(discoveryDotsProvider).lit, {
+        'home.tab.discovery',
+        'home.nav.home',
+      });
+    });
+
+    test(
+      'one campaign at a time; the next waits for the next launch',
+      () async {
+        final seen = _MemoryStore();
+        final delivered = _MemoryStore();
+        final (first, _) = await launch(
+          [today, prep],
+          createdAt: DateTime.utc(2020),
+          seen: seen,
+          delivered: delivered,
+        );
+        expect(first.read(discoveryDotsProvider).lit, {'home.tab.today'});
+        first
+            .read(discoveryDotsProvider.notifier)
+            .acknowledge('home.tab.today');
+        expect(first.read(discoveryDotsProvider).lit, isEmpty);
+
+        final (next, _) = await launch(
+          [today, prep],
+          createdAt: DateTime.utc(2020),
+          seen: seen,
+          delivered: delivered,
+        );
+        expect(next.read(discoveryDotsProvider).lit, {'my_space.tile.my_prep'});
+      },
+    );
+
+    test(
+      'the first received campaign leads; a month unseen retires it',
+      () async {
+        final delivered = _MemoryStore({
+          '1:today': nowMs - 2 * day,
+          '1:prep': nowMs - 5 * day,
+          '1:unpublished': nowMs - day,
+        });
+        final (container, _) = await launch(
+          [today, prep],
+          createdAt: DateTime.utc(2020),
+          delivered: delivered,
+        );
+        expect(container.read(discoveryDotsProvider).lit, {
+          'my_space.tile.my_prep',
+        });
+        expect(delivered.seen.keys, unorderedEquals(['1:today', '1:prep']));
+
+        delivered.seen = {
+          '1:today': nowMs - 2 * day,
+          '1:prep': nowMs - 31 * day,
+        };
+        final (later, _) = await launch(
+          [today, prep],
+          createdAt: DateTime.utc(2020),
+          delivered: delivered,
+        );
+        expect(later.read(discoveryDotsProvider).lit, {'home.tab.today'});
+      },
+    );
+
+    test('a raised revision is received anew', () {
+      final dots = parseDiscoveryDots(
+        _config([
+          {...today, 'rev': 2},
+        ]),
+      );
+      expect(
+        nextDiscoveryDot(
+          dots,
+          seen: const {'today': 1},
+          delivered: {'1:today': nowMs - 40 * day},
+          now: now,
+          shelfLife: announcementShelfLife,
+        )?.id,
+        'today',
       );
     });
   });

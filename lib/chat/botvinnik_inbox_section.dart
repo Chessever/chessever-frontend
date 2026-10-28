@@ -127,8 +127,10 @@ class _BotvinnikInboxTimelineState extends ConsumerState<BotvinnikInboxTimeline>
     _retained.removeWhere((identity) => !current.contains(identity));
     _bodyKeys.removeWhere((identity, _) => !current.contains(identity));
     _attempted.removeWhere((identity) => !current.contains(identity));
-    for (final message in state.messages) {
-      if (message.isUnread) _retained.add((message.id, message.publishedAt));
+    // Only messages still asking for attention become bubbles; an account's
+    // quiet first week and month-old news never reach the conversation.
+    for (final message in ref.watch(inboxAttentionProvider)) {
+      _retained.add((message.id, message.publishedAt));
     }
     final messages = state.messages
         .where(
