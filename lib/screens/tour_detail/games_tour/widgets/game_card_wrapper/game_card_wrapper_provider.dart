@@ -48,6 +48,13 @@ BoardNavigationListPolicy boardNavigationListPolicyForGamesData(
       : BoardNavigationListPolicy.sourceDefault;
 }
 
+/// Whether [raw] contains every game in [shown]. Empty [raw] never does.
+bool _holdsEveryGame(List<Games> raw, List<GamesTourModel> shown) {
+  if (raw.isEmpty) return false;
+  final ids = {for (final game in raw) game.id};
+  return shown.every((game) => ids.contains(game.gameId));
+}
+
 final gameCardWrapperProvider = AutoDisposeProvider<_GameCardWrapperProvider>((
   ref,
 ) {
@@ -200,10 +207,16 @@ class _GameCardWrapperProvider {
       // exactly like entering through the Games tab. `fetchAndSaveGames` also
       // persists it, so every re-open of this event stays network-free.
       //
+      // A cache written earlier in a live event holds only the rounds that
+      // existed then (Clutch Chess creates its rounds through the day), so it
+      // can lack the round the preview shows. Refetch once in that case too;
+      // keeping the stale cache would drop the expansion and leave the swipe
+      // on the preview's games.
+      //
       // IMPORTANT: this work runs *after* the board route is pushed (see
       // [navigateToChessBoard]); it must not sit on the pre-push critical path.
       var rawGames = await storage.getCachedGames(tourId);
-      if (rawGames.isEmpty) {
+      if (!_holdsEveryGame(rawGames, sameTourGames)) {
         rawGames = await storage.fetchAndSaveGames(tourId);
       }
       if (rawGames.isEmpty) {
@@ -218,7 +231,7 @@ class _GameCardWrapperProvider {
       final omitsImmediateSibling = sameTourGames.any(
         (game) => !fullGameIds.contains(game.gameId),
       );
-      // A non-empty cache can still lag a live preview. Never let that stale
+      // Even the fresh fetch can lag a live preview by a beat. Never let that
       // candidate delete a game the caller already displayed: if the user has
       // swiped to the missing sibling while expansion is running, replacing
       // the list would make the PageView remap fail and jump to another game.
