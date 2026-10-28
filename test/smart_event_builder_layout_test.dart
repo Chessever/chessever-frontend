@@ -1,3 +1,4 @@
+import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
 import 'package:chessever2/screens/favorites/tabs/favorites_players_tab.dart';
 import 'package:chessever2/screens/my_space/models/space_shortcut.dart';
 import 'package:chessever2/screens/my_space/providers/space_shortcuts_provider.dart';
@@ -78,6 +79,8 @@ Future<_Store> _open(
         spaceShortcutsProvider.overrideWith(() => store),
         spaceHiddenAutoKeysProvider.overrideWith(_Hidden.new),
         playerPhotoProvider.overrideWith((ref, fideId) async => null),
+        // Building a Smart Event is subscriber-only.
+        subscriptionProvider.overrideWith((ref) => _Subscribed()),
       ],
       child: MaterialApp(
         theme: dark ? AppTheme.darkTheme : AppTheme.lightTheme,
@@ -285,4 +288,14 @@ void main() {
       },
     );
   }
+}
+
+class _Subscribed extends SubscriptionNotifier {
+  _Subscribed() : super() {
+    state = SubscriptionState(isSubscribed: true, isLoading: false);
+  }
+
+  @override
+  set state(SubscriptionState value) =>
+      super.state = value.copyWith(isSubscribed: true, isLoading: false);
 }
