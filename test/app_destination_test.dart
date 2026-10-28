@@ -1,8 +1,58 @@
+import 'package:chessever2/screens/feed/news/news_content.dart';
+import 'package:chessever2/screens/for_you/discovery/models/discovery_models.dart';
 import 'package:chessever2/services/app_destination.dart';
 import 'package:dartchess/dartchess.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  test('Likes shares round trip for every section, range and view', () {
+    for (final period in MostLikedPeriod.values) {
+      for (final view in MostLikedView.values) {
+        for (final date in [null, DateTime(2026, 9, 23)]) {
+          final uri = mostLikedShareUri(period, date: date, view: view);
+          expect(newsInAppRoute(uri), uri);
+          for (final raw in [
+            uri.toString(),
+            uri
+                .replace(
+                  scheme: 'com.chessever.app',
+                  host: 'app',
+                  path: uri.path.replaceFirst('/app', ''),
+                )
+                .toString(),
+          ]) {
+            final destination = parseAppDestination(raw)!;
+            expect(destination.kind, AppDestinationKind.likes);
+            expect(destination.section, period.name);
+            expect(destination.query['view'], view.name);
+            expect(
+              destination.query['date'],
+              date == null
+                  ? null
+                  : MostLikedQuery(
+                      period,
+                      date,
+                    ).start.toIso8601String().split('T').first,
+            );
+          }
+        }
+      }
+    }
+  });
+
+  test('Likes rejects invalid periods, dates, views and extra parameters', () {
+    for (final raw in [
+      '/app/likes/decade',
+      '/app/likes/week/extra',
+      '/app/likes/week?date=2026-02-30',
+      '/app/likes/week?date=bad',
+      '/app/likes/week?view=about',
+      '/app/likes/week?unknown=value',
+    ]) {
+      expect(parseAppDestination(raw), isNull, reason: raw);
+    }
+  });
+
   final routes = <String, AppDestinationKind>{
     '/app': AppDestinationKind.home,
     '/app/home': AppDestinationKind.home,

@@ -537,6 +537,7 @@ class DiscoverySegments<T> extends StatelessWidget {
     required this.onSelect,
     required this.semanticsPrefix,
     this.leading,
+    this.onLongPress,
     this.enabled = true,
     this.disabledSuffix = 'not live yet',
   });
@@ -547,6 +548,7 @@ class DiscoverySegments<T> extends StatelessWidget {
   final ValueChanged<T> onSelect;
   final String semanticsPrefix;
   final Widget Function(T value)? leading;
+  final void Function(BuildContext context, T value)? onLongPress;
   final bool enabled;
 
   /// Read after the labels while [enabled] is off.
@@ -660,7 +662,12 @@ class DiscoverySegments<T> extends StatelessWidget {
               child: Row(
                 children: [
                   for (var i = 0; i < values.length; i++)
-                    Expanded(child: _target(values[i], i == index)),
+                    Expanded(
+                      child: Builder(
+                        builder: (targetContext) =>
+                            _target(targetContext, values[i], i == index),
+                      ),
+                    ),
                 ],
               ),
             ),
@@ -683,7 +690,7 @@ class DiscoverySegments<T> extends StatelessWidget {
     );
   }
 
-  Widget _target(T value, bool isSelected) {
+  Widget _target(BuildContext context, T value, bool isSelected) {
     void select() {
       if (isSelected) return;
       HapticFeedbackService.selection();
@@ -697,10 +704,16 @@ class DiscoverySegments<T> extends StatelessWidget {
       inMutuallyExclusiveGroup: true,
       label: '$semanticsPrefix, ${label(value)}',
       onTap: select,
+      onLongPress: onLongPress == null
+          ? null
+          : () => onLongPress!(context, value),
       excludeSemantics: true,
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTap: select,
+        onLongPress: onLongPress == null
+            ? null
+            : () => onLongPress!(context, value),
         child: const SizedBox.expand(),
       ),
     );
@@ -985,6 +998,7 @@ class DiscoveryDateStepper extends StatelessWidget {
     required this.onPrevious,
     required this.onNext,
     this.labelSemantics,
+    this.labelBuilder,
     this.edgeInset = 0,
   });
 
@@ -994,6 +1008,7 @@ class DiscoveryDateStepper extends StatelessWidget {
   final VoidCallback? onPrevious;
   final VoidCallback? onNext;
   final String? labelSemantics;
+  final Widget Function(Widget label)? labelBuilder;
   final double edgeInset;
 
   @override
@@ -1006,16 +1021,7 @@ class DiscoveryDateStepper extends StatelessWidget {
           semanticLabel: previousSemantics,
           onTap: onPrevious,
         ),
-        Semantics(
-          container: true,
-          label: labelSemantics ?? label,
-          excludeSemantics: true,
-          child: Text(
-            label,
-            maxLines: 1,
-            style: discoveryType(context, DiscoveryType.label, tabular: true),
-          ),
-        ),
+        Flexible(child: _buildLabel(context)),
         _StepArrow(
           pointsLeft: false,
           semanticLabel: nextSemantics,
@@ -1024,6 +1030,20 @@ class DiscoveryDateStepper extends StatelessWidget {
         ),
       ],
     );
+  }
+
+  Widget _buildLabel(BuildContext context) {
+    final text = Semantics(
+      container: true,
+      label: labelSemantics ?? label,
+      excludeSemantics: true,
+      child: Text(
+        label,
+        maxLines: 1,
+        style: discoveryType(context, DiscoveryType.label, tabular: true),
+      ),
+    );
+    return labelBuilder?.call(text) ?? text;
   }
 }
 

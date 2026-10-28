@@ -1,5 +1,9 @@
 import 'dart:async';
 
+import 'package:chessever2/screens/for_you/discovery/likes_screen.dart';
+import 'package:chessever2/screens/for_you/discovery/models/discovery_models.dart';
+import 'package:chessever2/screens/for_you/discovery/providers/discovery_providers.dart';
+
 import 'package:chessever2/screens/favorites/favorites_tab_screen.dart';
 import 'package:chessever2/screens/favorites/provider/favorites_mode_provider.dart';
 import 'package:chessever2/screens/gamebase/gamebase_explorer_screen.dart';
@@ -68,6 +72,38 @@ void main() {
     openInboxMessage: (id) async {
       inboxIds.add(id);
       return true;
+    },
+  );
+
+  testWidgets(
+    'Likes destination restores period, range and Players in its own scope',
+    (tester) async {
+      await host(tester);
+      ref.read(mostLikedDayProvider.notifier).state = DateTime(2026, 8, 1);
+      expect(
+        await open('/app/likes/month?date=2026-09-23&view=players'),
+        isTrue,
+      );
+      final scope = opened.single as ProviderScope;
+      final container = ProviderContainer(overrides: scope.overrides);
+      addTearDown(container.dispose);
+      expect(container.read(mostLikedPeriodProvider), MostLikedPeriod.month);
+      expect(
+        MostLikedQuery(
+          container.read(mostLikedPeriodProvider),
+          container.read(mostLikedDayProvider)!,
+        ).start,
+        DateTime(2026, 9),
+      );
+      expect((scope.child as LikesScreen).initialView, MostLikedView.players);
+      expect(ref.read(mostLikedDayProvider), DateTime(2026, 8, 1));
+      opened.clear();
+      expect(await open('/app/likes/week'), isTrue);
+      final currentScope = opened.single as ProviderScope;
+      final current = ProviderContainer(overrides: currentScope.overrides);
+      addTearDown(current.dispose);
+      expect(current.read(mostLikedDayProvider), isNull);
+      expect(current.read(mostLikedPeriodProvider), MostLikedPeriod.week);
     },
   );
 

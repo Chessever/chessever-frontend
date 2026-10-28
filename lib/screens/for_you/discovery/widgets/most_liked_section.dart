@@ -128,7 +128,13 @@ void _walkTo(WidgetRef ref, MostLikedQuery target) {
 /// Both read [mostLikedActiveQuery], so they always rank the same period.
 /// Nothing while ranking is not live: no periods, no date to walk.
 class MostLikedPeriodBar extends ConsumerWidget {
-  const MostLikedPeriodBar({super.key, this.now});
+  const MostLikedPeriodBar({
+    super.key,
+    this.now,
+    this.view = MostLikedView.games,
+  });
+
+  final MostLikedView view;
 
   /// Pins "now" in tests.
   final DateTime? now;
@@ -165,6 +171,8 @@ class MostLikedPeriodBar extends ConsumerWidget {
             selected: query.period,
             label: (p) => p.label,
             semanticsPrefix: 'Most liked',
+            onLongPress: (context, period) =>
+                showMostLikedShareMenu(context, period: period, view: view),
             onSelect: (p) => _selectPeriod(context, ref, p),
           ),
         ),
@@ -172,6 +180,7 @@ class MostLikedPeriodBar extends ConsumerWidget {
         Center(
           child: MostLikedDateControl(
             query: query,
+            view: view,
             now: now,
             onPrevious: previous == null ? null : () => _walkTo(ref, previous),
             onNext: next == null ? null : () => _walkTo(ref, next),

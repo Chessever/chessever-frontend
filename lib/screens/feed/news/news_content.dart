@@ -1,5 +1,7 @@
 import 'dart:convert';
 
+import 'package:chessever2/services/app_destination.dart';
+
 import 'package:chessever2/screens/feed/news/news_models.dart';
 import 'package:chessever2/widgets/federation_flag.dart';
 
@@ -1214,6 +1216,8 @@ String newsSourceContextLabel(String href) {
 /// picture.
 Uri? newsInAppRoute(Uri uri) {
   if (!isChesseverUri(uri)) return null;
+  final destination = parseAppDestination(uri.toString());
+  if (destination?.kind == AppDestinationKind.likes) return destination!.uri;
   var path = uri.path;
   var query = uri.query;
 

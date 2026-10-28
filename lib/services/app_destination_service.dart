@@ -1,5 +1,8 @@
 import 'dart:async';
 
+import 'package:chessever2/screens/for_you/discovery/providers/discovery_providers.dart';
+import 'package:chessever2/screens/for_you/discovery/models/discovery_models.dart';
+
 import 'package:chessever2/config/feature_flags.dart';
 import 'package:chessever2/screens/calendar/calendar_screen.dart';
 import 'package:chessever2/screens/collections/collections_data.dart';
@@ -136,7 +139,25 @@ Future<bool> openAppDestination(
       case AppDestinationKind.feed:
         push(const FeedScreen());
       case AppDestinationKind.likes:
-        push(const LikesScreen());
+        push(
+          ProviderScope(
+            overrides: [
+              if (destination.section != null) ...[
+                mostLikedPeriodProvider.overrideWith(
+                  (ref) => MostLikedPeriod.values.byName(destination.section!),
+                ),
+                mostLikedDayProvider.overrideWith(
+                  (ref) => DateTime.tryParse(destination.query['date'] ?? ''),
+                ),
+              ],
+            ],
+            child: LikesScreen(
+              initialView: destination.query['view'] == 'players'
+                  ? MostLikedView.players
+                  : MostLikedView.games,
+            ),
+          ),
+        );
       case AppDestinationKind.miniatures:
         push(const MiniaturesScreen());
       case AppDestinationKind.reports:

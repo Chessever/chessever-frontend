@@ -91,7 +91,7 @@ class MostLikedPage extends ConsumerWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         SizedBox(height: 8.sp),
-        MostLikedPeriodBar(now: now),
+        MostLikedPeriodBar(now: now, view: view),
         Expanded(
           child: RefreshIndicator(
             color: context.colors.textPrimary,

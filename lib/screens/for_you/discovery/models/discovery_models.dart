@@ -180,6 +180,20 @@ class MostLikedQuery {
   DateTime day,
 ) => MostLikedQuery(period, day).window;
 
+/// Section links follow the current period; date links pin a calendar window.
+Uri mostLikedShareUri(
+  MostLikedPeriod period, {
+  DateTime? date,
+  MostLikedView view = MostLikedView.games,
+}) => Uri.https('chessever.com', '/app/likes/${period.name}', {
+  if (date != null)
+    'date': mostLikedPeriodStart(
+      period,
+      date,
+    ).toIso8601String().split('T').first,
+  'view': view.name,
+});
+
 /// One ranked row as the backend returns it: a game id and its like count.
 @immutable
 class MostLikedCount {

@@ -1,3 +1,9 @@
+import 'package:chessever2/providers/auth_state_provider.dart';
+import 'package:chessever2/repository/authentication/model/app_user.dart';
+import 'package:chessever2/services/app_destination_service.dart';
+import 'package:chessever2/screens/for_you/discovery/likes_screen.dart';
+import 'package:chessever2/screens/for_you/discovery/models/discovery_models.dart';
+import 'package:chessever2/screens/for_you/discovery/providers/discovery_providers.dart';
 import 'package:chessever2/repository/authentication/auth_repository.dart';
 import 'package:chessever2/repository/authentication/model/auth_state.dart';
 import 'package:chessever2/repository/supabase/group_broadcast/group_broadcast.dart';
@@ -68,6 +74,57 @@ void main() {
       ),
     );
     return captured;
+  }
+
+  for (final coldStart in [true, false]) {
+    for (final key in ['url', 'route']) {
+      testWidgets(
+        'Likes notification restores section and range via $key (cold=$coldStart)',
+        (tester) async {
+          DeepLinkService.instance.dispose();
+          final opened = <Widget>[];
+          final ref = await pumpHost(
+            tester,
+            overrides: [
+              authStateProvider.overrideWith(_Authenticated.new),
+              currentUserProvider.overrideWithValue(
+                AppUser(id: 'likes-user', createdAt: DateTime(2026)),
+              ),
+              appDestinationPageNavigationProvider.overrideWithValue(
+                (_, page, __) => opened.add(page),
+              ),
+            ],
+          );
+          if (!coldStart) {
+            DeepLinkService.instance.attachNotificationRouter(
+              navigatorKey,
+              ref,
+            );
+          }
+          DeepLinkService.instance.ingestNotificationData({
+            key:
+                'https://chessever.com/app/likes/week?date=2026-09-21&view=players',
+          });
+          if (coldStart) {
+            DeepLinkService.instance.attachNotificationRouter(
+              navigatorKey,
+              ref,
+            );
+          }
+          DeepLinkService.notifyAppReady();
+          await tester.pumpAndSettle();
+          final scope = opened.single as ProviderScope;
+          final container = ProviderContainer(overrides: scope.overrides);
+          addTearDown(container.dispose);
+          expect(container.read(mostLikedPeriodProvider), MostLikedPeriod.week);
+          expect(container.read(mostLikedDayProvider), DateTime(2026, 9, 21));
+          expect(
+            (scope.child as LikesScreen).initialView,
+            MostLikedView.players,
+          );
+        },
+      );
+    }
   }
 
   for (final coldStart in [true, false]) {

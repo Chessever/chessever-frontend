@@ -1,3 +1,4 @@
+import 'package:flutter/services.dart';
 import 'package:chessever2/screens/library/miniatures/miniature_game_launcher.dart';
 import 'package:chessever2/widgets/segmented_switcher.dart';
 import 'package:chessever2/screens/for_you/discovery/widgets/discovery_game_cards.dart';
@@ -296,6 +297,58 @@ void main() {
       url: 'https://placeholder.supabase.co',
       publishableKey: 'placeholder-publishable-key',
     );
+  });
+
+  testWidgets('every Likes section and its date offer Share on long press', (
+    tester,
+  ) async {
+    final container = await _pump(
+      tester,
+      subscribed: true,
+      home: const LikesScreen(),
+      size: const Size(390, 844),
+    );
+    final shared = <String>[];
+    const channel = MethodChannel('dev.fluttercommunity.plus/share');
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(channel, (call) async {
+          shared.add((call.arguments as Map)['text'] as String);
+          return 'success';
+        });
+    addTearDown(
+      () => TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, null),
+    );
+    final segmentsFinder = find.byType(DiscoverySegments<MostLikedPeriod>);
+    for (final period in MostLikedPeriod.values) {
+      final rect = tester.getRect(segmentsFinder);
+      await tester.longPressAt(
+        Offset(
+          rect.left + rect.width * (period.index + 0.5) / 4,
+          rect.center.dy,
+        ),
+      );
+      await _settle(tester);
+      expect(find.text('Share'), findsOneWidget);
+      // Opening a share menu never changes the selected ranking.
+      expect(container.read(mostLikedPeriodProvider), MostLikedPeriod.week);
+      await tester.tap(find.text('Share'));
+      await _settle(tester);
+      expect(shared.last, mostLikedShareUri(period).toString());
+    }
+    final date = tester.widget<MostLikedDateControl>(
+      find.byType(MostLikedDateControl),
+    );
+    await tester.longPress(find.text(date.query.label(date.now)));
+    await _settle(tester);
+    expect(find.text('Share'), findsOneWidget);
+    await tester.tap(find.text('Share'));
+    await _settle(tester);
+    expect(
+      shared.last,
+      mostLikedShareUri(date.query.period, date: date.query.start).toString(),
+    );
+    await _teardown(tester, container);
   });
 
   for (final tab in ['Games', 'Players']) {

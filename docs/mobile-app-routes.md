@@ -30,6 +30,7 @@ segments; a FIDE ID is a positive integer of at most 12 digits.
 | `/app/inbox/<message-id>` | Exact visible inbox publication | None |
 | `/app/feed` | Feed | None |
 | `/app/likes` | Public most-liked games | None |
+| `/app/likes/<period>` | Likes on `today`, `week`, `month`, or `year` | `date=YYYY-MM-DD`, `view=games` or `players` |
 | `/app/my-likes` | The reader's liked games | None |
 | `/app/miniatures` | Miniatures | None |
 | `/app/reports` | Game Reports, behind its existing Premium gate | None |
@@ -122,3 +123,8 @@ Inbox push with `/app/settings/notifications`, then a standalone push targeting
 a player Games tab or event scorecard. Confirm the exact target and Back to Home.
 Repeat a Premium destination as a free reader and cancel its prompt; there must
 be no unexpected fallback navigation. Live-app testing is performed by the user.
+
+Likes section links follow the current calendar period when `date` is absent.
+With `date`, the ranking opens the day, Monday-based week, month or year
+containing that date. Long-press a period or the date label, then choose Share.
+These URLs also work as notification `data.route` or `data.url` values.

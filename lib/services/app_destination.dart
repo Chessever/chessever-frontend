@@ -168,6 +168,15 @@ AppDestination? _parseAppDestination(String raw) {
     if (kind != null) return target(kind);
   }
   switch (root) {
+    case 'likes':
+      if (path.length == 2 &&
+          const {'today', 'week', 'month', 'year'}.contains(path[1]) &&
+          only({'date', 'view'}) &&
+          (!query.containsKey('date') || _validDate(query['date'])) &&
+          (!query.containsKey('view') ||
+              const {'games', 'players'}.contains(query['view']))) {
+        return target(AppDestinationKind.likes, section: path[1]);
+      }
     case 'home':
       if (path.length == 2 &&
           query.isEmpty &&
