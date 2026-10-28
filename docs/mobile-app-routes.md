@@ -128,3 +128,28 @@ Likes section links follow the current calendar period when `date` is absent.
 With `date`, the ranking opens the day, Monday-based week, month or year
 containing that date. Long-press a period or the date label, then choose Share.
 These URLs also work as notification `data.route` or `data.url` values.
+
+## Likes ranking pagination
+
+Likes reads 12 games at a time and loads another page when its footer enters the
+scroll cache. Boards use lazy slivers in board, grid and compact-row views.
+Games and Players share the loaded pages for the selected calendar window;
+Players aggregates those loaded games. Changing the period/date or refreshing
+starts a new ranking. Failed pages retain earlier games and offer Retry.
+
+The additive migration `20261028150850_likes_ranking_pagination.sql` installs
+`most_liked_ranking_page` in production project `oelbsuggrzyqwzmvidju`. It keeps
+the older `most_liked_ranking_preview` API intact. Until the new RPC is deployed,
+the app falls back to that preview and its existing cap.
+
+Pages use `(like_count DESC, source_game_id ASC)` keyset cursors and fetch one
+extra aggregate row to detect the next page. Only games with at least two distinct
+likes qualify. Cursors advance over unresolved games, and appended IDs are
+deduplicated if the live ranking changes. Ranks reflect the positions read;
+pull-to-refresh gets a fresh ordering. Only authenticated callers may read the
+aggregate IDs/counts; individual game access retains its existing Premium guard.
+
+`supabase/tests/likes_ranking_pagination.sql` verifies the actual migration in an
+empty disposable PostgreSQL database, including more than 50 results, ties,
+window boundaries, distinct-user likes, page caps, cursors and authentication.
+It is a local fixture, never a production SQL script.

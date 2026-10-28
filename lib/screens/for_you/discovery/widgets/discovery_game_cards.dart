@@ -391,9 +391,13 @@ class DiscoveryGameList extends ConsumerWidget {
     this.menuActionsFor,
     this.wrapCard,
     this.viewMode,
+    this.sliver = false,
   });
 
   final List<GamesTourModel> games;
+
+  /// Lazily builds only visible rows in a parent CustomScrollView.
+  final bool sliver;
 
   /// A host can keep its own view choice, as a book that opens on list rows.
   /// Otherwise use the viewer's persisted tournament/Discovery setting.
@@ -495,6 +499,40 @@ class DiscoveryGameList extends ConsumerWidget {
       menuActionsFor: menuActionsFor,
       wrapCard: wrapCard,
     );
+
+    if (sliver) {
+      final grid = viewMode == GamesListViewMode.chessBoardGrid;
+      final rowCount = grid ? (shown + 1) ~/ 2 : shown;
+      return SliverPadding(
+        padding: EdgeInsets.symmetric(horizontal: padded ? discoveryGutter : 0),
+        sliver: SliverList(
+          delegate: SliverChildBuilderDelegate((context, row) {
+            final index = start + (grid ? row * 2 : row);
+            final card = grid
+                ? Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(child: kit.gridCard(index)),
+                      SizedBox(width: _cardGap),
+                      Expanded(
+                        child: index + 1 < end
+                            ? kit.gridCard(index + 1)
+                            : const SizedBox.shrink(),
+                      ),
+                    ],
+                  )
+                : kit.listCard(
+                    index,
+                    board: viewMode == GamesListViewMode.chessBoard,
+                  );
+            return Padding(
+              padding: EdgeInsets.only(top: row == 0 ? 0 : _cardGap),
+              child: card,
+            );
+          }, childCount: rowCount),
+        ),
+      );
+    }
 
     final out = <Widget>[];
     if (viewMode == GamesListViewMode.chessBoardGrid) {

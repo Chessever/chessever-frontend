@@ -96,6 +96,75 @@ final mostLikedProvider = FutureProvider.autoDispose
       }
     });
 
+/// Extra ranking pages are shared by Games and Players for this calendar window.
+final mostLikedPagesProvider = StateNotifierProvider.autoDispose
+    .family<MostLikedPages, MostLikedPagingState, MostLikedQuery>((ref, query) {
+      final result = ref.watch(mostLikedProvider(query));
+      final initial = result.isLoading || result.hasError
+          ? null
+          : result.valueOrNull;
+      return MostLikedPages(
+        initial?.nextCursor,
+        (cursor) => ref
+            .read(discoveryRepositoryProvider)
+            .fetchMostLiked(query, after: cursor),
+      );
+    });
+
+class MostLikedPagingState {
+  const MostLikedPagingState({
+    this.entries = const [],
+    this.cursor,
+    this.loading = false,
+    this.failed = false,
+  });
+  final List<MostLikedEntry> entries;
+  final MostLikedCursor? cursor;
+  final bool loading;
+  final bool failed;
+}
+
+class MostLikedPages extends StateNotifier<MostLikedPagingState> {
+  MostLikedPages(MostLikedCursor? cursor, this.fetch)
+    : super(MostLikedPagingState(cursor: cursor));
+  final Future<MostLikedResult> Function(MostLikedCursor cursor) fetch;
+
+  Future<void> loadMore() async {
+    final cursor = state.cursor;
+    if (cursor == null || state.loading) return;
+    final previous = state.entries;
+    state = MostLikedPagingState(
+      entries: previous,
+      cursor: cursor,
+      loading: true,
+    );
+    try {
+      final page = await fetch(cursor);
+      if (!mounted) return;
+      if (page.status != MostLikedStatus.ranked) {
+        throw StateError('Ranking unavailable');
+      }
+      final seen = {for (final entry in previous) entry.game.gameId};
+      state = MostLikedPagingState(
+        entries: [
+          ...previous,
+          for (final entry in page.entries)
+            if (seen.add(entry.game.gameId)) entry,
+        ],
+        cursor: page.nextCursor,
+      );
+    } catch (_) {
+      if (mounted) {
+        state = MostLikedPagingState(
+          entries: previous,
+          cursor: cursor,
+          failed: true,
+        );
+      }
+    }
+  }
+}
+
 // ------------------------------------------------------------- Who's hot
 
 /// Rating floor for the Discovery rail: familiar, strong players only.
