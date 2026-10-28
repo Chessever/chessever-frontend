@@ -6097,7 +6097,6 @@ class _GameSelectionDropdown extends StatelessWidget {
     Widget chip(bool isOpen) {
       return _GameChipButton(
         label: displayText,
-        gameStatus: currentGame.gameStatus,
         isOpen: isOpen,
         isLoading: isLoading,
         showChevron: games.length > 1,
@@ -6123,7 +6122,6 @@ class _GameSelectionDropdown extends StatelessWidget {
 /// Stadium-shaped chip button for game selection trigger
 class _GameChipButton extends StatelessWidget {
   final String label;
-  final GameStatus gameStatus;
   final bool isOpen;
   final bool isLoading;
   final bool showChevron;
@@ -6131,7 +6129,6 @@ class _GameChipButton extends StatelessWidget {
 
   const _GameChipButton({
     required this.label,
-    required this.gameStatus,
     required this.isOpen,
     this.onTap,
     this.isLoading = false,
@@ -6163,9 +6160,17 @@ class _GameChipButton extends StatelessWidget {
           mainAxisSize: MainAxisSize.max,
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            // Status indicator
-            _GameStatusIndicator(status: gameStatus, isLoading: isLoading),
-            SizedBox(width: 6.sp),
+            if (isLoading) ...[
+              SizedBox(
+                width: 10.sp,
+                height: 10.sp,
+                child: CircularProgressIndicator(
+                  strokeWidth: 1.5,
+                  color: context.colors.accentText,
+                ),
+              ),
+              SizedBox(width: 6.sp),
+            ],
             // Game label - centered, flexible to allow truncation
             Flexible(
               child: Text(
@@ -6199,100 +6204,6 @@ class _GameChipButton extends StatelessWidget {
           ],
         ),
       ),
-    );
-  }
-}
-
-/// Game status indicator with live pulsing animation
-class _GameStatusIndicator extends StatelessWidget {
-  final GameStatus status;
-  final bool isLoading;
-
-  const _GameStatusIndicator({required this.status, this.isLoading = false});
-
-  @override
-  Widget build(BuildContext context) {
-    if (isLoading) {
-      return SizedBox(
-        width: 10.sp,
-        height: 10.sp,
-        child: CircularProgressIndicator(
-          strokeWidth: 1.5,
-          color: context.colors.accentText,
-        ),
-      );
-    }
-
-    final color = _getStatusColor(context);
-    final isLive = status == GameStatus.ongoing;
-
-    return Container(
-      width: 8.sp,
-      height: 8.sp,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        color: color,
-        // Flat design - no glow/shadow
-      ),
-      child: isLive ? _LivePulsingDot(color: color) : null,
-    );
-  }
-
-  Color _getStatusColor(BuildContext context) {
-    switch (status) {
-      case GameStatus.ongoing:
-        return context.colors.accentText;
-      case GameStatus.whiteWins:
-      case GameStatus.blackWins:
-      case GameStatus.draw:
-        return context.colors.textPrimaryMuted;
-      case GameStatus.unknown:
-        return context.colors.textPrimaryMuted;
-    }
-  }
-}
-
-/// Pulsing animation for live/ongoing games
-class _LivePulsingDot extends StatefulWidget {
-  final Color color;
-
-  const _LivePulsingDot({required this.color});
-
-  @override
-  State<_LivePulsingDot> createState() => _LivePulsingDotState();
-}
-
-class _LivePulsingDotState extends State<_LivePulsingDot>
-    with SingleTickerProviderStateMixin {
-  late AnimationController _controller;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 1200),
-    )..repeat();
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: _controller,
-      builder: (context, child) {
-        return Container(
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            color: widget.color.withValues(alpha: 1 - _controller.value * 0.5),
-          ),
-        );
-      },
     );
   }
 }
