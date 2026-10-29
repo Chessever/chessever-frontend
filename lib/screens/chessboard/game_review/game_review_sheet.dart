@@ -5,12 +5,14 @@ import 'package:chessever2/screens/chessboard/game_review/classification_style.d
 import 'package:chessever2/screens/chessboard/game_review/evaluation_graph_markers.dart';
 import 'package:chessever2/screens/chessboard/game_review/game_analysis_report.dart';
 import 'package:chessever2/screens/chessboard/game_review/game_review_provider.dart';
+import 'package:chessever2/screens/chessboard/widgets/notation_footer_actions.dart';
 import 'package:chessever2/screens/player_profile/player_profile_screen.dart';
 import 'package:chessever2/screens/player_profile/utils/player_menu_actions.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/services/fide_photo_service.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
+import 'package:chessever2/widgets/app_snack.dart';
 import 'package:chessever2/widgets/card_context_menu.dart';
 import 'package:chessever2/widgets/player_initials_avatar.dart';
 import 'package:flutter/material.dart';
@@ -315,6 +317,11 @@ class _GameReviewSheetState extends State<GameReviewSheet> {
   }
 }
 
+/// The compact Report entry under the notation, beside [LikeGameButton].
+///
+/// The label stays "Report" in every state so the pair keeps an even width;
+/// the state reads from the icon, the border tone and, mid-run, the progress
+/// fill plus a percentage.
 class GameAnalysisButton extends StatelessWidget {
   const GameAnalysisButton({
     super.key,
@@ -335,124 +342,64 @@ class GameAnalysisButton extends StatelessWidget {
         reportState.status == GameReportStatus.cancelled;
     final percentage = (reportState.progress.clamp(0.0, 1.0) * 100).round();
     final enabled = state.isEligible || running || completed || retry;
-    final label =
-        !enabled
-            ? (state.unavailableMessage ?? 'Game Analysis unavailable')
-            : running
-            ? 'Game Analysis · $percentage%'
-            : retry
-            ? 'Retry Game Analysis'
-            : completed
-            ? 'Show report'
-            : 'Generate Report';
+    final unavailableMessage =
+        state.unavailableMessage ?? 'Game Analysis unavailable';
+    final label = running ? 'Report $percentage%' : 'Report';
 
-    return Padding(
-      padding: const EdgeInsets.only(top: 8, bottom: 10),
-      child: Align(
-        alignment: Alignment.center,
-        child: FractionallySizedBox(
-          widthFactor: 0.75,
-          child: Semantics(
-            button: true,
-            enabled: enabled,
-            value: running ? '$percentage percent' : null,
-            child: Material(
-              color: Colors.transparent,
-              child: InkWell(
-                onTap: enabled ? onPressed : null,
-                borderRadius: BorderRadius.circular(12),
-                child: Ink(
-                  height: 46,
-                  decoration: BoxDecoration(
-                    color:
-                        enabled
-                            ? context.colors.surfaceRecessed
-                            : context.colors.surfaceRecessed.withValues(
-                              alpha: 0.5,
-                            ),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(
-                      color:
-                          completed
-                              ? (context.isLightTheme
-                                  ? context.colors.successStrong
-                                  : const Color(0xFF28833A))
-                              : running
-                              ? (context.isLightTheme
-                                  ? context.colors.accentText
-                                  : kPrimaryColor.withValues(alpha: 0.7))
-                              : context.colors.divider,
-                    ),
-                  ),
-                  child: Stack(
-                    children: [
-                      if (running)
-                        Positioned.fill(
-                          child: ClipRRect(
-                            borderRadius: BorderRadius.circular(11),
-                            child: Align(
-                              alignment: Alignment.centerLeft,
-                              child: AnimatedFractionallySizedBox(
-                                duration: const Duration(milliseconds: 220),
-                                curve: Curves.easeOut,
-                                widthFactor: reportState.progress.clamp(
-                                  0.0,
-                                  1.0,
-                                ),
-                                heightFactor: 1,
-                                child: ColoredBox(
-                                  color: kPrimaryColor.withValues(alpha: 0.16),
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                      Center(
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(
-                              completed
-                                  ? Icons.check_circle_outline_rounded
-                                  : retry
-                                  ? Icons.refresh_rounded
-                                  : Icons.analytics_outlined,
-                              size: 19,
-                              color:
-                                  enabled
-                                      ? completed
-                                          ? context.colors.success
-                                          : context.colors.accentText
-                                      : (context.isLightTheme
-                                          ? context.colors.iconSecondary
-                                          : kLightGreyColor),
-                            ),
-                            const SizedBox(width: 9),
-                            Flexible(
-                              child: Text(
-                                label,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                  color:
-                                      enabled
-                                          ? context.colors.textPrimary
-                                          : context.colors.textTertiary,
-                                  fontSize: enabled ? 14 : 12,
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
+    return NotationFooterButton(
+      // Unavailable is dimmed but still answers a tap, with the reason the
+      // full-width button used to spell out and this compact one cannot.
+      onTap: enabled
+          ? onPressed
+          : () => showAppSnack(context, unavailableMessage),
+      dimmed: !enabled,
+      label: label,
+      semanticsEnabled: enabled,
+      semanticsLabel: !enabled
+          ? 'Report. $unavailableMessage'
+          : running
+          ? 'Report'
+          : retry
+          ? 'Retry report'
+          : completed
+          ? 'Show report'
+          : 'Generate report',
+      semanticsValue: running ? '$percentage percent' : null,
+      borderColor: completed
+          ? (context.isLightTheme
+                ? context.colors.successStrong
+                : const Color(0xFF28833A))
+          : running
+          ? (context.isLightTheme
+                ? context.colors.accentText
+                : kPrimaryColor.withValues(alpha: 0.7))
+          : null,
+      fill: running
+          ? Align(
+              alignment: Alignment.centerLeft,
+              child: AnimatedFractionallySizedBox(
+                duration: const Duration(milliseconds: 220),
+                curve: Curves.easeOut,
+                widthFactor: reportState.progress.clamp(0.0, 1.0),
+                heightFactor: 1,
+                child: ColoredBox(color: kPrimaryColor.withValues(alpha: 0.16)),
               ),
-            ),
-          ),
-        ),
+            )
+          : null,
+      icon: Icon(
+        completed
+            ? Icons.check_circle_outline_rounded
+            : retry
+            ? Icons.refresh_rounded
+            : Icons.analytics_outlined,
+        size: 19,
+        color: enabled
+            ? completed
+                  ? context.colors.success
+                  : context.colors.accentText
+            : (context.isLightTheme
+                  ? context.colors.iconSecondary
+                  : kLightGreyColor),
       ),
     );
   }

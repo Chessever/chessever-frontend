@@ -14,6 +14,7 @@ import 'package:chessever2/screens/chessboard/notation/notation_tree.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
 import 'package:chessever2/screens/chessboard/provider/stockfish_singleton.dart';
 import 'package:chessever2/screens/chessboard/view_model/chess_board_state_new.dart';
+import 'package:chessever2/screens/chessboard/widgets/notation_footer_actions.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/widgets/player_initials_avatar.dart';
 import 'package:dartchess/dartchess.dart';
@@ -1057,20 +1058,20 @@ void main() {
       ),
     );
 
-    expect(find.text('Generate Report'), findsOneWidget);
-    expect(find.text('Game Analysis · 42%'), findsOneWidget);
-    expect(find.text('Show report'), findsOneWidget);
-    expect(find.text('Retry Game Analysis'), findsOneWidget);
-    expect(
-      find.text('Game analysis starts when the game ends'),
-      findsOneWidget,
-    );
-    // Idle eligible must not still use the old entry copy.
-    expect(find.text('Game Analysis'), findsNothing);
-    final buttonWidthBoxes = tester
-        .widgetList<FractionallySizedBox>(find.byType(FractionallySizedBox))
-        .where((box) => box.widthFactor == 0.75);
-    expect(buttonWidthBoxes, hasLength(5));
+    // Compact: every state says "Report"; only a run adds its percentage.
+    expect(find.text('Report'), findsNWidgets(4));
+    expect(find.text('Report 42%'), findsOneWidget);
+    expect(find.byIcon(Icons.analytics_outlined), findsNWidgets(3));
+    expect(find.byIcon(Icons.check_circle_outline_rounded), findsOneWidget);
+    expect(find.byIcon(Icons.refresh_rounded), findsOneWidget);
+    // The long reason no longer squeezes into the button; a tap says it.
+    expect(find.text('Game analysis starts when the game ends'), findsNothing);
+    for (final button in tester.widgetList(find.byType(GameAnalysisButton))) {
+      expect(
+        tester.getSize(find.byWidget(button)).width,
+        kNotationFooterButtonWidth,
+      );
+    }
   });
 
   testWidgets('saved report shows its metrics and keeps the starting eval blank', (

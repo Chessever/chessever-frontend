@@ -142,6 +142,7 @@ import 'package:chessever2/screens/chessboard/widgets/like_flight.dart';
 import 'package:chessever2/screens/chessboard/widgets/like_tag_chip.dart';
 import 'package:chessever2/screens/chessboard/widgets/like_tag_offer.dart';
 import 'package:chessever2/screens/chessboard/widgets/like_nudge.dart';
+import 'package:chessever2/screens/chessboard/widgets/notation_footer_actions.dart';
 import 'package:chessever2/screens/chessboard/utils/like_learning_prompt_tracker.dart';
 import 'package:chessever2/providers/auth_state_provider.dart';
 import 'package:chessever2/screens/gamebase/utils/explorer_move_line.dart';
@@ -9618,6 +9619,8 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
       _likeNudgeOfferController = ref.read(
         likeNudgeOfferProvider(widget.index).notifier,
       );
+      _likeFlightAnchor.unregisterPageLike(oldWidget.index, _likeFromOffBoard);
+      _likeFlightAnchor.registerPageLike(widget.index, _likeFromOffBoard);
     }
 
     if (widget.game.gameId != oldWidget.game.gameId) {
@@ -9754,6 +9757,7 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
   void initState() {
     super.initState();
     _likeFlightAnchor = ref.read(likeFlightAnchorProvider);
+    _likeFlightAnchor.registerPageLike(widget.index, _likeFromOffBoard);
     _likeNudgeOfferController = ref.read(
       likeNudgeOfferProvider(widget.index).notifier,
     );
@@ -9856,6 +9860,7 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
     _cancelLikeInteraction(resetAnchor: true);
     _retireLikeNudge(syncNow: true);
     _likeNudgeOfferController = null;
+    _likeFlightAnchor.unregisterPageLike(widget.index, _likeFromOffBoard);
     _detachBoardControllerPromotionListener(_boardController);
     _boardController.dispose();
     _flipCommitCtrl.dispose();
@@ -10625,6 +10630,14 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
   /// board centre — the gesture the reminder is teaching.
   void _acceptLikeNudge(Offset heartGlobalCenter) {
     _dismissLikeNudge();
+    _likeFromOffBoard(heartGlobalCenter);
+  }
+
+  /// A like asked for away from the board — the reminder's heart, or the
+  /// notation's Like button (registered on [LikeFlightAnchor]). Either way the
+  /// burst plays on the board, so the answer shows where the gesture lives.
+  void _likeFromOffBoard(Offset heartGlobalCenter) {
+    if (_likeNudgeVisible) _dismissLikeNudge();
     final renderBox = context.findRenderObject();
     final boardCentre = Offset(widget.size / 2, widget.size / 2);
     if (renderBox is RenderBox) {
@@ -11917,6 +11930,23 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
       }());
     }
 
+    // Report and Like share one row under the notation. Like follows the
+    // board's own double-tap rules: the same sources, and never a game opened
+    // from the user's own library database.
+    final likeable =
+        _isLikeableGameSource(widget.game.source) &&
+        !_isOwnDatabaseBoardGame(ref, widget.game, widget.index);
+    final footerActions = <Widget>[
+      if (reviewState.shouldOfferAnalysis)
+        GameAnalysisButton(
+          key: const ValueKey('game-analysis-button'),
+          state: reviewState,
+          onPressed: openGameReview,
+        ),
+      if (likeable)
+        LikeGameButton(likeId: widget.game.likeId, pageIndex: widget.index),
+    ];
+
     final rows = _buildNotationRows(
       tokens,
       params: params,
@@ -11978,12 +12008,8 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
           mainAxisSize: MainAxisSize.min,
           children: [
             emptyMessage,
-            if (reviewState.shouldOfferAnalysis)
-              GameAnalysisButton(
-                key: const ValueKey('game-analysis-button'),
-                state: reviewState,
-                onPressed: openGameReview,
-              ),
+            if (footerActions.isNotEmpty)
+              NotationFooterActions(children: footerActions),
           ],
         ),
       );
@@ -12019,12 +12045,8 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
               ),
             ),
           ),
-          if (reviewState.shouldOfferAnalysis)
-            GameAnalysisButton(
-              key: const ValueKey('game-analysis-button'),
-              state: reviewState,
-              onPressed: openGameReview,
-            ),
+          if (footerActions.isNotEmpty)
+            NotationFooterActions(children: footerActions),
         ],
       ),
     );
