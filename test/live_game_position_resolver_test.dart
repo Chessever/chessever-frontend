@@ -1,3 +1,4 @@
+import 'package:chessever2/screens/chessboard/provider/current_eval_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/utils/live_game_position_resolver.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -60,5 +61,68 @@ void main() {
         expect(fen, afterE4E5);
       },
     );
+  });
+
+  group('recorded final evaluation', () {
+    // 1. e4 e5 2. Nf3 Nc6, the way a saved report writes its moves.
+    const afterNc6 =
+        'r1bqkbnr/pppp1ppp/2n5/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R w KQkq - 2 3';
+    String report(String lastEval) =>
+        '''
+[Event "Test"]
+
+1. e4 { [%eval 0.30] [%clk 0:02:23] } 1... e5 { [%eval 0.25] } 2. Nf3 \$1 { [%eval 0.31] } 2... Nc6 { $lastEval [%clk 0:02:09] } 1-0
+''';
+
+    test('the snapshot keeps the eval written after the last move', () {
+      final end = resolveFinalPositionFromPgn(report('[%eval -1.36,24]'))!;
+
+      expect(end.fen, afterNc6);
+      expect(end.finalEval?.pawns, -1.36);
+      expect(end.finalEval?.depth, 24);
+    });
+
+    test('a last move without an eval records none, whatever came before', () {
+      expect(resolveFinalPositionFromPgn(report(''))!.finalEval, isNull);
+    });
+
+    test('recordedEvalAt reads pawns and mates from White\'s side', () {
+      final pawns = recordedEvalAt(
+        pgn: report('[%eval 1.36]'),
+        fen: afterNc6,
+      )!.pvs.single;
+      expect(
+        (pawns.cp, pawns.isMate, pawns.whitePerspective),
+        (136, false, true),
+      );
+
+      final mate = recordedEvalAt(
+        pgn: report('[%eval #-3]'),
+        fen: afterNc6,
+      )!.pvs.single;
+      expect((mate.cp, mate.isMate, mate.mate), (-100000, true, -3));
+    });
+
+    test('recordedEvalAt answers only for the position the PGN ends on', () {
+      // The same position written by another source (clocks, en passant).
+      expect(
+        recordedEvalAt(
+          pgn: report('[%eval 1.36]'),
+          fen:
+              'r1bqkbnr/pppp1ppp/2n5/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R w KQkq - 0 1',
+        ),
+        isNotNull,
+      );
+      // One ply earlier: the eval is not about this board.
+      expect(
+        recordedEvalAt(
+          pgn: report('[%eval 1.36]'),
+          fen: 'r1bqkbnr/pppp1ppp/8/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R b KQkq - 1 2',
+        ),
+        isNull,
+      );
+      expect(recordedEvalAt(pgn: report('[%eval #0]'), fen: afterNc6), isNull);
+      expect(recordedEvalAt(pgn: null, fen: afterNc6), isNull);
+    });
   });
 }

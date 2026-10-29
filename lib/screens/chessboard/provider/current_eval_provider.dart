@@ -7,7 +7,9 @@ import 'package:chessever2/repository/local_storage/local_eval/local_eval_cache.
 import 'package:chessever2/repository/gamebase/gamebase_repository.dart';
 
 import 'package:chessever2/repository/supabase/evals/persist_cloud_eval.dart';
-import 'package:hooks_riverpod/hooks_riverpod.dart' show FutureProvider, Ref;
+import 'package:chessever2/screens/tour_detail/games_tour/utils/live_game_position_resolver.dart';
+import 'package:hooks_riverpod/hooks_riverpod.dart'
+    show FutureProvider, Provider, Ref;
 import 'stockfish_lifecycle_provider.dart';
 import 'stockfish_singleton.dart';
 
@@ -598,6 +600,47 @@ final gameCardEvalCacheOnlyProvider = FutureProvider.family
       );
       return cached ?? _emptyCloudEval(fen, multiPV: 1);
     });
+
+/// Whether the eval bar beside a board or grid card shows what the game's
+/// own PGN records for the position on the card instead of asking the eval
+/// caches or the engine. Off everywhere; Reports turns it on for its page
+/// with a nested `ProviderScope`, which a card's long-press copy carries
+/// too. Its cards are saved reports: the engine work for their final
+/// positions is already done and written into the PGN, while the caches
+/// rarely hold them (the bars sat empty at the midline).
+final gameCardRecordedEvalProvider = Provider<bool>((_) => false);
+
+/// What [pgn] records for [fen]: the `[%eval]` after its last mainline move,
+/// as a one-line result the card eval widgets read like any other. Null
+/// unless that move ends on [fen]'s position (pieces and side to move), or
+/// when nothing usable is recorded there (`#0` names no side).
+CloudEval? recordedEvalAt({required String? pgn, required String fen}) {
+  final end = resolveFinalPositionFromPgn(pgn);
+  final eval = end?.finalEval;
+  if (end == null || eval == null) return null;
+  String position(String fen) =>
+      fen.trim().split(RegExp(r'\s+')).take(2).join(' ');
+  if (position(end.fen) != position(fen)) return null;
+
+  final Pv pv;
+  final mate = eval.mate;
+  final pawns = eval.pawns;
+  if (mate != null) {
+    if (mate == 0) return null;
+    pv = Pv(moves: '', cp: mate.sign * 100_000, isMate: true, mate: mate);
+  } else if (pawns != null) {
+    pv = Pv(moves: '', cp: (pawns * 100).round());
+  } else {
+    return null;
+  }
+  return CloudEval(
+    fen: fen,
+    knodes: 0,
+    depth: eval.depth ?? 0,
+    pvs: [pv],
+    requestedMultiPv: 1,
+  );
+}
 
 Future<CloudEval?> _readGameCardCacheOrRemoteEval({
   required Ref ref,

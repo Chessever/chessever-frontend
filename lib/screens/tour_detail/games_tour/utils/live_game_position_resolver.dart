@@ -6,12 +6,17 @@ class PgnPositionSnapshot {
     required this.moveCount,
     required this.hasCustomStartingPosition,
     this.lastMoveUci,
+    this.finalEval,
   });
 
   final String fen;
   final int moveCount;
   final bool hasCustomStartingPosition;
   final String? lastMoveUci;
+
+  /// The `[%eval]` recorded after the last move, i.e. for [fen] (a saved
+  /// report writes one after every move). White's side.
+  final PgnEvaluation? finalEval;
 }
 
 const int _kMaxPgnPositionCacheEntries = 500;
@@ -40,6 +45,7 @@ PgnPositionSnapshot? resolveFinalPositionFromPgn(String? pgn) {
     final game = PgnGame.parsePgn(raw);
     var position = PgnGame.startingPosition(game.headers);
     Move? lastMove;
+    PgnNodeData? lastNode;
     var moveCount = 0;
 
     for (final node in game.moves.mainline()) {
@@ -48,6 +54,7 @@ PgnPositionSnapshot? resolveFinalPositionFromPgn(String? pgn) {
 
       position = position.play(move);
       lastMove = move;
+      lastNode = node;
       moveCount++;
     }
 
@@ -58,6 +65,9 @@ PgnPositionSnapshot? resolveFinalPositionFromPgn(String? pgn) {
       moveCount: moveCount,
       hasCustomStartingPosition: game.headers.containsKey('FEN'),
       lastMoveUci: lastMove?.uci,
+      // Only the final move's comments are read: this runs for every live
+      // card's PGN, so the replay stays as cheap as before.
+      finalEval: _recordedEval(lastNode?.comments),
     );
 
     if (_pgnPositionCache.length >= _kMaxPgnPositionCacheEntries) {
@@ -69,6 +79,14 @@ PgnPositionSnapshot? resolveFinalPositionFromPgn(String? pgn) {
   } catch (_) {
     return null;
   }
+}
+
+PgnEvaluation? _recordedEval(List<String>? comments) {
+  for (final comment in comments ?? const <String>[]) {
+    final eval = PgnComment.fromPgn(comment).eval;
+    if (eval != null) return eval;
+  }
+  return null;
 }
 
 String? resolveFreshestGameFen({
