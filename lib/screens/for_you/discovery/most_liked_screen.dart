@@ -91,7 +91,7 @@ class MostLikedPage extends ConsumerWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         SizedBox(height: 8.sp),
-        MostLikedPeriodBar(now: now),
+        MostLikedPeriodBar(now: now, view: view),
         Expanded(
           child: RefreshIndicator(
             color: context.colors.textPrimary,
@@ -104,20 +104,24 @@ class MostLikedPage extends ConsumerWidget {
                 // The section shows the failure and its retry.
               }
             },
-            child: ListView(
+            child: CustomScrollView(
+              key: ValueKey(query),
               physics: const AlwaysScrollableScrollPhysics(
                 parent: BouncingScrollPhysics(),
               ),
-              padding: EdgeInsets.only(
-                bottom: 24.sp + MediaQuery.viewPaddingOf(context).bottom,
-              ),
-              children: [
+              slivers: [
                 MostLikedSection(
+                  sliver: true,
                   view: view,
                   now: now,
                   playerFilter: playerFilter,
                   onPickPlayer: onPickPlayer,
                   onClearPlayerFilter: onClearPlayerFilter,
+                ),
+                SliverToBoxAdapter(
+                  child: SizedBox(
+                    height: 24.sp + MediaQuery.viewPaddingOf(context).bottom,
+                  ),
                 ),
               ],
             ),

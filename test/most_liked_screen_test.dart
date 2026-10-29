@@ -1,3 +1,5 @@
+import 'package:chessever2/screens/for_you/discovery/data/discovery_repository.dart';
+import 'package:flutter/services.dart';
 import 'package:chessever2/screens/library/miniatures/miniature_game_launcher.dart';
 import 'package:chessever2/widgets/segmented_switcher.dart';
 import 'package:chessever2/screens/for_you/discovery/widgets/discovery_game_cards.dart';
@@ -44,6 +46,29 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+
+class _MoreLikes extends Fake implements DiscoveryRepository {
+  final calls = <MostLikedQuery>[];
+  var failNext = false;
+
+  @override
+  Future<MostLikedResult> fetchMostLiked(
+    MostLikedQuery query, {
+    int limit = kMostLikedLimit,
+    MostLikedCursor? after,
+  }) async {
+    calls.add(query);
+    if (failNext) {
+      failNext = false;
+      throw StateError('offline');
+    }
+    final start = after!.rank;
+    return MostLikedResult.ranked(
+      _ranking(36).sublist(start, start + 12),
+      nextCursor: start == 12 ? (likes: 270, gameId: 'g23', rank: 24) : null,
+    );
+  }
+}
 
 // ---------------------------------------------------------------- doubles
 
@@ -296,6 +321,206 @@ void main() {
       url: 'https://placeholder.supabase.co',
       publishableKey: 'placeholder-publishable-key',
     );
+  });
+
+  testWidgets('switching Likes periods returns to the latest range', (
+    tester,
+  ) async {
+    // Allow an earlier year above the ranking's launch-date lower bound.
+    final now = DateTime(DateTime.now().year + 2, 10, 29);
+    final container = await _pump(
+      tester,
+      subscribed: true,
+      home: MostLikedScreen(now: now),
+    );
+    for (final period in MostLikedPeriod.values) {
+      await tester.tap(find.bySemanticsLabel('Most liked, ${period.label}'));
+      await _settle(tester);
+      tester
+          .widget<MostLikedDateControl>(find.byType(MostLikedDateControl))
+          .onPrevious!();
+      await _settle(tester);
+      expect(container.read(mostLikedDayProvider), isNotNull);
+
+      // Active segments keep the range the user is currently browsing.
+      await tester.tap(find.bySemanticsLabel('Most liked, ${period.label}'));
+      await _settle(tester);
+      expect(container.read(mostLikedDayProvider), isNotNull);
+
+      final other = MostLikedPeriod
+          .values[(period.index + 1) % MostLikedPeriod.values.length];
+      await tester.tap(find.bySemanticsLabel('Most liked, ${other.label}'));
+      await _settle(tester);
+      expect(container.read(mostLikedDayProvider), isNull);
+      expect(
+        tester
+            .widget<MostLikedDateControl>(find.byType(MostLikedDateControl))
+            .query
+            .isCurrent(now),
+        isTrue,
+      );
+      await tester.tap(find.bySemanticsLabel('Most liked, ${period.label}'));
+      await _settle(tester);
+      expect(container.read(mostLikedDayProvider), isNull);
+      expect(
+        tester
+            .widget<MostLikedDateControl>(find.byType(MostLikedDateControl))
+            .query
+            .isCurrent(now),
+        isTrue,
+      );
+    }
+    await _teardown(tester, container);
+  });
+
+  testWidgets(
+    'scroll appends pages lazily, retries failures and resets on period changes',
+    (tester) async {
+      final repo = _MoreLikes();
+      final container = await _pump(
+        tester,
+        subscribed: true,
+        home: const LikesScreen(),
+        size: const Size(390, 844),
+        extra: [
+          discoveryRepositoryProvider.overrideWithValue(repo),
+          mostLikedProvider.overrideWith(
+            (ref, query) async => MostLikedResult.ranked(
+              _ranking(12),
+              nextCursor: (likes: 390, gameId: 'g11', rank: 12),
+            ),
+          ),
+        ],
+      );
+      final query = MostLikedQuery(MostLikedPeriod.week, DateTime.now());
+      expect(repo.calls, isEmpty);
+      expect(
+        find.byType(GridGameCardWrapperWidget).evaluate().length,
+        lessThan(12),
+      );
+      repo.failNext = true;
+      await tester.drag(
+        find.byType(CustomScrollView).first,
+        const Offset(0, -12000),
+      );
+      await _settle(tester);
+      expect(find.text("Couldn't load more games"), findsOneWidget);
+      expect(container.read(mostLikedPagesProvider(query)).entries, isEmpty);
+      await tester.tap(find.text('Retry').hitTestable());
+      await _settle(tester);
+      expect(
+        container.read(mostLikedPagesProvider(query)).entries,
+        hasLength(12),
+      );
+      await tester.drag(
+        find.byType(CustomScrollView).first,
+        const Offset(0, -12000),
+      );
+      await _settle(tester);
+      final pages = container.read(mostLikedPagesProvider(query));
+      expect(pages.entries, hasLength(24));
+      expect(pages.cursor, isNull);
+      expect(repo.calls, hasLength(3));
+      await tester.drag(
+        find.byType(CustomScrollView).first,
+        const Offset(0, -12000),
+      );
+      await _settle(tester);
+      expect(repo.calls, hasLength(3));
+      await tester.tap(find.bySemanticsLabel('Most liked, Month'));
+      await _settle(tester);
+      final month = MostLikedQuery(MostLikedPeriod.month, DateTime.now());
+      expect(container.read(mostLikedPagesProvider(month)).entries, isEmpty);
+      expect(repo.calls, hasLength(3));
+      container.invalidate(mostLikedProvider);
+      await _settle(tester);
+      expect(container.read(mostLikedPagesProvider(month)).entries, isEmpty);
+      expect(tester.takeException(), isNull);
+      await _teardown(tester, container);
+    },
+  );
+
+  testWidgets(
+    'an empty unresolved page advances without waiting for a scroll',
+    (tester) async {
+      final repo = _MoreLikes();
+      final container = await _pump(
+        tester,
+        subscribed: true,
+        home: const LikesScreen(),
+        size: const Size(390, 844),
+        extra: [
+          discoveryRepositoryProvider.overrideWithValue(repo),
+          mostLikedProvider.overrideWith(
+            (ref, query) async => const MostLikedResult.ranked(
+              [],
+              nextCursor: (likes: 390, gameId: 'g11', rank: 12),
+            ),
+          ),
+        ],
+      );
+      await _settle(tester);
+      expect(repo.calls, hasLength(1));
+      final query = MostLikedQuery(MostLikedPeriod.week, DateTime.now());
+      expect(
+        container.read(mostLikedPagesProvider(query)).entries,
+        hasLength(12),
+      );
+      expect(tester.takeException(), isNull);
+      await _teardown(tester, container);
+    },
+  );
+
+  testWidgets('every Likes section and its date offer Share on long press', (
+    tester,
+  ) async {
+    final container = await _pump(
+      tester,
+      subscribed: true,
+      home: const LikesScreen(),
+      size: const Size(390, 844),
+    );
+    final shared = <String>[];
+    const channel = MethodChannel('dev.fluttercommunity.plus/share');
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(channel, (call) async {
+          shared.add((call.arguments as Map)['text'] as String);
+          return 'success';
+        });
+    addTearDown(
+      () => TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, null),
+    );
+    final segmentsFinder = find.byType(DiscoverySegments<MostLikedPeriod>);
+    for (final period in MostLikedPeriod.values) {
+      final rect = tester.getRect(segmentsFinder);
+      await tester.longPressAt(
+        Offset(
+          rect.left + rect.width * (period.index + 0.5) / 4,
+          rect.center.dy,
+        ),
+      );
+      await _settle(tester);
+      expect(find.text('Share'), findsOneWidget);
+      // Opening a share menu never changes the selected ranking.
+      expect(container.read(mostLikedPeriodProvider), MostLikedPeriod.week);
+      await tester.tap(find.text('Share'));
+      await _settle(tester);
+      expect(shared.last, mostLikedShareUri(period).toString());
+    }
+    final date = tester.widget<MostLikedDateControl>(
+      find.byType(MostLikedDateControl),
+    );
+    await tester.longPress(find.text(date.query.label(date.now)));
+    await _settle(tester);
+    expect(find.text('Share'), findsOneWidget);
+    await tester.tap(find.text('Share'));
+    await _settle(tester);
+    expect(
+      shared.last,
+      mostLikedShareUri(date.query.period, date: date.query.start).toString(),
+    );
+    await _teardown(tester, container);
   });
 
   for (final tab in ['Games', 'Players']) {

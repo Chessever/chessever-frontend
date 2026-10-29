@@ -1,3 +1,4 @@
+import 'package:share_plus/share_plus.dart';
 import 'package:chessever2/providers/favorite_players_provider.dart';
 import 'package:chessever2/utils/favorite_constants.dart';
 import 'package:chessever2/utils/favorite_limit_guard.dart';
@@ -17,6 +18,38 @@ import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
+/// Long-press menu for a ranking section or its selected date.
+Future<void> showMostLikedShareMenu(
+  BuildContext context, {
+  required MostLikedPeriod period,
+  required MostLikedView view,
+  DateTime? date,
+}) async {
+  final box = context.findRenderObject() as RenderBox?;
+  final overlay =
+      Navigator.of(context).overlay?.context.findRenderObject() as RenderBox?;
+  if (box == null || overlay == null) return;
+  final origin = box.localToGlobal(Offset.zero) & box.size;
+  HapticFeedbackService.medium();
+  final selected = await showMenu<bool>(
+    context: context,
+    position: RelativeRect.fromRect(origin, Offset.zero & overlay.size),
+    items: const [PopupMenuItem(value: true, child: Text('Share'))],
+  );
+  if (selected != true || !context.mounted) return;
+  try {
+    await Share.share(
+      mostLikedShareUri(period, date: date, view: view).toString(),
+      subject: 'ChessEver Likes · ${period.label}',
+      sharePositionOrigin: origin,
+    );
+  } catch (error) {
+    if (context.mounted) {
+      showAppSnack(context, userFacingError(error), tone: AppSnackTone.danger);
+    }
+  }
+}
+
 /// "‹  21–27 Sep  ›": walks the picked period one day, week, month or year
 /// at a time. Earlier periods stop at the first day there were likes; the
 /// next arrow is disabled on the current period, since the future has no
@@ -30,9 +63,11 @@ class MostLikedDateControl extends StatelessWidget {
     required this.onPrevious,
     required this.onNext,
     this.edgeInset = 0,
+    this.view = MostLikedView.games,
   });
 
   final MostLikedQuery query;
+  final MostLikedView view;
   final DateTime now;
 
   /// Null when there is no earlier period to go to.
@@ -56,6 +91,21 @@ class MostLikedDateControl extends StatelessWidget {
     final label = query.label(now);
     return DiscoveryDateStepper(
       label: label,
+      labelBuilder: (label) => Builder(
+        builder: (labelContext) => GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onLongPress: () => showMostLikedShareMenu(
+            labelContext,
+            period: query.period,
+            date: query.start,
+            view: view,
+          ),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 12),
+            child: label,
+          ),
+        ),
+      ),
       labelSemantics: 'Most liked, $label',
       previousSemantics: 'Previous $_unit',
       nextSemantics: 'Next $_unit',
@@ -189,7 +239,9 @@ class _PlayerRow extends ConsumerWidget {
           );
         }
       } on FavoriteLimitExceededException {
-        if (context.mounted) await showPremiumPaywallSheet(context: context, allowRewarded: false);
+        if (context.mounted) {
+          await showPremiumPaywallSheet(context: context, allowRewarded: false);
+        }
       } catch (error) {
         if (context.mounted) {
           showAppSnack(

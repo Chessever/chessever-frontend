@@ -11,16 +11,19 @@ class GameDateHeader extends StatelessWidget {
     required this.dateLabel,
     required this.isExpanded,
     this.onToggle,
+    this.onLongPress,
   });
 
   final String dateLabel;
   final bool isExpanded;
   final VoidCallback? onToggle;
+  final VoidCallback? onLongPress;
 
   @override
   Widget build(BuildContext context) {
     return InkWell(
       onTap: onToggle,
+      onLongPress: onLongPress,
       borderRadius: BorderRadius.circular(12.br),
       child: Container(
         padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 10.h),

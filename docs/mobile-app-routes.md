@@ -23,7 +23,10 @@ segments; a FIDE ID is a positive integer of at most 12 digits.
 | --- | --- | --- |
 | `/app`, `/app/home` | Home, Today | None |
 | `/app/home/today` | Home, Today | None |
-| `/app/home/my-space` | Home, My Space | None |
+| `/app/home/my-space`, `/app/my-space` | Home, My Space | None |
+| `/app/my-space/prep` | My Space Prep component | None |
+| `/app/my-space/library` | My Space Library component (databases only) | None |
+| `/app/my-space/likes` | My Space Likes component | None |
 | `/app/home/discovery` | Home, Discovery | None |
 | `/app/events` | Events main tab | None |
 | `/app/inbox` | Inbox list | None |
@@ -33,9 +36,13 @@ segments; a FIDE ID is a positive integer of at most 12 digits.
 | `/app/news/<id>[/<slug>]` | Published ChessEver article in the shared reader | None |
 | `/app/news/partners/<source>/<id>[/<slug>]` | Published partner article in the shared reader | None |
 | `/app/likes` | Public most-liked games | None |
+| `/app/likes/<period>` | Likes on `today`, `week`, `month`, or `year` | `date=YYYY-MM-DD`, `view=games` or `players` |
 | `/app/my-likes` | The reader's liked games | None |
 | `/app/miniatures` | Miniatures | None |
+| `/app/miniatures/about`, `/app/miniatures/players` | Selected Miniatures tab | None |
+| `/app/miniatures/games` | Miniatures Games, optionally filtered to one PGN calendar day | `date=YYYY-MM-DD` |
 | `/app/reports` | Game Reports, behind its existing Premium gate | None |
+| `/app/reports/<type>` | Selected report-type tab, with the same Premium gate | `date=YYYY-MM-DD` |
 | `/app/my-prep` | My Prep | None |
 | `/app/my-prep/<profile-id>` | Existing local Prep profile | `account` |
 | `/app/library` | Library | None |
@@ -144,3 +151,55 @@ Inbox push with `/app/settings/notifications`, then a standalone push targeting
 a player Games tab or event scorecard. Confirm the exact target and Back to Home.
 Repeat a Premium destination as a free reader and cancel its prompt; there must
 be no unexpected fallback navigation. Live-app testing is performed by the user.
+
+Switching between Today, Week, Month and Year resets to the latest range.
+Likes section links follow the current calendar period when `date` is absent.
+With `date`, the ranking opens the day, Monday-based week, month or year
+containing that date. Long-press a period or the date label, then choose Share.
+These URLs also work as notification `data.route` or `data.url` values.
+
+## Likes ranking pagination
+
+Likes reads 12 games at a time and loads another page when its footer enters the
+scroll cache. Boards use lazy slivers in board, grid and compact-row views.
+Games and Players share the loaded pages for the selected calendar window;
+Players aggregates those loaded games. Changing the period/date or refreshing
+starts a new ranking. Failed pages retain earlier games and offer Retry.
+
+The additive migration `20261028150850_likes_ranking_pagination.sql` installs
+`most_liked_ranking_page` in production project `oelbsuggrzyqwzmvidju`. It keeps
+the older `most_liked_ranking_preview` API intact. Until the new RPC is deployed,
+the app falls back to that preview and its existing cap.
+
+Pages use `(like_count DESC, source_game_id ASC)` keyset cursors and fetch one
+extra aggregate row to detect the next page. Only games with at least two distinct
+likes qualify. Cursors advance over unresolved games, and appended IDs are
+deduplicated if the live ranking changes. Ranks reflect the positions read;
+pull-to-refresh gets a fresh ordering. Only authenticated callers may read the
+aggregate IDs/counts; individual game access retains its existing Premium guard.
+
+`supabase/tests/likes_ranking_pagination.sql` verifies the actual migration in an
+empty disposable PostgreSQL database, including more than 50 results, ties,
+window boundaries, distinct-user likes, page caps, cursors and authentication.
+It is a local fixture, never a production SQL script.
+
+## Miniatures sharing
+
+Long-press any Miniatures tab or a dated heading in Games, then choose Share.
+Tab links open that tab with the default Games filters. A Games date link sets
+both date bounds to the shared PGN calendar day and opens Games. Other search
+and filter settings are reset in the linked screen's own scope. These routes
+work through HTTPS links, the app scheme and notification `data.route`/`data.url`.
+
+## Reports sharing
+
+Long-press a Reports type chip or date heading, then choose Share. `<type>` is
+`all`, `upside_down`, `comeback`, `one_blunder`, `great_escape`, `domination`,
+`squeeze`, `deadlock`, `miniature` or `marathon`. A date link preserves the type
+and filters the paginated query to that UTC calendar day, using inclusive
+midnight and exclusive next midnight. Undated type links browse all days.
+The linked screen owns its type/date state, preserving an already-open Reports
+screen. HTTPS, app-scheme and notification routes use the same Premium guard.
+
+My Space: hold Prep, Library, or Likes outside Edit and choose Share. These
+links open the recipient's own workspace; they do not publish private data.

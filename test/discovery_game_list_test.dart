@@ -73,6 +73,7 @@ class _ReportsRepository implements DiscoveryRepository {
     int pageSize = 30,
     AnalyzedGamesCursor? after,
     DateTime? since,
+    DateTime? until,
     ReportGameType? gameType,
   }) {
     final result = Completer<AnalyzedGamesPage>();

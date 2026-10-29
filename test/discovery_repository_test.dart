@@ -354,7 +354,7 @@ void main() {
         'https://example.test',
         'placeholder',
         httpClient: MockClient((request) async {
-          if (request.url.path.endsWith('/rpc/most_liked_ranking_preview')) {
+          if (request.url.path.endsWith('/rpc/most_liked_ranking_page')) {
             return _json([
               for (var i = 0; i < rows.length; i++)
                 {'source_game_id': rows[i]['id'], 'like_count': 100 - i},
@@ -463,7 +463,7 @@ void main() {
           'https://example.test',
           'placeholder',
           httpClient: MockClient((request) async {
-            if (request.url.path.endsWith('/rpc/most_liked_ranking_preview')) {
+            if (request.url.path.endsWith('/rpc/most_liked_ranking_page')) {
               return _json([
                 {'source_game_id': 'two-likes', 'like_count': 2},
                 {'source_game_id': 'one-like', 'like_count': 1},
@@ -505,7 +505,7 @@ void main() {
           'placeholder',
           httpClient: MockClient((request) async {
             requests.add(request.url);
-            if (request.url.path.endsWith('/rpc/most_liked_ranking_preview')) {
+            if (request.url.path.endsWith('/rpc/most_liked_ranking_page')) {
               return _json([
                 {'source_game_id': 'one-like', 'like_count': 1},
               ], request);
@@ -528,12 +528,167 @@ void main() {
         expect(result.status, MostLikedStatus.ranked);
         expect(result.entries, isEmpty);
         expect(requests, hasLength(1));
-        expect(
-          requests.single.path,
-          endsWith('/rpc/most_liked_ranking_preview'),
-        );
+        expect(requests.single.path, endsWith('/rpc/most_liked_ranking_page'));
       },
     );
+  });
+
+  group('Likes pagination', () {
+    test(
+      'a rolling deployment retains the existing preview if pagination is unavailable',
+      () async {
+        final paths = <String>[];
+        final client = SupabaseClient(
+          'https://example.test',
+          'placeholder',
+          httpClient: MockClient((request) async {
+            paths.add(request.url.path);
+            if (request.url.path.endsWith('/rpc/most_liked_ranking_page')) {
+              return _json(
+                {'code': 'PGRST202', 'message': 'not deployed'},
+                request,
+                status: 404,
+              );
+            }
+            if (request.url.path.endsWith('/rpc/most_liked_ranking_preview')) {
+              return _json([
+                {'source_game_id': 'a', 'like_count': 2},
+              ], request);
+            }
+            return _json([_row('a', game: _ruy)], request);
+          }),
+        );
+        addTearDown(client.dispose);
+        final repo = DiscoveryRepository(
+          client: () => client,
+          games: _NoGameRepository(),
+          tours: _NoTours(),
+          gamebase: _NoArchive(),
+        );
+        final result = await repo.fetchMostLiked(
+          MostLikedQuery(MostLikedPeriod.week, DateTime(2026, 10)),
+        );
+        expect(result.entries.single.game.gameId, 'a');
+        expect(result.nextCursor, isNull);
+        expect(paths.take(2), [
+          '/rest/v1/rpc/most_liked_ranking_page',
+          '/rest/v1/rpc/most_liked_ranking_preview',
+        ]);
+      },
+    );
+
+    test(
+      'lookahead, cursor, tie ordering and unresolved rows preserve ranking positions',
+      () async {
+        final bodies = <Map<String, dynamic>>[];
+        final resolved = <String>[];
+        final client = SupabaseClient(
+          'https://example.test',
+          'placeholder',
+          httpClient: MockClient((request) async {
+            if (request.url.path.endsWith('/rpc/most_liked_ranking_page')) {
+              final body = jsonDecode(request.body) as Map<String, dynamic>;
+              bodies.add(body);
+              return _json(
+                body['p_after_game_id'] == null
+                    ? [
+                        {'source_game_id': 'a', 'like_count': 5},
+                        {'source_game_id': 'b', 'like_count': 5},
+                        {'source_game_id': 'c', 'like_count': 5},
+                      ]
+                    : [
+                        {'source_game_id': 'c', 'like_count': 5},
+                        {'source_game_id': 'd', 'like_count': 2},
+                      ],
+                request,
+              );
+            }
+            final ids = _inIds(request.url.queryParameters['id']!);
+            resolved.addAll(ids);
+            return _json([
+              for (final id in ids)
+                if (id != 'b') _row(id, game: _ruy),
+            ], request);
+          }),
+        );
+        addTearDown(client.dispose);
+        final repo = DiscoveryRepository(
+          client: () => client,
+          games: _NoGameRepository(),
+          tours: _NoTours(),
+          gamebase: _NoArchive(),
+        );
+        final query = MostLikedQuery(MostLikedPeriod.month, DateTime(2026, 10));
+        final first = await repo.fetchMostLiked(query, limit: 2);
+        expect(first.entries.map((e) => e.game.gameId), ['a']);
+        expect(first.nextCursor, (likes: 5, gameId: 'b', rank: 2));
+        expect(resolved, isNot(contains('c')));
+        final second = await repo.fetchMostLiked(
+          query,
+          limit: 2,
+          after: first.nextCursor,
+        );
+        expect(second.entries.map((e) => e.game.gameId), ['c', 'd']);
+        expect(second.entries.map((e) => e.rank), [3, 4]);
+        expect(second.nextCursor, isNull);
+        expect(bodies.every((b) => b['p_limit'] == 3), isTrue);
+        expect(bodies.last['p_after_game_id'], 'b');
+        expect(bodies.last['p_after_likes'], 5);
+      },
+    );
+
+    test(
+      'additional pages serialize loads, preserve games on failure, retry and stop',
+      () async {
+        final first = Completer<MostLikedResult>();
+        var calls = 0;
+        final games = [
+          for (var i = 0; i < 3; i++)
+            MostLikedEntry(
+              rank: i + 1,
+              likes: 5,
+              game: GamesTourModel.fromGame(
+                Games.fromJson(_row('$i', game: _ruy)),
+              ),
+            ),
+        ];
+        const cursor = (likes: 5, gameId: '0', rank: 1);
+        final pages = MostLikedPages(cursor, (_) async {
+          calls++;
+          if (calls == 1) return first.future;
+          if (calls == 2) throw StateError('offline');
+          return MostLikedResult.ranked([games[1], games[2]]);
+        });
+        addTearDown(pages.dispose);
+        final load = pages.loadMore();
+        await pages.loadMore();
+        expect(calls, 1);
+        first.complete(MostLikedResult.ranked([games[1]], nextCursor: cursor));
+        await load;
+        await pages.loadMore();
+        expect(pages.state.failed, isTrue);
+        expect(pages.state.entries, [games[1]]);
+        await pages.loadMore();
+        expect(pages.state.entries, [games[1], games[2]]);
+        expect(pages.state.failed, isFalse);
+        expect(pages.state.cursor, isNull);
+        await pages.loadMore();
+        expect(calls, 3);
+      },
+    );
+
+    test('disposing a window ignores an in-flight page', () async {
+      final response = Completer<MostLikedResult>();
+      final pages = MostLikedPages((
+        likes: 2,
+        gameId: 'a',
+        rank: 12,
+      ), (_) => response.future);
+      final pending = pages.loadMore();
+      pages.dispose();
+      response.complete(const MostLikedResult.ranked([]));
+      await pending;
+    });
   });
 
   group('Saved Reports eligibility', () {
@@ -873,6 +1028,34 @@ void main() {
           contains('tours!games_tour_id_fkey'),
         );
         expect(req.url.queryParameters['pgn'], r'like.%[\%eval %');
+      },
+    );
+
+    test(
+      'report dates use an inclusive UTC start and exclusive end on tables and typed RPCs',
+      () async {
+        for (final type in <ReportGameType?>[null, ...ReportGameType.values]) {
+          requests.clear();
+          rows = [];
+          await repository.fetchAnalyzedGamesPage(
+            gameType: type,
+            since: DateTime.utc(2026, 10, 28),
+            until: DateTime.utc(2026, 10, 29),
+          );
+          expect(requests.single.url.queryParametersAll['last_move_time'], [
+            'gte.2026-10-28T00:00:00.000Z',
+            'lt.2026-10-29T00:00:00.000Z',
+          ]);
+          expect(
+            requests.single.url.path,
+            type == null
+                ? '/rest/v1/games'
+                : '/rest/v1/rpc/report_games_by_type',
+          );
+          if (type != null) {
+            expect(requests.single.url.queryParameters['p_type'], type.key);
+          }
+        }
       },
     );
 
