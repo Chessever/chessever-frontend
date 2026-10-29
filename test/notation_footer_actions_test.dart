@@ -19,7 +19,7 @@ void main() {
     MobileGameReviewState review = const MobileGameReviewState(
       isEligible: true,
     ),
-    int? othersLikes,
+    int? serverLikes,
   }) async {
     final anchor = LikeFlightAnchor();
     addTearDown(anchor.dispose);
@@ -28,7 +28,7 @@ void main() {
         overrides: [
           likeFlightAnchorProvider.overrideWithValue(anchor),
           isGameLikedProvider.overrideWith((ref, _) => ref.watch(_liked)),
-          gameLikeCountProvider.overrideWith((ref, _) async => othersLikes),
+          gameLikeCountProvider.overrideWith((ref, _) async => serverLikes),
         ],
         child: MaterialApp(
           home: Builder(
@@ -140,12 +140,35 @@ void main() {
         )
         .data!;
 
-    testWidgets('shows everyone else, then adds the viewer on a like', (
+    testWidgets('shows the server count and reads it again when a write lands', (
       tester,
     ) async {
-      await pumpFooter(tester, othersLikes: 4);
+      var server = 4;
+      final anchor = LikeFlightAnchor();
+      addTearDown(anchor.dispose);
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            likeFlightAnchorProvider.overrideWithValue(anchor),
+            isGameLikedProvider.overrideWith((ref, _) => ref.watch(_liked)),
+            gameLikeCountProvider.overrideWith((ref, _) async {
+              ref.watch(likedGamesWriteRevisionProvider);
+              return server;
+            }),
+          ],
+          child: MaterialApp(
+            home: Builder(
+              builder: (context) {
+                ResponsiveHelper.init(context);
+                return const Scaffold(
+                  body: LikeGameButton(likeId: 'game-1', pageIndex: 3),
+                );
+              },
+            ),
+          ),
+        ),
+      );
       await tester.pump();
-      expect(find.byType(LikeCountHeart), findsOneWidget);
       expect(heartText(tester), '4');
       expect(
         tester.widget<LikeCountHeart>(find.byType(LikeCountHeart)).fill,
@@ -156,28 +179,29 @@ void main() {
       final container = ProviderScope.containerOf(
         tester.element(find.byType(LikeGameButton)),
       );
+      // The tap flips the heart at once; the number is the server's, so it
+      // waits for the write to land.
       container.read(_liked.notifier).state = true;
       await tester.pumpAndSettle();
-      expect(heartText(tester), '5');
+      expect(heartText(tester), '4');
       expect(
         tester.widget<LikeCountHeart>(find.byType(LikeCountHeart)).fill,
         isNotNull,
         reason: 'liked: the heart takes the like colour',
       );
+
+      server = 5;
+      container.read(likedGamesWriteRevisionProvider.notifier).state++;
+      await tester.pumpAndSettle();
+      expect(heartText(tester), '5');
       expect(find.text('Liked'), findsOneWidget);
     });
 
-    testWidgets('a first like turns the plain heart into a 1', (tester) async {
-      await pumpFooter(tester, othersLikes: 0);
+    testWidgets('no likes yet keeps the plain heart', (tester) async {
+      await pumpFooter(tester, serverLikes: 0);
       await tester.pump();
       expect(find.byType(LikeCountHeart), findsNothing);
       expect(find.byIcon(Icons.favorite_border_rounded), findsOneWidget);
-
-      ProviderScope.containerOf(
-        tester.element(find.byType(LikeGameButton)),
-      ).read(_liked.notifier).state = true;
-      await tester.pumpAndSettle();
-      expect(heartText(tester), '1');
     });
 
     testWidgets('an unknown count keeps the plain heart, no guessed number', (
@@ -190,13 +214,13 @@ void main() {
     });
 
     testWidgets('large counts shorten the way Most Liked does', (tester) async {
-      await pumpFooter(tester, othersLikes: 1234);
+      await pumpFooter(tester, serverLikes: 1234);
       await tester.pump();
       expect(heartText(tester), '1.2K');
     });
 
     testWidgets('tapping the heart itself likes', (tester) async {
-      final anchor = await pumpFooter(tester, othersLikes: 4);
+      final anchor = await pumpFooter(tester, serverLikes: 4);
       await tester.pump();
       final calls = <Offset>[];
       anchor.registerPageLike(3, calls.add);
@@ -212,9 +236,6 @@ void main() {
       expect(parseGameLikeCount(null), isNull);
       expect(parseGameLikeCount(-1), isNull);
       expect(parseGameLikeCount('x'), isNull);
-      expect(displayedGameLikes(others: 3, likedByMe: true), 4);
-      expect(displayedGameLikes(others: 3, likedByMe: false), 3);
-      expect(displayedGameLikes(others: null, likedByMe: true), isNull);
     });
   });
 }

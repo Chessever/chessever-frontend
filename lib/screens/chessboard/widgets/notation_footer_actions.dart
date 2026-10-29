@@ -198,12 +198,7 @@ class _LikeGameButtonState extends ConsumerState<LikeGameButton> {
     });
     final liked = ref.watch(isGameLikedProvider(widget.likeId));
     final likeColor = context.colors.danger;
-    // Everyone else's likes from the server, plus the viewer's own from local
-    // state, so the number moves the moment the heart is tapped.
-    final likes = displayedGameLikes(
-      others: ref.watch(gameLikeCountProvider(widget.likeId)).valueOrNull,
-      likedByMe: liked,
-    );
+    final likes = ref.watch(gameLikeCountProvider(widget.likeId)).valueOrNull;
     final showCount = likes != null && likes > 0;
 
     return NotationFooterButton(

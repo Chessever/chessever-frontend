@@ -1,29 +1,23 @@
-import 'dart:async';
-
+import 'package:chessever2/repository/liked_games/liked_games_provider.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-/// How many OTHER people liked a game, keyed by [GamesTourModel.likeId].
-///
-/// `public.game_like_count` leaves the caller out on purpose: the heart adds
-/// the viewer's own like from local liked state, so a tap shows at once and
-/// is never counted twice. Null when the count is unknown (the function is
-/// not live yet, offline, any error): the button then shows a plain heart
-/// rather than a wrong number.
+/// A game's like count, keyed by [GamesTourModel.likeId], straight from the
+/// server (`public.game_like_count`, the same like definition Discovery ranks
+/// by). Read again whenever a like write lands, so the viewer's own like
+/// shows once the server holds it. Null when unknown (signed out, offline,
+/// any error): the button then shows a plain heart rather than a wrong number.
 final gameLikeCountProvider = FutureProvider.autoDispose.family<int?, String>((
   ref,
   likeId,
 ) async {
+  ref.watch(likedGamesWriteRevisionProvider);
   final id = likeId.trim();
-  if (id.isEmpty) return null;
-  // Keep the count across quick swipes back to the same game, then let it
-  // go so a later visit reads a fresh one.
-  final link = ref.keepAlive();
-  final expiry = Timer(const Duration(minutes: 5), link.close);
-  ref.onDispose(expiry.cancel);
+  final client = Supabase.instance.client;
+  if (id.isEmpty || client.auth.currentSession == null) return null;
   try {
-    final result = await Supabase.instance.client.rpc(
+    final result = await client.rpc(
       'game_like_count',
       params: {'p_source_game_id': id},
     );
@@ -46,7 +40,3 @@ int? parseGameLikeCount(Object? raw) {
   };
   return value == null || value < 0 ? null : value;
 }
-
-/// The count the heart shows: everyone else, plus the viewer when they like it.
-int? displayedGameLikes({required int? others, required bool likedByMe}) =>
-    others == null ? null : others + (likedByMe ? 1 : 0);
