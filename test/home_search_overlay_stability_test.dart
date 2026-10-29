@@ -228,6 +228,32 @@ void main() {
     expect(field.focusNode?.hasFocus, isTrue);
   });
 
+  testWidgets('one letter keeps recent searches instead of "No results"', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(390, 844));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final storage = _MemoryStorage(
+      '[{"kind":"opening","targetId":"B9",'
+      '"title":"Sicilian: Najdorf","subtitle":"B9 · B90–B99"}]',
+    );
+
+    await tester.pumpWidget(_app(storage));
+    await tester.pump();
+    await tester.tap(find.byType(TextField));
+    await tester.pump(const Duration(milliseconds: 350));
+
+    await tester.enterText(find.byType(TextField), 'k');
+    // Past every debounce on the path (bar, overlay) and the async result.
+    for (var i = 0; i < 12; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+
+    expect(find.text('No results found'), findsNothing);
+    expect(find.text('Recent searches'), findsOneWidget);
+    expect(find.text('Sicilian: Najdorf'), findsOneWidget);
+  });
+
   testWidgets('tapping outside the complete search control dismisses focus', (
     tester,
   ) async {

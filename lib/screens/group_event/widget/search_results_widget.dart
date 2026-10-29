@@ -60,8 +60,11 @@ class SearchResultsWidget extends HookConsumerWidget {
       return null;
     }, [searchQuery]);
 
-    if (searchQuery.trim().isEmpty) {
-      return _buildInitialState(context);
+    if (!isSearchableQuery(searchQuery)) {
+      return _buildInitialState(
+        context,
+        keepTyping: searchQuery.trim().isNotEmpty,
+      );
     }
 
     Widget buildResults(EnhancedSearchResult results) {
@@ -146,7 +149,7 @@ class SearchResultsWidget extends HookConsumerWidget {
         );
   }
 
-  Widget _buildInitialState(BuildContext context) {
+  Widget _buildInitialState(BuildContext context, {bool keepTyping = false}) {
     return Center(
       child: Padding(
         padding: EdgeInsets.all(32.sp),
@@ -169,7 +172,9 @@ class SearchResultsWidget extends HookConsumerWidget {
             ),
             SizedBox(height: 8.sp),
             Text(
-              'Enter a search term to find events',
+              keepTyping
+                  ? 'Keep typing to search'
+                  : 'Enter a search term to find events',
               textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: 14.sp,

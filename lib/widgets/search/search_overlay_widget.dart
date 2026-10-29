@@ -105,7 +105,9 @@ class SearchOverlay extends ConsumerWidget {
     return Consumer(
       builder: (context, ref, _) {
         final rawQuery = ref.watch(searchQueryProvider).trim();
-        if (rawQuery.isNotEmpty) return _buildLoadingState(context, maxHeight);
+        if (isSearchableQuery(rawQuery)) {
+          return _buildLoadingState(context, maxHeight);
+        }
         return _buildRecentSearches(context, ref, maxHeight);
       },
     );
@@ -122,7 +124,9 @@ class SearchOverlay extends ConsumerWidget {
     return Consumer(
       builder: (context, ref, _) {
         final rawQuery = ref.watch(searchQueryProvider).trim();
-        if (rawQuery.isEmpty) {
+        // One letter matches nothing: keep the recent searches up instead of
+        // flashing a spinner into "No results found".
+        if (!isSearchableQuery(rawQuery)) {
           return _buildRecentSearches(context, ref, maxHeight);
         }
         if (rawQuery != debouncedQuery) {

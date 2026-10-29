@@ -19,6 +19,13 @@ import 'package:chessever2/repository/gamebase/memorial_player_local_search.dart
 const _countryPlayerCacheTtl = Duration(minutes: 10);
 final _countryPlayerCache = <String, _CountryPlayerCacheEntry>{};
 
+/// Shortest query the combined search runs. Below it every search surface
+/// shows its resting state (recent searches, the hint), never "No results".
+const kMinSearchQueryLength = 2;
+
+bool isSearchableQuery(String query) =>
+    query.trim().length >= kMinSearchQueryLength;
+
 // Cache recent search results to avoid re-fetching
 const _searchCacheTtl = Duration(seconds: 30);
 final _searchCache = <String, _SearchCacheEntry>{};
@@ -133,7 +140,7 @@ final supabaseCombinedSearchProvider = AutoDisposeFutureProvider.family<
   EnhancedSearchResult,
   String
 >((ref, query) async {
-  if (query.trim().length < 2) return EnhancedSearchResult.empty();
+  if (!isSearchableQuery(query)) return EnhancedSearchResult.empty();
 
   final trimmedQuery = query.trim();
 
