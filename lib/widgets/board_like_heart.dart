@@ -30,9 +30,18 @@ double likeHeartSizeFor(double boardSize) =>
 /// fitted inside the heart's round upper body, the same on every board
 /// theme.
 class LikeCountHeart extends StatelessWidget {
-  const LikeCountHeart({super.key, required this.likes, required this.size});
+  const LikeCountHeart({
+    super.key,
+    required this.likes,
+    required this.size,
+    this.fill,
+  });
 
   final int likes;
+
+  /// The heart's body. Defaults to the solid ink used on boards; the board's
+  /// Like button fills it with the like colour once the viewer likes the game.
+  final Color? fill;
 
   /// The heart's width; its height is 0.9 of it.
   final double size;
@@ -50,7 +59,7 @@ class LikeCountHeart extends StatelessWidget {
           width: width,
           height: height,
           child: CustomPaint(
-            painter: const _HeartPainter(),
+            painter: _HeartPainter(fill ?? _kHeartInk),
             child: Align(
               // The optical centre of the heart sits in its round upper half,
               // above the middle of its box.
@@ -95,8 +104,14 @@ String likeHeartCount(int likes) {
   return '${(likes / 1000).floor()}K';
 }
 
+/// A solid ink body: a see-through one let the piece beneath (the a8 rook, a
+/// knight) read through the figure.
+const Color _kHeartInk = Color(0xE00C0C0E);
+
 class _HeartPainter extends CustomPainter {
-  const _HeartPainter();
+  const _HeartPainter(this.fill);
+
+  final Color fill;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -111,9 +126,7 @@ class _HeartPainter extends CustomPainter {
       ..cubicTo(w * 0.86, 0, w, h * 0.12, w, h * 0.3)
       ..cubicTo(w, h * 0.52, w * 0.82, h * 0.74, w * 0.5, h * 0.98)
       ..close();
-    // A solid ink body: a see-through one let the piece beneath (the a8
-    // rook, a knight) read through the figure.
-    canvas.drawPath(path, Paint()..color = const Color(0xFF0C0C0E).withValues(alpha: 0.88));
+    canvas.drawPath(path, Paint()..color = fill);
     canvas.drawPath(
       path,
       Paint()
@@ -124,5 +137,6 @@ class _HeartPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant _HeartPainter oldDelegate) => false;
+  bool shouldRepaint(covariant _HeartPainter oldDelegate) =>
+      oldDelegate.fill != fill;
 }

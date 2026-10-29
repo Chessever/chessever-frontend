@@ -1,6 +1,8 @@
+import 'package:chessever2/repository/liked_games/game_like_count_provider.dart';
 import 'package:chessever2/repository/liked_games/liked_games_provider.dart';
 import 'package:chessever2/screens/chessboard/widgets/like_flight.dart';
 import 'package:chessever2/theme/app_colors.dart';
+import 'package:chessever2/widgets/board_like_heart.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:motor/motor.dart';
@@ -10,6 +12,10 @@ import 'package:motor/motor.dart';
 const double kNotationFooterButtonWidth = 140;
 const double kNotationFooterButtonHeight = 44;
 const double _kFooterRadius = 12;
+
+/// The count heart's width inside a footer button: the Most Liked heart at
+/// its smallest board size, so the two read as the same object.
+const double kNotationLikeHeartSize = 30;
 
 /// The action row under the notation: Report and Like, side by side and
 /// centred as one unit. Either may be absent; a lone button stays centred.
@@ -192,12 +198,22 @@ class _LikeGameButtonState extends ConsumerState<LikeGameButton> {
     });
     final liked = ref.watch(isGameLikedProvider(widget.likeId));
     final likeColor = context.colors.danger;
+    // Everyone else's likes from the server, plus the viewer's own from local
+    // state, so the number moves the moment the heart is tapped.
+    final likes = displayedGameLikes(
+      others: ref.watch(gameLikeCountProvider(widget.likeId)).valueOrNull,
+      likedByMe: liked,
+    );
+    final showCount = likes != null && likes > 0;
 
     return NotationFooterButton(
       key: const ValueKey('notation-like-button'),
       onTap: _handleTap,
       label: liked ? 'Liked' : 'Like',
-      semanticsLabel: liked ? 'Liked. Tap to unlike' : 'Like this game',
+      semanticsLabel: [
+        liked ? 'Liked. Tap to unlike' : 'Like this game',
+        if (showCount) likes == 1 ? '1 like' : '$likes likes',
+      ].join('. '),
       semanticsHint: 'You can also double-tap the board',
       borderColor: liked ? likeColor.withValues(alpha: 0.55) : null,
       icon: SingleMotionBuilder(
@@ -208,12 +224,22 @@ class _LikeGameButtonState extends ConsumerState<LikeGameButton> {
         builder: (context, scale, child) {
           return Transform.scale(scale: scale, child: child);
         },
-        child: Icon(
-          liked ? Icons.favorite_rounded : Icons.favorite_border_rounded,
-          key: _heartKey,
-          size: 19,
-          color: liked ? likeColor : context.colors.accentText,
-        ),
+        // The same heart Most Liked sets on its boards, count inside. Until
+        // a count arrives (or when nobody has liked the game yet) a plain
+        // heart holds the place.
+        child: showCount
+            ? LikeCountHeart(
+                key: _heartKey,
+                likes: likes,
+                size: kNotationLikeHeartSize,
+                fill: liked ? likeColor : null,
+              )
+            : Icon(
+                liked ? Icons.favorite_rounded : Icons.favorite_border_rounded,
+                key: _heartKey,
+                size: 19,
+                color: liked ? likeColor : context.colors.accentText,
+              ),
       ),
     );
   }
