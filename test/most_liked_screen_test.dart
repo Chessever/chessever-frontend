@@ -323,6 +323,56 @@ void main() {
     );
   });
 
+  testWidgets('switching Likes periods returns to the latest range', (
+    tester,
+  ) async {
+    // Allow an earlier year above the ranking's launch-date lower bound.
+    final now = DateTime(DateTime.now().year + 2, 10, 29);
+    final container = await _pump(
+      tester,
+      subscribed: true,
+      home: MostLikedScreen(now: now),
+    );
+    for (final period in MostLikedPeriod.values) {
+      await tester.tap(find.bySemanticsLabel('Most liked, ${period.label}'));
+      await _settle(tester);
+      tester
+          .widget<MostLikedDateControl>(find.byType(MostLikedDateControl))
+          .onPrevious!();
+      await _settle(tester);
+      expect(container.read(mostLikedDayProvider), isNotNull);
+
+      // Tapping the active period retains the range the user is browsing.
+      await tester.tap(find.bySemanticsLabel('Most liked, ${period.label}'));
+      await _settle(tester);
+      expect(container.read(mostLikedDayProvider), isNotNull);
+
+      final other = MostLikedPeriod
+          .values[(period.index + 1) % MostLikedPeriod.values.length];
+      await tester.tap(find.bySemanticsLabel('Most liked, ${other.label}'));
+      await _settle(tester);
+      expect(container.read(mostLikedDayProvider), isNull);
+      expect(
+        tester
+            .widget<MostLikedDateControl>(find.byType(MostLikedDateControl))
+            .query
+            .isCurrent(now),
+        isTrue,
+      );
+      await tester.tap(find.bySemanticsLabel('Most liked, ${period.label}'));
+      await _settle(tester);
+      expect(container.read(mostLikedDayProvider), isNull);
+      expect(
+        tester
+            .widget<MostLikedDateControl>(find.byType(MostLikedDateControl))
+            .query
+            .isCurrent(now),
+        isTrue,
+      );
+    }
+    await _teardown(tester, container);
+  });
+
   testWidgets(
     'scroll appends pages lazily, retries failures and resets on period changes',
     (tester) async {

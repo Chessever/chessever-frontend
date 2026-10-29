@@ -109,6 +109,9 @@ Future<void> _selectPeriod(
   WidgetRef ref,
   MostLikedPeriod period,
 ) async {
+  if (ref.read(mostLikedPeriodProvider) == period) return;
+  // A newly selected period always starts at its latest calendar range.
+  ref.read(mostLikedDayProvider.notifier).state = null;
   ref.read(mostLikedPeriodProvider.notifier).state = period;
 }
 

@@ -130,6 +130,7 @@ a player Games tab or event scorecard. Confirm the exact target and Back to Home
 Repeat a Premium destination as a free reader and cancel its prompt; there must
 be no unexpected fallback navigation. Live-app testing is performed by the user.
 
+Switching between Today, Week, Month and Year resets to the latest range.
 Likes section links follow the current calendar period when `date` is absent.
 With `date`, the ranking opens the day, Monday-based week, month or year
 containing that date. Long-press a period or the date label, then choose Share.
