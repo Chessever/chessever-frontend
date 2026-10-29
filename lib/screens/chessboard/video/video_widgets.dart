@@ -1,3 +1,8 @@
+import 'package:hooks_riverpod/hooks_riverpod.dart';
+import '../../../repository/gamebase/gamebase_repository.dart';
+import '../../../providers/game_video_sources_provider.dart';
+import '../../../widgets/app_snack.dart';
+import '../../../widgets/player_initials_avatar.dart';
 import 'dart:math' as math;
 import 'dart:ui' show FlutterView;
 import 'package:country_flags/country_flags.dart';
@@ -111,6 +116,8 @@ class EventVideoHost extends StatefulWidget {
     required this.gameId,
     required this.tourId,
     required this.roundId,
+    this.analysisStreams = const [],
+    this.completed = false,
     required this.child,
     this.session,
     this.player,
@@ -121,6 +128,8 @@ class EventVideoHost extends StatefulWidget {
     this.configuration,
   });
   final String gameId, tourId, roundId;
+  final List<EventVideoStream> analysisStreams;
+  final bool completed;
   final String? preferredCountry;
   final VoidCallback? onVideoInteraction;
   final Widget child;
@@ -198,6 +207,8 @@ class EventVideoHostState extends State<EventVideoHost>
     // Preferences are initialized during startup; optional storage failures
     // must not postpone stream availability until after the first frame.
     _open();
+    session.setCompleted(widget.completed);
+    session.setAnalysisStreams(widget.analysisStreams);
   }
 
   void _open() => session.openGame(
@@ -236,6 +247,9 @@ class EventVideoHostState extends State<EventVideoHost>
   void didUpdateWidget(covariant EventVideoHost oldWidget) {
     super.didUpdateWidget(oldWidget);
     session.setPreferredCountry(widget.preferredCountry);
+    _open();
+    session.setCompleted(widget.completed);
+    session.setAnalysisStreams(widget.analysisStreams);
     if (oldWidget.pageObserver != widget.pageObserver) {
       oldWidget.pageObserver?.unsubscribe(this);
       if (_route != null) widget.pageObserver?.subscribe(this, _route!);
@@ -359,38 +373,37 @@ class _FullscreenVideoOverlay extends StatelessWidget {
       if (!didPop) player.closeFullscreen();
     },
     child: LayoutBuilder(
-      builder:
-          (context, constraints) => RotatedBox(
-            key: const ValueKey('native_video_landscape'),
-            quarterTurns: constraints.maxHeight > constraints.maxWidth ? 1 : 0,
-            child: Material(
-              color: Colors.black,
-              child: Stack(
-                fit: StackFit.expand,
-                children: [
-                  player.fullscreenView ?? const SizedBox.shrink(),
-                  // A Flutter-side exit: the provider's own chrome may be hidden and
-                  // back is not obvious, so fullscreen always has a visible way out.
-                  Positioned(
-                    top: 8,
-                    right: 8,
-                    child: SafeArea(
-                      child: IconButton(
-                        key: const ValueKey('video_exit_fullscreen'),
-                        tooltip: 'Exit fullscreen',
-                        onPressed: player.closeFullscreen,
-                        icon: const Icon(
-                          Icons.fullscreen_exit,
-                          color: Colors.white,
-                          size: 28,
-                        ),
-                      ),
+      builder: (context, constraints) => RotatedBox(
+        key: const ValueKey('native_video_landscape'),
+        quarterTurns: constraints.maxHeight > constraints.maxWidth ? 1 : 0,
+        child: Material(
+          color: Colors.black,
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              player.fullscreenView ?? const SizedBox.shrink(),
+              // A Flutter-side exit: the provider's own chrome may be hidden and
+              // back is not obvious, so fullscreen always has a visible way out.
+              Positioned(
+                top: 8,
+                right: 8,
+                child: SafeArea(
+                  child: IconButton(
+                    key: const ValueKey('video_exit_fullscreen'),
+                    tooltip: 'Exit fullscreen',
+                    onPressed: player.closeFullscreen,
+                    icon: const Icon(
+                      Icons.fullscreen_exit,
+                      color: Colors.white,
+                      size: 28,
                     ),
                   ),
-                ],
+                ),
               ),
-            ),
+            ],
           ),
+        ),
+      ),
     ),
   );
 }
@@ -423,6 +436,54 @@ class EventVideoFlags extends StatelessWidget {
                 key: ValueKey('video_stream_${stream.id}'),
                 borderRadius: BorderRadius.circular(8),
                 onTap: () => session.activateStream(stream.id),
+                onLongPress: stream.authorId == null
+                    ? null
+                    : () async {
+                        final box = context.findRenderObject() as RenderBox?;
+                        final at =
+                            box?.localToGlobal(Offset.zero) ?? Offset.zero;
+                        final chosen = await showMenu<bool>(
+                          context: context,
+                          position: RelativeRect.fromLTRB(
+                            at.dx,
+                            at.dy,
+                            at.dx + 1,
+                            at.dy + 1,
+                          ),
+                          items: [
+                            PopupMenuItem(
+                              value: true,
+                              child: Text(
+                                stream.followed
+                                    ? 'Unfollow author'
+                                    : 'Follow author',
+                              ),
+                            ),
+                          ],
+                        );
+                        if (chosen != true) return;
+                        try {
+                          if (!context.mounted) return;
+                          final ref = ProviderScope.containerOf(
+                            context,
+                            listen: false,
+                          );
+                          await ref
+                              .read(gamebaseRepositoryProvider)
+                              .followGameVideoAuthor(
+                                stream.authorId!,
+                                !stream.followed,
+                              );
+                          ref.invalidate(gameVideoSourcesProvider);
+                        } catch (_) {
+                          if (context.mounted) {
+                            showAppSnack(
+                              context,
+                              'Sign in to follow authors, then try again.',
+                            );
+                          }
+                        }
+                      },
                 child: Container(
                   width: 112,
                   padding: const EdgeInsets.symmetric(
@@ -431,23 +492,35 @@ class EventVideoFlags extends StatelessWidget {
                   ),
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(8),
-                    color:
-                        selected
-                            ? Theme.of(
-                              context,
-                            ).colorScheme.primary.withValues(alpha: .14)
-                            : null,
+                    color: selected
+                        ? Theme.of(
+                            context,
+                          ).colorScheme.primary.withValues(alpha: .14)
+                        : null,
                     border: Border.all(
-                      color:
-                          selected
-                              ? Theme.of(context).colorScheme.primary
-                              : Colors.transparent,
+                      color: selected
+                          ? Theme.of(context).colorScheme.primary
+                          : Colors.transparent,
                     ),
                   ),
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      if (stream.flagCode != null)
+                      if (stream.isAnalysis)
+                        PlayerInitialsAvatar(
+                          photoUrl: stream.authorAvatarUrl,
+                          initials: stream.authorName!
+                              .trim()
+                              .split(RegExp(r'\s+'))
+                              .where((s) => s.isNotEmpty)
+                              .take(2)
+                              .map((s) => s.characters.first)
+                              .join()
+                              .toUpperCase(),
+                          size: 28,
+                          isCircular: true,
+                        )
+                      else if (stream.flagCode != null)
                         CountryFlag.fromCountryCode(
                           stream.flagCode!,
                           theme: const ImageTheme(width: 28, height: 20),
@@ -585,43 +658,39 @@ class _EventVideoPlayerBoxState extends State<_EventVideoPlayerBox> {
           scope.session.revealFlags();
         },
         onPointerCancel: (_) => _pointerDown = null,
-        child:
-            player == null
-                ? const Center(
-                  child: Text(
-                    'Video is not configured',
-                    style: TextStyle(color: Colors.white),
-                  ),
-                )
-                : ListenableBuilder(
-                  listenable: player,
-                  builder:
-                      (context, _) => Stack(
-                        fit: StackFit.expand,
-                        children: [
-                          player.buildView(),
-                          if (player.failed)
-                            ColoredBox(
-                              color: Colors.black,
-                              child: Center(
-                                child: TextButton.icon(
-                                  onPressed: player.retry,
-                                  // The player is black in both themes, so
-                                  // the light theme's deep teal would sink
-                                  // to ~2.9:1 here; keep the bright accent.
-                                  style: TextButton.styleFrom(
-                                    foregroundColor: kPrimaryColor,
-                                  ),
-                                  icon: const Icon(Icons.refresh),
-                                  label: const Text(
-                                    'Video unavailable · Retry',
-                                  ),
-                                ),
-                              ),
-                            ),
-                        ],
-                      ),
+        child: player == null
+            ? const Center(
+                child: Text(
+                  'Video is not configured',
+                  style: TextStyle(color: Colors.white),
                 ),
+              )
+            : ListenableBuilder(
+                listenable: player,
+                builder: (context, _) => Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    player.buildView(),
+                    if (player.failed)
+                      ColoredBox(
+                        color: Colors.black,
+                        child: Center(
+                          child: TextButton.icon(
+                            onPressed: player.retry,
+                            // The player is black in both themes, so
+                            // the light theme's deep teal would sink
+                            // to ~2.9:1 here; keep the bright accent.
+                            style: TextButton.styleFrom(
+                              foregroundColor: kPrimaryColor,
+                            ),
+                            icon: const Icon(Icons.refresh),
+                            label: const Text('Video unavailable · Retry'),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
       ),
     );
   }
@@ -636,49 +705,43 @@ class _ExpandedEventVideo extends StatelessWidget {
       color: Colors.black,
       child: SafeArea(
         child: LayoutBuilder(
-          builder:
-              (context, constraints) => RotatedBox(
-                quarterTurns:
-                    constraints.maxHeight > constraints.maxWidth ? 1 : 0,
-                child: Column(
-                  children: [
-                    SizedBox(
-                      height: 44,
-                      child: Row(
-                        children: [
-                          IconButton(
-                            key: const ValueKey('video_close_expanded'),
-                            tooltip: 'Return to game',
-                            onPressed: () => session.setExpanded(false),
-                            icon: const Icon(
-                              Icons.arrow_back,
-                              color: Colors.white,
-                            ),
-                          ),
-                          Expanded(
-                            child: Text(
-                              session.selected?.label ?? '',
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(color: Colors.white),
-                            ),
-                          ),
-                        ],
+          builder: (context, constraints) => RotatedBox(
+            quarterTurns: constraints.maxHeight > constraints.maxWidth ? 1 : 0,
+            child: Column(
+              children: [
+                SizedBox(
+                  height: 44,
+                  child: Row(
+                    children: [
+                      IconButton(
+                        key: const ValueKey('video_close_expanded'),
+                        tooltip: 'Return to game',
+                        onPressed: () => session.setExpanded(false),
+                        icon: const Icon(Icons.arrow_back, color: Colors.white),
                       ),
-                    ),
-                    const EventVideoFlagSlot(),
-                    Expanded(
-                      child:
-                          session.selected?.source.platform ==
-                                  VideoPlatform.twitch
-                              ? const SingleChildScrollView(
-                                child: EventVideoSurface(expanded: true),
-                              )
-                              : const EventVideoSurface(expanded: true),
-                    ),
-                  ],
+                      Expanded(
+                        child: Text(
+                          session.selected?.label ?? '',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(color: Colors.white),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
+                const EventVideoFlagSlot(),
+                Expanded(
+                  child:
+                      session.selected?.source.platform == VideoPlatform.twitch
+                      ? const SingleChildScrollView(
+                          child: EventVideoSurface(expanded: true),
+                        )
+                      : const EventVideoSurface(expanded: true),
+                ),
+              ],
+            ),
+          ),
         ),
       ),
     );

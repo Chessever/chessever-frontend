@@ -5,6 +5,7 @@ import 'package:chessever2/repository/library/library_game_event.dart';
 import 'package:chessever2/screens/gamebase/models/models.dart';
 import 'package:chessever2/screens/library/providers/gamebase_filter_provider.dart';
 import 'package:chessever2/screens/library/providers/twic_event_aggregates_provider.dart';
+import 'package:chessever2/screens/library/utils/event_game_search_match.dart';
 import 'package:chessever2/screens/library/utils/gamebase_pgn_builder.dart';
 import 'package:chessever2/screens/library/widgets/library_gamebase_filter_dialog.dart';
 import 'package:chessever2/utils/chess_title_utils.dart';
@@ -178,7 +179,17 @@ Map<String, dynamic>? buildLibraryExactWhere(
   return {'and': expressions};
 }
 
-@visibleForTesting
+/// The `eco:` token for GET search. A broad family spans several prefixes,
+/// sent joined by `+` (`eco:E6+E7+E8+E9`), which servers from gamebase
+/// 1.12.13 OR together; a single code or prefix is sent as it is.
+String gamebaseEcoToken(GameEcoFilter eco) {
+  final prefixes = eco.ecoPrefixes;
+  return prefixes.length > 1 ? 'eco:${prefixes.join('+')}' : 'eco:${eco.code}';
+}
+
+/// The GET search `q`: free text (or `*`) with the ECO token and, when
+/// [selectedEvent] is given, the `event:` token. Also the event chips' `q`,
+/// so the chips are counted under the same search the games list runs.
 String composeGamebaseSearchQuery({
   required String query,
   required GamebaseFilter filter,
@@ -191,7 +202,7 @@ String composeGamebaseSearchQuery({
           ? baseQuery
           : '$baseQuery event:"$escapedEvent"';
   if (filter.eco.isAll) return composedQuery;
-  return 'eco:${filter.eco.code} $composedQuery';
+  return '${gamebaseEcoToken(filter.eco)} $composedQuery';
 }
 
 @visibleForTesting
@@ -264,6 +275,7 @@ class DatabaseGamesPaginationNotifier
 
     try {
       final result = await _fetchPage(1);
+      if (!mounted) return;
       state = DatabaseGamesPaginationState(
         games: result.games,
         currentPage: 1,
@@ -273,6 +285,7 @@ class DatabaseGamesPaginationNotifier
         hasMore: result.hasMore,
       );
     } catch (e) {
+      if (!mounted) return;
       state = state.copyWith(
         isLoading: false,
         error: e.toString(),
@@ -289,6 +302,7 @@ class DatabaseGamesPaginationNotifier
     try {
       final nextPage = state.currentPage + 1;
       final result = await _fetchPage(nextPage);
+      if (!mounted) return;
 
       state = state.copyWith(
         games: [...state.games, ...result.games],
@@ -299,6 +313,7 @@ class DatabaseGamesPaginationNotifier
         hasMore: result.hasMore,
       );
     } catch (e) {
+      if (!mounted) return;
       state = state.copyWith(isLoading: false, error: e.toString());
     }
   }
@@ -308,15 +323,81 @@ class DatabaseGamesPaginationNotifier
     await _loadInitialPage();
   }
 
+  /// A picked chip on a server without the exact `event` filter: the search
+  /// cannot narrow to a broadcast tournament, whose games carry pairings as
+  /// their event, so it found none. The event view resolves the tournament by
+  /// name; its games are matched to the search here, player matches first
+  /// and then newest, as the search ranks them. Null keeps "No games found".
+  Future<_PageResult?> _fetchPickedEventFromView(
+    GamebaseRepository repo,
+    String event,
+  ) async {
+    final GamebaseEventView? view;
+    try {
+      view = await repo.getEventView(event);
+    } catch (_) {
+      return null;
+    }
+    if (view == null) return null;
+
+    final nameWords = _query.trim().toLowerCase().split(RegExp(r'\s+'))
+      ..removeWhere((word) => word.isEmpty || word == '*');
+    int nameMatch(GamebaseEventGame game) {
+      if (nameWords.isEmpty) return 0;
+      bool side(String? name) {
+        final lower = (name ?? '').toLowerCase();
+        return nameWords.every(lower.contains);
+      }
+
+      return side(game.white.name) || side(game.black.name) ? 1 : 0;
+    }
+
+    final epoch = DateTime.fromMillisecondsSinceEpoch(0);
+    final matching =
+        view.games
+            .where(
+              (game) =>
+                  eventGameMatchesSearch(game, query: _query, filter: _filter),
+            )
+            .toList()
+          ..sort((a, b) {
+            final byName = nameMatch(b).compareTo(nameMatch(a));
+            if (byName != 0) return byName;
+            return (b.date ?? epoch).compareTo(a.date ?? epoch);
+          });
+    final eventName = view.event;
+    final site = view.site;
+    final games = matching
+        .map((game) => game.toGamesTourModel(eventName: eventName, site: site))
+        .toList(growable: false);
+    return _PageResult(
+      games: games,
+      totalCount: games.length,
+      totalCountIsEstimate: view.truncated,
+      hasMore: false,
+    );
+  }
+
   Future<_PageResult> _fetchPage(int pageNumber) async {
     final repo = _ref.read(gamebaseRepositoryProvider);
     final selectedEvent = _selectedEvent?.trim();
+    // A picked chip must return the games it counted. A broadcast
+    // tournament's games carry pairings as their event, which neither the
+    // `event:` token nor the exact query below can reach; a server that files
+    // events like the chips (see [GamebaseRepository.filesEventsExactly])
+    // takes the chip's name as `event` instead.
+    final exactEvent =
+        selectedEvent != null &&
+                selectedEvent.isNotEmpty &&
+                repo.filesEventsExactly
+            ? selectedEvent
+            : null;
     late final List<Map<String, dynamic>> rawRows;
     late final int totalCount;
     late final bool totalCountIsEstimate;
     late final bool hasMore;
 
-    if (shouldUseExactLibraryGameQuery(_query, _filter)) {
+    if (exactEvent == null && shouldUseExactLibraryGameQuery(_query, _filter)) {
       final where = buildLibraryExactWhere(
         _filter,
         selectedEvent: selectedEvent,
@@ -344,8 +425,9 @@ class DatabaseGamesPaginationNotifier
         query: composeGamebaseSearchQuery(
           query: _query,
           filter: _filter,
-          selectedEvent: selectedEvent,
+          selectedEvent: exactEvent == null ? selectedEvent : null,
         ),
+        event: exactEvent,
         resources: const ['game'],
         pageNumber: pageNumber,
         pageSize: _pageSize,
@@ -371,6 +453,15 @@ class DatabaseGamesPaginationNotifier
       totalCount = response.metadata.totalCount ?? 0;
       totalCountIsEstimate = response.metadata.totalCountIsEstimate;
       hasMore = response.metadata.hasMore;
+    }
+
+    if (rawRows.isEmpty &&
+        pageNumber == 1 &&
+        exactEvent == null &&
+        selectedEvent != null &&
+        selectedEvent.isNotEmpty) {
+      final fromView = await _fetchPickedEventFromView(repo, selectedEvent);
+      if (fromView != null) return fromView;
     }
 
     if (rawRows.isEmpty) {

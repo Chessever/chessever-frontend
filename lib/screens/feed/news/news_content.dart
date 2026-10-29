@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:chessever2/services/app_destination.dart';
 
 import 'package:chessever2/screens/feed/news/news_models.dart';
+import 'package:chessever2/screens/feed/news/news_links.dart';
 import 'package:chessever2/widgets/federation_flag.dart';
 
 /// Pure ChessEver News logic, ported from the web so the app and
@@ -42,6 +43,11 @@ String newsSlug(String title) {
 String newsWebUrl(int id, String slug) =>
     '$kChesseverSiteUrl/news/${Uri.encodeComponent('$id')}/'
     '${Uri.encodeComponent(slug)}';
+
+/// Shares always return to this article in ChessEver, including partners.
+/// [FeedNews.webUrl] remains the credited publisher's original URL.
+String newsShareUrl(FeedNews news) =>
+    '$kChesseverSiteUrl${NewsLink(id: news.id, publisher: news.publisher, slug: newsSlug(news.title)).path}';
 
 /// `cleanText` from news.ts: collapse whitespace runs, trim.
 String cleanNewsText(Object? value) {
@@ -1108,20 +1114,18 @@ bool isChesseverUri(Uri uri) => _chesseverHosts.contains(uri.host);
 
 /// The article id when [uri] points at another ChessEver News article.
 int? newsArticleIdOf(Uri uri) {
-  if (!isChesseverUri(uri)) return null;
-  final segments = uri.pathSegments.where((s) => s.isNotEmpty).toList();
-  if (segments.length < 2 || segments.first != 'news') return null;
-  return int.tryParse(segments[1]);
+  final link = NewsLink.parse(uri);
+  return link != null && !link.publisher.isPartner ? link.id : null;
 }
 
 /// The article [uri] points at among [items]: a ChessEver News link by its
 /// id, a partner's by its page on the partner's site. Null for anything
 /// else.
 FeedNews? newsArticleAt(Uri uri, Iterable<FeedNews> items) {
-  final articleId = newsArticleIdOf(uri);
-  if (articleId != null) {
+  final link = NewsLink.parse(uri);
+  if (link?.key != null) {
     for (final item in items) {
-      if (!item.publisher.isPartner && item.id == articleId) return item;
+      if (item.key == link!.key) return item;
     }
     return null;
   }
@@ -1215,6 +1219,7 @@ String newsSourceContextLabel(String href) {
 /// (`standings.png`, `profile.png`) and OG player cards point at the page they
 /// picture.
 Uri? newsInAppRoute(Uri uri) {
+  if (NewsLink.parse(uri) != null) return uri;
   if (!isChesseverUri(uri)) return null;
   final destination = parseAppDestination(uri.toString());
   if (destination != null && uri.path.startsWith('/app/my-space')) {

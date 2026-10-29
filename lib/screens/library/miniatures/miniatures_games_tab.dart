@@ -102,10 +102,13 @@ class _MiniaturesGamesTabState extends ConsumerState<MiniaturesGamesTab>
     _debounceTimer = Timer(_debounceDuration, () {
       if (!mounted) return;
       final current = ref.read(miniaturesFilterProvider);
-      ref.read(miniaturesFilterProvider.notifier).state = current.copyWith(
+      final next = current.copyWith(
         search: trimmed.isEmpty ? null : trimmed,
         clearSearch: trimmed.isEmpty,
       );
+      // An equal filter (e.g. a trailing space) must not rebuild the list.
+      if (next == current) return;
+      ref.read(miniaturesFilterProvider.notifier).state = next;
     });
   }
 

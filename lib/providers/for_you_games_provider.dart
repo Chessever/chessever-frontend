@@ -28,6 +28,7 @@ import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrap
 import 'package:chessever2/screens/chessboard/provider/game_pgn_stream_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/live_rounds_id_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/live_tour_id_provider.dart';
+import 'package:chessever2/utils/transient_request_retry.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_mode_provider.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_screen_provider.dart';
 import 'package:chessever2/widgets/event_card/event_next_round_provider.dart';
@@ -44,11 +45,24 @@ const Duration _kForYouStaleThreshold = Duration(minutes: 5);
 /// and every later refresh queues behind it.
 const Duration _kForYouRequestTimeout = Duration(seconds: 15);
 
-/// A page fetch is at most two timed requests. One still in flight after
-/// longer than that, by the wall clock, spent the gap suspended, and its
-/// timeout timer may not have caught up yet; the next resume or refresh
-/// replaces it rather than waiting.
-const Duration _kForYouStalledFetchAge = Duration(seconds: 30);
+/// A feed or board RPC that times out is sent once more before Today shows
+/// its error. The usual cause is not the RPC: on some networks (TurkNet via
+/// Cloudflare Istanbul, 2026-10-28) a connection to Supabase hangs ~20 s, and
+/// when the hung request is the launch token refresh every request waits on
+/// it. The second attempt goes out once the refresh has settled.
+const List<Duration> _kForYouRetryDelays = [Duration(milliseconds: 500)];
+
+/// A page fetch is at most two retried requests, four timed attempts. One
+/// still in flight after longer than that, by the wall clock, spent the gap
+/// suspended, and its timeout timer may not have caught up yet; the next
+/// resume or refresh replaces it rather than waiting.
+const Duration _kForYouStalledFetchAge = Duration(seconds: 65);
+
+/// Disk budget for the saved feed at launch, where it races the network.
+const Duration _kForYouLaunchCacheBudget = Duration(milliseconds: 250);
+
+/// Disk budget after a failed fetch, when the saved feed is all there is.
+const Duration _kForYouFallbackCacheBudget = Duration(seconds: 1);
 
 enum ForYouVisibilityRefresh { topGames, fullFeed }
 
@@ -317,17 +331,28 @@ class ForYouNotifier extends StateNotifier<ForYouState> {
   }
 
   Future<void> _loadInitial() async {
+    // Start the server request immediately. A slow disk read must not delay it,
+    // and a late cache read must never overwrite a successful server response.
+    final fetch = _fetchPage(isInitial: true);
+    await _showCachedFeed(budget: _kForYouLaunchCacheBudget);
+    await fetch;
+  }
+
+  /// Shows the saved feed for the current filter while Today has no events
+  /// and is loading or failed. A newer server page always wins. A [fallback]
+  /// read, after a failed fetch, also accepts an older page.
+  Future<void> _showCachedFeed({
+    required Duration budget,
+    bool fallback = false,
+  }) async {
     final storage = ref.read(forYouFeedLocalStorageProvider);
     final filterKey = forYouFeedCacheFilterKey(
       ref.read(forYouAppliedFilterProvider),
     );
-    // Start the server request immediately. A slow disk read must not delay it,
-    // and a late cache read must never overwrite a successful server response.
-    final fetch = _fetchPage(isInitial: true);
     try {
       final cached = await storage
-          .read(filterKey: filterKey)
-          .timeout(const Duration(milliseconds: 250));
+          .read(filterKey: filterKey, fallback: fallback)
+          .timeout(budget);
       if (mounted &&
           cached != null &&
           cached.broadcasts.isNotEmpty &&
@@ -360,7 +385,26 @@ class ForYouNotifier extends StateNotifier<ForYouState> {
     } catch (_) {
       // An unavailable cache leaves the normal network load in charge.
     }
-    await fetch;
+  }
+
+  /// One feed or board RPC: bounded by [_kForYouRequestTimeout] per attempt
+  /// and retried once on a timeout or dropped connection. No retry once the
+  /// fetch was replaced, or once it outlived [_kForYouStalledFetchAge]: that
+  /// one was frozen across a suspension, and `_fetchPage` restarts it whole.
+  Future<T> _feedRequest<T>(
+    Future<T> Function() request, {
+    bool Function()? isCurrent,
+  }) {
+    return retryTransientRead(
+      () => request().timeout(_kForYouRequestTimeout),
+      delays: _kForYouRetryDelays,
+      canRetry: () {
+        if (!mounted || !(isCurrent?.call() ?? true)) return false;
+        final startedAt = _fetchStartedAt;
+        return startedAt == null ||
+            _now().difference(startedAt) < _kForYouStalledFetchAge;
+      },
+    );
   }
 
   Future<void> refresh() async {
@@ -593,16 +637,17 @@ class ForYouNotifier extends StateNotifier<ForYouState> {
       // Query Supabase with filters
       final repo = ref.read(groupBroadcastRepositoryProvider);
 
-      final filteredBroadcasts = await repo
-          .getForYouGroupBroadcasts(
-            limit: _kPageSize,
-            offset: _offset,
-            timeControlFilters: formatFilters.isNotEmpty ? formatFilters : null,
-            minElo: hasEloFilter ? minElo : null,
-            maxElo: hasEloFilter ? maxElo : null,
-            statusFilters: statusFilters.isNotEmpty ? statusFilters : null,
-          )
-          .timeout(_kForYouRequestTimeout);
+      final filteredBroadcasts = await _feedRequest(
+        () => repo.getForYouGroupBroadcasts(
+          limit: _kPageSize,
+          offset: _offset,
+          timeControlFilters: formatFilters.isNotEmpty ? formatFilters : null,
+          minElo: hasEloFilter ? minElo : null,
+          maxElo: hasEloFilter ? maxElo : null,
+          statusFilters: statusFilters.isNotEmpty ? statusFilters : null,
+        ),
+        isCurrent: isCurrent,
+      );
       if (!isCurrent()) return;
       final dbHasMore = filteredBroadcasts.length >= _kPageSize;
       _offset += filteredBroadcasts.length;
@@ -697,6 +742,15 @@ class ForYouNotifier extends StateNotifier<ForYouState> {
       debugPrint('[ForYou] Error: $e');
       debugPrint('[ForYou] Stack: $stack');
       _logErrorToSentry(e, stack);
+      // Prefer the saved feed to the error page. The error stays recorded,
+      // so the next visibility or resume refresh fetches again.
+      if (state.events.isEmpty) {
+        await _showCachedFeed(
+          budget: _kForYouFallbackCacheBudget,
+          fallback: true,
+        );
+        if (!isCurrent()) return;
+      }
       state = state.copyWith(isLoading: false, error: e.toString());
     } finally {
       // An abandoned fetch no longer owns the flags; its replacement does.
@@ -793,12 +847,13 @@ class ForYouNotifier extends StateNotifier<ForYouState> {
       );
     }
 
-    final gamesByEventId = await gameRepository
-        .getForYouTopGamesByEventIds(
-          eventIds: eventIds,
-          boardsPerEvent: kGamesPerEvent,
-        )
-        .timeout(_kForYouRequestTimeout);
+    final gamesByEventId = await _feedRequest(
+      () => gameRepository.getForYouTopGamesByEventIds(
+        eventIds: eventIds,
+        boardsPerEvent: kGamesPerEvent,
+      ),
+      isCurrent: isCurrent,
+    );
     if (!mounted || (isCurrent != null && !isCurrent())) {
       return gamesByEventId;
     }

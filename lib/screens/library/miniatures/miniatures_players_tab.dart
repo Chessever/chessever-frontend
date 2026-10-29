@@ -89,10 +89,13 @@ class _MiniaturesPlayersTabState extends ConsumerState<MiniaturesPlayersTab>
     _debounceTimer = Timer(_debounceDuration, () {
       if (!mounted) return;
       final current = ref.read(miniaturePlayersQueryProvider);
-      ref.read(miniaturePlayersQueryProvider.notifier).state = current.copyWith(
+      final next = current.copyWith(
         search: trimmed.isEmpty ? null : trimmed,
         clearSearch: trimmed.isEmpty,
       );
+      // An equal query (e.g. a trailing space) must not rebuild the list.
+      if (next == current) return;
+      ref.read(miniaturePlayersQueryProvider.notifier).state = next;
     });
   }
 

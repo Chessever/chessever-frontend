@@ -1,6 +1,9 @@
 import 'package:chessever2/screens/feed/feed_screen.dart';
+import 'package:chessever2/screens/feed/news/feed_news.dart';
+import 'package:chessever2/screens/feed/news/news_cover.dart';
 import 'package:chessever2/screens/feed/widgets/feed_tile_board.dart';
 import 'package:chessever2/screens/for_you/discovery/likes_screen.dart';
+import 'package:chessever2/screens/for_you/discovery/news_screen.dart';
 import 'package:chessever2/screens/for_you/discovery/providers/discovery_providers.dart';
 import 'package:chessever2/screens/for_you/discovery/providers/reports_provider.dart';
 import 'package:chessever2/screens/for_you/discovery/reports_screen.dart';
@@ -13,9 +16,9 @@ import 'package:chessever2/widgets/hub_tile_captions.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
-/// Discovery is a two-row set of destinations. Each destination owns its
+/// Discovery is a three-row set of destinations. Each destination owns its
 /// loading, empty and retry states, and stays available if its preview fails.
-enum DiscoverySection { tiles, likes, miniatures, reports }
+enum DiscoverySection { tiles, likes, news, reports, miniatures }
 
 class DiscoveryView extends ConsumerStatefulWidget {
   const DiscoveryView({super.key, this.scrollController});
@@ -37,6 +40,11 @@ class _DiscoveryViewState extends ConsumerState<DiscoveryView> {
   @override
   Widget build(BuildContext context) {
     final feed = ref.watch(feedTilePreviewProvider).valueOrNull;
+    // Reuse an already-loaded cover without fetching article bodies just to
+    // draw a destination tile. The News screen owns its own first read.
+    final news = ref.exists(feedNewsProvider)
+        ? ref.watch(feedNewsProvider).valueOrNull
+        : null;
     return RefreshIndicator(
       color: context.colors.textPrimary,
       backgroundColor: context.colors.surface,
@@ -46,6 +54,7 @@ class _DiscoveryViewState extends ConsumerState<DiscoveryView> {
         ref.invalidate(discoveryReviewCurveProvider);
         ref.invalidate(feedTilePreviewProvider);
         ref.invalidate(reportsFirstPageProvider);
+        if (ref.exists(feedNewsProvider)) ref.invalidate(feedNewsProvider);
         ref.read(reportsFirstPageProvider);
       },
       child: ListView(
@@ -87,14 +96,15 @@ class _DiscoveryViewState extends ConsumerState<DiscoveryView> {
                     ),
                     HubTileRow(
                       left: HubTile(
-                        key: const ValueKey('discovery_miniatures_tile'),
-                        dotId: 'discovery.tile.miniatures',
-                        title: 'Miniatures',
-                        caption: '25 moves or fewer',
-                        artwork: const HubSceneBackdrop(
-                          scene: HubScene.miniatures,
+                        key: const ValueKey('discovery_news_tile'),
+                        dotId: 'discovery.tile.news',
+                        title: 'News',
+                        caption: 'Latest headlines',
+                        artwork: NewsCover(
+                          imageUrl: news?.firstOrNull?.imageUrl,
+                          fadeBottom: 0,
                         ),
-                        onTap: () => TodaysMiniaturesSection.open(context),
+                        onTap: () => NewsScreen.open(context),
                       ),
                       right: HubTile(
                         key: const ValueKey('discovery_reports_tile'),
@@ -106,6 +116,19 @@ class _DiscoveryViewState extends ConsumerState<DiscoveryView> {
                         ),
                         onTap: () => ReportsScreen.open(context),
                       ),
+                    ),
+                    HubTileRow(
+                      left: HubTile(
+                        key: const ValueKey('discovery_miniatures_tile'),
+                        dotId: 'discovery.tile.miniatures',
+                        title: 'Miniatures',
+                        caption: '25 moves or fewer',
+                        artwork: const HubSceneBackdrop(
+                          scene: HubScene.miniatures,
+                        ),
+                        onTap: () => TodaysMiniaturesSection.open(context),
+                      ),
+                      right: const SizedBox.shrink(),
                     ),
                   ],
                 ),

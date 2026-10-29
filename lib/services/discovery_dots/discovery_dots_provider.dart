@@ -3,6 +3,7 @@ import 'dart:convert';
 
 import 'package:chessever2/providers/auth_state_provider.dart';
 import 'package:chessever2/repository/local_storage/local_storage_repository.dart';
+import 'package:chessever2/services/attention_policy.dart';
 import 'package:chessever2/services/discovery_dots/discovery_dot.dart';
 import 'package:chessever2/services/firebase_app.dart';
 import 'package:firebase_remote_config/firebase_remote_config.dart';
@@ -59,9 +60,14 @@ class FirebaseDiscoveryDotsSource implements DiscoveryDotsSource {
 
 /// Device-local memory of which dots were tapped, and at which revision.
 class DiscoveryDotsSeenStore {
-  const DiscoveryDotsSeenStore();
+  const DiscoveryDotsSeenStore() : _key = 'discovery_dots_seen.v1';
 
-  static const _key = 'discovery_dots_seen.v1';
+  /// The same kind of map, holding when each dot was first received; see
+  /// [discoveryDotDeliveryKey].
+  const DiscoveryDotsSeenStore.deliveries()
+    : _key = 'discovery_dots_delivered.v1';
+
+  final String _key;
 
   /// Read synchronously from the preferences loaded at startup, so a dismissed
   /// dot never paints for a frame on the next launch.
@@ -133,6 +139,10 @@ final discoveryDotsSeenStoreProvider = Provider<DiscoveryDotsSeenStore>(
   (ref) => const DiscoveryDotsSeenStore(),
 );
 
+final discoveryDotsDeliveryStoreProvider = Provider<DiscoveryDotsSeenStore>(
+  (ref) => const DiscoveryDotsSeenStore.deliveries(),
+);
+
 class DiscoveryDotsState {
   const DiscoveryDotsState({this.dots = const [], this.seen = const {}})
     : _lit = null;
@@ -140,7 +150,7 @@ class DiscoveryDotsState {
   DiscoveryDotsState._(this.dots, this.seen)
     : _lit = litDiscoveryAnchors(dots, seen);
 
-  /// The dots this person sees: see [visibleDiscoveryDots].
+  /// The campaign lighting now, at most one: see [nextDiscoveryDot].
   final List<DiscoveryDot> dots;
   final Map<String, int> seen;
   final Set<String>? _lit;
@@ -152,6 +162,10 @@ class DiscoveryDotsState {
 /// The dots published from the admin console, minus the ones this device has
 /// already tapped. Empty until Firebase supplies a value, and empty forever if
 /// it never does, so the feature costs nothing when nothing is published.
+///
+/// They follow the shared attention rules (`attention_policy.dart`): a new
+/// account absorbs every dot published in its first week, and after that one
+/// campaign lights at a time, the next waiting for the next launch.
 final discoveryDotsProvider =
     NotifierProvider<DiscoveryDotsNotifier, DiscoveryDotsState>(
       DiscoveryDotsNotifier.new,
@@ -169,6 +183,14 @@ class DiscoveryDotsNotifier extends Notifier<DiscoveryDotsState> {
   String? _matchedKey;
   int _matchRequest = 0;
   bool _watchingViewer = false;
+  bool _watchingAccount = false;
+
+  /// When this device first received each dot; see [nextDiscoveryDot].
+  Map<String, int> _delivered = const {};
+
+  /// Set once a campaign's target is reached. The next campaign waits for the
+  /// next launch instead of lighting up straight after.
+  bool _reachedThisSession = false;
 
   @override
   DiscoveryDotsState build() {
@@ -177,6 +199,9 @@ class DiscoveryDotsNotifier extends Notifier<DiscoveryDotsState> {
     _matched = null;
     _matchedKey = null;
     _watchingViewer = false;
+    _watchingAccount = false;
+    _reachedThisSession = false;
+    _delivered = ref.watch(discoveryDotsDeliveryStoreProvider).read();
     ref.onDispose(() {
       _disposed = true;
       unawaited(_updates?.cancel());
@@ -188,10 +213,62 @@ class DiscoveryDotsNotifier extends Notifier<DiscoveryDotsState> {
   }
 
   void _publish() {
-    state = DiscoveryDotsState._(
-      visibleDiscoveryDots(_all, _matched),
-      state.seen,
-    );
+    final visible = visibleDiscoveryDots(_all, _matched);
+    var seen = state.seen;
+    var lit = const <DiscoveryDot>[];
+    if (visible.isNotEmpty) {
+      _watchAccount();
+      final createdAt = ref.read(accountCreatedAtProvider);
+      final now = ref.read(attentionClockProvider)();
+      if (createdAt == null) {
+        // Nobody signed in yet: hold every dot rather than light one the
+        // account turns out to be too new for.
+      } else if (isQuietAccount(createdAt, now)) {
+        seen = absorbDiscoveryDots(visible, seen);
+        if (!mapEquals(seen, state.seen)) {
+          unawaited(ref.read(discoveryDotsSeenStoreProvider).write(seen));
+        }
+      } else {
+        final delivered = _deliver(visible, now);
+        final next = _reachedThisSession
+            ? null
+            : nextDiscoveryDot(
+                visible,
+                seen: seen,
+                delivered: delivered,
+                now: now,
+                shelfLife: announcementShelfLife,
+              );
+        if (next != null) lit = [next];
+      }
+    }
+    state = DiscoveryDotsState._(lit, seen);
+  }
+
+  /// Only a published dot needs the account, so nothing reads it before one.
+  void _watchAccount() {
+    if (_watchingAccount) return;
+    _watchingAccount = true;
+    ref.listen<DateTime?>(accountCreatedAtProvider, (_, _) => _publish());
+  }
+
+  /// Remembers when this device first received each [visible] dot, and
+  /// forgets dots no longer published.
+  Map<String, int> _deliver(List<DiscoveryDot> visible, DateTime now) {
+    final published = {for (final dot in _all) discoveryDotDeliveryKey(dot)};
+    final next = {
+      for (final entry in _delivered.entries)
+        if (published.contains(entry.key)) entry.key: entry.value,
+      for (final dot in visible)
+        discoveryDotDeliveryKey(dot):
+            _delivered[discoveryDotDeliveryKey(dot)] ??
+            now.millisecondsSinceEpoch,
+    };
+    if (!mapEquals(next, _delivered)) {
+      _delivered = next;
+      unawaited(ref.read(discoveryDotsDeliveryStoreProvider).write(next));
+    }
+    return next;
   }
 
   void _apply(String raw) {
@@ -271,6 +348,9 @@ class DiscoveryDotsNotifier extends Notifier<DiscoveryDotsState> {
     final result = acknowledgeDiscoveryAnchor(state.dots, anchor, state.seen);
     state = DiscoveryDotsState._(state.dots, result.seen);
     unawaited(ref.read(discoveryDotsSeenStoreProvider).write(result.seen));
+    if (state.dots.any((dot) => (result.seen[dot.id] ?? 0) >= dot.rev)) {
+      _reachedThisSession = true;
+    }
     return result.messages;
   }
 }

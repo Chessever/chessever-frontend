@@ -441,7 +441,7 @@ reviewer clicks **Review deployments**.
 ## Operational limits
 
 - Feedback bot credentials are intentionally excluded from both apps. Feedback
-  goes through the production `chessever-feedback` Worker with bounded payloads,
+  goes through the production `chessever-feedback` Worker (`workers/feedback`) with bounded payloads,
   per-address and aggregate rate limits, and server-configured destinations.
   CI must never compile a bot token into a public app. Existing organization copies are not read by these workflows.
   Desktop build notifications still use CI-only release environment secrets.

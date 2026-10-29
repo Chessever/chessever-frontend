@@ -726,7 +726,7 @@ void main() {
       },
     );
     test(
-      'PGN imports select the stated player and reject a mistaken name before writing',
+      'PGN imports keep the named player\'s games and reject an absent name before writing',
       () {
         final target = '${directory.path}/import.pgn';
         final pgn =
@@ -735,7 +735,7 @@ void main() {
           () => writeImportedPrepGames(
             path: target,
             pgn: pgn,
-            playerName: 'Typo',
+            playerNames: const ['Typo'],
           ),
           throwsA(isA<PrepException>()),
         );
@@ -744,7 +744,7 @@ void main() {
           writeImportedPrepGames(
             path: target,
             pgn: pgn,
-            playerName: 'club player',
+            playerNames: const ['club player'],
           ),
           1,
         );

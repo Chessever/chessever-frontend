@@ -8,6 +8,10 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 const kForYouFeedCacheMaxAge = Duration(minutes: 5);
 
+/// How old a saved feed may be when the server could not be reached. An older
+/// page beats the error screen; the next refresh replaces it.
+const kForYouFeedFallbackCacheMaxAge = Duration(hours: 12);
+
 String forYouFeedCacheFilterKey(FilterPopupState filters) {
   final formatsAndStates =
       filters.formatsAndStates
@@ -39,12 +43,19 @@ class ForYouFeedCacheEntry {
 
   bool isFreshFor(String requestedFilterKey, DateTime now) {
     final age = now.difference(cachedAt);
-    return filterKey == requestedFilterKey &&
-        age >= Duration.zero &&
+    return isFallbackFor(requestedFilterKey, now) &&
         age <= kForYouFeedCacheMaxAge &&
         cachedAt.toLocal().year == now.toLocal().year &&
         cachedAt.toLocal().month == now.toLocal().month &&
         cachedAt.toLocal().day == now.toLocal().day;
+  }
+
+  /// Whether this page may stand in for a feed request that failed.
+  bool isFallbackFor(String requestedFilterKey, DateTime now) {
+    final age = now.difference(cachedAt);
+    return filterKey == requestedFilterKey &&
+        age >= Duration.zero &&
+        age <= kForYouFeedFallbackCacheMaxAge;
   }
 
   Map<String, dynamic> toJson() => {
@@ -90,14 +101,23 @@ class ForYouFeedLocalStorage {
   final AppDatabase database;
   static const _cacheKey = 'for_you_first_page_v1';
 
-  Future<ForYouFeedCacheEntry?> read({required String filterKey}) async {
+  /// The saved first page for [filterKey]. With [fallback], an older page is
+  /// accepted too (see [ForYouFeedCacheEntry.isFallbackFor]).
+  Future<ForYouFeedCacheEntry?> read({
+    required String filterKey,
+    bool fallback = false,
+  }) async {
     try {
       final stored = await database.getCache(key: _cacheKey);
       if (stored == null) return null;
       final entry = ForYouFeedCacheEntry.fromJson(
         jsonDecode(stored.value) as Map<String, dynamic>,
       );
-      return entry.isFreshFor(filterKey, DateTime.now()) ? entry : null;
+      final now = DateTime.now();
+      final usable = fallback
+          ? entry.isFallbackFor(filterKey, now)
+          : entry.isFreshFor(filterKey, now);
+      return usable ? entry : null;
     } catch (_) {
       return null;
     }

@@ -9,6 +9,7 @@ import 'package:chessever2/screens/feed/providers/feed_entries_provider.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/png_asset.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/services/rewarded_premium/rewarded_access_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -405,7 +406,10 @@ void main() {
       addTearDown(tester.view.resetPhysicalSize);
       await tester.pumpWidget(
         ProviderScope(
-          overrides: [feedNewsProvider.overrideWith((ref) async => items)],
+          overrides: [
+            premiumAccessProvider.overrideWithValue(false),
+            feedNewsProvider.overrideWith((ref) async => items),
+          ],
           child: MaterialApp(
             theme: AppTheme.darkTheme,
             home: Builder(

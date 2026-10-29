@@ -11,6 +11,10 @@ const inboxIdA = '20000000-0000-4000-8000-000000000001';
 const inboxIdB = '20000000-0000-4000-8000-000000000002';
 final inboxReadTime = DateTime.utc(2026, 9, 30, 12);
 
+/// "Now" for Inbox harnesses: fixtures publish on 2026-09-30, so their unread
+/// dots stay inside the attention shelf life whatever day the suite runs.
+DateTime inboxFixtureNow() => DateTime.utc(2026, 10, 1);
+
 InboxMessage inboxFixture(
   String id, {
   DateTime? readAt,

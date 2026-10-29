@@ -17,6 +17,7 @@ import 'package:chessever2/repository/supabase/tour/tour_repository.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_repo_provider.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_mode_provider.dart';
 import 'package:chessever2/services/deep_link_service.dart';
+import 'package:chessever2/screens/feed/news/news_link_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -273,6 +274,64 @@ void main() {
             (scope.child as LikesScreen).initialView,
             MostLikedView.players,
           );
+        },
+      );
+    }
+  }
+
+  for (final coldStart in [true, false]) {
+    for (final source in ['chessever', 'rookreview']) {
+      testWidgets(
+        'shared news opens the exact reader (cold=$coldStart, source=$source)',
+        (tester) async {
+          final pages = <Widget>[];
+          final ref = await pumpHost(
+            tester,
+            overrides: [
+              authStateProvider.overrideWith(_Authenticated.new),
+              currentUserProvider.overrideWithValue(
+                AppUser(
+                  id: 'news-reader',
+                  createdAt: DateTime.utc(2026),
+                  isAnonymous: true,
+                ),
+              ),
+              appDestinationPageNavigationProvider.overrideWithValue(
+                (_, page, __) => pages.add(page),
+              ),
+            ],
+          );
+          final auth = ProviderScope.containerOf(
+            navigatorKey.currentContext!,
+          ).listen(authStateProvider, (_, __) {});
+          addTearDown(auth.close);
+          await tester.pump();
+          if (!coldStart) DeepLinkService.notifyAppReady();
+          pushedRoutes.clear();
+          final path = source == 'chessever'
+              ? '/news/7/stale-title'
+              : '/news/partners/rookreview/7/stale-title';
+          DeepLinkService.instance.handleDeepLink(
+            Uri.parse('https://chessever.com$path'),
+            navigatorKey,
+            ref,
+          );
+          if (coldStart) {
+            await tester.pump();
+            expect(pages, isEmpty);
+            DeepLinkService.notifyAppReady();
+          }
+          // The readiness completer belongs to the startup zone, outside
+          // WidgetTester's frame clock. Drain its session hand-off too.
+          await tester.runAsync(() => Future<void>.delayed(Duration.zero));
+          await tester.pumpAndSettle();
+          final page = pages.single as NewsLinkScreen;
+          expect(page.link.id, 7);
+          expect(
+            page.link.publisher.sourceId,
+            source == 'chessever' ? null : source,
+          );
+          expect(pushedRoutes, coldStart ? ['/home_screen'] : isEmpty);
         },
       );
     }

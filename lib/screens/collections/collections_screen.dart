@@ -2123,6 +2123,7 @@ class _CollectionGamesSearchState extends ChangeNotifier {
   CollectionSearchQuery query = const CollectionSearchQuery();
 
   void setQuery(CollectionSearchQuery value) {
+    if (value == query) return;
     query = value;
     notifyListeners();
   }

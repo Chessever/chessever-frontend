@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:chessever2/repository/sqlite/app_database.dart';
 import 'package:chessever2/screens/feed/news/news_content.dart';
 import 'package:chessever2/screens/feed/news/news_models.dart';
+import 'package:chessever2/screens/feed/news/news_links.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -11,6 +12,34 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 /// Reads published rows from the `news` table, newest first.
 typedef NewsRowsFetcher =
     Future<List<Map<String, dynamic>>> Function(int limit);
+
+/// Shared links resolve published articles by identity, even outside the
+/// latest Feed batch. Never use an unfiltered admin/news query here.
+final newsArticleLoaderProvider =
+    Provider<Future<FeedNews?> Function(NewsLink)>(
+      (ref) => (link) async {
+        if (link.id == null) return null;
+        final query = Supabase.instance.client
+            .from(link.publisher.isPartner ? 'partner_news' : 'news')
+            .select(
+              link.publisher.isPartner
+                  ? '$_partnerStampColumns,content'
+                  : '$_newsStampColumns,content',
+            )
+            .eq('id', link.id!)
+            .eq('status', 'published');
+        final row =
+            await (link.publisher.isPartner
+                    ? query.eq('source_id', link.publisher.sourceId!)
+                    : query)
+                .maybeSingle()
+                .timeout(const Duration(seconds: 12));
+        if (row == null) return null;
+        return link.publisher.isPartner
+            ? normalizePartnerNewsRow(row)
+            : normalizeNewsRow(row);
+      },
+    );
 
 /// A cached copy of the news list, [storedAt] being when it was fetched.
 typedef NewsCacheEntry = ({String value, DateTime storedAt});
@@ -312,7 +341,11 @@ List<FeedNews> mergeFeedNews(List<FeedNews> own, List<FeedNews> partners) {
   ];
   indexed.sort((a, b) {
     final byDate = b.item.publishedAt.compareTo(a.item.publishedAt);
-    return byDate != 0 ? byDate : a.rank.compareTo(b.rank);
+    if (byDate != 0) return byDate;
+    if (a.item.publisher.isPartner != b.item.publisher.isPartner) {
+      return a.item.publisher.isPartner ? 1 : -1;
+    }
+    return a.rank.compareTo(b.rank);
   });
   return [for (final entry in indexed) entry.item];
 }
@@ -357,15 +390,17 @@ String _newsStampsOf(List<Map<String, dynamic>> rows) {
 
 Future<List<Map<String, dynamic>>> _selectPublishedNews(
   String columns,
-  int limit,
-) async {
+  int limit, {
+  int offset = 0,
+}) async {
   final rows = await Supabase.instance.client
       .from('news')
       .select(columns)
       .eq('status', 'published')
       .order('published_at', ascending: false, nullsFirst: false)
       .order('created_at', ascending: false)
-      .limit(limit)
+      .order('id', ascending: false)
+      .range(offset, offset + limit - 1)
       .timeout(const Duration(seconds: 12));
   return List<Map<String, dynamic>>.from(rows);
 }
@@ -392,8 +427,9 @@ String _partnerStampsOf(List<Map<String, dynamic>> rows) {
 /// disabled partner's.
 Future<List<Map<String, dynamic>>> _selectPartnerNews(
   String columns,
-  int limit,
-) async {
+  int limit, {
+  int offset = 0,
+}) async {
   final rows = await Supabase.instance.client
       .from('partner_news')
       .select(columns)
@@ -401,7 +437,7 @@ Future<List<Map<String, dynamic>>> _selectPartnerNews(
       .inFilter('source_id', NewsPublisher.partnerSourceIds)
       .order('published_at', ascending: false)
       .order('id', ascending: false)
-      .limit(limit)
+      .range(offset, offset + limit - 1)
       .timeout(const Duration(seconds: 12));
   return List<Map<String, dynamic>>.from(rows);
 }
@@ -423,4 +459,128 @@ class _AppDatabaseNewsCache implements NewsCacheStore {
 
 final feedNewsRepositoryProvider = Provider<FeedNewsRepository>(
   (ref) => FeedNewsRepository(),
+);
+
+typedef NewsPageRowsFetcher =
+    Future<List<Map<String, dynamic>>> Function(int offset, int limit);
+
+class NewsCatalogPage {
+  const NewsCatalogPage({required this.items, required this.hasMore});
+
+  final List<FeedNews> items;
+  final bool hasMore;
+}
+
+/// A browsing session over both publishers. Each source has its own cursor
+/// and unread buffer: fetching equal offsets and simply merging each batch
+/// would put old partner stories ahead of newer ChessEver stories on page 2.
+/// Failed reads commit no cursors, so retrying cannot skip an article.
+class NewsCatalogRepository {
+  NewsCatalogRepository({
+    NewsPageRowsFetcher? fetchOwn,
+    NewsPageRowsFetcher? fetchPartners,
+    this.pageSize = 12,
+  }) : assert(pageSize > 0),
+       _fetchOwn =
+           fetchOwn ??
+           ((offset, limit) => _selectPublishedNews(
+             '$_newsStampColumns,content',
+             limit,
+             offset: offset,
+           )),
+       _fetchPartners =
+           fetchPartners ??
+           ((offset, limit) => _selectPartnerNews(
+             '$_partnerStampColumns,content',
+             limit,
+             offset: offset,
+           ));
+
+  final int pageSize;
+  final NewsPageRowsFetcher _fetchOwn;
+  final NewsPageRowsFetcher _fetchPartners;
+  List<FeedNews> _own = [];
+  List<FeedNews> _partners = [];
+  int _ownOffset = 0;
+  int _partnerOffset = 0;
+  bool _ownMore = true;
+  bool _partnerMore = true;
+  final Set<String> _seen = {};
+  Future<NewsCatalogPage>? _inFlight;
+
+  Future<NewsCatalogPage> loadNext() =>
+      _inFlight ??= _loadNext().whenComplete(() => _inFlight = null);
+
+  Future<NewsCatalogPage> _loadNext() async {
+    final own = [..._own];
+    final partners = [..._partners];
+    var ownOffset = _ownOffset;
+    var partnerOffset = _partnerOffset;
+    var ownMore = _ownMore;
+    var partnerMore = _partnerMore;
+    final seen = {..._seen};
+    final items = <FeedNews>[];
+
+    while (items.length < pageSize) {
+      // Refill both heads before choosing the next article. Bodies already
+      // in the buffers are reused when a publisher dominates several pages.
+      final batches = await Future.wait([
+        if (own.isEmpty && ownMore)
+          _fetchOwn(ownOffset, pageSize)
+        else
+          Future.value(<Map<String, dynamic>>[]),
+        if (partners.isEmpty && partnerMore)
+          _fetchPartners(partnerOffset, pageSize)
+        else
+          Future.value(<Map<String, dynamic>>[]),
+      ]);
+      if (own.isEmpty && ownMore) {
+        final rows = batches[0];
+        ownOffset += rows.length;
+        ownMore = rows.length == pageSize;
+        own.addAll([
+          for (final row in rows)
+            if (normalizeNewsRow(row) case final FeedNews item) item,
+        ]);
+      }
+      if (partners.isEmpty && partnerMore) {
+        final rows = batches[1];
+        partnerOffset += rows.length;
+        partnerMore = rows.length == pageSize;
+        partners.addAll([
+          for (final row in rows)
+            if (normalizePartnerNewsRow(row) case final FeedNews item) item,
+        ]);
+      }
+      // Invalid rows may leave an empty head while more rows still exist.
+      if ((own.isEmpty && ownMore) || (partners.isEmpty && partnerMore)) {
+        continue;
+      }
+      if (own.isEmpty && partners.isEmpty) break;
+      final useOwn =
+          partners.isEmpty ||
+          (own.isNotEmpty &&
+              !own.first.publishedAt.isBefore(partners.first.publishedAt));
+      final next = (useOwn ? own : partners).removeAt(0);
+      if (seen.add(next.key)) items.add(next);
+    }
+
+    _own = own;
+    _partners = partners;
+    _ownOffset = ownOffset;
+    _partnerOffset = partnerOffset;
+    _ownMore = ownMore;
+    _partnerMore = partnerMore;
+    _seen.addAll(seen);
+    return NewsCatalogPage(
+      items: List.unmodifiable(items),
+      hasMore: own.isNotEmpty || partners.isNotEmpty || ownMore || partnerMore,
+    );
+  }
+}
+
+/// A fresh cursor per News screen (and per pull-to-refresh).
+final newsCatalogFactoryProvider = Provider<NewsCatalogRepository Function()>(
+  (ref) =>
+      () => NewsCatalogRepository(),
 );

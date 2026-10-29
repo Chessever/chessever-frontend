@@ -342,7 +342,7 @@ void main() {
       await _settle(tester);
       expect(container.read(mostLikedDayProvider), isNotNull);
 
-      // Tapping the active period retains the range the user is browsing.
+      // Active segments keep the range the user is currently browsing.
       await tester.tap(find.bySemanticsLabel('Most liked, ${period.label}'));
       await _settle(tester);
       expect(container.read(mostLikedDayProvider), isNotNull);
@@ -852,6 +852,71 @@ void main() {
     expect(tester.takeException(), isNull);
     await _teardown(tester, container);
   });
+
+  for (final tab in ['Games', 'Players']) {
+    testWidgets('$tab Today resets the date after browsing another period', (
+      tester,
+    ) async {
+      final now = DateTime(DateTime.now().year + 2, 10, 29, 12);
+      final queries = <MostLikedQuery>[];
+      final container = await _pump(
+        tester,
+        subscribed: false,
+        home: MostLikedScreen(now: now),
+        extra: [
+          mostLikedProvider.overrideWith((ref, query) async {
+            queries.add(query);
+            return MostLikedResult.ranked(const []);
+          }),
+        ],
+      );
+      await tester.tap(find.text(tab).hitTestable());
+      await _settle(tester);
+
+      for (final period in [
+        MostLikedPeriod.week,
+        MostLikedPeriod.month,
+        MostLikedPeriod.year,
+      ]) {
+        await tester.tap(
+          find.bySemanticsLabel('Most liked, ${period.label}').hitTestable(),
+        );
+        await _settle(tester);
+        final current = MostLikedQuery(period, now);
+        await tester.tap(
+          find.bySemanticsLabel('Previous ${period.name}').hitTestable(),
+        );
+        await _settle(tester);
+        expect(container.read(mostLikedDayProvider), current.previous!.start);
+
+        await tester.tap(
+          find.bySemanticsLabel('Most liked, Today').hitTestable(),
+        );
+        await _settle(tester);
+        final control = tester.widget<MostLikedDateControl>(
+          find.byType(MostLikedDateControl).hitTestable(),
+        );
+        expect(container.read(mostLikedDayProvider), isNull);
+        expect(control.query, MostLikedQuery(MostLikedPeriod.today, now));
+        expect(control.query.isCurrent(now), isTrue);
+        expect(control.onNext, isNull);
+        expect(queries.last, MostLikedQuery(MostLikedPeriod.today, now));
+
+        // Today still allows browsing earlier days with its own arrows.
+        await tester.tap(find.bySemanticsLabel('Previous day').hitTestable());
+        await _settle(tester);
+        expect(
+          container.read(mostLikedDayProvider),
+          MostLikedQuery(MostLikedPeriod.today, now).previous!.start,
+        );
+        await tester.tap(find.bySemanticsLabel('Next day').hitTestable());
+        await _settle(tester);
+      }
+
+      expect(tester.takeException(), isNull);
+      await _teardown(tester, container);
+    });
+  }
 
   testWidgets('a free account browses every period, every date and the '
       'Players list; opening any game is gated', (tester) async {

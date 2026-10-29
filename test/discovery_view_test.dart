@@ -8,6 +8,8 @@ import 'package:chessever2/screens/chessboard/provider/current_eval_provider.dar
 import 'package:chessever2/screens/collections/collections_data.dart';
 import 'package:chessever2/screens/favorites/tabs/favorites_players_tab.dart';
 import 'package:chessever2/screens/feed/models/feed_models.dart';
+import 'package:chessever2/screens/feed/news/feed_news.dart';
+import 'package:chessever2/screens/for_you/discovery/news_screen.dart';
 import 'package:chessever2/screens/feed/providers/feed_provider.dart';
 import 'package:chessever2/screens/feed/widgets/feed_tile_board.dart';
 import 'package:chessever2/screens/for_you/discovery/data/discovery_repository.dart';
@@ -208,6 +210,7 @@ Future<ProviderContainer> _pump(
   final container = ProviderContainer(
     overrides: [
       subscriptionProvider.overrideWith((ref) => _Subscription(subscribed)),
+      feedNewsProvider.overrideWith((ref) async => []),
       streakWallProvider.overrideWith(() => _FakeWall(wall ?? _wall)),
       playerPhotoProvider.overrideWith((ref, fideId) async => null),
       boardSettingsProviderNew.overrideWith(_BoardSettings.new),
@@ -691,8 +694,8 @@ void main() {
         expect(scenes.map((art) => art.scene), [
           HubScene.feed,
           HubScene.mostLiked,
-          HubScene.miniatures,
           HubScene.reports,
+          HubScene.miniatures,
         ]);
         expect(find.byType(DiscoveryMiniBoard), findsNothing);
         expect(container.exists(discoveryReviewCurveProvider), isFalse);
@@ -705,18 +708,25 @@ void main() {
         MostLikedEntry(rank: i + 1, likes: 1200 - i * 90, game: _game('ml$i')),
     ];
 
-    testWidgets('four complete tiles replace the old Collections destination', (
+    testWidgets('five destinations include News in reading order', (
       tester,
     ) async {
       final container = await _pump(tester);
-      for (final title in ['Feed', 'Likes', 'Miniatures', 'Reports']) {
+      for (final title in ['Feed', 'Likes', 'News', 'Reports', 'Miniatures']) {
         expect(find.text(title), findsOneWidget);
       }
       expect(find.text('Most Liked'), findsNothing);
       expect(find.text('Collections'), findsNothing);
-      expect(find.byType(HubTile), findsNWidgets(4));
+      expect(find.byType(HubTile), findsNWidgets(5));
+      expect(
+        tester
+            .widgetList<HubTile>(find.byType(HubTile))
+            .map((tile) => tile.title),
+        ['Feed', 'Likes', 'News', 'Reports', 'Miniatures'],
+      );
       expect(find.byType(DiscoveryGameList), findsNothing);
       expect(container.exists(feedProvider), isFalse);
+      expect(container.exists(feedNewsProvider), isFalse);
       expect(tester.takeException(), isNull);
       await _teardownCards(tester, container);
     });
@@ -745,22 +755,24 @@ void main() {
       },
     );
 
-    testWidgets('Likes, Miniatures and Reports open working destinations', (
-      tester,
-    ) async {
-      final pushed = _PushedPages();
-      final container = await _pump(tester, observers: [pushed]);
-      for (final name in ['likes', 'miniatures', 'reports']) {
-        await tester.tap(find.byKey(ValueKey('discovery_${name}_tile')));
-        await _settle(tester);
-      }
-      expect(pushed.pages, hasLength(3));
-      expect(pushed.pages[0], isA<LikesScreen>());
-      expect(pushed.pages[1], isA<MiniaturesScreen>());
-      expect(pushed.pages[2], isA<ReportsScreen>());
-      expect(tester.takeException(), isNull);
-      await _teardownCards(tester, container);
-    });
+    testWidgets(
+      'Likes, News, Miniatures and Reports open working destinations',
+      (tester) async {
+        final pushed = _PushedPages();
+        final container = await _pump(tester, observers: [pushed]);
+        for (final name in ['likes', 'news', 'miniatures', 'reports']) {
+          await tester.tap(find.byKey(ValueKey('discovery_${name}_tile')));
+          await _settle(tester);
+        }
+        expect(pushed.pages, hasLength(4));
+        expect(pushed.pages[0], isA<LikesScreen>());
+        expect(pushed.pages[1], isA<NewsScreen>());
+        expect(pushed.pages[2], isA<MiniaturesScreen>());
+        expect(pushed.pages[3], isA<ReportsScreen>());
+        expect(tester.takeException(), isNull);
+        await _teardownCards(tester, container);
+      },
+    );
 
     testWidgets(
       'unavailable rankings do not block Likes before or after refresh',
@@ -772,7 +784,7 @@ void main() {
           mostLiked: (_) => Future.error(Exception('offline')),
         );
         expect(find.text('Community favorites'), findsOneWidget);
-        expect(find.byType(HubTile), findsNWidgets(4));
+        expect(find.byType(HubTile), findsNWidgets(5));
         await tester
             .widget<RefreshIndicator>(find.byType(RefreshIndicator))
             .onRefresh();
@@ -823,7 +835,7 @@ void main() {
     });
 
     for (final width in [320.0, 390.0, 1024.0]) {
-      testWidgets('two rows align at $width pixels with large text', (
+      testWidgets('three rows align at $width pixels with large text', (
         tester,
       ) async {
         final container = await _pump(
@@ -835,8 +847,10 @@ void main() {
         Rect box(String name) =>
             tester.getRect(find.byKey(ValueKey('discovery_${name}_tile')));
         expect(box('feed').top, box('likes').top);
-        expect(box('miniatures').top, box('reports').top);
+        expect(box('news').top, box('reports').top);
+        expect(box('miniatures').top, greaterThan(box('news').bottom));
         expect(box('feed').left, box('miniatures').left);
+        expect(box('feed').left, box('news').left);
         expect(box('likes').left, box('reports').left);
         expect(box('feed').height, box('likes').height);
         expect(tester.takeException(), isNull);

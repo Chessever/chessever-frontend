@@ -399,8 +399,9 @@ void main() {
           home: GameAnalysisButton(state: review.reviewState, onPressed: null),
         ),
       );
-      expect(find.text('Show report'), findsOneWidget);
-      expect(find.text('Generate Report'), findsNothing);
+      // Completed reads as the check, not the generate glyph.
+      expect(find.byIcon(Icons.check_circle_outline_rounded), findsOneWidget);
+      expect(find.byIcon(Icons.analytics_outlined), findsNothing);
       await store.flush();
     },
   );

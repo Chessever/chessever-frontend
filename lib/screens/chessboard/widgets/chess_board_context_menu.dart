@@ -31,7 +31,7 @@ List<PopupMenuEntry<String>> chessBoardContextMenuItems(
             ),
           ),
           SizedBox(width: 8.w),
-          Text(label, style: TextStyle(color: foreground)),
+          Flexible(child: Text(label, style: TextStyle(color: foreground))),
         ],
       ),
     );
@@ -61,6 +61,11 @@ List<PopupMenuEntry<String>> chessBoardContextMenuItems(
         ),
       ),
     ],
+    action(
+      value: 'attach_video',
+      label: 'Attach analysis video',
+      icon: const Icon(Icons.video_library_outlined),
+    ),
     // Feed's own mark: Watch opens this game as Feed's first post.
     action(
       value: 'watch',

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:ui' as ui;
 
 import 'package:chessever2/main.dart' show pageRouteObserver;
@@ -97,12 +98,15 @@ class _FavoriteEvents extends FavoriteEventsNotifier {
 }
 
 class _Database implements AppDatabase {
+  /// The saved Today page, as the feed's local storage reads it back.
+  CacheEntry? saved;
+
   @override
   Future<CacheEntry?> getCache({
     required String key,
     String? userId,
     Duration? maxAge,
-  }) async => null;
+  }) async => saved;
 
   @override
   Future<void> setCache({
@@ -165,6 +169,7 @@ ProviderContainer _container({
   required _WallClock clock,
   List<Override> extra = const [],
   List<FavoriteEvent> favoriteEvents = const [],
+  _Database? database,
 }) => ProviderContainer(
   overrides: [
     ...extra,
@@ -175,7 +180,7 @@ ProviderContainer _container({
     groupBroadcastRepositoryProvider.overrideWithValue(broadcasts),
     gameRepositoryProvider.overrideWithValue(games),
     forYouFeedLocalStorageProvider.overrideWithValue(
-      ForYouFeedLocalStorage(_Database()),
+      ForYouFeedLocalStorage(database ?? _Database()),
     ),
     liveGroupBroadcastIdsProvider.overrideWith((ref) => Stream.value([])),
     liveRoundsIdProvider.overrideWith((ref) => const Stream.empty()),
@@ -263,11 +268,45 @@ List<Override> _todayVisible() => [
 ];
 
 void main() {
+  testWidgets('a feed request that hangs once is sent again without an error', (
+    tester,
+  ) async {
+    // A launch token refresh stuck on a dead connection (TurkNet, 2026-10-28)
+    // holds the first request past its timeout; the second one answers.
+    final broadcasts = _BroadcastRepository()
+      ..responses.add(Completer<List<GroupBroadcast>>().future);
+    final container = _container(
+      broadcasts: broadcasts,
+      games: _GameRepository(),
+      clock: _WallClock(),
+    );
+    addTearDown(container.dispose);
+    final errors = <String?>[];
+    container.listen<ForYouState>(
+      forYouEventsProvider,
+      (_, next) => errors.add(next.error),
+    );
+
+    container.read(forYouEventsProvider);
+    await _flush(tester);
+    await tester.pump(const Duration(seconds: 15));
+    expect(container.read(forYouEventsProvider).isLoading, isTrue);
+
+    await tester.pump(const Duration(milliseconds: 500));
+    await _flush(tester);
+    expect(broadcasts.calls, 2);
+    expect(errors.whereType<String>(), isEmpty);
+    expect(container.read(forYouEventsProvider).events.single.id, 'event-1');
+  });
+
   testWidgets('a feed request that never answers ends in a retryable error', (
     tester,
   ) async {
     final broadcasts = _BroadcastRepository()
-      ..responses.add(Completer<List<GroupBroadcast>>().future);
+      ..responses.addAll([
+        Completer<List<GroupBroadcast>>().future,
+        Completer<List<GroupBroadcast>>().future,
+      ]);
     final container = _container(
       broadcasts: broadcasts,
       games: _GameRepository(),
@@ -280,7 +319,11 @@ void main() {
     expect(container.read(forYouEventsProvider).isLoading, isTrue);
 
     await tester.pump(const Duration(seconds: 15));
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.pump(const Duration(seconds: 15));
+    await _flush(tester);
     final failed = container.read(forYouEventsProvider);
+    expect(broadcasts.calls, 2);
     expect(failed.isLoading, isFalse);
     expect(failed.events, isEmpty);
     expect(failed.error, contains('TimeoutException'));
@@ -288,7 +331,7 @@ void main() {
     // The hung request no longer blocks the Retry button.
     unawaited(container.read(forYouEventsProvider.notifier).refresh());
     await _flush(tester);
-    expect(broadcasts.calls, 2);
+    expect(broadcasts.calls, 3);
     expect(container.read(forYouEventsProvider).events.single.id, 'event-1');
     expect(container.read(forYouEventsProvider).error, isNull);
   });
@@ -297,7 +340,10 @@ void main() {
     tester,
   ) async {
     final games = _GameRepository()
-      ..responses.add(Completer<Map<String, List<Games>>>().future);
+      ..responses.addAll([
+        Completer<Map<String, List<Games>>>().future,
+        Completer<Map<String, List<Games>>>().future,
+      ]);
     final broadcasts = _BroadcastRepository();
     final container = _container(
       broadcasts: broadcasts,
@@ -309,6 +355,10 @@ void main() {
     container.read(forYouEventsProvider);
     await _flush(tester);
     await tester.pump(const Duration(seconds: 15));
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.pump(const Duration(seconds: 15));
+    await _flush(tester);
+    expect(games.calls, 2);
     expect(container.read(forYouEventsProvider).isLoading, isFalse);
     expect(container.read(forYouEventsProvider).error, isNotNull);
 
@@ -320,6 +370,62 @@ void main() {
       isTrue,
     );
   });
+
+  testWidgets(
+    'a failed feed falls back to the saved page instead of an error',
+    (tester) async {
+      final broadcasts = _BroadcastRepository()
+        ..responses.addAll([
+          Completer<List<GroupBroadcast>>().future,
+          Completer<List<GroupBroadcast>>().future,
+        ]);
+      final database = _Database();
+      final container = _container(
+        broadcasts: broadcasts,
+        games: _GameRepository(),
+        clock: _WallClock(),
+        database: database,
+      );
+      addTearDown(container.dispose);
+      final saved = ForYouFeedCacheEntry(
+        filterKey: forYouFeedCacheFilterKey(
+          container.read(forYouAppliedFilterProvider),
+        ),
+        // Hours old: too stale to show at launch, still better than an error.
+        cachedAt: DateTime.now().subtract(const Duration(hours: 2)),
+        broadcasts: [_broadcast('saved-event')],
+        gamesByEventId: {
+          'saved-event': [_game()],
+        },
+        hasMore: false,
+      );
+      database.saved = CacheEntry(
+        value: jsonEncode(saved.toJson()),
+        cachedAt: saved.cachedAt,
+      );
+
+      container.read(forYouEventsProvider);
+      await _flush(tester);
+      // The saved page is too old for launch: Today is still loading.
+      expect(container.read(forYouEventsProvider).events, isEmpty);
+
+      await tester.pump(const Duration(seconds: 15));
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.pump(const Duration(seconds: 15));
+      await _flush(tester);
+      final state = container.read(forYouEventsProvider);
+      expect(broadcasts.calls, 2);
+      expect(state.isLoading, isFalse);
+      expect(state.error, isNotNull);
+      expect(state.events.single.id, 'saved-event');
+
+      // The next refresh replaces it with the server page.
+      unawaited(container.read(forYouEventsProvider.notifier).refresh());
+      await _flush(tester);
+      expect(container.read(forYouEventsProvider).events.single.id, 'event-1');
+      expect(container.read(forYouEventsProvider).error, isNull);
+    },
+  );
 
   testWidgets(
     'resume replaces a fetch frozen across a suspension and ignores its late answer',
@@ -453,7 +559,10 @@ void main() {
   ) async {
     final container = _container(
       broadcasts: _BroadcastRepository()
-        ..responses.add(Completer<List<GroupBroadcast>>().future),
+        ..responses.addAll([
+          Completer<List<GroupBroadcast>>().future,
+          Completer<List<GroupBroadcast>>().future,
+        ]),
       games: _GameRepository(),
       clock: _WallClock(),
       extra: _todayVisible(),
@@ -467,7 +576,9 @@ void main() {
     expect(find.byType(PremiumCollectionCards), findsOneWidget);
     expect(await _paintedBelowCollectionCards(tester), greaterThan(10000));
 
-    // A request that never answers ends on the retryable error page.
+    // A request that never answers, twice, ends on the retryable error page.
+    await tester.pump(const Duration(seconds: 15));
+    await tester.pump(const Duration(milliseconds: 500));
     await tester.pump(const Duration(seconds: 15));
     await tester.pump();
     expect(find.text('Retry'), findsOneWidget);

@@ -56,6 +56,32 @@ class LikeFlightAnchor {
     return box.localToGlobal(Offset.zero) & box.size;
   }
 
+  /// Each board page's like gesture, keyed by its PageView index, so a control
+  /// off the board (the notation's Like button) can run the very same
+  /// burst → flight → tag chip sequence instead of a lookalike of it.
+  final Map<int, ValueChanged<Offset>> _pageLikeTriggers = {};
+
+  void registerPageLike(int pageIndex, ValueChanged<Offset> trigger) {
+    _pageLikeTriggers[pageIndex] = trigger;
+  }
+
+  /// Only drops [trigger] if it is still the one registered, so a recycled
+  /// board unregistering late cannot remove its successor's.
+  void unregisterPageLike(int pageIndex, ValueChanged<Offset> trigger) {
+    if (_pageLikeTriggers[pageIndex] == trigger) {
+      _pageLikeTriggers.remove(pageIndex);
+    }
+  }
+
+  /// Runs the like gesture of the board at [pageIndex]. [sourceGlobal] is where
+  /// the tap happened on screen. Returns false when no board is attached.
+  bool likeFromPage(int pageIndex, Offset sourceGlobal) {
+    final trigger = _pageLikeTriggers[pageIndex];
+    if (trigger == null) return false;
+    trigger(sourceGlobal);
+    return true;
+  }
+
   void _logPhase(LikeFlightPhase p) {
     if (kDebugMode) debugPrint('[HeartFlight] phase=${p.name}');
   }
@@ -80,7 +106,10 @@ class LikeFlightAnchor {
     _logPhase(phase.value);
   }
 
-  void dispose() => phase.dispose();
+  void dispose() {
+    _pageLikeTriggers.clear();
+    phase.dispose();
+  }
 }
 
 /// Shared anchor instance. Not autoDispose: the save button and the board's

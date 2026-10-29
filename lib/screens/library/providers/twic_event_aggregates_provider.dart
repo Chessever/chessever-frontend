@@ -7,6 +7,7 @@ import 'package:chessever2/screens/library/providers/gamebase_filter_provider.da
 import 'package:chessever2/screens/library/widgets/library_gamebase_filter_dialog.dart';
 import 'package:chessever2/utils/time_utils.dart';
 import 'package:chessever2/widgets/game_filter/game_filter_model.dart';
+import 'package:flutter/foundation.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 final twicSelectedEventProvider = StateProvider.autoDispose<String?>(
@@ -24,10 +25,13 @@ class TwicEventAggregate {
     this.dominantTimeControl,
     this.avgElo,
     this.maxElo,
+    this.playerMatchCount,
   });
 
   final String id;
   final String event;
+
+  /// Games in this event that match the search and filters being shown.
   final int gameCount;
   final String? site;
   final DateTime? startDate;
@@ -35,6 +39,9 @@ class TwicEventAggregate {
   final String? dominantTimeControl;
   final int? avgElo;
   final int? maxElo;
+
+  /// See [GamebaseEventSearchItem.playerMatchCount]; null from older servers.
+  final int? playerMatchCount;
 
   factory TwicEventAggregate.fromApi(GamebaseEventSearchItem item) {
     return TwicEventAggregate(
@@ -47,8 +54,25 @@ class TwicEventAggregate {
       dominantTimeControl: item.dominantTimeControl,
       avgElo: item.avgElo,
       maxElo: item.maxElo,
+      playerMatchCount: item.playerMatchCount,
     );
   }
+}
+
+/// Chips are read as counts, so the events with the most matching games
+/// lead. A server that ranks them (`sort=games`, marked by
+/// [TwicEventAggregate.playerMatchCount]) also puts events naming the searched
+/// player first, so its order is kept. An older server answers newest first;
+/// each page is then sorted by count, newest first on a tie.
+@visibleForTesting
+List<TwicEventAggregate> orderEventChips(List<TwicEventAggregate> events) {
+  if (events.any((e) => e.playerMatchCount != null)) return events;
+  final epoch = DateTime.fromMillisecondsSinceEpoch(0);
+  return [...events]..sort((a, b) {
+    final byCount = b.gameCount.compareTo(a.gameCount);
+    if (byCount != 0) return byCount;
+    return (b.endDate ?? epoch).compareTo(a.endDate ?? epoch);
+  });
 }
 
 String _formatTimeControl(String? raw) {
@@ -157,13 +181,17 @@ class TwicEventAggregatesNotifier
   Future<_EventPageResult> _fetchPage(int pageNumber) async {
     final repo = _ref.read(gamebaseRepositoryProvider);
 
+    // The same search and filters as the games list (ECO travels in `q`), so
+    // each chip counts, and a picked chip returns, the games shown under it.
     final response = await repo.searchEvents(
-      query: _query.isEmpty ? '*' : _query,
+      query: composeGamebaseSearchQuery(query: _query, filter: _filter),
+      sort: 'games',
       pageNumber: pageNumber,
       pageSize: _pageSize,
       result: _filter.resultApiValue,
       color: _filter.colorApiValue,
       timeControl: _filter.timeControlApiValue,
+      isOnline: _filter.isOnlineApiValue,
       yearFrom:
           _filter.minYear != GameFilter.absoluteMinYear
               ? _filter.minYear
@@ -181,11 +209,13 @@ class TwicEventAggregatesNotifier
 
     // The index groups by raw PGN `Event`, so a broadcast game's pairing label
     // comes back as a one-game "event". It is not one.
-    final events = response.events
-        .where((e) => e.event.trim().isNotEmpty)
-        .where((e) => !looksLikeRoundPairingEvent(e.event))
-        .map(TwicEventAggregate.fromApi)
-        .toList(growable: false);
+    final events = orderEventChips(
+      response.events
+          .where((e) => e.event.trim().isNotEmpty)
+          .where((e) => !looksLikeRoundPairingEvent(e.event))
+          .map(TwicEventAggregate.fromApi)
+          .toList(growable: false),
+    );
 
     return _EventPageResult(events: events, hasMore: response.metadata.hasMore);
   }

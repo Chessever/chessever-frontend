@@ -2,6 +2,8 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:chessever2/screens/my_prep/services/prep_pgn_player.dart'
+    show splitPgnGames;
 import 'package:chessever2/repository/gamebase/gamebase_repository.dart';
 import 'package:chessever2/screens/my_prep/models/prep_models.dart';
 import 'package:chessever2/screens/gamebase/models/gamebase_player.dart';
@@ -656,26 +658,25 @@ String _snapshotGameKey(String game) =>
         .convert(utf8.encode(game.replaceAll(RegExp(r'\s+'), ' ').trim()))
         .toString();
 
-/// An imported player source contains playable games for the stated PGN name.
+/// An imported player source: the playable games [playerNames] play,
+/// read from [pgn] with the full PGN game grammar.
 int writeImportedPrepGames({
   required String path,
   required String pgn,
-  required String playerName,
+  required List<String> playerNames,
 }) {
   // Compared as the index compares names: `Carlsen,M.` is `Carlsen, M`.
-  final alias = treePlayerKey(playerName);
-  final matching = splitPrepPgn(pgn).where((game) {
-    final scan = scanPgnGame(game);
+  final keys = {for (final name in playerNames) treePlayerKey(name)};
+  final matching = splitPgnGames(pgn).where((game) {
+    final scan = scanPgnGame(game, sanLimit: 1);
     return scan.sans.isNotEmpty &&
         [
           scan.tag('White'),
           scan.tag('Black'),
-        ].any((name) => name != null && treePlayerKey(name) == alias);
+        ].any((name) => name != null && keys.contains(treePlayerKey(name)));
   }).toList();
   if (matching.isEmpty) {
-    throw PrepException(
-      'No playable games match "$playerName". Use the player name from the PGN.',
-    );
+    throw PrepException('No games by ${playerNames.first} in this PGN.');
   }
   return writePrepGames(
     path: path,

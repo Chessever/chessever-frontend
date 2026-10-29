@@ -19,7 +19,7 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 const int _maxTwicPlayerCards = 4;
 
 /// Provider that extracts top players from the TWIC/library combined search.
-/// Mirrors `topSearchedPlayersProvider` from the home page but for `GamebasePlayer`.
+/// Mirrors `topSearchedPlayers` from the home page but for `GamebasePlayer`.
 final topTwicSearchedPlayersProvider = Provider.autoDispose
     .family<List<GamebasePlayer>, String>((ref, query) {
   final trimmed = query.trim();

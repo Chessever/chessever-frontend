@@ -32,6 +32,9 @@ segments; a FIDE ID is a positive integer of at most 12 digits.
 | `/app/inbox` | Inbox list | None |
 | `/app/inbox/<message-id>` | Exact visible inbox publication | None |
 | `/app/feed` | Feed | None |
+| `/app/news` | Discovery News | None |
+| `/app/news/<id>[/<slug>]` | Published ChessEver article in the shared reader | None |
+| `/app/news/partners/<source>/<id>[/<slug>]` | Published partner article in the shared reader | None |
 | `/app/likes` | Public most-liked games | None |
 | `/app/likes/<period>` | Likes on `today`, `week`, `month`, or `year` | `date=YYYY-MM-DD`, `view=games` or `players` |
 | `/app/my-likes` | The reader's liked games | None |
@@ -93,6 +96,25 @@ are accepted. Every move must be legal; when both `fen` and `moves` are given,
 the entire line must reach that FEN. Invalid lines never open a partial position.
 
 ## Validation and routing boundary
+
+News shares use `https://chessever.com/news/<id>/<slug>` or
+`https://chessever.com/news/partners/<source>/<id>/<slug>`. The same paths work
+with `www.chessever.com` and `com.chessever.app://news/...`. The id and publisher
+resolve the article; an absent or stale slug does not break it. Cold links wait
+for startup/session restoration and open above Home. Warm News links preserve
+the current stack. `/news` and paginated index links open the News catalog.
+
+News, visible news posts in Feed, article links and incoming shares use one
+app-session allowance: three distinct free articles, then the existing ad or
+subscription choice. Reopening a read article does not count twice; dismissed
+choices do not grant another read. Paid and active rewarded access bypass it.
+Only published records are resolved, including articles outside the latest Feed
+batch. Partner original URLs remain separate from ChessEver share URLs.
+
+`test/fixtures/news-links.json` is mirrored in `chessever_web_frontend`; both
+test suites verify the same identity and slug contract. The website owns the
+iOS association file and the `/api/og/news` previews. Android already claims
+all paths on both ChessEver HTTPS hosts.
 
 The whole route is limited to 4,096 characters and each decoded path segment
 to 200. Empty segments, dot traversal, backslashes, decoded slashes, controls,

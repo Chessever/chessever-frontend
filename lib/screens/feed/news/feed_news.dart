@@ -5,12 +5,14 @@ import 'package:chessever2/screens/feed/news/news_content.dart';
 import 'package:chessever2/screens/feed/news/news_cover.dart';
 import 'package:chessever2/screens/feed/news/news_models.dart';
 import 'package:chessever2/screens/feed/news/news_reader_screen.dart';
+import 'package:chessever2/screens/feed/news/news_reading_access.dart';
 import 'package:chessever2/screens/feed/news/news_repository.dart';
 import 'package:chessever2/screens/feed/widgets/feed_action_row.dart';
 import 'package:chessever2/screens/feed/widgets/feed_glyphs.dart';
 import 'package:chessever2/screens/feed/feed_visibility.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/app_typography.dart';
+import 'package:chessever2/widgets/app_snack.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:intl/intl.dart';
@@ -212,7 +214,7 @@ class NewsPublisherLine extends StatelessWidget {
 /// Full bleed: the cover sits at the top and dissolves into the Feed's dark
 /// surface; the headline block is anchored to the bottom, where the thumb
 /// is. When the page becomes the current one the cover settles into place.
-class FeedNewsPage extends ConsumerWidget {
+class FeedNewsPage extends ConsumerStatefulWidget {
   const FeedNewsPage({
     super.key,
     required this.news,
@@ -229,10 +231,58 @@ class FeedNewsPage extends ConsumerWidget {
   static const double _gutter = 16;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<FeedNewsPage> createState() => _FeedNewsPageState();
+}
+
+class _FeedNewsPageState extends ConsumerState<FeedNewsPage> {
+  static const _gutter = FeedNewsPage._gutter;
+  String? _checked;
+
+  @override
+  void initState() {
+    super.initState();
+    _checkVisible();
+  }
+
+  @override
+  void didUpdateWidget(FeedNewsPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!widget.isCurrent || oldWidget.news.key != widget.news.key) {
+      _checked = null;
+    }
+    _checkVisible();
+  }
+
+  void _checkVisible() {
+    if (!widget.isCurrent || !widget.isVisible || _checked == widget.news.key) {
+      return;
+    }
+    _checked = widget.news.key;
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted || !widget.isCurrent || !widget.isVisible) {
+        _checked = null;
+        return;
+      }
+      try {
+        await requestNewsArticleAccess(context, widget.news.key);
+      } catch (_) {
+        if (mounted) {
+          showAppSnack(
+            context,
+            "Couldn't check news access. Try again.",
+            tone: AppSnackTone.danger,
+          );
+        }
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final news = widget.news;
     final colors = context.colors;
     final reduceMotion = MediaQuery.disableAnimationsOf(context);
-    final settled = reduceMotion || (isCurrent && isVisible);
+    final settled = reduceMotion || (widget.isCurrent && widget.isVisible);
 
     if (news.publisher.coverAspectRatio != null) {
       return GestureDetector(

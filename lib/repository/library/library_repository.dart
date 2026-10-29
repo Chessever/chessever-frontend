@@ -42,6 +42,58 @@ class LibraryRepository extends BaseRepository {
   // ============ FOLDER METHODS ============
 
   /// Get all folders for the current user, ordered by order_index
+  /// Only labels and stable source IDs for the publishing form, including owned descendants.
+  Future<List<({String id, String title})>> getPublicationGameLabels(
+    String folderId,
+  ) => handleApiCall(() async {
+    final userId = supabase.auth.currentUser?.id;
+    if (userId == null) throw StateError('Sign in to edit game videos.');
+    final folders = <Map<String, dynamic>>[];
+    for (var offset = 0; ; offset += 500) {
+      final page = await supabase
+          .from('user_folders')
+          .select('id,parent_id')
+          .eq('user_id', userId)
+          .order('id')
+          .range(offset, offset + 499);
+      folders.addAll(page);
+      if (page.length < 500) break;
+    }
+    final ids = <String>[folderId];
+    final seen = <String>{folderId};
+    for (var at = 0; at < ids.length; at++) {
+      for (final row in folders) {
+        final id = row['id'] as String;
+        if (row['parent_id'] == ids[at] && seen.add(id)) ids.add(id);
+      }
+    }
+    final games = <({String id, String title})>[];
+    for (var at = 0; at < ids.length; at += 50) {
+      final batch = ids.sublist(at, (at + 50).clamp(0, ids.length));
+      for (var offset = 0; ; offset += 200) {
+        final rows = await supabase
+            .from('user_saved_analyses')
+            .select('id,title')
+            .eq('user_id', userId)
+            .inFilter('folder_id', batch)
+            .order('id')
+            .range(offset, offset + 199);
+        games.addAll([
+          for (final row in rows)
+            (
+              id: row['id'] as String,
+              title: row['title'] as String? ?? 'Untitled game',
+            ),
+        ]);
+        if (games.length > 5000) {
+          throw StateError('This collection has more than 5,000 games.');
+        }
+        if (rows.length < 200) break;
+      }
+    }
+    return games;
+  });
+
   Future<List<LibraryFolder>> getFolders() => handleApiCall(() async {
     final userId = supabase.auth.currentUser?.id;
     if (userId == null) throw Exception('User not authenticated');

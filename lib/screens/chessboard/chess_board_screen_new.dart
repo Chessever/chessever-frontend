@@ -1,3 +1,6 @@
+import 'package:chessever2/screens/chessboard/video/game_video_submission_screen.dart';
+import 'package:chessever2/providers/game_video_sources_provider.dart';
+import 'package:chessever2/screens/chessboard/video/video_stream.dart';
 import 'package:chessever2/screens/chessboard/widgets/board_game_menu_host.dart';
 import 'package:chessever2/widgets/paywall/game_report_access.dart';
 import 'package:chessever2/config/feature_flags.dart';
@@ -142,6 +145,7 @@ import 'package:chessever2/screens/chessboard/widgets/like_flight.dart';
 import 'package:chessever2/screens/chessboard/widgets/like_tag_chip.dart';
 import 'package:chessever2/screens/chessboard/widgets/like_tag_offer.dart';
 import 'package:chessever2/screens/chessboard/widgets/like_nudge.dart';
+import 'package:chessever2/screens/chessboard/widgets/notation_footer_actions.dart';
 import 'package:chessever2/screens/chessboard/utils/like_learning_prompt_tracker.dart';
 import 'package:chessever2/providers/auth_state_provider.dart';
 import 'package:chessever2/screens/gamebase/utils/explorer_move_line.dart';
@@ -3458,7 +3462,13 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
     // This prevents rebuilds when other games in the tournament get updated
     final isTablet = ResponsiveHelper.isTablet;
 
+    final analysisSources = ref.watch(gameVideoSourcesProvider((
+      gameId: currentGame.gameId,
+      pgn: currentGame.gameStatus.isFinished || currentGame.source != GameSource.supabase ? currentGame.pgn : null,
+    )));
     return EventVideoHost(
+      completed: currentGame.gameStatus.isFinished,
+      analysisStreams: analysisSources.isLoading ? const [] : EventVideoStream.readList(analysisSources.valueOrNull ?? const []),
       metadata: ref.watch(eventVideoMetadataProvider.notifier),
       configuration: ref.watch(eventVideoConfigurationProvider),
       onVideoInteraction: () {
@@ -4800,6 +4810,12 @@ class _AppBarState extends ConsumerState<_AppBar> {
         await shareGameBtnClicked();
       case 'copy_pgn':
         if (widget.allowGameExport) copyPgnBtnClicked();
+      case 'attach_video':
+        if (!await requireFullAuthGuard(context) || !mounted) return;
+        final videoGame = await _resolveAppBarShareData();
+        if (!mounted) return;
+        await Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) =>
+          GameVideoSubmissionScreen(gameId: widget.game.gameId, pgn: videoGame.pgn)));
       case 'watch':
         await _watchInFeed();
       case 'board_settings':
@@ -6097,7 +6113,6 @@ class _GameSelectionDropdown extends StatelessWidget {
     Widget chip(bool isOpen) {
       return _GameChipButton(
         label: displayText,
-        gameStatus: currentGame.gameStatus,
         isOpen: isOpen,
         isLoading: isLoading,
         showChevron: games.length > 1,
@@ -6123,7 +6138,6 @@ class _GameSelectionDropdown extends StatelessWidget {
 /// Stadium-shaped chip button for game selection trigger
 class _GameChipButton extends StatelessWidget {
   final String label;
-  final GameStatus gameStatus;
   final bool isOpen;
   final bool isLoading;
   final bool showChevron;
@@ -6131,7 +6145,6 @@ class _GameChipButton extends StatelessWidget {
 
   const _GameChipButton({
     required this.label,
-    required this.gameStatus,
     required this.isOpen,
     this.onTap,
     this.isLoading = false,
@@ -6163,9 +6176,17 @@ class _GameChipButton extends StatelessWidget {
           mainAxisSize: MainAxisSize.max,
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            // Status indicator
-            _GameStatusIndicator(status: gameStatus, isLoading: isLoading),
-            SizedBox(width: 6.sp),
+            if (isLoading) ...[
+              SizedBox(
+                width: 10.sp,
+                height: 10.sp,
+                child: CircularProgressIndicator(
+                  strokeWidth: 1.5,
+                  color: context.colors.accentText,
+                ),
+              ),
+              SizedBox(width: 6.sp),
+            ],
             // Game label - centered, flexible to allow truncation
             Flexible(
               child: Text(
@@ -6199,100 +6220,6 @@ class _GameChipButton extends StatelessWidget {
           ],
         ),
       ),
-    );
-  }
-}
-
-/// Game status indicator with live pulsing animation
-class _GameStatusIndicator extends StatelessWidget {
-  final GameStatus status;
-  final bool isLoading;
-
-  const _GameStatusIndicator({required this.status, this.isLoading = false});
-
-  @override
-  Widget build(BuildContext context) {
-    if (isLoading) {
-      return SizedBox(
-        width: 10.sp,
-        height: 10.sp,
-        child: CircularProgressIndicator(
-          strokeWidth: 1.5,
-          color: context.colors.accentText,
-        ),
-      );
-    }
-
-    final color = _getStatusColor(context);
-    final isLive = status == GameStatus.ongoing;
-
-    return Container(
-      width: 8.sp,
-      height: 8.sp,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        color: color,
-        // Flat design - no glow/shadow
-      ),
-      child: isLive ? _LivePulsingDot(color: color) : null,
-    );
-  }
-
-  Color _getStatusColor(BuildContext context) {
-    switch (status) {
-      case GameStatus.ongoing:
-        return context.colors.accentText;
-      case GameStatus.whiteWins:
-      case GameStatus.blackWins:
-      case GameStatus.draw:
-        return context.colors.textPrimaryMuted;
-      case GameStatus.unknown:
-        return context.colors.textPrimaryMuted;
-    }
-  }
-}
-
-/// Pulsing animation for live/ongoing games
-class _LivePulsingDot extends StatefulWidget {
-  final Color color;
-
-  const _LivePulsingDot({required this.color});
-
-  @override
-  State<_LivePulsingDot> createState() => _LivePulsingDotState();
-}
-
-class _LivePulsingDotState extends State<_LivePulsingDot>
-    with SingleTickerProviderStateMixin {
-  late AnimationController _controller;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 1200),
-    )..repeat();
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: _controller,
-      builder: (context, child) {
-        return Container(
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            color: widget.color.withValues(alpha: 1 - _controller.value * 0.5),
-          ),
-        );
-      },
     );
   }
 }
@@ -8486,7 +8413,7 @@ class _AnalysisGameBody extends ConsumerWidget {
         }
 
         final video = EventVideoLayoutScope.maybeOf(context);
-        if (video != null && video.watches(game.tourId)) {
+        if (video != null && video.watches(game.source == GameSource.supabase ? game.tourId : '')) {
           return StreamScrollCoachingHost(
             key: ValueKey('stream_scroll_${game.gameId}'),
             gameId: '${identityHashCode(ModalRoute.of(context))}:${game.gameId}',
@@ -9707,6 +9634,8 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
       _likeNudgeOfferController = ref.read(
         likeNudgeOfferProvider(widget.index).notifier,
       );
+      _likeFlightAnchor.unregisterPageLike(oldWidget.index, _likeFromOffBoard);
+      _likeFlightAnchor.registerPageLike(widget.index, _likeFromOffBoard);
     }
 
     if (widget.game.gameId != oldWidget.game.gameId) {
@@ -9843,6 +9772,7 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
   void initState() {
     super.initState();
     _likeFlightAnchor = ref.read(likeFlightAnchorProvider);
+    _likeFlightAnchor.registerPageLike(widget.index, _likeFromOffBoard);
     _likeNudgeOfferController = ref.read(
       likeNudgeOfferProvider(widget.index).notifier,
     );
@@ -9945,6 +9875,7 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
     _cancelLikeInteraction(resetAnchor: true);
     _retireLikeNudge(syncNow: true);
     _likeNudgeOfferController = null;
+    _likeFlightAnchor.unregisterPageLike(widget.index, _likeFromOffBoard);
     _detachBoardControllerPromotionListener(_boardController);
     _boardController.dispose();
     _flipCommitCtrl.dispose();
@@ -10714,6 +10645,14 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
   /// board centre — the gesture the reminder is teaching.
   void _acceptLikeNudge(Offset heartGlobalCenter) {
     _dismissLikeNudge();
+    _likeFromOffBoard(heartGlobalCenter);
+  }
+
+  /// A like asked for away from the board — the reminder's heart, or the
+  /// notation's Like button (registered on [LikeFlightAnchor]). Either way the
+  /// burst plays on the board, so the answer shows where the gesture lives.
+  void _likeFromOffBoard(Offset heartGlobalCenter) {
+    if (_likeNudgeVisible) _dismissLikeNudge();
     final renderBox = context.findRenderObject();
     final boardCentre = Offset(widget.size / 2, widget.size / 2);
     if (renderBox is RenderBox) {
@@ -12006,6 +11945,23 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
       }());
     }
 
+    // Report and Like share one row under the notation. Like follows the
+    // board's own double-tap rules: the same sources, and never a game opened
+    // from the user's own library database.
+    final likeable =
+        _isLikeableGameSource(widget.game.source) &&
+        !_isOwnDatabaseBoardGame(ref, widget.game, widget.index);
+    final footerActions = <Widget>[
+      if (reviewState.shouldOfferAnalysis)
+        GameAnalysisButton(
+          key: const ValueKey('game-analysis-button'),
+          state: reviewState,
+          onPressed: openGameReview,
+        ),
+      if (likeable)
+        LikeGameButton(likeId: widget.game.likeId, pageIndex: widget.index),
+    ];
+
     final rows = _buildNotationRows(
       tokens,
       params: params,
@@ -12067,12 +12023,8 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
           mainAxisSize: MainAxisSize.min,
           children: [
             emptyMessage,
-            if (reviewState.shouldOfferAnalysis)
-              GameAnalysisButton(
-                key: const ValueKey('game-analysis-button'),
-                state: reviewState,
-                onPressed: openGameReview,
-              ),
+            if (footerActions.isNotEmpty)
+              NotationFooterActions(children: footerActions),
           ],
         ),
       );
@@ -12108,12 +12060,8 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
               ),
             ),
           ),
-          if (reviewState.shouldOfferAnalysis)
-            GameAnalysisButton(
-              key: const ValueKey('game-analysis-button'),
-              state: reviewState,
-              onPressed: openGameReview,
-            ),
+          if (footerActions.isNotEmpty)
+            NotationFooterActions(children: footerActions),
         ],
       ),
     );

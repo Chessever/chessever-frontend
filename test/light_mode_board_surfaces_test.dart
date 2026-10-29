@@ -562,7 +562,8 @@ void main() {
         theme: AppTheme.lightTheme,
         settle: false,
       );
-      expect(find.text('Show report'), findsOneWidget);
+      expect(find.text('Report'), findsNWidgets(4));
+      expect(find.text('Report 42%'), findsOneWidget);
       expectNoContrastMisses(audit(tester), where: 'GameAnalysisButton');
     });
 

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:chessever2/screens/feed/news/news_links.dart';
 import 'package:chessever2/providers/event_video_provider.dart';
 import 'dart:io' show Platform;
 
@@ -533,7 +534,9 @@ class DeepLinkService {
   ) {
     debugPrint('DeepLinkService: Received link: $uri');
 
-    final appDestination = parseAppDestination(uri.toString());
+    final newsLink = NewsLink.parse(uri);
+    final appDestination = parseAppDestination(uri.toString()) ??
+        (newsLink == null ? null : parseAppDestination('/app${newsLink.path}'));
     if (appDestination != null) {
       unawaited(
         _navigateToAppDestination(
@@ -541,6 +544,7 @@ class DeepLinkService {
           navigatorKey,
           ref,
           generation: ++_destinationGeneration,
+          preserveCurrentRoute: newsLink != null && _appReadyCompleter.isCompleted,
         ),
       );
       return;
@@ -1820,6 +1824,7 @@ class DeepLinkService {
     WidgetRef ref, {
     required int generation,
     String? fallbackInboxMessageId,
+    bool preserveCurrentRoute = false,
   }) async {
     await _appReadyCompleter.future;
     final navigator = navigatorKey.currentState;
@@ -1842,7 +1847,9 @@ class DeepLinkService {
       }
       // Every configured destination starts above a usable app root on a cold
       // launch too. Existing content resolvers keep their auth/access guards.
-      navigator.pushNamedAndRemoveUntil('/home_screen', (route) => false);
+      if (!preserveCurrentRoute) {
+        navigator.pushNamedAndRemoveUntil('/home_screen', (route) => false);
+      }
       final opened = await openAppDestination(
         navigator.context,
         ref,

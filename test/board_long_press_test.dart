@@ -339,6 +339,7 @@ void main() {
       expect(find.text('Clear Analysis'), findsOneWidget);
       expect(entries.whereType<PopupMenuItem<String>>().map((e) => e.value), [
         'flip_board',
+        'attach_video',
         'watch',
         'board_settings',
         'share',

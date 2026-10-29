@@ -15,6 +15,8 @@ import 'package:chessever2/screens/my_space/providers/space_shortcuts_provider.d
 import 'package:chessever2/screens/my_space/sheets/space_add_sources.dart';
 import 'package:chessever2/screens/my_space/widgets/space_tile_content.dart'
     show spaceText;
+import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
+import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
@@ -24,6 +26,24 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:motor/motor.dart';
+
+/// Building a Smart Event is for subscribers only. A rewarded-ad unlock does
+/// not count (it is not [SubscriptionState.isSubscribed]), and the paywall
+/// opens straight to the plans, without the watch-an-ad choice.
+Future<bool> _canCreateSmartEvent(BuildContext context, WidgetRef ref) async {
+  final subscription = ref.read(subscriptionProvider.notifier);
+  if (ref.read(subscriptionProvider).isLoading) {
+    await subscription.refresh();
+    if (!context.mounted) return false;
+  }
+  if (ref.read(subscriptionProvider).isSubscribed) return true;
+  return showPremiumPaywallSheet(
+    context: context,
+    featureId: 'smart_events',
+    returnTo: 'my_space/smart_events',
+    allowRewarded: false,
+  );
+}
 
 /// Opens the add sheet for one My Space row, over My Space itself: search and
 /// suggestions for what the row holds, each added (or taken back) with one
@@ -39,6 +59,11 @@ Future<void> showSpaceAddSheet(
   if (!section.supportsAddingToMySpace) {
     return;
   }
+  if (section == SpaceSection.smartEvents &&
+      !await _canCreateSmartEvent(context, ref)) {
+    return;
+  }
+  if (!context.mounted) return;
   final messenger = ScaffoldMessenger.maybeOf(context);
   final navigator = Navigator.of(context);
   final container = ProviderScope.containerOf(context, listen: false);

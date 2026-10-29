@@ -10,6 +10,7 @@ import 'package:chessever2/screens/inbox/inbox_message.dart';
 import 'package:chessever2/screens/inbox/inbox_provider.dart';
 import 'package:chessever2/screens/inbox/inbox_screen.dart';
 import 'package:chessever2/screens/inbox/inbox_unread_dot.dart';
+import 'package:chessever2/services/attention_policy.dart';
 import 'package:chessever2/services/editorial_link_service.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
@@ -68,6 +69,7 @@ Future<ProviderContainer> _pump(
       }),
       subscriptionProvider.overrideWith((ref) => _Subscription()),
       appVersionProvider.overrideWith((ref) async => '35.25.4'),
+      attentionClockProvider.overrideWithValue(inboxFixtureNow),
       inboxSourceProvider.overrideWithValue(source),
       inboxCacheProvider.overrideWithValue(FakeInboxCache()),
       if (openLink != null)

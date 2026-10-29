@@ -12,6 +12,7 @@ import 'package:chessever2/repository/favorites/models/favorite_player.dart';
 import 'package:chessever2/repository/library/models/saved_analysis.dart';
 import 'package:chessever2/repository/liked_games/liked_games_provider.dart';
 import 'package:chessever2/repository/supabase/group_broadcast/group_broadcast.dart';
+import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
 import 'package:chessever2/screens/favorites/tabs/favorites_players_tab.dart';
 import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart';
 import 'package:chessever2/screens/group_event/providers/live_group_broadcast_id_provider.dart';
@@ -762,6 +763,21 @@ SpaceShortcut _smartDraft(int minElo) => smartEventSpaceDraft(
 /// Smart Events gather nothing today (no broadcast read).
 final Override _noSmartMembers = discoverySmartEventMembersProvider
     .overrideWith((ref, criteria) async => const <GroupEventCardModel>[]);
+
+/// Building a Smart Event is subscriber-only.
+final Override _subscribed = subscriptionProvider.overrideWith(
+  (ref) => _Subscribed(),
+);
+
+class _Subscribed extends SubscriptionNotifier {
+  _Subscribed() : super() {
+    state = SubscriptionState(isSubscribed: true, isLoading: false);
+  }
+
+  @override
+  set state(SubscriptionState value) =>
+      super.state = value.copyWith(isSubscribed: true, isLoading: false);
+}
 
 void main() {
   testWidgets('empty My Space can enter Edit and Done returns to its home', (
@@ -3120,7 +3136,7 @@ void main() {
         [],
         SpaceSection.smartEvents,
         height: 844,
-        extra: [_noSmartMembers],
+        extra: [_noSmartMembers, _subscribed],
       );
       final add = find.byKey(const ValueKey('smart_events_empty_add'));
       expect(add, findsOneWidget);

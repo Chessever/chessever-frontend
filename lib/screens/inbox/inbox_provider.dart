@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:chessever2/providers/app_resume_signal_provider.dart';
 import 'package:chessever2/providers/auth_state_provider.dart';
 import 'package:chessever2/repository/sqlite/app_database.dart';
+import 'package:chessever2/services/attention_policy.dart';
 import 'package:flutter/widgets.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -346,8 +347,40 @@ final inboxProvider = StateNotifierProvider<InboxController, InboxState>((ref) {
   ref.onDispose(timer.cancel);
   return controller;
 });
+
+/// The messages the Inbox lists: everything published since the account was
+/// created. The detail page still opens any id, so an older link works.
+final inboxListedMessagesProvider = Provider<List<InboxMessage>>((ref) {
+  final createdAt = ref.watch(accountCreatedAtProvider);
+  final messages = ref.watch(inboxProvider.select((state) => state.messages));
+  return [
+    for (final message in messages)
+      if (!isBeforeAccount(message.publishedAt, createdAt)) message,
+  ];
+});
+
+/// Listed messages that are unread and may still ask for attention (see
+/// [mayAskForAttention]). Every unread dot, badge and Botvinnik bubble reads
+/// this; the rest stay in the list, quietly, without a dot.
+final inboxAttentionProvider = Provider<List<InboxMessage>>((ref) {
+  final createdAt = ref.watch(accountCreatedAtProvider);
+  // Re-read on every Inbox change, the 30-second refresh included, so a
+  // quiet week or a shelf life ends without a restart.
+  final now = ref.watch(attentionClockProvider)();
+  return [
+    for (final message in ref.watch(inboxListedMessagesProvider))
+      if (message.isUnread &&
+          mayAskForAttention(
+            publishedAt: message.publishedAt,
+            accountCreatedAt: createdAt,
+            now: now,
+          ))
+        message,
+  ];
+});
+
 final inboxHasUnreadProvider = Provider<bool>(
-  (ref) => ref.watch(inboxProvider.select((state) => state.hasUnread)),
+  (ref) => ref.watch(inboxAttentionProvider).isNotEmpty,
 );
 
 /// Whether the Inbox has anything to offer: saved messages, or a server that
@@ -365,9 +398,5 @@ final inboxAvailableProvider = Provider<bool>(
 
 /// One shared count for every Botvinnik launcher, based on confirmed reads.
 final inboxUnreadCountProvider = Provider<int>(
-  (ref) => ref.watch(
-    inboxProvider.select(
-      (state) => state.messages.where((message) => message.isUnread).length,
-    ),
-  ),
+  (ref) => ref.watch(inboxAttentionProvider).length,
 );

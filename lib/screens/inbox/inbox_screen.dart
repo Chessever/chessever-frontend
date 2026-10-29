@@ -99,19 +99,23 @@ class _InboxScreenState extends ConsumerState<InboxScreen> {
   Widget build(BuildContext context) {
     final state = ref.watch(inboxProvider);
     final controller = ref.read(inboxProvider.notifier);
+    final messages = ref.watch(inboxListedMessagesProvider);
+    final attention = {
+      for (final message in ref.watch(inboxAttentionProvider)) message.id,
+    };
     final bottom = MediaQuery.viewPaddingOf(context).bottom + 24.h;
 
     final Widget page;
     if (state.loading) {
       page = const _InboxSkeleton();
-    } else if (state.messages.isEmpty && state.syncError != null) {
+    } else if (messages.isEmpty && state.syncError != null) {
       page = _FillPage(
         child: GenericErrorWidget(
           message: state.syncError,
           onRetry: controller.refresh,
         ),
       );
-    } else if (state.messages.isEmpty) {
+    } else if (messages.isEmpty) {
       page = const _FillPage(child: _InboxEmpty());
     } else {
       page = ListView(
@@ -125,14 +129,14 @@ class _InboxScreenState extends ConsumerState<InboxScreen> {
                 actionLabel: 'Retry',
                 onAction: controller.refresh,
               ),
-          for (final message in state.messages)
+          for (final message in messages)
             _InboxRow(
               key: ValueKey('inbox-row-${message.id}'),
               title: message.title,
               preview: message.previewText,
               image: inboxImageUri(message.imageUrl),
               date: _date(context, message.publishedAt),
-              unreadDot: message.isUnread
+              unreadDot: attention.contains(message.id)
                   ? InboxUnreadDot(key: ValueKey('inbox-row-dot-${message.id}'))
                   : null,
               onTap: () => _open(state, message),

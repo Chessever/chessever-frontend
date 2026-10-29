@@ -1,3 +1,5 @@
+import '../../../utils/analysis_video_order.dart';
+import '../../../utils/youtube_video.dart';
 // Public read contract mirrored from the web broadcast video modules.
 
 import 'video_languages.dart';
@@ -24,37 +26,46 @@ class VideoSource {
   final String id;
   final Uri url;
 
-  static VideoSource parse(String input) {
+  static VideoSource parse(String input, {bool strict = false}) {
     final uri = Uri.parse(input.trim());
     if (uri.scheme != 'https' || uri.userInfo.isNotEmpty || uri.hasPort) {
       throw const FormatException('Expected a public HTTPS video URL');
     }
     final host = uri.host;
     String? id;
-    if (host == 'youtu.be') {
-      id = RegExp(r'^/([\w-]{11})/?$').firstMatch(uri.path)?.group(1);
-    } else if (const [
+    if (const {
+      'youtu.be',
       'youtube.com',
       'www.youtube.com',
       'm.youtube.com',
-    ].contains(host)) {
-      id =
-          uri.path == '/watch'
-              ? uri.queryParameters['v']
-              : RegExp(r'^/live/([\w-]{11})/?$').firstMatch(uri.path)?.group(1);
-    }
-    if (id != null && RegExp(r'^[\w-]{11}$').hasMatch(id)) {
-      return VideoSource(
-        VideoPlatform.youtube,
-        id,
-        Uri.https('www.youtube.com', '/watch', {'v': id}),
-      );
+      'youtube-nocookie.com',
+      'www.youtube-nocookie.com',
+    }.contains(host)) {
+      try {
+        final video = YoutubeVideo.parse(input);
+        return VideoSource(VideoPlatform.youtube, video.id, video.url);
+      } on FormatException {
+        if (strict) rethrow;
+        // Legacy broadcasts ignored unrelated/invalid playback query values.
+        final legacyId = host == 'youtu.be'
+            ? RegExp(r'^/([\w-]{11})/?$').firstMatch(uri.path)?.group(1)
+            : uri.path == '/watch'
+            ? uri.queryParameters['v']
+            : RegExp(r'^/live/([\w-]{11})/?$').firstMatch(uri.path)?.group(1);
+        if (legacyId == null || !RegExp(r'^[\w-]{11}$').hasMatch(legacyId)) {
+          rethrow;
+        }
+        return VideoSource(
+          VideoPlatform.youtube,
+          legacyId,
+          Uri.https('www.youtube.com', '/watch', {'v': legacyId}),
+        );
+      }
     }
     if (const ['twitch.tv', 'www.twitch.tv', 'm.twitch.tv'].contains(host)) {
-      id =
-          RegExp(
-            r'^/([a-zA-Z0-9_]{1,25})/?$',
-          ).firstMatch(uri.path)?.group(1)?.toLowerCase();
+      id = RegExp(
+        r'^/([a-zA-Z0-9_]{1,25})/?$',
+      ).firstMatch(uri.path)?.group(1)?.toLowerCase();
       if (id != null &&
           !const [
             'directory',
@@ -139,6 +150,11 @@ class EventVideoStream {
     required this.label,
     required this.source,
     this.countryCode,
+    this.authorName,
+    this.authorId,
+    this.followed = false,
+    this.publishedAt,
+    this.authorAvatarUrl,
     this.language,
     this.title = '',
     this.description = '',
@@ -149,6 +165,16 @@ class EventVideoStream {
   final String id, label, title, description;
   final VideoSource source;
   final String? countryCode, language;
+  final String? authorName, authorAvatarUrl, authorId, publishedAt;
+  final bool followed;
+  AnalysisVideoRank get analysisRank => (
+    followed: followed,
+    language: language,
+    publishedAt: publishedAt,
+    label: label,
+    id: id,
+  );
+  bool get isAnalysis => authorName != null;
   final bool preferred;
   final Set<VideoClientPlatform>? platforms;
   bool supportsPlatform(VideoClientPlatform platform) =>
@@ -171,6 +197,7 @@ class EventVideoStream {
   late final VideoLanguage? inferredLanguage = _resolveLanguage();
 
   VideoLanguage? _resolveLanguage() {
+    if (isAnalysis) return null;
     final code = language?.trim().toLowerCase().split(RegExp('[-_]')).first;
     for (final item in videoLanguages) {
       if (item.code == code) return item;
@@ -186,9 +213,10 @@ class EventVideoStream {
     return null;
   }
 
-  String get languageKey =>
-      inferredLanguage?.code ??
-      (countryCode == null ? 'stream-$id' : 'country-$countryCode');
+  String get languageKey => isAnalysis
+      ? 'analysis-$id'
+      : inferredLanguage?.code ??
+            (countryCode == null ? 'stream-$id' : 'country-$countryCode');
   String? get flagCode => countryCode ?? inferredLanguage?.country;
   String get languageLabel =>
       inferredLanguage?.label ??
@@ -201,6 +229,11 @@ class EventVideoStream {
     label: label,
     source: source,
     countryCode: countryCode,
+    authorName: authorName,
+    authorId: authorId,
+    followed: followed,
+    publishedAt: publishedAt,
+    authorAvatarUrl: authorAvatarUrl,
     language: language,
     title: title,
     description: description,
@@ -221,7 +254,10 @@ class EventVideoStream {
             (raw['url'] as String).length > 2048) {
           continue;
         }
-        final source = VideoSource.parse(raw['url'] as String);
+        final source = VideoSource.parse(
+          raw['url'] as String,
+          strict: raw['kind'] == 'analysis',
+        );
         if (raw['provider'] != null &&
             raw['provider'] != source.platform.name) {
           continue;
@@ -273,6 +309,16 @@ class EventVideoStream {
           id: id,
           label: label.trim(),
           source: source,
+          authorId: raw['kind']=='analysis' && raw['authorId'] is String ? raw['authorId'] as String : null,
+          followed: raw['followed'] == true,
+          publishedAt: raw['kind']=='analysis' && raw['publishedAt'] is String ? raw['publishedAt'] as String : null,
+          authorName: raw['kind'] == 'analysis' && raw['authorName'] is String
+              ? raw['authorName'] as String
+              : null,
+          authorAvatarUrl:
+              raw['kind'] == 'analysis' && raw['authorAvatarUrl'] is String
+              ? raw['authorAvatarUrl'] as String
+              : null,
           countryCode: flag,
           platforms: platforms,
           language: (language as String?)?.trim(),
@@ -281,7 +327,8 @@ class EventVideoStream {
           preferred: preferred == true,
           audience: VideoAudience.read(raw['audience'], source.platform),
         );
-        if (ids.contains(id) || sources.contains(source.url.toString())) {
+        if (ids.contains(id) ||
+            (!stream.isAnalysis && sources.contains(source.url.toString()))) {
           continue;
         }
         ids.add(id);
