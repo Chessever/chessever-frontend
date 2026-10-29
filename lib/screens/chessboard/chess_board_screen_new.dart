@@ -1,3 +1,6 @@
+import 'package:chessever2/screens/chessboard/video/game_video_submission_screen.dart';
+import 'package:chessever2/providers/game_video_sources_provider.dart';
+import 'package:chessever2/screens/chessboard/video/video_stream.dart';
 import 'package:chessever2/screens/chessboard/widgets/board_game_menu_host.dart';
 import 'package:chessever2/widgets/paywall/game_report_access.dart';
 import 'package:chessever2/config/feature_flags.dart';
@@ -3459,7 +3462,13 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
     // This prevents rebuilds when other games in the tournament get updated
     final isTablet = ResponsiveHelper.isTablet;
 
+    final analysisSources = ref.watch(gameVideoSourcesProvider((
+      gameId: currentGame.gameId,
+      pgn: currentGame.gameStatus.isFinished || currentGame.source != GameSource.supabase ? currentGame.pgn : null,
+    )));
     return EventVideoHost(
+      completed: currentGame.gameStatus.isFinished,
+      analysisStreams: analysisSources.isLoading ? const [] : EventVideoStream.readList(analysisSources.valueOrNull ?? const []),
       metadata: ref.watch(eventVideoMetadataProvider.notifier),
       configuration: ref.watch(eventVideoConfigurationProvider),
       onVideoInteraction: () {
@@ -4801,6 +4810,12 @@ class _AppBarState extends ConsumerState<_AppBar> {
         await shareGameBtnClicked();
       case 'copy_pgn':
         if (widget.allowGameExport) copyPgnBtnClicked();
+      case 'attach_video':
+        if (!await requireFullAuthGuard(context) || !mounted) return;
+        final videoGame = await _resolveAppBarShareData();
+        if (!mounted) return;
+        await Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) =>
+          GameVideoSubmissionScreen(gameId: widget.game.gameId, pgn: videoGame.pgn)));
       case 'watch':
         await _watchInFeed();
       case 'board_settings':
@@ -8398,7 +8413,7 @@ class _AnalysisGameBody extends ConsumerWidget {
         }
 
         final video = EventVideoLayoutScope.maybeOf(context);
-        if (video != null && video.watches(game.tourId)) {
+        if (video != null && video.watches(game.source == GameSource.supabase ? game.tourId : '')) {
           return StreamScrollCoachingHost(
             key: ValueKey('stream_scroll_${game.gameId}'),
             gameId: '${identityHashCode(ModalRoute.of(context))}:${game.gameId}',

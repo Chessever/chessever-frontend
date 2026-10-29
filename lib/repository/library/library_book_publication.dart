@@ -109,8 +109,12 @@ String bookAuthorCredit(Iterable<String> names) {
 const libraryBookMaxAuthors = 6;
 
 class LibraryBookMetadata {
+  final Map<String, String>? gameVideos;
+  final Map<String, String>? gameVideoLanguages;
   const LibraryBookMetadata({
     required this.title,
+    this.gameVideos,
+    this.gameVideoLanguages,
     this.subtitle = '',
     this.slug,
     this.annotator,
@@ -214,6 +218,12 @@ class LibraryBookMetadata {
     // clients; the first entry is the one this form's name field edits.
     final listed = _authorsOf(json['authors']);
     return LibraryBookMetadata(
+      gameVideos: json['gameVideos'] is Map
+          ? Map<String, String>.from(json['gameVideos'] as Map)
+          : null,
+      gameVideoLanguages: json['gameVideoLanguages'] is Map
+          ? Map<String, String>.from(json['gameVideoLanguages'] as Map)
+          : null,
       title: json['title'] as String? ?? '',
       subtitle: json['subtitle'] as String? ?? '',
       slug: json['slug'] as String?,
@@ -257,6 +267,8 @@ class LibraryBookMetadata {
     bool clearAuthorLink = false,
   }) => LibraryBookMetadata(
     title: title,
+    gameVideos: gameVideos,
+    gameVideoLanguages: gameVideoLanguages,
     subtitle: subtitle,
     slug: slug,
     annotator: annotator,
@@ -280,6 +292,8 @@ class LibraryBookMetadata {
   );
 
   Map<String, dynamic> toJson() => {
+    if (gameVideos != null) 'gameVideos': gameVideos,
+    if (gameVideoLanguages != null) 'gameVideoLanguages': gameVideoLanguages,
     'title': title.trim(),
     'subtitle': _nullable(subtitle),
     if (slug != null && slug!.trim().isNotEmpty) 'slug': slug!.trim(),

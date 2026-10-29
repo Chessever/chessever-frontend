@@ -1,3 +1,5 @@
+import '../../../utils/analysis_video_order.dart';
+import '../../../utils/youtube_video.dart';
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'video_repository.dart';
@@ -53,11 +55,12 @@ class EventVideoSession extends ChangeNotifier {
     if (!_selectionLocked && !_selections.containsKey(tourId)) {
       _orderingCountry = effectiveCountry;
       _orderingCountrymen = normalizeVideoCountry(preferredCountry);
-      streams = prioritizeVideoCountry(
-        streams,
+      _broadcastStreams = prioritizeVideoCountry(
+        _broadcastStreams,
         _orderingCountry,
         countrymen: _orderingCountrymen,
       );
+      _orderSources();
     }
     if (!_selectionLocked &&
         !_selections.containsKey(tourId) &&
@@ -72,6 +75,9 @@ class EventVideoSession extends ChangeNotifier {
   }
 
   String gameId = '', tourId = '', roundId = '';
+  bool preferAnalysis = false;
+  List<EventVideoStream> _analysisStreams = const [];
+  List<EventVideoStream> _broadcastStreams = const [];
   List<EventVideoStream> streams = const [];
   EventVideoStream? selected;
   bool visible;
@@ -127,6 +133,13 @@ class EventVideoSession extends ChangeNotifier {
 
   void activateStream(String id) {
     if (_disposed) return;
+    final analysis = streams
+        .where((s) => s.id == id && s.isAnalysis)
+        .firstOrNull;
+    if (analysis != null) {
+      select(id);
+      return;
+    }
     if (showVideo && selected?.id == id) {
       final switchedAt = _chipSwitchedAt;
       if (switchedAt != null &&
@@ -143,6 +156,52 @@ class EventVideoSession extends ChangeNotifier {
     }
   }
 
+  void _orderSources() {
+    final analysis = [..._analysisStreams]
+      ..sort(
+        (a, b) => compareAnalysisVideoRanks(
+          a.analysisRank,
+          b.analysisRank,
+          rememberedLanguage,
+        ),
+      );
+    streams = preferAnalysis
+        ? [...analysis, ..._broadcastStreams]
+        : [..._broadcastStreams, ...analysis];
+  }
+
+  void setCompleted(bool value) {
+    if (preferAnalysis == value) return;
+    preferAnalysis = value;
+    _orderSources();
+    notifyListeners();
+  }
+
+  void setAnalysisStreams(List<EventVideoStream> values) {
+    String signature(Iterable<EventVideoStream> list) => list
+        .map((s) => '${s.identity}:${s.authorAvatarUrl}:${s.analysisRank}')
+        .join('|');
+    if (signature(values) == signature(_analysisStreams)) return;
+    _analysisStreams = values;
+    _orderSources();
+    final previous = selected;
+    selected = preferAnalysis && !_selectionLocked && !playing && !playRequested
+        ? streams.firstOrNull
+        : streams.where((s) => s.identity == previous?.identity).firstOrNull ??
+              streams.firstOrNull;
+    if (selected?.identity != previous?.identity) {
+      stopPlayback(notify: false);
+      final next = selected;
+      if (next?.isAnalysis == true) {
+        final options = YoutubeVideo.parse(next!.source.url.toString());
+        playRequested = options.autoplay && foreground && visible;
+        muted = options.muted;
+      }
+    }
+    if (selected != null) revealFlags(notify: false);
+    notifyListeners();
+  }
+
   void openGame({
     required String gameId,
     required String tourId,
@@ -153,6 +212,14 @@ class EventVideoSession extends ChangeNotifier {
         this.roundId == roundId) {
       return;
     }
+    if (this.gameId != gameId) {
+      _analysisStreams = const [];
+      streams = _broadcastStreams;
+      if (selected?.isAnalysis == true) {
+        stopPlayback(notify: false);
+        selected = streams.firstOrNull;
+      }
+    }
     final newEvent = this.tourId != tourId;
     final newScope = newEvent || this.roundId != roundId;
     if (newEvent) {
@@ -161,6 +228,7 @@ class EventVideoSession extends ChangeNotifier {
       _orderingCountrymen = normalizeVideoCountry(preferredCountry);
       stopPlayback(notify: false);
       streams = const [];
+      _broadcastStreams = const [];
       selected = null;
       // New events load their preferred stream paused. Same-event rounds
       // retain the existing player.
@@ -218,8 +286,9 @@ class EventVideoSession extends ChangeNotifier {
       if (!preserveSelection &&
           error is VideoMetadataException &&
           error.permanent) {
-        streams = const [];
-        selected = null;
+        _broadcastStreams = const [];
+        streams = _analysisStreams;
+        selected = streams.firstOrNull;
         stopPlayback(notify: false);
       }
       notifyListeners();
@@ -237,11 +306,12 @@ class EventVideoSession extends ChangeNotifier {
         .where((s) => s.supportsPlatform(VideoClientPlatform.mobile))
         .map((s) => s.withRanking(_ranking.putIfAbsent(s.identity, () => s)))
         .toList();
-    streams = prioritizeVideoCountry(
+    _broadcastStreams = prioritizeVideoCountry(
       ranked,
       _orderingCountry,
       countrymen: _orderingCountrymen,
     );
+    _orderSources();
     EventVideoStream? find(bool Function(EventVideoStream) predicate) {
       for (final stream in streams) {
         if (predicate(stream)) return stream;
@@ -281,6 +351,15 @@ class EventVideoSession extends ChangeNotifier {
       playing = false;
       playRequested = continuePlaying;
       playerRevision++;
+    }
+    if (next.isAnalysis) {
+      playerRevision++;
+      final options = YoutubeVideo.parse(next.source.url.toString());
+      muted = options.muted;
+      playRequested = true;
+      revealFlags(notify: false);
+      notifyListeners();
+      return;
     }
     _selections[tourId] = id;
     rememberedLanguage = next.languageKey;

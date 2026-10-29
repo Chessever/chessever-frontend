@@ -1,3 +1,4 @@
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:chessever2/services/rewarded_premium/rewarded_safe_interceptor.dart';
 import 'package:chessever2/repository/gamebase/collections/collection_search_query.dart';
 import 'package:chessever2/repository/gamebase/gamebase_connection.dart';
@@ -1053,6 +1054,97 @@ class GamebaseRepository {
   /// values in [queryParameters] repeat their key (`?tour=a&tour=b`).
   /// [fresh] sends `Cache-Control: no-cache` (and `Pragma` for proxies that
   /// only read that), which gamebase takes as "check my Premium again".
+  Future<void> submitGameAnalysisVideo({
+    required String gameId,
+    required String pgn,
+    required String url,
+    required String authorName,
+    String? language,
+    String? submissionId,
+  }) async {
+    final token = Supabase.instance.client.auth.currentSession?.accessToken;
+    if (token == null) throw StateError('Sign in to submit a video.');
+    final path =
+        '$_baseUrl/api/collections/videos${submissionId == null ? '' : '/${Uri.encodeComponent(submissionId)}'}';
+    final data = {
+      if (gameId.isNotEmpty) 'gameId': gameId,
+      'pgn': pgn,
+      'url': url,
+      'authorName': authorName,
+      if (language != null) 'language': language,
+    };
+    final options = Options(
+      headers: {..._headers, 'Authorization': 'Bearer $token'},
+    );
+    final response = submissionId == null
+        ? await _dio.post(path, data: data, options: options)
+        : await _dio.put(path, data: data, options: options);
+    unwrapCollectionsEnvelope(response.data, statusCode: response.statusCode);
+  }
+
+  Future<List<Map<String, dynamic>>> getOwnGameAnalysisVideos(
+    String gameId,
+  ) async {
+    final token = Supabase.instance.client.auth.currentSession?.accessToken;
+    if (token == null) return const [];
+    final data = await _getCollectionsData(
+      '/api/collections/videos/mine',
+      what: 'video submissions',
+      queryParameters: {if (gameId.isNotEmpty) 'gameId': gameId},
+      bearer: token,
+    );
+    return data is Map && data['items'] is List
+        ? [
+            for (final row in data['items'])
+              if (row is Map) Map<String, dynamic>.from(row),
+          ]
+        : const [];
+  }
+
+  Future<void> followGameVideoAuthor(String authorId, bool followed) async {
+    final token = Supabase.instance.client.auth.currentSession?.accessToken;
+    if (token == null) throw StateError('Sign in to follow authors.');
+    final response = await _dio.put(
+      '$_baseUrl/api/collections/video-authors/follow',
+      data: {'authorId': authorId, 'followed': followed},
+      options: Options(
+        headers: {..._headers, 'Authorization': 'Bearer $token'},
+      ),
+    );
+    unwrapCollectionsEnvelope(response.data, statusCode: response.statusCode);
+  }
+
+  /// Author-attributed videos for this game, regardless of its entry point.
+  Future<List<Map<String, dynamic>>> getGameAnalysisVideos({
+    required String gameId,
+    String? pgn,
+    String? bearer,
+  }) async {
+    final response = await _dio.post(
+      '$_baseUrl/api/collections/game-videos',
+      data: {
+        if (gameId.isNotEmpty) 'gameId': gameId,
+        if (pgn != null && pgn.isNotEmpty && pgn.length <= 250000) 'pgn': pgn,
+      },
+      options: Options(
+        headers: {
+          ..._headers,
+          if (bearer != null && bearer.isNotEmpty)
+            'Authorization': 'Bearer $bearer',
+        },
+      ),
+    );
+    final data = unwrapCollectionsEnvelope(
+      response.data,
+      statusCode: response.statusCode,
+    );
+    if (data is! Map || data['streams'] is! List) return const [];
+    return [
+      for (final item in data['streams'] as List)
+        if (item is Map) Map<String, dynamic>.from(item),
+    ];
+  }
+
   Future<Object?> _getCollectionsData(
     String path, {
     required String what,

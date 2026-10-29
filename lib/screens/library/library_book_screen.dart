@@ -1,6 +1,7 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'dart:async';
 import 'dart:convert';
+import 'library_game_videos.dart';
 
 import 'package:chessever2/providers/auth_state_provider.dart';
 import 'package:chessever2/repository/library/library_book_publication.dart';
@@ -100,6 +101,8 @@ class LibraryBookScreen extends ConsumerStatefulWidget {
 }
 
 class _LibraryBookScreenState extends ConsumerState<LibraryBookScreen> {
+  Map<String, String>? _gameVideos;
+  Map<String, String>? _gameVideoLanguages;
   final _form = GlobalKey<FormState>();
   final _fields = {for (final f in _Field.values) f: TextEditingController()};
   final _focus = {for (final f in _Field.values) f: FocusNode()};
@@ -199,6 +202,10 @@ class _LibraryBookScreenState extends ConsumerState<LibraryBookScreen> {
 
   void _accept(LibraryBookPublication publication) {
     final m = publication.metadata;
+    _gameVideos = m.gameVideos == null ? null : Map.of(m.gameVideos!);
+    _gameVideoLanguages = m.gameVideoLanguages == null
+        ? null
+        : Map.of(m.gameVideoLanguages!);
     final values = {
       _Field.title: m.title,
       _Field.subtitle: m.subtitle,
@@ -275,6 +282,9 @@ class _LibraryBookScreenState extends ConsumerState<LibraryBookScreen> {
   Future<void> _stashDraft() async {
     // Read synchronously: this also runs from dispose().
     final values = <String, Object?>{
+      if (_gameVideos != null) 'gameVideos': _gameVideos!,
+      if (_gameVideoLanguages != null)
+        'gameVideoLanguages': _gameVideoLanguages!,
       for (final f in _Field.values) f.name: _text(f),
       'authorCredit': _credit.name,
       'authorUserId': _authorUserId,
@@ -331,6 +341,11 @@ class _LibraryBookScreenState extends ConsumerState<LibraryBookScreen> {
           }).coAuthors
         : null;
     final differs =
+        (draft['gameVideoLanguages'] is Map &&
+            jsonEncode(draft['gameVideoLanguages']) !=
+                jsonEncode(_gameVideoLanguages)) ||
+        (draft['gameVideos'] is Map &&
+            jsonEncode(draft['gameVideos']) != jsonEncode(_gameVideos)) ||
         (draftAuthors != null &&
             jsonEncode(draft['coAuthors']) !=
                 jsonEncode(
@@ -366,6 +381,14 @@ class _LibraryBookScreenState extends ConsumerState<LibraryBookScreen> {
       setState(() {
         for (final e in values.entries) {
           _fields[e.key]!.text = e.value;
+        }
+        if (draft?['gameVideoLanguages'] is Map) {
+          _gameVideoLanguages = Map<String, String>.from(
+            draft?['gameVideoLanguages'] as Map,
+          );
+        }
+        if (draft?['gameVideos'] is Map) {
+          _gameVideos = Map<String, String>.from(draft?['gameVideos'] as Map);
         }
         _credit = draftCredit;
         _authorUserId = draft!['authorUserId'] as String?;
@@ -424,6 +447,8 @@ class _LibraryBookScreenState extends ConsumerState<LibraryBookScreen> {
   LibraryBookMetadata get _metadata {
     return LibraryBookMetadata(
       title: _text(_Field.title).trim(),
+      gameVideos: _gameVideos,
+      gameVideoLanguages: _gameVideoLanguages,
       subtitle: _text(_Field.subtitle).trim(),
       author: _text(_Field.author).trim(),
       about: _text(_Field.about).trim(),
@@ -1659,6 +1684,25 @@ class _LibraryBookScreenState extends ConsumerState<LibraryBookScreen> {
                               where: 'Who wrote the game annotations.',
                               hint: 'Annotator name',
                               limit: 300,
+                            ),
+                            LibraryGameVideos(
+                              folderId: widget.folder.id,
+                              value: _gameVideos ?? const {},
+                              languages: _gameVideoLanguages ?? const {},
+                              onLanguagesChanged: (value) {
+                                setState(() {
+                                  _gameVideoLanguages = value;
+                                  _dirty = true;
+                                });
+                              },
+                              enabled: !_busy,
+                              onChanged: (value) {
+                                setState(() {
+                                  _gameVideos = value;
+                                  _dirty = true;
+                                });
+                                _scheduleStash();
+                              },
                             ),
                             _coverPicker(published),
                             if (_error != null)
