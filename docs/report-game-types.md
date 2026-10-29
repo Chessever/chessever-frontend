@@ -151,10 +151,10 @@ The frontend code is ready at `35.27.1+3506`; no app release was triggered.
 
 ## Missed Chance: 2026-10-30
 
-Added within story version 1: the stored shape is unchanged and older apps
-ignore the extra tag. Only the writer's allowlist needed a migration,
-`supabase/migrations/20261030120000_report_game_missed_chance.sql`; the
-type filter RPC already accepts any tag. The analysis report cache moves to
+Added within story version 1: the stored shape is unchanged. The migration
+`supabase/migrations/20261030120000_report_game_missed_chance.sql` widens the
+writer's allowlist and adds a service-only reader for `--revisit`; the type
+filter RPC already accepts any tag. The analysis report cache moves to
 algorithm `27-missed-chance`.
 
 Calibration, read-only, on about 3,000 complete production reports: 173
@@ -167,9 +167,29 @@ Rollout order, production only with explicit authorization:
 1. Apply the migration. A Worker emitting the tag before it would have every
    game with a miss rejected by the allowlist, losing all its labels.
 2. Deploy the analysis Worker.
-3. Run the backfill with `--revisit`. Rows already classified at version 1
-   are otherwise skipped; `--revisit` asks for version 0, which no row
-   carries, and the writer answers `unchanged` where nothing moved.
+3. Run the backfill with `--revisit` (dry run first, then `--write`). The
+   default reader skips rows already current at version 1. `--revisit` reads
+   only those, through `report_games_with_current_classification`, and adds
+   the Missed Chance tag and its evidence entry. Nothing stored changes:
+   every other tag, existing evidence and a set primary stay as they are.
+   Reclassifying from the PGN instead would relabel games: on the same
+   ~3,000 reports, 214 (7%) get different other stories from their PGN
+   than the report stored.
+
+Existing app builds keep working and keep showing what they showed:
+
+- They read classifications in one place, the feed's story label, which
+  walks their own list of known tags. An unknown tag is skipped, and the
+  other tags are untouched, so every label they show stays the same.
+- Their Reports queries, All and every older type, are unchanged.
+- Nothing else in the metadata (primary, evidence) is read by any build.
+  The report JSON's `gameClassification` and the cache version are not
+  read by the apps either.
+- Metadata writes touch finished games only and never their status, so
+  `queue_game_notifications` (start and finish transitions) sends nothing.
+- After the deploy, prewarm regenerates only the last 24 hours, with the
+  same deterministic engine, so those games keep their stored stories and
+  may gain Missed Chance.
 
 ## Validation
 

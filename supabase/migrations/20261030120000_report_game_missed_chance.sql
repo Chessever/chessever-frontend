@@ -1,6 +1,6 @@
--- Missed Chance joins the report game stories. Only the writer's tag
--- allowlist changes: the stored shape stays version 1, so older apps ignore
--- the new tag, and the type filter RPC already accepts any tag.
+-- Missed Chance joins the report game stories. The writer's tag allowlist
+-- widens; the stored shape stays version 1, so older apps ignore the new tag,
+-- and the type filter RPC already accepts any tag. Nothing existing changes.
 create or replace function public.store_report_game_classification(
   p_game_id text,
   p_expected_pgn text,
@@ -67,6 +67,26 @@ $$;
 revoke all on function public.store_report_game_classification(text, text, jsonb)
   from public, anon, authenticated;
 grant execute on function public.store_report_game_classification(text, text, jsonb)
+  to service_role;
+
+-- The backfill's --revisit adds Missed Chance to metadata that is already
+-- current, keeping every stored story, so it reads only rows bound to their
+-- exact PGN and result. A changed PGN never has stale stories re-bound, and
+-- the writer's exact-PGN check closes the race after this read.
+create or replace function public.report_games_with_current_classification(p_version integer)
+returns setof public.games
+language sql stable security invoker
+as $$
+  select g.* from public.games g
+  where g.status in ('1-0', '0-1', '1/2-1/2')
+    and g.report_game_classification is not null
+    and g.report_game_classification->>'version' = p_version::text
+    and g.report_game_classification->>'result' = g.status
+    and g.report_game_classification->>'pgnHash' = pg_catalog.md5(g.pgn);
+$$;
+revoke all on function public.report_games_with_current_classification(integer)
+  from public, anon, authenticated;
+grant execute on function public.report_games_with_current_classification(integer)
   to service_role;
 
 notify pgrst, 'reload schema';

@@ -156,8 +156,8 @@ begin
 end;
 $$;
 
--- Missed Chance widens only the writer's allowlist. Rows already classified
--- stay current at version 1, so the backfill's --revisit asks for version 0.
+-- Missed Chance widens the writer's allowlist. The backfill's --revisit reads
+-- only current metadata and adds the new story to it.
 do $$ begin
   perform public.store_report_game_classification('backfill', '1. e4 $247 {[%eval 0.2]} e5 1-0',
     '{"version":1,"result":"1-0","tags":["missed_chance"]}');
@@ -171,8 +171,13 @@ begin
   assert not has_function_privilege('anon', 'store_report_game_classification(text,text,jsonb)', 'execute');
   assert not has_function_privilege('authenticated', 'store_report_game_classification(text,text,jsonb)', 'execute');
   assert has_function_privilege('service_role', 'store_report_game_classification(text,text,jsonb)', 'execute');
-  assert not exists (select 1 from public.report_games_needing_classification(1));
-  assert exists (select 1 from public.report_games_needing_classification(0) where id = 'backfill');
+  assert not has_function_privilege('anon', 'report_games_with_current_classification(integer)', 'execute');
+  assert not has_function_privilege('authenticated', 'report_games_with_current_classification(integer)', 'execute');
+  assert has_function_privilege('service_role', 'report_games_with_current_classification(integer)', 'execute');
+  assert exists (select 1 from public.report_games_with_current_classification(1) where id = 'backfill');
+  assert not exists (select 1 from public.report_games_with_current_classification(1) where id = 'new'),
+    'A changed PGN keeps its stale stories out of --revisit';
+  assert not exists (select 1 from public.report_games_with_current_classification(2));
   assert public.store_report_game_classification('backfill', '1. e4 $247 {[%eval 0.2]} e5 1-0',
     '{"version":1,"result":"1-0","tags":["missed_chance","miniature"],
       "evidence":[{"type":"missed_chance","fromPly":2,"toPly":2}]}') = 'updated';
@@ -186,6 +191,8 @@ begin
   exception when raise_exception then
     assert sqlerrm = 'unknown report game classification';
   end;
+  assert (select report_game_classification->'tags' from games where id = 'backfill')
+    = '["missed_chance","miniature"]';
   raise notice 'Missed Chance allowlist, filter, evidence and revisit passed.';
 end;
 $$;
