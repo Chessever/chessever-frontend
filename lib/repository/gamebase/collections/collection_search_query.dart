@@ -49,8 +49,9 @@ class CollectionSearchQuery {
     if (annotated) 'annotated': 'true',
     if (sort != 'default') 'sort': sort,
   };
+  // Trimmed so a trailing space compares equal and does not reload the list.
   CollectionSearchQuery withText(String value) => CollectionSearchQuery(
-    text: value,
+    text: value.trim(),
     eco: eco,
     result: result,
     year: year,

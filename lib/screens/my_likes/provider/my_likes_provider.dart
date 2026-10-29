@@ -130,8 +130,15 @@ class MyLikesFilterNotifier extends StateNotifier<MyLikesFilterState> {
   void applyFilter(GameFilter filter) => state = state.copyWith(filter: filter);
   void clearFilter() =>
       state = state.copyWith(filter: GameFilter.defaultFilter());
-  void searchGames(String query) => state = state.copyWith(searchQuery: query);
-  void clearSearch() => state = state.copyWith(searchQuery: '');
+  /// Stores the trimmed query and skips unchanged ones: every new state
+  /// re-runs the liked-games queries, so a trailing space must be a no-op.
+  void searchGames(String query) {
+    final trimmed = query.trim();
+    if (trimmed == state.searchQuery) return;
+    state = state.copyWith(searchQuery: trimmed);
+  }
+
+  void clearSearch() => searchGames('');
 
   /// Toggle a tag in the selection. Empty set after the toggle = implicit
   /// "all games" filter.
