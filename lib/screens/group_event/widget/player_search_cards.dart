@@ -2,9 +2,6 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:chessever2/repository/supabase/game/games.dart'
     show SearchPlayer;
 import 'package:chessever2/repository/gamebase/memorial_player.dart';
-import 'package:chessever2/screens/group_event/group_event_screen.dart'
-    show searchTabQueryProvider;
-import 'package:chessever2/screens/group_event/providers/supabase_combined_search_provider.dart';
 import 'package:chessever2/screens/player_profile/player_profile_screen.dart';
 import 'package:chessever2/screens/player_profile/utils/player_menu_actions.dart';
 import 'package:chessever2/services/fide_photo_service.dart';
@@ -14,6 +11,8 @@ import 'package:chessever2/utils/country_utils.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/card_context_menu.dart';
+import 'package:chessever2/widgets/search/enhanced_group_broadcast_local_storage.dart'
+    show EnhancedSearchResult;
 import 'package:chessever2/widgets/player_initials_avatar.dart'
     show getTitleBadgeColor, titleBadgeFill, titleBadgeInk;
 import 'package:country_flags/country_flags.dart';
@@ -24,71 +23,43 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 /// Maximum number of player cards to display
 const int _maxPlayerCards = 4;
 
-/// Last non-empty player cards, held while the next debounced query loads so
-/// the cards don't blink out and shift the list on every keystroke batch.
-List<SearchPlayer> _lastTopPlayers = const [];
-
-/// Provider that extracts the top searched players from search results (up to 4)
-final topSearchedPlayersProvider = Provider.autoDispose<List<SearchPlayer>>((
-  ref,
-) {
-  final searchQuery = ref.watch(searchTabQueryProvider);
-  if (searchQuery.isEmpty) {
-    _lastTopPlayers = const [];
-    return [];
+/// Up to [_maxPlayerCards] distinct players from [results], in the search's
+/// own order (relevance, then Elo).
+///
+/// Taken from the results the screen is already showing, never from a shared
+/// query: Home and Events each search independently, so cards read off a
+/// global query showed the other tab's players (or none at all on Home).
+List<SearchPlayer> topSearchedPlayers(EnhancedSearchResult results) {
+  // Different people with the same display name must remain distinct.
+  final seen = <String>{};
+  final uniquePlayers = <SearchPlayer>[];
+  for (final result in results.playerResults) {
+    final player = result.player;
+    if (player == null) continue;
+    final identity =
+        player.fideId != null && player.fideId! > 0
+            ? 'fide:${player.fideId}'
+            : (player.memorialSourceIdentity?.trim().isNotEmpty ?? false)
+            ? 'memorial:${player.memorialSourceIdentity!.trim().toLowerCase()}'
+            : 'name:${player.name.toLowerCase().trim()}';
+    if (seen.add(identity)) {
+      uniquePlayers.add(player);
+      if (uniquePlayers.length >= _maxPlayerCards) break;
+    }
   }
-
-  final searchResults = ref.watch(supabaseCombinedSearchProvider(searchQuery));
-  return searchResults.maybeWhen(
-    loading: () => _lastTopPlayers,
-    data: (results) {
-      if (results.playerResults.isEmpty) {
-        _lastTopPlayers = const [];
-        return [];
-      }
-      // Return top players from search results (already sorted by relevance +
-      // Elo). Different people with the same display name must remain distinct.
-      final seen = <String>{};
-      final uniquePlayers = <SearchPlayer>[];
-      for (final result in results.playerResults) {
-        if (result.player == null) continue;
-        final player = result.player!;
-        final identity =
-            player.fideId != null && player.fideId! > 0
-                ? 'fide:${player.fideId}'
-                : (player.memorialSourceIdentity?.trim().isNotEmpty ?? false)
-                ? 'memorial:${player.memorialSourceIdentity!.trim().toLowerCase()}'
-                : 'name:${player.name.toLowerCase().trim()}';
-        if (!seen.contains(identity)) {
-          seen.add(identity);
-          uniquePlayers.add(player);
-          if (uniquePlayers.length >= _maxPlayerCards) break;
-        }
-      }
-      _lastTopPlayers = uniquePlayers;
-      return uniquePlayers;
-    },
-    orElse: () => [],
-  );
-});
-
-/// Keep the old provider for backwards compatibility
-final topSearchedPlayerProvider = Provider.autoDispose<SearchPlayer?>((ref) {
-  final players = ref.watch(topSearchedPlayersProvider);
-  return players.isNotEmpty ? players.first : null;
-});
+  return uniquePlayers;
+}
 
 /// Player search cards displayed at the top of search results.
 /// Shows up to 4 player cards in a grid layout with profile photos and country flags.
-class PlayerSearchCards extends ConsumerWidget {
-  const PlayerSearchCards({super.key, required this.searchQuery});
+class PlayerSearchCards extends StatelessWidget {
+  const PlayerSearchCards({super.key, required this.players});
 
-  final String searchQuery;
+  /// From [topSearchedPlayers] on the results being shown.
+  final List<SearchPlayer> players;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final players = ref.watch(topSearchedPlayersProvider);
-
+  Widget build(BuildContext context) {
     if (players.isEmpty) {
       return const SizedBox.shrink();
     }

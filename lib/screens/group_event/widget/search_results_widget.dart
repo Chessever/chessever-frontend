@@ -1,3 +1,5 @@
+import 'package:chessever2/repository/supabase/game/games.dart'
+    show SearchPlayer;
 import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart';
 import 'package:chessever2/screens/group_event/group_event_screen.dart';
 import 'package:chessever2/screens/group_event/providers/group_event_screen_provider.dart';
@@ -83,6 +85,7 @@ class SearchResultsWidget extends HookConsumerWidget {
       return _SearchResultsListView(
         scrollController: scrollController,
         tournaments: tournaments,
+        players: topSearchedPlayers(results),
         searchQuery: searchQuery,
       );
     }
@@ -235,17 +238,18 @@ class _SearchResultsListView extends ConsumerWidget {
   const _SearchResultsListView({
     required this.scrollController,
     required this.tournaments,
+    required this.players,
     required this.searchQuery,
   });
 
   final ScrollController scrollController;
   final List<GroupEventCardModel> tournaments;
+  final List<SearchPlayer> players;
   final String searchQuery;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    // Check if we have players to show in the cards
-    final hasPlayerCards = ref.watch(topSearchedPlayersProvider).isNotEmpty;
+    final hasPlayerCards = players.isNotEmpty;
     final isTablet = ResponsiveHelper.isTablet;
     final crossAxisCount = ResponsiveHelper.getGridCrossAxisCount(
       phoneCount: 1,
@@ -295,7 +299,7 @@ class _SearchResultsListView extends ConsumerWidget {
                 horizontal: horizontalPadding,
                 vertical: 16.sp,
               ),
-              child: PlayerSearchCards(searchQuery: searchQuery),
+              child: PlayerSearchCards(players: players),
             ),
           ),
         SliverPadding(
@@ -344,7 +348,7 @@ class _SearchResultsListView extends ConsumerWidget {
       itemBuilder: (context, index) {
         // Show player search cards at the top
         if (hasPlayerCards && index == 0) {
-          return PlayerSearchCards(searchQuery: searchQuery);
+          return PlayerSearchCards(players: players);
         }
 
         // Adjust index if player cards are present
