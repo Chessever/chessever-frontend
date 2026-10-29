@@ -1,3 +1,5 @@
+import 'package:chessever2/screens/library/miniatures/miniatures_share.dart';
+import 'package:chessever2/screens/library/miniatures/miniatures_mode_provider.dart';
 import 'package:chessever2/screens/feed/news/news_content.dart';
 import 'package:chessever2/screens/for_you/discovery/models/discovery_models.dart';
 import 'package:chessever2/services/app_destination.dart';
@@ -5,6 +7,54 @@ import 'package:dartchess/dartchess.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  test(
+    'Miniatures tab and date links round trip through every supported scheme',
+    () {
+      for (final tab in MiniaturesScreenMode.values) {
+        for (final date in [
+          null,
+          if (tab == MiniaturesScreenMode.games) '2026-10-28',
+        ]) {
+          final uri = miniaturesShareUri(tab, date: date);
+          expect(newsInAppRoute(uri), uri);
+          for (final raw in [
+            uri.toString(),
+            '${uri.path}${uri.hasQuery ? '?${uri.query}' : ''}',
+            uri
+                .replace(
+                  scheme: 'com.chessever.app',
+                  host: 'app',
+                  path: uri.path.replaceFirst('/app', ''),
+                )
+                .toString(),
+          ]) {
+            final target = parseAppDestination(raw)!;
+            expect(target.kind, AppDestinationKind.miniatures);
+            expect(target.section, tab.name);
+            expect(target.query['date'], date);
+          }
+        }
+      }
+      for (final raw in [
+        '/app/miniatures/unknown',
+        '/app/miniatures/games/extra',
+        '/app/miniatures/about?date=2026-10-28',
+        '/app/miniatures/players?date=2026-10-28',
+        '/app/miniatures/games?date=2026-02-30',
+        '/app/miniatures/games?date=today',
+        '/app/miniatures/games?unknown=value',
+        '/app/miniatures/games?date=2026-10-28&date=2026-10-29',
+      ]) {
+        expect(parseAppDestination(raw), isNull, reason: raw);
+      }
+      expect(
+        () =>
+            miniaturesShareUri(MiniaturesScreenMode.games, date: '2026-02-30'),
+        throwsArgumentError,
+      );
+    },
+  );
+
   test('Likes shares round trip for every section, range and view', () {
     for (final period in MostLikedPeriod.values) {
       for (final view in MostLikedView.values) {

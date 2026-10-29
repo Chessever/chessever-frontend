@@ -1,3 +1,5 @@
+import 'package:chessever2/screens/library/miniatures/miniatures_mode_provider.dart';
+import 'package:chessever2/screens/library/providers/miniatures_provider.dart';
 import 'package:chessever2/providers/auth_state_provider.dart';
 import 'package:chessever2/repository/authentication/model/app_user.dart';
 import 'package:chessever2/services/app_destination_service.dart';
@@ -74,6 +76,56 @@ void main() {
       ),
     );
     return captured;
+  }
+
+  for (final coldStart in [true, false]) {
+    for (final key in ['url', 'route']) {
+      for (final tab in MiniaturesScreenMode.values) {
+        testWidgets('Miniatures $tab opens from $key (cold=$coldStart)', (
+          tester,
+        ) async {
+          DeepLinkService.instance.dispose();
+          final opened = <Widget>[];
+          final ref = await pumpHost(
+            tester,
+            overrides: [
+              currentUserProvider.overrideWithValue(
+                AppUser(id: 'miniatures-user', createdAt: DateTime(2026)),
+              ),
+              appDestinationPageNavigationProvider.overrideWithValue(
+                (_, page, __) => opened.add(page),
+              ),
+            ],
+          );
+          if (!coldStart) {
+            DeepLinkService.instance.attachNotificationRouter(
+              navigatorKey,
+              ref,
+            );
+          }
+          final date = tab == MiniaturesScreenMode.games ? '2026-10-28' : null;
+          DeepLinkService.instance.ingestNotificationData({
+            key:
+                'https://chessever.com/app/miniatures/${tab.name}${date == null ? '' : '?date=$date'}',
+          });
+          if (coldStart) {
+            DeepLinkService.instance.attachNotificationRouter(
+              navigatorKey,
+              ref,
+            );
+          }
+          DeepLinkService.notifyAppReady();
+          await tester.pumpAndSettle();
+          final scope = opened.single as ProviderScope;
+          final container = ProviderContainer(overrides: scope.overrides);
+          expect(container.read(selectedMiniaturesModeProvider), tab);
+          expect(container.read(miniaturesFilterProvider).dateFrom, date);
+          expect(container.read(miniaturesFilterProvider).dateTo, date);
+          container.dispose();
+          await tester.pump(const Duration(milliseconds: 1));
+        });
+      }
+    }
   }
 
   for (final coldStart in [true, false]) {

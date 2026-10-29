@@ -1,5 +1,7 @@
 import 'dart:async';
 
+import 'package:chessever2/screens/library/miniatures/miniatures_share.dart';
+
 import 'package:chessever2/repository/gamebase/miniatures/miniatures_models.dart';
 import 'package:chessever2/screens/gamebase/providers/gamebase_providers.dart';
 import 'package:chessever2/screens/library/miniatures/miniature_game_launcher.dart';
@@ -20,7 +22,6 @@ import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/scroll_cache.dart';
 import 'package:chessever2/utils/svg_asset.dart';
-import 'package:chessever2/widgets/game_date_header.dart';
 import 'package:chessever2/widgets/scroll_to_top_bus.dart';
 import 'package:chessever2/widgets/scroll_to_top_button.dart';
 import 'package:chessever2/widgets/skeleton_widget.dart';
@@ -561,7 +562,8 @@ class _MiniaturesGamesTabState extends ConsumerState<MiniaturesGamesTab>
     if (entry is _MiniatureDateHeaderEntry) {
       return Padding(
         padding: EdgeInsets.only(bottom: 12.h),
-        child: GameDateHeader(
+        child: MiniaturesDateShareHeader(
+          date: entry.dateKey == _unknownDateKey ? null : entry.dateKey,
           dateLabel: miniatureDateHeaderLabel(_formatDateHeader(entry.dateKey)),
           isExpanded: entry.isExpanded,
           onToggle: () => _toggleDateSection(entry.dateKey),

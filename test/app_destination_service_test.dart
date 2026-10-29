@@ -1,5 +1,9 @@
 import 'dart:async';
 
+import 'package:chessever2/repository/gamebase/gamebase_repository.dart';
+import 'package:chessever2/repository/gamebase/miniatures/miniatures_models.dart';
+import 'package:chessever2/screens/library/miniatures/miniatures_mode_provider.dart';
+import 'package:chessever2/screens/library/providers/miniatures_provider.dart';
 import 'package:chessever2/screens/for_you/discovery/likes_screen.dart';
 import 'package:chessever2/screens/for_you/discovery/models/discovery_models.dart';
 import 'package:chessever2/screens/for_you/discovery/providers/discovery_providers.dart';
@@ -14,6 +18,24 @@ import 'package:chessever2/services/app_destination_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+
+class _MiniaturesRepo extends Fake implements GamebaseRepository {
+  final filters = <MiniatureGamesFilter>[];
+  @override
+  Future<GamebaseMiniaturesPage> getMiniatures({
+    MiniatureGamesFilter filter = MiniatureGamesFilter.defaultFilter,
+    int limit = 50,
+    int offset = 0,
+  }) async {
+    filters.add(filter);
+    return const GamebaseMiniaturesPage(
+      items: [],
+      total: 0,
+      limit: 50,
+      offset: 0,
+    );
+  }
+}
 
 void main() {
   late BuildContext context;
@@ -34,32 +56,38 @@ void main() {
     entitled = true;
   });
 
-  Future<void> host(WidgetTester tester) => tester.pumpWidget(
-    ProviderScope(
-      overrides: [
-        appDestinationPageNavigationProvider.overrideWithValue((_, page, name) {
-          opened.add(page);
-          routeNames.add(name);
-        }),
-        appDestinationAccessRequestProvider.overrideWithValue((
-          _,
-          feature,
-        ) async {
-          requestedFeatures.add(feature);
-          return entitled;
-        }),
-      ],
-      child: MaterialApp(
-        home: Consumer(
-          builder: (ctx, widgetRef, _) {
-            context = ctx;
-            ref = widgetRef;
-            return const SizedBox.shrink();
-          },
+  Future<void> host(WidgetTester tester, {List<Override> extra = const []}) =>
+      tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            ...extra,
+            appDestinationPageNavigationProvider.overrideWithValue((
+              _,
+              page,
+              name,
+            ) {
+              opened.add(page);
+              routeNames.add(name);
+            }),
+            appDestinationAccessRequestProvider.overrideWithValue((
+              _,
+              feature,
+            ) async {
+              requestedFeatures.add(feature);
+              return entitled;
+            }),
+          ],
+          child: MaterialApp(
+            home: Consumer(
+              builder: (ctx, widgetRef, _) {
+                context = ctx;
+                ref = widgetRef;
+                return const SizedBox.shrink();
+              },
+            ),
+          ),
         ),
-      ),
-    ),
-  );
+      );
 
   Future<bool> open(String raw) => openAppDestination(
     context,
@@ -72,6 +100,64 @@ void main() {
     openInboxMessage: (id) async {
       inboxIds.add(id);
       return true;
+    },
+  );
+
+  testWidgets(
+    'Miniatures links scope the tab and date and feed the paginated query',
+    (tester) async {
+      final repo = _MiniaturesRepo();
+      await host(
+        tester,
+        extra: [gamebaseRepositoryProvider.overrideWithValue(repo)],
+      );
+      final parent = ProviderScope.containerOf(context, listen: false);
+      final parentListener = parent.listen(miniatureGamesProvider, (_, __) {});
+      ref.read(miniaturesFilterProvider.notifier).state =
+          const MiniatureGamesFilter(search: 'old filter');
+      final playerQueryListener = parent.listen(
+        miniaturePlayersQueryProvider,
+        (_, __) {},
+      );
+      ref.read(miniaturePlayersQueryProvider.notifier).state =
+          const MiniaturePlayersQuery(search: 'old player');
+      await tester.pump();
+      for (final tab in MiniaturesScreenMode.values) {
+        opened.clear();
+        final date = tab == MiniaturesScreenMode.games ? '2026-10-28' : null;
+        expect(
+          await open(
+            '/app/miniatures/${tab.name}${date == null ? '' : '?date=$date'}',
+          ),
+          isTrue,
+        );
+        final scope = opened.single as ProviderScope;
+        final child = ProviderContainer(
+          parent: parent,
+          overrides: scope.overrides,
+        );
+        final gamesListener = child.listen(miniatureGamesProvider, (_, __) {});
+        await tester.pump();
+        expect(child.read(selectedMiniaturesModeProvider), tab);
+        expect(child.read(miniaturesFilterProvider).dateFrom, date);
+        expect(child.read(miniaturesFilterProvider).dateTo, date);
+        expect(child.read(miniaturesFilterProvider).search, isNull);
+        expect(child.read(miniaturePlayersQueryProvider).search, isNull);
+        expect(parent.read(miniaturePlayersQueryProvider).search, 'old player');
+        expect(repo.filters.last.dateFrom, date);
+        expect(repo.filters.last.dateTo, date);
+        expect(
+          repo.filters.last.queryParameters(limit: 50, offset: 0)['dateFrom'],
+          date,
+        );
+        expect(parent.read(miniaturesFilterProvider).search, 'old filter');
+        gamesListener.close();
+        child.dispose();
+        await tester.pump(const Duration(milliseconds: 1));
+      }
+      parentListener.close();
+      playerQueryListener.close();
+      await tester.pump(const Duration(milliseconds: 1));
     },
   );
 

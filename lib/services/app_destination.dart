@@ -177,6 +177,14 @@ AppDestination? _parseAppDestination(String raw) {
               const {'games', 'players'}.contains(query['view']))) {
         return target(AppDestinationKind.likes, section: path[1]);
       }
+    case 'miniatures':
+      if (path.length == 2 &&
+          const {'about', 'games', 'players'}.contains(path[1]) &&
+          only({'date'}) &&
+          (!query.containsKey('date') ||
+              (path[1] == 'games' && _validDate(query['date'])))) {
+        return target(AppDestinationKind.miniatures, section: path[1]);
+      }
     case 'home':
       if (path.length == 2 &&
           query.isEmpty &&

@@ -33,6 +33,8 @@ segments; a FIDE ID is a positive integer of at most 12 digits.
 | `/app/likes/<period>` | Likes on `today`, `week`, `month`, or `year` | `date=YYYY-MM-DD`, `view=games` or `players` |
 | `/app/my-likes` | The reader's liked games | None |
 | `/app/miniatures` | Miniatures | None |
+| `/app/miniatures/about`, `/app/miniatures/players` | Selected Miniatures tab | None |
+| `/app/miniatures/games` | Miniatures Games, optionally filtered to one PGN calendar day | `date=YYYY-MM-DD` |
 | `/app/reports` | Game Reports, behind its existing Premium gate | None |
 | `/app/my-prep` | My Prep | None |
 | `/app/my-prep/<profile-id>` | Existing local Prep profile | `account` |
@@ -153,3 +155,11 @@ aggregate IDs/counts; individual game access retains its existing Premium guard.
 empty disposable PostgreSQL database, including more than 50 results, ties,
 window boundaries, distinct-user likes, page caps, cursors and authentication.
 It is a local fixture, never a production SQL script.
+
+## Miniatures sharing
+
+Long-press any Miniatures tab or a dated heading in Games, then choose Share.
+Tab links open that tab with the default Games filters. A Games date link sets
+both date bounds to the shared PGN calendar day and opens Games. Other search
+and filter settings are reset in the linked screen's own scope. These routes
+work through HTTPS links, the app scheme and notification `data.route`/`data.url`.

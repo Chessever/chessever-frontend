@@ -19,6 +19,9 @@ import 'package:chessever2/screens/gamebase/providers/gamebase_explorer_state.da
 import 'package:chessever2/screens/home/widget/bottom_nav_bar.dart';
 import 'package:chessever2/screens/inbox/inbox_screen.dart';
 import 'package:chessever2/screens/library/library_screen.dart';
+import 'package:chessever2/repository/gamebase/miniatures/miniatures_models.dart';
+import 'package:chessever2/screens/library/miniatures/miniatures_mode_provider.dart';
+import 'package:chessever2/screens/library/providers/miniatures_provider.dart';
 import 'package:chessever2/screens/library/miniatures_screen.dart';
 import 'package:chessever2/screens/library/twic_contents_screen.dart';
 import 'package:chessever2/screens/my_likes/my_likes_screen.dart';
@@ -159,7 +162,28 @@ Future<bool> openAppDestination(
           ),
         );
       case AppDestinationKind.miniatures:
-        push(const MiniaturesScreen());
+        push(
+          ProviderScope(
+            overrides: [
+              if (destination.section != null) ...[
+                selectedMiniaturesModeProvider.overrideWith(
+                  (ref) =>
+                      MiniaturesScreenMode.values.byName(destination.section!),
+                ),
+                miniaturePlayersQueryProvider.overrideWith(
+                  (ref) => const MiniaturePlayersQuery(),
+                ),
+                miniaturesFilterProvider.overrideWith(
+                  (ref) => MiniatureGamesFilter(
+                    dateFrom: destination.query['date'],
+                    dateTo: destination.query['date'],
+                  ),
+                ),
+              ],
+            ],
+            child: const MiniaturesScreen(),
+          ),
+        );
       case AppDestinationKind.reports:
         if (!await access('game_reports')) return true;
         push(const ReportsScreen());
