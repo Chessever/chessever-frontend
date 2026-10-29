@@ -417,6 +417,7 @@ class _GameCardWrapperProvider {
     bool disableGamebaseOverlayByDefault = false,
     bool showClock = true,
     SavedAnalysisData? savedAnalysisData,
+    Map<String, int>? initialMoveIndexByGameId,
   }) async {
     if (orderedGames.isEmpty || !context.mounted) return;
     final tappedGame = orderedGames[gameIndex.clamp(0, orderedGames.length - 1)];
@@ -492,6 +493,7 @@ class _GameCardWrapperProvider {
           disableGamebaseOverlayByDefault: disableGamebaseOverlayByDefault,
           showClock: showClock,
           savedAnalysisData: savedAnalysisData,
+          initialMoveIndexByGameId: initialMoveIndexByGameId,
         );
         return teachDiscoveryLikes
             ? DiscoveryLikesTeachingScope(child: board)
@@ -587,6 +589,7 @@ class _ExpandingChessBoardScreen extends StatefulWidget {
     required this.disableGamebaseOverlayByDefault,
     required this.showClock,
     this.savedAnalysisData,
+    this.initialMoveIndexByGameId,
   });
 
   final SwipeCoachingVisit? swipeCoachingVisit;
@@ -601,6 +604,7 @@ class _ExpandingChessBoardScreen extends StatefulWidget {
   final bool disableGamebaseOverlayByDefault;
   final bool showClock;
   final SavedAnalysisData? savedAnalysisData;
+  final Map<String, int>? initialMoveIndexByGameId;
 
   @override
   State<_ExpandingChessBoardScreen> createState() =>
@@ -749,6 +753,7 @@ class _ExpandingChessBoardScreenState
           _games.isNotEmpty && _games[_index].gameId == _openedGameId
               ? widget.savedAnalysisData
               : null,
+      initialMoveIndexByGameId: widget.initialMoveIndexByGameId,
       onVisibleGameChanged: (gameId) => _visibleGameId = gameId,
     );
   }

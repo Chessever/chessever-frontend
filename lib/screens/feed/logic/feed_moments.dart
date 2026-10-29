@@ -533,7 +533,7 @@ void _markGameEnd(List<_Candidate?> candidates, FeedPgnGame game) {
 double feedReportInterest(FeedClip clip, {ReportGameType? type}) {
   var score = switch (type) {
     ReportGameType.upsideDown || ReportGameType.comeback => 1.2,
-    ReportGameType.greatEscape => 1.0,
+    ReportGameType.greatEscape || ReportGameType.missedChance => 1.0,
     ReportGameType.oneBlunder || ReportGameType.miniature => 0.7,
     ReportGameType.squeeze || ReportGameType.domination => 0.5,
     ReportGameType.deadlock => -0.4,

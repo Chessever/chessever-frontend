@@ -33,13 +33,15 @@ PlayerProfileDataSource discoveryProfileSource(GamesTourModel game) =>
 
 /// Opens [games] on the board at [index]. The list is kept exactly as shown
 /// (a ranking, a rail), so previous/next walks the same collection instead of
-/// expanding into one game's event.
+/// expanding into one game's event. [initialMoveIndexByGameId] opens listed
+/// games on a chosen move instead of the start.
 void openDiscoveryGame(
   BuildContext context,
   WidgetRef ref,
   List<GamesTourModel> games,
   int index, {
   bool teachDiscoveryLikes = false,
+  Map<String, int>? initialMoveIndexByGameId,
 }) {
   if (index < 0 || index >= games.length) return;
   ref
@@ -53,6 +55,7 @@ void openDiscoveryGame(
         listPolicy: BoardNavigationListPolicy.preserve,
         teachDiscoveryLikes: teachDiscoveryLikes,
         playerProfileDataSource: discoveryProfileSource(games[index]),
+        initialMoveIndexByGameId: initialMoveIndexByGameId,
       );
 }
 

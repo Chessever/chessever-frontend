@@ -155,3 +155,37 @@ begin
   raise notice 'Additive metadata, idempotence, stale-input exclusion, RLS and query plan passed.';
 end;
 $$;
+
+-- Missed Chance widens only the writer's allowlist. Rows already classified
+-- stay current at version 1, so the backfill's --revisit asks for version 0.
+do $$ begin
+  perform public.store_report_game_classification('backfill', '1. e4 $247 {[%eval 0.2]} e5 1-0',
+    '{"version":1,"result":"1-0","tags":["missed_chance"]}');
+  raise exception 'missed_chance accepted before its migration';
+exception when raise_exception then
+  assert sqlerrm = 'unknown report game classification';
+end; $$;
+\ir ../migrations/20261030120000_report_game_missed_chance.sql
+do $$
+begin
+  assert not has_function_privilege('anon', 'store_report_game_classification(text,text,jsonb)', 'execute');
+  assert not has_function_privilege('authenticated', 'store_report_game_classification(text,text,jsonb)', 'execute');
+  assert has_function_privilege('service_role', 'store_report_game_classification(text,text,jsonb)', 'execute');
+  assert not exists (select 1 from public.report_games_needing_classification(1));
+  assert exists (select 1 from public.report_games_needing_classification(0) where id = 'backfill');
+  assert public.store_report_game_classification('backfill', '1. e4 $247 {[%eval 0.2]} e5 1-0',
+    '{"version":1,"result":"1-0","tags":["missed_chance","miniature"],
+      "evidence":[{"type":"missed_chance","fromPly":2,"toPly":2}]}') = 'updated';
+  assert (select count(*) from public.report_games_by_type('missed_chance')) = 1;
+  assert (select report_game_classification->'evidence'->0->>'fromPly'
+    from public.report_games_by_type('missed_chance')) = '2';
+  begin
+    perform public.store_report_game_classification('backfill', '1. e4 $247 {[%eval 0.2]} e5 1-0',
+      '{"version":1,"result":"1-0","tags":["missed_win"]}');
+    raise exception 'unknown label accepted';
+  exception when raise_exception then
+    assert sqlerrm = 'unknown report game classification';
+  end;
+  raise notice 'Missed Chance allowlist, filter, evidence and revisit passed.';
+end;
+$$;

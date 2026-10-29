@@ -183,6 +183,7 @@ class ChessBoardScreenNotifierNew
     this.savedAnalysisData,
     this.startAtLastMove = false,
     this.initialFen,
+    this.initialMoveIndex,
   }) : super(const AsyncValue.loading()) {
     _stockfishOwnerId = StockfishSingleton.generateOwnerId(game.gameId, index);
     _persistenceEnabled = ref.read(chessBoardPersistenceEnabledProvider);
@@ -266,6 +267,10 @@ class ChessBoardScreenNotifierNew
   SavedAnalysisData? savedAnalysisData;
   final bool startAtLastMove;
   final String? initialFen;
+
+  /// The move index the first load shows (-1 is the starting position),
+  /// clamped to the game. Discovery's Missed Chance opens before the miss.
+  final int? initialMoveIndex;
   late final _moveHold = MoveHoldRepeater(onEnd: stopLongPress);
   // Owned by this notifier, independent of its remappable PageView index.
   Timer? _evaluationTimer;
@@ -1608,6 +1613,8 @@ class ChessBoardScreenNotifierNew
       if (isPreviewActive) {
         newMoveIndex =
             currentState?.analysisState.currentMoveIndex ?? lastMoveIndex;
+      } else if (isFirstLoad && initialMoveIndex != null) {
+        newMoveIndex = initialMoveIndex!.clamp(-1, lastMoveIndex);
       } else if (isFirstLoad && initialFen != null) {
         // Find the move that matches the initial FEN
         final targetFen = _normalizeFen(initialFen!);
@@ -7797,12 +7804,16 @@ class ChessBoardProviderParams {
   /// Optional initial position to show.
   final String? initialFen;
 
+  /// Optional move index to show first (-1 is the starting position).
+  final int? initialMoveIndex;
+
   const ChessBoardProviderParams({
     required this.game,
     required this.index,
     this.savedAnalysisData,
     this.startAtLastMove = false,
     this.initialFen,
+    this.initialMoveIndex,
   });
 
   @override
@@ -7887,6 +7898,7 @@ final chessBoardScreenProviderNew = AutoDisposeStateNotifierProvider.family<
     savedAnalysisData: params.savedAnalysisData,
     startAtLastMove: params.startAtLastMove,
     initialFen: params.initialFen,
+    initialMoveIndex: params.initialMoveIndex,
   );
 });
 

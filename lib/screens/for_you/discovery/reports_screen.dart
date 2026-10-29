@@ -3,6 +3,7 @@ import 'dart:async';
 
 import 'package:chessever2/screens/collections/event_view_shell.dart';
 import 'package:chessever2/screens/for_you/discovery/providers/discovery_providers.dart';
+import 'package:chessever2/screens/for_you/discovery/models/report_game_type.dart';
 import 'package:chessever2/screens/for_you/discovery/providers/reports_provider.dart';
 import 'package:chessever2/screens/for_you/discovery/widgets/discovery_common.dart';
 import 'package:chessever2/screens/for_you/discovery/widgets/discovery_game_cards.dart';
@@ -167,7 +168,18 @@ class _ReportsGamesState extends ConsumerState<_ReportsGames> {
     _opening = true;
     try {
       if (!await ensureGameReportAccess(context) || !mounted) return;
-      openDiscoveryGame(context, ref, games, index);
+      openDiscoveryGame(
+        context,
+        ref,
+        games,
+        index,
+        initialMoveIndexByGameId:
+            ref.read(reportsGameTypeProvider) == ReportGameType.missedChance
+            ? missedChanceBoardMoves(
+                ref.read(reportsPaginationProvider).storyPlies,
+              )
+            : null,
+      );
     } finally {
       _opening = false;
     }

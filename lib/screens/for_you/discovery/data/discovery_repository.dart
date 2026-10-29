@@ -274,7 +274,7 @@ class DiscoveryRepository {
     try {
       final selected = gameType == null
           ? query
-          : query.select(_analyzedGameColumns);
+          : query.select('$_analyzedGameColumns, report_game_classification');
       rows = await selected
           .order('last_move_time', ascending: false)
           .order('id', ascending: true)
@@ -299,6 +299,7 @@ class DiscoveryRepository {
     }
 
     final finished = <GamesTourModel>[];
+    final storyPlies = <String, int>{};
     for (final raw in rows) {
       try {
         if (!_kFinalStatuses.contains(raw['status']) ||
@@ -308,13 +309,19 @@ class DiscoveryRepository {
         final game = GamesTourModel.fromGame(
           Games.fromJson(Map<String, dynamic>.from(raw)),
         );
-        if (game.gameStatus.isFinished) finished.add(game);
+        if (!game.gameStatus.isFinished) continue;
+        finished.add(game);
+        final ply = gameType == null
+            ? null
+            : reportStoryPly(raw['report_game_classification'], gameType);
+        if (ply != null) storyPlies[game.gameId] = ply;
       } catch (e) {
         talker.debug('[Discovery] skipped unreadable analyzed game: $e');
       }
     }
     return AnalyzedGamesPage(
       items: finished,
+      storyPlies: storyPlies,
       nextCursor: rows.length < pageSize
           ? null
           : (
@@ -491,6 +498,22 @@ const String _gameListColumnsWithoutPgn = '''
         ''';
 
 /// Broadcast card metadata and the existing PGN used to recognize saved reports.
+/// The first ply of [type]'s evidence in a stored report classification.
+/// `report_games_by_type` only returns classifications bound to the game's
+/// exact PGN and result, so the ply indexes that game's own mainline.
+int? reportStoryPly(Object? classification, ReportGameType type) {
+  if (classification is! Map) return null;
+  final evidence = classification['evidence'];
+  if (evidence is! List) return null;
+  for (final item in evidence) {
+    if (item is Map && item['type'] == type.key) {
+      final ply = item['fromPly'];
+      return ply is int && ply > 0 ? ply : null;
+    }
+  }
+  return null;
+}
+
 const String _analyzedGameColumns = '''
           id,
           pgn,

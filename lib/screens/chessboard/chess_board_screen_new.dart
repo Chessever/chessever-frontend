@@ -1179,6 +1179,11 @@ class ChessBoardScreenNew extends ConsumerStatefulWidget {
   /// Optional initial position to show (FEN).
   final String? initialFen;
 
+  /// Per game id, the move index each game opens on (-1 is the starting
+  /// position). Discovery's Missed Chance opens on the position before the
+  /// miss; games without an entry keep the default.
+  final Map<String, int>? initialMoveIndexByGameId;
+
   /// When false, the route offers no way to take the PGN out: the app-bar
   /// save button is hidden and the 3-dots menu loses Copy PGN. Collection
   /// games (licensed book/event content) open with this off.
@@ -1204,6 +1209,7 @@ class ChessBoardScreenNew extends ConsumerStatefulWidget {
     this.startAtLastMove = false,
     this.showSaveAnalysisOnLoad = false,
     this.initialFen,
+    this.initialMoveIndexByGameId,
     this.onVisibleGameChanged,
     this.allowGameExport = true,
     super.key,
@@ -1917,6 +1923,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
       savedAnalysisData: _getSavedAnalysisDataForIndex(index),
       startAtLastMove: widget.startAtLastMove,
       initialFen: widget.initialFen,
+      initialMoveIndex: widget.initialMoveIndexByGameId?[game.gameId],
     );
   }
 
@@ -1965,7 +1972,9 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
     // provider already navigates to the move matching widget.initialFen.
     // Skipping the default-position override preserves that target position
     // when the user swipes between games.
-    if (widget.initialFen != null) {
+    if (widget.initialFen != null ||
+        (widget.initialMoveIndexByGameId?.containsKey(state.game.gameId) ??
+            false)) {
       _syncedLatestPositions.add(state.game.gameId);
       return;
     }

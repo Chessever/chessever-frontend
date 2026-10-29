@@ -5,16 +5,21 @@ rollout is recorded below; the frontend UI ships with the next app release.
 
 ## Behavior
 
-Reports has one horizontal choice-chip row: All, Upside Down, Comeback,
-One Blunder, Great Escape, Domination, Squeeze, Deadlock, Miniature, Marathon.
-The marks use the existing rounded Material icon language and theme tokens.
+Reports has one horizontal choice-chip row: Missed Chance, All, Upside Down,
+Comeback, One Blunder, Great Escape, Domination, Squeeze, Deadlock, Miniature,
+Marathon. Missed Chance leads the row, ahead of All. The marks use the existing
+rounded Material icon language and theme tokens; Missed Chance wears the
+heartbreak the app plays for an unlike. Under Missed Chance a card opens the
+board on the position before the miss, where the winning move was still
+there, read from the stored evidence; every other type opens as before.
 Player search, date groups, layout switching, first-page caching, pagination,
 and board navigation keep their existing behavior. Switching type starts at
 the first matching page and ignores responses from the previous type.
 
 Types can overlap. A game can match Upside Down and Comeback, and independently
 match Miniature or Marathon. A primary story is stored with precedence:
-Upside Down, Comeback, Great Escape, One Blunder, Squeeze, Domination, Deadlock.
+Upside Down, Comeback, Great Escape, Missed Chance, One Blunder, Squeeze,
+Domination, Deadlock.
 The existing card layout stays intact; the chips filter every matching report
 in the database, not only the pages loaded on the phone.
 
@@ -40,6 +45,7 @@ four consecutive plies to establish a winning/losing stretch.
 | Comeback | The winner had an established losing stretch and finishes at least broadly balanced. |
 | One Blunder | The loser's move changes a position within one pawn of equality to at least two pawns for the winner, a swing of at least two pawns. The advantage stays above 1.2 pawns thereafter. Short endings must finish at least three pawns ahead or in mate. Later mistakes in an already lost position do not erase the story. |
 | Great Escape | An established winning stretch for either side followed by a draw finishing within one pawn of equality. |
+| Missed Chance | A side to move at three pawns or better (the report's Missed Win floor, mate included) plays a move that leaves it at half a pawn or worse, and that side does not win. Either player of a draw can miss; in a decisive game only the loser. One move is enough, so a single unpunished blunder counts; a slide over several moves does not. Evidence starts at the missing move's ply. |
 | Domination | The winner's final continuous control lasts at least 12 plies and 30% of the game, starts within its first 60%, and follows no established losing stretch. |
 | Squeeze | Three rising four-ply blocks, starting with a small edge, grow into the final control. No sudden increase over one pawn or reversal exceeding 0.6 pawns is allowed in those blocks, and no reset to equality is allowed before control. Final control lasts at least six plies and follows no established losing stretch. |
 | Deadlock | A draw without established control; at least 80% of played positions stay within one pawn, and none exceed three pawns. |
@@ -142,6 +148,28 @@ were applied. No other pending repository migrations were applied.
 | Marathon | 535 |
 
 The frontend code is ready at `35.27.1+3506`; no app release was triggered.
+
+## Missed Chance: 2026-10-30
+
+Added within story version 1: the stored shape is unchanged and older apps
+ignore the extra tag. Only the writer's allowlist needed a migration,
+`supabase/migrations/20261030120000_report_game_missed_chance.sql`; the
+type filter RPC already accepts any tag. The analysis report cache moves to
+algorithm `27-missed-chance`.
+
+Calibration, read-only, on about 3,000 complete production reports: 173
+games (5.8%) qualify, beside 140 Comeback and 194 Great Escape. 45 of them
+carry no other story. Their other stories: Great Escape 67, Comeback 45,
+One Blunder 37, Upside Down 6, Domination 1.
+
+Rollout order, production only with explicit authorization:
+
+1. Apply the migration. A Worker emitting the tag before it would have every
+   game with a miss rejected by the allowlist, losing all its labels.
+2. Deploy the analysis Worker.
+3. Run the backfill with `--revisit`. Rows already classified at version 1
+   are otherwise skipped; `--revisit` asks for version 0, which no row
+   carries, and the writer answers `unchanged` where nothing moved.
 
 ## Validation
 

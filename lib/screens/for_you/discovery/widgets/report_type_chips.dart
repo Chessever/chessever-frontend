@@ -16,8 +16,18 @@ class ReportTypeChips extends StatelessWidget {
   final ReportGameType? selected;
   final ValueChanged<ReportGameType?> onSelected;
 
+  /// Missed Chance leads the row, ahead of All.
+  static final List<ReportGameType?> order = [
+    ReportGameType.missedChance,
+    null,
+    for (final type in ReportGameType.values)
+      if (type != ReportGameType.missedChance) type,
+  ];
+
   static IconData iconFor(ReportGameType? type) => switch (type) {
     null => Icons.assessment_rounded,
+    // The heartbreak My Likes and the board play for an unlike.
+    ReportGameType.missedChance => Icons.heart_broken_rounded,
     ReportGameType.upsideDown => Icons.swap_vert_rounded,
     ReportGameType.comeback => Icons.u_turn_right_rounded,
     ReportGameType.oneBlunder => Icons.priority_high_rounded,
@@ -38,11 +48,8 @@ class ReportTypeChips extends StatelessWidget {
     ),
     child: Row(
       children: [
-        for (final type in <ReportGameType?>[
-          null,
-          ...ReportGameType.values,
-        ]) ...[
-          if (type != null) SizedBox(width: 8.w),
+        for (final (index, type) in order.indexed) ...[
+          if (index > 0) SizedBox(width: 8.w),
           Tooltip(
             message:
                 type?.description ??

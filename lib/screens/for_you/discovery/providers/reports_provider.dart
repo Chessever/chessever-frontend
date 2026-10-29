@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:chessever2/screens/for_you/discovery/data/discovery_repository.dart';
 import 'package:chessever2/screens/for_you/discovery/models/discovery_models.dart';
@@ -33,6 +34,7 @@ final reportsFirstPageProvider = FutureProvider.autoDispose<AnalyzedGamesPage>((
 class ReportsPaginationState {
   const ReportsPaginationState({
     this.items = const [],
+    this.storyPlies = const {},
     this.isLoading = false,
     this.isRefreshing = false,
     this.hasMore = true,
@@ -40,6 +42,10 @@ class ReportsPaginationState {
   });
 
   final List<GamesTourModel> items;
+
+  /// Where the filtered story starts in each loaded game (see
+  /// [AnalyzedGamesPage.storyPlies]).
+  final Map<String, int> storyPlies;
   final bool isLoading;
   final bool isRefreshing;
   final bool hasMore;
@@ -95,6 +101,13 @@ final reportsGamesProvider = Provider.autoDispose<List<GamesTourModel>>((ref) {
   return List.unmodifiable(games);
 });
 
+/// Missed Chance opens each game where the winning move was still there: the
+/// position before the miss, as a board move index (-1 is the start).
+Map<String, int> missedChanceBoardMoves(Map<String, int> storyPlies) => {
+  for (final MapEntry(:key, :value) in storyPlies.entries)
+    key: math.max(-1, value - 2),
+};
+
 int? _reportUtcDay(DateTime? date) {
   if (date == null) return null;
   final utc = date.toUtc();
@@ -145,6 +158,7 @@ class ReportsPaginationNotifier extends StateNotifier<ReportsPaginationState> {
     _retryRefresh = reset;
     state = ReportsPaginationState(
       items: state.items,
+      storyPlies: state.storyPlies,
       isLoading: true,
       isRefreshing: reset && state.items.isNotEmpty,
       hasMore: state.hasMore,
@@ -171,12 +185,17 @@ class ReportsPaginationNotifier extends StateNotifier<ReportsPaginationState> {
       _cursor = page.nextCursor;
       state = ReportsPaginationState(
         items: List.unmodifiable(items),
+        storyPlies: Map.unmodifiable({
+          if (!reset) ...state.storyPlies,
+          ...page.storyPlies,
+        }),
         hasMore: page.nextCursor != null,
       );
     } catch (error) {
       if (!mounted || request != _request) return;
       state = ReportsPaginationState(
         items: state.items,
+        storyPlies: state.storyPlies,
         hasMore: state.hasMore,
         error: error is ReportGameTypesUnavailable
             ? 'Report filters are not available yet. Choose All to browse reports.'

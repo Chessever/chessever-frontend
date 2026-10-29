@@ -876,6 +876,62 @@ void main() {
       },
     );
 
+    test(
+      'type filters return where the story starts; All keeps its query',
+      () async {
+        rows = [
+          {
+            ...report('miss'),
+            'report_game_classification': {
+              'tags': ['missed_chance', 'great_escape'],
+              'evidence': [
+                {'type': 'great_escape', 'fromPly': 1, 'toPly': 2},
+                {'type': 'missed_chance', 'fromPly': 2, 'toPly': 2},
+              ],
+            },
+          },
+          report('unlabelled'),
+        ];
+        final page = await repository.fetchAnalyzedGamesPage(
+          gameType: ReportGameType.missedChance,
+        );
+        expect(page.items.map((game) => game.gameId), ['miss', 'unlabelled']);
+        expect(page.storyPlies, {'miss': 2});
+        expect(
+          requests.single.url.queryParameters['select'],
+          contains('report_game_classification'),
+        );
+
+        final all = await repository.fetchAnalyzedGamesPage();
+        expect(all.storyPlies, isEmpty);
+        expect(
+          requests.last.url.queryParameters['select'],
+          isNot(contains('report_game_classification')),
+        );
+      },
+    );
+
+    test('a story ply comes only from well-formed evidence of its type', () {
+      Map<String, Object?> evidence(Object? ply) => {
+        'evidence': [
+          {'type': 'missed_chance', 'fromPly': ply},
+        ],
+      };
+      expect(reportStoryPly(evidence(31), ReportGameType.missedChance), 31);
+      expect(reportStoryPly(evidence(31), ReportGameType.comeback), isNull);
+      for (final bad in [0, -3, '31', null, 31.5]) {
+        expect(
+          reportStoryPly(evidence(bad), ReportGameType.missedChance),
+          isNull,
+        );
+      }
+      expect(reportStoryPly(null, ReportGameType.missedChance), isNull);
+      expect(
+        reportStoryPly({'evidence': 'x'}, ReportGameType.missedChance),
+        isNull,
+      );
+    });
+
     test('undated games continue by id after all dated games', () async {
       rows = [report('b', time: null), report('c', time: null)];
       final page = await repository.fetchAnalyzedGamesPage(

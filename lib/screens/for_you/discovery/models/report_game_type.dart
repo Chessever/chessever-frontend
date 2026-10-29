@@ -1,6 +1,11 @@
 /// Stable wire keys shared with the optional Cloudflare game-story metadata.
 /// Stories can overlap; length is independent. Null means All Reports.
 enum ReportGameType {
+  missedChance(
+    'missed_chance',
+    'Missed Chance',
+    'A player throws away a clearly winning position and does not win.',
+  ),
   upsideDown(
     'upside_down',
     'Upside Down',
