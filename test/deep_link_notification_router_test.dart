@@ -80,6 +80,48 @@ void main() {
     return captured;
   }
 
+  for (final cold in [true, false]) {
+    for (final key in ['url', 'route']) {
+      for (final component in ['prep', 'library', 'likes']) {
+        testWidgets('My Space $component from $key (cold=$cold)', (
+          tester,
+        ) async {
+          DeepLinkService.instance.dispose();
+          final opened = <Widget>[];
+          final ref = await pumpHost(
+            tester,
+            overrides: [
+              currentUserProvider.overrideWithValue(
+                AppUser(id: 'space-user', createdAt: DateTime(2026)),
+              ),
+              appDestinationPageNavigationProvider.overrideWithValue(
+                (_, page, __) => opened.add(page),
+              ),
+            ],
+          );
+          if (!cold) {
+            DeepLinkService.instance.attachNotificationRouter(
+              navigatorKey,
+              ref,
+            );
+          }
+          DeepLinkService.instance.ingestNotificationData({
+            key: 'https://chessever.com/app/my-space/$component',
+          });
+          if (cold) {
+            DeepLinkService.instance.attachNotificationRouter(
+              navigatorKey,
+              ref,
+            );
+          }
+          DeepLinkService.notifyAppReady();
+          await tester.pumpAndSettle();
+          expect(opened, hasLength(1));
+        });
+      }
+    }
+  }
+
   for (final coldStart in [true, false]) {
     for (final key in ['url', 'route']) {
       for (final type in <ReportGameType?>[null, ...ReportGameType.values]) {

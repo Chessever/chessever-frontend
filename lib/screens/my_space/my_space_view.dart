@@ -1,5 +1,7 @@
 import 'dart:async';
 
+import 'package:chessever2/screens/my_space/actions/space_component_share.dart';
+
 import 'package:chessever2/screens/my_space/actions/space_remove_confirmation.dart';
 // import 'package:chessever2/providers/favorite_events_provider.dart';
 // import 'package:chessever2/providers/for_you_games_provider.dart';
@@ -242,7 +244,10 @@ class _MySpaceViewState extends ConsumerState<MySpaceView> {
         wide: !small(kSpaceHomeMyPrep),
         onResize: () => resize(kSpaceHomeMyPrep),
         radius: 14.br,
-        builder: (_, _) => const _MyPrepTile(),
+        builder: (_, _) => const SpaceComponentShare(
+          component: SpaceComponent.prep,
+          child: _MyPrepTile(),
+        ),
       ),
       kSpaceHomeLibrary: SpaceEditItem(
         key: kSpaceHomeLibrary,
@@ -251,7 +256,10 @@ class _MySpaceViewState extends ConsumerState<MySpaceView> {
         wide: !small(kSpaceHomeLibrary),
         onResize: () => resize(kSpaceHomeLibrary),
         radius: 14.br,
-        builder: (_, _) => const _LibraryTile(),
+        builder: (_, _) => const SpaceComponentShare(
+          component: SpaceComponent.library,
+          child: _LibraryTile(),
+        ),
       ),
       kSpaceHomeLikes: SpaceEditItem(
         key: kSpaceHomeLikes,
@@ -259,9 +267,12 @@ class _MySpaceViewState extends ConsumerState<MySpaceView> {
         selectable: false,
         wide: !small(kSpaceHomeLikes),
         onResize: () => resize(kSpaceHomeLikes),
-        builder: (_, _) => _MyLikesCard(
-          key: const ValueKey<String>('my_space_likes_card'),
-          small: small(kSpaceHomeLikes),
+        builder: (_, _) => SpaceComponentShare(
+          component: SpaceComponent.likes,
+          child: _MyLikesCard(
+            key: const ValueKey<String>('my_space_likes_card'),
+            small: small(kSpaceHomeLikes),
+          ),
         ),
       ),
     };

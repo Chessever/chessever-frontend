@@ -1,4 +1,7 @@
 import 'dart:async';
+import 'package:chessever2/screens/library/library_screen.dart';
+import 'package:chessever2/screens/my_prep/my_prep_home_screen.dart';
+import 'package:chessever2/screens/my_likes/my_likes_screen.dart';
 
 import 'package:chessever2/screens/for_you/discovery/data/discovery_repository.dart';
 import 'package:chessever2/screens/for_you/discovery/models/report_game_type.dart';
@@ -121,6 +124,23 @@ void main() {
       return true;
     },
   );
+
+  testWidgets('My Space components open the matching personal pages', (
+    tester,
+  ) async {
+    await host(tester);
+    expect(await open('/app/my-space/prep'), isTrue);
+    expect(opened.last, isA<MyPrepHomeScreen>());
+    expect(await open('/app/my-space/likes'), isTrue);
+    expect(opened.last, isA<MyLikesScreen>());
+    expect(await open('/app/my-space/library'), isTrue);
+    expect(
+      ((opened.last as Scaffold).body! as LibraryScreen).databasesOnly,
+      isTrue,
+    );
+    expect(await open('/app/library'), isTrue);
+    expect((opened.last as LibraryScreen).databasesOnly, isFalse);
+  });
 
   testWidgets(
     'Reports links retain the Premium gate and scope type/date into the query',

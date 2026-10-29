@@ -223,7 +223,11 @@ Future<bool> openAppDestination(
         }
         push(PrepProfileScreen(profileId: profile.id, accountKey: account));
       case AppDestinationKind.library:
-        push(const LibraryScreen());
+        push(
+          destination.section == 'databases'
+              ? const Scaffold(body: LibraryScreen(databasesOnly: true))
+              : const LibraryScreen(),
+        );
       case AppDestinationKind.database:
         push(TwicContentsScreen(initialEvent: destination.query['event']));
       case AppDestinationKind.myLikes:

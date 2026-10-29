@@ -1217,6 +1217,9 @@ String newsSourceContextLabel(String href) {
 Uri? newsInAppRoute(Uri uri) {
   if (!isChesseverUri(uri)) return null;
   final destination = parseAppDestination(uri.toString());
+  if (destination != null && uri.path.startsWith('/app/my-space')) {
+    return destination.uri;
+  }
   if (destination != null &&
       const {
         AppDestinationKind.likes,

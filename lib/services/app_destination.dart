@@ -169,6 +169,22 @@ AppDestination? _parseAppDestination(String raw) {
     if (kind != null) return target(kind);
   }
   switch (root) {
+    case 'my-space':
+      if (query.isEmpty) {
+        if (path.length == 1) {
+          return target(AppDestinationKind.home, section: 'my-space');
+        }
+        if (path.length == 2) {
+          switch (path[1]) {
+            case 'prep':
+              return target(AppDestinationKind.myPrep);
+            case 'library':
+              return target(AppDestinationKind.library, section: 'databases');
+            case 'likes':
+              return target(AppDestinationKind.myLikes);
+          }
+        }
+      }
     case 'likes':
       if (path.length == 2 &&
           const {'today', 'week', 'month', 'year'}.contains(path[1]) &&

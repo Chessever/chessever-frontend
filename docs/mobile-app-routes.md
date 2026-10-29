@@ -23,7 +23,10 @@ segments; a FIDE ID is a positive integer of at most 12 digits.
 | --- | --- | --- |
 | `/app`, `/app/home` | Home, Today | None |
 | `/app/home/today` | Home, Today | None |
-| `/app/home/my-space` | Home, My Space | None |
+| `/app/home/my-space`, `/app/my-space` | Home, My Space | None |
+| `/app/my-space/prep` | My Space Prep component | None |
+| `/app/my-space/library` | My Space Library component (databases only) | None |
+| `/app/my-space/likes` | My Space Likes component | None |
 | `/app/home/discovery` | Home, Discovery | None |
 | `/app/events` | Events main tab | None |
 | `/app/inbox` | Inbox list | None |
@@ -174,3 +177,6 @@ and filters the paginated query to that UTC calendar day, using inclusive
 midnight and exclusive next midnight. Undated type links browse all days.
 The linked screen owns its type/date state, preserving an already-open Reports
 screen. HTTPS, app-scheme and notification routes use the same Premium guard.
+
+My Space: hold Prep, Library, or Likes outside Edit and choose Share. These
+links open the recipient's own workspace; they do not publish private data.
