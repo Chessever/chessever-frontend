@@ -269,8 +269,9 @@ void main() {
 
     final field = tester.widget<TextField>(find.byType(TextField));
     expect(field.focusNode?.hasFocus, isTrue);
-    expect(find.text("King's Indian"), findsWidgets);
-    expect(find.text('E60-E99'), findsOneWidget);
+    // The family row reads "E60-E99  ★ All  King's Indian" as one line.
+    expect(find.textContaining("King's Indian"), findsWidgets);
+    expect(find.textContaining('E60-E99'), findsOneWidget);
     expect(find.textContaining('E6+E7+E8+E9'), findsNothing);
 
     await tester.tapAt(const Offset(380, 800));

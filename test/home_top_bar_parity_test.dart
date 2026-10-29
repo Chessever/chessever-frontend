@@ -603,6 +603,7 @@ Future<HomeShell> pumpHomeShell(
   required bool premium,
   double textScale = 1,
   Key? boundaryKey,
+  List<Override> overrides = const [],
 }) async {
   tester.view.devicePixelRatio = 2;
   tester.view.physicalSize = size * 2;
@@ -652,6 +653,7 @@ Future<HomeShell> pumpHomeShell(
           subscribedBooksProvider.overrideWith(
             (ref) async => const <LibraryFolder>[],
           ),
+          ...overrides,
         ],
         child: MaterialApp(
           debugShowCheckedModeBanner: false,
