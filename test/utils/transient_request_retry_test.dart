@@ -48,4 +48,22 @@ void main() {
 
     expect(calls, 1);
   });
+
+  test('stops retrying once the caller no longer wants the result', () async {
+    var calls = 0;
+
+    await expectLater(
+      retryTransientRead<void>(
+        () async {
+          calls += 1;
+          throw TimeoutException('slow request');
+        },
+        delays: const [Duration.zero],
+        canRetry: () => false,
+      ),
+      throwsA(isA<TimeoutException>()),
+    );
+
+    expect(calls, 1);
+  });
 }
