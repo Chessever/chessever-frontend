@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:chessever2/screens/feed/news/news_models.dart';
+import 'package:chessever2/screens/feed/news/news_content.dart';
 import 'package:chessever2/screens/feed/news/news_reader_screen.dart';
 import 'package:chessever2/screens/feed/news/news_reading_access.dart';
 import 'package:chessever2/services/rewarded_premium/rewarded_access_provider.dart';
@@ -10,6 +11,12 @@ import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/widgets/app_snack.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+
+final _newsNavigationProvider = Provider((ref) => _NewsNavigation());
+
+class _NewsNavigation {
+  bool pending = false;
+}
 
 /// Horizontal article browsing, with independent vertical reading positions.
 /// Only the visible page owns a Hero, even while PageView builds neighbours.
@@ -40,24 +47,46 @@ class NewsReaderPager extends ConsumerStatefulWidget {
     Future<List<FeedNews>> Function()? loadMore,
     ValueChanged<FeedNews>? onArticleChanged,
   }) async {
-    if (!await requestNewsArticleAccess(context, articles[initialIndex].key) ||
-        !context.mounted) {
-      return;
-    }
-    unawaited(HapticFeedbackService.cardTap());
-    await Navigator.of(context).push<void>(
-      MaterialPageRoute<void>(
-        settings: RouteSettings(name: '/news/${articles[initialIndex].key}'),
-        builder: (_) => NewsReaderPager(
-          articles: articles,
-          initialIndex: initialIndex,
-          heroScope: heroScope,
-          hasMore: hasMore,
-          loadMore: loadMore,
-          onArticleChanged: onArticleChanged,
+    if (!context.mounted) return;
+    final navigation = ProviderScope.containerOf(
+      context,
+      listen: false,
+    ).read(_newsNavigationProvider);
+    if (navigation.pending) return;
+    navigation.pending = true;
+    try {
+      if (!await requestNewsArticleAccess(
+            context,
+            articles[initialIndex].key,
+          ) ||
+          !context.mounted) {
+        return;
+      }
+      unawaited(HapticFeedbackService.cardTap());
+      final closed = Navigator.of(context).push<void>(
+        MaterialPageRoute<void>(
+          settings: RouteSettings(
+            name: Uri.parse(newsShareUrl(articles[initialIndex])).path,
+          ),
+          builder: (_) => NewsReaderPager(
+            articles: articles,
+            initialIndex: initialIndex,
+            heroScope: heroScope,
+            hasMore: hasMore,
+            loadMore: loadMore,
+            onArticleChanged: onArticleChanged,
+          ),
         ),
-      ),
-    );
+      );
+      // Lock the originating tap until the new route owns the next frame.
+      // Links inside the reader remain usable while that route is open.
+      WidgetsBinding.instance.addPostFrameCallback(
+        (_) => navigation.pending = false,
+      );
+      await closed;
+    } finally {
+      navigation.pending = false;
+    }
   }
 
   @override

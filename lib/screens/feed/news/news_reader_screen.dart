@@ -5,6 +5,8 @@ import 'package:chessever2/screens/feed/news/news_content.dart';
 import 'package:chessever2/screens/feed/news/news_cover.dart';
 import 'package:chessever2/screens/feed/news/news_hero_cover.dart';
 import 'package:chessever2/screens/feed/news/news_models.dart';
+import 'package:chessever2/screens/feed/news/news_reader_pager.dart';
+import 'package:chessever2/screens/feed/news/news_repository.dart';
 import 'package:chessever2/screens/feed/news/news_rich_blocks.dart';
 import 'package:chessever2/screens/feed/widgets/feed_glyphs.dart';
 import 'package:chessever2/services/deep_link_service.dart';
@@ -27,10 +29,10 @@ Future<void> shareNews(BuildContext context, FeedNews news) async {
       ? box.localToGlobal(Offset.zero) & box.size
       : const Rect.fromLTWH(0, 0, 1, 1);
   final messenger = ScaffoldMessenger.maybeOf(context);
-  final url = news.webUrl;
+  final url = newsShareUrl(news);
   try {
     await Share.share(
-      url == null ? news.title : '${news.title}\n$url',
+      '${news.title}\n$url',
       subject: news.title,
       sharePositionOrigin: origin,
     );
@@ -65,14 +67,32 @@ class NewsReaderScreen extends ConsumerStatefulWidget {
   final Object? heroTag;
   final Widget? navigation;
 
-  static Future<void> open(BuildContext context, FeedNews news) {
-    unawaited(HapticFeedbackService.cardTap());
-    return Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        settings: RouteSettings(name: '/news/${news.key}'),
-        builder: (_) => NewsReaderScreen(news: news),
-      ),
-    );
+  static Future<void> open(BuildContext context, FeedNews news) async {
+    final cached =
+        ProviderScope.containerOf(
+          context,
+          listen: false,
+        ).read(feedNewsProvider).valueOrNull ??
+        const <FeedNews>[];
+    final articles = mergeFeedNews([
+      news,
+    ], cached.where((item) => item.key != news.key).toList());
+    try {
+      await NewsReaderPager.open(
+        context,
+        articles: articles,
+        initialIndex: articles.indexWhere((item) => item.key == news.key),
+        heroScope: Object(),
+      );
+    } catch (_) {
+      if (context.mounted) {
+        showAppSnack(
+          context,
+          "Couldn't open news. Try again.",
+          tone: AppSnackTone.danger,
+        );
+      }
+    }
   }
 
   @override

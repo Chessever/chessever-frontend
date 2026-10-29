@@ -12,8 +12,8 @@ final newsPremiumPromptProvider = Provider<Future<bool> Function(BuildContext)>(
   (ref) =>
       (context) => ensurePremiumGameAccess(
         context,
-        featureId: 'discovery_news',
-        returnTo: 'for_you/discovery/news',
+        featureId: 'news_reading',
+        returnTo: 'news/reader',
       ),
 );
 

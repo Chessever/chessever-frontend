@@ -1,4 +1,5 @@
 import 'package:chessever2/utils/eco_openings.dart';
+import 'package:chessever2/screens/feed/news/news_links.dart';
 import 'package:dartchess/dartchess.dart';
 
 /// The explicit notification route catalog. Unknown leaves are rejected rather
@@ -10,6 +11,7 @@ enum AppDestinationKind {
   collection,
   inbox,
   feed,
+  news,
   likes,
   miniatures,
   reports,
@@ -155,6 +157,7 @@ AppDestination? _parseAppDestination(String raw) {
       'collections' => AppDestinationKind.collections,
       'inbox' => AppDestinationKind.inbox,
       'feed' => AppDestinationKind.feed,
+      'news' => AppDestinationKind.news,
       'likes' => AppDestinationKind.likes,
       'miniatures' => AppDestinationKind.miniatures,
       'reports' => AppDestinationKind.reports,
@@ -168,6 +171,15 @@ AppDestination? _parseAppDestination(String raw) {
     if (kind != null) return target(kind);
   }
   switch (root) {
+    case 'news':
+      final link = NewsLink.parse(normalized);
+      if (link != null && query.isEmpty) {
+        return target(
+          AppDestinationKind.news,
+          id: link.id?.toString(),
+          section: link.publisher.sourceId,
+        );
+      }
     case 'home':
       if (path.length == 2 &&
           query.isEmpty &&

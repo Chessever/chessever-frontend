@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:chessever2/repository/sqlite/app_database.dart';
 import 'package:chessever2/screens/feed/news/news_content.dart';
 import 'package:chessever2/screens/feed/news/news_models.dart';
+import 'package:chessever2/screens/feed/news/news_links.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -11,6 +12,34 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 /// Reads published rows from the `news` table, newest first.
 typedef NewsRowsFetcher =
     Future<List<Map<String, dynamic>>> Function(int limit);
+
+/// Shared links resolve published articles by identity, even outside the
+/// latest Feed batch. Never use an unfiltered admin/news query here.
+final newsArticleLoaderProvider =
+    Provider<Future<FeedNews?> Function(NewsLink)>(
+      (ref) => (link) async {
+        if (link.id == null) return null;
+        final query = Supabase.instance.client
+            .from(link.publisher.isPartner ? 'partner_news' : 'news')
+            .select(
+              link.publisher.isPartner
+                  ? '$_partnerStampColumns,content'
+                  : '$_newsStampColumns,content',
+            )
+            .eq('id', link.id!)
+            .eq('status', 'published');
+        final row =
+            await (link.publisher.isPartner
+                    ? query.eq('source_id', link.publisher.sourceId!)
+                    : query)
+                .maybeSingle()
+                .timeout(const Duration(seconds: 12));
+        if (row == null) return null;
+        return link.publisher.isPartner
+            ? normalizePartnerNewsRow(row)
+            : normalizeNewsRow(row);
+      },
+    );
 
 /// A cached copy of the news list, [storedAt] being when it was fetched.
 typedef NewsCacheEntry = ({String value, DateTime storedAt});
@@ -312,7 +341,11 @@ List<FeedNews> mergeFeedNews(List<FeedNews> own, List<FeedNews> partners) {
   ];
   indexed.sort((a, b) {
     final byDate = b.item.publishedAt.compareTo(a.item.publishedAt);
-    return byDate != 0 ? byDate : a.rank.compareTo(b.rank);
+    if (byDate != 0) return byDate;
+    if (a.item.publisher.isPartner != b.item.publisher.isPartner) {
+      return a.item.publisher.isPartner ? 1 : -1;
+    }
+    return a.rank.compareTo(b.rank);
   });
   return [for (final entry in indexed) entry.item];
 }

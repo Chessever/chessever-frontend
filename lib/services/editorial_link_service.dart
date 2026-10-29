@@ -5,6 +5,7 @@ import 'package:chessever2/screens/collections/collections_screen.dart';
 import 'package:chessever2/screens/feed/feed_screen.dart';
 import 'package:chessever2/screens/feed/news/news_content.dart';
 import 'package:chessever2/screens/for_you/discovery/likes_screen.dart';
+import 'package:chessever2/screens/for_you/discovery/news_screen.dart';
 import 'package:chessever2/screens/for_you/discovery/reports_screen.dart';
 import 'package:chessever2/screens/inbox/inbox_screen.dart';
 import 'package:chessever2/screens/library/library_screen.dart';
@@ -20,6 +21,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 enum EditorialPage {
   feed,
+  news,
   likes,
   miniatures,
   reports,
@@ -46,6 +48,7 @@ EditorialPage? editorialPageForUri(Uri uri) {
   final path = uri.path.replaceFirst(RegExp(r'/$'), '');
   return switch (path) {
     '/feed' || '/app/feed' => EditorialPage.feed,
+    '/news' || '/app/news' => EditorialPage.news,
     '/likes' || '/app/likes' => EditorialPage.likes,
     '/miniatures' || '/app/miniatures' => EditorialPage.miniatures,
     '/reports' || '/app/reports' => EditorialPage.reports,
@@ -78,6 +81,7 @@ final editorialPageNavigationProvider = Provider<EditorialPageNavigation>(
   (ref) => (context, page) {
     final screen = switch (page) {
       EditorialPage.feed => const FeedScreen(),
+      EditorialPage.news => const NewsScreen(),
       EditorialPage.likes => const LikesScreen(),
       EditorialPage.miniatures => const MiniaturesScreen(),
       EditorialPage.reports => const ReportsScreen(),

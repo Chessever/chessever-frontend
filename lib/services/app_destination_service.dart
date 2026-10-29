@@ -7,6 +7,10 @@ import 'package:chessever2/screens/collections/collections_screen.dart';
 import 'package:chessever2/screens/favorites/favorites_tab_screen.dart';
 import 'package:chessever2/screens/favorites/provider/favorites_mode_provider.dart';
 import 'package:chessever2/screens/feed/feed_screen.dart';
+import 'package:chessever2/screens/feed/news/news_link_screen.dart';
+import 'package:chessever2/screens/feed/news/news_links.dart';
+import 'package:chessever2/screens/feed/news/news_models.dart';
+import 'package:chessever2/screens/for_you/discovery/news_screen.dart';
 import 'package:chessever2/screens/for_you/discovery/likes_screen.dart';
 import 'package:chessever2/screens/for_you/discovery/reports_screen.dart';
 import 'package:chessever2/screens/for_you/providers/for_you_tab_provider.dart';
@@ -135,6 +139,19 @@ Future<bool> openAppDestination(
         push(const InboxScreen());
       case AppDestinationKind.feed:
         push(const FeedScreen());
+      case AppDestinationKind.news:
+        push(
+          destination.id == null
+              ? const NewsScreen()
+              : NewsLinkScreen(
+                  link: NewsLink(
+                    id: int.parse(destination.id!),
+                    publisher:
+                        NewsPublisher.ofSource(destination.section) ??
+                        NewsPublisher.chessever,
+                  ),
+                ),
+        );
       case AppDestinationKind.likes:
         push(const LikesScreen());
       case AppDestinationKind.miniatures:

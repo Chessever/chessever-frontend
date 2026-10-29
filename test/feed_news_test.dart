@@ -9,6 +9,7 @@ import 'package:chessever2/screens/feed/news/news_repository.dart';
 import 'package:chessever2/screens/feed/news/news_rich_blocks.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/services/rewarded_premium/rewarded_access_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -826,6 +827,7 @@ void main() {
         final fetch = _Fetcher(const []);
         final container = ProviderContainer(
           overrides: [
+            premiumAccessProvider.overrideWithValue(false),
             feedNewsRepositoryProvider.overrideWithValue(
               FeedNewsRepository(fetchRows: fetch.call, cache: cache),
             ),
@@ -848,6 +850,7 @@ void main() {
       final fetch = _Fetcher([_row(id: 9, title: 'Fresh story')]);
       final container = ProviderContainer(
         overrides: [
+          premiumAccessProvider.overrideWithValue(false),
           feedNewsRepositoryProvider.overrideWithValue(
             FeedNewsRepository(fetchRows: fetch.call, cache: cache),
           ),
@@ -913,6 +916,7 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
+            premiumAccessProvider.overrideWithValue(false),
             feedNewsProvider.overrideWith((ref) async => [news]),
           ],
           child: MaterialApp(
@@ -1020,6 +1024,7 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
+            premiumAccessProvider.overrideWithValue(false),
             feedNewsProvider.overrideWith((ref) async => [news]),
           ],
           child: MaterialApp(
