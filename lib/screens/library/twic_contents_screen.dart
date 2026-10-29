@@ -203,10 +203,13 @@ class _TwicContentsScreenState extends ConsumerState<TwicContentsScreen>
     final trimmed = query.trim();
     _debounceTimer?.cancel();
     _debounceTimer = Timer(_debounceDuration, () {
-      if (mounted) {
-        ref.read(twicSelectedEventProvider.notifier).state = null;
-        ref.read(librarySearchQueryProvider.notifier).state = trimmed;
-      }
+      if (!mounted) return;
+      // A space or a retyped letter is the same search: keep the picked
+      // event and the list. A new search drops the event, whose chip may no
+      // longer be among the new search's events.
+      if (ref.read(librarySearchQueryProvider) == trimmed) return;
+      ref.read(twicSelectedEventProvider.notifier).state = null;
+      ref.read(librarySearchQueryProvider.notifier).state = trimmed;
     });
   }
 
@@ -1375,6 +1378,7 @@ class _TwicEventCardState extends State<_TwicEventCard> {
                           style: AppTypography.textXsRegular.copyWith(
                             color: countColor,
                             fontSize: 10.sp,
+                            fontFeatures: const [FontFeature.tabularFigures()],
                           ),
                         ),
                       ],

@@ -178,7 +178,17 @@ Map<String, dynamic>? buildLibraryExactWhere(
   return {'and': expressions};
 }
 
-@visibleForTesting
+/// The `eco:` token for GET search. A broad family spans several prefixes,
+/// sent joined by `+` (`eco:E6+E7+E8+E9`), which servers from gamebase
+/// 1.12.13 OR together; a single code or prefix is sent as it is.
+String gamebaseEcoToken(GameEcoFilter eco) {
+  final prefixes = eco.ecoPrefixes;
+  return prefixes.length > 1 ? 'eco:${prefixes.join('+')}' : 'eco:${eco.code}';
+}
+
+/// The GET search `q`: free text (or `*`) with the ECO token and, when
+/// [selectedEvent] is given, the `event:` token. Also the event chips' `q`,
+/// so the chips are counted under the same search the games list runs.
 String composeGamebaseSearchQuery({
   required String query,
   required GamebaseFilter filter,
@@ -191,7 +201,7 @@ String composeGamebaseSearchQuery({
           ? baseQuery
           : '$baseQuery event:"$escapedEvent"';
   if (filter.eco.isAll) return composedQuery;
-  return 'eco:${filter.eco.code} $composedQuery';
+  return '${gamebaseEcoToken(filter.eco)} $composedQuery';
 }
 
 @visibleForTesting
@@ -311,12 +321,23 @@ class DatabaseGamesPaginationNotifier
   Future<_PageResult> _fetchPage(int pageNumber) async {
     final repo = _ref.read(gamebaseRepositoryProvider);
     final selectedEvent = _selectedEvent?.trim();
+    // A picked chip must return the games it counted. A broadcast
+    // tournament's games carry pairings as their event, which neither the
+    // `event:` token nor the exact query below can reach; a server that files
+    // events like the chips (see [GamebaseRepository.filesEventsExactly])
+    // takes the chip's name as `event` instead.
+    final exactEvent =
+        selectedEvent != null &&
+                selectedEvent.isNotEmpty &&
+                repo.filesEventsExactly
+            ? selectedEvent
+            : null;
     late final List<Map<String, dynamic>> rawRows;
     late final int totalCount;
     late final bool totalCountIsEstimate;
     late final bool hasMore;
 
-    if (shouldUseExactLibraryGameQuery(_query, _filter)) {
+    if (exactEvent == null && shouldUseExactLibraryGameQuery(_query, _filter)) {
       final where = buildLibraryExactWhere(
         _filter,
         selectedEvent: selectedEvent,
@@ -344,8 +365,9 @@ class DatabaseGamesPaginationNotifier
         query: composeGamebaseSearchQuery(
           query: _query,
           filter: _filter,
-          selectedEvent: selectedEvent,
+          selectedEvent: exactEvent == null ? selectedEvent : null,
         ),
+        event: exactEvent,
         resources: const ['game'],
         pageNumber: pageNumber,
         pageSize: _pageSize,

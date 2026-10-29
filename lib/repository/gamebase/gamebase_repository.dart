@@ -104,6 +104,14 @@ class GamebaseRepository {
 
   bool get hasApiKey => _connection.isConfigured;
 
+  /// Whether the server files a game under its event the way the event chips
+  /// group it: `GET /api/search` takes an exact `event`, which reaches a
+  /// broadcast tournament whose games carry only pairings. Learned from the
+  /// first [searchEvents] answer (only such servers send `playerMatchCount`);
+  /// until then callers keep the `event:` token, which older servers read.
+  bool get filesEventsExactly => _filesEventsExactly;
+  bool _filesEventsExactly = false;
+
   /// Cold replay-backed aggregate queries (any position past the server's
   /// fast indexed window) can legitimately outlast the repository-wide
   /// 30s receive timeout, so this endpoint gets a wider per-request window
@@ -1232,6 +1240,7 @@ class GamebaseRepository {
     int? ratingFrom,
     int? ratingTo,
     bool? isOnline,
+    String? event,
   }) async {
     try {
       final queryParams = {
@@ -1247,6 +1256,7 @@ class GamebaseRepository {
         if (ratingFrom != null) 'ratingFrom': ratingFrom,
         if (ratingTo != null) 'ratingTo': ratingTo,
         if (isOnline != null) 'isOnline': isOnline,
+        if (event != null) 'event': event,
       };
 
       if (kDebugMode) {
@@ -1287,6 +1297,7 @@ class GamebaseRepository {
     required String query,
     int pageNumber = 1,
     int pageSize = 20,
+    String? sort,
     String? result,
     String? color,
     String? timeControl,
@@ -1301,6 +1312,7 @@ class GamebaseRepository {
         'q': query,
         'pageNumber': pageNumber,
         'pageSize': pageSize,
+        if (sort != null) 'sort': sort,
         if (result != null) 'result': result,
         if (color != null) 'color': color,
         if (timeControl != null) 'timeControl': timeControl,
@@ -1321,9 +1333,13 @@ class GamebaseRepository {
       if (data is! Map) {
         throw Exception('Unexpected response format');
       }
-      return GamebaseEventSearchResponse.fromJson(
+      final parsed = GamebaseEventSearchResponse.fromJson(
         Map<String, dynamic>.from(data),
       );
+      if (parsed.events.any((e) => e.playerMatchCount != null)) {
+        _filesEventsExactly = true;
+      }
+      return parsed;
     } on DioException catch (e) {
       if (kDebugMode) {
         debugPrint('[GamebaseRepository] searchEvents DioException:');

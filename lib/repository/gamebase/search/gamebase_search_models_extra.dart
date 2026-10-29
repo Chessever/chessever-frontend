@@ -80,6 +80,7 @@ class GamebaseEventSearchItem {
     this.dominantTimeControl,
     this.avgElo,
     this.maxElo,
+    this.playerMatchCount,
   });
 
   final String id;
@@ -97,6 +98,11 @@ class GamebaseEventSearchItem {
   final String? dominantTimeControl;
   final int? avgElo;
   final int? maxElo;
+
+  /// Of [gameCount], the games where the text matched a player's name. Sent
+  /// only by servers that rank chips (`sort=games`) and accept the exact
+  /// `event` search filter, so null marks an older server.
+  final int? playerMatchCount;
 
   factory GamebaseEventSearchItem.fromJson(Map<String, dynamic> json) {
     DateTime? parseDate(Object? value) {
@@ -120,6 +126,7 @@ class GamebaseEventSearchItem {
       dominantTimeControl: json['dominantTimeControl'] as String?,
       avgElo: (json['avgElo'] as num?)?.toInt(),
       maxElo: (json['maxElo'] as num?)?.toInt(),
+      playerMatchCount: (json['playerMatchCount'] as num?)?.toInt(),
     );
   }
 }
