@@ -1,3 +1,4 @@
+import 'package:chessever2/screens/for_you/discovery/models/report_game_type.dart';
 import 'package:chessever2/utils/eco_openings.dart';
 import 'package:dartchess/dartchess.dart';
 
@@ -184,6 +185,14 @@ AppDestination? _parseAppDestination(String raw) {
           (!query.containsKey('date') ||
               (path[1] == 'games' && _validDate(query['date'])))) {
         return target(AppDestinationKind.miniatures, section: path[1]);
+      }
+    case 'reports':
+      if (path.length == 2 &&
+          (path[1] == 'all' ||
+              ReportGameType.values.any((type) => type.key == path[1])) &&
+          only({'date'}) &&
+          _validDate(query['date'])) {
+        return target(AppDestinationKind.reports, section: path[1]);
       }
     case 'home':
       if (path.length == 2 &&

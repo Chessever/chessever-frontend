@@ -1,5 +1,8 @@
 import 'dart:async';
 
+import 'package:chessever2/screens/for_you/discovery/data/discovery_repository.dart';
+import 'package:chessever2/screens/for_you/discovery/models/report_game_type.dart';
+import 'package:chessever2/screens/for_you/discovery/providers/reports_provider.dart';
 import 'package:chessever2/repository/gamebase/gamebase_repository.dart';
 import 'package:chessever2/repository/gamebase/miniatures/miniatures_models.dart';
 import 'package:chessever2/screens/library/miniatures/miniatures_mode_provider.dart';
@@ -34,6 +37,22 @@ class _MiniaturesRepo extends Fake implements GamebaseRepository {
       limit: 50,
       offset: 0,
     );
+  }
+}
+
+class _ReportsRepo extends Fake implements DiscoveryRepository {
+  final requests =
+      <({ReportGameType? type, DateTime? since, DateTime? until})>[];
+  @override
+  Future<AnalyzedGamesPage> fetchAnalyzedGamesPage({
+    int pageSize = 30,
+    AnalyzedGamesCursor? after,
+    DateTime? since,
+    DateTime? until,
+    ReportGameType? gameType,
+  }) async {
+    requests.add((type: gameType, since: since, until: until));
+    return const AnalyzedGamesPage(items: []);
   }
 }
 
@@ -100,6 +119,56 @@ void main() {
     openInboxMessage: (id) async {
       inboxIds.add(id);
       return true;
+    },
+  );
+
+  testWidgets(
+    'Reports links retain the Premium gate and scope type/date into the query',
+    (tester) async {
+      final repo = _ReportsRepo();
+      await host(
+        tester,
+        extra: [discoveryRepositoryProvider.overrideWithValue(repo)],
+      );
+      final parent = ProviderScope.containerOf(context, listen: false);
+      ref.read(reportsGameTypeProvider.notifier).state =
+          ReportGameType.marathon;
+      ref.read(reportsDateProvider.notifier).state = DateTime.utc(2026, 9, 1);
+      final rootSubscription = parent.listen(reportsGamesProvider, (_, __) {});
+      await tester.pump();
+      for (final type in <ReportGameType?>[null, ...ReportGameType.values]) {
+        opened.clear();
+        expect(
+          await open('/app/reports/${type?.key ?? 'all'}?date=2026-10-28'),
+          isTrue,
+        );
+        final scope = opened.single as ProviderScope;
+        final child = ProviderContainer(
+          parent: parent,
+          overrides: scope.overrides,
+        );
+        final subscription = child.listen(reportsGamesProvider, (_, __) {});
+        await tester.pump(const Duration(milliseconds: 1));
+        expect(child.read(reportsGameTypeProvider), type);
+        expect(child.read(reportsDateProvider), DateTime.utc(2026, 10, 28));
+        expect(repo.requests.last, (
+          type: type,
+          since: DateTime.utc(2026, 10, 28),
+          until: DateTime.utc(2026, 10, 29),
+        ));
+        expect(parent.read(reportsGameTypeProvider), ReportGameType.marathon);
+        expect(parent.read(reportsDateProvider), DateTime.utc(2026, 9, 1));
+        subscription.close();
+        child.dispose();
+        await tester.pump(const Duration(milliseconds: 1));
+      }
+      opened.clear();
+      entitled = false;
+      expect(await open('/app/reports/comeback?date=2026-10-28'), isTrue);
+      expect(opened, isEmpty);
+      expect(requestedFeatures, everyElement('game_reports'));
+      rootSubscription.close();
+      await tester.pump(const Duration(milliseconds: 1));
     },
   );
 

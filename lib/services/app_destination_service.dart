@@ -11,6 +11,8 @@ import 'package:chessever2/screens/favorites/favorites_tab_screen.dart';
 import 'package:chessever2/screens/favorites/provider/favorites_mode_provider.dart';
 import 'package:chessever2/screens/feed/feed_screen.dart';
 import 'package:chessever2/screens/for_you/discovery/likes_screen.dart';
+import 'package:chessever2/screens/for_you/discovery/models/report_game_type.dart';
+import 'package:chessever2/screens/for_you/discovery/providers/reports_provider.dart';
 import 'package:chessever2/screens/for_you/discovery/reports_screen.dart';
 import 'package:chessever2/screens/for_you/providers/for_you_tab_provider.dart';
 import 'package:chessever2/screens/gamebase/gamebase_explorer_screen.dart';
@@ -186,7 +188,29 @@ Future<bool> openAppDestination(
         );
       case AppDestinationKind.reports:
         if (!await access('game_reports')) return true;
-        push(const ReportsScreen());
+        push(
+          ProviderScope(
+            overrides: [
+              if (destination.section != null) ...[
+                reportsGameTypeProvider.overrideWith(
+                  (ref) => destination.section == 'all'
+                      ? null
+                      : ReportGameType.values.firstWhere(
+                          (type) => type.key == destination.section,
+                        ),
+                ),
+                reportsDateProvider.overrideWith(
+                  (ref) => destination.query['date'] == null
+                      ? null
+                      : DateTime.parse(
+                          '${destination.query['date']}T00:00:00Z',
+                        ),
+                ),
+              ],
+            ],
+            child: const ReportsScreen(),
+          ),
+        );
       case AppDestinationKind.myPrep:
         push(const MyPrepHomeScreen());
       case AppDestinationKind.prepProfile:

@@ -1221,6 +1221,7 @@ Uri? newsInAppRoute(Uri uri) {
       const {
         AppDestinationKind.likes,
         AppDestinationKind.miniatures,
+        AppDestinationKind.reports,
       }.contains(destination.kind)) {
     return destination.uri;
   }

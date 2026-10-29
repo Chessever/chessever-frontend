@@ -1031,6 +1031,34 @@ void main() {
       },
     );
 
+    test(
+      'report dates use an inclusive UTC start and exclusive end on tables and typed RPCs',
+      () async {
+        for (final type in <ReportGameType?>[null, ...ReportGameType.values]) {
+          requests.clear();
+          rows = [];
+          await repository.fetchAnalyzedGamesPage(
+            gameType: type,
+            since: DateTime.utc(2026, 10, 28),
+            until: DateTime.utc(2026, 10, 29),
+          );
+          expect(requests.single.url.queryParametersAll['last_move_time'], [
+            'gte.2026-10-28T00:00:00.000Z',
+            'lt.2026-10-29T00:00:00.000Z',
+          ]);
+          expect(
+            requests.single.url.path,
+            type == null
+                ? '/rest/v1/games'
+                : '/rest/v1/rpc/report_games_by_type',
+          );
+          if (type != null) {
+            expect(requests.single.url.queryParameters['p_type'], type.key);
+          }
+        }
+      },
+    );
+
     test('undated games continue by id after all dated games', () async {
       rows = [report('b', time: null), report('c', time: null)];
       final page = await repository.fetchAnalyzedGamesPage(

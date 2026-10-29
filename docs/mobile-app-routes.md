@@ -36,6 +36,7 @@ segments; a FIDE ID is a positive integer of at most 12 digits.
 | `/app/miniatures/about`, `/app/miniatures/players` | Selected Miniatures tab | None |
 | `/app/miniatures/games` | Miniatures Games, optionally filtered to one PGN calendar day | `date=YYYY-MM-DD` |
 | `/app/reports` | Game Reports, behind its existing Premium gate | None |
+| `/app/reports/<type>` | Selected report-type tab, with the same Premium gate | `date=YYYY-MM-DD` |
 | `/app/my-prep` | My Prep | None |
 | `/app/my-prep/<profile-id>` | Existing local Prep profile | `account` |
 | `/app/library` | Library | None |
@@ -163,3 +164,13 @@ Tab links open that tab with the default Games filters. A Games date link sets
 both date bounds to the shared PGN calendar day and opens Games. Other search
 and filter settings are reset in the linked screen's own scope. These routes
 work through HTTPS links, the app scheme and notification `data.route`/`data.url`.
+
+## Reports sharing
+
+Long-press a Reports type chip or date heading, then choose Share. `<type>` is
+`all`, `upside_down`, `comeback`, `one_blunder`, `great_escape`, `domination`,
+`squeeze`, `deadlock`, `miniature` or `marathon`. A date link preserves the type
+and filters the paginated query to that UTC calendar day, using inclusive
+midnight and exclusive next midnight. Undated type links browse all days.
+The linked screen owns its type/date state, preserving an already-open Reports
+screen. HTTPS, app-scheme and notification routes use the same Premium guard.

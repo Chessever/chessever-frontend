@@ -1,3 +1,5 @@
+import 'package:chessever2/screens/for_you/discovery/models/report_game_type.dart';
+import 'package:chessever2/screens/for_you/discovery/providers/reports_provider.dart';
 import 'package:chessever2/screens/library/miniatures/miniatures_mode_provider.dart';
 import 'package:chessever2/screens/library/providers/miniatures_provider.dart';
 import 'package:chessever2/providers/auth_state_provider.dart';
@@ -76,6 +78,61 @@ void main() {
       ),
     );
     return captured;
+  }
+
+  for (final coldStart in [true, false]) {
+    for (final key in ['url', 'route']) {
+      for (final type in <ReportGameType?>[null, ...ReportGameType.values]) {
+        testWidgets(
+          'Reports ${type?.key ?? 'all'} opens from $key (cold=$coldStart)',
+          (tester) async {
+            DeepLinkService.instance.dispose();
+            final opened = <Widget>[];
+            final ref = await pumpHost(
+              tester,
+              overrides: [
+                currentUserProvider.overrideWithValue(
+                  AppUser(id: 'reports-user', createdAt: DateTime(2026)),
+                ),
+                appDestinationAccessRequestProvider.overrideWithValue(
+                  (_, __) async => true,
+                ),
+                appDestinationPageNavigationProvider.overrideWithValue(
+                  (_, page, __) => opened.add(page),
+                ),
+              ],
+            );
+            if (!coldStart) {
+              DeepLinkService.instance.attachNotificationRouter(
+                navigatorKey,
+                ref,
+              );
+            }
+            DeepLinkService.instance.ingestNotificationData({
+              key:
+                  'https://chessever.com/app/reports/${type?.key ?? 'all'}?date=2026-10-28',
+            });
+            if (coldStart) {
+              DeepLinkService.instance.attachNotificationRouter(
+                navigatorKey,
+                ref,
+              );
+            }
+            DeepLinkService.notifyAppReady();
+            await tester.pumpAndSettle();
+            final scope = opened.single as ProviderScope;
+            final container = ProviderContainer(overrides: scope.overrides);
+            expect(container.read(reportsGameTypeProvider), type);
+            expect(
+              container.read(reportsDateProvider),
+              DateTime.utc(2026, 10, 28),
+            );
+            container.dispose();
+            await tester.pump(const Duration(milliseconds: 1));
+          },
+        );
+      }
+    }
   }
 
   for (final coldStart in [true, false]) {

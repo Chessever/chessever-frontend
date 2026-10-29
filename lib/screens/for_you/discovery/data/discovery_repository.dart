@@ -266,6 +266,7 @@ class DiscoveryRepository {
     int pageSize = 30,
     AnalyzedGamesCursor? after,
     DateTime? since,
+    DateTime? until,
     ReportGameType? gameType,
   }) async {
     if (pageSize <= 0) return const AnalyzedGamesPage(items: []);
@@ -285,6 +286,9 @@ class DiscoveryRepository {
         .or(r'pgn.like.%$24%,pgn.ilike.%chessever_annotation%');
     if (since != null) {
       query = query.gte('last_move_time', since.toUtc().toIso8601String());
+    }
+    if (until != null) {
+      query = query.lt('last_move_time', until.toUtc().toIso8601String());
     }
     if (after != null) {
       final time = after.lastMoveTime;

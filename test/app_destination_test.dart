@@ -1,3 +1,5 @@
+import 'package:chessever2/screens/for_you/discovery/models/report_game_type.dart';
+import 'package:chessever2/screens/for_you/discovery/reports_share.dart';
 import 'package:chessever2/screens/library/miniatures/miniatures_share.dart';
 import 'package:chessever2/screens/library/miniatures/miniatures_mode_provider.dart';
 import 'package:chessever2/screens/feed/news/news_content.dart';
@@ -7,6 +9,49 @@ import 'package:dartchess/dartchess.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  test(
+    'every Reports type and calendar day round trips through supported links',
+    () {
+      for (final type in <ReportGameType?>[null, ...ReportGameType.values]) {
+        for (final date in [null, '2026-10-28', '2028-02-29']) {
+          final uri = reportsShareUri(type, date: date);
+          expect(newsInAppRoute(uri), uri);
+          for (final raw in [
+            uri.toString(),
+            '${uri.path}${uri.hasQuery ? '?${uri.query}' : ''}',
+            uri
+                .replace(
+                  scheme: 'com.chessever.app',
+                  host: 'app',
+                  path: uri.path.replaceFirst('/app', ''),
+                )
+                .toString(),
+          ]) {
+            final target = parseAppDestination(raw)!;
+            expect(target.kind, AppDestinationKind.reports);
+            expect(target.section, type?.key ?? 'all');
+            expect(target.query['date'], date);
+          }
+        }
+      }
+      for (final raw in [
+        '/app/reports/unknown',
+        '/app/reports/all/extra',
+        '/app/reports/comeback?date=2026-02-30',
+        '/app/reports/all?date=2026-10-28T12:00:00Z',
+        '/app/reports/all?date=bad',
+        '/app/reports/all?view=players',
+        '/app/reports/all?date=2026-10-28&date=2026-10-29',
+      ]) {
+        expect(parseAppDestination(raw), isNull, reason: raw);
+      }
+      expect(
+        () => reportsShareUri(null, date: '2026-02-30'),
+        throwsArgumentError,
+      );
+    },
+  );
+
   test(
     'Miniatures tab and date links round trip through every supported scheme',
     () {
