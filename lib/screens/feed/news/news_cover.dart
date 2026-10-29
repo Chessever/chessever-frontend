@@ -19,6 +19,8 @@ class NewsCover extends StatelessWidget {
     this.fadeBottom = 0.45,
     this.scale = 1,
     this.fallback,
+    this.pixelWidth,
+    this.fadeInDuration,
   }) : assert(fadeTop >= 0 && fadeBottom >= 0 && fadeTop + fadeBottom <= 1);
 
   final String? imageUrl;
@@ -37,6 +39,10 @@ class NewsCover extends StatelessWidget {
   /// page background in light).
   final Widget? fallback;
 
+  /// Shared covers use the reader's resolution on both ends of a Hero.
+  final int? pixelWidth;
+  final Duration? fadeInDuration;
+
   @override
   Widget build(BuildContext context) {
     final url = imageUrl;
@@ -45,9 +51,9 @@ class NewsCover extends StatelessWidget {
         builder: (context, constraints) {
           final dpr = MediaQuery.devicePixelRatioOf(context);
           final width = constraints.maxWidth;
-          final cacheWidth = width.isFinite && width > 0
-              ? (width * dpr).round()
-              : null;
+          final cacheWidth =
+              pixelWidth ??
+              (width.isFinite && width > 0 ? (width * dpr).round() : null);
           final missing =
               fallback ?? _BrandCover(fadeTop: fadeTop, fadeBottom: fadeBottom);
           Widget picture = url == null
@@ -59,6 +65,7 @@ class NewsCover extends StatelessWidget {
                   alignment: Alignment.topCenter,
                   width: double.infinity,
                   height: double.infinity,
+                  fadeInDuration: fadeInDuration,
                   placeholder: (context, _) =>
                       ColoredBox(color: context.colors.surface),
                   errorWidget: (context, _, _) => missing,
@@ -105,6 +112,7 @@ class NewsNetworkImage extends StatelessWidget {
     this.height,
     this.placeholder,
     this.errorWidget,
+    this.fadeInDuration,
   });
 
   final String url;
@@ -119,6 +127,7 @@ class NewsNetworkImage extends StatelessWidget {
   final double? height;
   final PlaceholderWidgetBuilder? placeholder;
   final LoadingErrorWidgetBuilder? errorWidget;
+  final Duration? fadeInDuration;
 
   /// Asks for WebP but still accepts whatever the server has.
   static const Map<String, String> _acceptWebp = {
@@ -141,7 +150,7 @@ class NewsNetworkImage extends StatelessWidget {
       width: width,
       height: height,
       memCacheWidth: target,
-      fadeInDuration: _fadeInDuration,
+      fadeInDuration: fadeInDuration ?? _fadeInDuration,
       fadeInCurve: _fadeInCurve,
       placeholder: placeholder,
       errorWidget: errorWidget,
@@ -155,7 +164,7 @@ class NewsNetworkImage extends StatelessWidget {
       width: width,
       height: height,
       memCacheWidth: target,
-      fadeInDuration: _fadeInDuration,
+      fadeInDuration: fadeInDuration ?? _fadeInDuration,
       fadeInCurve: _fadeInCurve,
       placeholder: placeholder,
       errorWidget: (context, _, _) => original,

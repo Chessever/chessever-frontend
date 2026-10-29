@@ -357,15 +357,17 @@ String _newsStampsOf(List<Map<String, dynamic>> rows) {
 
 Future<List<Map<String, dynamic>>> _selectPublishedNews(
   String columns,
-  int limit,
-) async {
+  int limit, {
+  int offset = 0,
+}) async {
   final rows = await Supabase.instance.client
       .from('news')
       .select(columns)
       .eq('status', 'published')
       .order('published_at', ascending: false, nullsFirst: false)
       .order('created_at', ascending: false)
-      .limit(limit)
+      .order('id', ascending: false)
+      .range(offset, offset + limit - 1)
       .timeout(const Duration(seconds: 12));
   return List<Map<String, dynamic>>.from(rows);
 }
@@ -392,8 +394,9 @@ String _partnerStampsOf(List<Map<String, dynamic>> rows) {
 /// disabled partner's.
 Future<List<Map<String, dynamic>>> _selectPartnerNews(
   String columns,
-  int limit,
-) async {
+  int limit, {
+  int offset = 0,
+}) async {
   final rows = await Supabase.instance.client
       .from('partner_news')
       .select(columns)
@@ -401,7 +404,7 @@ Future<List<Map<String, dynamic>>> _selectPartnerNews(
       .inFilter('source_id', NewsPublisher.partnerSourceIds)
       .order('published_at', ascending: false)
       .order('id', ascending: false)
-      .limit(limit)
+      .range(offset, offset + limit - 1)
       .timeout(const Duration(seconds: 12));
   return List<Map<String, dynamic>>.from(rows);
 }
@@ -423,4 +426,128 @@ class _AppDatabaseNewsCache implements NewsCacheStore {
 
 final feedNewsRepositoryProvider = Provider<FeedNewsRepository>(
   (ref) => FeedNewsRepository(),
+);
+
+typedef NewsPageRowsFetcher =
+    Future<List<Map<String, dynamic>>> Function(int offset, int limit);
+
+class NewsCatalogPage {
+  const NewsCatalogPage({required this.items, required this.hasMore});
+
+  final List<FeedNews> items;
+  final bool hasMore;
+}
+
+/// A browsing session over both publishers. Each source has its own cursor
+/// and unread buffer: fetching equal offsets and simply merging each batch
+/// would put old partner stories ahead of newer ChessEver stories on page 2.
+/// Failed reads commit no cursors, so retrying cannot skip an article.
+class NewsCatalogRepository {
+  NewsCatalogRepository({
+    NewsPageRowsFetcher? fetchOwn,
+    NewsPageRowsFetcher? fetchPartners,
+    this.pageSize = 12,
+  }) : assert(pageSize > 0),
+       _fetchOwn =
+           fetchOwn ??
+           ((offset, limit) => _selectPublishedNews(
+             '$_newsStampColumns,content',
+             limit,
+             offset: offset,
+           )),
+       _fetchPartners =
+           fetchPartners ??
+           ((offset, limit) => _selectPartnerNews(
+             '$_partnerStampColumns,content',
+             limit,
+             offset: offset,
+           ));
+
+  final int pageSize;
+  final NewsPageRowsFetcher _fetchOwn;
+  final NewsPageRowsFetcher _fetchPartners;
+  List<FeedNews> _own = [];
+  List<FeedNews> _partners = [];
+  int _ownOffset = 0;
+  int _partnerOffset = 0;
+  bool _ownMore = true;
+  bool _partnerMore = true;
+  final Set<String> _seen = {};
+  Future<NewsCatalogPage>? _inFlight;
+
+  Future<NewsCatalogPage> loadNext() =>
+      _inFlight ??= _loadNext().whenComplete(() => _inFlight = null);
+
+  Future<NewsCatalogPage> _loadNext() async {
+    final own = [..._own];
+    final partners = [..._partners];
+    var ownOffset = _ownOffset;
+    var partnerOffset = _partnerOffset;
+    var ownMore = _ownMore;
+    var partnerMore = _partnerMore;
+    final seen = {..._seen};
+    final items = <FeedNews>[];
+
+    while (items.length < pageSize) {
+      // Refill both heads before choosing the next article. Bodies already
+      // in the buffers are reused when a publisher dominates several pages.
+      final batches = await Future.wait([
+        if (own.isEmpty && ownMore)
+          _fetchOwn(ownOffset, pageSize)
+        else
+          Future.value(<Map<String, dynamic>>[]),
+        if (partners.isEmpty && partnerMore)
+          _fetchPartners(partnerOffset, pageSize)
+        else
+          Future.value(<Map<String, dynamic>>[]),
+      ]);
+      if (own.isEmpty && ownMore) {
+        final rows = batches[0];
+        ownOffset += rows.length;
+        ownMore = rows.length == pageSize;
+        own.addAll([
+          for (final row in rows)
+            if (normalizeNewsRow(row) case final FeedNews item) item,
+        ]);
+      }
+      if (partners.isEmpty && partnerMore) {
+        final rows = batches[1];
+        partnerOffset += rows.length;
+        partnerMore = rows.length == pageSize;
+        partners.addAll([
+          for (final row in rows)
+            if (normalizePartnerNewsRow(row) case final FeedNews item) item,
+        ]);
+      }
+      // Invalid rows may leave an empty head while more rows still exist.
+      if ((own.isEmpty && ownMore) || (partners.isEmpty && partnerMore)) {
+        continue;
+      }
+      if (own.isEmpty && partners.isEmpty) break;
+      final useOwn =
+          partners.isEmpty ||
+          (own.isNotEmpty &&
+              !own.first.publishedAt.isBefore(partners.first.publishedAt));
+      final next = (useOwn ? own : partners).removeAt(0);
+      if (seen.add(next.key)) items.add(next);
+    }
+
+    _own = own;
+    _partners = partners;
+    _ownOffset = ownOffset;
+    _partnerOffset = partnerOffset;
+    _ownMore = ownMore;
+    _partnerMore = partnerMore;
+    _seen.addAll(seen);
+    return NewsCatalogPage(
+      items: List.unmodifiable(items),
+      hasMore: own.isNotEmpty || partners.isNotEmpty || ownMore || partnerMore,
+    );
+  }
+}
+
+/// A fresh cursor per News screen (and per pull-to-refresh).
+final newsCatalogFactoryProvider = Provider<NewsCatalogRepository Function()>(
+  (ref) =>
+      () => NewsCatalogRepository(),
 );

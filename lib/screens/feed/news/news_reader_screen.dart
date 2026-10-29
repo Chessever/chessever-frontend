@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:chessever2/screens/feed/news/feed_news.dart';
 import 'package:chessever2/screens/feed/news/news_content.dart';
 import 'package:chessever2/screens/feed/news/news_cover.dart';
+import 'package:chessever2/screens/feed/news/news_hero_cover.dart';
 import 'package:chessever2/screens/feed/news/news_models.dart';
 import 'package:chessever2/screens/feed/news/news_rich_blocks.dart';
 import 'package:chessever2/screens/feed/widgets/feed_glyphs.dart';
@@ -53,9 +54,16 @@ Future<void> shareNews(BuildContext context, FeedNews news) async {
 /// links to the original on the partner's site: under the headline, and as
 /// a button at its end.
 class NewsReaderScreen extends ConsumerStatefulWidget {
-  const NewsReaderScreen({super.key, required this.news});
+  const NewsReaderScreen({
+    super.key,
+    required this.news,
+    this.heroTag,
+    this.navigation,
+  });
 
   final FeedNews news;
+  final Object? heroTag;
+  final Widget? navigation;
 
   static Future<void> open(BuildContext context, FeedNews news) {
     unawaited(HapticFeedbackService.cardTap());
@@ -276,6 +284,7 @@ class _NewsReaderScreenState extends ConsumerState<NewsReaderScreen> {
     return Scaffold(
       backgroundColor: colors.background,
       body: CustomScrollView(
+        key: PageStorageKey('news_reader_${news.key}'),
         slivers: [
           SliverAppBar(
             pinned: true,
@@ -287,54 +296,42 @@ class _NewsReaderScreenState extends ConsumerState<NewsReaderScreen> {
             toolbarHeight: 52,
             titleSpacing: 0,
             leadingWidth: 56,
-            leading: Semantics(
-              button: true,
-              label: 'Back',
-              excludeSemantics: true,
-              child: GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: () => Navigator.of(context).maybePop(),
-                child: Center(
-                  child: Icon(
-                    Icons.arrow_back_ios_new_rounded,
-                    size: 20,
-                    color: colors.iconPrimary,
-                  ),
-                ),
+            title: widget.navigation,
+            leading: IconButton(
+              tooltip: 'Back',
+              onPressed: () => Navigator.of(context).maybePop(),
+              icon: Icon(
+                Icons.arrow_back_ios_new_rounded,
+                size: 20,
+                color: colors.iconPrimary,
               ),
             ),
             actions: [
               Builder(
-                builder: (buttonContext) => Semantics(
-                  button: true,
-                  label: 'Share article',
-                  excludeSemantics: true,
-                  child: GestureDetector(
-                    behavior: HitTestBehavior.opaque,
-                    onTap: () => shareNews(buttonContext, news),
-                    child: SizedBox(
-                      width: 52,
-                      height: 52,
-                      child: Center(
-                        child: FeedGlyph(
-                          FeedGlyphs.share,
-                          width: 20,
-                          height: 20,
-                          color: colors.iconPrimary,
-                        ),
-                      ),
-                    ),
+                builder: (buttonContext) => IconButton(
+                  tooltip: 'Share article',
+                  onPressed: () => shareNews(buttonContext, news),
+                  constraints: const BoxConstraints(
+                    minWidth: 52,
+                    minHeight: 52,
+                  ),
+                  icon: FeedGlyph(
+                    FeedGlyphs.share,
+                    width: 20,
+                    height: 20,
+                    color: colors.iconPrimary,
                   ),
                 ),
               ),
               const SizedBox(width: 4),
             ],
           ),
-          if (news.imageUrl case final String imageUrl)
+          if (news.imageUrl != null || widget.heroTag != null)
             SliverToBoxAdapter(
               child: _ReaderCover(
-                imageUrl: imageUrl,
+                imageUrl: news.imageUrl,
                 aspectRatio: publisher.coverAspectRatio,
+                heroTag: widget.heroTag,
               ),
             )
           else
@@ -367,9 +364,10 @@ class _NewsReaderScreenState extends ConsumerState<NewsReaderScreen> {
 /// The cover under the bar: feathered at the top into the bar and at the
 /// bottom into the page, so the headline rises out of the picture.
 class _ReaderCover extends StatelessWidget {
-  const _ReaderCover({required this.imageUrl, this.aspectRatio});
+  const _ReaderCover({required this.imageUrl, this.aspectRatio, this.heroTag});
 
-  final String imageUrl;
+  final String? imageUrl;
+  final Object? heroTag;
 
   /// The cover's own shape, when it is known (a partner's); drawn at it the
   /// picture is whole. Otherwise the reader's band, cropped to fill.
@@ -390,7 +388,14 @@ class _ReaderCover extends StatelessWidget {
             : (constraints.maxWidth / aspect).clamp(120.0, 420.0);
         return SizedBox(
           height: height,
-          child: reduceMotion
+          child: heroTag != null
+              ? NewsHeroCover(
+                  tag: heroTag!,
+                  imageUrl: imageUrl,
+                  fadeTop: 0.08,
+                  fadeBottom: 0.45,
+                )
+              : reduceMotion
               ? NewsCover(imageUrl: imageUrl, fadeTop: 0.08, fallback: _quiet)
               // One-shot: the picture settles as the page opens.
               : SingleMotionBuilder(
