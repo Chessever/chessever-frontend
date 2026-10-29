@@ -40,6 +40,7 @@ class _NewsScreenState extends ConsumerState<NewsScreen> {
   bool _refreshing = false;
   int _columns = 1;
   double _rowExtent = 0;
+  bool _opening = false;
 
   @override
   void initState() {
@@ -134,9 +135,11 @@ class _NewsScreenState extends ConsumerState<NewsScreen> {
     });
   }
 
-  void _open(int index) {
-    unawaited(
-      NewsReaderPager.open(
+  Future<void> _open(int index) async {
+    if (_opening) return;
+    _opening = true;
+    try {
+      await NewsReaderPager.open(
         context,
         articles: List.of(_items),
         initialIndex: index,
@@ -148,8 +151,18 @@ class _NewsScreenState extends ConsumerState<NewsScreen> {
           return List.of(_items);
         },
         onArticleChanged: _revealCard,
-      ),
-    );
+      );
+    } catch (error) {
+      if (mounted) {
+        showAppSnack(
+          context,
+          "Couldn't open news. Try again.",
+          tone: AppSnackTone.danger,
+        );
+      }
+    } finally {
+      _opening = false;
+    }
   }
 
   @override
