@@ -74,8 +74,8 @@ final mostLikedPeriodProvider = StateProvider<MostLikedPeriod>(
 /// The day the viewer walked the date control to, or null for today. The
 /// ranking shown is the picked period holding this day, so going back to
 /// 14 Sep and then picking Week shows the week of 14 Sep. Null follows the
-/// clock across midnight instead of pinning yesterday. Only ever set past
-/// today after the premium guard passed.
+/// clock across midnight instead of pinning yesterday. Selecting Today clears
+/// this pick so it always opens on the current day.
 final mostLikedDayProvider = StateProvider<DateTime?>((ref) => null);
 
 /// Games or Players. Players is only ever set after the premium guard.

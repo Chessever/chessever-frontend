@@ -109,6 +109,10 @@ Future<void> _selectPeriod(
   WidgetRef ref,
   MostLikedPeriod period,
 ) async {
+  // Today always returns to the current day, even after browsing older periods.
+  if (period == MostLikedPeriod.today) {
+    ref.read(mostLikedDayProvider.notifier).state = null;
+  }
   ref.read(mostLikedPeriodProvider.notifier).state = period;
 }
 
