@@ -1,7 +1,9 @@
 import 'package:chessever2/repository/gamebase/gamebase_repository.dart';
+import 'package:chessever2/screens/gamebase/models/models.dart';
 import 'package:chessever2/screens/library/providers/gamebase_database_games_provider.dart';
 import 'package:chessever2/screens/library/providers/gamebase_filter_provider.dart';
 import 'package:chessever2/screens/library/providers/twic_event_aggregates_provider.dart';
+import 'package:chessever2/screens/library/utils/event_game_search_match.dart';
 import 'package:chessever2/screens/library/widgets/library_gamebase_filter_dialog.dart';
 import 'package:chessever2/widgets/game_filter/game_filter_model.dart';
 import 'package:dio/dio.dart';
@@ -62,17 +64,17 @@ void main() {
     setUp(() {
       requests = [];
       answer = (_) => _gamesAnswer();
-      final dio =
-          Dio()..interceptors.add(
-            InterceptorsWrapper(
-              onRequest: (r, h) {
-                requests.add(r);
-                h.resolve(
-                  Response(requestOptions: r, statusCode: 200, data: answer(r)),
-                );
-              },
-            ),
-          );
+      final dio = Dio()
+        ..interceptors.add(
+          InterceptorsWrapper(
+            onRequest: (r, h) {
+              requests.add(r);
+              h.resolve(
+                Response(requestOptions: r, statusCode: 200, data: answer(r)),
+              );
+            },
+          ),
+        );
       repo = GamebaseRepository(dio, apiKey: 'test');
     });
 
@@ -109,7 +111,10 @@ void main() {
       container.listen(gamebaseDatabaseGamesPaginatedProvider, (_, __) {});
       await pumpEventQueue();
 
-      final request = requests.single;
+      // The token search runs first; it found nothing here, so the
+      // tournament fallback (below) follows it.
+      final request = requests.first;
+      expect(request.path, endsWith('/api/search'));
       expect(request.queryParameters['q'], 'carlsen event:"Ganja Open 2026"');
       expect(request.queryParameters.containsKey('event'), isFalse);
     });
@@ -141,8 +146,199 @@ void main() {
       expect(request.queryParameters['q'], '*');
       expect(request.queryParameters['event'], 'Serbian Super League 2026');
     });
+
+    // Live 2026-10-29: the "carlsen" chips listed Serbian Super League 2026
+    // with 2 games (two "QGD: Exchange Variation, Carlsen Variation" games)
+    // and `carlsen event:"Serbian Super League 2026"` found none, because the
+    // tournament's games carry pairings as their event.
+    test(
+      'an older server: a broadcast tournament chip opens with its games',
+      () async {
+        answer = (r) =>
+            r.path.endsWith('/api/event') ? _serbianLeagueView : _gamesAnswer();
+        final container = _gamesContainer(
+          repo,
+          event: 'Serbian Super League 2026',
+        );
+        addTearDown(container.dispose);
+
+        container.listen(gamebaseDatabaseGamesPaginatedProvider, (_, __) {});
+        await pumpEventQueue();
+
+        final state = container.read(gamebaseDatabaseGamesPaginatedProvider);
+        expect(state.error, isNull);
+        expect(state.games.map((g) => g.gameId), [
+          '18a3377c-94aa-52dd-9da3-e684b955b59e',
+          '1fec7945-7eaa-5dbd-84d5-fb80ae8d4a74',
+        ]);
+        expect(state.totalCount, 2);
+        expect(state.hasMore, isFalse);
+        expect(requests.map((r) => r.path.split('/').last), [
+          'search',
+          'event',
+        ]);
+        expect(
+          requests.last.queryParameters['name'],
+          'Serbian Super League 2026',
+        );
+      },
+    );
+
+    test(
+      'an older server: the tournament fallback keeps the filters',
+      () async {
+        answer = (r) =>
+            r.path.endsWith('/api/event') ? _serbianLeagueView : _gamesAnswer();
+        final container = _gamesContainer(
+          repo,
+          event: 'Serbian Super League 2026',
+          filter: GamebaseFilter(result: GameResultFilter.draw),
+        );
+        addTearDown(container.dispose);
+
+        container.listen(gamebaseDatabaseGamesPaginatedProvider, (_, __) {});
+        await pumpEventQueue();
+
+        expect(
+          container
+              .read(gamebaseDatabaseGamesPaginatedProvider)
+              .games
+              .map((g) => g.gameId),
+          ['1fec7945-7eaa-5dbd-84d5-fb80ae8d4a74'],
+        );
+      },
+    );
+  });
+
+  group('event game matching', () {
+    final games = GamebaseEventView.fromData(
+      _serbianLeagueView['data']! as Map<String, dynamic>,
+    ).games;
+    List<String> matching(String query, [GamebaseFilter? filter]) => games
+        .where(
+          (g) => eventGameMatchesSearch(
+            g,
+            query: query,
+            filter: filter ?? GamebaseFilter(),
+          ),
+        )
+        .map((g) => g.white.name!)
+        .toList();
+
+    test(
+      'one long word is a prefix over players, FIDE ids, ECO and opening',
+      () {
+        expect(matching('carlsen'), ['Atalik, Suat', 'Alimpic, Aleksa']);
+        expect(matching('gaponen'), ['Gaponenko, Inna']);
+        expect(matching('14101181'), ['Gaponenko, Inna']);
+      },
+    );
+
+    test('several words must all appear', () {
+      expect(matching('exchange carlsen'), ['Atalik, Suat', 'Alimpic, Aleksa']);
+      expect(matching('magnus carlsen'), isEmpty);
+    });
+
+    test('text under three letters is ignored, as the server does', () {
+      expect(matching('ab'), hasLength(games.length));
+    });
+
+    test('ECO, result, year and rating filters apply per game', () {
+      expect(matching('', GamebaseFilter(eco: GameEcoFilter.forCode('C4'))), [
+        'Gaponenko, Inna',
+      ]);
+      expect(matching('', GamebaseFilter(result: GameResultFilter.whiteWins)), [
+        'Alimpic, Aleksa',
+      ]);
+      expect(matching('', GamebaseFilter(maxYear: 2025)), isEmpty);
+      expect(matching('', GamebaseFilter(minRating: 2350)), [
+        'Atalik, Suat',
+        'Gaponenko, Inna',
+      ]);
+    });
   });
 }
+
+/// Trimmed live `GET /api/event?name=Serbian Super League 2026` (2026-10-29).
+const _serbianLeagueView = <String, Object>{
+  'status': 'success',
+  'data': <String, Object?>{
+    'event': 'Serbian Super League 2026',
+    'site':
+        'https://lichess.org/broadcast/serbian-super-league-2026-women/round-3/0OH4UhHT/L63dvPSi',
+    'truncated': false,
+    'games': [
+      {
+        'id': '1fec7945-7eaa-5dbd-84d5-fb80ae8d4a74',
+        'round': '1.15',
+        'white': {
+          'name': 'Atalik, Suat',
+          'fideId': '14401487',
+          'title': 'GM',
+          'elo': 2371,
+          'fed': 'SRB',
+        },
+        'black': {
+          'name': 'Klukin, Kirill',
+          'fideId': '24199273',
+          'title': 'IM',
+          'elo': 2382,
+          'fed': 'SRB',
+        },
+        'result': '1/2-1/2',
+        'date': '2026-10-04T00:00:00.000Z',
+        'eco': 'D35',
+        'opening':
+            "Queen's Gambit Declined: Exchange Variation, Carlsen Variation",
+      },
+      {
+        'id': '18a3377c-94aa-52dd-9da3-e684b955b59e',
+        'round': '10.26',
+        'white': {
+          'name': 'Alimpic, Aleksa',
+          'fideId': '974323',
+          'title': 'FM',
+          'elo': 2247,
+          'fed': 'SRB',
+        },
+        'black': {
+          'name': 'Radovic, Luka',
+          'fideId': '911569',
+          'title': 'FM',
+          'elo': 2283,
+          'fed': 'SRB',
+        },
+        'result': '1-0',
+        'date': '2026-10-13T00:00:00.000Z',
+        'eco': 'D35',
+        'opening':
+            "Queen's Gambit Declined: Exchange Variation, Carlsen Variation",
+      },
+      {
+        'id': '009c5180-fdba-57b9-b5ff-94ccaba906ba',
+        'round': '3.1',
+        'white': {
+          'name': 'Gaponenko, Inna',
+          'fideId': '14101181',
+          'title': 'IM',
+          'elo': 2308,
+          'fed': 'UKR',
+        },
+        'black': {
+          'name': 'Injac, Teodora',
+          'fideId': '932400',
+          'title': 'IM',
+          'elo': 2405,
+          'fed': 'SRB',
+        },
+        'result': '1/2-1/2',
+        'date': '2026-09-26T00:00:00.000Z',
+        'eco': 'C47',
+        'opening': 'Four Knights Game: Scotch Variation Accepted',
+      },
+    ],
+  },
+};
 
 ProviderContainer _gamesContainer(
   GamebaseRepository repo, {

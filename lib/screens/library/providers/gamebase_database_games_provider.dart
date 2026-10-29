@@ -5,6 +5,7 @@ import 'package:chessever2/repository/library/library_game_event.dart';
 import 'package:chessever2/screens/gamebase/models/models.dart';
 import 'package:chessever2/screens/library/providers/gamebase_filter_provider.dart';
 import 'package:chessever2/screens/library/providers/twic_event_aggregates_provider.dart';
+import 'package:chessever2/screens/library/utils/event_game_search_match.dart';
 import 'package:chessever2/screens/library/utils/gamebase_pgn_builder.dart';
 import 'package:chessever2/screens/library/widgets/library_gamebase_filter_dialog.dart';
 import 'package:chessever2/utils/chess_title_utils.dart';
@@ -274,6 +275,7 @@ class DatabaseGamesPaginationNotifier
 
     try {
       final result = await _fetchPage(1);
+      if (!mounted) return;
       state = DatabaseGamesPaginationState(
         games: result.games,
         currentPage: 1,
@@ -283,6 +285,7 @@ class DatabaseGamesPaginationNotifier
         hasMore: result.hasMore,
       );
     } catch (e) {
+      if (!mounted) return;
       state = state.copyWith(
         isLoading: false,
         error: e.toString(),
@@ -299,6 +302,7 @@ class DatabaseGamesPaginationNotifier
     try {
       final nextPage = state.currentPage + 1;
       final result = await _fetchPage(nextPage);
+      if (!mounted) return;
 
       state = state.copyWith(
         games: [...state.games, ...result.games],
@@ -309,6 +313,7 @@ class DatabaseGamesPaginationNotifier
         hasMore: result.hasMore,
       );
     } catch (e) {
+      if (!mounted) return;
       state = state.copyWith(isLoading: false, error: e.toString());
     }
   }
@@ -316,6 +321,61 @@ class DatabaseGamesPaginationNotifier
   Future<void> refresh() async {
     state = const DatabaseGamesPaginationState(isLoading: true);
     await _loadInitialPage();
+  }
+
+  /// A picked chip on a server without the exact `event` filter: the search
+  /// cannot narrow to a broadcast tournament, whose games carry pairings as
+  /// their event, so it found none. The event view resolves the tournament by
+  /// name; its games are matched to the search here, player matches first
+  /// and then newest, as the search ranks them. Null keeps "No games found".
+  Future<_PageResult?> _fetchPickedEventFromView(
+    GamebaseRepository repo,
+    String event,
+  ) async {
+    final GamebaseEventView? view;
+    try {
+      view = await repo.getEventView(event);
+    } catch (_) {
+      return null;
+    }
+    if (view == null) return null;
+
+    final nameWords = _query.trim().toLowerCase().split(RegExp(r'\s+'))
+      ..removeWhere((word) => word.isEmpty || word == '*');
+    int nameMatch(GamebaseEventGame game) {
+      if (nameWords.isEmpty) return 0;
+      bool side(String? name) {
+        final lower = (name ?? '').toLowerCase();
+        return nameWords.every(lower.contains);
+      }
+
+      return side(game.white.name) || side(game.black.name) ? 1 : 0;
+    }
+
+    final epoch = DateTime.fromMillisecondsSinceEpoch(0);
+    final matching =
+        view.games
+            .where(
+              (game) =>
+                  eventGameMatchesSearch(game, query: _query, filter: _filter),
+            )
+            .toList()
+          ..sort((a, b) {
+            final byName = nameMatch(b).compareTo(nameMatch(a));
+            if (byName != 0) return byName;
+            return (b.date ?? epoch).compareTo(a.date ?? epoch);
+          });
+    final eventName = view.event;
+    final site = view.site;
+    final games = matching
+        .map((game) => game.toGamesTourModel(eventName: eventName, site: site))
+        .toList(growable: false);
+    return _PageResult(
+      games: games,
+      totalCount: games.length,
+      totalCountIsEstimate: view.truncated,
+      hasMore: false,
+    );
   }
 
   Future<_PageResult> _fetchPage(int pageNumber) async {
@@ -393,6 +453,15 @@ class DatabaseGamesPaginationNotifier
       totalCount = response.metadata.totalCount ?? 0;
       totalCountIsEstimate = response.metadata.totalCountIsEstimate;
       hasMore = response.metadata.hasMore;
+    }
+
+    if (rawRows.isEmpty &&
+        pageNumber == 1 &&
+        exactEvent == null &&
+        selectedEvent != null &&
+        selectedEvent.isNotEmpty) {
+      final fromView = await _fetchPickedEventFromView(repo, selectedEvent);
+      if (fromView != null) return fromView;
     }
 
     if (rawRows.isEmpty) {

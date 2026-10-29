@@ -521,6 +521,46 @@ void main() {
     },
   );
 
+  testWidgets('a trailing space does not reload the Collections search', (
+    tester,
+  ) async {
+    final repo = _FakeCollections(
+      detail: const Collection(
+        id: 'book',
+        slug: 'book',
+        kind: CollectionKind.book,
+        title: 'Sicilian lines',
+        access: CollectionAccess.free,
+      ),
+      games: [],
+    );
+    await _pump(
+      tester,
+      repo,
+      size: const Size(390, 844),
+      home: const CollectionsScreen(),
+    );
+    await tester.pumpAndSettle();
+    final input = find.byKey(const ValueKey('collections_search'));
+
+    await tester.enterText(input, 'sicilian');
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pumpAndSettle();
+    final searched = repo.bookQueries.length + repo.searchQueries.length;
+    expect(
+      [...repo.bookQueries, ...repo.searchQueries].map((q) => q.text),
+      contains('sicilian'),
+    );
+
+    await tester.enterText(input, 'sicilian ');
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pumpAndSettle();
+
+    expect(repo.bookQueries.length + repo.searchQueries.length, searched);
+    expect(tester.takeException(), isNull);
+    await _teardown(tester);
+  });
+
   testWidgets('book search keeps the server subset and order on the board', (
     tester,
   ) async {
