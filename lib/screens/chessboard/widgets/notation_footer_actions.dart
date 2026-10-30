@@ -233,7 +233,9 @@ class _LikeGameButtonState extends ConsumerState<LikeGameButton> {
                 liked ? Icons.favorite_rounded : Icons.favorite_border_rounded,
                 key: _heartKey,
                 size: 19,
-                color: liked ? likeColor : context.colors.accentText,
+                // Red in both states, like every other heart in the app;
+                // the fill, not the hue, says whether it's liked.
+                color: likeColor,
               ),
       ),
     );
