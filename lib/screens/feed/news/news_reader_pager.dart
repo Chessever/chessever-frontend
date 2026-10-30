@@ -19,7 +19,7 @@ class _NewsNavigation {
   bool pending = false;
 }
 
-/// Horizontal article browsing, with independent vertical reading positions.
+/// Horizontal browsing with upward footer transitions and independent reading positions.
 /// Ads use Feed's placement and eligibility, only inside the reader.
 /// Only the visible page owns a Hero, even while PageView builds neighbours.
 class NewsReaderPager extends ConsumerStatefulWidget {
@@ -95,6 +95,7 @@ class _NewsReaderPagerState extends ConsumerState<NewsReaderPager> {
   final _withdrawn = <String>{};
   Future<void>? _pending;
   bool _advancing = false;
+  bool _footerAdvance = false;
   bool _repositioning = false;
   int _revision = 0;
 
@@ -219,6 +220,11 @@ class _NewsReaderPagerState extends ConsumerState<NewsReaderPager> {
       if (MediaQuery.disableAnimationsOf(context)) {
         _pages.jumpToPage(_index + 1);
       } else {
+        // Match the upward pull without taking vertical drags away from the
+        // article's own scroll view during normal reading.
+        setState(() => _footerAdvance = true);
+        await WidgetsBinding.instance.endOfFrame;
+        if (!mounted || !_pages.hasClients) return;
         await _pages.animateToPage(
           _index + 1,
           duration: const Duration(milliseconds: 360),
@@ -227,6 +233,9 @@ class _NewsReaderPagerState extends ConsumerState<NewsReaderPager> {
       }
     } finally {
       _advancing = false;
+      if (mounted && _footerAdvance) {
+        setState(() => _footerAdvance = false);
+      }
     }
   }
 
@@ -234,6 +243,7 @@ class _NewsReaderPagerState extends ConsumerState<NewsReaderPager> {
   Widget build(BuildContext context) {
     ref.listen(feedAdsVisibleProvider, (_, _) => _replacePages());
     return PageView.builder(
+      scrollDirection: _footerAdvance ? Axis.vertical : Axis.horizontal,
       controller: _pages,
       // Match Feed: prepare the next article or ad before the swipe lands.
       allowImplicitScrolling: true,

@@ -73,3 +73,7 @@ placement off. New units can take up to an hour to start serving.
 - News: subscribe or lose ad fill while reading; retain the current article and
   scroll position. Verify the last article has no next action once all news loads.
 - News: check large text and Reduce Motion in both themes.
+
+Pulling up at the end of a News article or tapping its footer brings the next
+article or ad in from below. Horizontal browsing and each article's independent
+reading position remain available. Reduced motion advances immediately.
