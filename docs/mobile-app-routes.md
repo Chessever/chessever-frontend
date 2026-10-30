@@ -203,3 +203,6 @@ screen. HTTPS, app-scheme and notification routes use the same Premium guard.
 
 My Space: hold Prep, Library, or Likes outside Edit and choose Share. These
 links open the recipient's own workspace; they do not publish private data.
+
+Discovery: hold Feed, Likes, News, Reports, or Miniatures and choose Share
+to share that component's `/app/...` landing page. Normal taps still open it.
