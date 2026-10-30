@@ -6,8 +6,8 @@ import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:flutter/material.dart';
 
-/// A deliberate upward pull at the article's end turns one reader page.
-/// Only finger travel beyond the bottom counts, never a ballistic fling.
+/// Deliberate pulls beyond an article's edges turn one reader page.
+/// Only finger travel beyond the edge counts, never a ballistic fling.
 /// The footer is also a regular button for readers who cannot pull.
 class NewsPullNext extends StatefulWidget {
   const NewsPullNext({
@@ -15,10 +15,14 @@ class NewsPullNext extends StatefulWidget {
     required this.onNext,
     required this.builder,
     this.nextIsAd = false,
+    this.onPrevious,
+    this.previousIsAd = false,
   });
 
   final Future<void> Function()? onNext;
   final bool nextIsAd;
+  final Future<void> Function()? onPrevious;
+  final bool previousIsAd;
   final Widget Function(BuildContext context, Widget footer) builder;
 
   @override
@@ -37,6 +41,8 @@ class _NewsPullNextState extends State<NewsPullNext>
   int? _pointer;
   bool _busy = false;
   bool _armed = false;
+  bool _previous = false;
+  bool _reduceMotion = false;
 
   @override
   void dispose() {
@@ -45,15 +51,24 @@ class _NewsPullNextState extends State<NewsPullNext>
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _reduceMotion = MediaQuery.disableAnimationsOf(context);
+  }
+
+  @override
   void didUpdateWidget(NewsPullNext oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (widget.onNext == null) _reset();
+    if (!_busy &&
+        (_previous ? widget.onPrevious == null : widget.onNext == null)) {
+      _reset();
+    }
   }
 
   void _reset() {
     _originY = null;
     _armed = false;
-    if (MediaQuery.disableAnimationsOf(context)) {
+    if (_reduceMotion) {
       _progress.value = 0;
     } else {
       unawaited(_progress.animateBack(0, curve: Curves.easeOutCubic));
@@ -61,7 +76,7 @@ class _NewsPullNextState extends State<NewsPullNext>
   }
 
   void _track(double y) {
-    final raw = math.max(0.0, _originY! - y);
+    final raw = math.max(0.0, _previous ? y - _originY! : _originY! - y);
     final shown = _ceiling * (1 - 1 / (raw * 0.85 / _ceiling + 1));
     final armed = shown >= _trigger;
     if (armed && !_armed) unawaited(HapticFeedbackService.selection());
@@ -71,7 +86,7 @@ class _NewsPullNextState extends State<NewsPullNext>
 
   bool _onScroll(ScrollNotification notification) {
     if (_busy ||
-        widget.onNext == null ||
+        (widget.onNext == null && widget.onPrevious == null) ||
         _pointer == null ||
         notification.depth != 0 ||
         notification.metrics.axisDirection != AxisDirection.down) {
@@ -79,15 +94,28 @@ class _NewsPullNextState extends State<NewsPullNext>
     }
     switch (notification) {
       case OverscrollNotification(:final dragDetails, :final overscroll):
-        if (dragDetails != null &&
+        if (dragDetails == null) return false;
+        final previous =
+            overscroll < 0 &&
+            notification.metrics.extentBefore <= 0 &&
+            widget.onPrevious != null;
+        final next =
             overscroll > 0 &&
-            notification.metrics.extentAfter <= 0) {
-          _originY ??= dragDetails.globalPosition.dy + overscroll;
+            notification.metrics.extentAfter <= 0 &&
+            widget.onNext != null;
+        if (previous || next) {
+          if (_originY == null || _previous != previous) {
+            _previous = previous;
+            _originY = dragDetails.globalPosition.dy + overscroll;
+          }
           _track(dragDetails.globalPosition.dy);
         }
       case ScrollUpdateNotification(:final dragDetails):
         if (dragDetails != null && _originY != null) {
-          if (notification.metrics.extentAfter > 0) {
+          if ((_previous
+                  ? notification.metrics.extentBefore
+                  : notification.metrics.extentAfter) >
+              0) {
             _reset();
           } else {
             _track(dragDetails.globalPosition.dy);
@@ -104,18 +132,23 @@ class _NewsPullNextState extends State<NewsPullNext>
     final advance = _armed;
     _originY = null;
     if (advance) {
-      unawaited(_next());
+      unawaited(_navigate(previous: _previous));
     } else {
       _reset();
     }
   }
 
-  Future<void> _next() async {
-    final onNext = widget.onNext;
-    if (_busy || onNext == null) return;
-    setState(() => _busy = true);
+  Future<void> _next() => _navigate();
+
+  Future<void> _navigate({bool previous = false}) async {
+    final action = previous ? widget.onPrevious : widget.onNext;
+    if (_busy || action == null) return;
+    setState(() {
+      _previous = previous;
+      _busy = true;
+    });
     try {
-      await onNext();
+      await action();
     } finally {
       if (mounted) {
         setState(() => _busy = false);
@@ -140,75 +173,82 @@ class _NewsPullNextState extends State<NewsPullNext>
             child: Center(
               child: AnimatedBuilder(
                 animation: _progress,
-                builder: (context, _) => Semantics(
-                  button: true,
-                  label: widget.nextIsAd
-                      ? 'Continue to advertisement'
-                      : 'Next article',
-                  hint: 'Tap or pull up at the end of the article',
-                  value: _busy
-                      ? 'Loading'
-                      : _armed
-                      ? 'Release to continue'
-                      : null,
-                  liveRegion: _busy || _armed,
-                  excludeSemantics: true,
-                  onTap: _busy ? null : _next,
-                  child: TextButton(
-                    key: const ValueKey('news_next'),
-                    onPressed: _busy ? null : _next,
-                    style: TextButton.styleFrom(
-                      foregroundColor: colors.textPrimary,
-                      disabledForegroundColor: colors.textPrimary,
-                      minimumSize: const Size(0, 48),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 12,
-                      ),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        SizedBox.square(
-                          dimension: 20,
-                          child: _busy || _progress.value > 0
-                              ? CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  color: colors.textPrimary,
-                                  backgroundColor: colors.skeleton,
-                                  value: _busy
-                                      ? (MediaQuery.disableAnimationsOf(context)
-                                            ? 1
-                                            : null)
-                                      : _progress.value,
-                                )
-                              : const Icon(
-                                  Icons.arrow_downward_rounded,
-                                  size: 20,
-                                ),
+                builder: (context, _) {
+                  final nextBusy = _busy && !_previous;
+                  final nextArmed = _armed && !_previous;
+                  final nextProgress = _previous ? 0.0 : _progress.value;
+                  return Semantics(
+                    button: true,
+                    label: widget.nextIsAd
+                        ? 'Continue to advertisement'
+                        : 'Next article',
+                    hint: 'Tap or pull up at the end of the article',
+                    value: nextBusy
+                        ? 'Loading'
+                        : nextArmed
+                        ? 'Release to continue'
+                        : null,
+                    liveRegion: nextBusy || nextArmed,
+                    excludeSemantics: true,
+                    onTap: _busy ? null : _next,
+                    child: TextButton(
+                      key: const ValueKey('news_next'),
+                      onPressed: _busy ? null : _next,
+                      style: TextButton.styleFrom(
+                        foregroundColor: colors.textPrimary,
+                        disabledForegroundColor: colors.textPrimary,
+                        minimumSize: const Size(0, 48),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 12,
                         ),
-                        const SizedBox(width: 12),
-                        Flexible(
-                          child: Text(
-                            _busy
-                                ? 'Opening next $destination…'
-                                : _armed
-                                ? 'Release for next $destination'
-                                : 'Pull up for next $destination',
-                            textAlign: TextAlign.center,
-                            style: AppTypography.textSmMedium.copyWith(
-                              color: colors.textPrimary,
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          SizedBox.square(
+                            dimension: 20,
+                            child: nextBusy || nextProgress > 0
+                                ? CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: colors.textPrimary,
+                                    backgroundColor: colors.skeleton,
+                                    value: nextBusy
+                                        ? (MediaQuery.disableAnimationsOf(
+                                                context,
+                                              )
+                                              ? 1
+                                              : null)
+                                        : nextProgress,
+                                  )
+                                : const Icon(
+                                    Icons.arrow_downward_rounded,
+                                    size: 20,
+                                  ),
+                          ),
+                          const SizedBox(width: 12),
+                          Flexible(
+                            child: Text(
+                              nextBusy
+                                  ? 'Opening next $destination…'
+                                  : nextArmed
+                                  ? 'Release for next $destination'
+                                  : 'Pull up for next $destination',
+                              textAlign: TextAlign.center,
+                              style: AppTypography.textSmMedium.copyWith(
+                                color: colors.textPrimary,
+                              ),
                             ),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
-                  ),
-                ),
+                  );
+                },
               ),
             ),
           );
-    return NotificationListener<ScrollNotification>(
+    final reader = NotificationListener<ScrollNotification>(
       onNotification: _onScroll,
       child: Listener(
         onPointerDown: (event) => _pointer ??= event.pointer,
@@ -225,6 +265,53 @@ class _NewsPullNextState extends State<NewsPullNext>
           child: widget.builder(context, footer),
         ),
       ),
+    );
+    return Stack(
+      children: [
+        reader,
+        Positioned(
+          top: MediaQuery.paddingOf(context).top + 56,
+          left: 20,
+          right: 20,
+          child: IgnorePointer(
+            child: AnimatedBuilder(
+              animation: _progress,
+              builder: (context, _) {
+                if (!_previous || (!_busy && _progress.value == 0)) {
+                  return const SizedBox.shrink();
+                }
+                final destination = widget.previousIsAd ? 'ad' : 'article';
+                return Center(
+                  child: Semantics(
+                    liveRegion: _armed || _busy,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 12,
+                      ),
+                      decoration: BoxDecoration(
+                        color: colors.surface,
+                        borderRadius: BorderRadius.circular(24),
+                      ),
+                      child: Text(
+                        _busy
+                            ? 'Opening previous $destination…'
+                            : _armed
+                            ? 'Release for previous $destination'
+                            : 'Pull down for previous $destination',
+                        textAlign: TextAlign.center,
+                        style: AppTypography.textSmMedium.copyWith(
+                          color: colors.textPrimary,
+                        ),
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

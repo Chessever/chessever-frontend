@@ -96,6 +96,7 @@ class _NewsReaderPagerState extends ConsumerState<NewsReaderPager> {
   Future<void>? _pending;
   bool _advancing = false;
   bool _footerAdvance = false;
+  double _adDragDistance = 0;
   bool _repositioning = false;
   int _revision = 0;
 
@@ -206,27 +207,31 @@ class _NewsReaderPagerState extends ConsumerState<NewsReaderPager> {
     _reportArticle();
   }
 
-  Future<void> _next(String from) async {
+  Future<void> _turn(String from, {bool previous = false}) async {
+    final step = previous ? -1 : 1;
     if (_advancing || _repositioning || _entries[_index].key != from) return;
     _advancing = true;
     try {
-      if (_index == _entries.length - 1 && _more) await _loadNext();
+      if (!previous && _index == _entries.length - 1 && _more) {
+        await _loadNext();
+      }
       if (!mounted ||
           !_pages.hasClients ||
           _entries[_index].key != from ||
-          _index >= _entries.length - 1) {
+          _index + step < 0 ||
+          _index + step >= _entries.length) {
         return;
       }
       if (MediaQuery.disableAnimationsOf(context)) {
-        _pages.jumpToPage(_index + 1);
+        _pages.jumpToPage(_index + step);
       } else {
-        // Match the upward pull without taking vertical drags away from the
+        // Match the edge pull without taking vertical drags away from the
         // article's own scroll view during normal reading.
         setState(() => _footerAdvance = true);
         await WidgetsBinding.instance.endOfFrame;
         if (!mounted || !_pages.hasClients) return;
         await _pages.animateToPage(
-          _index + 1,
+          _index + step,
           duration: const Duration(milliseconds: 360),
           curve: Curves.easeOutCubic,
         );
@@ -237,6 +242,19 @@ class _NewsReaderPagerState extends ConsumerState<NewsReaderPager> {
         setState(() => _footerAdvance = false);
       }
     }
+  }
+
+  void _swipeAd(FeedAdEntry entry, DragEndDetails details) {
+    final distance = _adDragDistance;
+    _adDragDistance = 0;
+    final velocity = details.primaryVelocity ?? 0;
+    if (_advancing || _repositioning || _entries[_index].key != entry.key) {
+      return;
+    }
+    if (distance.abs() < 48 && velocity.abs() < 300) return;
+    final direction = distance.abs() >= 48 ? distance : velocity;
+    unawaited(HapticFeedbackService.selection());
+    unawaited(_turn(entry.key, previous: direction > 0));
   }
 
   @override
@@ -258,28 +276,36 @@ class _NewsReaderPagerState extends ConsumerState<NewsReaderPager> {
       itemBuilder: (context, index) {
         final entry = _entries[index];
         if (entry is FeedAdEntry) {
-          return Scaffold(
+          return GestureDetector(
             key: ValueKey(entry.key),
-            backgroundColor: context.colors.background,
-            appBar: AppBar(
-              title: Text('News', style: AppTypography.textMdMedium),
-              centerTitle: true,
-              toolbarHeight: 52,
+            behavior: HitTestBehavior.opaque,
+            onVerticalDragStart: (_) => _adDragDistance = 0,
+            onVerticalDragUpdate: (details) =>
+                _adDragDistance += details.primaryDelta ?? 0,
+            onVerticalDragEnd: (details) => _swipeAd(entry, details),
+            onVerticalDragCancel: () => _adDragDistance = 0,
+            child: Scaffold(
               backgroundColor: context.colors.background,
-              foregroundColor: context.colors.iconPrimary,
-              surfaceTintColor: Colors.transparent,
-              elevation: 0,
-              scrolledUnderElevation: 0,
-              leading: BackButton(
-                onPressed: () => Navigator.of(context).maybePop(),
+              appBar: AppBar(
+                title: Text('News', style: AppTypography.textMdMedium),
+                centerTitle: true,
+                toolbarHeight: 52,
+                backgroundColor: context.colors.background,
+                foregroundColor: context.colors.iconPrimary,
+                surfaceTintColor: Colors.transparent,
+                elevation: 0,
+                scrolledUnderElevation: 0,
+                leading: BackButton(
+                  onPressed: () => Navigator.of(context).maybePop(),
+                ),
               ),
-            ),
-            body: SafeArea(
-              top: false,
-              child: FeedAdPage(
-                entry: entry,
-                onUnavailable: () => _withdraw(entry),
-                returnTo: 'news/reader',
+              body: SafeArea(
+                top: false,
+                child: FeedAdPage(
+                  entry: entry,
+                  onUnavailable: () => _withdraw(entry),
+                  returnTo: 'news/reader',
+                ),
               ),
             ),
           );
@@ -293,7 +319,11 @@ class _NewsReaderPagerState extends ConsumerState<NewsReaderPager> {
             key: ValueKey(article.key),
             news: article,
             heroTag: (widget.heroScope, article.key),
-            onNext: canAdvance ? () => _next(entry.key) : null,
+            onNext: canAdvance ? () => _turn(entry.key) : null,
+            onPrevious: index > 0
+                ? () => _turn(entry.key, previous: true)
+                : null,
+            previousIsAd: index > 0 && _entries[index - 1] is FeedAdEntry,
             nextIsAd:
                 index + 1 < _entries.length &&
                 _entries[index + 1] is FeedAdEntry,
