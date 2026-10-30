@@ -152,7 +152,7 @@ The frontend code is ready at `35.27.1+3506`; no app release was triggered.
 ## Missed Chance: 2026-10-30
 
 Added within story version 1: the stored shape is unchanged. The migration
-`supabase/migrations/20261030120000_report_game_missed_chance.sql` widens the
+`supabase/migrations/20261029223035_report_game_missed_chance.sql` widens the
 writer's allowlist and adds a service-only reader for `--revisit`; the type
 filter RPC already accepts any tag. The analysis report cache moves to
 algorithm `27-missed-chance`.
