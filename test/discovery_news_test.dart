@@ -214,24 +214,19 @@ void main() {
         await tester.tap(find.byKey(const ValueKey('news_card_1')));
         await tester.pumpAndSettle();
         for (var i = 0; i < 2; i++) {
-          await tester.tap(find.byTooltip('Next article'));
-          await tester.pumpAndSettle();
+          await _swipeArticle(tester);
         }
-        expect(find.text('3 / 8'), findsOneWidget);
+        expect(_readingId(tester), 3);
         expect(prompts, 0);
-        await tester.tap(find.byTooltip('Next article'));
-        await tester.pumpAndSettle();
+        await _swipeArticle(tester);
         expect(prompts, 1);
-        expect(find.text('3 / 8'), findsOneWidget);
+        expect(_readingId(tester), 3);
         expect(find.text('ChessEver story 4'), findsNothing);
         // Going back and returning to a read article never spends a new read.
-        await tester.tap(find.byTooltip('Previous article'));
-        await tester.pumpAndSettle();
-        await tester.tap(find.byTooltip('Next article'));
-        await tester.pumpAndSettle();
+        await _swipeArticle(tester, back: true);
+        await _swipeArticle(tester);
         expect(prompts, 1);
-        await tester.tap(find.byTooltip('Next article'));
-        await tester.pumpAndSettle();
+        await _swipeArticle(tester);
         expect(prompts, 2);
         expect(tester.takeException(), isNull);
       },
@@ -270,7 +265,7 @@ void main() {
       expect(prompts, 1);
       result.complete(false);
       await tester.pumpAndSettle();
-      expect(find.text('3 / 5'), findsOneWidget);
+      expect(_readingId(tester), 3);
       expect(tester.takeException(), isNull);
     });
 
@@ -292,9 +287,8 @@ void main() {
         await tester.tap(find.byKey(const ValueKey('news_card_1')));
         await tester.pumpAndSettle();
         for (var i = 2; i <= 7; i++) {
-          await tester.tap(find.byTooltip('Next article'));
-          await tester.pumpAndSettle();
-          expect(find.text('$i / 8'), findsOneWidget);
+          await _swipeArticle(tester);
+          expect(_readingId(tester), i);
           expect(
             prompts,
             i < 4
@@ -326,8 +320,7 @@ void main() {
         await tester.tap(find.byKey(const ValueKey('news_card_1')));
         await tester.pumpAndSettle();
         for (var i = 0; i < 2; i++) {
-          await tester.tap(find.byTooltip('Next article'));
-          await tester.pumpAndSettle();
+          await _swipeArticle(tester);
         }
         await tester.tap(find.byTooltip('Back'));
         await tester.pumpAndSettle();
@@ -350,7 +343,7 @@ void main() {
         );
         await tester.tap(third);
         await tester.pumpAndSettle();
-        expect(find.text('3 / 5'), findsOneWidget);
+        expect(_readingId(tester), 3);
         expect(prompts, 1);
         expect(tester.takeException(), isNull);
       },
@@ -373,10 +366,9 @@ void main() {
       await tester.tap(find.byKey(const ValueKey('news_card_1')));
       await tester.pumpAndSettle();
       for (var i = 0; i < 7; i++) {
-        await tester.tap(find.byTooltip('Next article'));
-        await tester.pumpAndSettle();
+        await _swipeArticle(tester);
       }
-      expect(find.text('8 / 8'), findsOneWidget);
+      expect(_readingId(tester), 8);
       expect(prompts, 0);
       expect(tester.takeException(), isNull);
     });
@@ -451,7 +443,7 @@ void main() {
 
         await tester.drag(find.byType(PageView), const Offset(-340, 0));
         await tester.pumpAndSettle();
-        expect(find.text('2 / 3'), findsOneWidget);
+        expect(_readingId(tester), 2);
         expect(
           tester
               .widget<NewsReaderScreen>(find.byType(NewsReaderScreen))
@@ -459,12 +451,10 @@ void main() {
               .id,
           2,
         );
-        await tester.tap(find.byTooltip('Previous article'));
-        await tester.pumpAndSettle();
-        expect(find.text('1 / 3'), findsOneWidget);
-        await tester.tap(find.byTooltip('Next article'));
-        await tester.pumpAndSettle();
-        expect(find.text('2 / 3'), findsOneWidget);
+        await _swipeArticle(tester, back: true);
+        expect(_readingId(tester), 1);
+        await _swipeArticle(tester);
+        expect(_readingId(tester), 2);
         await tester.tap(find.byTooltip('Back'));
         await tester.pumpAndSettle();
         expect(find.byType(NewsReaderPager), findsNothing);
@@ -553,12 +543,47 @@ void main() {
       card.owner!.performAction(card.id, SemanticsAction.tap);
       await tester.pumpAndSettle();
       expect(find.byType(NewsReaderPager), findsOneWidget);
-      final next = tester.getSemantics(find.byTooltip('Next article'));
-      expect(next.getSemanticsData().hasAction(SemanticsAction.tap), isTrue);
-      next.owner!.performAction(next.id, SemanticsAction.tap);
+      // The pager's own scroll action turns the page; it needs no buttons.
+      tester.semantics.performAction(
+        find.semantics.byAction(SemanticsAction.scrollLeft),
+        SemanticsAction.scrollLeft,
+      );
       await tester.pumpAndSettle();
-      expect(find.text('2 / 2'), findsOneWidget);
+      expect(_readingId(tester), 2);
       semantics.dispose();
+    });
+
+    testWidgets('the headline moves into the bar once it scrolls under', (
+      tester,
+    ) async {
+      final own = _Rows([
+        _row(
+          1,
+          content: List.filled(
+            20,
+            'A long paragraph about the championship.',
+          ).join('\n\n'),
+        ),
+      ]);
+      await _pump(tester, create: () => _catalog(own, _Rows([])));
+      await tester.tap(find.byKey(const ValueKey('news_card_1')));
+      await tester.pumpAndSettle();
+      final barTitle = find.descendant(
+        of: find.byType(SliverAppBar),
+        matching: find.text('ChessEver story 1'),
+      );
+      expect(barTitle, findsNothing);
+      final article = find.descendant(
+        of: find.byType(NewsReaderScreen),
+        matching: find.byType(CustomScrollView),
+      );
+      await tester.drag(article, const Offset(0, -500));
+      await tester.pumpAndSettle();
+      expect(barTitle, findsOneWidget);
+      await tester.drag(article, const Offset(0, 800));
+      await tester.pumpAndSettle();
+      expect(barTitle, findsNothing);
+      expect(tester.takeException(), isNull);
     });
 
     testWidgets(
@@ -568,28 +593,32 @@ void main() {
         var more = true;
         final first = normalizeNewsRow(_row(1))!;
         final second = normalizeNewsRow(_row(2))!;
+        final third = normalizeNewsRow(_row(3))!;
         await _pump(
           tester,
           create: () => _catalog(_Rows([]), _Rows([])),
           home: NewsReaderPager(
-            articles: [first],
-            initialIndex: 0,
+            articles: [first, second],
+            initialIndex: 1,
             heroScope: Object(),
             hasMore: () => more,
             loadMore: () async {
               attempts++;
               if (attempts == 1) throw StateError('offline');
               more = false;
-              return [first, second];
+              return [first, second, third];
             },
           ),
         );
-        expect(find.text('1 / 1'), findsOneWidget);
+        expect(_readingId(tester), 2);
         expect(attempts, 1);
-        await tester.tap(find.byTooltip('Retry next article'));
-        await tester.pumpAndSettle();
-        expect(find.text('2 / 2'), findsOneWidget);
+        // Turning a page near the end retries once the snack is gone.
+        await _swipeArticle(tester, back: true);
+        expect(_readingId(tester), 1);
         expect(attempts, 2);
+        await _swipeArticle(tester);
+        await _swipeArticle(tester);
+        expect(_readingId(tester), 3);
         expect(tester.takeException(), isNull);
       },
     );
@@ -649,9 +678,8 @@ void main() {
           find.textContaining('decisive', findRichText: true),
           findsOneWidget,
         );
-        await tester.tap(find.byTooltip('Next article'));
-        await tester.pumpAndSettle();
-        expect(find.text('2 / 2'), findsOneWidget);
+        await _swipeArticle(tester);
+        expect(_readingId(tester), 2);
         expect(tester.takeException(), isNull);
       },
     );
@@ -735,3 +763,11 @@ void main() {
     }
   });
 }
+
+Future<void> _swipeArticle(WidgetTester tester, {bool back = false}) async {
+  await tester.fling(find.byType(PageView), Offset(back ? 300 : -300, 0), 1500);
+  await tester.pumpAndSettle();
+}
+
+int _readingId(WidgetTester tester) =>
+    tester.widget<NewsReaderScreen>(find.byType(NewsReaderScreen)).news.id;

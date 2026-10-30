@@ -70,8 +70,7 @@ void main() {
         Uri.parse(newsShareUrl(articles.first)).path,
       );
       for (var i = 0; i < 2; i++) {
-        await tester.tap(find.byTooltip('Next article'));
-        await tester.pumpAndSettle();
+        await _swipeArticle(tester);
       }
       expect(
         prompts,
@@ -79,10 +78,9 @@ void main() {
         reason:
             'Opening a Feed post again in the reader must not count it twice.',
       );
-      await tester.tap(find.byTooltip('Next article'));
-      await tester.pumpAndSettle();
+      await _swipeArticle(tester);
       expect(prompts, 1);
-      expect(find.text('3 / 5'), findsOneWidget);
+      expect(_readingId(tester), 3);
       expect(find.text('Championship story 4'), findsNothing);
     },
   );
@@ -189,3 +187,11 @@ void main() {
     },
   );
 }
+
+Future<void> _swipeArticle(WidgetTester tester, {bool back = false}) async {
+  await tester.fling(find.byType(PageView), Offset(back ? 300 : -300, 0), 1500);
+  await tester.pumpAndSettle();
+}
+
+int _readingId(WidgetTester tester) =>
+    tester.widget<NewsReaderScreen>(find.byType(NewsReaderScreen)).news.id;

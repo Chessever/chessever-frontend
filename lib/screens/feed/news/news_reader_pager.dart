@@ -6,7 +6,6 @@ import 'package:chessever2/screens/feed/news/news_reader_screen.dart';
 import 'package:chessever2/screens/feed/news/news_reading_access.dart';
 import 'package:chessever2/services/rewarded_premium/rewarded_access_provider.dart';
 import 'package:chessever2/theme/app_colors.dart';
-import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/widgets/app_snack.dart';
 import 'package:flutter/material.dart';
@@ -98,7 +97,6 @@ class _NewsReaderPagerState extends ConsumerState<NewsReaderPager> {
   late List<FeedNews> _articles;
   late int _index;
   bool _loading = false;
-  bool _loadFailed = false;
   bool _changing = false;
   bool _ready = false;
 
@@ -139,8 +137,9 @@ class _NewsReaderPagerState extends ConsumerState<NewsReaderPager> {
     super.dispose();
   }
 
+  // A failed batch is retried by the snack, or by the next page turn.
   void _prefetch() {
-    if (!_loadFailed && _index >= _articles.length - 2 && _more) {
+    if (_index >= _articles.length - 2 && _more) {
       unawaited(_loadNext());
     }
   }
@@ -151,42 +150,18 @@ class _NewsReaderPagerState extends ConsumerState<NewsReaderPager> {
     try {
       final articles = await widget.loadMore!();
       if (!mounted) return;
-      setState(() {
-        _articles = List.of(articles);
-        _loadFailed = false;
-      });
+      setState(() => _articles = List.of(articles));
     } catch (error) {
       if (!mounted) return;
-      setState(() => _loadFailed = true);
       showAppSnack(
         context,
-        "Couldn't load more news. Tap Next article to retry.",
+        "Couldn't load more news.",
         tone: AppSnackTone.danger,
+        actionLabel: 'Retry',
+        onAction: _loadNext,
       );
     } finally {
       if (mounted) setState(() => _loading = false);
-    }
-  }
-
-  Future<void> _next() async {
-    if (_changing) return;
-    if (_index == _articles.length - 1) await _loadNext();
-    if (!mounted || _index >= _articles.length - 1) return;
-    await _goTo(_index + 1);
-  }
-
-  Future<void> _goTo(int index) async {
-    if (_changing || !await _approve(index) || !mounted) return;
-    if (MediaQuery.disableAnimationsOf(context)) {
-      _pages.jumpToPage(index);
-    } else {
-      unawaited(
-        _pages.animateToPage(
-          index,
-          duration: const Duration(milliseconds: 280),
-          curve: Curves.easeOutCubic,
-        ),
-      );
     }
   }
 
@@ -250,55 +225,6 @@ class _NewsReaderPagerState extends ConsumerState<NewsReaderPager> {
             key: ValueKey(article.key),
             news: article,
             heroTag: (widget.heroScope, article.key),
-            navigation: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                IconButton(
-                  tooltip: 'Previous article',
-                  onPressed: !_changing && index > 0
-                      ? () => _goTo(index - 1)
-                      : null,
-                  color: context.colors.iconPrimary,
-                  icon: const Icon(Icons.chevron_left_rounded),
-                ),
-                Flexible(
-                  child: Semantics(
-                    liveRegion: index == _index,
-                    label: 'Article ${index + 1} of ${_articles.length}',
-                    excludeSemantics: true,
-                    child: Text(
-                      '${index + 1} / ${_articles.length}',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: AppTypography.textSmMedium.copyWith(
-                        color: context.colors.textSecondary,
-                      ),
-                    ),
-                  ),
-                ),
-                IconButton(
-                  tooltip: _loadFailed && index == _articles.length - 1
-                      ? 'Retry next article'
-                      : 'Next article',
-                  onPressed:
-                      _changing || (_loading && index == _articles.length - 1)
-                      ? null
-                      : index < _articles.length - 1 || _more
-                      ? _next
-                      : null,
-                  color: context.colors.iconPrimary,
-                  icon: _loading && index == _articles.length - 1
-                      ? SizedBox.square(
-                          dimension: 18,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: context.colors.textSecondary,
-                          ),
-                        )
-                      : const Icon(Icons.chevron_right_rounded),
-                ),
-              ],
-            ),
           ),
         );
       },
