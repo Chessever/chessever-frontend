@@ -168,9 +168,10 @@ Rollout order, production only with explicit authorization:
    game with a miss rejected by the allowlist, losing all its labels.
 2. Deploy the analysis Worker.
 3. Run the backfill with `--revisit` (dry run first, then `--write`). The
-   default reader skips rows already current at version 1. `--revisit` reads
-   only those, through `report_games_with_current_classification`, and adds
-   the Missed Chance tag and its evidence entry. Nothing stored changes:
+   default reader skips rows already current at version 1. `--revisit` pages
+   every classified game through `report_game_classification_page`, which
+   marks each row current or not for its exact PGN and result, and adds the
+   Missed Chance tag and its evidence entry to current rows only. Nothing stored changes:
    every other tag, existing evidence and a set primary stay as they are.
    Reclassifying from the PGN instead would relabel games: on the same
    ~3,000 reports, 214 (7%) get different other stories from their PGN
@@ -190,6 +191,27 @@ Existing app builds keep working and keep showing what they showed:
 - After the deploy, prewarm regenerates only the last 24 hours, with the
   same deterministic engine, so those games keep their stored stories and
   may gain Missed Chance.
+
+### Production rollout: 2026-10-30
+
+Authorized by the user for Supabase `oelbsuggrzyqwzmvidju`, the live
+`chessever-analysis` Worker and the backfill.
+
+- Migrations `20261029223035_report_game_missed_chance` (writer allowlist)
+  and `20261030062753_report_game_classification_page` (paged reader). The
+  first reader, `report_games_with_current_classification(integer)`, hashed
+  every classified PGN per page and timed out; it was left in place unused
+  rather than dropped, and can be removed once nothing needs it.
+- Worker version `ae5685c6-2799-4c5a-9697-e6ab85632c0f`, algorithm
+  `27-missed-chance`, engine `sf_18`; only the container image changed.
+- Backfill `--revisit --write --batch-write`: 33,899 classified games read,
+  1,600 gained Missed Chance, no other row written. Games whose metadata is
+  stale for their current PGN were skipped.
+- Additivity proof: on the 30,966 classified games older than 2026-10-26, a
+  hash of every classification with Missed Chance normalized away, and a
+  hash of the tags old apps can see, were identical before and after.
+- 1,642 games carry Missed Chance (42 from new reports), every one with an
+  evidence ply, all served by `report_games_by_type('missed_chance')`.
 
 ## Validation
 
