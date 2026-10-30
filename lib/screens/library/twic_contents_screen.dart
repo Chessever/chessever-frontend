@@ -918,26 +918,32 @@ class _TwicContentsScreenState extends ConsumerState<TwicContentsScreen>
     final infoParts = <Widget>[];
 
     if (item.site != null && item.site!.trim().isNotEmpty) {
+      // Flexible so a long site (often a full URL) gives way to the date
+      // and Elo parts instead of overflowing the row.
       infoParts.add(
-        Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              Icons.location_on_rounded,
-              size: 11.ic,
-              color: context.textInk(0.45),
-            ),
-            SizedBox(width: 2.w),
-            ConstrainedBox(
-              constraints: BoxConstraints(maxWidth: 120.w),
-              child: Text(
-                item.site!.trim(),
-                style: infoStyle,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
+        Flexible(
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.location_on_rounded,
+                size: 11.ic,
+                color: context.textInk(0.45),
               ),
-            ),
-          ],
+              SizedBox(width: 2.w),
+              Flexible(
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(maxWidth: 120.w),
+                  child: Text(
+                    item.site!.trim(),
+                    style: infoStyle,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       );
     }
