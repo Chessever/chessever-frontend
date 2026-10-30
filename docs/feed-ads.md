@@ -81,3 +81,7 @@ reading position remain available. Reduced motion advances immediately.
 At the top of a News article, pull down beyond the edge and release to return
 to the previous reader page from above. Short or cancelled pulls keep the
 article. The first page has no previous action; scheduled ads stay in sequence.
+
+News reader ad slots accept vertical swipes too: up opens the next article,
+down returns to the previous one, with matching vertical transitions. Short
+or cancelled drags stay on the ad, and ordinary ad taps remain taps.

@@ -96,6 +96,7 @@ class _NewsReaderPagerState extends ConsumerState<NewsReaderPager> {
   Future<void>? _pending;
   bool _advancing = false;
   bool _footerAdvance = false;
+  double _adDragDistance = 0;
   bool _repositioning = false;
   int _revision = 0;
 
@@ -243,6 +244,19 @@ class _NewsReaderPagerState extends ConsumerState<NewsReaderPager> {
     }
   }
 
+  void _swipeAd(FeedAdEntry entry, DragEndDetails details) {
+    final distance = _adDragDistance;
+    _adDragDistance = 0;
+    final velocity = details.primaryVelocity ?? 0;
+    if (_advancing || _repositioning || _entries[_index].key != entry.key) {
+      return;
+    }
+    if (distance.abs() < 48 && velocity.abs() < 300) return;
+    final direction = distance.abs() >= 48 ? distance : velocity;
+    unawaited(HapticFeedbackService.selection());
+    unawaited(_turn(entry.key, previous: direction > 0));
+  }
+
   @override
   Widget build(BuildContext context) {
     ref.listen(feedAdsVisibleProvider, (_, _) => _replacePages());
@@ -262,28 +276,36 @@ class _NewsReaderPagerState extends ConsumerState<NewsReaderPager> {
       itemBuilder: (context, index) {
         final entry = _entries[index];
         if (entry is FeedAdEntry) {
-          return Scaffold(
+          return GestureDetector(
             key: ValueKey(entry.key),
-            backgroundColor: context.colors.background,
-            appBar: AppBar(
-              title: Text('News', style: AppTypography.textMdMedium),
-              centerTitle: true,
-              toolbarHeight: 52,
+            behavior: HitTestBehavior.opaque,
+            onVerticalDragStart: (_) => _adDragDistance = 0,
+            onVerticalDragUpdate: (details) =>
+                _adDragDistance += details.primaryDelta ?? 0,
+            onVerticalDragEnd: (details) => _swipeAd(entry, details),
+            onVerticalDragCancel: () => _adDragDistance = 0,
+            child: Scaffold(
               backgroundColor: context.colors.background,
-              foregroundColor: context.colors.iconPrimary,
-              surfaceTintColor: Colors.transparent,
-              elevation: 0,
-              scrolledUnderElevation: 0,
-              leading: BackButton(
-                onPressed: () => Navigator.of(context).maybePop(),
+              appBar: AppBar(
+                title: Text('News', style: AppTypography.textMdMedium),
+                centerTitle: true,
+                toolbarHeight: 52,
+                backgroundColor: context.colors.background,
+                foregroundColor: context.colors.iconPrimary,
+                surfaceTintColor: Colors.transparent,
+                elevation: 0,
+                scrolledUnderElevation: 0,
+                leading: BackButton(
+                  onPressed: () => Navigator.of(context).maybePop(),
+                ),
               ),
-            ),
-            body: SafeArea(
-              top: false,
-              child: FeedAdPage(
-                entry: entry,
-                onUnavailable: () => _withdraw(entry),
-                returnTo: 'news/reader',
+              body: SafeArea(
+                top: false,
+                child: FeedAdPage(
+                  entry: entry,
+                  onUnavailable: () => _withdraw(entry),
+                  returnTo: 'news/reader',
+                ),
               ),
             ),
           );

@@ -107,6 +107,74 @@ ScrollPosition _position(WidgetTester tester) => tester
     .position;
 
 void main() {
+  for (final back in [false, true]) {
+    testWidgets(
+      'ad vertical swipe ${back ? 'down returns to the previous' : 'up opens the next'} article',
+      (tester) async {
+        await _pump(tester, initialIndex: 1);
+        await _swipe(tester);
+        expect(find.byType(FeedAdPage), findsOneWidget);
+        final gesture = await tester.startGesture(const Offset(190, 400));
+        for (var i = 0; i < 8; i++) {
+          await gesture.moveBy(Offset(0, back ? 20 : -20));
+          await tester.pump(const Duration(milliseconds: 16));
+        }
+        expect(
+          find.byType(FeedAdPage),
+          findsOneWidget,
+          reason: 'Turn only on release.',
+        );
+        await gesture.up();
+        await tester.pump();
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 120));
+        final article = find.byWidgetPredicate(
+          (widget) =>
+              widget is NewsReaderScreen && widget.news.id == (back ? 2 : 3),
+        );
+        final offset = tester.getTopLeft(article);
+        expect(offset.dx, closeTo(0, 0.1));
+        expect(offset.dy, back ? lessThan(0) : greaterThan(0));
+        await tester.pumpAndSettle();
+        expect(_readingId(tester), back ? 2 : 3);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+
+  testWidgets(
+    'ad short drags, cancelled drags and taps keep the current slot',
+    (tester) async {
+      await _pump(tester, initialIndex: 1);
+      await _swipe(tester);
+      final short = await tester.startGesture(const Offset(190, 400));
+      await short.moveBy(const Offset(0, -24));
+      await tester.pump(const Duration(milliseconds: 500));
+      await short.up();
+      await tester.pumpAndSettle();
+      expect(find.byType(FeedAdPage), findsOneWidget);
+      final cancelled = await tester.startGesture(const Offset(190, 400));
+      await cancelled.moveBy(const Offset(0, -160));
+      await tester.pump();
+      await cancelled.cancel();
+      await tester.pumpAndSettle();
+      expect(find.byType(FeedAdPage), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('feed_ad_placeholder')));
+      await tester.pumpAndSettle();
+      expect(find.byType(FeedAdPage), findsOneWidget);
+    },
+  );
+
+  testWidgets('ad vertical navigation also works with reduced motion', (
+    tester,
+  ) async {
+    await _pump(tester, initialIndex: 1, reducedMotion: true);
+    await _swipe(tester);
+    await tester.fling(find.byType(FeedAdPage), const Offset(0, -200), 1200);
+    await tester.pumpAndSettle();
+    expect(_readingId(tester), 3);
+  });
+
   testWidgets('top pull brings the previous article down from above', (
     tester,
   ) async {
