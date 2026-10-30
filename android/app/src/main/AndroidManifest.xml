@@ -91,12 +91,10 @@
                    android:scheme="https"
                    android:host="www.chessever.com" />
            </intent-filter>
-           <!-- AppsFlyer OneLink branded and default domains. Intentionally
-                NOT autoVerify: AppsFlyer doesn't host assetlinks.json for these
-                subdomains, so verification would always fail. OneLink taps
-                render the AppsFlyer landing page, which redirects into the app
-                via the com.chessever.app:// scheme + AppsFlyer SDK. -->
-           <intent-filter>
+           <!-- AppsFlyer hosts assetlinks.json for the branded and default
+                OneLink domains when Android App Links are configured in the
+                OneLink template with the Google Play app-signing SHA-256. -->
+           <intent-filter android:autoVerify="true">
                <action android:name="android.intent.action.VIEW" />
                <category android:name="android.intent.category.DEFAULT" />
                <category android:name="android.intent.category.BROWSABLE" />
@@ -104,7 +102,7 @@
                    android:scheme="https"
                    android:host="get.chessever.com" />
            </intent-filter>
-           <intent-filter>
+           <intent-filter android:autoVerify="true">
                <action android:name="android.intent.action.VIEW" />
                <category android:name="android.intent.category.DEFAULT" />
                <category android:name="android.intent.category.BROWSABLE" />
