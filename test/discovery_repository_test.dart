@@ -1122,6 +1122,117 @@ void main() {
       },
     );
 
+    Map<String, dynamic> clockedMiss(
+      String id, {
+      bool laterEligible = false,
+      bool unknown = false,
+    }) {
+      final text = r'''[Result "1/2-1/2"]
+[TimeControl "180+5"]
+1. e4 $243 {[%clk 0:00:09] [%eval 0]}
+ e5 $247 {[%clk 0:00:09] [%eval 3.50]}
+2. Nf3 $243 {[%clk 0:00:09] [%eval 0]}
+ Nc6 $247 {[%clk 0:00:09] [%eval 3.50]}
+3. Bc4 $243 {[%clk 0:00:09] [%eval 0]}
+ Bc5 $247 {[%clk 0:00:09] [%eval 0]} 1/2-1/2''';
+      final pgn = unknown
+          ? text.replaceFirst('[%clk 0:00:09]', '[%clk unknown]')
+          : laterEligible
+          ? text.replaceFirst(
+              r'Nf3 $243 {[%clk 0:00:09]',
+              r'Nf3 $243 {[%clk 0:00:12]',
+            )
+          : text;
+      return {
+        ...report(id),
+        'pgn': pgn,
+        // Final clocks deliberately disagree with the historical opportunity.
+        'last_clock_white': 300,
+        'last_clock_black': 300,
+        'report_game_classification': {
+          'version': 1,
+          'result': '1/2-1/2',
+          'pgnHash': md5.convert(utf8.encode(pgn)).toString(),
+          'tags': ['missed_chance', 'great_escape'],
+          // Legacy story contains only the FIRST miss, not the later one.
+          'evidence': [
+            {'type': 'missed_chance', 'fromPly': 3, 'toPly': 6},
+            {'type': 'great_escape', 'fromPly': 1, 'toPly': 6},
+          ],
+        },
+      };
+    }
+
+    test(
+      'Missed Chance alone drops scramble-only games and opens the later eligible miss',
+      () async {
+        rows = [
+          clockedMiss('scramble'),
+          clockedMiss('mixed', laterEligible: true),
+          clockedMiss('unknown', unknown: true),
+        ];
+        final unchanged = jsonEncode(rows);
+        final page = await repository.fetchAnalyzedGamesPage(
+          gameType: ReportGameType.missedChance,
+          pageSize: 3,
+        );
+        expect(page.items.map((g) => g.gameId), ['mixed', 'unknown']);
+        expect(page.storyPlies, {'mixed': 5, 'unknown': 3});
+        expect(page.items.first.pgn, rows[1]['pgn']);
+        expect(jsonEncode(rows), unchanged);
+        expect(requests, hasLength(1));
+        expect(requests.single.method, 'GET');
+        expect(page.nextCursor?.gameId, 'unknown');
+      },
+    );
+
+    test(
+      'fully excluded page still advances its raw candidate cursor',
+      () async {
+        rows = [clockedMiss('scramble')];
+        final page = await repository.fetchAnalyzedGamesPage(
+          gameType: ReportGameType.missedChance,
+          pageSize: 1,
+        );
+        expect(page.items, isEmpty);
+        expect(page.storyPlies, isEmpty);
+        expect(page.nextCursor?.gameId, 'scramble');
+      },
+    );
+
+    test(
+      'All and other topics retain the exact report PGN, verdicts and classifications',
+      () async {
+        rows = [clockedMiss('scramble')];
+        final originalPgn = rows.single['pgn'];
+        final originalRows = jsonEncode(rows);
+        for (final type in <ReportGameType?>[
+          null,
+          ...ReportGameType.values.where(
+            (t) => t != ReportGameType.missedChance,
+          ),
+        ]) {
+          if (type != null) {
+            (rows.single['report_game_classification'] as Map)['tags'] = [
+              type.key,
+            ];
+          }
+          final before = jsonEncode(rows);
+          final page = await repository.fetchAnalyzedGamesPage(gameType: type);
+          expect(page.items.single.gameId, 'scramble', reason: '$type');
+          expect(page.items.single.pgn, originalPgn);
+          expect(jsonEncode(rows), before);
+          final moves = PgnGame.parsePgn(
+            page.items.single.pgn!,
+          ).moves.mainline().toList();
+          expect(moves[2].nags, contains(243));
+          expect(moves[2].comments!.join(), contains('[%eval 0]'));
+        }
+        // The separate normal report pipeline was never invoked or rewritten.
+        expect(originalRows, contains('missed_chance'));
+      },
+    );
+
     test('a story ply comes only from well-formed evidence of its type', () {
       Map<String, Object?> evidence(Object? ply) => {
         'evidence': [
