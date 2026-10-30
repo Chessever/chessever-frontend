@@ -1,5 +1,8 @@
 import 'dart:async';
 
+import 'package:chessever2/services/app_destination.dart';
+import 'package:flutter/services.dart';
+
 import 'package:chessever2/providers/board_settings_provider_new.dart';
 import 'package:chessever2/providers/engine_settings_provider.dart';
 import 'package:chessever2/repository/lichess/cloud_eval/cloud_eval.dart';
@@ -708,6 +711,47 @@ void main() {
       for (var i = 0; i < n; i++)
         MostLikedEntry(rank: i + 1, likes: 1200 - i * 90, game: _game('ml$i')),
     ];
+
+    testWidgets(
+      'each Discovery tile offers and shares its own deep link on hold',
+      (tester) async {
+        const channel = MethodChannel('dev.fluttercommunity.plus/share');
+        final shares = <String>[];
+        final messenger =
+            TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+        messenger.setMockMethodCallHandler(channel, (call) async {
+          shares.add((call.arguments as Map)['text'] as String);
+          return 'success';
+        });
+        addTearDown(() => messenger.setMockMethodCallHandler(channel, null));
+        final pushed = _PushedPages();
+        final container = await _pump(tester, observers: [pushed]);
+        for (final name in ['feed', 'likes', 'news', 'reports', 'miniatures']) {
+          await tester.longPress(
+            find.byKey(ValueKey('discovery_${name}_tile')),
+          );
+          await _settle(tester);
+          expect(find.text('Share'), findsOneWidget);
+          expect(pushed.pages, isEmpty);
+          await tester.tap(find.text('Share'));
+          await _settle(tester);
+          expect(shares.last, 'https://chessever.com/app/$name');
+          expect(parseAppDestination(shares.last), isNotNull);
+          expect(pushed.pages, isEmpty);
+        }
+        // Dismissing the menu never shares or opens a destination.
+        await tester.longPress(
+          find.byKey(const ValueKey('discovery_likes_tile')),
+        );
+        await _settle(tester);
+        Navigator.of(tester.element(find.text('Share'))).pop();
+        await _settle(tester);
+        expect(shares, hasLength(5));
+        expect(pushed.pages, isEmpty);
+        expect(tester.takeException(), isNull);
+        await _teardownCards(tester, container);
+      },
+    );
 
     testWidgets('five destinations include News in reading order', (
       tester,

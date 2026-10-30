@@ -107,6 +107,33 @@ ScrollPosition _position(WidgetTester tester) => tester
     .position;
 
 void main() {
+  testWidgets('footer next brings the following article up from below', (
+    tester,
+  ) async {
+    await _pump(tester, paid: true, articles: [_news(1), _news(2)]);
+    _position(tester).jumpTo(_position(tester).maxScrollExtent);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('news_next')));
+    await tester.pump(); // Lay out the vertical pager.
+    await tester.pump(); // Start the page animation's ticker.
+    await tester.pump(const Duration(milliseconds: 120));
+    final incoming = find.byWidgetPredicate(
+      (widget) => widget is NewsReaderScreen && widget.news.id == 2,
+    );
+    final outgoing = find.byWidgetPredicate(
+      (widget) => widget is NewsReaderScreen && widget.news.id == 1,
+    );
+    final next = tester.getTopLeft(incoming);
+    final previous = tester.getTopLeft(outgoing);
+    expect(next.dx, closeTo(0, 0.1));
+    expect(next.dy, greaterThan(0));
+    expect(next.dy, lessThan(844));
+    expect(previous.dx, closeTo(0, 0.1));
+    expect(previous.dy, lessThan(0));
+    await tester.pumpAndSettle();
+    expect(_readingId(tester), 2);
+  });
+
   testWidgets(
     'reader uses Feed ad cadence with no trailing ad or access gate',
     (tester) async {

@@ -1,4 +1,5 @@
 import 'package:chessever2/screens/feed/feed_screen.dart';
+import 'package:chessever2/screens/for_you/discovery/discovery_share.dart';
 import 'package:chessever2/screens/feed/news/feed_news.dart';
 import 'package:chessever2/screens/feed/widgets/feed_tile_board.dart';
 import 'package:chessever2/screens/for_you/discovery/likes_screen.dart';
@@ -69,55 +70,70 @@ class _DiscoveryViewState extends ConsumerState<DiscoveryView> {
                 child: Column(
                   children: [
                     HubTileRow(
-                      left: HubTile(
-                        key: const ValueKey('discovery_feed_tile'),
-                        dotId: 'discovery.tile.feed',
-                        title: 'Feed',
-                        caption: hubFeedCaption(feed),
-                        artwork: const HubSceneBackdrop(scene: HubScene.feed),
-                        onTap: () => FeedScreen.open(context),
-                      ),
-                      right: HubTile(
-                        key: const ValueKey('discovery_likes_tile'),
-                        dotId: 'discovery.tile.likes',
-                        title: 'Likes',
-                        caption: 'Community favorites',
-                        artwork: const HubSceneBackdrop(
-                          scene: HubScene.mostLiked,
+                      left: DiscoveryTileShare(
+                        component: DiscoveryShareDestination.feed,
+                        child: HubTile(
+                          key: const ValueKey('discovery_feed_tile'),
+                          dotId: 'discovery.tile.feed',
+                          title: 'Feed',
+                          caption: hubFeedCaption(feed),
+                          artwork: const HubSceneBackdrop(scene: HubScene.feed),
+                          onTap: () => FeedScreen.open(context),
                         ),
-                        onTap: () => LikesScreen.open(context),
+                      ),
+                      right: DiscoveryTileShare(
+                        component: DiscoveryShareDestination.likes,
+                        child: HubTile(
+                          key: const ValueKey('discovery_likes_tile'),
+                          dotId: 'discovery.tile.likes',
+                          title: 'Likes',
+                          caption: 'Community favorites',
+                          artwork: const HubSceneBackdrop(
+                            scene: HubScene.mostLiked,
+                          ),
+                          onTap: () => LikesScreen.open(context),
+                        ),
                       ),
                     ),
                     HubTileRow(
-                      left: HubTile(
-                        key: const ValueKey('discovery_news_tile'),
-                        dotId: 'discovery.tile.news',
-                        title: 'News',
-                        caption: 'Latest headlines',
-                        artwork: const HubSceneBackdrop(scene: HubScene.news),
-                        onTap: () => NewsScreen.open(context),
-                      ),
-                      right: HubTile(
-                        key: const ValueKey('discovery_reports_tile'),
-                        dotId: 'discovery.tile.reports',
-                        title: 'Reports',
-                        caption: 'Games with analysis',
-                        artwork: const HubSceneBackdrop(
-                          scene: HubScene.reports,
+                      left: DiscoveryTileShare(
+                        component: DiscoveryShareDestination.news,
+                        child: HubTile(
+                          key: const ValueKey('discovery_news_tile'),
+                          dotId: 'discovery.tile.news',
+                          title: 'News',
+                          caption: 'Latest headlines',
+                          artwork: const HubSceneBackdrop(scene: HubScene.news),
+                          onTap: () => NewsScreen.open(context),
                         ),
-                        onTap: () => ReportsScreen.open(context),
+                      ),
+                      right: DiscoveryTileShare(
+                        component: DiscoveryShareDestination.reports,
+                        child: HubTile(
+                          key: const ValueKey('discovery_reports_tile'),
+                          dotId: 'discovery.tile.reports',
+                          title: 'Reports',
+                          caption: 'Games with analysis',
+                          artwork: const HubSceneBackdrop(
+                            scene: HubScene.reports,
+                          ),
+                          onTap: () => ReportsScreen.open(context),
+                        ),
                       ),
                     ),
                     HubTileRow(
-                      left: HubTile(
-                        key: const ValueKey('discovery_miniatures_tile'),
-                        dotId: 'discovery.tile.miniatures',
-                        title: 'Miniatures',
-                        caption: '25 moves or fewer',
-                        artwork: const HubSceneBackdrop(
-                          scene: HubScene.miniatures,
+                      left: DiscoveryTileShare(
+                        component: DiscoveryShareDestination.miniatures,
+                        child: HubTile(
+                          key: const ValueKey('discovery_miniatures_tile'),
+                          dotId: 'discovery.tile.miniatures',
+                          title: 'Miniatures',
+                          caption: '25 moves or fewer',
+                          artwork: const HubSceneBackdrop(
+                            scene: HubScene.miniatures,
+                          ),
+                          onTap: () => TodaysMiniaturesSection.open(context),
                         ),
-                        onTap: () => TodaysMiniaturesSection.open(context),
                       ),
                       right: const SizedBox.shrink(),
                     ),
