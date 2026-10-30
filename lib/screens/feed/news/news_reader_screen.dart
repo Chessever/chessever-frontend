@@ -64,12 +64,16 @@ class NewsReaderScreen extends ConsumerStatefulWidget {
     this.heroTag,
     this.onNext,
     this.nextIsAd = false,
+    this.onPrevious,
+    this.previousIsAd = false,
   });
 
   final FeedNews news;
   final Object? heroTag;
   final Future<void> Function()? onNext;
   final bool nextIsAd;
+  final Future<void> Function()? onPrevious;
+  final bool previousIsAd;
 
   static Future<void> open(BuildContext context, FeedNews news) async {
     final cached =
@@ -353,11 +357,13 @@ class _NewsReaderScreenState extends ConsumerState<NewsReaderScreen> {
       backgroundColor: colors.background,
       body: NewsPullNext(
         onNext: widget.onNext,
+        onPrevious: widget.onPrevious,
+        previousIsAd: widget.previousIsAd,
         nextIsAd: widget.nextIsAd,
         builder: (context, footer) => CustomScrollView(
           key: PageStorageKey('news_reader_${news.key}'),
           controller: _scroll,
-          physics: widget.onNext == null
+          physics: widget.onNext == null && widget.onPrevious == null
               ? null
               : const AlwaysScrollableScrollPhysics(
                   parent: ClampingScrollPhysics(),

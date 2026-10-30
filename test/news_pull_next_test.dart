@@ -9,6 +9,7 @@ import 'package:flutter_test/flutter_test.dart';
 Future<void> _pump(
   WidgetTester tester, {
   required Future<void> Function()? onNext,
+  Future<void> Function()? onPrevious,
   bool reducedMotion = false,
   bool light = false,
   double scale = 1,
@@ -33,6 +34,7 @@ Future<void> _pump(
       home: Scaffold(
         body: NewsPullNext(
           onNext: onNext,
+          onPrevious: onPrevious,
           builder: (context, footer) => CustomScrollView(
             physics: const AlwaysScrollableScrollPhysics(
               parent: ClampingScrollPhysics(),
@@ -59,16 +61,109 @@ Future<void> _bottom(WidgetTester tester) async {
   await tester.pumpAndSettle();
 }
 
-Future<TestGesture> _pull(WidgetTester tester, {int steps = 12}) async {
-  final gesture = await tester.startGesture(const Offset(160, 520));
+Future<TestGesture> _pull(
+  WidgetTester tester, {
+  int steps = 12,
+  bool down = false,
+}) async {
+  final gesture = await tester.startGesture(Offset(160, down ? 260 : 520));
   for (var i = 0; i < steps; i++) {
-    await gesture.moveBy(const Offset(0, -20));
+    await gesture.moveBy(Offset(0, down ? 20 : -20));
     await tester.pump(const Duration(milliseconds: 16));
   }
   return gesture;
 }
 
 void main() {
+  testWidgets('pulling beyond the top opens previous only after release', (
+    tester,
+  ) async {
+    var previous = 0;
+    var next = 0;
+    await _pump(
+      tester,
+      onNext: () async => next++,
+      onPrevious: () async => previous++,
+    );
+    final gesture = await _pull(tester, down: true);
+    expect(find.text('Release for previous article'), findsOneWidget);
+    expect(previous, 0);
+    await gesture.up();
+    await tester.pumpAndSettle();
+    expect(previous, 1);
+    expect(next, 0);
+  });
+
+  testWidgets('short, cancelled and reversed top pulls keep the article', (
+    tester,
+  ) async {
+    var calls = 0;
+    await _pump(tester, onNext: null, onPrevious: () async => calls++);
+    final short = await _pull(tester, down: true, steps: 3);
+    await short.up();
+    await tester.pumpAndSettle();
+    expect(calls, 0);
+    final cancelled = await _pull(tester, down: true);
+    await cancelled.cancel();
+    await tester.pumpAndSettle();
+    expect(calls, 0);
+    final reversed = await _pull(tester, down: true);
+    await reversed.moveBy(const Offset(0, -180));
+    await tester.pump();
+    await reversed.up();
+    await tester.pumpAndSettle();
+    expect(calls, 0);
+  });
+
+  testWidgets('scrolling to the top counts only travel beyond the edge', (
+    tester,
+  ) async {
+    var calls = 0;
+    await _pump(tester, onNext: null, onPrevious: () async => calls++);
+    _position(tester).jumpTo(250);
+    await tester.pumpAndSettle();
+    final arriving = await _pull(tester, down: true, steps: 15);
+    await arriving.up();
+    await tester.pumpAndSettle();
+    expect(calls, 0);
+    final beyond = await _pull(tester, down: true);
+    await beyond.up();
+    await tester.pumpAndSettle();
+    expect(calls, 1);
+  });
+
+  testWidgets('first article never navigates backward', (tester) async {
+    var next = 0;
+    await _pump(tester, onNext: () async => next++);
+    final gesture = await _pull(tester, down: true);
+    await gesture.up();
+    await tester.pumpAndSettle();
+    expect(next, 0);
+    expect(find.textContaining('previous article'), findsNothing);
+  });
+
+  testWidgets('pending previous request cannot be stacked', (tester) async {
+    var calls = 0;
+    final done = Completer<void>();
+    await _pump(
+      tester,
+      onNext: null,
+      onPrevious: () {
+        calls++;
+        return done.future;
+      },
+    );
+    final first = await _pull(tester, down: true);
+    await first.up();
+    await tester.pump();
+    final second = await _pull(tester, down: true);
+    await second.up();
+    await tester.pump();
+    expect(calls, 1);
+    done.complete();
+    await tester.pumpAndSettle();
+  });
+
   testWidgets(
     'long pull arms progressively and release requests exactly one page',
     (tester) async {

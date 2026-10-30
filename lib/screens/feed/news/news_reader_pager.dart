@@ -206,27 +206,31 @@ class _NewsReaderPagerState extends ConsumerState<NewsReaderPager> {
     _reportArticle();
   }
 
-  Future<void> _next(String from) async {
+  Future<void> _turn(String from, {bool previous = false}) async {
+    final step = previous ? -1 : 1;
     if (_advancing || _repositioning || _entries[_index].key != from) return;
     _advancing = true;
     try {
-      if (_index == _entries.length - 1 && _more) await _loadNext();
+      if (!previous && _index == _entries.length - 1 && _more) {
+        await _loadNext();
+      }
       if (!mounted ||
           !_pages.hasClients ||
           _entries[_index].key != from ||
-          _index >= _entries.length - 1) {
+          _index + step < 0 ||
+          _index + step >= _entries.length) {
         return;
       }
       if (MediaQuery.disableAnimationsOf(context)) {
-        _pages.jumpToPage(_index + 1);
+        _pages.jumpToPage(_index + step);
       } else {
-        // Match the upward pull without taking vertical drags away from the
+        // Match the edge pull without taking vertical drags away from the
         // article's own scroll view during normal reading.
         setState(() => _footerAdvance = true);
         await WidgetsBinding.instance.endOfFrame;
         if (!mounted || !_pages.hasClients) return;
         await _pages.animateToPage(
-          _index + 1,
+          _index + step,
           duration: const Duration(milliseconds: 360),
           curve: Curves.easeOutCubic,
         );
@@ -293,7 +297,11 @@ class _NewsReaderPagerState extends ConsumerState<NewsReaderPager> {
             key: ValueKey(article.key),
             news: article,
             heroTag: (widget.heroScope, article.key),
-            onNext: canAdvance ? () => _next(entry.key) : null,
+            onNext: canAdvance ? () => _turn(entry.key) : null,
+            onPrevious: index > 0
+                ? () => _turn(entry.key, previous: true)
+                : null,
+            previousIsAd: index > 0 && _entries[index - 1] is FeedAdEntry,
             nextIsAd:
                 index + 1 < _entries.length &&
                 _entries[index + 1] is FeedAdEntry,

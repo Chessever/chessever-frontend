@@ -107,6 +107,76 @@ ScrollPosition _position(WidgetTester tester) => tester
     .position;
 
 void main() {
+  testWidgets('top pull brings the previous article down from above', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      paid: true,
+      articles: [_news(1), _news(2)],
+      initialIndex: 1,
+    );
+    final gesture = await tester.startGesture(const Offset(190, 220));
+    for (var i = 0; i < 12; i++) {
+      await gesture.moveBy(const Offset(0, 20));
+      await tester.pump(const Duration(milliseconds: 16));
+    }
+    expect(find.text('Release for previous article'), findsOneWidget);
+    expect(_readingId(tester), 2);
+    await gesture.up();
+    await tester.pump();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 120));
+    final incoming = find.byWidgetPredicate(
+      (widget) => widget is NewsReaderScreen && widget.news.id == 1,
+    );
+    final outgoing = find.byWidgetPredicate(
+      (widget) => widget is NewsReaderScreen && widget.news.id == 2,
+    );
+    expect(tester.getTopLeft(incoming).dx, closeTo(0, 0.1));
+    expect(tester.getTopLeft(incoming).dy, lessThan(0));
+    expect(tester.getTopLeft(outgoing).dy, greaterThan(0));
+    await tester.pumpAndSettle();
+    expect(_readingId(tester), 1);
+  });
+
+  testWidgets('previous pull retains the scheduled ad in the reader sequence', (
+    tester,
+  ) async {
+    await _pump(tester, initialIndex: 2);
+    final gesture = await tester.startGesture(const Offset(190, 220));
+    for (var i = 0; i < 12; i++) {
+      await gesture.moveBy(const Offset(0, 20));
+      await tester.pump(const Duration(milliseconds: 16));
+    }
+    expect(find.text('Release for previous ad'), findsOneWidget);
+    await gesture.up();
+    await tester.pumpAndSettle();
+    expect(find.byType(FeedAdPage), findsOneWidget);
+    await _swipe(tester, back: true);
+    expect(_readingId(tester), 2);
+  });
+
+  testWidgets('reduced motion previous pull works on the final article', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      paid: true,
+      reducedMotion: true,
+      articles: [_news(1), _news(2)],
+      initialIndex: 1,
+    );
+    final gesture = await tester.startGesture(const Offset(190, 220));
+    for (var i = 0; i < 12; i++) {
+      await gesture.moveBy(const Offset(0, 20));
+      await tester.pump(const Duration(milliseconds: 16));
+    }
+    await gesture.up();
+    await tester.pumpAndSettle();
+    expect(_readingId(tester), 1);
+  });
+
   testWidgets('footer next brings the following article up from below', (
     tester,
   ) async {

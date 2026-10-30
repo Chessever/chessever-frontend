@@ -77,3 +77,7 @@ placement off. New units can take up to an hour to start serving.
 Pulling up at the end of a News article or tapping its footer brings the next
 article or ad in from below. Horizontal browsing and each article's independent
 reading position remain available. Reduced motion advances immediately.
+
+At the top of a News article, pull down beyond the edge and release to return
+to the previous reader page from above. Short or cancelled pulls keep the
+article. The first page has no previous action; scheduled ads stay in sequence.
