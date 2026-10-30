@@ -694,6 +694,7 @@ void main() {
         expect(scenes.map((art) => art.scene), [
           HubScene.feed,
           HubScene.mostLiked,
+          HubScene.news,
           HubScene.reports,
           HubScene.miniatures,
         ]);
