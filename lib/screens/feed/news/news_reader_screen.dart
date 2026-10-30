@@ -5,6 +5,7 @@ import 'package:chessever2/screens/feed/news/news_content.dart';
 import 'package:chessever2/screens/feed/news/news_cover.dart';
 import 'package:chessever2/screens/feed/news/news_hero_cover.dart';
 import 'package:chessever2/screens/feed/news/news_models.dart';
+import 'package:chessever2/screens/feed/news/news_pull_next.dart';
 import 'package:chessever2/screens/feed/news/news_reader_pager.dart';
 import 'package:chessever2/screens/feed/news/news_repository.dart';
 import 'package:chessever2/screens/feed/news/news_rich_blocks.dart';
@@ -57,10 +58,18 @@ Future<void> shareNews(BuildContext context, FeedNews news) async {
 /// links to the original on the partner's site: under the headline, and as
 /// a button at its end.
 class NewsReaderScreen extends ConsumerStatefulWidget {
-  const NewsReaderScreen({super.key, required this.news, this.heroTag});
+  const NewsReaderScreen({
+    super.key,
+    required this.news,
+    this.heroTag,
+    this.onNext,
+    this.nextIsAd = false,
+  });
 
   final FeedNews news;
   final Object? heroTag;
+  final Future<void> Function()? onNext;
+  final bool nextIsAd;
 
   static Future<void> open(BuildContext context, FeedNews news) async {
     final cached =
@@ -342,81 +351,93 @@ class _NewsReaderScreenState extends ConsumerState<NewsReaderScreen> {
 
     return Scaffold(
       backgroundColor: colors.background,
-      body: CustomScrollView(
-        key: PageStorageKey('news_reader_${news.key}'),
-        controller: _scroll,
-        slivers: [
-          SliverAppBar(
-            pinned: true,
-            backgroundColor: colors.background,
-            surfaceTintColor: Colors.transparent,
-            scrolledUnderElevation: 0,
-            elevation: 0,
-            automaticallyImplyLeading: false,
-            toolbarHeight: _barHeight,
-            titleSpacing: 8,
-            leadingWidth: 56,
-            centerTitle: true,
-            title: _BarTitle(title: news.title, shown: _titleInBar),
-            leading: IconButton(
-              tooltip: 'Back',
-              onPressed: () => Navigator.of(context).maybePop(),
-              icon: Icon(
-                Icons.arrow_back_ios_new_rounded,
-                size: 20,
-                color: colors.iconPrimary,
+      body: NewsPullNext(
+        onNext: widget.onNext,
+        nextIsAd: widget.nextIsAd,
+        builder: (context, footer) => CustomScrollView(
+          key: PageStorageKey('news_reader_${news.key}'),
+          controller: _scroll,
+          physics: widget.onNext == null
+              ? null
+              : const AlwaysScrollableScrollPhysics(
+                  parent: ClampingScrollPhysics(),
+                ),
+          slivers: [
+            SliverAppBar(
+              pinned: true,
+              backgroundColor: colors.background,
+              surfaceTintColor: Colors.transparent,
+              scrolledUnderElevation: 0,
+              elevation: 0,
+              automaticallyImplyLeading: false,
+              toolbarHeight: _barHeight,
+              titleSpacing: 8,
+              leadingWidth: 56,
+              centerTitle: true,
+              title: _BarTitle(title: news.title, shown: _titleInBar),
+              leading: IconButton(
+                tooltip: 'Back',
+                onPressed: () => Navigator.of(context).maybePop(),
+                icon: Icon(
+                  Icons.arrow_back_ios_new_rounded,
+                  size: 20,
+                  color: colors.iconPrimary,
+                ),
               ),
-            ),
-            actions: [
-              Builder(
-                builder: (buttonContext) => IconButton(
-                  tooltip: 'Share article',
-                  onPressed: () => shareNews(buttonContext, news),
-                  constraints: const BoxConstraints(
-                    minWidth: 52,
-                    minHeight: 52,
+              actions: [
+                Builder(
+                  builder: (buttonContext) => IconButton(
+                    tooltip: 'Share article',
+                    onPressed: () => shareNews(buttonContext, news),
+                    constraints: const BoxConstraints(
+                      minWidth: 52,
+                      minHeight: 52,
+                    ),
+                    icon: FeedGlyph(
+                      FeedGlyphs.share,
+                      width: 20,
+                      height: 20,
+                      color: colors.iconPrimary,
+                    ),
                   ),
-                  icon: FeedGlyph(
-                    FeedGlyphs.share,
-                    width: 20,
-                    height: 20,
-                    color: colors.iconPrimary,
+                ),
+                const SizedBox(width: 4),
+              ],
+            ),
+            if (news.imageUrl != null || widget.heroTag != null)
+              SliverToBoxAdapter(
+                child: _ReaderCover(
+                  imageUrl: news.imageUrl,
+                  aspectRatio: publisher.coverAspectRatio,
+                  heroTag: widget.heroTag,
+                ),
+              )
+            else
+              SliverToBoxAdapter(child: SizedBox(height: 12.sp)),
+            SliverPadding(
+              padding: EdgeInsets.fromLTRB(
+                gutter,
+                0,
+                gutter,
+                widget.onNext == null
+                    ? 28.sp + MediaQuery.paddingOf(context).bottom
+                    : 16.sp,
+              ),
+              sliver: SliverToBoxAdapter(
+                child: Center(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 680),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: children,
+                    ),
                   ),
                 ),
               ),
-              const SizedBox(width: 4),
-            ],
-          ),
-          if (news.imageUrl != null || widget.heroTag != null)
-            SliverToBoxAdapter(
-              child: _ReaderCover(
-                imageUrl: news.imageUrl,
-                aspectRatio: publisher.coverAspectRatio,
-                heroTag: widget.heroTag,
-              ),
-            )
-          else
-            SliverToBoxAdapter(child: SizedBox(height: 12.sp)),
-          SliverPadding(
-            padding: EdgeInsets.fromLTRB(
-              gutter,
-              0,
-              gutter,
-              28.sp + MediaQuery.paddingOf(context).bottom,
             ),
-            sliver: SliverToBoxAdapter(
-              child: Center(
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 680),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: children,
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ],
+            SliverToBoxAdapter(child: footer),
+          ],
+        ),
       ),
     );
   }

@@ -6,7 +6,7 @@ import 'package:chessever2/theme/app_colors.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
-/// A cold or warm shared link uses the same gated reader as both Discovery
+/// A cold or warm shared link uses the same reader as both Discovery
 /// entrances, without depending on the latest articles being cached.
 class NewsLinkScreen extends ConsumerStatefulWidget {
   const NewsLinkScreen({super.key, required this.link});

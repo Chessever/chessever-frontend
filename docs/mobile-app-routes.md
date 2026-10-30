@@ -104,10 +104,13 @@ resolve the article; an absent or stale slug does not break it. Cold links wait
 for startup/session restoration and open above Home. Warm News links preserve
 the current stack. `/news` and paginated index links open the News catalog.
 
-News, visible news posts in Feed, article links and incoming shares use one
-app-session allowance: three distinct free articles, then the existing ad or
-subscription choice. Reopening a read article does not count twice; dismissed
-choices do not grant another read. Paid and active rewarded access bypass it.
+News, news posts in Feed, article links and incoming shares open the same
+unrestricted reader. On supported mobile platforms, readers without a paid
+subscription see Feed's swipeable ad pages between articles, at positions
+3, 8, 13…; the News grid stays article-only. No ad-or-subscription prompt gates
+reading. Pulling up past the bottom of an article fills an indicator; releasing
+past its threshold advances one page, including an ad when due. The footer can
+also be tapped. Short pulls and momentum scrolling do not turn pages.
 Only published records are resolved, including articles outside the latest Feed
 batch. Partner original URLs remain separate from ChessEver share URLs.
 

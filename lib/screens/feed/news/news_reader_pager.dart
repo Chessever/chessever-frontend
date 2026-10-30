@@ -1,11 +1,13 @@
 import 'dart:async';
 
+import 'package:chessever2/screens/feed/models/feed_entry.dart';
 import 'package:chessever2/screens/feed/news/news_models.dart';
 import 'package:chessever2/screens/feed/news/news_content.dart';
 import 'package:chessever2/screens/feed/news/news_reader_screen.dart';
-import 'package:chessever2/screens/feed/news/news_reading_access.dart';
-import 'package:chessever2/services/rewarded_premium/rewarded_access_provider.dart';
+import 'package:chessever2/screens/feed/providers/feed_entries_provider.dart';
+import 'package:chessever2/screens/feed/widgets/feed_ad_page.dart';
 import 'package:chessever2/theme/app_colors.dart';
+import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/widgets/app_snack.dart';
 import 'package:flutter/material.dart';
@@ -18,6 +20,7 @@ class _NewsNavigation {
 }
 
 /// Horizontal article browsing, with independent vertical reading positions.
+/// Ads use Feed's placement and eligibility, only inside the reader.
 /// Only the visible page owns a Hero, even while PageView builds neighbours.
 class NewsReaderPager extends ConsumerStatefulWidget {
   const NewsReaderPager({
@@ -54,13 +57,6 @@ class NewsReaderPager extends ConsumerStatefulWidget {
     if (navigation.pending) return;
     navigation.pending = true;
     try {
-      if (!await requestNewsArticleAccess(
-            context,
-            articles[initialIndex].key,
-          ) ||
-          !context.mounted) {
-        return;
-      }
       unawaited(HapticFeedbackService.cardTap());
       final closed = Navigator.of(context).push<void>(
         MaterialPageRoute<void>(
@@ -78,7 +74,6 @@ class NewsReaderPager extends ConsumerStatefulWidget {
         ),
       );
       // Lock the originating tap until the new route owns the next frame.
-      // Links inside the reader remain usable while that route is open.
       WidgetsBinding.instance.addPostFrameCallback(
         (_) => navigation.pending = false,
       );
@@ -95,40 +90,36 @@ class NewsReaderPager extends ConsumerStatefulWidget {
 class _NewsReaderPagerState extends ConsumerState<NewsReaderPager> {
   late final PageController _pages;
   late List<FeedNews> _articles;
+  late List<FeedEntry> _entries;
   late int _index;
-  bool _loading = false;
-  bool _changing = false;
-  bool _ready = false;
+  final _withdrawn = <String>{};
+  Future<void>? _pending;
+  bool _advancing = false;
+  bool _repositioning = false;
+  int _revision = 0;
 
   bool get _more =>
       widget.loadMore != null && (widget.hasMore?.call() ?? false);
 
+  List<FeedEntry> _compose() {
+    final posts = [for (final article in _articles) FeedNewsEntry(article)];
+    return ref.read(feedAdsVisibleProvider)
+        ? withFeedAds(posts, withdrawn: _withdrawn)
+        : posts;
+  }
+
   @override
   void initState() {
     super.initState();
-    _index = widget.initialIndex;
     _articles = List.of(widget.articles);
+    _entries = _compose();
+    _index = _entries.indexWhere(
+      (entry) => entry.key == FeedNewsEntry(_articles[widget.initialIndex]).key,
+    );
     _pages = PageController(initialPage: _index);
-    _ready = ref
-        .read(newsReadingAccessProvider)
-        .canRead(
-          _articles[_index].key,
-          hasPremium: ref.read(premiumAccessProvider),
-        );
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) unawaited(_startReading());
+      if (mounted) _prefetch();
     });
-  }
-
-  Future<void> _startReading() async {
-    final allowed = await _approve(_index);
-    if (!mounted) return;
-    if (!allowed) {
-      unawaited(Navigator.of(context).maybePop());
-      return;
-    }
-    setState(() => _ready = true);
-    _prefetch();
   }
 
   @override
@@ -137,20 +128,23 @@ class _NewsReaderPagerState extends ConsumerState<NewsReaderPager> {
     super.dispose();
   }
 
-  // A failed batch is retried by the snack, or by the next page turn.
   void _prefetch() {
-    if (_index >= _articles.length - 2 && _more) {
+    if (feedPostIndexAt(_entries, _index) >= _articles.length - 2 && _more) {
       unawaited(_loadNext());
     }
   }
 
-  Future<void> _loadNext() async {
-    if (_loading || !_more) return;
-    setState(() => _loading = true);
+  Future<void> _loadNext() => _pending ??= _fetchNext().whenComplete(() {
+    _pending = null;
+  });
+
+  Future<void> _fetchNext() async {
+    if (!_more) return;
     try {
       final articles = await widget.loadMore!();
       if (!mounted) return;
-      setState(() => _articles = List.of(articles));
+      _articles = List.of(articles);
+      _replacePages();
     } catch (error) {
       if (!mounted) return;
       showAppSnack(
@@ -160,71 +154,139 @@ class _NewsReaderPagerState extends ConsumerState<NewsReaderPager> {
         actionLabel: 'Retry',
         onAction: _loadNext,
       );
-    } finally {
-      if (mounted) setState(() => _loading = false);
     }
   }
 
-  Future<bool> _approve(int index) async {
-    setState(() => _changing = true);
+  /// Keep the current article and its reading position when an ad joins or
+  /// leaves. If the current ad fails, land on the article immediately after it.
+  void _replacePages() {
+    final next = _compose();
+    if (next.isEmpty) return;
+    final before = _entries;
+    final previousIndex = _index;
+    final previousKey = before[_index].key;
+    var target = next.indexWhere((entry) => entry.key == previousKey);
+    for (var i = _index + 1; target < 0 && i < before.length; i++) {
+      target = next.indexWhere((entry) => entry.key == before[i].key);
+    }
+    if (target < 0) target = _index.clamp(0, next.length - 1);
+    final arrived = next[target].key != previousKey;
+    final reposition = _repositioning || target != previousIndex || arrived;
+    final revision = ++_revision;
+    setState(() {
+      _entries = next;
+      _index = target;
+      _repositioning = reposition;
+    });
+    if (!reposition) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || revision != _revision) return;
+      if (_pages.hasClients) _pages.jumpToPage(_index);
+      setState(() => _repositioning = false);
+      if (arrived) _reportArticle();
+    });
+  }
+
+  void _withdraw(FeedAdEntry entry) {
+    if (!mounted || !_withdrawn.add(entry.key)) return;
+    _replacePages();
+  }
+
+  void _reportArticle() {
+    if (_entries[_index] case FeedNewsEntry(:final news)) {
+      widget.onArticleChanged?.call(news);
+    }
+    _prefetch();
+  }
+
+  void _pageChanged(int index) {
+    if (_repositioning || index == _index) return;
+    setState(() => _index = index);
+    _reportArticle();
+  }
+
+  Future<void> _next(String from) async {
+    if (_advancing || _repositioning || _entries[_index].key != from) return;
+    _advancing = true;
     try {
-      return await requestNewsArticleAccess(context, _articles[index].key);
-    } catch (error) {
-      if (mounted) {
-        showAppSnack(
-          context,
-          "Couldn't check news access. Try again.",
-          tone: AppSnackTone.danger,
+      if (_index == _entries.length - 1 && _more) await _loadNext();
+      if (!mounted ||
+          !_pages.hasClients ||
+          _entries[_index].key != from ||
+          _index >= _entries.length - 1) {
+        return;
+      }
+      if (MediaQuery.disableAnimationsOf(context)) {
+        _pages.jumpToPage(_index + 1);
+      } else {
+        await _pages.animateToPage(
+          _index + 1,
+          duration: const Duration(milliseconds: 360),
+          curve: Curves.easeOutCubic,
         );
       }
-      return false;
     } finally {
-      if (mounted) setState(() => _changing = false);
+      _advancing = false;
     }
-  }
-
-  Future<void> _pageChanged(int index) async {
-    if (index == _index || _changing) return;
-    final allowed = await _approve(index);
-    if (!mounted) return;
-    if (!allowed) {
-      _pages.jumpToPage(_index);
-      return;
-    }
-    setState(() => _index = index);
-    widget.onArticleChanged?.call(_articles[index]);
-    _prefetch();
   }
 
   @override
   Widget build(BuildContext context) {
-    final premium = ref.watch(premiumAccessProvider);
-    final access = ref.read(newsReadingAccessProvider);
+    ref.listen(feedAdsVisibleProvider, (_, _) => _replacePages());
     return PageView.builder(
       controller: _pages,
-      physics: _changing ? const NeverScrollableScrollPhysics() : null,
-      itemCount: _articles.length,
-      onPageChanged: (index) => unawaited(_pageChanged(index)),
+      // Match Feed: prepare the next article or ad before the swipe lands.
+      allowImplicitScrolling: true,
+      itemCount: _entries.length,
+      onPageChanged: _pageChanged,
+      findChildIndexCallback: (key) {
+        final index = _entries.indexWhere(
+          (entry) => ValueKey(entry.key) == key,
+        );
+        return index < 0 ? null : index;
+      },
       itemBuilder: (context, index) {
-        final article = _articles[index];
-        // PageView builds neighbours before a swipe is accepted. Keep a gated
-        // article's body out of that preview, including during a fast swipe.
-        if (!_ready || !access.canRead(article.key, hasPremium: premium)) {
+        final entry = _entries[index];
+        if (entry is FeedAdEntry) {
           return Scaffold(
+            key: ValueKey(entry.key),
             backgroundColor: context.colors.background,
-            body: Center(
-              child: CircularProgressIndicator(
-                color: context.colors.textSecondary,
+            appBar: AppBar(
+              title: Text('News', style: AppTypography.textMdMedium),
+              centerTitle: true,
+              toolbarHeight: 52,
+              backgroundColor: context.colors.background,
+              foregroundColor: context.colors.iconPrimary,
+              surfaceTintColor: Colors.transparent,
+              elevation: 0,
+              scrolledUnderElevation: 0,
+              leading: BackButton(
+                onPressed: () => Navigator.of(context).maybePop(),
+              ),
+            ),
+            body: SafeArea(
+              top: false,
+              child: FeedAdPage(
+                entry: entry,
+                onUnavailable: () => _withdraw(entry),
+                returnTo: 'news/reader',
               ),
             ),
           );
         }
+        final article = (entry as FeedNewsEntry).news;
+        final canAdvance = index < _entries.length - 1 || _more;
         return HeroMode(
+          key: ValueKey(entry.key),
           enabled: index == _index,
           child: NewsReaderScreen(
             key: ValueKey(article.key),
             news: article,
             heroTag: (widget.heroScope, article.key),
+            onNext: canAdvance ? () => _next(entry.key) : null,
+            nextIsAd:
+                index + 1 < _entries.length &&
+                _entries[index + 1] is FeedAdEntry,
           ),
         );
       },
