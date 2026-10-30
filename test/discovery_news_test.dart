@@ -656,6 +656,49 @@ void main() {
       },
     );
 
+    for (final scale in [1.0, 1.24]) {
+      testWidgets('a phone shows two aligned grid columns at ${scale}x text', (
+        tester,
+      ) async {
+        final own = _Rows([
+          for (var i = 1; i <= 6; i++)
+            {
+              ..._row(i),
+              if (i == 1)
+                'title':
+                    'Javokhir Sindarov Wins Clutch Chess: Champions Showdown '
+                    '2026 in Saint Louis After Three Days of Play',
+            },
+        ]);
+        await _pump(
+          tester,
+          create: () => _catalog(own, _Rows([])),
+          size: const Size(402, 874),
+          scale: scale,
+        );
+        final delegate =
+            tester.widget<SliverGrid>(find.byType(SliverGrid)).gridDelegate
+                as SliverGridDelegateWithFixedCrossAxisCount;
+        expect(delegate.crossAxisCount, 2);
+        final first = tester.getRect(find.byKey(const ValueKey('news_card_1')));
+        final second = tester.getRect(
+          find.byKey(const ValueKey('news_card_2')),
+        );
+        final third = tester.getRect(find.byKey(const ValueKey('news_card_3')));
+        expect(second.top, first.top);
+        expect(second.width, moreOrLessEquals(first.width));
+        expect(second.height, moreOrLessEquals(first.height));
+        expect(third.left, first.left);
+        expect(third.top, greaterThan(first.bottom));
+        // The summary waits for the reader at grid width.
+        expect(
+          find.text('The players and results from round 2.'),
+          findsNothing,
+        );
+        expect(tester.takeException(), isNull);
+      });
+    }
+
     for (final width in [320.0, 768.0, 1200.0]) {
       for (final light in [false, true]) {
         testWidgets(
