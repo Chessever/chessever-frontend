@@ -93,18 +93,23 @@ class SmartEventStar extends ConsumerWidget {
       label: starred
           ? 'Unstar ${request.displayName}'
           : 'Star ${request.displayName}',
-      child: InkWell(
-        onTap: () =>
-            toggleSmartEventFavorite(context: context, request: request),
-        child: Padding(
-          padding: EdgeInsets.fromLTRB(6.w, 6.h, 2.w, 6.h),
-          child: ExcludeSemantics(
-            child: SvgWidget(
-              starred ? SvgAsset.starFilledIcon : SvgAsset.starIcon,
-              semanticsLabel: 'Favorite Icon',
-              height: 20.h,
-              width: 20.w,
-              preserveOriginalColors: starred,
+      // Match the Prep player's centered target so both My Space cards
+      // place their star at the same inset from the trailing edge.
+      child: SizedBox.square(
+        dimension: 44,
+        child: InkResponse(
+          radius: 22,
+          onTap: () =>
+              toggleSmartEventFavorite(context: context, request: request),
+          child: Center(
+            child: ExcludeSemantics(
+              child: SvgWidget(
+                starred ? SvgAsset.starFilledIcon : SvgAsset.starIcon,
+                semanticsLabel: 'Favorite Icon',
+                height: 20.h,
+                width: 20.w,
+                preserveOriginalColors: starred,
+              ),
             ),
           ),
         ),

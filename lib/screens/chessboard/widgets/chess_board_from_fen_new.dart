@@ -4,6 +4,7 @@ import 'package:chessever2/providers/engine_settings_provider.dart';
 import 'package:chessever2/repository/gamebase/gamebase_repository.dart';
 import 'package:chessever2/repository/supabase/game/game_repository.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
+import 'package:chessever2/screens/chessboard/provider/current_eval_provider.dart';
 import 'package:chessever2/screens/chessboard/provider/game_pgn_stream_provider.dart';
 import 'package:chessever2/screens/chessboard/utils/game_share_utils.dart';
 import 'package:chessever2/screens/chessboard/utils/gamebase_preview_game.dart';
@@ -1048,6 +1049,10 @@ class _ChessBoardWithEvaluation extends ConsumerWidget {
           playerView: playerView,
           isFlipped: orientation == Side.black,
           allowStockfishFallback: allowStockfishFallback,
+          recordedEval:
+              ref.watch(gameCardRecordedEvalProvider)
+                  ? recordedEvalAt(pgn: gamesTourModel.pgn, fen: resolvedFen)
+                  : null,
         ),
         GameCardChessboard(
           fen: resolvedFen,

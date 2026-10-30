@@ -268,10 +268,12 @@ void main() {
       int request,
       List<GamesTourModel> items, {
       String? next,
+      Map<String, int> storyPlies = const {},
     }) async {
       repository.requests[request].result.complete(
         AnalyzedGamesPage(
           items: items,
+          storyPlies: storyPlies,
           nextCursor: next == null
               ? null
               : (lastMoveTime: '2026-09-28T12:00:00Z', gameId: next),
@@ -363,6 +365,67 @@ void main() {
         }
       });
     }
+
+    testWidgets(
+      'Missed Chance leads the chips and keeps every page\'s miss to open on',
+      (tester) async {
+        final repository = _ReportsRepository();
+        final container = await open(tester, repository);
+        await complete(tester, repository, 0, [_game('all')]);
+        double left(String key) =>
+            tester.getTopLeft(find.byKey(ValueKey('report_type_$key'))).dx;
+        expect(left('missed_chance'), lessThan(left('all')));
+        expect(left('all'), lessThan(left('upside_down')));
+        expect(
+          find.descendant(
+            of: find.byKey(const ValueKey('report_type_missed_chance')),
+            matching: find.byIcon(Icons.heart_broken_rounded),
+          ),
+          findsOneWidget,
+        );
+
+        await tester.tap(
+          find.byKey(const ValueKey('report_type_missed_chance')),
+        );
+        await _settle(tester);
+        expect(repository.requests.last.gameType, ReportGameType.missedChance);
+        await complete(
+          tester,
+          repository,
+          1,
+          [_game('a')],
+          next: 'a',
+          storyPlies: {'a': 30},
+        );
+        if (repository.requests.length == 2) {
+          unawaited(
+            container.read(reportsPaginationProvider.notifier).loadNextPage(),
+          );
+          await _settle(tester);
+        }
+        await complete(
+          tester,
+          repository,
+          2,
+          [_game('b')],
+          storyPlies: {'b': 1},
+        );
+        final plies = container.read(reportsPaginationProvider).storyPlies;
+        expect(plies, {'a': 30, 'b': 1});
+        // The position before the miss: ply 29 is board move 28.
+        expect(missedChanceBoardMoves(plies), {'a': 28, 'b': -1});
+
+        await tester.ensureVisible(
+          find.byKey(const ValueKey('report_type_comeback')),
+        );
+        await tester.tap(find.byKey(const ValueKey('report_type_comeback')));
+        await _settle(tester);
+        await complete(tester, repository, 3, [_game('c')]);
+        expect(container.read(reportsPaginationProvider).storyPlies, isEmpty);
+        expect(tester.takeException(), isNull);
+        await _teardown(tester, container);
+      },
+    );
 
     testWidgets(
       'chips scroll as one row, switch queries, and ignore late prior results',

@@ -62,12 +62,6 @@ class _TwicContentsScreenState extends ConsumerState<TwicContentsScreen>
   final ScrollController _scrollController = ScrollController();
   final ScrollController _chipScrollController = ScrollController();
 
-  // Scroll-collapse state
-  bool _showChipRow = true;
-  double _lastScrollOffset = 0.0;
-  double _scrollAccumulator = 0.0;
-  static const _scrollCollapseThreshold = 40.0;
-
   Timer? _debounceTimer;
   static const _debounceDuration = Duration(milliseconds: 350);
 
@@ -159,32 +153,6 @@ class _TwicContentsScreenState extends ConsumerState<TwicContentsScreen>
             .read(gamebaseDatabaseGamesPaginatedProvider.notifier)
             .loadNextPage();
       }
-    }
-
-    // Scroll-collapse direction detection
-    final offset = _scrollController.position.pixels;
-    final delta = offset - _lastScrollOffset;
-    _lastScrollOffset = offset;
-
-    // Force show at top
-    if (offset <= 0) {
-      if (!_showChipRow) setState(() => _showChipRow = true);
-      _scrollAccumulator = 0.0;
-      return;
-    }
-
-    // Reset accumulator on direction change
-    if ((delta > 0 && _scrollAccumulator < 0) ||
-        (delta < 0 && _scrollAccumulator > 0)) {
-      _scrollAccumulator = 0.0;
-    }
-    _scrollAccumulator += delta;
-
-    if (_scrollAccumulator > _scrollCollapseThreshold && _showChipRow) {
-      setState(() => _showChipRow = false);
-    } else if (_scrollAccumulator < -_scrollCollapseThreshold &&
-        !_showChipRow) {
-      setState(() => _showChipRow = true);
     }
   }
 
@@ -567,59 +535,36 @@ class _TwicContentsScreenState extends ConsumerState<TwicContentsScreen>
 
     final searchQuery = ref.watch(librarySearchQueryProvider).trim();
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
+    // One scroll view for everything below the search: pinned above the list,
+    // the player cards, chips and event detail left the games a third of the
+    // screen, and a drag anywhere on them did nothing.
+    return CustomScrollView(
+      controller: _scrollController,
+      slivers: [
         // ── Player search cards (above chip row, mirrors home page) ──
         if (searchQuery.isNotEmpty)
-          TwicPlayerSearchCards(searchQuery: searchQuery),
+          SliverToBoxAdapter(
+            child: TwicPlayerSearchCards(searchQuery: searchQuery),
+          ),
 
-        // ── Collapsible chip row + detail bar ──
-        _buildCollapsibleHeader(
-          eventRow: eventRow,
-          selectedItem: selectedItem,
-          horizontalPadding: horizontalPadding,
+        // ── Chip row + detail bar ──
+        SliverToBoxAdapter(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              eventRow,
+              _buildSelectedEventDetailBar(
+                selectedItem: selectedItem,
+                horizontalPadding: horizontalPadding,
+              ),
+            ],
+          ),
         ),
 
         // ── Games list (keeps previous content while loading new results) ──
-        Expanded(child: _buildGamesList(paginationState, horizontalPadding)),
+        _buildGamesList(paginationState, horizontalPadding),
       ],
-    );
-  }
-
-  // ---------------------------------------------------------------------------
-  // Collapsible header — scroll-linked collapse of chip row + detail bar
-  // ---------------------------------------------------------------------------
-
-  Widget _buildCollapsibleHeader({
-    required Widget eventRow,
-    required _TwicEventDisplayItem? selectedItem,
-    required double horizontalPadding,
-  }) {
-    return SingleMotionBuilder(
-      motion: const CupertinoMotion.snappy(),
-      value: _showChipRow ? 1.0 : 0.0,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          eventRow,
-          _buildSelectedEventDetailBar(
-            selectedItem: selectedItem,
-            horizontalPadding: horizontalPadding,
-          ),
-        ],
-      ),
-      builder: (context, progress, child) {
-        final clamped = progress.clamp(0.0, 1.0);
-        return ClipRect(
-          child: Align(
-            heightFactor: clamped,
-            alignment: Alignment.topCenter,
-            child: Opacity(opacity: clamped, child: child),
-          ),
-        );
-      },
     );
   }
 
@@ -635,37 +580,22 @@ class _TwicContentsScreenState extends ConsumerState<TwicContentsScreen>
 
     // Error with no games at all
     if (paginationState.error != null && games.isEmpty) {
-      return Center(
-        child: Padding(
-          padding: EdgeInsets.symmetric(horizontal: 32.w),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                Icons.error_outline_rounded,
-                size: 40.sp,
-                color: context.textInk(0.3),
-              ),
-              SizedBox(height: 12.h),
-              Text(
-                'Search failed',
-                style: AppTypography.textSmRegular.copyWith(
-                  color: context.colors.textSecondary,
-                ),
-              ),
-            ],
-          ),
-        ),
+      return SliverFillRemaining(
+        hasScrollBody: false,
+        child: _buildErrorState(),
       );
     }
 
     // No games and not loading — empty state
     if (games.isEmpty && !paginationState.isLoading) {
-      return Center(
-        child: Text(
-          'No games found',
-          style: AppTypography.textSmRegular.copyWith(
-            color: context.colors.textSecondary,
+      return SliverFillRemaining(
+        hasScrollBody: false,
+        child: Center(
+          child: Text(
+            'No games found',
+            style: AppTypography.textSmRegular.copyWith(
+              color: context.colors.textSecondary,
+            ),
           ),
         ),
       );
@@ -673,53 +603,79 @@ class _TwicContentsScreenState extends ConsumerState<TwicContentsScreen>
 
     // Initial load — show skeleton game cards
     if (games.isEmpty && paginationState.isLoading) {
-      return _buildSkeletonGamesList(horizontalPadding);
+      return SliverFillRemaining(
+        child: _buildSkeletonGamesList(horizontalPadding),
+      );
     }
 
     final itemCount = games.length + (paginationState.hasMore ? 1 : 0);
-    Widget list = ListView.separated(
-      controller: _scrollController,
+    return SliverPadding(
       padding: EdgeInsets.fromLTRB(
         horizontalPadding,
         0,
         horizontalPadding,
         100.h,
       ),
-      itemCount: itemCount,
-      separatorBuilder: (_, __) => SizedBox(height: 12.h),
-      itemBuilder: (context, index) {
-        // Load-more indicator at the end
-        if (index >= games.length) {
-          return Padding(
-            padding: EdgeInsets.symmetric(vertical: 16.h),
-            child: Center(
-              child: SizedBox(
-                width: 24,
-                height: 24,
-                child: CircularProgressIndicator(
-                  color: context.colors.textPrimary,
-                  strokeWidth: 2,
+      sliver: SliverList.separated(
+        itemCount: itemCount,
+        separatorBuilder: (_, __) => SizedBox(height: 12.h),
+        itemBuilder: (context, index) {
+          // Load-more indicator at the end
+          if (index >= games.length) {
+            return Padding(
+              padding: EdgeInsets.symmetric(vertical: 16.h),
+              child: Center(
+                child: SizedBox(
+                  width: 24,
+                  height: 24,
+                  child: CircularProgressIndicator(
+                    color: context.colors.textPrimary,
+                    strokeWidth: 2,
+                  ),
                 ),
               ),
-            ),
+            );
+          }
+
+          final game = games[index];
+          return GamebaseSearchGameCard(
+            game: game,
+            allGames: games,
+            gameIndex: index,
+            animationIndex: index,
+            onAdd: () => showAddToFolderSheet(context: context, game: game),
+            showSwipeHint: index == 0,
+            hideEventInfo: false,
+            playerProfileDataSource: PlayerProfileDataSource.twic,
           );
-        }
-
-        final game = games[index];
-        return GamebaseSearchGameCard(
-          game: game,
-          allGames: games,
-          gameIndex: index,
-          animationIndex: index,
-          onAdd: () => showAddToFolderSheet(context: context, game: game),
-          showSwipeHint: index == 0,
-          hideEventInfo: false,
-          playerProfileDataSource: PlayerProfileDataSource.twic,
-        );
-      },
+        },
+      ),
     );
+  }
 
-    return list;
+  Widget _buildErrorState() {
+    return Center(
+      child: Padding(
+        padding: EdgeInsets.symmetric(horizontal: 32.w),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.error_outline_rounded,
+              size: 40.sp,
+              color: context.textInk(0.3),
+            ),
+            SizedBox(height: 12.h),
+            Text(
+              'Search failed',
+              style: AppTypography.textSmRegular.copyWith(
+                color: context.colors.textSecondary,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   Widget _buildSkeletonGamesList(double horizontalPadding) {
@@ -918,26 +874,32 @@ class _TwicContentsScreenState extends ConsumerState<TwicContentsScreen>
     final infoParts = <Widget>[];
 
     if (item.site != null && item.site!.trim().isNotEmpty) {
+      // Flexible so a long site (often a full URL) gives way to the date
+      // and Elo parts instead of overflowing the row.
       infoParts.add(
-        Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              Icons.location_on_rounded,
-              size: 11.ic,
-              color: context.textInk(0.45),
-            ),
-            SizedBox(width: 2.w),
-            ConstrainedBox(
-              constraints: BoxConstraints(maxWidth: 120.w),
-              child: Text(
-                item.site!.trim(),
-                style: infoStyle,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
+        Flexible(
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.location_on_rounded,
+                size: 11.ic,
+                color: context.textInk(0.45),
               ),
-            ),
-          ],
+              SizedBox(width: 2.w),
+              Flexible(
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(maxWidth: 120.w),
+                  child: Text(
+                    item.site!.trim(),
+                    style: infoStyle,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       );
     }
@@ -1317,16 +1279,21 @@ class _TwicEventCardState extends State<_TwicEventCard> {
                     isLight ? context.colors.accentText : kPrimaryColor,
                     selectProgress,
                   )!;
-              // Paper: an alpha step under an AA ink falls below AA, so the
-              // count dims through contrast rather than transparency.
+              // The count sits in a nested capsule one tonal step under the
+              // label, like the database tag chips. textInk keeps it at AA on
+              // paper, where a plain alpha step would fall below it.
               final countColor =
-                  isLight
-                      ? Color.lerp(
-                        context.textInk(0.4),
-                        context.colors.accentText,
-                        selectProgress,
-                      )!
-                      : labelColor.withValues(alpha: 0.6);
+                  Color.lerp(
+                    context.textInk(0.55),
+                    isLight ? context.colors.accentText : kPrimaryColor,
+                    selectProgress,
+                  )!;
+              final countFill =
+                  Color.lerp(
+                    context.colors.textPrimary.withValues(alpha: 0.06),
+                    kPrimaryColor.withValues(alpha: 0.12),
+                    selectProgress,
+                  )!;
               final borderWidth = selectProgress * 2.0;
               final selectScale = 1.0 + (selectProgress * 0.04);
               final combinedScale = pressScale * selectScale;
@@ -1372,13 +1339,23 @@ class _TwicEventCardState extends State<_TwicEventCard> {
                         ),
                       ),
                       if (widget.gameCount != null && !widget.isAllCard) ...[
-                        SizedBox(width: 4.w),
-                        Text(
-                          '${widget.gameCount}',
-                          style: AppTypography.textXsRegular.copyWith(
-                            color: countColor,
-                            fontSize: 10.sp,
-                            fontFeatures: const [FontFeature.tabularFigures()],
+                        SizedBox(width: 7.w),
+                        // Label-sized digits; the 20 min width (the line
+                        // height) keeps a single digit a round capsule.
+                        Container(
+                          constraints: BoxConstraints(minWidth: 20.f),
+                          padding: EdgeInsets.symmetric(horizontal: 6.w),
+                          decoration: BoxDecoration(
+                            color: countFill,
+                            borderRadius: BorderRadius.circular(999.br),
+                          ),
+                          child: Text(
+                            '${widget.gameCount}',
+                            textAlign: TextAlign.center,
+                            style: AppTypography.textXsMedium.copyWith(
+                              color: countColor,
+                              fontFeatures: const [FontFeature.tabularFigures()],
+                            ),
                           ),
                         ),
                       ],

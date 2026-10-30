@@ -23,9 +23,18 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 /// offline) withdraws its page ([feedAdWithdrawnProvider]): Feed never keeps
 /// an empty page in the viewer's way.
 class FeedAdPage extends ConsumerStatefulWidget {
-  const FeedAdPage({required this.entry, super.key});
+  const FeedAdPage({
+    required this.entry,
+    this.onUnavailable,
+    this.returnTo = 'feed',
+    super.key,
+  });
 
   final FeedAdEntry entry;
+
+  /// Reader routes withdraw only their own slot; Feed uses its shared provider.
+  final VoidCallback? onUnavailable;
+  final String returnTo;
 
   @override
   ConsumerState<FeedAdPage> createState() => _FeedAdPageState();
@@ -157,6 +166,10 @@ class _FeedAdPageState extends ConsumerState<FeedAdPage> {
 
   void _withdraw() {
     if (!mounted) return;
+    if (widget.onUnavailable case final onUnavailable?) {
+      onUnavailable();
+      return;
+    }
     final withdrawn = ref.read(feedAdWithdrawnProvider.notifier);
     withdrawn.state = {...withdrawn.state, widget.entry.key};
   }
@@ -218,7 +231,7 @@ class _FeedAdPageState extends ConsumerState<FeedAdPage> {
             // Clear of the ad, so a tap meant for one never lands on the
             // other.
             const SizedBox(height: 16),
-            const RemoveAdsButton(returnTo: 'feed'),
+            RemoveAdsButton(returnTo: widget.returnTo),
           ],
         ),
       ),

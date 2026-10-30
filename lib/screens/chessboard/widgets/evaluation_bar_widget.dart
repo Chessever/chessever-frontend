@@ -285,6 +285,10 @@ class EvaluationBarWidgetForGames extends ConsumerStatefulWidget {
   final bool isFlipped;
   final bool allowStockfishFallback;
 
+  /// What the game's own record says of [fen] ([recordedEvalAt]). When set,
+  /// the bar shows it and asks neither the caches nor the engine.
+  final CloudEval? recordedEval;
+
   const EvaluationBarWidgetForGames({
     required this.width,
     required this.height,
@@ -292,6 +296,7 @@ class EvaluationBarWidgetForGames extends ConsumerStatefulWidget {
     required this.playerView,
     this.isFlipped = false,
     this.allowStockfishFallback = true,
+    this.recordedEval,
     super.key,
   });
 
@@ -351,8 +356,11 @@ class _EvaluationBarWidgetForGamesState
 
     // Uses depth-aware cache/server reuse first, then low-priority Stockfish.
     // Auto-disposes when card scrolls out of view.
+    final recorded = widget.recordedEval;
     final evalAsync =
-        widget.allowStockfishFallback
+        recorded != null
+            ? AsyncValue.data(recorded)
+            : widget.allowStockfishFallback
             ? ref.watch(gameCardEvalWithStockfishFallbackProvider(widget.fen))
             : ref.watch(gameCardEvalCacheOnlyProvider(widget.fen));
 

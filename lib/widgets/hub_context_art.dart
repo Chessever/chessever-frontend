@@ -7,6 +7,7 @@ export 'hub_paired_hearts.dart' show HubLikesBackdrop;
 /// Full-card contextual artwork, independent of game or network data.
 enum HubScene {
   feed,
+  news,
   miniatures,
   reports,
   library,

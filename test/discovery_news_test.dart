@@ -1,5 +1,4 @@
 import 'dart:math' as math;
-import 'dart:async';
 
 import 'package:chessever2/screens/feed/news/feed_news.dart';
 import 'package:chessever2/screens/feed/news/news_content.dart';
@@ -7,7 +6,6 @@ import 'package:chessever2/screens/feed/news/news_cover.dart';
 import 'package:chessever2/screens/feed/news/news_hero_cover.dart';
 import 'package:chessever2/screens/feed/news/news_reader_pager.dart';
 import 'package:chessever2/screens/feed/news/news_reader_screen.dart';
-import 'package:chessever2/screens/feed/news/news_reading_access.dart';
 import 'package:chessever2/screens/feed/news/news_repository.dart';
 import 'package:chessever2/screens/for_you/discovery/news_screen.dart';
 import 'package:chessever2/services/rewarded_premium/rewarded_access_provider.dart';
@@ -81,7 +79,6 @@ Future<void> _pump(
   bool light = false,
   bool reducedMotion = false,
   bool premium = false,
-  Future<bool> Function(BuildContext)? requestPremium,
 }) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1;
@@ -93,8 +90,6 @@ Future<void> _pump(
         newsCatalogFactoryProvider.overrideWithValue(create),
         feedNewsProvider.overrideWith((ref) async => []),
         premiumAccessProvider.overrideWithValue(premium),
-        if (requestPremium != null)
-          newsPremiumPromptProvider.overrideWithValue(requestPremium),
       ],
       child: MaterialApp(
         theme: light ? AppTheme.lightTheme : AppTheme.darkTheme,
@@ -197,187 +192,50 @@ void main() {
 
   group('news browsing', () {
     testWidgets(
-      'Next asks after three articles and dismissal keeps the third',
+      'free readers can swipe through every article without a prompt',
       (tester) async {
-        var prompts = 0;
         await _pump(
           tester,
           create: () => _catalog(
             _Rows([for (var i = 1; i <= 8; i++) _row(i)]),
             _Rows([]),
           ),
-          requestPremium: (_) async {
-            prompts++;
-            return false;
-          },
         );
         await tester.tap(find.byKey(const ValueKey('news_card_1')));
         await tester.pumpAndSettle();
-        for (var i = 0; i < 2; i++) {
-          await tester.tap(find.byTooltip('Next article'));
-          await tester.pumpAndSettle();
+        for (var i = 2; i <= 8; i++) {
+          await _swipeArticle(tester);
+          expect(_readingId(tester), i);
+          expect(find.text('Watch ad'), findsNothing);
         }
-        expect(find.text('3 / 8'), findsOneWidget);
-        expect(prompts, 0);
-        await tester.tap(find.byTooltip('Next article'));
-        await tester.pumpAndSettle();
-        expect(prompts, 1);
-        expect(find.text('3 / 8'), findsOneWidget);
-        expect(find.text('ChessEver story 4'), findsNothing);
-        // Going back and returning to a read article never spends a new read.
-        await tester.tap(find.byTooltip('Previous article'));
-        await tester.pumpAndSettle();
-        await tester.tap(find.byTooltip('Next article'));
-        await tester.pumpAndSettle();
-        expect(prompts, 1);
-        await tester.tap(find.byTooltip('Next article'));
-        await tester.pumpAndSettle();
-        expect(prompts, 2);
         expect(tester.takeException(), isNull);
       },
     );
 
-    testWidgets('swiping cannot preview a gated body or stack prompts', (
+    testWidgets('returning to the grid can open a later unread article', (
       tester,
     ) async {
-      var prompts = 0;
-      final result = Completer<bool>();
-      await _pump(
-        tester,
-        create: () =>
-            _catalog(_Rows([for (var i = 1; i <= 5; i++) _row(i)]), _Rows([])),
-        requestPremium: (_) {
-          prompts++;
-          return result.future;
-        },
-      );
-      await tester.tap(find.byKey(const ValueKey('news_card_1')));
-      await tester.pumpAndSettle();
-      for (var i = 0; i < 2; i++) {
-        await tester.drag(find.byType(PageView), const Offset(-340, 0));
-        await tester.pumpAndSettle();
-      }
-      await tester.drag(find.byType(PageView), const Offset(-340, 0));
-      await tester.pump(const Duration(milliseconds: 400));
-      expect(prompts, 1);
-      expect(find.text('ChessEver story 4'), findsNothing);
-      expect(
-        find.textContaining('Round 4 included', findRichText: true),
-        findsNothing,
-      );
-      await tester.drag(find.byType(PageView), const Offset(-340, 0));
-      await tester.pump(const Duration(milliseconds: 400));
-      expect(prompts, 1);
-      result.complete(false);
-      await tester.pumpAndSettle();
-      expect(find.text('3 / 5'), findsOneWidget);
-      expect(tester.takeException(), isNull);
-    });
-
-    testWidgets(
-      'accepted prompts resume the article and repeat after another three',
-      (tester) async {
-        var prompts = 0;
-        await _pump(
-          tester,
-          create: () => _catalog(
-            _Rows([for (var i = 1; i <= 8; i++) _row(i)]),
-            _Rows([]),
-          ),
-          requestPremium: (_) async {
-            prompts++;
-            return true;
-          },
-        );
-        await tester.tap(find.byKey(const ValueKey('news_card_1')));
-        await tester.pumpAndSettle();
-        for (var i = 2; i <= 7; i++) {
-          await tester.tap(find.byTooltip('Next article'));
-          await tester.pumpAndSettle();
-          expect(find.text('$i / 8'), findsOneWidget);
-          expect(
-            prompts,
-            i < 4
-                ? 0
-                : i < 7
-                ? 1
-                : 2,
-          );
-        }
-        expect(tester.takeException(), isNull);
-      },
-    );
-
-    testWidgets(
-      'closing and reopening the reader does not reset the free allowance',
-      (tester) async {
-        var prompts = 0;
-        await _pump(
-          tester,
-          create: () => _catalog(
-            _Rows([for (var i = 1; i <= 5; i++) _row(i)]),
-            _Rows([]),
-          ),
-          requestPremium: (_) async {
-            prompts++;
-            return false;
-          },
-        );
-        await tester.tap(find.byKey(const ValueKey('news_card_1')));
-        await tester.pumpAndSettle();
-        for (var i = 0; i < 2; i++) {
-          await tester.tap(find.byTooltip('Next article'));
-          await tester.pumpAndSettle();
-        }
-        await tester.tap(find.byTooltip('Back'));
-        await tester.pumpAndSettle();
-        final fourth = find.byKey(const ValueKey('news_card_4'));
-        await tester.scrollUntilVisible(
-          fourth,
-          300,
-          scrollable: find.byType(Scrollable).first,
-        );
-        await tester.tap(fourth);
-        await tester.pumpAndSettle();
-        expect(prompts, 1);
-        expect(find.byType(NewsReaderPager), findsNothing);
-        // A previously read card can still be reopened.
-        final third = find.byKey(const ValueKey('news_card_3'));
-        await tester.scrollUntilVisible(
-          third,
-          -300,
-          scrollable: find.byType(Scrollable).first,
-        );
-        await tester.tap(third);
-        await tester.pumpAndSettle();
-        expect(find.text('3 / 5'), findsOneWidget);
-        expect(prompts, 1);
-        expect(tester.takeException(), isNull);
-      },
-    );
-
-    testWidgets('Premium reads past both free boundaries without a prompt', (
-      tester,
-    ) async {
-      var prompts = 0;
       await _pump(
         tester,
         create: () =>
             _catalog(_Rows([for (var i = 1; i <= 8; i++) _row(i)]), _Rows([])),
-        premium: true,
-        requestPremium: (_) async {
-          prompts++;
-          return false;
-        },
       );
       await tester.tap(find.byKey(const ValueKey('news_card_1')));
       await tester.pumpAndSettle();
-      for (var i = 0; i < 7; i++) {
-        await tester.tap(find.byTooltip('Next article'));
-        await tester.pumpAndSettle();
+      for (var i = 0; i < 2; i++) {
+        await _swipeArticle(tester);
       }
-      expect(find.text('8 / 8'), findsOneWidget);
-      expect(prompts, 0);
+      await tester.tap(find.byTooltip('Back'));
+      await tester.pumpAndSettle();
+      final fourth = find.byKey(const ValueKey('news_card_4'));
+      await tester.scrollUntilVisible(
+        fourth,
+        300,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.tap(fourth);
+      await tester.pumpAndSettle();
+      expect(_readingId(tester), 4);
       expect(tester.takeException(), isNull);
     });
 
@@ -451,7 +309,7 @@ void main() {
 
         await tester.drag(find.byType(PageView), const Offset(-340, 0));
         await tester.pumpAndSettle();
-        expect(find.text('2 / 3'), findsOneWidget);
+        expect(_readingId(tester), 2);
         expect(
           tester
               .widget<NewsReaderScreen>(find.byType(NewsReaderScreen))
@@ -459,12 +317,10 @@ void main() {
               .id,
           2,
         );
-        await tester.tap(find.byTooltip('Previous article'));
-        await tester.pumpAndSettle();
-        expect(find.text('1 / 3'), findsOneWidget);
-        await tester.tap(find.byTooltip('Next article'));
-        await tester.pumpAndSettle();
-        expect(find.text('2 / 3'), findsOneWidget);
+        await _swipeArticle(tester, back: true);
+        expect(_readingId(tester), 1);
+        await _swipeArticle(tester);
+        expect(_readingId(tester), 2);
         await tester.tap(find.byTooltip('Back'));
         await tester.pumpAndSettle();
         expect(find.byType(NewsReaderPager), findsNothing);
@@ -553,12 +409,47 @@ void main() {
       card.owner!.performAction(card.id, SemanticsAction.tap);
       await tester.pumpAndSettle();
       expect(find.byType(NewsReaderPager), findsOneWidget);
-      final next = tester.getSemantics(find.byTooltip('Next article'));
-      expect(next.getSemanticsData().hasAction(SemanticsAction.tap), isTrue);
-      next.owner!.performAction(next.id, SemanticsAction.tap);
+      // The pager's own scroll action turns the page; it needs no buttons.
+      tester.semantics.performAction(
+        find.semantics.byAction(SemanticsAction.scrollLeft),
+        SemanticsAction.scrollLeft,
+      );
       await tester.pumpAndSettle();
-      expect(find.text('2 / 2'), findsOneWidget);
+      expect(_readingId(tester), 2);
       semantics.dispose();
+    });
+
+    testWidgets('the headline moves into the bar once it scrolls under', (
+      tester,
+    ) async {
+      final own = _Rows([
+        _row(
+          1,
+          content: List.filled(
+            20,
+            'A long paragraph about the championship.',
+          ).join('\n\n'),
+        ),
+      ]);
+      await _pump(tester, create: () => _catalog(own, _Rows([])));
+      await tester.tap(find.byKey(const ValueKey('news_card_1')));
+      await tester.pumpAndSettle();
+      final barTitle = find.descendant(
+        of: find.byType(SliverAppBar),
+        matching: find.text('ChessEver story 1'),
+      );
+      expect(barTitle, findsNothing);
+      final article = find.descendant(
+        of: find.byType(NewsReaderScreen),
+        matching: find.byType(CustomScrollView),
+      );
+      await tester.drag(article, const Offset(0, -500));
+      await tester.pumpAndSettle();
+      expect(barTitle, findsOneWidget);
+      await tester.drag(article, const Offset(0, 800));
+      await tester.pumpAndSettle();
+      expect(barTitle, findsNothing);
+      expect(tester.takeException(), isNull);
     });
 
     testWidgets(
@@ -568,28 +459,32 @@ void main() {
         var more = true;
         final first = normalizeNewsRow(_row(1))!;
         final second = normalizeNewsRow(_row(2))!;
+        final third = normalizeNewsRow(_row(3))!;
         await _pump(
           tester,
           create: () => _catalog(_Rows([]), _Rows([])),
           home: NewsReaderPager(
-            articles: [first],
-            initialIndex: 0,
+            articles: [first, second],
+            initialIndex: 1,
             heroScope: Object(),
             hasMore: () => more,
             loadMore: () async {
               attempts++;
               if (attempts == 1) throw StateError('offline');
               more = false;
-              return [first, second];
+              return [first, second, third];
             },
           ),
         );
-        expect(find.text('1 / 1'), findsOneWidget);
+        expect(_readingId(tester), 2);
         expect(attempts, 1);
-        await tester.tap(find.byTooltip('Retry next article'));
-        await tester.pumpAndSettle();
-        expect(find.text('2 / 2'), findsOneWidget);
+        // Turning a page near the end retries once the snack is gone.
+        await _swipeArticle(tester, back: true);
+        expect(_readingId(tester), 1);
         expect(attempts, 2);
+        await _swipeArticle(tester);
+        await _swipeArticle(tester);
+        expect(_readingId(tester), 3);
         expect(tester.takeException(), isNull);
       },
     );
@@ -649,12 +544,54 @@ void main() {
           find.textContaining('decisive', findRichText: true),
           findsOneWidget,
         );
-        await tester.tap(find.byTooltip('Next article'));
-        await tester.pumpAndSettle();
-        expect(find.text('2 / 2'), findsOneWidget);
+        await _swipeArticle(tester);
+        expect(_readingId(tester), 2);
         expect(tester.takeException(), isNull);
       },
     );
+
+    for (final scale in [1.0, 1.24]) {
+      testWidgets('a phone shows two aligned grid columns at ${scale}x text', (
+        tester,
+      ) async {
+        final own = _Rows([
+          for (var i = 1; i <= 6; i++)
+            {
+              ..._row(i),
+              if (i == 1)
+                'title':
+                    'Javokhir Sindarov Wins Clutch Chess: Champions Showdown '
+                    '2026 in Saint Louis After Three Days of Play',
+            },
+        ]);
+        await _pump(
+          tester,
+          create: () => _catalog(own, _Rows([])),
+          size: const Size(402, 874),
+          scale: scale,
+        );
+        final delegate =
+            tester.widget<SliverGrid>(find.byType(SliverGrid)).gridDelegate
+                as SliverGridDelegateWithFixedCrossAxisCount;
+        expect(delegate.crossAxisCount, 2);
+        final first = tester.getRect(find.byKey(const ValueKey('news_card_1')));
+        final second = tester.getRect(
+          find.byKey(const ValueKey('news_card_2')),
+        );
+        final third = tester.getRect(find.byKey(const ValueKey('news_card_3')));
+        expect(second.top, first.top);
+        expect(second.width, moreOrLessEquals(first.width));
+        expect(second.height, moreOrLessEquals(first.height));
+        expect(third.left, first.left);
+        expect(third.top, greaterThan(first.bottom));
+        // The summary waits for the reader at grid width.
+        expect(
+          find.text('The players and results from round 2.'),
+          findsNothing,
+        );
+        expect(tester.takeException(), isNull);
+      });
+    }
 
     for (final width in [320.0, 768.0, 1200.0]) {
       for (final light in [false, true]) {
@@ -692,3 +629,11 @@ void main() {
     }
   });
 }
+
+Future<void> _swipeArticle(WidgetTester tester, {bool back = false}) async {
+  await tester.fling(find.byType(PageView), Offset(back ? 300 : -300, 0), 1500);
+  await tester.pumpAndSettle();
+}
+
+int _readingId(WidgetTester tester) =>
+    tester.widget<NewsReaderScreen>(find.byType(NewsReaderScreen)).news.id;

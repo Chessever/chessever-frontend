@@ -11,6 +11,23 @@ Each ad page carries the ad surfaces' shared frame (`ad_disclosure.dart`):
 under it, which opens the subscription paywall (`featureId: remove_ads`,
 `returnTo: feed`, no rewarded option).
 
+## News reader
+
+Discovery › News keeps ads out of the grid and reuses these same ad pages,
+placement cadence, consent setup and paid-subscription eligibility inside the
+horizontal article reader. Temporary rewarded Premium does not remove ads.
+Articles have no reading allowance or Watch ad / Subscribe interruption.
+Remove Ads remains an explicit action on an ad page (`returnTo: news/reader`).
+Unavailable ad slots are withdrawn only from that reader route, preserving its
+current article and vertical reading position without affecting Feed's slots.
+
+At an article's bottom, a deliberate upward pull fills a progress indicator.
+Release past the threshold to advance one page, or tap the same footer action.
+A scheduled ad remains in the sequence. Short pulls, canceled gestures and
+ballistic scrolling never advance. Next batches share the reader's in-flight
+request, and failed loads keep the article available for retry. Reduced motion
+uses an immediate page change and a static loading indicator.
+
 ## Format
 
 An inline adaptive banner (`AdSize.getInlineAdaptiveBannerAdSize`) as wide as
@@ -48,3 +65,11 @@ placement off. New units can take up to an hour to start serving.
 - Rewarded access active without a paid subscription: ad pages still appear.
 - Airplane mode or declined consent: no ad pages, no blank pages.
 - Phone and tablet, light and dark, portrait and landscape.
+
+- News: open a card beyond the first ad slot directly, then swipe both ways;
+  only reader pages contain ads, and no reading-access prompt appears.
+- News: at the article end, compare a short pull, a long pull and a fast fling;
+  only a long pull released past the threshold advances. Tap the footer too.
+- News: subscribe or lose ad fill while reading; retain the current article and
+  scroll position. Verify the last article has no next action once all news loads.
+- News: check large text and Reduce Motion in both themes.

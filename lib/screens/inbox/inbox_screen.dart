@@ -430,7 +430,9 @@ class _InboxMessageScreenState extends ConsumerState<InboxMessageScreen> {
       );
     }
     return _inboxShell(
-      child: Center(
+      // Top-aligned: centering would float a short message mid-page.
+      child: Align(
+        alignment: Alignment.topCenter,
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: _readingWidth),
           child: SingleChildScrollView(

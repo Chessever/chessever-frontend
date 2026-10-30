@@ -13,6 +13,7 @@ import 'package:chessever2/screens/for_you/discovery/providers/discovery_provide
 import 'package:chessever2/screens/gamebase/models/gamebase_game.dart';
 import 'package:chessever2/screens/my_space/models/space_game_card.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
+import 'package:crypto/crypto.dart';
 import 'package:dartchess/dartchess.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -931,6 +932,29 @@ void main() {
           : '1. e4 {[%eval 0.2]} e5 1/2-1/2',
     };
 
+    /// A row as the classifier stores it: bound to the game's result and PGN.
+    Map<String, dynamic> classified(
+      String id,
+      List<String> tags, {
+      List<Map<String, Object?>> evidence = const [],
+      String? result,
+      String? pgnHash,
+    }) {
+      final row = report(id);
+      return {
+        ...row,
+        'report_game_classification': {
+          'version': 1,
+          'tags': tags,
+          'evidence': evidence,
+          'result': result ?? row['status'],
+          'pgnHash':
+              pgnHash ??
+              md5.convert(utf8.encode(row['pgn'] as String)).toString(),
+        },
+      };
+    }
+
     setUp(() {
       rows = [];
       requests = [];
@@ -1011,28 +1035,116 @@ void main() {
     );
 
     test(
-      'type filters use the full archive RPC with the same cursor and embeds',
+      'type filters read games by tag with the same predicates, cursor and embeds',
       () async {
-        rows = [report('match')];
+        rows = [
+          classified('match', ['comeback']),
+        ];
         await repository.fetchAnalyzedGamesPage(
           gameType: ReportGameType.comeback,
           after: (lastMoveTime: null, gameId: 'previous'),
         );
         final req = requests.single;
         expect(req.method, 'GET');
-        expect(req.url.path, '/rest/v1/rpc/report_games_by_type');
-        expect(req.url.queryParameters['p_type'], 'comeback');
+        // report_games_by_type refuses any filter in production (42703).
+        expect(req.url.path, '/rest/v1/games');
+        expect(req.url.queryParameters.containsKey('p_type'), isFalse);
+        expect(
+          req.url.queryParameters['report_game_classification'],
+          'cs.{"tags":["comeback"]}',
+        );
         expect(req.url.queryParameters['id'], 'gt.previous');
         expect(
           req.url.queryParameters['select'],
-          contains('tours!games_tour_id_fkey'),
+          allOf(
+            contains('tours!games_tour_id_fkey'),
+            contains('report_game_classification'),
+          ),
         );
         expect(req.url.queryParameters['pgn'], r'like.%[\%eval %');
+        expect(
+          req.url.queryParameters['order'],
+          'last_move_time.desc.nullslast,id.asc.nullslast',
+        );
       },
     );
 
     test(
-      'report dates use an inclusive UTC start and exclusive end on tables and typed RPCs',
+      'a type lists only classifications still bound to the game, as the function did',
+      () async {
+        rows = [
+          classified('bound', ['comeback']),
+          classified('edited-result', ['comeback'], result: '1-0'),
+          classified('edited-pgn', ['comeback'], pgnHash: 'old'),
+          classified('other-type', ['marathon']),
+          report('unclassified'),
+        ];
+        final page = await repository.fetchAnalyzedGamesPage(
+          gameType: ReportGameType.comeback,
+          pageSize: 5,
+        );
+        expect(page.items.map((game) => game.gameId), ['bound']);
+        // The cursor still advances over every raw candidate.
+        expect(page.nextCursor?.gameId, 'unclassified');
+      },
+    );
+
+    test(
+      'type filters return where the story starts; All keeps its query',
+      () async {
+        rows = [
+          classified(
+            'miss',
+            ['missed_chance', 'great_escape'],
+            evidence: [
+              {'type': 'great_escape', 'fromPly': 1, 'toPly': 2},
+              {'type': 'missed_chance', 'fromPly': 2, 'toPly': 2},
+            ],
+          ),
+          report('unlabelled'),
+        ];
+        final page = await repository.fetchAnalyzedGamesPage(
+          gameType: ReportGameType.missedChance,
+        );
+        expect(page.items.map((game) => game.gameId), ['miss']);
+        expect(page.storyPlies, {'miss': 2});
+        expect(
+          requests.single.url.queryParameters['select'],
+          contains('report_game_classification'),
+        );
+
+        final all = await repository.fetchAnalyzedGamesPage();
+        expect(all.storyPlies, isEmpty);
+        expect(
+          requests.last.url.queryParameters['select'],
+          isNot(contains('report_game_classification')),
+        );
+      },
+    );
+
+    test('a story ply comes only from well-formed evidence of its type', () {
+      Map<String, Object?> evidence(Object? ply) => {
+        'evidence': [
+          {'type': 'missed_chance', 'fromPly': ply},
+        ],
+      };
+      expect(reportStoryPly(evidence(31), ReportGameType.missedChance), 31);
+      expect(reportStoryPly(evidence(31), ReportGameType.comeback), isNull);
+      for (final bad in [0, -3, '31', null, 31.5]) {
+        expect(
+          reportStoryPly(evidence(bad), ReportGameType.missedChance),
+          isNull,
+        );
+      }
+      expect(reportStoryPly(null, ReportGameType.missedChance), isNull);
+      expect(
+        reportStoryPly({'evidence': 'x'}, ReportGameType.missedChance),
+        isNull,
+      );
+    });
+
+    test(
+      'report dates use an inclusive UTC start and exclusive end for All and every type',
       () async {
         for (final type in <ReportGameType?>[null, ...ReportGameType.values]) {
           requests.clear();
@@ -1046,15 +1158,11 @@ void main() {
             'gte.2026-10-28T00:00:00.000Z',
             'lt.2026-10-29T00:00:00.000Z',
           ]);
+          expect(requests.single.url.path, '/rest/v1/games');
           expect(
-            requests.single.url.path,
-            type == null
-                ? '/rest/v1/games'
-                : '/rest/v1/rpc/report_games_by_type',
+            requests.single.url.queryParameters['report_game_classification'],
+            type == null ? isNull : 'cs.{"tags":["${type.key}"]}',
           );
-          if (type != null) {
-            expect(requests.single.url.queryParameters['p_type'], type.key);
-          }
         }
       },
     );
@@ -1150,10 +1258,17 @@ void main() {
         'https://example.test',
         'placeholder',
         httpClient: MockClient((request) async {
-          if (request.url.path.contains('/rpc/')) {
+          // A backend from before report classification has no such column.
+          if ((request.url.queryParameters['select'] ?? '').contains(
+            'report_game_classification',
+          )) {
             return http.Response(
-              jsonEncode({'code': 'PGRST202', 'message': 'missing function'}),
-              404,
+              jsonEncode({
+                'code': '42703',
+                'message':
+                    'column games.report_game_classification does not exist',
+              }),
+              400,
               headers: {'content-type': 'application/json'},
               request: request,
             );

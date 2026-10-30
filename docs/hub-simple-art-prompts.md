@@ -1,6 +1,26 @@
 # Full-card backgrounds: assets and prompts
 
-Generated with the built-in imagegen tool. Final assets are 768 × 512 WebP. My Likes and Most Liked have no decorative artwork or animation.
+Generated with the built-in imagegen tool. Final assets are 768 × 512 WebP. My Likes has no decorative artwork or animation; Most Liked uses the [static heart](hub-existing-icon-prompts.md#mostliked).
+
+## news
+
+Asset: [assets/pngs/hub_news_simple.webp](../assets/pngs/hub_news_simple.webp)
+
+Generated on 2026-10-30 with the built-in imagegen tool, using the existing Feed, Reports and Miniatures backgrounds as style references. Compressed to 768 × 512 WebP at quality 85. Discovery uses the same `HubSceneBackdrop` rendering and theme treatment as its neighboring tiles, independent of article covers or network data.
+
+Exact prompt:
+
+```text
+Use case: stylized-concept.
+Asset type: bundled full-bleed background for the News navigation tile in ChessEver's Discovery tab, landscape 3:2.
+Primary request: create one new News illustration that belongs to the exact same visual family as the three supplied Discovery backgrounds.
+Input images: Image 1 is the Feed background, Image 2 is Reports, Image 3 is Miniatures. All three are style references only, not edit targets. Match their neutral near-black field, charcoal planes, muted silver-grey shapes, simplicity and tonal weight.
+Subject: one large folded newspaper silhouette. A broad charcoal front page with a narrow folded sheet visible behind one side; a single muted silver-grey picture block and a few thick, softly ended horizontal bars suggest printed newspaper columns without actual writing.
+Style/medium: restrained flat graphic, crisp clean contours, very limited tonal shading, no realistic paper texture, no 3D.
+Composition/framing: the newspaper fills most of the width and height, centered toward the upper right, with only the outermost top/right edges cropped as in the Feed reference. Keep its recognizable fold and the picture block visible inside the central crop. Keep the bottom-left quiet and nearly black for the native News title and Latest headlines caption, which the app adds separately. Readable at 180 by 108 logical pixels.
+Color palette: neutral near-black #0c0c0e background, dark charcoal paper, quiet silver-grey printed shapes, no colored accents.
+Constraints: full-card contextual artwork, one newspaper only, no surrounding icon tile or frame. No text, letters, numbers, masthead, logos, watermarks, badges, photographs, chess pieces, extra objects, particles, noise, glow, drop shadow or decorative borders. Generate a single landscape image, not a montage.
+```
 
 ## feed
 

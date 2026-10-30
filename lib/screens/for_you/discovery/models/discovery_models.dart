@@ -10,10 +10,18 @@ typedef AnalyzedGamesCursor = ({String? lastMoveTime, String gameId});
 
 @immutable
 class AnalyzedGamesPage {
-  const AnalyzedGamesPage({required this.items, this.nextCursor});
+  const AnalyzedGamesPage({
+    required this.items,
+    this.nextCursor,
+    this.storyPlies = const {},
+  });
 
   final List<GamesTourModel> items;
   final AnalyzedGamesCursor? nextCursor;
+
+  /// Under a type filter, the ply where that story starts in each game, by
+  /// game id. Lengths carry no evidence, and All pages carry none.
+  final Map<String, int> storyPlies;
 }
 
 // ---------------------------------------------------------------- Most Liked

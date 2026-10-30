@@ -1,7 +1,6 @@
 import 'package:chessever2/screens/feed/feed_screen.dart';
 import 'package:chessever2/screens/for_you/discovery/discovery_share.dart';
 import 'package:chessever2/screens/feed/news/feed_news.dart';
-import 'package:chessever2/screens/feed/news/news_cover.dart';
 import 'package:chessever2/screens/feed/widgets/feed_tile_board.dart';
 import 'package:chessever2/screens/for_you/discovery/likes_screen.dart';
 import 'package:chessever2/screens/for_you/discovery/news_screen.dart';
@@ -41,11 +40,6 @@ class _DiscoveryViewState extends ConsumerState<DiscoveryView> {
   @override
   Widget build(BuildContext context) {
     final feed = ref.watch(feedTilePreviewProvider).valueOrNull;
-    // Reuse an already-loaded cover without fetching article bodies just to
-    // draw a destination tile. The News screen owns its own first read.
-    final news = ref.exists(feedNewsProvider)
-        ? ref.watch(feedNewsProvider).valueOrNull
-        : null;
     return RefreshIndicator(
       color: context.colors.textPrimary,
       backgroundColor: context.colors.surface,
@@ -109,10 +103,7 @@ class _DiscoveryViewState extends ConsumerState<DiscoveryView> {
                           dotId: 'discovery.tile.news',
                           title: 'News',
                           caption: 'Latest headlines',
-                          artwork: NewsCover(
-                            imageUrl: news?.firstOrNull?.imageUrl,
-                            fadeBottom: 0,
-                          ),
+                          artwork: const HubSceneBackdrop(scene: HubScene.news),
                           onTap: () => NewsScreen.open(context),
                         ),
                       ),

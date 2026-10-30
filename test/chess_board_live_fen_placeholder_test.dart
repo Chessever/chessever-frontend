@@ -241,6 +241,54 @@ void main() {
   }
 
   test(
+    'a finished game opens on its initial move index, clamped to the game',
+    () async {
+      const pgn = '''[Result "1-0"]
+
+1. e4 e5 2. Nf3 Nc6 3. Bb5 a6 1-0''';
+      final analysis = ChessGame.fromPgn('test-game-1', pgn);
+      for (final (asked, shown) in [(2, 2), (40, 5), (-1, -1)]) {
+        final game = _dummyGame(pgn: pgn, gameStatus: GameStatus.whiteWins);
+        final container = _createContainer(
+          gameRepository: _StaticGameRepository(pgn),
+          stubEvaluation: true,
+        );
+        addTearDown(container.dispose);
+        container.read(currentlyVisiblePageIndexProvider.notifier).state = 99;
+        final params = ChessBoardProviderParams(
+          game: game,
+          index: 0,
+          initialMoveIndex: asked,
+        );
+        final watch = container.listen(
+          chessBoardScreenProviderNew(params),
+          (_, __) {},
+        );
+        addTearDown(watch.close);
+        await _waitFor(
+          container,
+          params,
+          () =>
+              container
+                  .read(chessBoardScreenProviderNew(params))
+                  .valueOrNull
+                  ?.analysisState
+                  .game !=
+              null,
+        );
+        final state = container
+            .read(chessBoardScreenProviderNew(params))
+            .requireValue;
+        expect(state.analysisState.currentMoveIndex, shown);
+        expect(
+          state.analysisState.position.fen,
+          shown < 0 ? analysis.startingFen : analysis.mainline[shown].fen,
+        );
+      }
+    },
+  );
+
+  test(
     'board arrow holds visit intermediate moves and stop on release',
     () async {
       const pgn = '''[Result "1-0"]

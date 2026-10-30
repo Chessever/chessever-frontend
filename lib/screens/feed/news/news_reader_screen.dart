@@ -5,6 +5,7 @@ import 'package:chessever2/screens/feed/news/news_content.dart';
 import 'package:chessever2/screens/feed/news/news_cover.dart';
 import 'package:chessever2/screens/feed/news/news_hero_cover.dart';
 import 'package:chessever2/screens/feed/news/news_models.dart';
+import 'package:chessever2/screens/feed/news/news_pull_next.dart';
 import 'package:chessever2/screens/feed/news/news_reader_pager.dart';
 import 'package:chessever2/screens/feed/news/news_repository.dart';
 import 'package:chessever2/screens/feed/news/news_rich_blocks.dart';
@@ -15,6 +16,7 @@ import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/app_snack.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:motor/motor.dart';
@@ -60,12 +62,14 @@ class NewsReaderScreen extends ConsumerStatefulWidget {
     super.key,
     required this.news,
     this.heroTag,
-    this.navigation,
+    this.onNext,
+    this.nextIsAd = false,
   });
 
   final FeedNews news;
   final Object? heroTag;
-  final Widget? navigation;
+  final Future<void> Function()? onNext;
+  final bool nextIsAd;
 
   static Future<void> open(BuildContext context, FeedNews news) async {
     final cached =
@@ -100,14 +104,57 @@ class NewsReaderScreen extends ConsumerStatefulWidget {
 }
 
 class _NewsReaderScreenState extends ConsumerState<NewsReaderScreen> {
+  static const double _barHeight = 52;
+
   late List<NewsBlock> _blocks;
   late NewsAuthor? _author;
   late bool _showLead;
+
+  final _scroll = ScrollController();
+  final _headline = GlobalKey();
+
+  /// Whether the headline has scrolled up under the bar, which then carries
+  /// the title instead.
+  final _titleInBar = ValueNotifier(false);
+  bool _syncQueued = false;
 
   @override
   void initState() {
     super.initState();
     _derive();
+    _scroll.addListener(_queueBarTitleSync);
+    // A restored reading position never reports a scroll.
+    _queueBarTitleSync();
+  }
+
+  @override
+  void dispose() {
+    _scroll.dispose();
+    _titleInBar.dispose();
+    super.dispose();
+  }
+
+  /// The headline's position is read after layout: a scroll notifies before
+  /// the slivers move, so reading it then would lag a frame behind.
+  void _queueBarTitleSync() {
+    if (_syncQueued) return;
+    _syncQueued = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _syncQueued = false;
+      _syncBarTitle();
+    });
+  }
+
+  void _syncBarTitle() {
+    if (!mounted) return;
+    final page = context.findRenderObject() as RenderBox?;
+    final headline = _headline.currentContext?.findRenderObject() as RenderBox?;
+    if (page == null || headline == null || !headline.attached) return;
+    final bottom = headline
+        .localToGlobal(Offset(0, headline.size.height), ancestor: page)
+        .dy;
+    _titleInBar.value =
+        bottom <= MediaQuery.paddingOf(context).top + _barHeight;
   }
 
   @override
@@ -229,6 +276,7 @@ class _NewsReaderScreenState extends ConsumerState<NewsReaderScreen> {
       Semantics(
         header: true,
         child: Text(
+          key: _headline,
           news.title,
           style: AppTypography.displayXsBold.copyWith(
             color: colors.textPrimary,
@@ -303,79 +351,144 @@ class _NewsReaderScreenState extends ConsumerState<NewsReaderScreen> {
 
     return Scaffold(
       backgroundColor: colors.background,
-      body: CustomScrollView(
-        key: PageStorageKey('news_reader_${news.key}'),
-        slivers: [
-          SliverAppBar(
-            pinned: true,
-            backgroundColor: colors.background,
-            surfaceTintColor: Colors.transparent,
-            scrolledUnderElevation: 0,
-            elevation: 0,
-            automaticallyImplyLeading: false,
-            toolbarHeight: 52,
-            titleSpacing: 0,
-            leadingWidth: 56,
-            title: widget.navigation,
-            leading: IconButton(
-              tooltip: 'Back',
-              onPressed: () => Navigator.of(context).maybePop(),
-              icon: Icon(
-                Icons.arrow_back_ios_new_rounded,
-                size: 20,
-                color: colors.iconPrimary,
+      body: NewsPullNext(
+        onNext: widget.onNext,
+        nextIsAd: widget.nextIsAd,
+        builder: (context, footer) => CustomScrollView(
+          key: PageStorageKey('news_reader_${news.key}'),
+          controller: _scroll,
+          physics: widget.onNext == null
+              ? null
+              : const AlwaysScrollableScrollPhysics(
+                  parent: ClampingScrollPhysics(),
+                ),
+          slivers: [
+            SliverAppBar(
+              pinned: true,
+              backgroundColor: colors.background,
+              surfaceTintColor: Colors.transparent,
+              scrolledUnderElevation: 0,
+              elevation: 0,
+              automaticallyImplyLeading: false,
+              toolbarHeight: _barHeight,
+              titleSpacing: 8,
+              leadingWidth: 56,
+              centerTitle: true,
+              title: _BarTitle(title: news.title, shown: _titleInBar),
+              leading: IconButton(
+                tooltip: 'Back',
+                onPressed: () => Navigator.of(context).maybePop(),
+                icon: Icon(
+                  Icons.arrow_back_ios_new_rounded,
+                  size: 20,
+                  color: colors.iconPrimary,
+                ),
               ),
-            ),
-            actions: [
-              Builder(
-                builder: (buttonContext) => IconButton(
-                  tooltip: 'Share article',
-                  onPressed: () => shareNews(buttonContext, news),
-                  constraints: const BoxConstraints(
-                    minWidth: 52,
-                    minHeight: 52,
+              actions: [
+                Builder(
+                  builder: (buttonContext) => IconButton(
+                    tooltip: 'Share article',
+                    onPressed: () => shareNews(buttonContext, news),
+                    constraints: const BoxConstraints(
+                      minWidth: 52,
+                      minHeight: 52,
+                    ),
+                    icon: FeedGlyph(
+                      FeedGlyphs.share,
+                      width: 20,
+                      height: 20,
+                      color: colors.iconPrimary,
+                    ),
                   ),
-                  icon: FeedGlyph(
-                    FeedGlyphs.share,
-                    width: 20,
-                    height: 20,
-                    color: colors.iconPrimary,
+                ),
+                const SizedBox(width: 4),
+              ],
+            ),
+            if (news.imageUrl != null || widget.heroTag != null)
+              SliverToBoxAdapter(
+                child: _ReaderCover(
+                  imageUrl: news.imageUrl,
+                  aspectRatio: publisher.coverAspectRatio,
+                  heroTag: widget.heroTag,
+                ),
+              )
+            else
+              SliverToBoxAdapter(child: SizedBox(height: 12.sp)),
+            SliverPadding(
+              padding: EdgeInsets.fromLTRB(
+                gutter,
+                0,
+                gutter,
+                widget.onNext == null
+                    ? 28.sp + MediaQuery.paddingOf(context).bottom
+                    : 16.sp,
+              ),
+              sliver: SliverToBoxAdapter(
+                child: Center(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 680),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: children,
+                    ),
                   ),
                 ),
               ),
-              const SizedBox(width: 4),
-            ],
-          ),
-          if (news.imageUrl != null || widget.heroTag != null)
-            SliverToBoxAdapter(
-              child: _ReaderCover(
-                imageUrl: news.imageUrl,
-                aspectRatio: publisher.coverAspectRatio,
-                heroTag: widget.heroTag,
-              ),
-            )
-          else
-            SliverToBoxAdapter(child: SizedBox(height: 12.sp)),
-          SliverPadding(
-            padding: EdgeInsets.fromLTRB(
-              gutter,
-              0,
-              gutter,
-              28.sp + MediaQuery.paddingOf(context).bottom,
             ),
-            sliver: SliverToBoxAdapter(
-              child: Center(
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 680),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: children,
+            SliverToBoxAdapter(child: footer),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// The headline, handed to the bar once the page's own headline has
+/// scrolled under it. It rises out of the bar's lower edge, the way the
+/// headline left, and sinks back when the headline returns.
+class _BarTitle extends StatelessWidget {
+  const _BarTitle({required this.title, required this.shown});
+
+  final String title;
+  final ValueListenable<bool> shown;
+
+  @override
+  Widget build(BuildContext context) {
+    final text = Text(
+      title,
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+      style: AppTypography.textMdMedium.copyWith(
+        color: context.colors.textPrimary,
+      ),
+    );
+    final reduceMotion = MediaQuery.disableAnimationsOf(context);
+    return ValueListenableBuilder<bool>(
+      valueListenable: shown,
+      child: text,
+      builder: (context, shown, text) => ExcludeSemantics(
+        // The page's headline is already the article's heading.
+        child: reduceMotion
+            ? (shown ? text! : const SizedBox.shrink())
+            : ClipRect(
+                child: SingleMotionBuilder(
+                  value: shown ? 1 : 0,
+                  motion: const CupertinoMotion.smooth(
+                    duration: Duration(milliseconds: 360),
                   ),
+                  child: text,
+                  // At rest below the bar the title is not built at all.
+                  builder: (context, t, text) => t < 0.01
+                      ? const SizedBox.shrink()
+                      : Opacity(
+                          opacity: t.clamp(0.0, 1.0),
+                          child: Transform.translate(
+                            offset: Offset(0, (1 - t) * 18),
+                            child: text,
+                          ),
+                        ),
                 ),
               ),
-            ),
-          ),
-        ],
       ),
     );
   }

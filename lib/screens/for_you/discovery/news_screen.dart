@@ -11,6 +11,7 @@ import 'package:chessever2/widgets/app_snack.dart';
 import 'package:chessever2/widgets/hub_tile.dart' show hubGutter;
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:intl/intl.dart';
 
 /// The web's news grid in the app: real covers, date, headline and summary.
 /// Every card opens the native rich reader, in this same newest-first order.
@@ -189,9 +190,7 @@ class _NewsScreenState extends ConsumerState<NewsScreen> {
           controller: _scroll,
           physics: const AlwaysScrollableScrollPhysics(),
           slivers: [
-            if (_items.isEmpty && _loading)
-              const SliverToBoxAdapter(child: _NewsLoading())
-            else if (_items.isEmpty)
+            if (_items.isEmpty && !_loading)
               SliverFillRemaining(
                 hasScrollBody: false,
                 child: _NewsMessage(
@@ -207,38 +206,36 @@ class _NewsScreenState extends ConsumerState<NewsScreen> {
                 padding: EdgeInsets.fromLTRB(hubGutter, 16, hubGutter, 0),
                 sliver: SliverLayoutBuilder(
                   builder: (context, constraints) {
-                    final width = math.min(constraints.crossAxisExtent, 1120.0);
-                    _columns = (width / 280).floor().clamp(1, 3);
-                    final cardWidth = (width - 20 * (_columns - 1)) / _columns;
-                    final scaler = MediaQuery.textScalerOf(context);
-                    // Reserve identical text slots across a row. Scaled text
-                    // grows the grid instead of clipping against a fixed tile.
-                    final height =
-                        cardWidth * 9 / 16 +
-                        32 +
-                        scaler.scale(12) * 1.4 * 2 +
-                        10 +
-                        scaler.scale(18) * 1.3 * 3 +
-                        10 +
-                        scaler.scale(14) * 1.5 * 3;
-                    _rowExtent = height + 20;
-                    final side = (constraints.crossAxisExtent - width) / 2;
+                    final layout = _NewsGridLayout(
+                      constraints.crossAxisExtent,
+                      MediaQuery.textScalerOf(context),
+                    );
+                    _columns = layout.columns;
+                    _rowExtent = layout.height + layout.spacing;
+                    final side =
+                        (constraints.crossAxisExtent - layout.width) / 2;
                     return SliverPadding(
                       padding: EdgeInsets.symmetric(horizontal: side),
                       sliver: SliverGrid.builder(
-                        itemCount: _items.length,
+                        // The first page loads into the same columns.
+                        itemCount: _items.isEmpty
+                            ? layout.columns * 2
+                            : _items.length,
                         gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                          crossAxisCount: _columns,
-                          crossAxisSpacing: 20,
-                          mainAxisSpacing: 20,
-                          mainAxisExtent: height,
+                          crossAxisCount: layout.columns,
+                          crossAxisSpacing: layout.spacing,
+                          mainAxisSpacing: layout.spacing,
+                          mainAxisExtent: layout.height,
                         ),
-                        itemBuilder: (context, index) => _NewsCard(
-                          key: ValueKey('news_card_${_items[index].key}'),
-                          news: _items[index],
-                          heroTag: (_heroScope, _items[index].key),
-                          onTap: () => _open(index),
-                        ),
+                        itemBuilder: (context, index) => _items.isEmpty
+                            ? _NewsSkeleton(compact: layout.compact)
+                            : _NewsCard(
+                                key: ValueKey('news_card_${_items[index].key}'),
+                                news: _items[index],
+                                compact: layout.compact,
+                                heroTag: (_heroScope, _items[index].key),
+                                onTap: () => _open(index),
+                              ),
                       ),
                     );
                   },
@@ -279,15 +276,64 @@ class _NewsScreenState extends ConsumerState<NewsScreen> {
   }
 }
 
+/// Columns and one card size for the grid and its skeleton. Phones get two
+/// columns, wide screens a third once cards reach 280. Large text on a narrow
+/// phone keeps one column so headlines keep whole words.
+class _NewsGridLayout {
+  factory _NewsGridLayout(double extent, TextScaler scaler) {
+    final width = math.min(extent, 1120.0);
+    final columns = math
+        .max((width / 280).floor(), width >= scaler.scale(240) + 60 ? 2 : 1)
+        .clamp(1, 3);
+    final compact = columns > 1 && (width - 12 * (columns - 1)) / columns < 280;
+    final spacing = compact ? 12.0 : 20.0;
+    final cardWidth = (width - spacing * (columns - 1)) / columns;
+    // Reserve identical text slots across a row. Scaled text grows the grid
+    // instead of clipping against a fixed tile.
+    final height = compact
+        ? cardWidth * 3 / 4 +
+              24 +
+              scaler.scale(15) * 1.3 * 4 +
+              8 +
+              scaler.scale(12) * 1.4
+        : cardWidth * 9 / 16 +
+              32 +
+              scaler.scale(12) * 1.4 * 2 +
+              10 +
+              scaler.scale(18) * 1.3 * 3 +
+              10 +
+              scaler.scale(14) * 1.5 * 3;
+    return _NewsGridLayout._(width, columns, compact, spacing, height);
+  }
+
+  const _NewsGridLayout._(
+    this.width,
+    this.columns,
+    this.compact,
+    this.spacing,
+    this.height,
+  );
+
+  final double width;
+  final int columns;
+  final bool compact;
+  final double spacing;
+  final double height;
+}
+
 class _NewsCard extends StatelessWidget {
   const _NewsCard({
     super.key,
     required this.news,
+    required this.compact,
     required this.heroTag,
     required this.onTap,
   });
 
   final FeedNews news;
+
+  /// A narrow grid card: headline under the cover, date on the bottom edge.
+  final bool compact;
   final Object heroTag;
   final VoidCallback onTap;
 
@@ -311,7 +357,7 @@ class _NewsCard extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               AspectRatio(
-                aspectRatio: 16 / 9,
+                aspectRatio: compact ? 4 / 3 : 16 / 9,
                 child: NewsHeroCover(
                   tag: heroTag,
                   imageUrl: news.imageUrl,
@@ -320,53 +366,82 @@ class _NewsCard extends StatelessWidget {
               ),
               Expanded(
                 child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      SizedBox(
-                        height: scaler.scale(12) * 1.4 * 2,
-                        child: Text(
-                          formatNewsDate(news.publishedAt),
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: AppTypography.textXsMedium.copyWith(
-                            fontSize: 12,
-                            height: 1.4,
-                            color: colors.textSecondary,
-                          ),
+                  padding: EdgeInsets.all(compact ? 12 : 16),
+                  child: compact
+                      ? Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              news.title,
+                              maxLines: 4,
+                              overflow: TextOverflow.ellipsis,
+                              style: AppTypography.textMdBold.copyWith(
+                                fontSize: 15,
+                                height: 1.3,
+                                color: colors.textPrimary,
+                              ),
+                            ),
+                            const Spacer(),
+                            Text(
+                              DateFormat(
+                                'MMM d, y',
+                              ).format(news.publishedAt.toLocal()),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: AppTypography.textXsMedium.copyWith(
+                                fontSize: 12,
+                                height: 1.4,
+                                color: colors.textSecondary,
+                              ),
+                            ),
+                          ],
+                        )
+                      : Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            SizedBox(
+                              height: scaler.scale(12) * 1.4 * 2,
+                              child: Text(
+                                formatNewsDate(news.publishedAt),
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: AppTypography.textXsMedium.copyWith(
+                                  fontSize: 12,
+                                  height: 1.4,
+                                  color: colors.textSecondary,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 10),
+                            SizedBox(
+                              height: scaler.scale(18) * 1.3 * 3,
+                              child: Text(
+                                news.title,
+                                maxLines: 3,
+                                overflow: TextOverflow.ellipsis,
+                                style: AppTypography.textLgBold.copyWith(
+                                  fontSize: 18,
+                                  height: 1.3,
+                                  color: colors.textPrimary,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 10),
+                            SizedBox(
+                              height: scaler.scale(14) * 1.5 * 3,
+                              child: Text(
+                                news.summary,
+                                maxLines: 3,
+                                overflow: TextOverflow.ellipsis,
+                                style: AppTypography.textSmRegular.copyWith(
+                                  fontSize: 14,
+                                  height: 1.5,
+                                  color: colors.textSecondary,
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
-                      ),
-                      const SizedBox(height: 10),
-                      SizedBox(
-                        height: scaler.scale(18) * 1.3 * 3,
-                        child: Text(
-                          news.title,
-                          maxLines: 3,
-                          overflow: TextOverflow.ellipsis,
-                          style: AppTypography.textLgBold.copyWith(
-                            fontSize: 18,
-                            height: 1.3,
-                            color: colors.textPrimary,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 10),
-                      SizedBox(
-                        height: scaler.scale(14) * 1.5 * 3,
-                        child: Text(
-                          news.summary,
-                          maxLines: 3,
-                          overflow: TextOverflow.ellipsis,
-                          style: AppTypography.textSmRegular.copyWith(
-                            fontSize: 14,
-                            height: 1.5,
-                            color: colors.textSecondary,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
                 ),
               ),
             ],
@@ -415,33 +490,41 @@ class _NewsMessage extends StatelessWidget {
   );
 }
 
-class _NewsLoading extends StatelessWidget {
-  const _NewsLoading();
+class _NewsSkeleton extends StatelessWidget {
+  const _NewsSkeleton({required this.compact});
+  final bool compact;
 
   @override
-  Widget build(BuildContext context) => Padding(
-    padding: EdgeInsets.all(hubGutter),
-    child: Column(
-      children: [
-        for (var i = 0; i < 2; i++) ...[
-          AspectRatio(
-            aspectRatio: 16 / 9,
-            child: ColoredBox(color: context.colors.skeleton),
-          ),
-          const SizedBox(height: 16),
-          Align(
-            alignment: Alignment.centerLeft,
-            child: FractionallySizedBox(
-              widthFactor: 0.75,
-              child: SizedBox(
-                height: 20,
-                child: ColoredBox(color: context.colors.skeleton),
+  Widget build(BuildContext context) {
+    final colors = context.colors;
+    Widget bar(double widthFactor) => FractionallySizedBox(
+      widthFactor: widthFactor,
+      child: SizedBox(
+        height: compact ? 14 : 18,
+        child: ColoredBox(color: colors.skeleton),
+      ),
+    );
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(12),
+      child: ColoredBox(
+        color: colors.surface,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            AspectRatio(
+              aspectRatio: compact ? 4 / 3 : 16 / 9,
+              child: ColoredBox(color: colors.skeleton),
+            ),
+            Padding(
+              padding: EdgeInsets.all(compact ? 12 : 16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [bar(0.9), const SizedBox(height: 8), bar(0.6)],
               ),
             ),
-          ),
-          const SizedBox(height: 32),
-        ],
-      ],
-    ),
-  );
+          ],
+        ),
+      ),
+    );
+  }
 }

@@ -19,6 +19,7 @@ ReportGameType? feedReportType(Object? metadata, String pgn, String result) {
     ReportGameType.upsideDown,
     ReportGameType.comeback,
     ReportGameType.greatEscape,
+    ReportGameType.missedChance,
     ReportGameType.oneBlunder,
     ReportGameType.squeeze,
     ReportGameType.domination,

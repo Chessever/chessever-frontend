@@ -155,3 +155,54 @@ begin
   raise notice 'Additive metadata, idempotence, stale-input exclusion, RLS and query plan passed.';
 end;
 $$;
+
+-- Missed Chance widens the writer's allowlist. The backfill's --revisit reads
+-- only current metadata and adds the new story to it.
+do $$ begin
+  perform public.store_report_game_classification('backfill', '1. e4 $247 {[%eval 0.2]} e5 1-0',
+    '{"version":1,"result":"1-0","tags":["missed_chance"]}');
+  raise exception 'missed_chance accepted before its migration';
+exception when raise_exception then
+  assert sqlerrm = 'unknown report game classification';
+end; $$;
+\ir ../migrations/20261029223035_report_game_missed_chance.sql
+\ir ../migrations/20261030062753_report_game_classification_page.sql
+do $$
+begin
+  assert not has_function_privilege('anon', 'store_report_game_classification(text,text,jsonb)', 'execute');
+  assert not has_function_privilege('authenticated', 'store_report_game_classification(text,text,jsonb)', 'execute');
+  assert has_function_privilege('service_role', 'store_report_game_classification(text,text,jsonb)', 'execute');
+  assert to_regprocedure('public.report_games_with_current_classification(integer)') is not null,
+    'The first reader stays: nothing is dropped';
+  assert not has_function_privilege('anon', 'report_game_classification_page(integer,text,integer)', 'execute');
+  assert not has_function_privilege('authenticated', 'report_game_classification_page(integer,text,integer)', 'execute');
+  assert has_function_privilege('service_role', 'report_game_classification_page(integer,text,integer)', 'execute');
+  assert exists (select 1 from public.report_game_classification_page(1, '', 500) r
+    where r.id = 'backfill' and r.current);
+  assert exists (select 1 from public.report_game_classification_page(1, 'hidden', 500) r
+    where r.id = 'new' and not r.current),
+    'A changed PGN comes back stale, so --revisit skips it but pages past it';
+  assert not exists (select 1 from public.report_game_classification_page(2, '', 500) r
+    where r.current);
+  assert (select count(*) from public.report_game_classification_page(1, '', 3)) = 3;
+  assert (select min(r.id) from public.report_game_classification_page(1, 'bulk-5', 2) r) > 'bulk-5';
+  assert not exists (select 1 from public.report_game_classification_page(1, '', 500) r
+    where r.id = 'live'), 'Only finished classified games are read';
+  assert public.store_report_game_classification('backfill', '1. e4 $247 {[%eval 0.2]} e5 1-0',
+    '{"version":1,"result":"1-0","tags":["missed_chance","miniature"],
+      "evidence":[{"type":"missed_chance","fromPly":2,"toPly":2}]}') = 'updated';
+  assert (select count(*) from public.report_games_by_type('missed_chance')) = 1;
+  assert (select report_game_classification->'evidence'->0->>'fromPly'
+    from public.report_games_by_type('missed_chance')) = '2';
+  begin
+    perform public.store_report_game_classification('backfill', '1. e4 $247 {[%eval 0.2]} e5 1-0',
+      '{"version":1,"result":"1-0","tags":["missed_win"]}');
+    raise exception 'unknown label accepted';
+  exception when raise_exception then
+    assert sqlerrm = 'unknown report game classification';
+  end;
+  assert (select report_game_classification->'tags' from games where id = 'backfill')
+    = '["missed_chance","miniature"]';
+  raise notice 'Missed Chance allowlist, filter, evidence and revisit passed.';
+end;
+$$;
