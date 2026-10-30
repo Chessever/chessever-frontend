@@ -1,0 +1,19 @@
+[
+  { "hub": "miniatures", "section": "about", "date": null, "path": "/app/miniatures/about" },
+  { "hub": "miniatures", "section": "games", "date": null, "path": "/app/miniatures/games" },
+  { "hub": "miniatures", "section": "games", "date": "2026-10-28", "path": "/app/miniatures/games?date=2026-10-28" },
+  { "hub": "miniatures", "section": "games", "date": "2028-02-29", "path": "/app/miniatures/games?date=2028-02-29" },
+  { "hub": "miniatures", "section": "players", "date": null, "path": "/app/miniatures/players" },
+  { "hub": "reports", "section": "all", "date": null, "path": "/app/reports/all" },
+  { "hub": "reports", "section": "all", "date": "2026-10-28", "path": "/app/reports/all?date=2026-10-28" },
+  { "hub": "reports", "section": "missed_chance", "date": null, "path": "/app/reports/missed_chance" },
+  { "hub": "reports", "section": "upside_down", "date": "2026-10-28", "path": "/app/reports/upside_down?date=2026-10-28" },
+  { "hub": "reports", "section": "comeback", "date": "2026-10-28", "path": "/app/reports/comeback?date=2026-10-28" },
+  { "hub": "reports", "section": "one_blunder", "date": null, "path": "/app/reports/one_blunder" },
+  { "hub": "reports", "section": "great_escape", "date": "2028-02-29", "path": "/app/reports/great_escape?date=2028-02-29" },
+  { "hub": "reports", "section": "domination", "date": null, "path": "/app/reports/domination" },
+  { "hub": "reports", "section": "squeeze", "date": "2026-10-28", "path": "/app/reports/squeeze?date=2026-10-28" },
+  { "hub": "reports", "section": "deadlock", "date": null, "path": "/app/reports/deadlock" },
+  { "hub": "reports", "section": "miniature", "date": "2026-10-28", "path": "/app/reports/miniature?date=2026-10-28" },
+  { "hub": "reports", "section": "marathon", "date": null, "path": "/app/reports/marathon" }
+]
