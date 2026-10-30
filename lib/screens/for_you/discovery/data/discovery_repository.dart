@@ -9,6 +9,7 @@ import 'package:chessever2/repository/supabase/game/game_repository.dart';
 import 'package:chessever2/repository/supabase/game/games.dart';
 import 'package:chessever2/repository/supabase/tour/tour_repository.dart';
 import 'package:chessever2/screens/chessboard/game_review/saved_game_report.dart';
+import 'package:chessever2/screens/for_you/discovery/data/missed_chance_topic.dart';
 import 'package:chessever2/screens/for_you/discovery/models/discovery_models.dart';
 import 'package:chessever2/screens/for_you/discovery/models/report_game_type.dart';
 import 'package:chessever2/screens/library/miniatures/miniatures_access.dart';
@@ -363,8 +364,20 @@ class DiscoveryRepository {
           Games.fromJson(Map<String, dynamic>.from(raw)),
         );
         if (!game.gameStatus.isFinished) continue;
+        // Topic presentation only: preserve normal reports, stored stories and
+        // every other tab. A later useful miss can replace an excluded first.
+        final miss = gameType == ReportGameType.missedChance
+            ? missedChanceTopicSelection(
+                raw['report_game_classification'],
+                game.pgn!,
+                timeControlText: game.timeControlText,
+              )
+            : null;
+        if (miss != null && !miss.include) continue;
         finished.add(game);
-        final ply = gameType == null
+        final ply = gameType == ReportGameType.missedChance
+            ? miss!.ply
+            : gameType == null
             ? null
             : reportStoryPly(raw['report_game_classification'], gameType);
         if (ply != null) storyPlies[game.gameId] = ply;
