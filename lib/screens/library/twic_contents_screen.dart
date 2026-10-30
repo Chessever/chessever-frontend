@@ -1323,16 +1323,21 @@ class _TwicEventCardState extends State<_TwicEventCard> {
                     isLight ? context.colors.accentText : kPrimaryColor,
                     selectProgress,
                   )!;
-              // Paper: an alpha step under an AA ink falls below AA, so the
-              // count dims through contrast rather than transparency.
+              // The count sits in a nested capsule one tonal step under the
+              // label, like the database tag chips. textInk keeps it at AA on
+              // paper, where a plain alpha step would fall below it.
               final countColor =
-                  isLight
-                      ? Color.lerp(
-                        context.textInk(0.4),
-                        context.colors.accentText,
-                        selectProgress,
-                      )!
-                      : labelColor.withValues(alpha: 0.6);
+                  Color.lerp(
+                    context.textInk(0.55),
+                    isLight ? context.colors.accentText : kPrimaryColor,
+                    selectProgress,
+                  )!;
+              final countFill =
+                  Color.lerp(
+                    context.colors.textPrimary.withValues(alpha: 0.06),
+                    kPrimaryColor.withValues(alpha: 0.12),
+                    selectProgress,
+                  )!;
               final borderWidth = selectProgress * 2.0;
               final selectScale = 1.0 + (selectProgress * 0.04);
               final combinedScale = pressScale * selectScale;
@@ -1378,13 +1383,23 @@ class _TwicEventCardState extends State<_TwicEventCard> {
                         ),
                       ),
                       if (widget.gameCount != null && !widget.isAllCard) ...[
-                        SizedBox(width: 4.w),
-                        Text(
-                          '${widget.gameCount}',
-                          style: AppTypography.textXsRegular.copyWith(
-                            color: countColor,
-                            fontSize: 10.sp,
-                            fontFeatures: const [FontFeature.tabularFigures()],
+                        SizedBox(width: 7.w),
+                        // Label-sized digits; the 20 min width (the line
+                        // height) keeps a single digit a round capsule.
+                        Container(
+                          constraints: BoxConstraints(minWidth: 20.f),
+                          padding: EdgeInsets.symmetric(horizontal: 6.w),
+                          decoration: BoxDecoration(
+                            color: countFill,
+                            borderRadius: BorderRadius.circular(999.br),
+                          ),
+                          child: Text(
+                            '${widget.gameCount}',
+                            textAlign: TextAlign.center,
+                            style: AppTypography.textXsMedium.copyWith(
+                              color: countColor,
+                              fontFeatures: const [FontFeature.tabularFigures()],
+                            ),
                           ),
                         ),
                       ],
