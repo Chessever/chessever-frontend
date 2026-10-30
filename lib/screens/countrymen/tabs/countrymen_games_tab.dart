@@ -17,7 +17,7 @@ import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrap
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/grid_game_card_wrapper_widget.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/live_game_card_provider.dart';
 import 'package:chessever2/theme/app_colors.dart';
-import 'package:chessever2/widgets/paywall/past_game_access.dart';
+import 'package:chessever2/widgets/paywall/premium_game_access.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/scroll_cache.dart';
 import 'package:chessever2/utils/foreground_task_scheduler.dart';
@@ -868,10 +868,7 @@ class _CountrymenGamesTabState extends ConsumerState<CountrymenGamesTab>
           onAdd: () => _showAddToFolderSheet(context, entry.game),
           onLiveAdd: (liveGame) => _showAddToFolderSheet(context, liveGame),
           onLiveTap: (liveGame, updatedGames, liveIndex) async {
-            final allowed = await ensureCountrymenGameAccess(
-              context,
-              liveGame,
-            );
+            final allowed = await ensureCountrymenGameAccess(context);
             if (!allowed || !mounted) return;
             _navigateToChessBoard(liveGame, updatedGames, liveIndex);
           },
@@ -933,10 +930,7 @@ class _CountrymenGamesTabState extends ConsumerState<CountrymenGamesTab>
       // from the card without going through [navigateToChessBoard].
       viewSource: ChessboardView.countryman,
       onChangedWithLiveGames: (updatedGames) async {
-        final allowed = await ensureCountrymenGameAccess(
-          context,
-          updatedGames[gameIndex],
-        );
+        final allowed = await ensureCountrymenGameAccess(context);
         if (!allowed || !mounted) return;
 
         ref
@@ -1196,17 +1190,6 @@ class _CountrymenGamesTabState extends ConsumerState<CountrymenGamesTab>
   }
 }
 
-/// Countrymen games follow the app-wide event rule, as Favorites does: a game
-/// of an event that is still running opens for everyone, and a game of a past
-/// event asks a viewer without Premium to watch an ad or subscribe. Paid and
-/// rewarded viewers open straight away.
-Future<bool> ensureCountrymenGameAccess(
-  BuildContext context,
-  GamesTourModel game,
-) {
-  return ensurePastGameAccess(context, game: game);
-}
-
 abstract class _CountrymenGamesListEntry {
   const _CountrymenGamesListEntry();
 }
@@ -1390,10 +1373,7 @@ class _CountrymenLiveBoardGameCard extends ConsumerStatefulWidget {
 class _CountrymenLiveBoardGameCardState
     extends ConsumerState<_CountrymenLiveBoardGameCard> {
   Future<void> _handleNavigate(List<GamesTourModel> updatedGames) async {
-    final allowed = await ensureCountrymenGameAccess(
-      context,
-      updatedGames[widget.gameIndex],
-    );
+    final allowed = await ensureCountrymenGameAccess(context);
     if (!allowed || !mounted) return;
 
     ref

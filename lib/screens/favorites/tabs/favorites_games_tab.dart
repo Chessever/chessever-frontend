@@ -36,7 +36,7 @@ import 'package:chessever2/widgets/game_filter/game_filter.dart';
 import 'package:chessever2/widgets/app_snack.dart';
 import 'package:chessever2/widgets/auth/auth_upgrade_sheet.dart';
 import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
-import 'package:chessever2/widgets/paywall/past_game_access.dart';
+import 'package:chessever2/widgets/paywall/premium_game_access.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
@@ -1419,7 +1419,7 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
     int gameIndex,
   ) async {
     if (!mounted) return;
-    final allowed = await ensurePastGameAccess(context, game: game);
+    final allowed = await ensureFavoritesGameAccess(context);
     if (!allowed || !mounted) return;
     ref
         .read(gameCardWrapperProvider)

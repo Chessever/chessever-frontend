@@ -1,4 +1,4 @@
-import 'package:chessever2/widgets/paywall/past_game_access.dart';
+import 'package:chessever2/widgets/paywall/premium_game_access.dart';
 import 'dart:async';
 
 import 'package:chessever2/main.dart' show routeObserver;
@@ -1815,7 +1815,7 @@ class _GamesTabState extends ConsumerState<_GamesTab>
   }
 
   Future<bool> _guardGameOpen(BuildContext context, GamesTourModel game) =>
-      ensurePastGameAccess(context, game: game);
+      ensureSmartEventGameAccess(context);
 
   Widget _buildGridGame(
     GamesTourModel game,
@@ -2519,7 +2519,7 @@ class _EventsTabState extends ConsumerState<_EventsTab>
   }
 
   Future<bool> _guardGameOpen(BuildContext context, GamesTourModel game) =>
-      ensurePastGameAccess(context, game: game);
+      ensureSmartEventGameAccess(context);
 
   Widget _buildGridGame({
     required GamesTourModel game,

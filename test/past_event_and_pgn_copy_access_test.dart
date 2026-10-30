@@ -50,6 +50,7 @@ Future<List<bool>> _runGate(
       overrides: [
         premiumAccessProvider.overrideWithValue(premium),
         currentEventMembershipProvider.overrideWith((_, _) async => false),
+        pastEventMembershipProvider.overrideWith((_, _) async => false),
         liveBroadcastIdsProvider.overrideWith((_) => liveIds),
         selectedBroadcastModelProvider.overrideWith((_) => selected),
         ...overrides,
@@ -89,6 +90,7 @@ Future<void> _expectPromptThenDeny(
       overrides: [
         premiumAccessProvider.overrideWithValue(false),
         currentEventMembershipProvider.overrideWith((_, _) async => false),
+        pastEventMembershipProvider.overrideWith((_, _) async => false),
         liveBroadcastIdsProvider.overrideWith((_) => liveIds),
         selectedBroadcastModelProvider.overrideWith((_) => selected),
         ...overrides,
@@ -407,6 +409,41 @@ void main() {
         ),
       );
       expect(results, [true]);
+    });
+
+    testWidgets('a game of a Past-view event asks despite running dates', (
+      tester,
+    ) async {
+      await _expectPromptThenDeny(
+        tester,
+        (context) => ensureEventGameAccess(context, tourId: 'tour'),
+        selected: _event(
+          start: DateTime.now().subtract(const Duration(days: 2)),
+          end: DateTime.now().add(const Duration(days: 2)),
+        ),
+        liveIds: ['event'],
+        overrides: [
+          pastEventMembershipProvider('event').overrideWith((_) async => true),
+        ],
+      );
+    });
+
+    testWidgets('a Past-view event card asks despite running dates', (
+      tester,
+    ) async {
+      await _expectPromptThenDeny(
+        tester,
+        (context) => ensurePastEventAccess(
+          context,
+          broadcast: _event(
+            start: DateTime.now().subtract(const Duration(days: 2)),
+            end: DateTime.now().add(const Duration(days: 2)),
+          ),
+        ),
+        overrides: [
+          pastEventMembershipProvider('event').overrideWith((_) async => true),
+        ],
+      );
     });
 
     testWidgets('Premium access opens a past event game at once', (

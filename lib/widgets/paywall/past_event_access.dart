@@ -25,6 +25,35 @@ final currentEventMembershipProvider = FutureProvider.autoDispose
       }
     });
 
+/// Membership in `group_broadcasts_past`, the view behind Events > Past. A
+/// listed event is past whatever its local dates say. Answers are kept for the
+/// session (past stays past); a failed lookup is unknown and asked again.
+final pastEventMembershipProvider = FutureProvider.autoDispose
+    .family<bool?, String>((ref, id) async {
+      try {
+        final past = await ref
+            .read(groupBroadcastRepositoryProvider)
+            .isPastGroupBroadcast(id);
+        ref.keepAlive();
+        return past;
+      } catch (_) {
+        return null;
+      }
+    });
+
+Future<bool> _isPastViewEvent(ProviderContainer container, String id) async {
+  if (isVirtualGamebaseId(id)) return false;
+  final subscription = container.listen(
+    pastEventMembershipProvider(id).future,
+    (_, _) {},
+  );
+  try {
+    return await subscription.read() == true;
+  } finally {
+    subscription.close();
+  }
+}
+
 Future<bool?> _isCurrentEvent(ProviderContainer container, String id) async {
   if (isVirtualGamebaseId(id)) return false;
   final subscription = container.listen(
@@ -88,6 +117,11 @@ Future<bool> ensurePastEventAccess(
   if (!context.mounted) return false;
   final container = ProviderScope.containerOf(context, listen: false);
   if (container.read(premiumAccessProvider)) return true;
+  if (await _isPastViewEvent(container, broadcast.id)) {
+    if (!context.mounted) return false;
+    return _askForPastEvent(context);
+  }
+  if (!context.mounted) return false;
   if (_liveEventIds(container).contains(broadcast.id)) return true;
   if (!past) {
     var start = broadcast.dateStart;
@@ -119,12 +153,21 @@ Future<bool> ensurePastEventAccess(
   }
   if (await _isCurrentEvent(container, broadcast.id) != false) return true;
   if (!context.mounted) return false;
-  return ensurePremiumGameAccess(
-    context,
-    featureId: 'past_events',
-    returnTo: 'events/past',
-  );
+  return _askForPastEvent(context);
 }
+
+Future<bool> _askForPastEvent(BuildContext context) => ensurePremiumGameAccess(
+  context,
+  featureId: 'past_events',
+  returnTo: 'events/past',
+);
+
+Future<bool> _askForPastEventGame(BuildContext context) =>
+    ensurePremiumGameAccess(
+      context,
+      featureId: 'past_event_games',
+      returnTo: 'events/past/games',
+    );
 
 /// Opening a game of the event on screen asks for Premium when that event
 /// is past, however the viewer reached it (search, a favourite, a link).
@@ -139,9 +182,6 @@ Future<bool> ensureEventGameAccess(
   if (container.read(premiumAccessProvider)) return true;
   final selected = container.read(selectedBroadcastModelProvider);
   if (selected == null) return true;
-  if (_liveEventIds(container).contains(selected.id)) {
-    return true;
-  }
   final detail = container.exists(tourDetailScreenProvider)
       ? container.read(tourDetailScreenProvider).valueOrNull
       : null;
@@ -149,6 +189,14 @@ Future<bool> ensureEventGameAccess(
   if (tourId != null &&
       tours.isNotEmpty &&
       !tours.any((tour) => tour.tour.id == tourId)) {
+    return true;
+  }
+  if (await _isPastViewEvent(container, selected.id)) {
+    if (!context.mounted) return false;
+    return _askForPastEventGame(context);
+  }
+  if (!context.mounted) return false;
+  if (_liveEventIds(container).contains(selected.id)) {
     return true;
   }
   // Some routes (a favourite, a shortcut) open the event from a row with no
@@ -185,9 +233,5 @@ Future<bool> ensureEventGameAccess(
   if (!past) return true;
   if (await _isCurrentEvent(container, selected.id) != false) return true;
   if (!context.mounted) return false;
-  return ensurePremiumGameAccess(
-    context,
-    featureId: 'past_event_games',
-    returnTo: 'events/past/games',
-  );
+  return _askForPastEventGame(context);
 }

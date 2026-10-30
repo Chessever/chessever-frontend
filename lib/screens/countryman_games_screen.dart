@@ -15,6 +15,7 @@ import 'package:chessever2/screens/tour_detail/games_tour/widgets/games_tour_con
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/game_card_wrapper_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/live_game_card_provider.dart';
 import 'package:chessever2/widgets/generic_error_widget.dart';
+import 'package:chessever2/widgets/paywall/premium_game_access.dart';
 import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
 import 'package:chessever2/widgets/screen_wrapper.dart';
 import 'package:flutter/material.dart';
@@ -148,8 +149,12 @@ class _CountrymanGamesListState extends ConsumerState<CountrymanGamesList>
     }
   }
 
-  void _openChessBoard(List<GamesTourModel> updatedGames, int index) {
-    if (!mounted) return;
+  Future<void> _openChessBoard(
+    List<GamesTourModel> updatedGames,
+    int index,
+  ) async {
+    final allowed = await ensureCountrymenGameAccess(context);
+    if (!allowed || !mounted) return;
     ref
         .read(gameCardWrapperProvider)
         .navigateToChessBoard(

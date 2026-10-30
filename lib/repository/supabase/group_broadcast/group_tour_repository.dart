@@ -432,6 +432,19 @@ class GroupBroadcastRepository extends BaseRepository {
     });
   }
 
+  /// Whether [id] is a row of `group_broadcasts_past`, the view behind
+  /// Events > Past.
+  Future<bool> isPastGroupBroadcast(String id) async {
+    return handleApiCall(() async {
+      final row = await supabase
+          .from('group_broadcasts_past')
+          .select('id')
+          .eq('id', id)
+          .maybeSingle();
+      return row != null;
+    });
+  }
+
   Future<GroupBroadcast> getPastGroupBroadcastById(String id) async {
     return handleApiCall(() async {
       final response =

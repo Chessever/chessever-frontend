@@ -1,4 +1,4 @@
-import 'package:chessever2/widgets/paywall/past_game_access.dart';
+import 'package:chessever2/widgets/paywall/premium_game_access.dart';
 import 'dart:io' as io;
 import 'dart:math' as math;
 import 'package:chessever2/e2e/e2e_ids.dart';
@@ -1079,12 +1079,20 @@ class _ScoreCardPage extends ConsumerWidget {
                       final result = _getPlayerResult(game, isWhite);
 
                       Future<void> openGame() async {
-                        if (ref.read(chessboardViewFromProviderNew) ==
-                            ChessboardView.smartEvent) {
-                          final allowed = await ensurePastGameAccess(
-                            context,
-                            game: game,
-                          );
+                        // Smart Event, Countrymen and Favorites games always
+                        // ask, live ones included; the rest follow the event.
+                        final sourceGate =
+                            switch (ref.read(chessboardViewFromProviderNew)) {
+                              ChessboardView.smartEvent =>
+                                ensureSmartEventGameAccess,
+                              ChessboardView.countryman =>
+                                ensureCountrymenGameAccess,
+                              ChessboardView.favorites =>
+                                ensureFavoritesGameAccess,
+                              _ => null,
+                            };
+                        if (sourceGate != null) {
+                          final allowed = await sourceGate(context);
                           if (!allowed || !context.mounted) return;
                         } else if (hasEventContext) {
                           final allowed = await ensureEventGameAccess(

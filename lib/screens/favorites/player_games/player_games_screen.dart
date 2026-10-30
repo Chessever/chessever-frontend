@@ -10,7 +10,7 @@ import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/user_error_message.dart';
 import 'package:chessever2/widgets/skeleton_widget.dart';
 import 'package:chessever2/widgets/generic_error_widget.dart';
-import 'package:chessever2/widgets/paywall/past_game_access.dart';
+import 'package:chessever2/widgets/paywall/premium_game_access.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:chessever2/theme/app_colors.dart';
@@ -307,7 +307,7 @@ class _PlayerGamesScreenState extends ConsumerState<PlayerGamesScreen> {
               gameIndex: gameIdx,
               isChessBoardVisible: false,
               navigationListPolicy: BoardNavigationListPolicy.preserve,
-              onBeforeOpen: () => ensurePastGameAccess(context, game: game),
+              onBeforeOpen: () => ensureFavoritesGameAccess(context),
               onReturnFromChessboard: (returnedIndex) {},
             ),
           );

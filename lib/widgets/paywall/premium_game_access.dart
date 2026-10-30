@@ -22,3 +22,31 @@ Future<bool> ensurePremiumGameAccess(
     returnTo: returnTo,
   );
 }
+
+/// Every Countrymen game, live ones included, asks a viewer without Premium to
+/// watch an ad or subscribe before it opens.
+Future<bool> ensureCountrymenGameAccess(BuildContext context) =>
+    ensurePremiumGameAccess(
+      context,
+      featureId: 'countrymen',
+      returnTo: 'countrymen/games',
+    );
+
+/// Every Favorites game, live ones included, asks a viewer without Premium to
+/// watch an ad or subscribe before it opens.
+Future<bool> ensureFavoritesGameAccess(BuildContext context) =>
+    ensurePremiumGameAccess(
+      context,
+      featureId: 'favorites_games',
+      returnTo: 'favorites/games',
+    );
+
+/// Building and browsing a Smart Event is free; opening any of its games,
+/// live ones included, asks a viewer without Premium to watch an ad or
+/// subscribe.
+Future<bool> ensureSmartEventGameAccess(BuildContext context) =>
+    ensurePremiumGameAccess(
+      context,
+      featureId: 'smart_event_games',
+      returnTo: 'smart_event/games',
+    );
