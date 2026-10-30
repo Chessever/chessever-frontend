@@ -1,6 +1,8 @@
 import 'dart:convert';
 import 'dart:math' as math;
 
+import 'package:crypto/crypto.dart';
+
 import 'package:chessever2/repository/gamebase/gamebase_repository.dart';
 import 'package:chessever2/repository/gamebase/miniatures/miniatures_models.dart';
 import 'package:chessever2/repository/supabase/game/game_repository.dart';
@@ -270,20 +272,26 @@ class DiscoveryRepository {
     ReportGameType? gameType,
   }) async {
     if (pageSize <= 0) return const AnalyzedGamesPage(items: []);
-    // All keeps its exact existing query, including on older backends. The
-    // optional RPC filters the entire archive and excludes metadata whose PGN
-    // changed. It returns SETOF games, preserving embedded tour relationships.
-    final source = gameType == null
-        ? client().from('games').select(_analyzedGameColumns)
-        : client().rpc<List<Map<String, dynamic>>>(
-            'report_games_by_type',
-            params: {'p_type': gameType.key},
-            get: true,
-          );
-    var query = source
+    // All keeps its exact existing query, including on older backends. A type
+    // reads the same table by tag. `report_games_by_type` is not called: since
+    // 2026-10-30 production refuses any filter or order on it (42703), and the
+    // fix may not touch the server, so its result and PGN binding are checked
+    // per row below (`reportClassificationBinds`) instead.
+    var query = client()
+        .from('games')
+        .select(
+          gameType == null
+              ? _analyzedGameColumns
+              : '$_analyzedGameColumns, report_game_classification',
+        )
         .inFilter('status', _kFinalStatuses.toList(growable: false))
         .like('pgn', r'%[\%eval %')
         .or(r'pgn.like.%$24%,pgn.ilike.%chessever_annotation%');
+    if (gameType != null) {
+      query = query.contains('report_game_classification', {
+        'tags': [gameType.key],
+      });
+    }
     if (since != null) {
       query = query.gte('last_move_time', since.toUtc().toIso8601String());
     }
@@ -309,10 +317,7 @@ class DiscoveryRepository {
     final stopwatch = Stopwatch()..start();
     final List<Map<String, dynamic>> rows;
     try {
-      final selected = gameType == null
-          ? query
-          : query.select('$_analyzedGameColumns, report_game_classification');
-      rows = await selected
+      rows = await query
           .order('last_move_time', ascending: false)
           .order('id', ascending: true)
           .limit(pageSize)
@@ -322,7 +327,11 @@ class DiscoveryRepository {
     } catch (error) {
       if (gameType != null &&
           error is PostgrestException &&
-          (error.code == 'PGRST202' || error.code == '42883')) {
+          // A backend without the classification column (42703) or, from older
+          // builds' point of view, without the function has no type filters.
+          (error.code == 'PGRST202' ||
+              error.code == '42883' ||
+              error.code == '42703')) {
         throw const ReportGameTypesUnavailable();
       }
       final cause = error is PostgrestException
@@ -340,7 +349,14 @@ class DiscoveryRepository {
     for (final raw in rows) {
       try {
         if (!_kFinalStatuses.contains(raw['status']) ||
-            !hasSavedGameReport(raw['pgn'])) {
+            !hasSavedGameReport(raw['pgn']) ||
+            (gameType != null &&
+                !reportClassificationBinds(
+                  raw['report_game_classification'],
+                  gameType,
+                  pgn: raw['pgn'],
+                  status: raw['status'],
+                ))) {
           continue;
         }
         final game = GamesTourModel.fromGame(
@@ -533,6 +549,25 @@ const String _gameListColumnsWithoutPgn = '''
             group_broadcasts!tours_group_broadcast_id_fkey(time_control)
           )
         ''';
+
+/// What `report_games_by_type` checked on the server: the classification is
+/// tagged [type], and its stored result and PGN hash are still this game's.
+/// A classification left behind by an edited result or PGN never lists.
+bool reportClassificationBinds(
+  Object? classification,
+  ReportGameType type, {
+  required Object? pgn,
+  required Object? status,
+}) {
+  if (classification is! Map || pgn is! String || status is! String) {
+    return false;
+  }
+  final tags = classification['tags'];
+  return tags is List &&
+      tags.contains(type.key) &&
+      classification['result'] == status &&
+      classification['pgnHash'] == md5.convert(utf8.encode(pgn)).toString();
+}
 
 /// Broadcast card metadata and the existing PGN used to recognize saved reports.
 /// The first ply of [type]'s evidence in a stored report classification.
