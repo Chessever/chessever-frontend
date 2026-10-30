@@ -62,12 +62,6 @@ class _TwicContentsScreenState extends ConsumerState<TwicContentsScreen>
   final ScrollController _scrollController = ScrollController();
   final ScrollController _chipScrollController = ScrollController();
 
-  // Scroll-collapse state
-  bool _showChipRow = true;
-  double _lastScrollOffset = 0.0;
-  double _scrollAccumulator = 0.0;
-  static const _scrollCollapseThreshold = 40.0;
-
   Timer? _debounceTimer;
   static const _debounceDuration = Duration(milliseconds: 350);
 
@@ -159,32 +153,6 @@ class _TwicContentsScreenState extends ConsumerState<TwicContentsScreen>
             .read(gamebaseDatabaseGamesPaginatedProvider.notifier)
             .loadNextPage();
       }
-    }
-
-    // Scroll-collapse direction detection
-    final offset = _scrollController.position.pixels;
-    final delta = offset - _lastScrollOffset;
-    _lastScrollOffset = offset;
-
-    // Force show at top
-    if (offset <= 0) {
-      if (!_showChipRow) setState(() => _showChipRow = true);
-      _scrollAccumulator = 0.0;
-      return;
-    }
-
-    // Reset accumulator on direction change
-    if ((delta > 0 && _scrollAccumulator < 0) ||
-        (delta < 0 && _scrollAccumulator > 0)) {
-      _scrollAccumulator = 0.0;
-    }
-    _scrollAccumulator += delta;
-
-    if (_scrollAccumulator > _scrollCollapseThreshold && _showChipRow) {
-      setState(() => _showChipRow = false);
-    } else if (_scrollAccumulator < -_scrollCollapseThreshold &&
-        !_showChipRow) {
-      setState(() => _showChipRow = true);
     }
   }
 
@@ -567,59 +535,36 @@ class _TwicContentsScreenState extends ConsumerState<TwicContentsScreen>
 
     final searchQuery = ref.watch(librarySearchQueryProvider).trim();
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
+    // One scroll view for everything below the search: pinned above the list,
+    // the player cards, chips and event detail left the games a third of the
+    // screen, and a drag anywhere on them did nothing.
+    return CustomScrollView(
+      controller: _scrollController,
+      slivers: [
         // ── Player search cards (above chip row, mirrors home page) ──
         if (searchQuery.isNotEmpty)
-          TwicPlayerSearchCards(searchQuery: searchQuery),
+          SliverToBoxAdapter(
+            child: TwicPlayerSearchCards(searchQuery: searchQuery),
+          ),
 
-        // ── Collapsible chip row + detail bar ──
-        _buildCollapsibleHeader(
-          eventRow: eventRow,
-          selectedItem: selectedItem,
-          horizontalPadding: horizontalPadding,
+        // ── Chip row + detail bar ──
+        SliverToBoxAdapter(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              eventRow,
+              _buildSelectedEventDetailBar(
+                selectedItem: selectedItem,
+                horizontalPadding: horizontalPadding,
+              ),
+            ],
+          ),
         ),
 
         // ── Games list (keeps previous content while loading new results) ──
-        Expanded(child: _buildGamesList(paginationState, horizontalPadding)),
+        _buildGamesList(paginationState, horizontalPadding),
       ],
-    );
-  }
-
-  // ---------------------------------------------------------------------------
-  // Collapsible header — scroll-linked collapse of chip row + detail bar
-  // ---------------------------------------------------------------------------
-
-  Widget _buildCollapsibleHeader({
-    required Widget eventRow,
-    required _TwicEventDisplayItem? selectedItem,
-    required double horizontalPadding,
-  }) {
-    return SingleMotionBuilder(
-      motion: const CupertinoMotion.snappy(),
-      value: _showChipRow ? 1.0 : 0.0,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          eventRow,
-          _buildSelectedEventDetailBar(
-            selectedItem: selectedItem,
-            horizontalPadding: horizontalPadding,
-          ),
-        ],
-      ),
-      builder: (context, progress, child) {
-        final clamped = progress.clamp(0.0, 1.0);
-        return ClipRect(
-          child: Align(
-            heightFactor: clamped,
-            alignment: Alignment.topCenter,
-            child: Opacity(opacity: clamped, child: child),
-          ),
-        );
-      },
     );
   }
 
@@ -635,37 +580,22 @@ class _TwicContentsScreenState extends ConsumerState<TwicContentsScreen>
 
     // Error with no games at all
     if (paginationState.error != null && games.isEmpty) {
-      return Center(
-        child: Padding(
-          padding: EdgeInsets.symmetric(horizontal: 32.w),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                Icons.error_outline_rounded,
-                size: 40.sp,
-                color: context.textInk(0.3),
-              ),
-              SizedBox(height: 12.h),
-              Text(
-                'Search failed',
-                style: AppTypography.textSmRegular.copyWith(
-                  color: context.colors.textSecondary,
-                ),
-              ),
-            ],
-          ),
-        ),
+      return SliverFillRemaining(
+        hasScrollBody: false,
+        child: _buildErrorState(),
       );
     }
 
     // No games and not loading — empty state
     if (games.isEmpty && !paginationState.isLoading) {
-      return Center(
-        child: Text(
-          'No games found',
-          style: AppTypography.textSmRegular.copyWith(
-            color: context.colors.textSecondary,
+      return SliverFillRemaining(
+        hasScrollBody: false,
+        child: Center(
+          child: Text(
+            'No games found',
+            style: AppTypography.textSmRegular.copyWith(
+              color: context.colors.textSecondary,
+            ),
           ),
         ),
       );
@@ -673,53 +603,79 @@ class _TwicContentsScreenState extends ConsumerState<TwicContentsScreen>
 
     // Initial load — show skeleton game cards
     if (games.isEmpty && paginationState.isLoading) {
-      return _buildSkeletonGamesList(horizontalPadding);
+      return SliverFillRemaining(
+        child: _buildSkeletonGamesList(horizontalPadding),
+      );
     }
 
     final itemCount = games.length + (paginationState.hasMore ? 1 : 0);
-    Widget list = ListView.separated(
-      controller: _scrollController,
+    return SliverPadding(
       padding: EdgeInsets.fromLTRB(
         horizontalPadding,
         0,
         horizontalPadding,
         100.h,
       ),
-      itemCount: itemCount,
-      separatorBuilder: (_, __) => SizedBox(height: 12.h),
-      itemBuilder: (context, index) {
-        // Load-more indicator at the end
-        if (index >= games.length) {
-          return Padding(
-            padding: EdgeInsets.symmetric(vertical: 16.h),
-            child: Center(
-              child: SizedBox(
-                width: 24,
-                height: 24,
-                child: CircularProgressIndicator(
-                  color: context.colors.textPrimary,
-                  strokeWidth: 2,
+      sliver: SliverList.separated(
+        itemCount: itemCount,
+        separatorBuilder: (_, __) => SizedBox(height: 12.h),
+        itemBuilder: (context, index) {
+          // Load-more indicator at the end
+          if (index >= games.length) {
+            return Padding(
+              padding: EdgeInsets.symmetric(vertical: 16.h),
+              child: Center(
+                child: SizedBox(
+                  width: 24,
+                  height: 24,
+                  child: CircularProgressIndicator(
+                    color: context.colors.textPrimary,
+                    strokeWidth: 2,
+                  ),
                 ),
               ),
-            ),
+            );
+          }
+
+          final game = games[index];
+          return GamebaseSearchGameCard(
+            game: game,
+            allGames: games,
+            gameIndex: index,
+            animationIndex: index,
+            onAdd: () => showAddToFolderSheet(context: context, game: game),
+            showSwipeHint: index == 0,
+            hideEventInfo: false,
+            playerProfileDataSource: PlayerProfileDataSource.twic,
           );
-        }
-
-        final game = games[index];
-        return GamebaseSearchGameCard(
-          game: game,
-          allGames: games,
-          gameIndex: index,
-          animationIndex: index,
-          onAdd: () => showAddToFolderSheet(context: context, game: game),
-          showSwipeHint: index == 0,
-          hideEventInfo: false,
-          playerProfileDataSource: PlayerProfileDataSource.twic,
-        );
-      },
+        },
+      ),
     );
+  }
 
-    return list;
+  Widget _buildErrorState() {
+    return Center(
+      child: Padding(
+        padding: EdgeInsets.symmetric(horizontal: 32.w),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.error_outline_rounded,
+              size: 40.sp,
+              color: context.textInk(0.3),
+            ),
+            SizedBox(height: 12.h),
+            Text(
+              'Search failed',
+              style: AppTypography.textSmRegular.copyWith(
+                color: context.colors.textSecondary,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   Widget _buildSkeletonGamesList(double horizontalPadding) {
