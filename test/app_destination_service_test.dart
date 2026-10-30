@@ -1,4 +1,18 @@
 import 'dart:async';
+import 'package:chessever2/screens/library/library_screen.dart';
+import 'package:chessever2/screens/my_prep/my_prep_home_screen.dart';
+import 'package:chessever2/screens/my_likes/my_likes_screen.dart';
+
+import 'package:chessever2/screens/for_you/discovery/data/discovery_repository.dart';
+import 'package:chessever2/screens/for_you/discovery/models/report_game_type.dart';
+import 'package:chessever2/screens/for_you/discovery/providers/reports_provider.dart';
+import 'package:chessever2/repository/gamebase/gamebase_repository.dart';
+import 'package:chessever2/repository/gamebase/miniatures/miniatures_models.dart';
+import 'package:chessever2/screens/library/miniatures/miniatures_mode_provider.dart';
+import 'package:chessever2/screens/library/providers/miniatures_provider.dart';
+import 'package:chessever2/screens/for_you/discovery/likes_screen.dart';
+import 'package:chessever2/screens/for_you/discovery/models/discovery_models.dart';
+import 'package:chessever2/screens/for_you/discovery/providers/discovery_providers.dart';
 
 import 'package:chessever2/screens/favorites/favorites_tab_screen.dart';
 import 'package:chessever2/screens/favorites/provider/favorites_mode_provider.dart';
@@ -10,6 +24,40 @@ import 'package:chessever2/services/app_destination_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+
+class _MiniaturesRepo extends Fake implements GamebaseRepository {
+  final filters = <MiniatureGamesFilter>[];
+  @override
+  Future<GamebaseMiniaturesPage> getMiniatures({
+    MiniatureGamesFilter filter = MiniatureGamesFilter.defaultFilter,
+    int limit = 50,
+    int offset = 0,
+  }) async {
+    filters.add(filter);
+    return const GamebaseMiniaturesPage(
+      items: [],
+      total: 0,
+      limit: 50,
+      offset: 0,
+    );
+  }
+}
+
+class _ReportsRepo extends Fake implements DiscoveryRepository {
+  final requests =
+      <({ReportGameType? type, DateTime? since, DateTime? until})>[];
+  @override
+  Future<AnalyzedGamesPage> fetchAnalyzedGamesPage({
+    int pageSize = 30,
+    AnalyzedGamesCursor? after,
+    DateTime? since,
+    DateTime? until,
+    ReportGameType? gameType,
+  }) async {
+    requests.add((type: gameType, since: since, until: until));
+    return const AnalyzedGamesPage(items: []);
+  }
+}
 
 void main() {
   late BuildContext context;
@@ -30,32 +78,38 @@ void main() {
     entitled = true;
   });
 
-  Future<void> host(WidgetTester tester) => tester.pumpWidget(
-    ProviderScope(
-      overrides: [
-        appDestinationPageNavigationProvider.overrideWithValue((_, page, name) {
-          opened.add(page);
-          routeNames.add(name);
-        }),
-        appDestinationAccessRequestProvider.overrideWithValue((
-          _,
-          feature,
-        ) async {
-          requestedFeatures.add(feature);
-          return entitled;
-        }),
-      ],
-      child: MaterialApp(
-        home: Consumer(
-          builder: (ctx, widgetRef, _) {
-            context = ctx;
-            ref = widgetRef;
-            return const SizedBox.shrink();
-          },
+  Future<void> host(WidgetTester tester, {List<Override> extra = const []}) =>
+      tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            ...extra,
+            appDestinationPageNavigationProvider.overrideWithValue((
+              _,
+              page,
+              name,
+            ) {
+              opened.add(page);
+              routeNames.add(name);
+            }),
+            appDestinationAccessRequestProvider.overrideWithValue((
+              _,
+              feature,
+            ) async {
+              requestedFeatures.add(feature);
+              return entitled;
+            }),
+          ],
+          child: MaterialApp(
+            home: Consumer(
+              builder: (ctx, widgetRef, _) {
+                context = ctx;
+                ref = widgetRef;
+                return const SizedBox.shrink();
+              },
+            ),
+          ),
         ),
-      ),
-    ),
-  );
+      );
 
   Future<bool> open(String raw) => openAppDestination(
     context,
@@ -68,6 +122,163 @@ void main() {
     openInboxMessage: (id) async {
       inboxIds.add(id);
       return true;
+    },
+  );
+
+  testWidgets('My Space components open the matching personal pages', (
+    tester,
+  ) async {
+    await host(tester);
+    expect(await open('/app/my-space/prep'), isTrue);
+    expect(opened.last, isA<MyPrepHomeScreen>());
+    expect(await open('/app/my-space/likes'), isTrue);
+    expect(opened.last, isA<MyLikesScreen>());
+    expect(await open('/app/my-space/library'), isTrue);
+    expect(
+      ((opened.last as Scaffold).body! as LibraryScreen).databasesOnly,
+      isTrue,
+    );
+    expect(await open('/app/library'), isTrue);
+    expect((opened.last as LibraryScreen).databasesOnly, isFalse);
+  });
+
+  testWidgets(
+    'Reports links retain the Premium gate and scope type/date into the query',
+    (tester) async {
+      final repo = _ReportsRepo();
+      await host(
+        tester,
+        extra: [discoveryRepositoryProvider.overrideWithValue(repo)],
+      );
+      final parent = ProviderScope.containerOf(context, listen: false);
+      ref.read(reportsGameTypeProvider.notifier).state =
+          ReportGameType.marathon;
+      ref.read(reportsDateProvider.notifier).state = DateTime.utc(2026, 9, 1);
+      final rootSubscription = parent.listen(reportsGamesProvider, (_, __) {});
+      await tester.pump();
+      for (final type in <ReportGameType?>[null, ...ReportGameType.values]) {
+        opened.clear();
+        expect(
+          await open('/app/reports/${type?.key ?? 'all'}?date=2026-10-28'),
+          isTrue,
+        );
+        final scope = opened.single as ProviderScope;
+        final child = ProviderContainer(
+          parent: parent,
+          overrides: scope.overrides,
+        );
+        final subscription = child.listen(reportsGamesProvider, (_, __) {});
+        await tester.pump(const Duration(milliseconds: 1));
+        expect(child.read(reportsGameTypeProvider), type);
+        expect(child.read(reportsDateProvider), DateTime.utc(2026, 10, 28));
+        expect(repo.requests.last, (
+          type: type,
+          since: DateTime.utc(2026, 10, 28),
+          until: DateTime.utc(2026, 10, 29),
+        ));
+        expect(parent.read(reportsGameTypeProvider), ReportGameType.marathon);
+        expect(parent.read(reportsDateProvider), DateTime.utc(2026, 9, 1));
+        subscription.close();
+        child.dispose();
+        await tester.pump(const Duration(milliseconds: 1));
+      }
+      opened.clear();
+      entitled = false;
+      expect(await open('/app/reports/comeback?date=2026-10-28'), isTrue);
+      expect(opened, isEmpty);
+      expect(requestedFeatures, everyElement('game_reports'));
+      rootSubscription.close();
+      await tester.pump(const Duration(milliseconds: 1));
+    },
+  );
+
+  testWidgets(
+    'Miniatures links scope the tab and date and feed the paginated query',
+    (tester) async {
+      final repo = _MiniaturesRepo();
+      await host(
+        tester,
+        extra: [gamebaseRepositoryProvider.overrideWithValue(repo)],
+      );
+      final parent = ProviderScope.containerOf(context, listen: false);
+      final parentListener = parent.listen(miniatureGamesProvider, (_, __) {});
+      ref.read(miniaturesFilterProvider.notifier).state =
+          const MiniatureGamesFilter(search: 'old filter');
+      final playerQueryListener = parent.listen(
+        miniaturePlayersQueryProvider,
+        (_, __) {},
+      );
+      ref.read(miniaturePlayersQueryProvider.notifier).state =
+          const MiniaturePlayersQuery(search: 'old player');
+      await tester.pump();
+      for (final tab in MiniaturesScreenMode.values) {
+        opened.clear();
+        final date = tab == MiniaturesScreenMode.games ? '2026-10-28' : null;
+        expect(
+          await open(
+            '/app/miniatures/${tab.name}${date == null ? '' : '?date=$date'}',
+          ),
+          isTrue,
+        );
+        final scope = opened.single as ProviderScope;
+        final child = ProviderContainer(
+          parent: parent,
+          overrides: scope.overrides,
+        );
+        final gamesListener = child.listen(miniatureGamesProvider, (_, __) {});
+        await tester.pump();
+        expect(child.read(selectedMiniaturesModeProvider), tab);
+        expect(child.read(miniaturesFilterProvider).dateFrom, date);
+        expect(child.read(miniaturesFilterProvider).dateTo, date);
+        expect(child.read(miniaturesFilterProvider).search, isNull);
+        expect(child.read(miniaturePlayersQueryProvider).search, isNull);
+        expect(parent.read(miniaturePlayersQueryProvider).search, 'old player');
+        expect(repo.filters.last.dateFrom, date);
+        expect(repo.filters.last.dateTo, date);
+        expect(
+          repo.filters.last.queryParameters(limit: 50, offset: 0)['dateFrom'],
+          date,
+        );
+        expect(parent.read(miniaturesFilterProvider).search, 'old filter');
+        gamesListener.close();
+        child.dispose();
+        await tester.pump(const Duration(milliseconds: 1));
+      }
+      parentListener.close();
+      playerQueryListener.close();
+      await tester.pump(const Duration(milliseconds: 1));
+    },
+  );
+
+  testWidgets(
+    'Likes destination restores period, range and Players in its own scope',
+    (tester) async {
+      await host(tester);
+      ref.read(mostLikedDayProvider.notifier).state = DateTime(2026, 8, 1);
+      expect(
+        await open('/app/likes/month?date=2026-09-23&view=players'),
+        isTrue,
+      );
+      final scope = opened.single as ProviderScope;
+      final container = ProviderContainer(overrides: scope.overrides);
+      addTearDown(container.dispose);
+      expect(container.read(mostLikedPeriodProvider), MostLikedPeriod.month);
+      expect(
+        MostLikedQuery(
+          container.read(mostLikedPeriodProvider),
+          container.read(mostLikedDayProvider)!,
+        ).start,
+        DateTime(2026, 9),
+      );
+      expect((scope.child as LikesScreen).initialView, MostLikedView.players);
+      expect(ref.read(mostLikedDayProvider), DateTime(2026, 8, 1));
+      opened.clear();
+      expect(await open('/app/likes/week'), isTrue);
+      final currentScope = opened.single as ProviderScope;
+      final current = ProviderContainer(overrides: currentScope.overrides);
+      addTearDown(current.dispose);
+      expect(current.read(mostLikedDayProvider), isNull);
+      expect(current.read(mostLikedPeriodProvider), MostLikedPeriod.week);
     },
   );
 

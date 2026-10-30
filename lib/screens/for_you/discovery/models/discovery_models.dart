@@ -188,6 +188,20 @@ class MostLikedQuery {
   DateTime day,
 ) => MostLikedQuery(period, day).window;
 
+/// Section links follow the current period; date links pin a calendar window.
+Uri mostLikedShareUri(
+  MostLikedPeriod period, {
+  DateTime? date,
+  MostLikedView view = MostLikedView.games,
+}) => Uri.https('chessever.com', '/app/likes/${period.name}', {
+  if (date != null)
+    'date': mostLikedPeriodStart(
+      period,
+      date,
+    ).toIso8601String().split('T').first,
+  'view': view.name,
+});
+
 /// One ranked row as the backend returns it: a game id and its like count.
 @immutable
 class MostLikedCount {
@@ -262,6 +276,7 @@ List<MostLikedEntry> assembleMostLikedEntries({
   required List<MostLikedCount> counts,
   required Map<String, GamesTourModel> gamesById,
   Map<String, String> eventNamesByTourId = const {},
+  int rankOffset = 0,
 }) {
   final entries = <MostLikedEntry>[];
   for (var i = 0; i < counts.length; i++) {
@@ -273,7 +288,7 @@ List<MostLikedEntry> assembleMostLikedEntries({
         (game.source == GameSource.gamebase ? game.tourId.trim() : null);
     entries.add(
       MostLikedEntry(
-        rank: i + 1,
+        rank: rankOffset + i + 1,
         likes: count.likes,
         game: game,
         eventName: (event == null || event.isEmpty) ? null : event,
@@ -380,18 +395,24 @@ enum MostLikedStatus {
   premiumRequired,
 }
 
+typedef MostLikedCursor = ({int likes, String gameId, int rank});
+
 @immutable
 class MostLikedResult {
-  const MostLikedResult.ranked(this.entries) : status = MostLikedStatus.ranked;
+  const MostLikedResult.ranked(this.entries, {this.nextCursor})
+    : status = MostLikedStatus.ranked;
 
   const MostLikedResult.notLive()
     : entries = const <MostLikedEntry>[],
+      nextCursor = null,
       status = MostLikedStatus.notLive;
 
   const MostLikedResult.premiumRequired()
     : entries = const <MostLikedEntry>[],
+      nextCursor = null,
       status = MostLikedStatus.premiumRequired;
 
+  final MostLikedCursor? nextCursor;
   final MostLikedStatus status;
   final List<MostLikedEntry> entries;
 }

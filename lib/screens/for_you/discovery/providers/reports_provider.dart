@@ -56,23 +56,29 @@ final reportsGameTypeProvider = StateProvider.autoDispose<ReportGameType?>(
   (ref) => null,
 );
 
+/// UTC calendar day from a shared date heading; null browses every day.
+final reportsDateProvider = StateProvider.autoDispose<DateTime?>((ref) => null);
+
 final reportsPaginationProvider =
     StateNotifierProvider.autoDispose<
       ReportsPaginationNotifier,
       ReportsPaginationState
     >((ref) {
       final gameType = ref.watch(reportsGameTypeProvider);
+      final day = ref.watch(reportsDateProvider);
+      final useFirstPageCache = gameType == null && day == null;
       return ReportsPaginationNotifier(
         ref.watch(discoveryRepositoryProvider),
         gameType: gameType,
-        firstPage: gameType == null
+        day: day,
+        firstPage: useFirstPageCache
             ? ref.read(reportsFirstPageProvider.future)
             : null,
-        reloadFirstPage: gameType == null
+        reloadFirstPage: useFirstPageCache
             ? () => ref.refresh(reportsFirstPageProvider.future)
             : null,
       );
-    });
+    }, dependencies: [reportsGameTypeProvider, reportsDateProvider]);
 
 /// Like Miniatures, show newest days first and highest average ratings within
 /// each day. Sort all loaded cards together so page boundaries do not split a
@@ -99,7 +105,7 @@ final reportsGamesProvider = Provider.autoDispose<List<GamesTourModel>>((ref) {
     return left.gameId.compareTo(right.gameId);
   });
   return List.unmodifiable(games);
-});
+}, dependencies: [reportsPaginationProvider]);
 
 /// Missed Chance opens each game where the winning move was still there: the
 /// position before the miss, as a board move index (-1 is the start).
@@ -122,12 +128,14 @@ class ReportsPaginationNotifier extends StateNotifier<ReportsPaginationState> {
     Future<AnalyzedGamesPage>? firstPage,
     this.reloadFirstPage,
     this.gameType,
+    this.day,
   }) : super(const ReportsPaginationState()) {
     unawaited(_fetch(reset: true, firstPage: firstPage));
   }
 
   final DiscoveryRepository _repository;
   final ReportGameType? gameType;
+  final DateTime? day;
   final Future<AnalyzedGamesPage> Function()? reloadFirstPage;
   AnalyzedGamesCursor? _cursor;
   final Set<String> _seenIds = {};
@@ -171,6 +179,12 @@ class ReportsPaginationNotifier extends StateNotifier<ReportsPaginationState> {
                   : _repository.fetchAnalyzedGamesPage(
                       after: after,
                       gameType: gameType,
+                      since: day == null
+                          ? null
+                          : DateTime.utc(day!.year, day!.month, day!.day),
+                      until: day == null
+                          ? null
+                          : DateTime.utc(day!.year, day!.month, day!.day + 1),
                     )));
       if (!mounted || request != _request) return;
       if (page.nextCursor != null && page.nextCursor == after) {

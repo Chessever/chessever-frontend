@@ -1,3 +1,4 @@
+import 'package:chessever2/screens/for_you/discovery/models/report_game_type.dart';
 import 'package:chessever2/utils/eco_openings.dart';
 import 'package:chessever2/screens/feed/news/news_links.dart';
 import 'package:dartchess/dartchess.dart';
@@ -171,6 +172,47 @@ AppDestination? _parseAppDestination(String raw) {
     if (kind != null) return target(kind);
   }
   switch (root) {
+    case 'my-space':
+      if (query.isEmpty) {
+        if (path.length == 1) {
+          return target(AppDestinationKind.home, section: 'my-space');
+        }
+        if (path.length == 2) {
+          switch (path[1]) {
+            case 'prep':
+              return target(AppDestinationKind.myPrep);
+            case 'library':
+              return target(AppDestinationKind.library, section: 'databases');
+            case 'likes':
+              return target(AppDestinationKind.myLikes);
+          }
+        }
+      }
+    case 'likes':
+      if (path.length == 2 &&
+          const {'today', 'week', 'month', 'year'}.contains(path[1]) &&
+          only({'date', 'view'}) &&
+          (!query.containsKey('date') || _validDate(query['date'])) &&
+          (!query.containsKey('view') ||
+              const {'games', 'players'}.contains(query['view']))) {
+        return target(AppDestinationKind.likes, section: path[1]);
+      }
+    case 'miniatures':
+      if (path.length == 2 &&
+          const {'about', 'games', 'players'}.contains(path[1]) &&
+          only({'date'}) &&
+          (!query.containsKey('date') ||
+              (path[1] == 'games' && _validDate(query['date'])))) {
+        return target(AppDestinationKind.miniatures, section: path[1]);
+      }
+    case 'reports':
+      if (path.length == 2 &&
+          (path[1] == 'all' ||
+              ReportGameType.values.any((type) => type.key == path[1])) &&
+          only({'date'}) &&
+          _validDate(query['date'])) {
+        return target(AppDestinationKind.reports, section: path[1]);
+      }
     case 'news':
       final link = NewsLink.parse(normalized);
       if (link != null && query.isEmpty) {

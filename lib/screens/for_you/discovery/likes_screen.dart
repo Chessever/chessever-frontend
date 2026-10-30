@@ -16,7 +16,9 @@ import 'package:flutter/material.dart';
 
 /// Community rankings, with a door to the separate personal archive.
 class LikesScreen extends StatefulWidget {
-  const LikesScreen({super.key});
+  const LikesScreen({super.key, this.initialView = MostLikedView.games});
+
+  final MostLikedView initialView;
 
   static Future<void> open(BuildContext context) {
     HapticFeedbackService.cardTap();
@@ -50,7 +52,7 @@ class _LikesScreenState extends State<LikesScreen> {
     title: 'Likes',
     titleIcon: const Icon(Icons.favorite_rounded),
     tabs: const ['About', 'Games', 'Players'],
-    initialTab: 1,
+    initialTab: widget.initialView == MostLikedView.players ? 2 : 1,
     controller: _tabs,
     pageBuilder: (context, index) => _LikesTab(
       key: ValueKey('likes_tab_$index'),

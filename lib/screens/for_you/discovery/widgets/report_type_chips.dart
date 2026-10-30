@@ -12,9 +12,11 @@ class ReportTypeChips extends StatelessWidget {
     super.key,
     required this.selected,
     required this.onSelected,
+    this.onLongPress,
   });
   final ReportGameType? selected;
   final ValueChanged<ReportGameType?> onSelected;
+  final void Function(BuildContext context, ReportGameType? type)? onLongPress;
 
   /// Missed Chance leads the row, ahead of All.
   static final List<ReportGameType?> order = [
@@ -51,40 +53,50 @@ class ReportTypeChips extends StatelessWidget {
         for (final (index, type) in order.indexed) ...[
           if (index > 0) SizedBox(width: 8.w),
           Tooltip(
+            triggerMode: onLongPress == null
+                ? TooltipTriggerMode.longPress
+                : TooltipTriggerMode.manual,
             message:
                 type?.description ??
                 'Every saved report, including unclassified games.',
-            child: ChoiceChip(
-              key: ValueKey('report_type_${type?.key ?? 'all'}'),
-              selected: selected == type,
-              // Tapping the active type again clears it back to All.
-              onSelected: (_) => onSelected(selected == type ? null : type),
-              showCheckmark: false,
-              avatar: Icon(
-                iconFor(type),
-                size: 20.ic,
-                color: selected == type
-                    ? context.colors.background
-                    : context.colors.textPrimary,
+            child: Builder(
+              builder: (chipContext) => GestureDetector(
+                onLongPress: onLongPress == null
+                    ? null
+                    : () => onLongPress!(chipContext, type),
+                child: ChoiceChip(
+                  key: ValueKey('report_type_${type?.key ?? 'all'}'),
+                  selected: selected == type,
+                  // Tapping the active type again clears it back to All.
+                  onSelected: (_) => onSelected(selected == type ? null : type),
+                  showCheckmark: false,
+                  avatar: Icon(
+                    iconFor(type),
+                    size: 20.ic,
+                    color: selected == type
+                        ? context.colors.background
+                        : context.colors.textPrimary,
+                  ),
+                  label: Text(type?.label ?? 'All', softWrap: false),
+                  labelStyle: AppTypography.textSmMedium.copyWith(
+                    color: selected == type
+                        ? context.colors.background
+                        : context.colors.textPrimary,
+                  ),
+                  selectedColor: context.colors.textPrimary,
+                  backgroundColor: context.colors.surfaceRecessed,
+                  surfaceTintColor: Colors.transparent,
+                  elevation: 0,
+                  pressElevation: 0,
+                  side: BorderSide.none,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8.br),
+                  ),
+                  padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 8.h),
+                  materialTapTargetSize: MaterialTapTargetSize.padded,
+                  visualDensity: VisualDensity.standard,
+                ),
               ),
-              label: Text(type?.label ?? 'All', softWrap: false),
-              labelStyle: AppTypography.textSmMedium.copyWith(
-                color: selected == type
-                    ? context.colors.background
-                    : context.colors.textPrimary,
-              ),
-              selectedColor: context.colors.textPrimary,
-              backgroundColor: context.colors.surfaceRecessed,
-              surfaceTintColor: Colors.transparent,
-              elevation: 0,
-              pressElevation: 0,
-              side: BorderSide.none,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(8.br),
-              ),
-              padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 8.h),
-              materialTapTargetSize: MaterialTapTargetSize.padded,
-              visualDensity: VisualDensity.standard,
             ),
           ),
         ],

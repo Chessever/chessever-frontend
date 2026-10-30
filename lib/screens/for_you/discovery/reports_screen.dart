@@ -1,3 +1,4 @@
+import 'package:chessever2/screens/for_you/discovery/reports_share.dart';
 import 'package:chessever2/widgets/paywall/game_report_access.dart';
 import 'dart:async';
 
@@ -18,7 +19,6 @@ import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/scroll_cache.dart';
 import 'package:chessever2/utils/svg_asset.dart';
-import 'package:chessever2/widgets/game_date_header.dart';
 import 'package:chessever2/widgets/home_top_bar.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -138,6 +138,7 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
         ),
         SizedBox(height: 8.h),
         ReportTypeChips(
+          onLongPress: (context, type) => showReportsShareMenu(context, type),
           selected: ref.watch(reportsGameTypeProvider),
           onSelected: (type) {
             if (type == ref.read(reportsGameTypeProvider)) return;
@@ -259,7 +260,9 @@ class _ReportsGamesState extends ConsumerState<_ReportsGames> {
         _ReportDay(:final day, :final firstGameId) => Padding(
           key: ValueKey('reports_day_$firstGameId'),
           padding: EdgeInsets.only(bottom: 12.h),
-          child: GameDateHeader(
+          child: ReportsDateShareHeader(
+            type: ref.read(reportsGameTypeProvider),
+            date: day?.toIso8601String().split('T').first,
             dateLabel: _dateLabel(day),
             isExpanded: !_collapsedDates.contains(day),
             onToggle: () => _toggleDay(day),

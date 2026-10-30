@@ -29,8 +29,7 @@ final discoveryRepositoryProvider = Provider.autoDispose<DiscoveryRepository>((
   );
 });
 
-/// How many ranked games one Most Liked read asks for: the lead card plus a
-/// rail. Kept small because every one of them resolves to a game row.
+/// Games per ranking page. One extra aggregate row detects the next page.
 const int kMostLikedLimit = 12;
 
 /// How far back Analyzed Games looks. The hourly report prewarm annotates
@@ -65,22 +64,47 @@ class DiscoveryRepository {
   Future<MostLikedResult> fetchMostLiked(
     MostLikedQuery query, {
     int limit = kMostLikedLimit,
+    MostLikedCursor? after,
   }) async {
+    final pageSize = limit.clamp(1, 49);
     final window = query.window;
-    final Object? rows;
+    Object? rows;
+    var legacyPreview = false;
     try {
       rows = await client().rpc(
-        'most_liked_ranking_preview',
+        'most_liked_ranking_page',
         params: {
           'p_from': window.from.toUtc().toIso8601String(),
           'p_to': window.to.toUtc().toIso8601String(),
-          'p_limit': limit,
+          'p_limit': pageSize + 1,
+          if (after != null) ...{
+            'p_after_likes': after.likes,
+            'p_after_game_id': after.gameId,
+          },
         },
       );
     } catch (e) {
       switch (classifyMostLikedError(e)) {
         case MostLikedFailure.missingFunction:
-          return const MostLikedResult.notLive();
+          if (after != null) return const MostLikedResult.notLive();
+          // Support a rolling deployment while the additive RPC is installed.
+          try {
+            rows = await client().rpc(
+              'most_liked_ranking_preview',
+              params: {
+                'p_from': window.from.toUtc().toIso8601String(),
+                'p_to': window.to.toUtc().toIso8601String(),
+                'p_limit': pageSize,
+              },
+            );
+            legacyPreview = true;
+          } catch (fallbackError) {
+            if (classifyMostLikedError(fallbackError) ==
+                MostLikedFailure.missingFunction) {
+              return const MostLikedResult.notLive();
+            }
+            rethrow;
+          }
         case MostLikedFailure.premiumRequired:
           return const MostLikedResult.premiumRequired();
         case MostLikedFailure.other:
@@ -88,7 +112,8 @@ class DiscoveryRepository {
       }
     }
 
-    final counts = parseMostLikedRows(rows);
+    final ranked = parseMostLikedRows(rows);
+    final counts = ranked.take(pageSize).toList();
     if (counts.isEmpty) return const MostLikedResult.ranked([]);
 
     final gamesById = await _resolveGames(
@@ -100,7 +125,15 @@ class DiscoveryRepository {
         counts: counts,
         gamesById: gamesById,
         eventNamesByTourId: eventNames,
+        rankOffset: after?.rank ?? 0,
       ),
+      nextCursor: !legacyPreview && ranked.length > pageSize
+          ? (
+              likes: counts.last.likes,
+              gameId: counts.last.gameId,
+              rank: (after?.rank ?? 0) + counts.length,
+            )
+          : null,
     );
   }
 
@@ -233,6 +266,7 @@ class DiscoveryRepository {
     int pageSize = 30,
     AnalyzedGamesCursor? after,
     DateTime? since,
+    DateTime? until,
     ReportGameType? gameType,
   }) async {
     if (pageSize <= 0) return const AnalyzedGamesPage(items: []);
@@ -252,6 +286,9 @@ class DiscoveryRepository {
         .or(r'pgn.like.%$24%,pgn.ilike.%chessever_annotation%');
     if (since != null) {
       query = query.gte('last_move_time', since.toUtc().toIso8601String());
+    }
+    if (until != null) {
+      query = query.lt('last_move_time', until.toUtc().toIso8601String());
     }
     if (after != null) {
       final time = after.lastMoveTime;

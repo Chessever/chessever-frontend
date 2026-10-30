@@ -1,3 +1,4 @@
+import 'package:chessever2/screens/library/miniatures/miniatures_share.dart';
 import 'package:chessever2/screens/library/miniatures/miniatures_about_tab.dart';
 import 'package:chessever2/screens/library/miniatures/miniatures_games_tab.dart';
 import 'package:chessever2/screens/library/miniatures/miniatures_mode_provider.dart';
@@ -103,16 +104,24 @@ class _MiniaturesScreenState extends ConsumerState<MiniaturesScreen> {
             SizedBox(height: 12.h),
             Padding(
               padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
-              child: SegmentedSwitcher(
-                dotScope: 'miniatures.tab',
-                backgroundColor: context.colors.popup,
-                selectedBackgroundColor: context.colors.popup,
-                options: miniaturesModeNames.values.toList(),
-                currentSelection: MiniaturesScreenMode.values.indexOf(
-                  selectedMode,
+              child: Builder(
+                builder: (tabContext) => SegmentedSwitcher(
+                  longPressFor: (index) =>
+                      () => showMiniaturesShareMenu(
+                        tabContext,
+                        MiniaturesScreenMode.values[index],
+                      ),
+                  longPressHint: (_) => 'Share tab',
+                  dotScope: 'miniatures.tab',
+                  backgroundColor: context.colors.popup,
+                  selectedBackgroundColor: context.colors.popup,
+                  options: miniaturesModeNames.values.toList(),
+                  currentSelection: MiniaturesScreenMode.values.indexOf(
+                    selectedMode,
+                  ),
+                  onSelectionChanged: _handleTabSelection,
+                  notifyOnReselect: true,
                 ),
-                onSelectionChanged: _handleTabSelection,
-                notifyOnReselect: true,
               ),
             ),
             Expanded(

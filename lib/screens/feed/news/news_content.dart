@@ -1,5 +1,7 @@
 import 'dart:convert';
 
+import 'package:chessever2/services/app_destination.dart';
+
 import 'package:chessever2/screens/feed/news/news_models.dart';
 import 'package:chessever2/screens/feed/news/news_links.dart';
 import 'package:chessever2/widgets/federation_flag.dart';
@@ -1219,6 +1221,18 @@ String newsSourceContextLabel(String href) {
 Uri? newsInAppRoute(Uri uri) {
   if (NewsLink.parse(uri) != null) return uri;
   if (!isChesseverUri(uri)) return null;
+  final destination = parseAppDestination(uri.toString());
+  if (destination != null && uri.path.startsWith('/app/my-space')) {
+    return destination.uri;
+  }
+  if (destination != null &&
+      const {
+        AppDestinationKind.likes,
+        AppDestinationKind.miniatures,
+        AppDestinationKind.reports,
+      }.contains(destination.kind)) {
+    return destination.uri;
+  }
   var path = uri.path;
   var query = uri.query;
 

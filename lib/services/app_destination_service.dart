@@ -1,5 +1,8 @@
 import 'dart:async';
 
+import 'package:chessever2/screens/for_you/discovery/providers/discovery_providers.dart';
+import 'package:chessever2/screens/for_you/discovery/models/discovery_models.dart';
+
 import 'package:chessever2/config/feature_flags.dart';
 import 'package:chessever2/screens/calendar/calendar_screen.dart';
 import 'package:chessever2/screens/collections/collections_data.dart';
@@ -12,6 +15,8 @@ import 'package:chessever2/screens/feed/news/news_links.dart';
 import 'package:chessever2/screens/feed/news/news_models.dart';
 import 'package:chessever2/screens/for_you/discovery/news_screen.dart';
 import 'package:chessever2/screens/for_you/discovery/likes_screen.dart';
+import 'package:chessever2/screens/for_you/discovery/models/report_game_type.dart';
+import 'package:chessever2/screens/for_you/discovery/providers/reports_provider.dart';
 import 'package:chessever2/screens/for_you/discovery/reports_screen.dart';
 import 'package:chessever2/screens/for_you/providers/for_you_tab_provider.dart';
 import 'package:chessever2/screens/gamebase/gamebase_explorer_screen.dart';
@@ -20,6 +25,9 @@ import 'package:chessever2/screens/gamebase/providers/gamebase_explorer_state.da
 import 'package:chessever2/screens/home/widget/bottom_nav_bar.dart';
 import 'package:chessever2/screens/inbox/inbox_screen.dart';
 import 'package:chessever2/screens/library/library_screen.dart';
+import 'package:chessever2/repository/gamebase/miniatures/miniatures_models.dart';
+import 'package:chessever2/screens/library/miniatures/miniatures_mode_provider.dart';
+import 'package:chessever2/screens/library/providers/miniatures_provider.dart';
 import 'package:chessever2/screens/library/miniatures_screen.dart';
 import 'package:chessever2/screens/library/twic_contents_screen.dart';
 import 'package:chessever2/screens/my_likes/my_likes_screen.dart';
@@ -153,12 +161,73 @@ Future<bool> openAppDestination(
                 ),
         );
       case AppDestinationKind.likes:
-        push(const LikesScreen());
+        push(
+          ProviderScope(
+            overrides: [
+              if (destination.section != null) ...[
+                mostLikedPeriodProvider.overrideWith(
+                  (ref) => MostLikedPeriod.values.byName(destination.section!),
+                ),
+                mostLikedDayProvider.overrideWith(
+                  (ref) => DateTime.tryParse(destination.query['date'] ?? ''),
+                ),
+              ],
+            ],
+            child: LikesScreen(
+              initialView: destination.query['view'] == 'players'
+                  ? MostLikedView.players
+                  : MostLikedView.games,
+            ),
+          ),
+        );
       case AppDestinationKind.miniatures:
-        push(const MiniaturesScreen());
+        push(
+          ProviderScope(
+            overrides: [
+              if (destination.section != null) ...[
+                selectedMiniaturesModeProvider.overrideWith(
+                  (ref) =>
+                      MiniaturesScreenMode.values.byName(destination.section!),
+                ),
+                miniaturePlayersQueryProvider.overrideWith(
+                  (ref) => const MiniaturePlayersQuery(),
+                ),
+                miniaturesFilterProvider.overrideWith(
+                  (ref) => MiniatureGamesFilter(
+                    dateFrom: destination.query['date'],
+                    dateTo: destination.query['date'],
+                  ),
+                ),
+              ],
+            ],
+            child: const MiniaturesScreen(),
+          ),
+        );
       case AppDestinationKind.reports:
         if (!await access('game_reports')) return true;
-        push(const ReportsScreen());
+        push(
+          ProviderScope(
+            overrides: [
+              if (destination.section != null) ...[
+                reportsGameTypeProvider.overrideWith(
+                  (ref) => destination.section == 'all'
+                      ? null
+                      : ReportGameType.values.firstWhere(
+                          (type) => type.key == destination.section,
+                        ),
+                ),
+                reportsDateProvider.overrideWith(
+                  (ref) => destination.query['date'] == null
+                      ? null
+                      : DateTime.parse(
+                          '${destination.query['date']}T00:00:00Z',
+                        ),
+                ),
+              ],
+            ],
+            child: const ReportsScreen(),
+          ),
+        );
       case AppDestinationKind.myPrep:
         push(const MyPrepHomeScreen());
       case AppDestinationKind.prepProfile:
@@ -171,7 +240,11 @@ Future<bool> openAppDestination(
         }
         push(PrepProfileScreen(profileId: profile.id, accountKey: account));
       case AppDestinationKind.library:
-        push(const LibraryScreen());
+        push(
+          destination.section == 'databases'
+              ? const Scaffold(body: LibraryScreen(databasesOnly: true))
+              : const LibraryScreen(),
+        );
       case AppDestinationKind.database:
         push(TwicContentsScreen(initialEvent: destination.query['event']));
       case AppDestinationKind.myLikes:

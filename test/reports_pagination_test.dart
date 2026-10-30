@@ -13,6 +13,8 @@ class _Repository implements DiscoveryRepository {
         ({
           AnalyzedGamesCursor? after,
           ReportGameType? gameType,
+          DateTime? since,
+          DateTime? until,
           Completer<AnalyzedGamesPage> result,
         })
       >[];
@@ -22,11 +24,17 @@ class _Repository implements DiscoveryRepository {
     int pageSize = 30,
     AnalyzedGamesCursor? after,
     DateTime? since,
+    DateTime? until,
     ReportGameType? gameType,
   }) {
-    expect(since, isNull);
     final result = Completer<AnalyzedGamesPage>();
-    requests.add((after: after, gameType: gameType, result: result));
+    requests.add((
+      after: after,
+      gameType: gameType,
+      since: since,
+      until: until,
+      result: result,
+    ));
     return result.future;
   }
 
@@ -70,6 +78,33 @@ Future<void> _flush() => Future<void>.delayed(Duration.zero);
 void main() {
   late _Repository repository;
   late ReportsPaginationNotifier notifier;
+
+  test('a shared day remains bounded across paging and refresh', () async {
+    final repo = _Repository();
+    final dated = ReportsPaginationNotifier(
+      repo,
+      gameType: ReportGameType.comeback,
+      day: DateTime.utc(2028, 2, 29),
+    );
+    addTearDown(dated.dispose);
+    repo.requests[0].result.complete(
+      AnalyzedGamesPage(items: [_game(1)], nextCursor: _cursor(1)),
+    );
+    await _flush();
+    final next = dated.loadNextPage();
+    expect(repo.requests[1].after, _cursor(1));
+    repo.requests[1].result.complete(const AnalyzedGamesPage(items: []));
+    await next;
+    final refresh = dated.refresh();
+    expect(repo.requests[2].after, isNull);
+    repo.requests[2].result.complete(const AnalyzedGamesPage(items: []));
+    await refresh;
+    for (final request in repo.requests) {
+      expect(request.gameType, ReportGameType.comeback);
+      expect(request.since, DateTime.utc(2028, 2, 29));
+      expect(request.until, DateTime.utc(2028, 3, 1));
+    }
+  });
 
   setUp(() {
     repository = _Repository();

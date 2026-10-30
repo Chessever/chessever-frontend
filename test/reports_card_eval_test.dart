@@ -51,6 +51,7 @@ class _ReportsRepository implements DiscoveryRepository {
     int pageSize = 30,
     AnalyzedGamesCursor? after,
     DateTime? since,
+    DateTime? until,
     ReportGameType? gameType,
   }) async => AnalyzedGamesPage(items: page);
 

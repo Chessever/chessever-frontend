@@ -32,7 +32,7 @@ final miniatureGamesProvider = Provider.autoDispose<List<GamesTourModel>>((
     ref.watch(miniaturesPaginatedProvider).items,
   );
   return items.map((item) => item.toGamesTourModel()).toList(growable: false);
-});
+}, dependencies: [miniaturesPaginatedProvider]);
 
 /// Aggregate stats behind the About tab, keyed by the time window the user
 /// picked there. Independent of the Games tab filter on purpose: About
@@ -353,7 +353,7 @@ final miniaturePlayersPaginatedProvider = StateNotifierProvider.autoDispose<
 >((ref) {
   final query = ref.watch(miniaturePlayersQueryProvider);
   return MiniaturePlayersNotifier(ref, query);
-});
+}, dependencies: [miniaturePlayersQueryProvider]);
 
 class MiniaturePlayersNotifier extends StateNotifier<MiniaturePlayersState> {
   MiniaturePlayersNotifier(this._ref, this._query)
@@ -476,7 +476,7 @@ final miniaturesPaginatedProvider = StateNotifierProvider.autoDispose<
 >((ref) {
   final filter = ref.watch(miniaturesFilterProvider);
   return MiniaturesPaginationNotifier(ref, filter);
-});
+}, dependencies: [miniaturesFilterProvider]);
 
 class MiniaturesPaginationNotifier
     extends StateNotifier<MiniaturesPaginationState> {

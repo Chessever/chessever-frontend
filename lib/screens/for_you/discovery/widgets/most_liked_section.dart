@@ -109,8 +109,9 @@ Future<void> _selectPeriod(
   WidgetRef ref,
   MostLikedPeriod period,
 ) async {
-  // Today always returns to the current day, even after browsing older periods.
-  if (period == MostLikedPeriod.today) {
+  // New periods start at the latest range; Today explicitly clears the date.
+  if (ref.read(mostLikedPeriodProvider) != period ||
+      period == MostLikedPeriod.today) {
     ref.read(mostLikedDayProvider.notifier).state = null;
   }
   ref.read(mostLikedPeriodProvider.notifier).state = period;
@@ -132,7 +133,13 @@ void _walkTo(WidgetRef ref, MostLikedQuery target) {
 /// Both read [mostLikedActiveQuery], so they always rank the same period.
 /// Nothing while ranking is not live: no periods, no date to walk.
 class MostLikedPeriodBar extends ConsumerWidget {
-  const MostLikedPeriodBar({super.key, this.now});
+  const MostLikedPeriodBar({
+    super.key,
+    this.now,
+    this.view = MostLikedView.games,
+  });
+
+  final MostLikedView view;
 
   /// Pins "now" in tests.
   final DateTime? now;
@@ -169,6 +176,8 @@ class MostLikedPeriodBar extends ConsumerWidget {
             selected: query.period,
             label: (p) => p.label,
             semanticsPrefix: 'Most liked',
+            onLongPress: (context, period) =>
+                showMostLikedShareMenu(context, period: period, view: view),
             onSelect: (p) => _selectPeriod(context, ref, p),
           ),
         ),
@@ -176,6 +185,7 @@ class MostLikedPeriodBar extends ConsumerWidget {
         Center(
           child: MostLikedDateControl(
             query: query,
+            view: view,
             now: now,
             onPrevious: previous == null ? null : () => _walkTo(ref, previous),
             onNext: next == null ? null : () => _walkTo(ref, next),
@@ -208,9 +218,11 @@ class MostLikedSection extends ConsumerWidget {
     this.playerFilter,
     this.onPickPlayer,
     this.onClearPlayerFilter,
+    this.sliver = false,
   });
 
   final MostLikedView view;
+  final bool sliver;
 
   /// Pins "now" in tests.
   final DateTime? now;
@@ -234,45 +246,103 @@ class MostLikedSection extends ConsumerWidget {
     final now = this.now ?? DateTime.now();
     final query = mostLikedActiveQuery(ref, now: now);
     final result = ref.watch(mostLikedProvider(query));
+    final paging = ref.watch(mostLikedPagesProvider(query));
+    Widget box(Widget child) =>
+        sliver ? SliverToBoxAdapter(child: child) : child;
+    final content = result.when(
+      data: (initial) {
+        final seen = {for (final entry in initial.entries) entry.game.gameId};
+        final value = MostLikedResult.ranked([
+          ...initial.entries,
+          for (final entry in paging.entries)
+            if (seen.add(entry.game.gameId)) entry,
+        ]);
+        return _PageBody(
+          sliver: sliver,
+          result: initial.status == MostLikedStatus.ranked ? value : initial,
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        result.when(
-          data: (value) => _PageBody(
-            result: value,
-            query: query,
-            view: view,
-            isCurrent: query.isCurrent(now),
-            isToday: query.isFree(now),
-            locked: locked,
-            onUpgrade: () => unlockThen(
-              context,
-              ref,
-              () => ref.invalidate(mostLikedProvider(query)),
-              featureId: 'most_liked_rankings',
-              returnTo: discoveryReturnTo('most_liked'),
-            ),
-            onRetry: () => ref.invalidate(mostLikedProvider(query)),
-            playerFilter: playerFilter,
-            onPickPlayer: onPickPlayer,
-            onClearPlayerFilter: onClearPlayerFilter,
+          query: query,
+          view: view,
+          isCurrent: query.isCurrent(now),
+          isToday: query.isFree(now),
+          locked: locked,
+          onUpgrade: () => unlockThen(
+            context,
+            ref,
+            () => ref.invalidate(mostLikedProvider(query)),
+            featureId: 'most_liked_rankings',
+            returnTo: discoveryReturnTo('most_liked'),
           ),
-          loading: () => view == MostLikedView.players
-              ? const _PlayersSkeleton()
-              : const DiscoveryGameListSkeleton(
-                  count: 8,
-                  boardCount: kDiscoveryPreviewBoards,
-                  rowLabels: true,
-                ),
-          error: (_, __) => DiscoveryNotice(
-            text: "Couldn't load Most liked",
-            actionLabel: 'Retry',
-            onAction: () => ref.invalidate(mostLikedProvider(query)),
-          ),
+          onRetry: () => ref.invalidate(mostLikedProvider(query)),
+          playerFilter: playerFilter,
+          onPickPlayer: onPickPlayer,
+          onClearPlayerFilter: onClearPlayerFilter,
+        );
+      },
+      loading: () => box(
+        view == MostLikedView.players
+            ? const _PlayersSkeleton()
+            : const DiscoveryGameListSkeleton(
+                count: 8,
+                boardCount: kDiscoveryPreviewBoards,
+                rowLabels: true,
+              ),
+      ),
+      error: (_, __) => box(
+        DiscoveryNotice(
+          text: "Couldn't load Most liked",
+          actionLabel: 'Retry',
+          onAction: () => ref.invalidate(mostLikedProvider(query)),
         ),
-      ],
+      ),
+    );
+    final footer = _MostLikedPagingFooter(query: query, sliver: sliver);
+    return sliver
+        ? SliverMainAxisGroup(slivers: [content, footer])
+        : Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            mainAxisSize: MainAxisSize.min,
+            children: [content, footer],
+          );
+  }
+}
+
+/// The footer loads only when it reaches the viewport's cache area. It also
+/// advances past pages containing unavailable games or no matches for a player.
+class _MostLikedPagingFooter extends ConsumerWidget {
+  const _MostLikedPagingFooter({required this.query, required this.sliver});
+  final MostLikedQuery query;
+  final bool sliver;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final page = ref.watch(mostLikedPagesProvider(query));
+    void load() => ref.read(mostLikedPagesProvider(query).notifier).loadMore();
+    final child = page.failed
+        ? DiscoveryNotice(
+            text: "Couldn't load more games",
+            actionLabel: 'Retry',
+            onAction: load,
+          )
+        : page.cursor != null
+        ? const Padding(
+            padding: EdgeInsets.all(20),
+            child: Center(child: CircularProgressIndicator()),
+          )
+        : const SizedBox.shrink();
+    if (!sliver) return child;
+    return SliverLayoutBuilder(
+      builder: (context, constraints) {
+        if (page.cursor != null &&
+            !page.failed &&
+            !page.loading &&
+            constraints.remainingCacheExtent > 0) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (context.mounted) load();
+          });
+        }
+        return SliverToBoxAdapter(child: child);
+      },
     );
   }
 }
@@ -290,11 +360,13 @@ class _PageBody extends ConsumerWidget {
     this.playerFilter,
     this.onPickPlayer,
     this.onClearPlayerFilter,
+    this.sliver = false,
   });
 
   final MostLikedResult result;
   final MostLikedQuery query;
   final MostLikedView view;
+  final bool sliver;
   final MostLikedPlayer? playerFilter;
   final ValueChanged<MostLikedPlayer>? onPickPlayer;
   final VoidCallback? onClearPlayerFilter;
@@ -368,6 +440,20 @@ class _PageBody extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final content = _content(context, ref);
+    final hasGames = result.entries.any(
+      (entry) => playerFilter == null || _hasPlayer(entry, playerFilter!),
+    );
+    if (sliver &&
+        !(result.status == MostLikedStatus.ranked &&
+            view == MostLikedView.games &&
+            hasGames)) {
+      return SliverToBoxAdapter(child: content);
+    }
+    return content;
+  }
+
+  Widget _content(BuildContext context, WidgetRef ref) {
     switch (result.status) {
       case MostLikedStatus.notLive:
         // Premium would unlock the same notice, so nothing is sold until the
@@ -429,6 +515,7 @@ class _PageBody extends ConsumerWidget {
               )
             : const <String, LiveGamesBatchKey>{};
         list = DiscoveryGameList(
+          sliver: sliver,
           games: games,
           onOpen: (games, index) => _openRankedGame(context, ref, games, index),
           // Identical controls, with the same tap-time gate before any
@@ -442,6 +529,25 @@ class _PageBody extends ConsumerWidget {
           allowStockfishFallback: false,
         );
       }
+    }
+
+    if (sliver &&
+        view == MostLikedView.games &&
+        entries.any(
+          (entry) => narrowed == null || _hasPlayer(entry, narrowed),
+        )) {
+      return SliverMainAxisGroup(
+        slivers: [
+          if (narrowed != null)
+            SliverToBoxAdapter(
+              child: _NarrowedBanner(
+                name: narrowed.player.name,
+                onClear: onClearPlayerFilter,
+              ),
+            ),
+          list,
+        ],
+      );
     }
 
     return Column(
