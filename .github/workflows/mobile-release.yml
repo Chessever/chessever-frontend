@@ -491,3 +491,53 @@ jobs:
           rm -rf "$HOME/Library/Developer/Xcode/UserData/Certificates" ios/Runner/GoogleService-Info.plist
           # Delete, never `flutter-watchos logout`: that revokes the token.
           rm -rf "$HOME/.flutter-watchos"
+
+  # One live message in the team Telegram chat (General topic), edited as each
+  # job above is queued, waits for approval, runs and finishes, then a reply
+  # with the result. Runs beside the release with no environment, so it sees
+  # only the organization's TELEGRAM_* secrets and no signing material. A
+  # Telegram outage never fails the release.
+  telegram:
+    name: Telegram updates
+    runs-on: ubuntu-24.04
+    # Covers a long wait for the release-environment approval.
+    timeout-minutes: 300
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            scripts/ci/telegram_run_updates.py
+            pubspec.yaml
+          sparse-checkout-cone-mode: false
+
+      - name: Post live run updates
+        continue-on-error: true
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          GH_TOKEN: ${{ github.token }}
+          SELF_JOB: Telegram updates
+          BUILD_ANDROID: ${{ inputs.android }}
+          BUILD_IOS: ${{ inputs.ios }}
+          BUILD_WATCH: ${{ inputs.watch }}
+          STORE: ${{ inputs.store }}
+          SOURCE_RUN: ${{ inputs.source_run }}
+        run: |
+          platforms=()
+          [ "$BUILD_ANDROID" = true ] && platforms+=(Android)
+          [ "$BUILD_IOS" = true ] && platforms+=("iOS$([ "$BUILD_WATCH" = true ] && echo ' + Watch')")
+          case "$STORE" in
+            testing) destination='TestFlight + Play internal' ;;
+            review) destination='store review (manual release)' ;;
+            *) destination='build only' ;;
+          esac
+          joined=''
+          for platform in "${platforms[@]}"; do joined="${joined:+$joined + }$platform"; done
+          detail="$joined → $destination"
+          [ -n "$SOURCE_RUN" ] && detail="$detail · reusing run $SOURCE_RUN"
+          DETAIL="$detail" python3 scripts/ci/telegram_run_updates.py watch

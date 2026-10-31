@@ -20,6 +20,8 @@ on:
 
 permissions:
   contents: read
+  # The Telegram failure report reads this run's job and step results.
+  actions: read
 
 defaults:
   run:
@@ -98,3 +100,14 @@ jobs:
           rm -f ios/Runner/GoogleService-Info.plist
           git status --short
           git diff -- ios/Podfile.lock ios/Runner.xcodeproj watchos
+
+      # Runs on every matching push, so only failures go to the team chat.
+      - name: Report failure to Telegram
+        if: failure()
+        continue-on-error: true
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          GH_TOKEN: ${{ github.token }}
+          OUTCOME: failed
+        run: python3 scripts/ci/telegram_run_updates.py report
