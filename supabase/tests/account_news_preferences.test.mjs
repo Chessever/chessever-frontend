@@ -15,7 +15,7 @@ before(async()=>{
  grant usage on schema public,auth to authenticated;
  grant select,insert,update on user_notification_preferences to authenticated;
  create policy own_preferences on user_notification_preferences to authenticated using(auth.uid()=user_id) with check(auth.uid()=user_id);`);
- await db.exec(await readFile(new URL('../migrations/20261031045805_account_news_preferences.sql',import.meta.url),'utf8'));
+ await db.exec(await readFile(new URL('../migrations/20261031051929_account_news_preferences.sql',import.meta.url),'utf8'));
  await db.query('insert into user_notification_preferences(user_id) values($1),($2)',[owner,other]);
 });
 after(async()=>db.close());

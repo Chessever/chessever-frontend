@@ -17,7 +17,7 @@ before(async()=>{
  create table chess_players(fideid bigint,name text);insert into chess_players values(101,'Player,Alpha');
  insert into news(content,status,published_at)values('Old','published',now()),('Old draft','draft',null);
  select set_config('request.jwt.claim.role','service_role',false);`);
- await db.exec(await readFile(new URL('../migrations/20261030221500_favorite_player_news.sql',import.meta.url),'utf8'));
+ await db.exec(await readFile(new URL('../migrations/20261031051924_favorite_player_news.sql',import.meta.url),'utf8'));
 });
 after(async()=>await db.close());
 test('first subject/quote publication persists atomically and only once; routine edits and republish do not repeat',async()=>{

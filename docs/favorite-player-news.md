@@ -23,15 +23,18 @@ device, regardless of how many favorite players match. Taps open the exact News 
 notification copy is generic and spoiler-safe. Traffic already accepted by a push
 provider cannot be recalled.
 
-Review together: admin PR #6, phone PR #404, web PR #823. Before any separately
-authorized activation, apply both phone migrations
-`20261030221500_favorite_player_news.sql` and
-`20261031045805_account_news_preferences.sql`, then the admin transport migration
-`20261030233000_favorite_player_news_transport.sql`. The former News-only
-`20261031010000_news_destination_possession.sql` migration is removed from the PR.
-These are unmerged source changes; no migration, merge, deployment, release or real
-push is part of this update. Existing registration trust applies; there is no
-News-only destination-possession guarantee.
+Review together: admin PR #6, phone PR #404, web PR #823.
+The following migrations are already applied and verified in production, in order:
+1. Phone `20261031051924_favorite_player_news.sql`.
+2. Phone `20261031051929_account_news_preferences.sql`.
+3. Admin `20261031051935_favorite_player_news_transport.sql`.
+
+These filenames match production's recorded versions. Their SQL contents are
+unchanged; do not apply them again under the former timestamps. The removed
+`20261031010000_news_destination_possession.sql` migration was never applied.
+The application PRs remain unmerged; no service deployment, app release or real
+push was performed. Existing registration trust applies; there is no News-only
+destination-possession guarantee.
 
 Local validation uses synthetic transports only. From the admin root:
 `FAVORITE_NEWS_PHONE_ROOT=../chessever-frontend FAVORITE_NEWS_WEB_ROOT=../chessever-web-frontend npm test`
