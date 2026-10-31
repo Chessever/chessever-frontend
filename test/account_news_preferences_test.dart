@@ -74,6 +74,23 @@ void main() {
     ],
   );
 
+  test('Chess World defaults on when there is no saved choice', () async {
+    expect(NotificationPreferences.defaults.callToActionAlerts, true);
+    final c = device();
+    addTearDown(c.dispose);
+    final prefs = await c.read(notificationPreferencesProvider.future);
+    expect(prefs.callToActionAlerts, true);
+  });
+
+  test('Chess World preserves an existing saved opt-out', () async {
+    accounts['account-a']!['call_to_action_alerts'] = false;
+    final c = device();
+    addTearDown(c.dispose);
+    final prefs = await c.read(notificationPreferencesProvider.future);
+    expect(prefs.callToActionAlerts, false);
+    expect(writes, isEmpty);
+  });
+
   test(
     'two devices share account News choice while games/events remain unchanged',
     () async {

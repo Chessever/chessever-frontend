@@ -335,7 +335,7 @@ class PushNotificationsService {
               'favorite_player_alerts': true,
               'heads_up_alerts': false,
               'daily_digest': false,
-              'call_to_action_alerts': false,
+              'call_to_action_alerts': true,
               'book_update_alerts': true,
               'fp_classical': true,
               'fp_rapid': true,

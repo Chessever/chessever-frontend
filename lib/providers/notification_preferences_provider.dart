@@ -86,7 +86,7 @@ class NotificationPreferences {
     favoritePlayerNewsAlerts: true,
     headsUpAlerts: false,
     dailyDigest: false,
-    callToActionAlerts: false,
+    callToActionAlerts: true,
     bookUpdateAlerts: true,
     fpClassical: true,
     fpRapid: true,
