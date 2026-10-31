@@ -528,9 +528,12 @@ jobs:
           STORE: ${{ inputs.store }}
           SOURCE_RUN: ${{ inputs.source_run }}
         run: |
+          # Plain ifs: under `bash -e`, a false test ending an && line (or a
+          # $(...) that exits 1) stops the step before anything is posted.
           platforms=()
-          [ "$BUILD_ANDROID" = true ] && platforms+=(Android)
-          [ "$BUILD_IOS" = true ] && platforms+=("iOS$([ "$BUILD_WATCH" = true ] && echo ' + Watch')")
+          if [ "$BUILD_ANDROID" = true ]; then platforms+=(Android); fi
+          if [ "$BUILD_IOS" = true ] && [ "$BUILD_WATCH" = true ]; then platforms+=('iOS + Watch')
+          elif [ "$BUILD_IOS" = true ]; then platforms+=(iOS); fi
           case "$STORE" in
             testing) destination='TestFlight + Play internal' ;;
             review) destination='store review (manual release)' ;;
@@ -539,5 +542,5 @@ jobs:
           joined=''
           for platform in "${platforms[@]}"; do joined="${joined:+$joined + }$platform"; done
           detail="$joined → $destination"
-          [ -n "$SOURCE_RUN" ] && detail="$detail · reusing run $SOURCE_RUN"
+          if [ -n "$SOURCE_RUN" ]; then detail="$detail · reusing run $SOURCE_RUN"; fi
           DETAIL="$detail" python3 scripts/ci/telegram_run_updates.py watch
