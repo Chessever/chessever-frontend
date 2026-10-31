@@ -4806,8 +4806,21 @@ class _AppBarState extends ConsumerState<_AppBar> {
               ?.analysisCleared ??
           false,
       allowCopyPgn: widget.allowGameExport,
+      allowAttachVideo:
+          ref.read(gameVideoAttachRightProvider(_videoRightKey)).valueOrNull ??
+          false,
     );
   }
+
+  /// A live broadcast is in nobody's collection yet; only staff attach there.
+  ({String gameId, String? pgn}) get _videoRightKey => (
+    gameId: widget.game.gameId,
+    pgn:
+        widget.game.gameStatus.isFinished ||
+            widget.game.source != GameSource.supabase
+        ? widget.game.pgn
+        : null,
+  );
 
   Future<void> _selectMenuAction(String value) async {
     if (!mounted || !widget.isActivePage || widget.isLoading) return;
@@ -5372,6 +5385,8 @@ class _AppBarState extends ConsumerState<_AppBar> {
 
   @override
   Widget build(BuildContext context) {
+    // Resolved before the menu opens, so the entry never pops in late.
+    ref.watch(gameVideoAttachRightProvider(_videoRightKey));
     // Watch the board state for PGN data
     final params = ChessBoardProviderParams(
       game: widget.game,
