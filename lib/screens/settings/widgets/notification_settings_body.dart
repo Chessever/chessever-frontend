@@ -1,6 +1,7 @@
 import 'package:chessever2/providers/board_settings_provider_new.dart';
 import 'package:chessever2/providers/notification_permission_provider.dart';
 import 'package:chessever2/providers/notification_preferences_provider.dart';
+import 'package:chessever2/providers/favorite_player_news_preference_provider.dart';
 import 'package:chessever2/providers/pip_mode_provider.dart';
 import 'package:chessever2/screens/settings/widgets/board_settings_body.dart'
     show TrackPersist;
@@ -42,6 +43,7 @@ class NotificationSettingsBody extends ConsumerWidget {
     final prefsLoading = prefsAsync.isLoading;
     final pushEnabled = permissionAsync.valueOrNull ?? false;
     final interactive = pushEnabled && !prefsLoading;
+    final newsPreference = ref.watch(favoritePlayerNewsPreferenceProvider);
 
     // Live game widgets (PiP) live with notifications now —
     // this is how a live game stays visible outside the app.
@@ -172,10 +174,7 @@ class NotificationSettingsBody extends ConsumerWidget {
             ),
           ),
           child: Padding(
-            padding: EdgeInsets.symmetric(
-              horizontal: 14.sp,
-              vertical: 14.sp,
-            ),
+            padding: EdgeInsets.symmetric(horizontal: 14.sp, vertical: 14.sp),
             child: NotifToggleTile(
               showCard: false,
               title: 'Heads-up Alerts',
@@ -186,9 +185,7 @@ class NotificationSettingsBody extends ConsumerWidget {
                   : (value) {
                       trackPersist(
                         ref
-                            .read(
-                              notificationPreferencesProvider.notifier,
-                            )
+                            .read(notificationPreferencesProvider.notifier)
                             .setHeadsUpAlerts(value),
                       );
                     },
@@ -199,9 +196,7 @@ class NotificationSettingsBody extends ConsumerWidget {
                     : (minutes) {
                         trackPersist(
                           ref
-                              .read(
-                                notificationPreferencesProvider.notifier,
-                              )
+                              .read(notificationPreferencesProvider.notifier)
                               .setHeadsUpLeadMinutes(minutes),
                         );
                       },
@@ -233,6 +228,31 @@ class NotificationSettingsBody extends ConsumerWidget {
         SizedBox(height: 24.h),
 
         const NotifSectionHeader(title: 'Updates'),
+
+        ValueListenableBuilder(
+          valueListenable: ref.watch(favoritePlayerNewsStatusProvider),
+          builder: (context, status, _) => NotifToggleTile(
+            title: 'News about favorite players',
+            wrapTitle: true,
+            subtitle:
+                'Articles about your favorite players or what they said. This device only.\n'
+                '${status.labelFor(newsPreference.valueOrNull)}\n'
+                'Alerts already accepted or in flight may still arrive.',
+            value: newsPreference.valueOrNull ?? true,
+            // Opt-out must remain available without OS/OneSignal/FCM readiness.
+            onChanged: !newsPreference.hasValue
+                ? null
+                : (value) {
+                    trackPersist(
+                      ref
+                          .read(favoritePlayerNewsPreferenceProvider.notifier)
+                          .setEnabled(value),
+                    );
+                  },
+          ),
+        ),
+
+        SizedBox(height: 12.h),
 
         NotifToggleTile(
           title: 'Chess World',
@@ -313,7 +333,11 @@ class _PipModeSelector extends StatelessWidget {
         children: [
           _buildOption(context, mode: PipMode.off, icon: Icons.block_rounded),
           SizedBox(width: 4.w),
-          _buildOption(context, mode: PipMode.live, icon: Icons.sensors_rounded),
+          _buildOption(
+            context,
+            mode: PipMode.live,
+            icon: Icons.sensors_rounded,
+          ),
         ],
       ),
     );
@@ -337,8 +361,9 @@ class _PipModeSelector extends StatelessWidget {
                 : Colors.transparent,
             borderRadius: BorderRadius.circular(8.br),
             border: Border.all(
-              color:
-                  isSelected ? context.colors.accentText : Colors.transparent,
+              color: isSelected
+                  ? context.colors.accentText
+                  : Colors.transparent,
               width: isSelected ? 1.5 : 1.0,
             ),
             boxShadow: isSelected && !context.isLightTheme
@@ -382,7 +407,6 @@ class _PipModeSelector extends StatelessWidget {
 
 /// Quiet ink on the selector's recessed well. Dark keeps tertiary; on paper
 /// tertiary reads 3.8:1 against the well, so it steps up to secondary.
-Color _wellInk(BuildContext context) =>
-    context.isLightTheme
-        ? context.colors.textSecondary
-        : context.colors.textTertiary;
+Color _wellInk(BuildContext context) => context.isLightTheme
+    ? context.colors.textSecondary
+    : context.colors.textTertiary;

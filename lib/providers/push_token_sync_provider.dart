@@ -19,14 +19,29 @@ final pushTokenSyncProvider = Provider<PushTokenSyncController>((ref) {
 });
 
 class PushTokenSyncController with WidgetsBindingObserver {
-  PushTokenSyncController(this.ref);
+  PushTokenSyncController(
+    this.ref, {
+    Future<void> Function(Map<String, dynamic>)? writeMirror,
+    Future<void> Function(String, bool)? directHandoff,
+    String? Function()? currentUserId,
+  }) : _writeMirror = writeMirror ?? _saveMirror,
+       _directHandoff = directHandoff ?? DirectPushService.instance.mirrorReady,
+       _currentUserId =
+           currentUserId ??
+           (() => Supabase.instance.client.auth.currentUser?.id);
 
   final Ref ref;
+  final Future<void> Function(Map<String, dynamic>) _writeMirror;
+  final Future<void> Function(String, bool) _directHandoff;
+  final String? Function() _currentUserId;
   bool _started = false;
   bool _disposed = false;
   String? _userId;
-  final PushTokenSyncRetryState _retryState = PushTokenSyncRetryState(maxAttempts: 8);
+  final PushTokenSyncRetryState _retryState = PushTokenSyncRetryState(
+    maxAttempts: 8,
+  );
   final Set<String> _inFlightSignatures = <String>{};
+  Future<void> _upsertQueue = Future.value();
   Timer? _retryTimer;
   Timer? _readinessTimer;
   int _readinessAttempts = 0;
@@ -170,6 +185,26 @@ class PushTokenSyncController with WidgetsBindingObserver {
     required String subscriptionId,
     String? token,
     required bool optedIn,
+  }) {
+    final next = _upsertQueue
+        .catchError((Object _) {})
+        .then(
+          (_) => _performUpsertSubscription(
+            userId: userId,
+            subscriptionId: subscriptionId,
+            token: token,
+            optedIn: optedIn,
+          ),
+        );
+    _upsertQueue = next;
+    return next;
+  }
+
+  Future<void> _performUpsertSubscription({
+    required String userId,
+    required String subscriptionId,
+    String? token,
+    required bool optedIn,
   }) async {
     if (_disposed) return;
 
@@ -180,31 +215,21 @@ class PushTokenSyncController with WidgetsBindingObserver {
     }
 
     try {
-      final client = Supabase.instance.client;
-      if (client.auth.currentUser?.id != userId) return;
-      try {
-        await client.from('user_push_tokens').upsert({
-          'user_id': userId,
-          'provider': 'onesignal',
-          'subscription_id': subscriptionId,
-          'push_token': token,
-          'platform': _platformLabel(),
-          'opted_in': optedIn,
-          'last_seen_at': DateTime.now().toUtc().toIso8601String(),
-        }, onConflict: 'provider,subscription_id');
-      } on PostgrestException catch (error) {
-        if (error.code != '42501' || token == null || token.isEmpty) rethrow;
-        // Only the server may move a subscription between accounts. It verifies
-        // both OneSignal's current user identity and possession of this token.
-        await client.functions.invoke('push-token-sync', body: {
-          'subscriptionId': subscriptionId,
-          'token': token,
-          'platform': _platformLabel(),
-          'optedIn': optedIn,
-        });
-      }
-      if (_disposed || _userId != userId || client.auth.currentUser?.id != userId) return;
-      await DirectPushService.instance.mirrorReady(subscriptionId, optedIn);
+      if (_currentUserId() != userId) return;
+      await _writeMirror({
+        'user_id': userId,
+        'provider': 'onesignal',
+        'subscription_id': subscriptionId,
+        'push_token': token,
+        'platform': _platformLabel(),
+        'opted_in': optedIn,
+        'last_seen_at': DateTime.now().toUtc().toIso8601String(),
+      });
+      if (_disposed || _userId != userId || _currentUserId() != userId) return;
+      // Order mirror writes, never native/Firebase initialization. The direct
+      // service captures the latest state before startup and independently
+      // serializes/fences registration, preference and detach requests.
+      unawaited(_handoffDirect(subscriptionId, optedIn));
       _retryState.recordSuccess(signature);
       _retryTimer?.cancel();
       _retryTimer = null;
@@ -220,7 +245,7 @@ class PushTokenSyncController with WidgetsBindingObserver {
       }
       if (error is PostgrestException) {
         // Exclude details/hint: database errors can include device tokens.
-        debugPrint('[PushTokenSync] Database error code=${error.code}: ${error.message}');
+        debugPrint('[PushTokenSync] Database error code=${error.code}');
       }
       debugPrint(
         '[PushTokenSync] Subscription sync failed '
@@ -229,6 +254,56 @@ class PushTokenSyncController with WidgetsBindingObserver {
     } finally {
       _inFlightSignatures.remove(signature);
     }
+  }
+
+  Future<void> _handoffDirect(String subscriptionId, bool optedIn) async {
+    try {
+      await _directHandoff(
+        subscriptionId,
+        optedIn,
+      ).timeout(const Duration(seconds: 3));
+    } catch (_) {
+      // Direct registration has its own durable retry/resume lifecycle. Never
+      // log payloads or let its startup hold later game/event mirror writes.
+    }
+  }
+
+  static Future<void> _saveMirror(Map<String, dynamic> value) async {
+    final client = Supabase.instance.client;
+    try {
+      await client
+          .from('user_push_tokens')
+          .upsert(value, onConflict: 'provider,subscription_id');
+    } on PostgrestException catch (error) {
+      final token = value['push_token'] as String?;
+      if (error.code != '42501' || token == null || token.isEmpty) rethrow;
+      // Preserve the existing server-only ownership recovery contract.
+      await client.functions.invoke(
+        'push-token-sync',
+        body: {
+          'subscriptionId': value['subscription_id'],
+          'token': token,
+          'platform': value['platform'],
+          'optedIn': value['opted_in'],
+        },
+      );
+    }
+  }
+
+  @visibleForTesting
+  Future<void> syncMirrorForTesting({
+    required String userId,
+    required String subscriptionId,
+    required String token,
+    required bool optedIn,
+  }) {
+    _userId = userId;
+    return _upsertSubscription(
+      userId: userId,
+      subscriptionId: subscriptionId,
+      token: token,
+      optedIn: optedIn,
+    );
   }
 
   String _platformLabel() {
