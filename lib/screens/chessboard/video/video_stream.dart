@@ -151,6 +151,7 @@ class EventVideoStream {
     required this.source,
     this.countryCode,
     this.authorName,
+    this.analysis = false,
     this.authorId,
     this.followed = false,
     this.publishedAt,
@@ -174,7 +175,9 @@ class EventVideoStream {
     label: label,
     id: id,
   );
-  bool get isAnalysis => authorName != null;
+  /// Analysis sources can be attached without identifying an author.
+  final bool analysis;
+  bool get isAnalysis => analysis || authorName != null;
   final bool preferred;
   final Set<VideoClientPlatform>? platforms;
   bool supportsPlatform(VideoClientPlatform platform) =>
@@ -230,6 +233,7 @@ class EventVideoStream {
     source: source,
     countryCode: countryCode,
     authorName: authorName,
+    analysis: analysis,
     authorId: authorId,
     followed: followed,
     publishedAt: publishedAt,
@@ -309,6 +313,7 @@ class EventVideoStream {
           id: id,
           label: label.trim(),
           source: source,
+          analysis: raw['kind'] == 'analysis',
           authorId: raw['kind']=='analysis' && raw['authorId'] is String ? raw['authorId'] as String : null,
           followed: raw['followed'] == true,
           publishedAt: raw['kind']=='analysis' && raw['publishedAt'] is String ? raw['publishedAt'] as String : null,

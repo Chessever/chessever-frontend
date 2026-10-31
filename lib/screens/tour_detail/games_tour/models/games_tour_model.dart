@@ -4,6 +4,7 @@ import 'package:chessever2/screens/tour_detail/games_tour/utils/live_game_positi
 import 'package:chessever2/utils/pgn_clock_utils.dart';
 import 'package:chessever2/utils/time_control_bonus.dart';
 import 'package:dartchess/dartchess.dart';
+import 'package:chessever2/screens/chessboard/video/video_stream.dart';
 
 enum GameDisplayMode { all, hideFinishedGames, showfinishedGame }
 
@@ -118,6 +119,10 @@ class GamesTourModel {
   /// [gameId] is already the canonical id.
   final String? sourceGameId;
 
+  /// Protected attachments from an authorized playable collection response.
+  /// Browse/preview models must never populate this field.
+  final List<EventVideoStream> collectionVideoStreams;
+
   GamesTourModel({
     required this.gameId,
     this.source = GameSource.supabase,
@@ -150,6 +155,7 @@ class GamesTourModel {
     this.avgElo,
     this.isOnline = false,
     this.sourceGameId,
+    this.collectionVideoStreams = const [],
   });
 
   /// Identity used by the like/favorite system. Prefers [sourceGameId] (the
@@ -201,6 +207,7 @@ class GamesTourModel {
     int? avgElo,
     bool? isOnline,
     String? sourceGameId,
+    List<EventVideoStream>? collectionVideoStreams,
   }) {
     return GamesTourModel(
       gameId: gameId ?? this.gameId,
@@ -240,6 +247,8 @@ class GamesTourModel {
       avgElo: avgElo ?? this.avgElo,
       isOnline: isOnline ?? this.isOnline,
       sourceGameId: sourceGameId ?? this.sourceGameId,
+      collectionVideoStreams:
+          collectionVideoStreams ?? this.collectionVideoStreams,
     );
   }
 

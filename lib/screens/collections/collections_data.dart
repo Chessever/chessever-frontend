@@ -1,4 +1,5 @@
 import 'dart:math' show Random;
+import 'package:chessever2/screens/chessboard/video/video_stream.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:chessever2/repository/gamebase/collections/collection_search_query.dart';
 import 'dart:async';
@@ -126,7 +127,22 @@ GamesTourModel hydrateCollectionGameCard(
         fideId: int.tryParse(data.fideId ?? ''),
         gamebasePlayerId: data.playerId,
       );
+  final author = card.annotator?.trim();
+  final label = author == null || author.isEmpty ? 'Video analysis' : author;
+  // Only the playable response may supply attachments. withoutPgn deliberately
+  // drops videoUrl too; do not enrich a public preview with protected links.
+  final attachments = EventVideoStream.readList([
+    if (card.pgn?.trim().isNotEmpty == true && card.videoUrl != null)
+      {
+        'id': 'collection-video',
+        'kind': 'analysis',
+        'url': card.videoUrl,
+        'label': label.length > 100 ? label.substring(0, 100) : label,
+        if (author != null && author.isNotEmpty) 'authorName': author,
+      },
+  ]).where((stream) => stream.source.platform == VideoPlatform.youtube);
   return game.copyWith(
+    collectionVideoStreams: List.unmodifiable(attachments),
     whitePlayer: side(card.white, game.whitePlayer),
     blackPlayer: side(card.black, game.blackPlayer),
     boardNr: card.board,

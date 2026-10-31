@@ -509,7 +509,7 @@ class EventVideoFlags extends StatelessWidget {
                       if (stream.isAnalysis)
                         PlayerInitialsAvatar(
                           photoUrl: stream.authorAvatarUrl,
-                          initials: stream.authorName!
+                          initials: (stream.authorName ?? stream.label)
                               .trim()
                               .split(RegExp(r'\s+'))
                               .where((s) => s.isNotEmpty)

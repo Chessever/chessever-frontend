@@ -1,6 +1,6 @@
 import 'package:chessever2/screens/chessboard/video/game_video_submission_screen.dart';
 import 'package:chessever2/providers/game_video_sources_provider.dart';
-import 'package:chessever2/screens/chessboard/video/video_stream.dart';
+import 'video/game_analysis_sources.dart';
 import 'package:chessever2/screens/chessboard/widgets/board_game_menu_host.dart';
 import 'package:chessever2/widgets/paywall/game_report_access.dart';
 import 'package:chessever2/config/feature_flags.dart';
@@ -3471,13 +3471,17 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
     // This prevents rebuilds when other games in the tournament get updated
     final isTablet = ResponsiveHelper.isTablet;
 
-    final analysisSources = ref.watch(gameVideoSourcesProvider((
+    final videoLookup = (
       gameId: currentGame.gameId,
-      pgn: currentGame.gameStatus.isFinished || currentGame.source != GameSource.supabase ? currentGame.pgn : null,
-    )));
+      pgn: currentGame.gameStatus.isFinished ||
+              currentGame.source != GameSource.supabase
+          ? currentGame.pgn
+          : null,
+    );
+    final analysisSources = ref.watch(gameVideoSourcesProvider(videoLookup));
     return EventVideoHost(
       completed: currentGame.gameStatus.isFinished,
-      analysisStreams: analysisSources.isLoading ? const [] : EventVideoStream.readList(analysisSources.valueOrNull ?? const []),
+      analysisStreams: gameAnalysisStreams(currentGame, analysisSources),
       metadata: ref.watch(eventVideoMetadataProvider.notifier),
       configuration: ref.watch(eventVideoConfigurationProvider),
       onVideoInteraction: () {
@@ -3563,6 +3567,10 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
                             // in; app-bar chips measure their anchor against it.
                             key: _gameSwitcher.panelSpaceKey,
                             children: [
+                              GameVideoDiscoveryNotice(
+                                key: ValueKey(videoLookup),
+                                lookup: videoLookup,
+                              ),
                               NotificationListener<ScrollNotification>(
                                 onNotification: (notification) {
                                   if (_showTutorialOverlay ||
