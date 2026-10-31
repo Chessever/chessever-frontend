@@ -3567,10 +3567,6 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
                             // in; app-bar chips measure their anchor against it.
                             key: _gameSwitcher.panelSpaceKey,
                             children: [
-                              GameVideoDiscoveryNotice(
-                                key: ValueKey(videoLookup),
-                                lookup: videoLookup,
-                              ),
                               NotificationListener<ScrollNotification>(
                                 onNotification: (notification) {
                                   if (_showTutorialOverlay ||
