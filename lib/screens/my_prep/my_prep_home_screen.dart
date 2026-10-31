@@ -6,8 +6,6 @@ import 'package:chessever2/screens/my_prep/data/prep_favorites.dart';
 import 'package:chessever2/screens/my_prep/models/prep_models.dart';
 import 'package:chessever2/screens/my_prep/prep_actions.dart';
 import 'package:chessever2/screens/my_prep/prep_profile_screen.dart';
-import 'package:chessever2/screens/my_prep/prep_source_actions.dart'
-    show prepImportSource;
 import 'package:chessever2/screens/my_prep/prep_sources_screen.dart';
 import 'package:chessever2/screens/my_prep/providers/prep_favorites_provider.dart';
 import 'package:chessever2/screens/my_prep/providers/prep_known_accounts_provider.dart';
@@ -32,7 +30,7 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:motor/motor.dart';
 
 /// My Prep: the reader's own games, the profiles they prepare against, and
-/// players to study, with database, online and PGN sources.
+/// players to study, with database and online sources.
 class MyPrepHomeScreen extends ConsumerStatefulWidget {
   const MyPrepHomeScreen({super.key, this.initialTab = 0});
 
@@ -83,9 +81,7 @@ class _MyPrepHomeScreenState extends ConsumerState<MyPrepHomeScreen> {
   /// [source] is the one picked from the floating button's popover; the
   /// other adds leave the choice to the dialog.
   void _add([PrepSource? source]) {
-    if (source == PrepSource.manual) {
-      _importPgn(context, ref, _tab == 0 ? PrepKind.mine : PrepKind.opponent);
-    } else if (_tab == 0) {
+    if (_tab == 0) {
       prepAddMine(context, ref, source: source);
     } else {
       prepAddOpponent(context, ref, source: source);
@@ -135,15 +131,10 @@ class _MyPrepHomeScreenState extends ConsumerState<MyPrepHomeScreen> {
               key: const ValueKey('prep_add_floating'),
               label: _addLabel,
               choices: [
-                for (final source in [
-                  ...PrepSource.playerSources,
-                  PrepSource.manual,
-                ])
+                for (final source in PrepSource.playerSources)
                   PopoverAddChoice(
                     leading: PrepSourceMark(source: source, size: 22),
-                    label: source == PrepSource.manual
-                        ? 'Import PGN'
-                        : source.label,
+                    label: source.label,
                     value: source,
                   ),
               ],
@@ -232,14 +223,6 @@ class _AppBar extends StatelessWidget {
 
 double get _gutter => ResponsiveHelper.adaptive(phone: 16.w, tablet: 24.w);
 
-/// A PGN joins My Games' one profile, or starts a new opponent.
-void _importPgn(BuildContext context, WidgetRef ref, PrepKind kind) {
-  final mine = kind == PrepKind.mine
-      ? ref.read(prepProfilesOfKindProvider(PrepKind.mine))?.firstOrNull
-      : null;
-  prepImportSource(context, ref, mine, kind: kind);
-}
-
 // ------------------------------------------------------------------ my games
 
 class _MyGamesTab extends ConsumerWidget {
@@ -260,10 +243,9 @@ class _MyGamesTab extends ConsumerWidget {
         title: 'Attach your own usernames',
         body:
             'Add your Lichess and Chess.com accounts here. Their games stay together. You can also attach your ChessEver player record.',
-        sources: const [...PrepSource.playerSources, PrepSource.manual],
+        sources: PrepSource.playerSources,
         actionLabel: 'Attach your username',
         onAction: () => prepAddMine(context, ref),
-        onImport: () => _importPgn(context, ref, PrepKind.mine),
       );
     }
     return RefreshIndicator(
@@ -310,10 +292,9 @@ class _OpponentsTab extends ConsumerWidget {
         title: 'Prepare for your next opponent',
         body:
             'Find them in ChessEver or start with a Lichess or Chess.com username. Attach all their sources to one profile.',
-        sources: const [...PrepSource.playerSources, PrepSource.manual],
+        sources: PrepSource.playerSources,
         actionLabel: 'Add opponent',
         onAction: () => prepAddOpponent(context, ref),
-        onImport: () => _importPgn(context, ref, PrepKind.opponent),
       );
     }
     return ListView.builder(
@@ -897,7 +878,6 @@ class _EmptyState extends StatelessWidget {
     required this.sources,
     required this.actionLabel,
     required this.onAction,
-    required this.onImport,
   });
 
   final String title;
@@ -905,9 +885,6 @@ class _EmptyState extends StatelessWidget {
   final List<PrepSource> sources;
   final String actionLabel;
   final VoidCallback onAction;
-
-  /// Starts the tab from a PGN file instead of a username.
-  final VoidCallback onImport;
 
   @override
   Widget build(BuildContext context) {
@@ -952,19 +929,6 @@ class _EmptyState extends StatelessWidget {
         SizedBox(height: 24.h),
         Center(
           child: _AddButton(label: actionLabel, onPressed: onAction),
-        ),
-        SizedBox(height: 8.h),
-        Center(
-          child: TextButton(
-            key: const ValueKey('prep_import_empty'),
-            onPressed: onImport,
-            style: TextButton.styleFrom(
-              foregroundColor: colors.textSecondary,
-              minimumSize: const Size(44, 44),
-              textStyle: AppTypography.textSmMedium,
-            ),
-            child: const Text('Or import a PGN'),
-          ),
         ),
       ],
     );
