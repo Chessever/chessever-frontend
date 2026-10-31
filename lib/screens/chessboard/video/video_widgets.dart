@@ -2,7 +2,6 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import '../../../repository/gamebase/gamebase_repository.dart';
 import '../../../providers/game_video_sources_provider.dart';
 import '../../../widgets/app_snack.dart';
-import '../../../widgets/player_initials_avatar.dart';
 import 'dart:math' as math;
 import 'dart:ui' show FlutterView;
 import 'package:country_flags/country_flags.dart';
@@ -506,21 +505,7 @@ class EventVideoFlags extends StatelessWidget {
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      if (stream.isAnalysis)
-                        PlayerInitialsAvatar(
-                          photoUrl: stream.authorAvatarUrl,
-                          initials: (stream.authorName ?? stream.label)
-                              .trim()
-                              .split(RegExp(r'\s+'))
-                              .where((s) => s.isNotEmpty)
-                              .take(2)
-                              .map((s) => s.characters.first)
-                              .join()
-                              .toUpperCase(),
-                          size: 28,
-                          isCircular: true,
-                        )
-                      else if (stream.flagCode != null)
+                      if (stream.flagCode != null)
                         CountryFlag.fromCountryCode(
                           stream.flagCode!,
                           theme: const ImageTheme(width: 28, height: 20),

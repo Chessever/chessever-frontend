@@ -121,4 +121,31 @@ void main() {
       expect(streams.map((s) => s.languageKey).toSet(), hasLength(2));
     },
   );
+
+  test('analysis videos show their language flag, English when unnamed', () {
+    final streams = EventVideoStream.readList([
+      for (final (id, language) in [
+        ('analysis-plain', null),
+        ('analysis-turkish', 'tr'),
+        ('analysis-unknown', 'xx'),
+      ])
+        {
+          'id': id,
+          'kind': 'analysis',
+          'label': 'Spanish Opening Masterclass',
+          'authorName': 'Coach One',
+          'provider': 'youtube',
+          'url': 'https://youtu.be/abcdefghijk',
+          'language': ?language,
+        },
+    ]);
+    expect(streams.map((s) => s.flagCode), ['GB', 'TR', 'GB']);
+    expect(streams.map((s) => s.languageLabel), [
+      'English',
+      'Turkish',
+      'English',
+    ]);
+    // Each analysis keeps its own selector slot.
+    expect(streams.map((s) => s.languageKey).toSet(), hasLength(3));
+  });
 }

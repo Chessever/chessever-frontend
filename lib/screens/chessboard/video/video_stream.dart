@@ -200,11 +200,13 @@ class EventVideoStream {
   late final VideoLanguage? inferredLanguage = _resolveLanguage();
 
   VideoLanguage? _resolveLanguage() {
-    if (isAnalysis) return null;
     final code = language?.trim().toLowerCase().split(RegExp('[-_]')).first;
     for (final item in videoLanguages) {
       if (item.code == code) return item;
     }
+    // An analysis video always shows a language, as a flag like the event
+    // streams: its own, else English. Its title is the author's, not a hint.
+    if (isAnalysis) return videoLanguages.firstWhere((l) => l.code == 'en');
     final text = '$title $description $label';
     for (final item in videoLanguages) {
       for (final pattern in _languagePatterns[item.code]!) {
