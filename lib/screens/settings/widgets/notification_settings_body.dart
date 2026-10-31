@@ -1,7 +1,7 @@
+import 'package:chessever2/providers/auth_state_provider.dart';
 import 'package:chessever2/providers/board_settings_provider_new.dart';
 import 'package:chessever2/providers/notification_permission_provider.dart';
 import 'package:chessever2/providers/notification_preferences_provider.dart';
-import 'package:chessever2/providers/favorite_player_news_preference_provider.dart';
 import 'package:chessever2/providers/pip_mode_provider.dart';
 import 'package:chessever2/screens/settings/widgets/board_settings_body.dart'
     show TrackPersist;
@@ -43,7 +43,6 @@ class NotificationSettingsBody extends ConsumerWidget {
     final prefsLoading = prefsAsync.isLoading;
     final pushEnabled = permissionAsync.valueOrNull ?? false;
     final interactive = pushEnabled && !prefsLoading;
-    final newsPreference = ref.watch(favoritePlayerNewsPreferenceProvider);
 
     // Live game widgets (PiP) live with notifications now —
     // this is how a live game stays visible outside the app.
@@ -229,27 +228,21 @@ class NotificationSettingsBody extends ConsumerWidget {
 
         const NotifSectionHeader(title: 'Updates'),
 
-        ValueListenableBuilder(
-          valueListenable: ref.watch(favoritePlayerNewsStatusProvider),
-          builder: (context, status, _) => NotifToggleTile(
-            title: 'News about favorite players',
-            wrapTitle: true,
-            subtitle:
-                'Articles about your favorite players or what they said. This device only.\n'
-                '${status.labelFor(newsPreference.valueOrNull)}\n'
-                'Alerts already accepted or in flight may still arrive.',
-            value: newsPreference.valueOrNull ?? true,
-            // Opt-out must remain available without OS/OneSignal/FCM readiness.
-            onChanged: !newsPreference.hasValue
-                ? null
-                : (value) {
-                    trackPersist(
-                      ref
-                          .read(favoritePlayerNewsPreferenceProvider.notifier)
-                          .setEnabled(value),
-                    );
-                  },
-          ),
+        NotifToggleTile(
+          title: 'News about favorite players',
+          wrapTitle: true,
+          subtitle:
+              'Articles about your favorite players or what they said. '
+              'Applies to all devices on your account.',
+          value: prefs.favoritePlayerNewsAlerts,
+          // Account opt-out stays available even when this device denies push.
+          onChanged: prefsLoading || ref.watch(currentUserProvider) == null
+              ? null
+              : (value) => trackPersist(
+                  ref
+                      .read(notificationPreferencesProvider.notifier)
+                      .setFavoritePlayerNewsAlerts(value),
+                ),
         ),
 
         SizedBox(height: 12.h),
