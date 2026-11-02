@@ -76,7 +76,7 @@ class NotificationPermissionNotifier extends StateNotifier<AsyncValue<bool>>
     if (!mounted) return;
     final previous = state.valueOrNull;
     state = AsyncValue.data(granted);
-    // Keep the OneSignal subscription + server `push_enabled` flag aligned with
+    // Keep the direct-push registration + server `push_enabled` flag aligned with
     // the OS truth, so the backend never pushes to a muted device and resumes
     // once the user re-enables. Only write on an actual change to avoid churn.
     if (previous != granted) {

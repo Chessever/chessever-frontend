@@ -6,7 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
-  const channel = MethodChannel('OneSignal#notifications');
+  const channel = MethodChannel('com.chessever/push_permission');
   final messenger =
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
 
@@ -17,7 +17,7 @@ void main() {
     () async {
       final reply = Completer<bool>();
       messenger.setMockMethodCallHandler(channel, (call) {
-        expect(call.method, 'OneSignal#permission');
+        expect(call.method, 'permission');
         return reply.future;
       });
       var completed = false;

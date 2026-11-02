@@ -1,13 +1,16 @@
 import 'package:flutter/services.dart';
 
-/// Uses the permission query implemented by OneSignal Flutter 5.6.7 on iOS and
-/// Android. Unlike its public Dart getter, this awaits a fresh native response.
-/// Keep this channel contract covered when upgrading OneSignal.
-Future<bool> readNativePushPermission() async {
-  const channel = MethodChannel('OneSignal#notifications');
-  final granted = await channel.invokeMethod<bool>('OneSignal#permission');
-  if (granted == null) {
+const _channel = MethodChannel('com.chessever/push_permission');
+
+Future<bool> _read(String method) async {
+  final result = await _channel.invokeMethod<bool>(method);
+  if (result == null) {
     throw StateError('Native notification permission is unavailable');
   }
-  return granted;
+  return result;
 }
+
+/// Read native OS state without treating loading/failure as a denial.
+Future<bool> readNativePushPermission() => _read('permission');
+Future<bool> canRequestNativePushPermission() => _read('canRequest');
+Future<bool> requestNativePushPermission() => _read('requestPermission');
