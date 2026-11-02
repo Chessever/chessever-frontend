@@ -32,6 +32,28 @@ void main() {
     },
   );
 
+  test('refreshes APNs registration after Firebase is ready', () async {
+    messenger.setMockMethodCallHandler(channel, (call) async {
+      expect(call.method, 'refreshAPNsRegistration');
+      return null;
+    });
+    expect(await refreshNativeAPNsRegistration(), isNull);
+  });
+
+  test(
+    'surfaces native APNs registration errors without treating them as consent',
+    () async {
+      messenger.setMockMethodCallHandler(channel, (call) async {
+        expect(call.method, 'refreshAPNsRegistration');
+        return 'APNs registration unavailable';
+      });
+      expect(
+        await refreshNativeAPNsRegistration(),
+        'APNs registration unavailable',
+      );
+    },
+  );
+
   test('reads again when OS permission changes', () async {
     var granted = true;
     messenger.setMockMethodCallHandler(channel, (_) async => granted);

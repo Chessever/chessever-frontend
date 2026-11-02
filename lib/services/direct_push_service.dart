@@ -14,6 +14,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../config/app_environment.dart';
 import 'deep_link_service.dart';
 import 'direct_push_tap_router.dart';
+import 'native_push_permission.dart';
 
 /// Receipts are persisted locally and flushed after Supabase is ready.
 /// A background callback is evidence of receipt; absence of one is not a failure.
@@ -73,6 +74,9 @@ class DirectPushService with WidgetsBindingObserver {
         await _tapRouter.initializeNative(_open);
       }
       await ensureFirebaseInitialized();
+      if (defaultTargetPlatform == TargetPlatform.iOS) {
+        await refreshNativeAPNsRegistration();
+      }
       FirebaseMessaging.onBackgroundMessage(directPushBackgroundHandler);
       await _local.initialize(
         const InitializationSettings(
@@ -238,6 +242,10 @@ class DirectPushService with WidgetsBindingObserver {
           ? await FirebaseMessaging.instance.getAPNSToken()
           : null;
       if (defaultTargetPlatform == TargetPlatform.iOS && apnsToken == null) {
+        final nativeError = await refreshNativeAPNsRegistration();
+        if (nativeError != null) {
+          debugPrint('[DirectPush] APNs registration error: $nativeError');
+        }
         debugPrint(
           '[DirectPush] Waiting for APNs token; registration retry scheduled.',
         );

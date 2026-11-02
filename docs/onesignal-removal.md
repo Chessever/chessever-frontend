@@ -1,4 +1,4 @@
-# OneSignal SDK removal — 37.8.1+3785
+# OneSignal SDK removal — 37.8.2+3786
 
 This version uses Firebase Cloud Messaging and the ChessEver delivery service directly.
 It does not initialize or require the OneSignal SDK, a OneSignal device ID, or the
@@ -95,3 +95,33 @@ Release this app version before removing the remaining compatibility transport o
 downgrading/canceling OneSignal based on legacy-client readiness. Registration counts are
 not OneSignal's monthly active user metric. Historical provider data and email provenance
 should be preserved.
+
+## APNs registration follow-up — 37.8.2+3786
+
+A fresh simulator sign-in on November 2 did not register: Dart repeatedly logged
+`Waiting for APNs token`. The account's accepted tester sends targeted historical
+FCM registrations, not that fresh install. Permission authorization alone does not
+establish APNs registration or FCM delivery.
+
+The native AppDelegate now explicitly receives and caches APNs tokens, forwards
+callbacks to Flutter, then maps the token into Firebase. Dart requests replay and
+registration again after Firebase initialization and while waiting for a token.
+Simulator tokens explicitly select the APNs sandbox; physical devices use automatic
+provisioning-profile detection. Native failures log their error domain/code/message
+and appear in the Dart retry log; device tokens are never logged. No permission,
+account preference, legacy registration or backend credential was changed.
+
+This removes dependency on launch-time FlutterFire forwarding, but does not prove
+that the simulator has obtained a token or that it receives real notifications.
+The user must stop/relaunch with the native code recompiled (hot reload/restart is
+insufficient), then share the APNs success/failure and registration logs. Expect
+`APNs registration succeeded` followed by `Installation registered (37.8.2+3786)`
+and a recent FCM installation under the signed-in account before sending a test.
+If Apple registration still fails, diagnose the reported native error rather than
+sending to old tokens. Also verify on a physical iPhone before release.
+
+Validation for 37.8.2: scoped Flutter analysis found no issues; 56 focused native
+permission/onboarding/tap/navigation tests passed; Swift syntax parsing passed.
+Full mobile suite: 6,144 passed, four skipped, 45 failed in other feature suites.
+The full suite remains unclean; no runtime delivery claim is made. No app build,
+launch, simulator attachment, backend deployment or Git push was performed.
