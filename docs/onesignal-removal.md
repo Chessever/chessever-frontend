@@ -40,8 +40,14 @@ System notification settings still determine whether an alert shows heads-up.
 The companion portal contains a new corrective migration that matches iOS APNs
 tokens case-insensitively, including mixed-case duplicate mirrors, while preserving
 case-sensitive Android FCM tokens and existing owner/platform/proof checks.
-These follow-up changes are local only: apply the corrective database migration and
-deploy the updated delivery Worker before releasing this app.
+The mobile changes remain local. The corrective database migration was applied to
+production as `20261102204707_normalize_ios_legacy_push_tokens.sql`, and delivery
+Worker `1eed2ec2-e65c-4189-a3b5-ac4300a53c89` is deployed with existing variables
+and secrets preserved. Rolled-back production checks passed for APNs deduplication,
+opt-out preservation, invalid-proof rollback, Android token case sensitivity and
+service-only grants; security advisors are unchanged. No test push or store
+submission was performed. Both branches remain local without Git pushes.
+The Android manifest change takes effect when this mobile version is released.
 
 ## Original removal validation
 
@@ -67,8 +73,8 @@ deploy the updated delivery Worker before releasing this app.
   menus, event/My Space surfaces, streak/puzzle UI, dated Inbox expectations and
   the counter smoke test. This run is not a clean release gate; no pristine stable
   baseline was run to establish causality for each failure.
-- No Flutter build, app launch, live-device test, deployment or store submission
-  was performed for these local follow-up fixes.
+- No Flutter build, app launch, live-device test or store submission was performed.
+  Backend deployment and production checks are recorded above.
 
 ## Device checks before release
 
