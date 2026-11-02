@@ -18,10 +18,10 @@ class ReportTypeChips extends StatelessWidget {
   final ValueChanged<ReportGameType?> onSelected;
   final void Function(BuildContext context, ReportGameType? type)? onLongPress;
 
-  /// Missed Chance leads the row, ahead of All.
+  /// All leads the row, then Missed Chance, then the remaining stories.
   static final List<ReportGameType?> order = [
-    ReportGameType.missedChance,
     null,
+    ReportGameType.missedChance,
     for (final type in ReportGameType.values)
       if (type != ReportGameType.missedChance) type,
   ];
