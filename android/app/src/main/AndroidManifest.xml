@@ -168,6 +168,9 @@
            composition path. HCPP is still experimental and can abort the
            engine during WebView detach/end-of-frame transitions. -->
      <meta-data
+          android:name="com.google.firebase.messaging.default_notification_channel_id"
+          android:value="chessever_direct" />
+     <meta-data
           android:name="com.google.firebase.messaging.default_notification_icon"
           android:resource="@drawable/ic_notification" />
      <meta-data

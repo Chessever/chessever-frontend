@@ -3,7 +3,7 @@ import 'dart:convert';
 import '../services/watch_companion_service.dart';
 
 import 'package:chessever2/repository/sqlite/app_database.dart';
-import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -12,6 +12,7 @@ import 'auth_state_provider.dart';
 class NotificationPreferences {
   final bool favoriteEventAlerts;
   final bool favoritePlayerAlerts;
+  final bool favoritePlayerNewsAlerts;
   final bool headsUpAlerts;
   final bool dailyDigest;
   final bool callToActionAlerts;
@@ -30,6 +31,7 @@ class NotificationPreferences {
   const NotificationPreferences({
     required this.favoriteEventAlerts,
     required this.favoritePlayerAlerts,
+    this.favoritePlayerNewsAlerts = true,
     required this.headsUpAlerts,
     required this.dailyDigest,
     required this.callToActionAlerts,
@@ -46,6 +48,7 @@ class NotificationPreferences {
   NotificationPreferences copyWith({
     bool? favoriteEventAlerts,
     bool? favoritePlayerAlerts,
+    bool? favoritePlayerNewsAlerts,
     bool? headsUpAlerts,
     bool? dailyDigest,
     bool? callToActionAlerts,
@@ -61,6 +64,8 @@ class NotificationPreferences {
     return NotificationPreferences(
       favoriteEventAlerts: favoriteEventAlerts ?? this.favoriteEventAlerts,
       favoritePlayerAlerts: favoritePlayerAlerts ?? this.favoritePlayerAlerts,
+      favoritePlayerNewsAlerts:
+          favoritePlayerNewsAlerts ?? this.favoritePlayerNewsAlerts,
       headsUpAlerts: headsUpAlerts ?? this.headsUpAlerts,
       dailyDigest: dailyDigest ?? this.dailyDigest,
       callToActionAlerts: callToActionAlerts ?? this.callToActionAlerts,
@@ -78,6 +83,7 @@ class NotificationPreferences {
   static const defaults = NotificationPreferences(
     favoriteEventAlerts: true,
     favoritePlayerAlerts: true,
+    favoritePlayerNewsAlerts: true,
     headsUpAlerts: false,
     dailyDigest: false,
     callToActionAlerts: false,
@@ -93,38 +99,40 @@ class NotificationPreferences {
   );
 }
 
-final notificationPreferencesProvider = AsyncNotifierProvider<
-  NotificationPreferencesNotifier,
-  NotificationPreferences
->(NotificationPreferencesNotifier.new);
+final notificationPreferencesClientProvider = Provider<SupabaseClient>(
+  (ref) => Supabase.instance.client,
+);
+
+final notificationPreferencesProvider =
+    AsyncNotifierProvider<
+      NotificationPreferencesNotifier,
+      NotificationPreferences
+    >(NotificationPreferencesNotifier.new);
 
 class NotificationPreferencesNotifier
-    extends AsyncNotifier<NotificationPreferences> {
+    extends AsyncNotifier<NotificationPreferences>
+    with WidgetsBindingObserver {
   static const String _cacheKey = 'cached_notification_preferences';
 
-  SupabaseClient get _supabase => Supabase.instance.client;
-  bool _listening = false;
-
+  SupabaseClient get _supabase =>
+      ref.read(notificationPreferencesClientProvider);
+  Future<void> _newsWrites = Future.value();
   @override
   Future<NotificationPreferences> build() async {
-    if (!_listening) {
-      _listening = true;
-      ref.listen(currentUserProvider, (prev, next) {
-        if (prev?.id != next?.id) {
-          unawaited(_reloadForUser());
-        }
-      });
-    }
-
+    // Rebuild on account replacement so an older account's in-flight fetch
+    // cannot become the new account's displayed preference.
+    ref.watch(currentUserProvider.select((user) => user?.id));
+    WidgetsBinding.instance.addObserver(this);
+    ref.onDispose(() => WidgetsBinding.instance.removeObserver(this));
     return _fetchPreferences();
   }
 
-  Future<void> _reloadForUser() async {
-    state = const AsyncLoading();
-    state = await AsyncValue.guard(_fetchPreferences);
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) ref.invalidateSelf();
   }
 
-  String? _currentUserId() => _supabase.auth.currentUser?.id;
+  String? _currentUserId() => ref.read(currentUserProvider)?.id;
 
   Future<NotificationPreferences> _fetchPreferences() async {
     final userId = _currentUserId();
@@ -133,19 +141,18 @@ class NotificationPreferencesNotifier
     }
 
     try {
-      final response =
-          await _supabase
-              .from('user_notification_preferences')
-              .select(
-                'favorite_event_alerts,favorite_player_alerts,heads_up_alerts,'
-                'daily_digest,call_to_action_alerts,'
-                'book_update_alerts,'
-                'fp_classical,fp_rapid,fp_blitz,'
-                'se_classical,se_rapid,se_blitz,'
-                'heads_up_lead_minutes',
-              )
-              .eq('user_id', userId)
-              .maybeSingle();
+      final response = await _supabase
+          .from('user_notification_preferences')
+          .select(
+            'favorite_event_alerts,favorite_player_alerts,favorite_player_news_alerts,heads_up_alerts,'
+            'daily_digest,call_to_action_alerts,'
+            'book_update_alerts,'
+            'fp_classical,fp_rapid,fp_blitz,'
+            'se_classical,se_rapid,se_blitz,'
+            'heads_up_lead_minutes',
+          )
+          .eq('user_id', userId)
+          .maybeSingle();
 
       if (response == null) {
         return NotificationPreferences.defaults;
@@ -158,6 +165,9 @@ class NotificationPreferencesNotifier
         favoritePlayerAlerts:
             response['favorite_player_alerts'] as bool? ??
             NotificationPreferences.defaults.favoritePlayerAlerts,
+        favoritePlayerNewsAlerts:
+            response['favorite_player_news_alerts'] as bool? ??
+            NotificationPreferences.defaults.favoritePlayerNewsAlerts,
         headsUpAlerts:
             response['heads_up_alerts'] as bool? ??
             NotificationPreferences.defaults.headsUpAlerts,
@@ -193,12 +203,12 @@ class NotificationPreferencesNotifier
             NotificationPreferences.defaults.headsUpLeadMinutes,
       );
 
-      unawaited(_cachePreferences(prefs));
+      unawaited(_cachePreferences(prefs, userId));
       return prefs;
     } catch (e, st) {
       debugPrint('[NotificationPreferences] Error: $e');
       debugPrintStack(stackTrace: st);
-      return await _getCachedPreferences();
+      return await _getCachedPreferences(userId);
     }
   }
 
@@ -239,6 +249,24 @@ class NotificationPreferencesNotifier
       }
       return prefs.copyWith(favoriteEventAlerts: false);
     });
+  }
+
+  /// One account setting shared by every registered device. Only this column
+  /// is written, so changing News cannot overwrite game/event choices.
+  Future<void> setFavoritePlayerNewsAlerts(bool value) {
+    final owner = _currentUserId();
+    if (owner == null) {
+      return Future.error(StateError('Sign in to change News alerts'));
+    }
+    final next = _newsWrites.catchError((Object _) {}).then((_) async {
+      if (_currentUserId() != owner) return;
+      await _updatePreferences(
+        (prefs) => prefs.copyWith(favoritePlayerNewsAlerts: value),
+        newsOnly: true,
+      );
+    });
+    _newsWrites = next;
+    return next;
   }
 
   Future<void> setHeadsUpAlerts(bool value) async {
@@ -310,6 +338,7 @@ class NotificationPreferencesNotifier
       (current) => NotificationPreferences(
         favoriteEventAlerts: false,
         favoritePlayerAlerts: false,
+        favoritePlayerNewsAlerts: false,
         headsUpAlerts: false,
         dailyDigest: false,
         callToActionAlerts: false,
@@ -324,6 +353,7 @@ class NotificationPreferencesNotifier
         seBlitz: current.seBlitz,
         headsUpLeadMinutes: current.headsUpLeadMinutes,
       ),
+      includeNews: true,
     );
   }
 
@@ -332,53 +362,83 @@ class NotificationPreferencesNotifier
   // ---------------------------------------------------------------------------
 
   Future<void> _updatePreferences(
-    NotificationPreferences Function(NotificationPreferences) update,
-  ) async {
+    NotificationPreferences Function(NotificationPreferences) update, {
+    bool newsOnly = false,
+    bool includeNews = false,
+  }) async {
     final current = state.valueOrNull ?? NotificationPreferences.defaults;
     final updated = update(current);
     state = AsyncValue.data(updated);
 
-    unawaited(_cachePreferences(updated));
-
     final userId = _currentUserId();
     if (userId == null) return;
+    // Preserve existing game/event offline caching. News is cached only after
+    // a successful account save, so a failed toggle is never shown as synced.
+    if (!newsOnly) unawaited(_cachePreferences(updated, userId));
 
     try {
       await _supabase.from('user_notification_preferences').upsert({
         'user_id': userId,
-        'favorite_event_alerts': updated.favoriteEventAlerts,
-        'favorite_player_alerts': updated.favoritePlayerAlerts,
-        'heads_up_alerts': updated.headsUpAlerts,
-        'daily_digest': updated.dailyDigest,
-        'call_to_action_alerts': updated.callToActionAlerts,
-        'book_update_alerts': updated.bookUpdateAlerts,
-        'fp_classical': updated.fpClassical,
-        'fp_rapid': updated.fpRapid,
-        'fp_blitz': updated.fpBlitz,
-        'se_classical': updated.seClassical,
-        'se_rapid': updated.seRapid,
-        'se_blitz': updated.seBlitz,
-        // Legacy shared filters are retained for older dispatchers/builds.
-        // They cannot represent the split FP/SE model, so keep them as the
-        // most restrictive union to avoid sending a blocked time control.
-        'notify_classical': updated.fpClassical && updated.seClassical,
-        'notify_rapid': updated.fpRapid && updated.seRapid,
-        'notify_blitz': updated.fpBlitz && updated.seBlitz,
-        'heads_up_lead_minutes': updated.headsUpLeadMinutes,
+        if (newsOnly)
+          'favorite_player_news_alerts': updated.favoritePlayerNewsAlerts,
+        if (!newsOnly) ...{
+          'favorite_event_alerts': updated.favoriteEventAlerts,
+          'favorite_player_alerts': updated.favoritePlayerAlerts,
+          'heads_up_alerts': updated.headsUpAlerts,
+          'daily_digest': updated.dailyDigest,
+          'call_to_action_alerts': updated.callToActionAlerts,
+          'book_update_alerts': updated.bookUpdateAlerts,
+          'fp_classical': updated.fpClassical,
+          'fp_rapid': updated.fpRapid,
+          'fp_blitz': updated.fpBlitz,
+          'se_classical': updated.seClassical,
+          'se_rapid': updated.seRapid,
+          'se_blitz': updated.seBlitz,
+          // Legacy shared filters are retained for older dispatchers/builds.
+          // They cannot represent the split FP/SE model, so keep them as the
+          // most restrictive union to avoid sending a blocked time control.
+          'notify_classical': updated.fpClassical && updated.seClassical,
+          'notify_rapid': updated.fpRapid && updated.seRapid,
+          'notify_blitz': updated.fpBlitz && updated.seBlitz,
+          'heads_up_lead_minutes': updated.headsUpLeadMinutes,
+          // Unrelated saves must not overwrite a newer News choice on another device.
+          if (includeNews ||
+              updated.favoritePlayerNewsAlerts !=
+                  current.favoritePlayerNewsAlerts)
+            'favorite_player_news_alerts': updated.favoritePlayerNewsAlerts,
+        },
       }, onConflict: 'user_id');
-      WatchCompanionService.instance.scheduleSync();
+      if (_currentUserId() == userId) {
+        unawaited(_cachePreferences(state.valueOrNull ?? updated, userId));
+      }
+      if (!newsOnly) WatchCompanionService.instance.scheduleSync();
     } catch (e, st) {
+      if (newsOnly) {
+        if (_currentUserId() == userId) {
+          final latest = state.valueOrNull ?? current;
+          state = AsyncData(
+            latest.copyWith(
+              favoritePlayerNewsAlerts: current.favoritePlayerNewsAlerts,
+            ),
+          );
+        }
+        rethrow;
+      }
       debugPrint('[NotificationPreferences] Update failed: $e');
       debugPrintStack(stackTrace: st);
     }
   }
 
-  Future<void> _cachePreferences(NotificationPreferences prefs) async {
+  Future<void> _cachePreferences(
+    NotificationPreferences prefs,
+    String userId,
+  ) async {
     try {
       final db = AppDatabase.instance;
       final json = jsonEncode({
         'favoriteEventAlerts': prefs.favoriteEventAlerts,
         'favoritePlayerAlerts': prefs.favoritePlayerAlerts,
+        'favoritePlayerNewsAlerts': prefs.favoritePlayerNewsAlerts,
         'headsUpAlerts': prefs.headsUpAlerts,
         'dailyDigest': prefs.dailyDigest,
         'callToActionAlerts': prefs.callToActionAlerts,
@@ -391,16 +451,16 @@ class NotificationPreferencesNotifier
         'seBlitz': prefs.seBlitz,
         'headsUpLeadMinutes': prefs.headsUpLeadMinutes,
       });
-      await db.setString(_cacheKey, json);
+      await db.setString('${_cacheKey}_$userId', json);
     } catch (e) {
       debugPrint('[NotificationPreferences] Error caching: $e');
     }
   }
 
-  Future<NotificationPreferences> _getCachedPreferences() async {
+  Future<NotificationPreferences> _getCachedPreferences(String userId) async {
     try {
       final db = AppDatabase.instance;
-      final json = await db.getString(_cacheKey);
+      final json = await db.getString('${_cacheKey}_$userId');
       if (json == null) {
         return NotificationPreferences.defaults;
       }
@@ -413,6 +473,9 @@ class NotificationPreferencesNotifier
         favoritePlayerAlerts:
             map['favoritePlayerAlerts'] as bool? ??
             NotificationPreferences.defaults.favoritePlayerAlerts,
+        favoritePlayerNewsAlerts:
+            map['favoritePlayerNewsAlerts'] as bool? ??
+            NotificationPreferences.defaults.favoritePlayerNewsAlerts,
         headsUpAlerts:
             map['headsUpAlerts'] as bool? ??
             NotificationPreferences.defaults.headsUpAlerts,

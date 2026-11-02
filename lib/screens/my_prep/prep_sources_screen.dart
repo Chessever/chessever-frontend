@@ -50,11 +50,10 @@ class PrepSourcesScreen extends ConsumerWidget {
               tooltip: 'Add source',
               icon: const Icon(Icons.add_rounded),
               color: colors.surfaceElevated,
-              onSelected: (source) => source == PrepSource.manual
-                  ? prepImportSource(context, ref, profile)
-                  : prepAddAccountTo(context, ref, profile, source: source),
+              onSelected: (source) =>
+                  prepAddAccountTo(context, ref, profile, source: source),
               itemBuilder: (_) => [
-                for (final source in PrepSource.values)
+                for (final source in PrepSource.playerSources)
                   PopupMenuItem(
                     key: ValueKey('prep_attach_${source.name}'),
                     value: source,
@@ -67,9 +66,7 @@ class PrepSourcesScreen extends ConsumerWidget {
                         SizedBox(width: 12.w),
                         Expanded(
                           child: Text(
-                            source == PrepSource.manual
-                                ? 'Import PGN'
-                                : source.label,
+                            source.label,
                             style: AppTypography.textSmRegular,
                           ),
                         ),

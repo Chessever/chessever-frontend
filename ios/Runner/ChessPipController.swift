@@ -239,9 +239,10 @@ final class ChessPipController: NSObject {
   /// playback outright (`CMSUtility_IsAllowedToStartPlaying: ... does not have
   /// assertions to start mixable playback`, surfaced as
   /// AVAudioSession.ErrorCode.cannotStartPlaying) — `AVAudioPlayer.play()` just
-  /// returns false and nothing is heard. So while PiP is armed we must take a
-  /// non-mixable session, which interrupts whatever else is playing; the rest of
-  /// the time we stay mixable so browsing a board never stops the user's music.
+  /// returns false and nothing is heard. A non-mixable session fixes that but
+  /// interrupts whatever else is playing, so it is taken only when
+  /// `mayTakeExclusiveSession()` says nothing else is playing and the user wants
+  /// move sounds. Otherwise we stay mixable and the user's audio always wins.
   private func activateAudioSession(exclusive: Bool) {
     let session = AVAudioSession.sharedInstance()
     let options: AVAudioSession.CategoryOptions = exclusive ? [] : [.mixWithOthers]
@@ -262,11 +263,27 @@ final class ChessPipController: NSObject {
   /// while we were backgrounded) self-heals on the next tick instead of leaving
   /// PiP permanently silent.
   private func ensurePlaybackAudioSession() {
+    // Another app started playing while we held the session: step aside at once.
+    if wantsExclusivePlayback && !mayTakeExclusiveSession() {
+      wantsExclusivePlayback = false
+    }
     let session = AVAudioSession.sharedInstance()
+    let isMixable = session.categoryOptions.contains(.mixWithOthers)
     let categoryWrong =
-      session.category != .playback || session.categoryOptions.contains(.mixWithOthers)
+      session.category != .playback || isMixable == wantsExclusivePlayback
     guard categoryWrong || !isSessionActive else { return }
-    activateAudioSession(exclusive: true)
+    activateAudioSession(exclusive: wantsExclusivePlayback)
+  }
+
+  /// ChessEver is a secondary audio app: the user's music, podcast or video
+  /// always wins. A non-mixable session interrupts whatever else is playing, so
+  /// take one only when it costs the user nothing — they want our move sounds,
+  /// and no other app is producing audio right now. Otherwise stay mixable:
+  /// PiP still shows the board, it just plays no move blips in the background.
+  private func mayTakeExclusiveSession() -> Bool {
+    guard payload?["soundEnabled"] as? Bool == true else { return false }
+    let session = AVAudioSession.sharedInstance()
+    return !session.isOtherAudioPlaying && !session.secondaryAudioShouldBeSilencedHint
   }
 
   private func restoreAmbientAudioSession() {
@@ -282,6 +299,7 @@ final class ChessPipController: NSObject {
   /// the app has backgrounded is the request iOS denies.
   private func armExclusivePlayback() {
     guard payload?["eligible"] as? Bool == true else { return }
+    guard mayTakeExclusiveSession() else { return }
     wantsExclusivePlayback = true
     activateAudioSession(exclusive: true)
   }
@@ -353,7 +371,10 @@ final class ChessPipController: NSObject {
       isSessionActive = false
     case .ended:
       guard wantsExclusivePlayback else { return }
-      activateAudioSession(exclusive: true)
+      // Whoever interrupted us may still be playing; never take the route back
+      // from them.
+      if !mayTakeExclusiveSession() { wantsExclusivePlayback = false }
+      activateAudioSession(exclusive: wantsExclusivePlayback)
     @unknown default:
       break
     }
@@ -442,6 +463,9 @@ final class ChessPipController: NSObject {
     guard !player.play() else { return }
     // play() returning false in the background almost always means the session lost
     // its playback assertion. Re-take it and retry once.
+    // Mixable sessions are denied background playback by design; that is the
+    // price of never interrupting the user's own audio, so do not escalate.
+    guard wantsExclusivePlayback, mayTakeExclusiveSession() else { return }
     print("[PiP] move SFX denied — re-activating session and retrying")
     activateAudioSession(exclusive: true)
     player.currentTime = 0

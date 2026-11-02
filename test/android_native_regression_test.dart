@@ -5,6 +5,32 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   group('Android native regression guards', () {
+    test('background FCM alerts use the existing high-importance channel', () {
+      final manifest = File(
+        'android/app/src/main/AndroidManifest.xml',
+      ).readAsStringSync();
+      final service = File(
+        'lib/services/direct_push_service.dart',
+      ).readAsStringSync();
+      expect(
+        manifest,
+        matches(
+          RegExp(
+            r'android:name="com.google.firebase.messaging.default_notification_channel_id"\s+'
+            r'android:value="chessever_direct"',
+          ),
+        ),
+      );
+      expect(
+        service,
+        matches(
+          RegExp(
+            r"AndroidNotificationChannel\(\s*'chessever_direct',[\s\S]*?importance: Importance.high",
+          ),
+        ),
+      );
+    });
+
     test('flutter_soloud remains isolated to the audio service', () {
       final offenders = <String>[];
 

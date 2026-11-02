@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:chessever2/screens/feed/news/news_links.dart';
+import 'favorite_player_news_destination.dart';
 import 'package:chessever2/providers/event_video_provider.dart';
 import 'dart:io' show Platform;
 
@@ -1594,6 +1595,12 @@ class DeepLinkService {
     WidgetRef ref,
   ) {
     final generation = ++_destinationGeneration;
+    if (data['type'] == 'favorite_player_news') {
+      final article = favoritePlayerNewsDestination(data);
+      if (article == null) return;
+      unawaited(_navigateToAppDestination(article, navigatorKey, ref, generation: generation));
+      return;
+    }
     final configuredRoute = _asNonEmptyString(data['route']);
     final inboxMessageId = _asNonEmptyString(data['inbox_message_id']);
     final destination = configuredRoute == null

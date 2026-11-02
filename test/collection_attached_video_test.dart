@@ -9,7 +9,6 @@ import 'package:chessever2/screens/chessboard/video/video_session.dart';
 import 'package:chessever2/screens/chessboard/video/video_widgets.dart';
 import 'package:chessever2/screens/collections/collections_data.dart';
 import 'package:chessever2/screens/collections/open_collection_game.dart';
-import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -94,9 +93,8 @@ class _Api implements HttpClientAdapter {
   void close({bool force = false}) {}
 }
 
-// Let entrance/exit frames complete without pumpAndSettle draining the snack's
-// animated five-second lifetime before we can press Retry.
-Future<void> _pumpNotice(WidgetTester tester) async {
+// Let the failed lookup settle without pumpAndSettle.
+Future<void> _pumpFrames(WidgetTester tester) async {
   for (var frame = 0; frame < 8; frame++) {
     await tester.pump(const Duration(milliseconds: 100));
   }
@@ -308,142 +306,36 @@ void main() {
     },
   );
 
-  testWidgets('an expired failure notice does not replay on board rebuilds', (
+  testWidgets('a failed video lookup is silent and keeps attached videos', (
     tester,
   ) async {
-    const lookup = (gameId: 'rebuild', pgn: _pgn);
-    var calls = 0;
-    final overrides = [
-      gameVideoSourcesProvider(lookup).overrideWith((ref) async {
-        calls++;
-        throw StateError('private failure');
-      }),
-    ];
-    Widget harness() => ProviderScope(
-      overrides: overrides,
-      child: MaterialApp(
-        builder: (context, child) {
-          ResponsiveHelper.init(context);
-          return child!;
-        },
-        home: const Scaffold(
-          body: Stack(
-            children: [
-              SizedBox.expand(key: ValueKey('board')),
-              GameVideoDiscoveryNotice(lookup: lookup),
-            ],
+    const lookup = (gameId: 'g1', pgn: _pgn);
+    final game = CollectionGame.fromCard(_card())!.game;
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          gameVideoSourcesProvider(
+            lookup,
+          ).overrideWith((ref) async => throw StateError('route_not_allowed')),
+        ],
+        child: MaterialApp(
+          home: Scaffold(
+            body: Consumer(
+              builder: (context, ref, _) {
+                final sources = ref.watch(gameVideoSourcesProvider(lookup));
+                return Text(
+                  'Videos: ${gameAnalysisStreams(game, sources).length}',
+                );
+              },
+            ),
           ),
         ),
       ),
     );
-    await tester.pumpWidget(harness());
-    final size = tester.getSize(find.byKey(const ValueKey('board')));
-    await _pumpNotice(tester);
-    expect(find.text('Retry'), findsOneWidget);
-    expect(tester.getSize(find.byKey(const ValueKey('board'))), size);
-    await tester.pump(const Duration(seconds: 6));
-    await _pumpNotice(tester);
+    await _pumpFrames(tester);
+    expect(find.text('Videos: 1'), findsOneWidget);
+    expect(find.byType(SnackBar), findsNothing);
     expect(find.text('Retry'), findsNothing);
-    await tester.pumpWidget(harness());
-    await tester.pump(const Duration(milliseconds: 400));
-    expect(find.text('Retry'), findsNothing);
-    expect(calls, 1);
     expect(tester.takeException(), isNull);
   });
-
-  for (final cached in [false, true]) {
-    testWidgets(
-      'discovery failure cached=$cached retries each attempt without duplicate notices',
-      (tester) async {
-        const lookup = (gameId: 'g1', pgn: _pgn);
-        var calls = 0;
-        var pending = Completer<List<Map<String, dynamic>>>();
-        final game = CollectionGame.fromCard(_card())!.game;
-        final container = ProviderContainer(
-          overrides: [
-            gameVideoSourcesProvider(lookup).overrideWith((ref) {
-              calls++;
-              return pending.future;
-            }),
-          ],
-        );
-        final subscription = container.listen(
-          gameVideoSourcesProvider(lookup),
-          (_, _) {},
-        );
-        if (cached) {
-          pending.completeError(StateError('private lookup details'));
-          try {
-            await container.read(gameVideoSourcesProvider(lookup).future);
-          } catch (_) {}
-        }
-        Widget harness() => UncontrolledProviderScope(
-          container: container,
-          child: MaterialApp(
-            builder: (context, child) {
-              ResponsiveHelper.init(context);
-              return child!;
-            },
-            home: Scaffold(
-              bottomNavigationBar: const GameVideoDiscoveryNotice(
-                lookup: lookup,
-              ),
-              body: Consumer(
-                builder: (context, ref, _) {
-                  final sources = ref.watch(gameVideoSourcesProvider(lookup));
-                  return Column(
-                    children: [
-                      const Text('Board usable'),
-                      Text(
-                        'Videos: ${gameAnalysisStreams(game, sources).length}',
-                      ),
-                    ],
-                  );
-                },
-              ),
-            ),
-          ),
-        );
-        await tester.pumpWidget(harness());
-        expect(find.text('Videos: 1'), findsOneWidget);
-        if (!cached) {
-          pending.completeError(StateError('private lookup details'));
-        }
-        await _pumpNotice(tester);
-        expect(find.text('Board usable'), findsOneWidget);
-        expect(find.text('Videos: 1'), findsOneWidget);
-        expect(
-          find.textContaining("Couldn't look up additional game videos"),
-          findsOneWidget,
-        );
-        expect(find.textContaining('private lookup details'), findsNothing);
-        expect(find.byType(SnackBar), findsOneWidget);
-        await tester.pumpWidget(harness());
-        await _pumpNotice(tester);
-        expect(calls, 1);
-        pending = Completer<List<Map<String, dynamic>>>();
-        await tester.tap(find.text('Retry'));
-        await tester.pump();
-        expect(calls, 2);
-        expect(find.text('Videos: 1'), findsOneWidget);
-        pending.completeError(StateError('second private failure'));
-        await _pumpNotice(tester);
-        expect(find.text('Retry'), findsOneWidget);
-        expect(find.text('Videos: 1'), findsOneWidget);
-        pending = Completer<List<Map<String, dynamic>>>();
-        await tester.tap(find.text('Retry'));
-        await tester.pump();
-        expect(calls, 3);
-        pending.complete([]);
-        await _pumpNotice(tester);
-        expect(find.text('Retry'), findsNothing);
-        expect(find.text('Videos: 1'), findsOneWidget);
-        expect(tester.takeException(), isNull);
-        await tester.pumpWidget(const SizedBox.shrink());
-        subscription.close();
-        container.dispose();
-        await tester.pump(const Duration(milliseconds: 1));
-      },
-    );
-  }
 }

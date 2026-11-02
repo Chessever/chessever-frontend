@@ -1,4 +1,4 @@
-# OneSignal SDK removal — 37.6.11+3778
+# OneSignal SDK removal — 37.8.1+3785
 
 This version uses Firebase Cloud Messaging and the ChessEver delivery service directly.
 It does not initialize or require the OneSignal SDK, a OneSignal device ID, or the
@@ -26,7 +26,24 @@ forwarding. Backend legacy timezone lookups and credential checks also remain un
 transport retirement. Native registration timezones already take precedence for current
 devices. Email continues through SES, with all existing opt-outs and suppressions intact.
 
-## Validation
+## Local release fixes
+
+Merged production `stable` through `f5c2272a` (37.8.0+3784), preserving the
+News preferences/routing, video, Prep, PiP audio and release-workflow updates.
+This release advances both patch and build to 37.8.1+3785.
+
+Android background FCM notifications now select `chessever_direct` through the
+manifest default and the companion delivery Worker's explicit `channel_id`.
+The existing channel is created with high importance before device registration.
+System notification settings still determine whether an alert shows heads-up.
+
+The companion portal contains a new corrective migration that matches iOS APNs
+tokens case-insensitively, including mixed-case duplicate mirrors, while preserving
+case-sensitive Android FCM tokens and existing owner/platform/proof checks.
+These follow-up changes are local only: apply the corrective database migration and
+deploy the updated delivery Worker before releasing this app.
+
+## Original removal validation
 
 - Scoped Flutter analysis: no issues.
 - Focused native-permission, returning-sign-in, onboarding, direct-tap, Inbox-navigation
@@ -38,6 +55,20 @@ devices. Email continues through SES, with all existing opt-outs and suppression
   suites, including board gestures, event/My Space menus, streak/puzzle UI, dated Inbox
   text and the old counter smoke test. The full suite is not a clean release gate.
 - No app build, live-device test, or store submission was performed.
+
+## Follow-up validation
+
+- Portal build/type-check and all 536 backend tests passed, including mixed-case
+  APNs migration, case-sensitive Android tokens and FCM channel payload coverage.
+- All 67 focused mobile notification/News tests passed; scoped Flutter analysis
+  found no issues. Eight News SQL checks and six release-update checks passed.
+- Native Swift syntax and release-shell syntax checks passed.
+- Full mobile suite: 6,142 passed, four skipped, 45 failed. Failures include board
+  menus, event/My Space surfaces, streak/puzzle UI, dated Inbox expectations and
+  the counter smoke test. This run is not a clean release gate; no pristine stable
+  baseline was run to establish causality for each failure.
+- No Flutter build, app launch, live-device test, deployment or store submission
+  was performed for these local follow-up fixes.
 
 ## Device checks before release
 

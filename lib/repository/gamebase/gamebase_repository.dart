@@ -1082,6 +1082,35 @@ class GamebaseRepository {
     unwrapCollectionsEnvelope(response.data, statusCode: response.statusCode);
   }
 
+  /// Who may attach analysis: superadmins anywhere, collection owners on
+  /// games in their own collections. Gamebase enforces the same rule on submit.
+  Future<({bool superadmin, bool ownsCollections, bool canAttach})>
+  getGameVideoRights({String gameId = '', String? pgn}) async {
+    const none = (superadmin: false, ownsCollections: false, canAttach: false);
+    final token = Supabase.instance.client.auth.currentSession?.accessToken;
+    if (token == null) return none;
+    final response = await _dio.post(
+      '$_baseUrl/api/collections/videos/eligibility',
+      data: {
+        if (gameId.isNotEmpty) 'gameId': gameId,
+        if (pgn != null && pgn.isNotEmpty && pgn.length <= 250000) 'pgn': pgn,
+      },
+      options: Options(
+        headers: {..._headers, 'Authorization': 'Bearer $token'},
+      ),
+    );
+    final data = unwrapCollectionsEnvelope(
+      response.data,
+      statusCode: response.statusCode,
+    );
+    if (data is! Map) return none;
+    return (
+      superadmin: data['superadmin'] == true,
+      ownsCollections: data['ownsCollections'] == true,
+      canAttach: data['canAttach'] == true,
+    );
+  }
+
   Future<List<Map<String, dynamic>>> getOwnGameAnalysisVideos(
     String gameId,
   ) async {

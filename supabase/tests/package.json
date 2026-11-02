@@ -2,6 +2,6 @@
   "private": true,
   "type": "module",
   "engines": {"node": ">=22.18.0"},
-  "scripts": {"test:rewarded": "node --test rewarded_premium.test.mjs ../functions/rewarded-premium-ssv/verification.test.ts", "test:partner-news": "node --test partner_news.test.mjs ../functions/partner-news-sync/feed.test.ts"},
+  "scripts": {"test:favorite-news": "node --test favorite_player_news.test.mjs account_news_preferences.test.mjs", "test:rewarded": "node --test rewarded_premium.test.mjs ../functions/rewarded-premium-ssv/verification.test.ts", "test:partner-news": "node --test partner_news.test.mjs ../functions/partner-news-sync/feed.test.ts"},
   "devDependencies": {"@electric-sql/pglite": "0.5.2"}
 }

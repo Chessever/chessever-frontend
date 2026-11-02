@@ -24,6 +24,7 @@ class NotifToggleTile extends StatelessWidget {
     this.badge,
     this.trailing,
     this.showCard = true,
+    this.wrapTitle = false,
   });
 
   final String title;
@@ -42,9 +43,17 @@ class NotifToggleTile extends StatelessWidget {
   /// When false the tile renders without its own card decoration.
   /// Use this when grouping multiple tiles inside a shared card.
   final bool showCard;
+  final bool wrapTitle;
 
   @override
   Widget build(BuildContext context) {
+    final titleWidget = Text(
+      title,
+      style: AppTypography.textMdMedium.copyWith(
+        color: context.colors.textPrimary,
+        fontSize: 13.f,
+      ),
+    );
     final content = Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -57,13 +66,7 @@ class NotifToggleTile extends StatelessWidget {
                 children: [
                   Row(
                     children: [
-                      Text(
-                        title,
-                        style: AppTypography.textMdMedium.copyWith(
-                          color: context.colors.textPrimary,
-                          fontSize: 13.f,
-                        ),
-                      ),
+                      if (wrapTitle) Flexible(child: titleWidget) else titleWidget,
                       if (badge != null) ...[SizedBox(width: 6.sp), badge!],
                     ],
                   ),

@@ -213,8 +213,35 @@ It uses its own application/installer identities and provisioning profile;
 direct downloads keep their existing Stripe and updater behavior. The default
 `submit_review` input uploads and submits with `--release-type MANUAL`.
 Unchecked, it uploads to App Store Connect only. Replacing an existing pending
-review requires the separate `replace_pending_review` input. This workflow
+review requires the separate `replace_pending_review` input. Its signing job
 receives no R2 publisher or Telegram credentials.
+
+## Telegram run updates
+
+Release runs post to the General topic of the ChessEver team group through
+`@chesseverfeedbackbot`. `scripts/ci/telegram_run_updates.py` (copied verbatim
+into the desktop repository) does the posting:
+
+- **Release workflows** (Mobile release; Desktop release, Mac App Store review
+  and macOS Flutter master on desktop) have a `Telegram updates` job with no
+  `needs` and no environment. It posts one message when the run starts, edits
+  it as each job is queued, waits for approval, runs (with the current step),
+  succeeds or fails (with the failed step), then sends one reply with the
+  result. Edits don't notify phones; the reply does.
+- **Watch companion check** runs on pushes, so it posts only when it fails.
+
+That job is the only one that writes to the chat, so parallel jobs never
+overwrite each other's lines. It reads job results with `actions: read` and
+never sees signing material. Every Telegram step is `continue-on-error`:
+an outage or missing secret never fails a release.
+
+`TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` are organization secrets visible to
+all repositories. The desktop `release` environment still holds its own pair
+for the Codemagic-parity per-platform notices, which go to the desktop release
+chat; environment secrets override organization ones of the same name, which
+is why the update job runs outside that environment. The token is used only
+inside request URLs and errors never print them. Never echo it or pass it on a
+command line.
 
 ## How the secrets are protected
 
@@ -350,7 +377,8 @@ Apple Distribution certificate whose private key you give it, and with
 Not carried over: `CODEMAGIC_PUBLISHER_KEY` and `CODEMAGIC_PUBLISH_REMOTE`
 (the old droplet upload; nothing reads them since the move to R2),
 `GAMEBASE_API_KEY` in either frontend (both use the server proxy), and the
-mobile `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` (no mobile step uses them).
+Codemagic-era mobile `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` (run updates
+now use the organization pair; see "Telegram run updates").
 
 Gamebase requests carry only the public Supabase project key and the caller's
 session. The upstream Gamebase key belongs in the production `gamebase-proxy`
