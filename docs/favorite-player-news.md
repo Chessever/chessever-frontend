@@ -28,6 +28,16 @@ The following migrations are already applied and verified in production, in orde
 1. Phone `20261031051924_favorite_player_news.sql`.
 2. Phone `20261031051929_account_news_preferences.sql`.
 3. Admin `20261031051935_favorite_player_news_transport.sql`.
+4. Phone `20261102120000_favorite_player_news_publish_skew.sql` (2026-11-02).
+
+**Publisher clock skew (fixed 2026-11-02).** The publication guard read
+`published_at < created_at` as an imported old article. Hermes sends its own
+`published_at` instead of `publish_now`, stamped 0.4-12 s before the INSERT's
+`now()`, so five of the first six eligible articles (#696, #703, #708, #709,
+#713) never reached `favorite_player_news_publications` and sent nothing. The
+guard now allows 5 minutes of skew. Health check: every row with non-empty
+`player_news_subjects` whose `favorite_player_news_subject_ids(...)` is non-empty
+should have a ledger row and an `admin_portal.news_fanout` row.
 
 These filenames match production's recorded versions. Their SQL contents are
 unchanged; do not apply them again under the former timestamps. The removed

@@ -18,6 +18,7 @@ before(async()=>{
  insert into news(content,status,published_at)values('Old','published',now()),('Old draft','draft',null);
  select set_config('request.jwt.claim.role','service_role',false);`);
  await db.exec(await readFile(new URL('../migrations/20261031051924_favorite_player_news.sql',import.meta.url),'utf8'));
+ await db.exec(await readFile(new URL('../migrations/20261102120000_favorite_player_news_publish_skew.sql',import.meta.url),'utf8'));
 });
 after(async()=>await db.close());
 test('first subject/quote publication persists atomically and only once; routine edits and republish do not repeat',async()=>{
@@ -42,4 +43,9 @@ test('non-service cannot change eligible content/status or metadata; ledgers/RPC
  await assert.rejects(db.query("update news set player_news_subjects='[]' where id=$1",[id]),/editorial service/);
  await db.exec("select set_config('request.jwt.claim.role','service_role',false)");
  for(const role of ['anon','authenticated'])assert.equal((await db.query("select has_table_privilege($1,'favorite_player_news_publications','select') or has_function_privilege($1,'activate_due_favorite_player_news(integer)','execute') allowed",[role])).rows[0].allowed,false);
+});
+test('publisher clock a few seconds behind the insert still counts as a new publication; an hour behind is an import',async()=>{
+ // Production 2026-11-01: Hermes stamped published_at 0.4-12 s before created_at's now().
+ const n=await count();await article('published',new Date(Date.now()-12_000).toISOString());assert.equal(await count(),n+1);
+ await article('published',new Date(Date.now()-3_600_000).toISOString());assert.equal(await count(),n+1);
 });
