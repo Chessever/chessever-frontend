@@ -68,7 +68,7 @@ class AuthStateListener extends ConsumerWidget {
 
         if (currentRoute == '/') {
           // Splash owns initial navigation, but identity side effects still need
-          // to run so OneSignal does not keep a stale external_id on cold start.
+          // to run so push registration does not retain the previous account on cold start.
           if (authState.status == AppAuthStatus.authenticated) {
             final currentUserId = authState.user?.id;
             unawaited(AnalyticsService.instance.syncUser(authState.user));
@@ -81,7 +81,6 @@ class AuthStateListener extends ConsumerWidget {
             }
           } else if (authState.status == AppAuthStatus.unauthenticated) {
             unawaited(AnalyticsService.instance.clearUser());
-            unawaited(PushNotificationsService.instance.logoutUser());
           }
           return;
         }
@@ -255,7 +254,6 @@ class AuthStateListener extends ConsumerWidget {
           // Clear the sync tracking when user logs out
           _lastSyncedUserId = null;
           unawaited(AnalyticsService.instance.clearUser());
-          unawaited(PushNotificationsService.instance.logoutUser());
           unawaited(
             Future(() async {
               await RevenueCatService().logOut();

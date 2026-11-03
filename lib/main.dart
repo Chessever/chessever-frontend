@@ -49,7 +49,6 @@ import 'package:chessever2/widgets/custom_upgrade_alert.dart';
 import 'package:chessever2/widgets/dismiss_keyboard.dart';
 import 'package:chessever2/widgets/guest_session_gate_listener.dart';
 import 'package:chessground/chessground.dart';
-import 'package:onesignal_flutter/onesignal_flutter.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -82,7 +81,6 @@ import 'theme/app_theme.dart';
 import 'theme/theme_provider.dart';
 import 'package:chessever2/repository/authentication/auth_repository.dart';
 import 'package:chessever2/providers/app_resume_signal_provider.dart';
-import 'package:chessever2/providers/push_token_sync_provider.dart';
 
 final RouteObserver<ModalRoute<void>> routeObserver =
     RouteObserver<ModalRoute<void>>();
@@ -145,7 +143,7 @@ bool _shouldDropSentryEvent(SentryEvent event) {
     'no active stream to cancel', // benign EventChannel cancel race
     // Sentry Cocoa's native failed-request capture. Our own traffic is Dart
     // sockets, which it never sees, so every one is a third-party SDK's 5xx:
-    // RevenueCat receipts, Firebase Remote Config, Google consent, OneSignal
+    // RevenueCat receipts, Firebase Remote Config, Google consent, push registration
     // (CHESSEVER-XM). Nothing in the app can act on them.
     'httpclienterror',
     // Self-healing Stockfish engine lifecycle resets: the singleton already
@@ -242,10 +240,6 @@ const Map<String, String> _releaseEnvValues = {
     'RevenueCatAPIKey',
     defaultValue: '',
   ),
-  'ONESIGNAL_APP_ID': String.fromEnvironment(
-    'ONESIGNAL_APP_ID',
-    defaultValue: '',
-  ),
   'APPSFLYER_DEV_KEY': String.fromEnvironment(
     'APPSFLYER_DEV_KEY',
     defaultValue: '',
@@ -257,10 +251,6 @@ String _resolveAmplitudeApiKey() {
   if (envApiKey.isNotEmpty) return envApiKey;
   if (AppEnvironment.isTest) return '';
   return AnalyticsService.fallbackApiKey;
-}
-
-String _resolveOneSignalAppId() {
-  return _getOptionalEnv('ONESIGNAL_APP_ID');
 }
 
 void _e2eStartupLog(String message) {
@@ -864,46 +854,15 @@ void _initializePostStartupServices(WidgetRef ref) {
     ),
   );
 
-  // Initialize OneSignal (non-blocking)
-  final oneSignalAppId = _resolveOneSignalAppId();
-  final oneSignalStarted =
-      !E2eConfig.suppressInterruptivePrompts &&
-      oneSignalAppId.trim().isNotEmpty;
-  if (oneSignalStarted) {
+  // Register notification taps and devices directly with Firebase and our service.
+  if (!E2eConfig.suppressInterruptivePrompts) {
     unawaited(
-      PushNotificationsService.instance.initialize(appId: oneSignalAppId),
+      PushNotificationsService.instance.initialize().catchError((Object error) {
+        debugPrint('[PushNotifications] Initialization deferred: $error');
+      }),
     );
   }
-
   unawaited(DirectPushService.instance.initialize());
-
-  // Handle OneSignal notification taps.
-  //
-  // This listener is registered here, during startup, and NOT from the widget
-  // tree. A terminated-app tap is replayed by the native SDK as soon as a click
-  // listener exists, which on a cold start is long before `MyApp` has painted —
-  // so a listener that only comes up with the first frame leaves a window where
-  // the tap has nobody to deliver it to. That window does not exist when the app
-  // is merely backgrounded, which is exactly why a backgrounded tap routed
-  // correctly while a cold-start tap landed on Home.
-  //
-  // The payload is handed to DeepLinkService, which routes it immediately if the
-  // app can already navigate and buffers it otherwise. Nothing here needs a
-  // WidgetRef, so registration cannot be blocked on the tree being ready.
-  //
-  // Gated on OneSignal actually having been started: the native side resolves
-  // this through OneSignal.getNotifications(), which throws before
-  // initWithContext, and the plugin latches "a listener was requested" before it
-  // makes that call — so registering against a dead SDK is not a no-op, it burns
-  // the one registration attempt.
-  if (oneSignalStarted) {
-    OneSignal.Notifications.addClickListener((event) {
-      final data = event.notification.additionalData;
-      if (data == null) return;
-      unawaited(DirectPushService.instance.recordOneSignalOpen(data));
-      DeepLinkService.instance.ingestNotificationData(data);
-    });
-  }
 
   // Non-critical initializers - run in parallel, don't block app startup
   unawaited(
@@ -1213,7 +1172,6 @@ class MyApp extends HookConsumerWidget {
     // Settings → Appearance choice (Dark / Auto / Light) is restored from prefs.
     final themeMode = ref.watch(themeModeProvider);
     final locale = ref.watch(localeProvider);
-    ref.watch(pushTokenSyncProvider);
     ref.watch(eventVideoPreloadProvider);
 
     // Listen to auth state changes to set AppsFlyer Customer User ID and

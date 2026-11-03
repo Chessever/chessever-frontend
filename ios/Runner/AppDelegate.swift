@@ -1,12 +1,48 @@
 import Flutter
+import FirebaseCore
+import FirebaseMessaging
 import UIKit
 import UserNotifications
 import AVFoundation
 import app_links
-import OneSignalFramework
 
 @main
 @objc class AppDelegate: FlutterAppDelegate, FlutterImplicitEngineDelegate {
+  private var nativeAPNSToken: Data?
+  private var apnsRegistrationError: String?
+
+  private func forwardAPNSTokenToFirebase() {
+    guard FirebaseApp.app() != nil, let token = nativeAPNSToken else { return }
+    // Simulator tokens always belong to the APNs sandbox. Physical-device
+    // environment is inferred from the signed app's provisioning profile.
+    #if targetEnvironment(simulator)
+    Messaging.messaging().setAPNSToken(token, type: .sandbox)
+    #else
+    Messaging.messaging().setAPNSToken(token, type: .unknown)
+    #endif
+  }
+
+  override func application(
+    _ application: UIApplication,
+    didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data
+  ) {
+    nativeAPNSToken = deviceToken
+    apnsRegistrationError = nil
+    super.application(application, didRegisterForRemoteNotificationsWithDeviceToken: deviceToken)
+    forwardAPNSTokenToFirebase()
+    NSLog("[DirectPush] APNs registration succeeded (%ld bytes).", deviceToken.count)
+  }
+
+  override func application(
+    _ application: UIApplication,
+    didFailToRegisterForRemoteNotificationsWithError error: Error
+  ) {
+    let nativeError = error as NSError
+    apnsRegistrationError = "\(nativeError.domain) (\(nativeError.code)): \(nativeError.localizedDescription)"
+    NSLog("[DirectPush] APNs registration failed: %@", apnsRegistrationError ?? "Unknown error")
+    super.application(application, didFailToRegisterForRemoteNotificationsWithError: error)
+  }
+
   private var pushTapChannel: FlutterMethodChannel?
   private var pushTapListenerReady = false
   private var pendingPushTap: [String: Any]?
@@ -40,6 +76,43 @@ import OneSignalFramework
                                  withCompletionHandler: completionHandler)
   }
 
+  private func setupPushPermissionChannel(binaryMessenger: FlutterBinaryMessenger) {
+    let channel = FlutterMethodChannel(name: "com.chessever/push_permission",
+                                       binaryMessenger: binaryMessenger)
+    channel.setMethodCallHandler { [weak self] call, result in
+      guard let self = self else { return }
+      let center = UNUserNotificationCenter.current()
+      switch call.method {
+      case "refreshAPNsRegistration":
+        // Dart calls this after Firebase initialization, replaying a token that
+        // may have arrived before the implicit engine/plugins were ready.
+        self.forwardAPNSTokenToFirebase()
+        UIApplication.shared.registerForRemoteNotifications()
+        result(self.apnsRegistrationError)
+      case "permission", "canRequest":
+        center.getNotificationSettings { settings in
+          let value = call.method == "canRequest"
+            ? settings.authorizationStatus == .notDetermined
+            : [.authorized, .provisional, .ephemeral].contains(settings.authorizationStatus)
+          DispatchQueue.main.async { result(value) }
+        }
+      case "requestPermission":
+        center.requestAuthorization(options: [.alert, .badge, .sound]) { granted, error in
+          DispatchQueue.main.async {
+            if let error = error {
+              result(FlutterError(code: "PERMISSION_UNAVAILABLE", message: error.localizedDescription, details: nil))
+            } else {
+              if granted { UIApplication.shared.registerForRemoteNotifications() }
+              result(granted)
+            }
+          }
+        }
+      default:
+        result(FlutterMethodNotImplemented)
+      }
+    }
+  }
+
   private func setupPushTapChannel(binaryMessenger: FlutterBinaryMessenger) {
     let channel = FlutterMethodChannel(name: "com.chessever/push_taps",
                                        binaryMessenger: binaryMessenger)
@@ -71,7 +144,11 @@ import OneSignalFramework
       UNUserNotificationCenter.current().delegate = self as? UNUserNotificationCenterDelegate
     }
 
-    return super.application(application, didFinishLaunchingWithOptions: launchOptions)
+    let launched = super.application(application, didFinishLaunchingWithOptions: launchOptions)
+    // Registration does not prompt for alert permission. Firebase needs an APNs
+    // token on upgrade as well as after the user grants notification permission.
+    application.registerForRemoteNotifications()
+    return launched
   }
 
   override func userNotificationCenter(
@@ -125,6 +202,7 @@ import OneSignalFramework
     // Storyboard-based apps use an implicit engine, so plugin and channel
     // registration must happen here exactly once.
     GeneratedPluginRegistrant.register(with: engineBridge.pluginRegistry)
+    setupPushPermissionChannel(binaryMessenger: engineBridge.applicationRegistrar.messenger())
     setupPushTapChannel(binaryMessenger: engineBridge.applicationRegistrar.messenger())
     setupAudioSessionChannel(binaryMessenger: engineBridge.applicationRegistrar.messenger())
     setupPipChannel(binaryMessenger: engineBridge.applicationRegistrar.messenger())

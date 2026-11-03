@@ -1,207 +1,95 @@
+import 'dart:async';
 import 'package:chessever2/repository/sqlite/app_database.dart';
-import 'package:flutter/foundation.dart';
 import 'package:chessever2/services/native_push_permission.dart';
-import 'package:onesignal_flutter/onesignal_flutter.dart';
-import 'package:purchases_flutter/purchases_flutter.dart';
-import 'package:chessever2/revenue_cat_service/revenue_cat_service.dart';
+import 'package:chessever2/services/direct_push_service.dart';
+import 'package:flutter/widgets.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-class PushNotificationsService {
+/// OS permission and account preference management, independent of a push vendor.
+class PushNotificationsService with WidgetsBindingObserver {
   PushNotificationsService._();
-
-  static final PushNotificationsService instance = PushNotificationsService._();
-
-  static const String _notificationsEnabledKey = 'notifications_enabled';
-  static const String _notificationsPromptedKey = 'notifications_prompted_once';
-
+  static final instance = PushNotificationsService._();
+  static const _notificationsEnabledKey = 'notifications_enabled';
+  static const _notificationsPromptedKey = 'notifications_prompted_once';
   bool _initialized = false;
-  Future<void>? _initializeFuture;
   bool _permissionRequestInFlight = false;
-  String? _pendingUserId;
-  final List<void Function(OSPushSubscriptionChangedState)>
-  _pendingPushObservers = [];
-  final List<void Function(bool)> _pendingPermissionObservers = [];
+  Future<void>? _initializeFuture;
+  final _permissionObservers = <void Function(bool)>[];
 
-  Future<void> initialize({required String appId}) {
+  Future<void> initialize() {
     if (_initialized) return Future.value();
-    final existingInitializeFuture = _initializeFuture;
-    if (existingInitializeFuture != null) {
-      return existingInitializeFuture;
-    }
-
-    final initializeFuture = _initialize(appId).whenComplete(() {
-      if (!_initialized) {
-        _initializeFuture = null;
-      }
+    return _initializeFuture ??= _initialize().whenComplete(() {
+      if (!_initialized) _initializeFuture = null;
     });
-    _initializeFuture = initializeFuture;
-    return initializeFuture;
   }
 
-  Future<void> _initialize(String appId) async {
-    final normalizedAppId = appId.trim();
-    if (normalizedAppId.isEmpty) {
-      debugPrint(
-        '[PushNotifications] Missing OneSignal app ID; skipping init.',
-      );
-      return;
-    }
-
-    if (kDebugMode) {
-      OneSignal.Debug.setLogLevel(OSLogLevel.verbose);
-    }
-
-    OneSignal.initialize(normalizedAppId);
-
-    // The OS notification permission is the single source of truth for whether
-    // push is "on" — it is not a separate app preference. Align the OneSignal
-    // subscription and the server flag with the real OS grant.
-    //
-    // We read it via _isPermissionGranted(), NOT the raw `permission` cache: that
-    // cache defaults to false and is hydrated by an un-awaited native call inside
-    // OneSignal.initialize(), so reading it here returns a stale false — the Android
-    // upgrade bug that silently opted granted users out.
-    final granted = await _isPermissionGranted();
-    if (granted) {
-      await _persistLocalEnabled(true);
-      await _syncPreferenceToSupabase(true);
-      OneSignal.User.pushSubscription.optIn();
-    } else {
-      await _persistLocalEnabled(false);
-      await _syncPreferenceToSupabase(false);
-      OneSignal.User.pushSubscription.optOut();
-    }
-
-    if (_pendingPushObservers.isNotEmpty) {
-      for (final observer in _pendingPushObservers) {
-        OneSignal.User.pushSubscription.addObserver(observer);
-      }
-      _pendingPushObservers.clear();
-    }
-
-    if (_pendingPermissionObservers.isNotEmpty) {
-      for (final observer in _pendingPermissionObservers) {
-        OneSignal.Notifications.addPermissionObserver(observer);
-      }
-      _pendingPermissionObservers.clear();
-    }
-
-    // Keep RC's customer profile in sync with the device's OneSignal subscription
-    // ID. RC uses this to route subscription-state push notifications via the
-    // OneSignal integration (e.g. "your trial converted"). The subscription ID
-    // can be null at boot before APNs/FCM registers, and can change later, so
-    // we forward both the current value and any subsequent changes.
-    _forwardSubscriptionIdToRevenueCat(OneSignal.User.pushSubscription.id);
-    OneSignal.User.pushSubscription.addObserver((state) {
-      _forwardSubscriptionIdToRevenueCat(state.current.id);
-    });
-
+  Future<void> _initialize() async {
+    final granted = await readNativePushPermission();
     _initialized = true;
-    final pendingUserId = _pendingUserId;
-    _pendingUserId = null;
-    if (pendingUserId != null && pendingUserId.isNotEmpty) {
-      await loginUser(pendingUserId);
-    }
-
-    debugPrint('[PushNotifications] OneSignal initialized.');
+    WidgetsBinding.instance.addObserver(this);
+    await setPushEnabled(granted);
   }
 
   Future<void> _waitForInitializeIfPending() async {
-    final initializeFuture = _initializeFuture;
-    if (_initialized || initializeFuture == null) return;
-
-    try {
-      await initializeFuture;
-    } catch (_) {
-      // Initialization failures should not make permission checks crash startup.
+    final pending = _initializeFuture;
+    if (!_initialized && pending != null) {
+      try {
+        await pending;
+      } catch (_) {
+        /* Keep unavailable distinct from denied. */
+      }
     }
   }
 
-  /// Read the current OneSignal subscription ID — used by RevenueCatService.logIn
-  /// to re-tag the RC customer profile when a new user signs in on the same
-  /// device. The subscription ID itself is device-scoped, so it doesn't change
-  /// across user switches; what changes is which RC customer it's stamped on.
-  String? get currentOneSignalSubscriptionId =>
-      _initialized ? OneSignal.User.pushSubscription.id : null;
-
-  void _forwardSubscriptionIdToRevenueCat(String? id) {
-    if (id == null || id.isEmpty) return;
-    if (!RevenueCatService().isSdkReady) return;
-    Purchases.setOnesignalID(id).catchError((Object e) {
-      debugPrint('[PushNotifications] Purchases.setOnesignalID failed: $e');
-    });
-  }
-
-  void addPushSubscriptionObserver(
-    void Function(OSPushSubscriptionChangedState) observer,
-  ) {
-    if (_initialized) {
-      OneSignal.User.pushSubscription.addObserver(observer);
-      return;
-    }
-    _pendingPushObservers.add(observer);
-  }
-
-  /// Whether OS-level notification permission is currently granted.
-  bool get hasPermission => _initialized && OneSignal.Notifications.permission;
-
-  // Query the native SDK directly. The Dart cache may still contain its
-  // initial false value, and canRequest() does not itself refresh permission.
-  Future<bool> _isPermissionGranted() => readNativePushPermission();
-
-  /// Live OS notification-permission state, read reliably (see [_isPermissionGranted]).
   Future<bool> isPermissionGranted() async {
     await _waitForInitializeIfPending();
     if (!_initialized) {
-      throw StateError("Push notifications are not initialized");
+      throw StateError('Push notifications are not initialized');
     }
-    return _isPermissionGranted();
+    return readNativePushPermission();
   }
 
-  /// Whether the OS will still show a permission prompt (true only if never asked).
-  /// false ⇒ already granted OR permanently denied — in both cases the only way
-  /// to change it is the system settings page.
   Future<bool> canRequestPermission() async {
     await _waitForInitializeIfPending();
     if (!_initialized) return false;
-    return OneSignal.Notifications.canRequest();
+    return canRequestNativePushPermission();
   }
 
-  /// Subscribe to OS notification-permission changes. Fires when the user flips
-  /// the system notification switch outside the app (Settings), so the toggle can
-  /// reflect the live native state instead of a stored guess.
-  void addNativePermissionObserver(void Function(bool) observer) {
-    if (_initialized) {
-      OneSignal.Notifications.addPermissionObserver(observer);
-      return;
+  void addNativePermissionObserver(void Function(bool) observer) =>
+      _permissionObservers.add(observer);
+  void removeNativePermissionObserver(void Function(bool) observer) =>
+      _permissionObservers.remove(observer);
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && _initialized) {
+      unawaited(_refreshPermission());
     }
-    _pendingPermissionObservers.add(observer);
   }
 
-  void removeNativePermissionObserver(void Function(bool) observer) {
-    if (_initialized) {
-      OneSignal.Notifications.removePermissionObserver(observer);
+  Future<void> _refreshPermission() async {
+    try {
+      final granted = await readNativePushPermission();
+      await setPushEnabled(granted);
+      for (final observer in List.of(_permissionObservers)) {
+        observer(granted);
+      }
+    } catch (e) {
+      debugPrint('[PushNotifications] Permission refresh deferred: $e');
     }
-    _pendingPermissionObservers.remove(observer);
   }
 
   Future<bool> requestPermissionWithDialog() async {
     await _waitForInitializeIfPending();
     if (!_initialized) return false;
-    if (_permissionRequestInFlight) {
-      return OneSignal.Notifications.permission;
-    }
-
+    if (_permissionRequestInFlight) return readNativePushPermission();
     _permissionRequestInFlight = true;
     try {
-      final granted = await OneSignal.Notifications.requestPermission(true);
-      await _persistLocalEnabled(granted);
+      final granted = await requestNativePushPermission();
       await _persistPromptedOnce();
-      await _syncPreferenceToSupabase(granted);
-      if (granted) {
-        OneSignal.User.pushSubscription.optIn();
-      } else {
-        OneSignal.User.pushSubscription.optOut();
+      await setPushEnabled(granted);
+      for (final observer in List.of(_permissionObservers)) {
+        observer(granted);
       }
       return granted;
     } finally {
@@ -209,44 +97,20 @@ class PushNotificationsService {
     }
   }
 
-  /// Request permission only if not already granted.
-  /// Safe to call repeatedly: it only opens the native prompt when the OS says
-  /// it can still be shown, so denied users are not bounced to Settings.
   Future<void> requestPermissionIfNotGranted() async {
     await _waitForInitializeIfPending();
     if (!_initialized) return;
-
-    // Read the native permission instead of the SDK's startup cache. A failed
-    // read propagates without saving a denial or opting the device out.
-    if (await _isPermissionGranted()) {
-      await _persistLocalEnabled(true);
+    if (await readNativePushPermission()) {
       await _persistPromptedOnce();
-      await _syncPreferenceToSupabase(true);
-      OneSignal.User.pushSubscription.optIn();
-      return;
-    }
-
-    // Not granted. If the OS will still show a prompt, show it. Otherwise do NOT
-    // try to "fix" anything from here — the user changes the permission via the
-    // system settings page (surfaced by the notification toggle UI). We only
-    // mirror the real OS state so the backend doesn't push to a muted device.
-    if (await OneSignal.Notifications.canRequest()) {
+      await setPushEnabled(true);
+    } else if (await canRequestNativePushPermission()) {
       await requestPermissionWithDialog();
     } else {
-      await _persistLocalEnabled(false);
       await _persistPromptedOnce();
-      await _syncPreferenceToSupabase(false);
-      OneSignal.User.pushSubscription.optOut();
+      await setPushEnabled(false);
     }
   }
 
-  /// Whether this install still owes the user the one notification ask.
-  ///
-  /// The onboarding step is the only other place it is raised, and "I already
-  /// have an account" skips it. After a reinstall or cleared app data the OS
-  /// permission is reset too, so without this a returning user signed straight
-  /// back in with notifications silently off. True only when the prompt was
-  /// never shown here, permission is not granted, and the OS can still ask.
   Future<bool> shouldOfferPermissionPrompt() async {
     await _waitForInitializeIfPending();
     if (!_initialized) return false;
@@ -255,10 +119,9 @@ class PushNotificationsService {
           true) {
         return false;
       }
-      if (await _isPermissionGranted()) return false;
-      return await OneSignal.Notifications.canRequest();
+      if (await readNativePushPermission()) return false;
+      return await canRequestNativePushPermission();
     } catch (_) {
-      // An unreadable state is not a reason to interrupt the user.
       return false;
     }
   }
@@ -266,35 +129,18 @@ class PushNotificationsService {
   Future<void> setPushEnabled(bool enabled) async {
     await _persistLocalEnabled(enabled);
     await _syncPreferenceToSupabase(enabled);
-    if (!_initialized) return;
-    if (enabled) {
-      OneSignal.User.pushSubscription.optIn();
-    } else {
-      OneSignal.User.pushSubscription.optOut();
-    }
+    unawaited(DirectPushService.instance.sync());
   }
 
   Future<void> loginUser(String userId) async {
     if (userId.isEmpty) return;
-    if (!_initialized) {
-      _pendingUserId = userId;
-      return;
-    }
-
-    OneSignal.login(userId);
-    try {
-      // Login must not copy a stale/missing local flag over the account setting.
-      // A failed permission read leaves the existing setting untouched.
-      final enabled = await _isPermissionGranted();
-      await setPushEnabled(enabled);
-    } catch (error) {
-      debugPrint('[PushNotifications] Login permission sync failed: $error');
-    }
-  }
-
-  Future<void> logoutUser() async {
+    await _waitForInitializeIfPending();
     if (!_initialized) return;
-    OneSignal.logout();
+    try {
+      await setPushEnabled(await readNativePushPermission());
+    } catch (e) {
+      debugPrint('[PushNotifications] Login permission sync deferred: $e');
+    }
   }
 
   Future<void> _persistLocalEnabled(bool enabled) async {

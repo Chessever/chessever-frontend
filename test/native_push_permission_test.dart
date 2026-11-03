@@ -6,7 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
-  const channel = MethodChannel('OneSignal#notifications');
+  const channel = MethodChannel('com.chessever/push_permission');
   final messenger =
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
 
@@ -17,7 +17,7 @@ void main() {
     () async {
       final reply = Completer<bool>();
       messenger.setMockMethodCallHandler(channel, (call) {
-        expect(call.method, 'OneSignal#permission');
+        expect(call.method, 'permission');
         return reply.future;
       });
       var completed = false;
@@ -29,6 +29,28 @@ void main() {
       expect(completed, isFalse);
       reply.complete(true);
       expect(await read, isTrue);
+    },
+  );
+
+  test('refreshes APNs registration after Firebase is ready', () async {
+    messenger.setMockMethodCallHandler(channel, (call) async {
+      expect(call.method, 'refreshAPNsRegistration');
+      return null;
+    });
+    expect(await refreshNativeAPNsRegistration(), isNull);
+  });
+
+  test(
+    'surfaces native APNs registration errors without treating them as consent',
+    () async {
+      messenger.setMockMethodCallHandler(channel, (call) async {
+        expect(call.method, 'refreshAPNsRegistration');
+        return 'APNs registration unavailable';
+      });
+      expect(
+        await refreshNativeAPNsRegistration(),
+        'APNs registration unavailable',
+      );
     },
   );
 

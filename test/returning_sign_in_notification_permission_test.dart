@@ -64,9 +64,8 @@ class _Native {
   Completer<bool>? permissionReply;
   Completer<bool>? requestReply;
 
-  int get requests => notificationCalls
-      .where((method) => method == 'OneSignal#requestPermission')
-      .length;
+  int get requests =>
+      notificationCalls.where((method) => method == 'requestPermission').length;
 
   void reset() {
     values.clear();
@@ -83,13 +82,13 @@ class _Native {
   Future<Object?> notifications(MethodCall call) async {
     notificationCalls.add(call.method);
     switch (call.method) {
-      case 'OneSignal#permission':
+      case 'permission':
         if (failPermission) throw PlatformException(code: 'unavailable');
         return permissionReply?.future ?? granted;
-      case 'OneSignal#canRequest':
+      case 'canRequest':
         if (failCanRequest) throw PlatformException(code: 'unavailable');
         return canRequest;
-      case 'OneSignal#requestPermission':
+      case 'requestPermission':
         final result = await (requestReply?.future ?? Future.value(true));
         granted = result;
         return result;
@@ -135,15 +134,8 @@ void main() {
   final native = _Native();
   final messenger =
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
-  const notificationChannel = MethodChannel('OneSignal#notifications');
+  const notificationChannel = MethodChannel('com.chessever/push_permission');
   const sqliteChannel = MethodChannel('com.tekartik.sqflite');
-  const otherChannels = [
-    MethodChannel('OneSignal'),
-    MethodChannel('OneSignal#debug'),
-    MethodChannel('OneSignal#user'),
-    MethodChannel('OneSignal#inappmessages'),
-    MethodChannel('OneSignal#pushsubscription'),
-  ];
 
   setUpAll(() async {
     messenger.setMockMethodCallHandler(
@@ -151,16 +143,9 @@ void main() {
       native.notifications,
     );
     messenger.setMockMethodCallHandler(sqliteChannel, native.sqlite);
-    for (final channel in otherChannels) {
-      messenger.setMockMethodCallHandler(channel, (call) async {
-        if (call.method == 'OneSignal#pushSubscriptionOptedIn') return false;
-        return null;
-      });
-    }
     SqflitePlugin.registerWith();
     await AppDatabase.instance.database;
-    await PushNotificationsService.instance.initialize(appId: 'test-app');
-    // OneSignal.initialize also hydrates its own Dart permission cache.
+    await PushNotificationsService.instance.initialize();
     await Future<void>.delayed(Duration.zero);
   });
 
@@ -169,9 +154,6 @@ void main() {
   tearDownAll(() {
     messenger.setMockMethodCallHandler(notificationChannel, null);
     messenger.setMockMethodCallHandler(sqliteChannel, null);
-    for (final channel in otherChannels) {
-      messenger.setMockMethodCallHandler(channel, null);
-    }
   });
 
   Future<GlobalKey<NavigatorState>> signIn(
@@ -336,7 +318,7 @@ void main() {
 
     expect(find.byType(NotificationPermissionStep), findsOneWidget);
     expect(
-      native.notificationCalls.where((call) => call == 'OneSignal#permission'),
+      native.notificationCalls.where((call) => call == 'permission'),
       hasLength(1),
     );
     navigatorKey.currentState!.pop();

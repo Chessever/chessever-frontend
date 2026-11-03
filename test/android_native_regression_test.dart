@@ -5,6 +5,32 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   group('Android native regression guards', () {
+    test('background FCM alerts use the existing high-importance channel', () {
+      final manifest = File(
+        'android/app/src/main/AndroidManifest.xml',
+      ).readAsStringSync();
+      final service = File(
+        'lib/services/direct_push_service.dart',
+      ).readAsStringSync();
+      expect(
+        manifest,
+        matches(
+          RegExp(
+            r'android:name="com.google.firebase.messaging.default_notification_channel_id"\s+'
+            r'android:value="chessever_direct"',
+          ),
+        ),
+      );
+      expect(
+        service,
+        matches(
+          RegExp(
+            r"AndroidNotificationChannel\(\s*'chessever_direct',[\s\S]*?importance: Importance.high",
+          ),
+        ),
+      );
+    });
+
     test('flutter_soloud remains isolated to the audio service', () {
       final offenders = <String>[];
 
@@ -158,71 +184,32 @@ void main() {
       expect(envAssetLines.single.trimLeft().startsWith('#'), isTrue);
     });
 
-    // The click-loss fixes that matter to this app landed across 5.5.3
-    // (native SDK clears `unprocessedOpenedNotifs` after replaying to a new
-    // listener), 5.5.4 (unsubscribe the click listener when the Flutter engine
-    // detaches) and 5.5.6 (guard `getNotifications()` in
-    // `onDetachedFromEngine`). 5.5.8's `firebase_messaging` fix does not apply
-    // here — this app ships `firebase_core` only — so 5.5.6 is the real floor;
-    // the guard keeps 5.5.8 as a safe round number above it.
-    test('OneSignal keeps Android notification click delivery fix', () {
-      final pubspec = File('pubspec.yaml').readAsStringSync();
-      final lockfile = File('pubspec.lock').readAsStringSync();
-      final constraint = RegExp(
-        r'^  onesignal_flutter: \^([0-9]+\.[0-9]+\.[0-9]+)$',
-        multiLine: true,
-      ).firstMatch(pubspec)?.group(1);
-      final locked = RegExp(
-        r'  onesignal_flutter:\n(?:.*\n){0,8}?    version: "([0-9]+\.[0-9]+\.[0-9]+)"',
-      ).firstMatch(lockfile)?.group(1);
-
+    test('push dependencies no longer include the OneSignal SDK', () {
       expect(
-        _isAtLeast(constraint, '5.5.8'),
-        isTrue,
-        reason:
-            'OneSignal 5.5.3-5.5.6 fix lost Android notification click events '
-            'on engine detach/reattach. The direct constraint must not permit '
-            'the affected 5.4.0 SDK.',
+        File('pubspec.yaml').readAsStringSync(),
+        isNot(contains('onesignal_flutter:')),
       );
       expect(
-        _isAtLeast(locked, '5.5.8'),
-        isTrue,
-        reason:
-            'The lockfile must retain the Android notification click delivery '
-            'fixes. Keep the iOS native dependency lock in step too.',
+        File('pubspec.lock').readAsStringSync(),
+        isNot(contains('onesignal_flutter:')),
       );
-
-      // The native lock moved to SwiftPM with the iOS plugin migration.
-      // Retain CocoaPods coverage if that configuration is ever restored.
-      final String? nativeVersion;
-      if (pubspec.contains('enable-swift-package-manager: true')) {
+      expect(
+        File('android/app/build.gradle.kts').readAsStringSync(),
+        isNot(contains('com.onesignal:OneSignal')),
+      );
+      for (final path in [
+        'ios/Runner.xcworkspace/xcshareddata/swiftpm/Package.resolved',
+        'ios/Runner.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved',
+      ]) {
         final resolved =
-            jsonDecode(
-                  File(
-                    'ios/Runner.xcworkspace/xcshareddata/swiftpm/Package.resolved',
-                  ).readAsStringSync(),
-                )
-                as Map<String, dynamic>;
-        final pins = (resolved['pins'] as List).cast<Map<String, dynamic>>();
-        final oneSignal = pins.singleWhere(
-          (pin) => pin['identity'] == 'onesignal-xcframework',
+            jsonDecode(File(path).readAsStringSync()) as Map<String, dynamic>;
+        expect(
+          (resolved['pins'] as List).where(
+            (pin) => pin['identity'] == 'onesignal-xcframework',
+          ),
+          isEmpty,
         );
-        nativeVersion = (oneSignal['state'] as Map)['version'] as String?;
-      } else {
-        final podfileLock = File('ios/Podfile.lock').readAsStringSync();
-        nativeVersion = RegExp(
-          r'^  - OneSignalXCFramework \(([0-9]+\.[0-9]+\.[0-9]+)\):',
-          multiLine: true,
-        ).firstMatch(podfileLock)?.group(1);
       }
-
-      expect(
-        _isAtLeast(nativeVersion, '5.5.5'),
-        isTrue,
-        reason:
-            'onesignal_flutter 5.6.7 requires OneSignalXCFramework 5.5.5. '
-            'Keep the active native dependency lock updated with the plugin.',
-      );
     });
 
     test('Codemagic dart defines include Gamebase API key', () {
@@ -237,18 +224,6 @@ void main() {
       );
     });
   });
-}
-
-bool _isAtLeast(String? version, String minimum) {
-  if (version == null) return false;
-  final actualParts = version.split('.').map(int.parse).toList();
-  final minimumParts = minimum.split('.').map(int.parse).toList();
-  for (var index = 0; index < minimumParts.length; index++) {
-    if (actualParts[index] != minimumParts[index]) {
-      return actualParts[index] > minimumParts[index];
-    }
-  }
-  return true;
 }
 
 void _expectBefore(

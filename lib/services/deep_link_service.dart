@@ -242,7 +242,7 @@ class DeepLinkService {
 
   /// Taps that arrived before the router was attached.
   ///
-  /// The OneSignal click listener is registered from `main()`, which is minutes
+  /// The direct-push click listener is registered from `main()`, which is minutes
   /// of engine work earlier than the first frame of `MyApp` — on a cold start
   /// the OS replays the tapped notification while `StartupGate` is still
   /// opening the database, so the payload has nowhere to go yet. Holding it
@@ -1587,8 +1587,8 @@ class DeepLinkService {
     return state?.status == AppAuthStatus.authenticated;
   }
 
-  /// Route based on OneSignal notification data payload.
-  /// Called from the OneSignal click listener.
+  /// Route based on notification data payload.
+  /// Called from the direct-push click listener.
   void handleNotificationData(
     Map<String, dynamic> data,
     GlobalKey<NavigatorState> navigatorKey,

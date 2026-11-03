@@ -16,7 +16,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-version: 37.8.0+3784
+version: 37.8.2+3786
 environment:
   sdk: ^3.12.0
   flutter: '>=3.44.0'
@@ -125,7 +125,6 @@ dependencies:
   chess: ^0.8.1
   stockfish: ^1.8.1
   ffi: ^2.1.4
-  onesignal_flutter: ^5.6.7
   firebase_core: ^3.4.0
 
   # NOTE: do not re-add permission_handler. It has zero call sites here, and its
@@ -133,7 +132,7 @@ dependencies:
   # SPM static linking lands in the Runner binary and earns ITMS-90683
   # ("missing NSCameraUsageDescription") on every upload. Under CocoaPods it hid
   # inside its own dynamic framework; SPM surfaced it. Use app_settings for
-  # deep-links into Settings; ask each SDK (OneSignal, ATT) for its own prompt.
+  # deep-links into Settings; use native notification permission and the ATT SDK for their prompts.
 
   flutter_native_splash: ^2.4.7
   purchases_flutter: ^10.13.1

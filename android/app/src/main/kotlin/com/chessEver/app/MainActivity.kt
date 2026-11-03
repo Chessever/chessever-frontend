@@ -52,6 +52,7 @@ class MainActivity : FlutterActivity() {
     private const val PICK_FEEDBACK_IMAGE = 7142
   }
 
+  private var pushPermissionBridge: PushPermissionBridge? = null
   private var pipChannel: MethodChannel? = null
   private var mediaPickerChannel: MethodChannel? = null
   private var pendingFeedbackImageResult: MethodChannel.Result? = null
@@ -75,6 +76,7 @@ class MainActivity : FlutterActivity() {
 
   override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
     super.configureFlutterEngine(flutterEngine)
+    pushPermissionBridge = PushPermissionBridge(this, flutterEngine.dartExecutor.binaryMessenger)
     mediaPickerChannel = MethodChannel(
       flutterEngine.dartExecutor.binaryMessenger,
       "com.chessever/media_picker",
@@ -169,6 +171,8 @@ class MainActivity : FlutterActivity() {
   }
 
   override fun onDestroy() {
+    pushPermissionBridge?.dispose()
+    pushPermissionBridge = null
     stopClockTicker()
     stopNativePolling()
     removePipOverlay()
@@ -179,6 +183,11 @@ class MainActivity : FlutterActivity() {
     mediaPickerChannel?.setMethodCallHandler(null)
     pipChannel?.setMethodCallHandler(null)
     super.onDestroy()
+  }
+
+  override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+    if (pushPermissionBridge?.onRequestPermissionsResult(requestCode, grantResults) == true) return
+    super.onRequestPermissionsResult(requestCode, permissions, grantResults)
   }
 
   @Deprecated("Deprecated in Java")
