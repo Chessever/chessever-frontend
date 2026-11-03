@@ -1838,7 +1838,9 @@ bool _nativeCriticalCandidate(
   final move = game.mainline[index];
   final white = move.turn == ChessColor.white;
   final win = gameReportWinPercentage(positions[index].bestLine);
-  if ((white ? win : 100 - win) < kBandBetterMax) return false;
+  if ((white ? win : 100 - win) < kBandCompetitiveMax - kBandHysteresisPp) {
+    return false;
+  }
   return isMeaningfulBrilliantInvestment(
     positions[index].fen,
     move.uci,
@@ -2332,19 +2334,27 @@ GameMoveClassification? _classifyGameReportMoveCore({
     // multi-ply persistence + exclusions. An immediate one-reply sacrifice
     // alone is not enough — ordinary gambits and accepted pawn offers stay
     // untagged.
-    if (verifyBrilliantMove(
-      index: index,
-      game: game,
-      positions: positions,
-      winPercentages: winPercentages,
-      moverChange: moverChange,
-      playedIsBest: playedIsBest,
-      alternativeWin: alternativeWin,
-      alternativeGap: alternativeGap,
-      simpleRecapture: simpleRecapture,
-      facts: facts,
-      evidencePolicy: evidencePolicy,
-    )) {
+    // A post-blunder winning reply cannot bypass the three-position native
+    // quality/necessity gate via the ordinary two-position verifier.
+    final requiresCriticalEvidence =
+        nativePolicy &&
+        previousMoveClassification == GameMoveClassification.blunder &&
+        (moverBefore >= kBandCompetitiveMax - kBandHysteresisPp ||
+            moverAfter >= kBandCompetitiveMax - kBandHysteresisPp);
+    if (!requiresCriticalEvidence &&
+        verifyBrilliantMove(
+          index: index,
+          game: game,
+          positions: positions,
+          winPercentages: winPercentages,
+          moverChange: moverChange,
+          playedIsBest: playedIsBest,
+          alternativeWin: alternativeWin,
+          alternativeGap: alternativeGap,
+          simpleRecapture: simpleRecapture,
+          facts: facts,
+          evidencePolicy: evidencePolicy,
+        )) {
       return GameMoveClassification.brilliant;
     }
 

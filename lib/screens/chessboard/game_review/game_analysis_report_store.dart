@@ -247,7 +247,8 @@ class _MemoryEntry {
 /// win. v8: the same amnesty applies when the mover remains decisively lost
 /// (23% or lower, about -3.3).
 /// v9: native confirmation, same-root evidence and critical punishment.
-const int gameAnalysisReportSchemaVersion = 9;
+/// v10: enforce three-position quality at winning boundaries and promotion roots.
+const int gameAnalysisReportSchemaVersion = 10;
 
 Map<String, dynamic> gameAnalysisReportToJson(GameAnalysisReport report) {
   return <String, dynamic>{

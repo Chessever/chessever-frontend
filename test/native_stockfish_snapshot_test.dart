@@ -2,6 +2,29 @@ import 'package:chessever2/screens/chessboard/provider/stockfish_singleton.dart'
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  test('report width counts promotion choices and actual forced roots', () {
+    const promotion = '8/P7/8/8/8/2n5/2k5/K7 w - - 0 31';
+    expect(stockfishReportMultiPvWidth(promotion, 3), 3);
+    expect(stockfishReportMultiPvWidth(promotion, 5), 4);
+    expect(stockfishReportMultiPvWidth('8/P7/8/8/8/8/2k5/K7 w - - 0 31', 5), 5);
+    expect(
+      stockfishReportMultiPvWidth(
+        '1r4k1/p5pp/4p3/8/2p5/2q2B2/Q6P/K2R1R2 w - - 2 34',
+        3,
+      ),
+      1,
+    );
+    final batch = StockfishReportIteration(
+      stockfishReportMultiPvWidth(promotion, 3),
+    );
+    batch.add('info depth 18 multipv 1 score cp 500 pv a7a8q');
+    expect(batch.depth, 0);
+    batch.add('info depth 18 multipv 2 score cp 20 pv a7a8r');
+    expect(batch.depth, 0);
+    batch.add('info depth 18 multipv 3 score cp 0 pv a7a8b');
+    expect(batch.depth, 18);
+    expect(batch.pvs, hasLength(3));
+  });
   test(
     'completed iteration does not mix depth18 PV1 with depth17 alternatives',
     () {

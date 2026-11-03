@@ -148,6 +148,22 @@ class EnhancedCloudEval {
   });
 }
 
+/// Distinct legal UCI roots, not source squares or promotion destinations.
+int stockfishReportMultiPvWidth(String fen, int requested) {
+  final position = chess.Chess.fromSetup(chess.Setup.parseFen(fen));
+  var roots = 0;
+  for (final entry in position.legalMoves.entries) {
+    final pawn = position.board.roleAt(entry.key) == chess.Role.pawn;
+    for (final to in entry.value.squares) {
+      roots +=
+          pawn && (to.rank == chess.Rank.first || to.rank == chess.Rank.eighth)
+          ? 4
+          : 1;
+    }
+  }
+  return roots.clamp(1, requested);
+}
+
 /// UCI command shared by production and bounded-search regression tests.
 String stockfishGoCommand({
   required int depth,
@@ -1041,18 +1057,9 @@ class StockfishSingleton {
         );
       }
 
-      var reportWidth = multiPV;
-      try {
-        final pos = chess.Chess.fromSetup(chess.Setup.parseFen(fen));
-        var legal = 0;
-        for (final square in chess.Square.values) {
-          if (pos.board.pieceAt(square)?.color == pos.turn) {
-            legal += pos.legalMovesOf(square).size;
-          }
-        }
-        if (legal < reportWidth) reportWidth = legal;
-      } catch (_) {}
-      final reportIteration = StockfishReportIteration(reportWidth);
+      final reportIteration = StockfishReportIteration(
+        stockfishReportMultiPvWidth(fen, multiPV),
+      );
       final List<Pv> pvs = [];
       int knodes = 0;
       int finalDepth = 0;

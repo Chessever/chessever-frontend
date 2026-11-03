@@ -223,6 +223,68 @@ void main() {
         expect(verdict, isNot(GameMoveClassification.brilliant));
       });
     }
+    for (final problem in ['depth', 'provenance', 'winning_alternative']) {
+      test(
+        'winning-boundary reply cannot bypass native $problem, mirror=$mirror',
+        () async {
+          final c = controlled(mirror);
+          final sign = mirror ? -1 : 1;
+          final p = [...c.positions];
+          p[0] = changed(
+            p[0],
+            depth: problem == 'depth' ? 14 : 18,
+            noSearch: problem == 'provenance',
+          );
+          p[1] = changed(
+            p[1],
+            lines: [
+              for (var n = 0; n < p[1].lines.length; n++)
+                GameReportLine(
+                  moves: p[1].lines[n].moves,
+                  depth: 18,
+                  centipawns: n == 0
+                      ? -595 * sign
+                      : problem == 'winning_alternative' && n == 1
+                      ? -500 * sign
+                      : p[1].lines[n].centipawns,
+                ),
+            ],
+          );
+          p[2] = changed(p[2], cp: -600 * sign);
+          expect(
+            buildGameAnalysisReport(
+              game: c.game,
+              fingerprint: 'boundary',
+              positions: p,
+            ).moves[1].classification,
+            isNot(GameMoveClassification.brilliant),
+          );
+          if (problem != 'winning_alternative') {
+            var calls = 0;
+            final fixed = await confirmGameReportConsistency(
+              game: c.game,
+              positions: p,
+              isCancelled: () => false,
+              evaluate: (request) async {
+                calls++;
+                return c.positions.firstWhere(
+                  (position) => position.fen == request.fen,
+                );
+              },
+            );
+            expect(calls, greaterThan(0));
+            expect(
+              buildGameAnalysisReport(
+                game: c.game,
+                fingerprint: 'confirmed-boundary',
+                positions: fixed,
+              ).moves[1].classification,
+              isNot(GameMoveClassification.brilliant),
+            );
+          }
+        },
+      );
+    }
     test(
       'already-won conversion cannot fall through ordinary Brilliant, mirror=$mirror',
       () {
