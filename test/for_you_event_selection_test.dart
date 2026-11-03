@@ -289,6 +289,80 @@ void main() {
       expect(selected.id, 'higher-elo');
     });
 
+    test(
+      'same-weekend league divisions open the strongest one (Trello #1341)',
+      () {
+        final now = DateTime.now();
+        final dates = [now.subtract(const Duration(days: 40)), now];
+        final division1 = _makeTour(
+          id: 'div-1',
+          name: 'CCL Division 1',
+          dates: dates,
+          avgElo: 2519,
+        );
+        final division27 = _makeTour(
+          id: 'div-27',
+          name: 'CCL Division 27',
+          dates: dates,
+          avgElo: 649,
+        );
+        final division7 = _makeTour(
+          id: 'div-7a',
+          name: 'CCL Division 7 Group A',
+          dates: dates,
+          avgElo: null,
+        );
+
+        final selected = selectDefaultTour(
+          tourModels: [
+            TourModel(tour: division27, roundStatus: RoundStatus.ongoing),
+            TourModel(tour: division7, roundStatus: RoundStatus.ongoing),
+            TourModel(tour: division1, roundStatus: RoundStatus.ongoing),
+          ],
+          liveTourIds: const [],
+          latestPlayedRoundAtByTourId: {
+            // Ingest-stamped a day after Division 1's real round time.
+            'div-27': now.subtract(const Duration(hours: 10)),
+            'div-7a': now.subtract(const Duration(days: 23)),
+            'div-1': now.subtract(const Duration(hours: 39)),
+          },
+        );
+
+        expect(selected.id, 'div-1');
+      },
+    );
+
+    test('a newer round days later still beats a stronger stale category', () {
+      final now = DateTime.now();
+      final dates = [now.subtract(const Duration(days: 20)), now];
+      final regularSeason = _makeTour(
+        id: 'regular',
+        name: 'Regular Season',
+        dates: dates,
+        avgElo: 2519,
+      );
+      final playoffs = _makeTour(
+        id: 'playoffs',
+        name: 'Playoffs',
+        dates: dates,
+        avgElo: null,
+      );
+
+      final selected = selectDefaultTour(
+        tourModels: [
+          TourModel(tour: regularSeason, roundStatus: RoundStatus.ongoing),
+          TourModel(tour: playoffs, roundStatus: RoundStatus.ongoing),
+        ],
+        liveTourIds: const [],
+        latestPlayedRoundAtByTourId: {
+          'regular': now.subtract(const Duration(days: 6)),
+          'playoffs': now.subtract(const Duration(hours: 3)),
+        },
+      );
+
+      expect(selected.id, 'playoffs');
+    });
+
     test('falls back to activity tour when other signals are absent', () {
       final now = DateTime.now();
       final tourA = _makeTour(
@@ -364,7 +438,10 @@ void main() {
             tourId: 'tour-1',
             boardNr: 1,
             lastMoveTime: now,
-            players: [_player(name: 'A'), _player(name: 'B', fideId: 2)],
+            players: [
+              _player(name: 'A'),
+              _player(name: 'B', fideId: 2),
+            ],
           ),
           _makeGame(
             id: 'r2-g2',
@@ -467,7 +544,10 @@ void main() {
           status: '1-0',
           boardNr: 1,
           lastMoveTime: now.subtract(const Duration(minutes: 3)),
-          players: [_player(name: 'A'), _player(name: 'B', fideId: 2)],
+          players: [
+            _player(name: 'A'),
+            _player(name: 'B', fideId: 2),
+          ],
         ),
         _makeGame(
           id: 'r11-g1',
@@ -528,7 +608,10 @@ void main() {
           status: '1-0',
           boardNr: 1,
           lastMoveTime: now.subtract(const Duration(hours: 1)),
-          players: [_player(name: 'A'), _player(name: 'B', fideId: 2)],
+          players: [
+            _player(name: 'A'),
+            _player(name: 'B', fideId: 2),
+          ],
         ),
         _makeGame(
           id: 'r11-g1',
@@ -601,7 +684,10 @@ void main() {
           tourId: 'tour-1',
           boardNr: 1,
           lastMoveTime: now.subtract(const Duration(minutes: 1)),
-          players: [_player(name: 'A'), _player(name: 'B', fideId: 2)],
+          players: [
+            _player(name: 'A'),
+            _player(name: 'B', fideId: 2),
+          ],
         ),
         _makeGame(
           id: 'r8-g2',
@@ -694,7 +780,10 @@ void main() {
           tourId: 'tour-1',
           boardNr: 1,
           lastMoveTime: now,
-          players: [_player(name: 'A'), _player(name: 'B', fideId: 2)],
+          players: [
+            _player(name: 'A'),
+            _player(name: 'B', fideId: 2),
+          ],
         ),
         _makeGame(
           id: 'g2',
@@ -961,7 +1050,10 @@ void main() {
           tourId: 'stage-1',
           boardNr: 1,
           lastMoveTime: now.subtract(const Duration(days: 1)),
-          players: [_player(name: 'A'), _player(name: 'B', fideId: 2)],
+          players: [
+            _player(name: 'A'),
+            _player(name: 'B', fideId: 2),
+          ],
         ),
         _makeGame(
           id: 's1-g2',
@@ -970,7 +1062,10 @@ void main() {
           tourId: 'stage-1',
           boardNr: 1,
           lastMoveTime: now.subtract(const Duration(days: 1)),
-          players: [_player(name: 'A'), _player(name: 'B', fideId: 2)],
+          players: [
+            _player(name: 'A'),
+            _player(name: 'B', fideId: 2),
+          ],
         ),
       ];
       final stage2Games = [
@@ -1061,7 +1156,10 @@ void main() {
           tourId: 'stage-1',
           boardNr: 1,
           lastMoveTime: now.subtract(const Duration(days: 1)),
-          players: [_player(name: 'A'), _player(name: 'B', fideId: 2)],
+          players: [
+            _player(name: 'A'),
+            _player(name: 'B', fideId: 2),
+          ],
         ),
         _makeGame(
           id: 's1-g2',
@@ -1070,7 +1168,10 @@ void main() {
           tourId: 'stage-1',
           boardNr: 1,
           lastMoveTime: now.subtract(const Duration(days: 1)),
-          players: [_player(name: 'A'), _player(name: 'B', fideId: 2)],
+          players: [
+            _player(name: 'A'),
+            _player(name: 'B', fideId: 2),
+          ],
         ),
       ];
       final stage2Games = [
@@ -1144,7 +1245,10 @@ void main() {
             tourId: 'tour-1',
             boardNr: 1,
             lastMoveTime: now,
-            players: [_player(name: 'A'), _player(name: 'B', fideId: 2)],
+            players: [
+              _player(name: 'A'),
+              _player(name: 'B', fideId: 2),
+            ],
           ),
           _makeGame(
             id: 'g2',
@@ -1212,7 +1316,10 @@ void main() {
           tourId: 'tour-1',
           boardNr: 1,
           lastMoveTime: now,
-          players: [_player(name: 'A'), _player(name: 'B', fideId: 2)],
+          players: [
+            _player(name: 'A'),
+            _player(name: 'B', fideId: 2),
+          ],
         ),
         _makeGame(
           id: 'g2',

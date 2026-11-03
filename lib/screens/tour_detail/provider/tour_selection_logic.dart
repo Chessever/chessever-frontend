@@ -33,6 +33,10 @@ Tour? findTourById(List<TourModel> tourModels, String? tourId) {
   return null;
 }
 
+/// Latest-played rounds this close to the newest one count as the same round
+/// day when picking an event's default category.
+const Duration kSameRoundDayWindow = Duration(hours: 48);
+
 Tour selectDefaultTour({
   required List<TourModel> tourModels,
   required List<String> liveTourIds,
@@ -111,7 +115,29 @@ Tour selectDefaultTour({
           ),
         );
   if (latestPlayedModels.isNotEmpty) {
-    return latestPlayedModels.first.tour;
+    // Categories whose last round landed on the same round day as the newest
+    // one are one weekend of play, not a recency race: their `starts_at` are
+    // often ingest stamps seconds apart. Rank those by strength so a league
+    // with 50 divisions opens its top division, not whichever was ingested
+    // last (Trello #1341).
+    final newest =
+        latestPlayedRoundAtByTourId[latestPlayedModels.first.tour.id]!;
+    final sameRoundDay = latestPlayedModels
+        .where(
+          (model) =>
+              newest
+                  .difference(latestPlayedRoundAtByTourId[model.tour.id]!)
+                  .abs() <=
+              kSameRoundDayWindow,
+        )
+        .toList();
+    final strongest = sameRoundDay.reduce((best, model) {
+      final bestElo = best.tour.avgElo ?? 0;
+      final elo = model.tour.avgElo ?? 0;
+      // `reduce` walks in recency order, so ties keep the more recent tour.
+      return elo > bestElo ? model : best;
+    });
+    return strongest.tour;
   }
 
   final activityTour = findSelectableTour(activityTourId);
@@ -119,16 +145,16 @@ Tour selectDefaultTour({
     return activityTour;
   }
 
-  final selectableModels =
-      hasStartedTours
-          ? tourModels
-              .where((model) => model.roundStatus != RoundStatus.upcoming)
-              .toList()
-          : List<TourModel>.from(tourModels);
+  final selectableModels = hasStartedTours
+      ? tourModels
+            .where((model) => model.roundStatus != RoundStatus.upcoming)
+            .toList()
+      : List<TourModel>.from(tourModels);
 
   if (selectableModels.isNotEmpty) {
-    final toursWithDates =
-        selectableModels.where((model) => model.tour.dates.isNotEmpty).toList();
+    final toursWithDates = selectableModels
+        .where((model) => model.tour.dates.isNotEmpty)
+        .toList();
 
     if (toursWithDates.isNotEmpty) {
       final firstStart = toursWithDates.first.tour.dates.first;
@@ -173,10 +199,12 @@ Tour selectDefaultTour({
           .where((model) => model.roundStatus == RoundStatus.ongoing)
           .toList()
         ..sort((a, b) {
-          final aDate =
-              a.tour.dates.isNotEmpty ? a.tour.dates.first : DateTime(1970);
-          final bDate =
-              b.tour.dates.isNotEmpty ? b.tour.dates.first : DateTime(1970);
+          final aDate = a.tour.dates.isNotEmpty
+              ? a.tour.dates.first
+              : DateTime(1970);
+          final bDate = b.tour.dates.isNotEmpty
+              ? b.tour.dates.first
+              : DateTime(1970);
           return bDate.compareTo(aDate);
         });
   if (ongoingTours.isNotEmpty) {
@@ -188,10 +216,12 @@ Tour selectDefaultTour({
           .where((model) => model.roundStatus == RoundStatus.completed)
           .toList()
         ..sort((a, b) {
-          final aDate =
-              a.tour.dates.isNotEmpty ? a.tour.dates.last : DateTime(1970);
-          final bDate =
-              b.tour.dates.isNotEmpty ? b.tour.dates.last : DateTime(1970);
+          final aDate = a.tour.dates.isNotEmpty
+              ? a.tour.dates.last
+              : DateTime(1970);
+          final bDate = b.tour.dates.isNotEmpty
+              ? b.tour.dates.last
+              : DateTime(1970);
           return bDate.compareTo(aDate);
         });
   if (completedTours.isNotEmpty) {
@@ -203,10 +233,12 @@ Tour selectDefaultTour({
           .where((model) => model.roundStatus == RoundStatus.upcoming)
           .toList()
         ..sort((a, b) {
-          final aDate =
-              a.tour.dates.isNotEmpty ? a.tour.dates.first : DateTime(1970);
-          final bDate =
-              b.tour.dates.isNotEmpty ? b.tour.dates.first : DateTime(1970);
+          final aDate = a.tour.dates.isNotEmpty
+              ? a.tour.dates.first
+              : DateTime(1970);
+          final bDate = b.tour.dates.isNotEmpty
+              ? b.tour.dates.first
+              : DateTime(1970);
           return aDate.compareTo(bDate);
         });
   if (upcomingTours.isNotEmpty) {
