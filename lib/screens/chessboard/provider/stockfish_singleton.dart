@@ -6,6 +6,7 @@ import 'package:chessever2/repository/lichess/cloud_eval/cloud_eval.dart';
 import 'package:ffi/ffi.dart';
 import 'package:flutter/foundation.dart';
 import 'package:stockfish/stockfish.dart';
+import 'package:dartchess/dartchess.dart' as chess;
 import 'package:chessever2/providers/engine_settings_provider.dart';
 
 /// Debug-only kill switch for the local Stockfish engine.
@@ -64,17 +65,15 @@ int Function(Pointer<Utf8>)? _nativeWriteFn;
 Future<void> _rawStockfishStdin(String command) async {
   try {
     await Isolate.run(() {
-      _nativeStockfishLib ??=
-          Platform.isAndroid
-              ? DynamicLibrary.open('libstockfish.so')
-              : DynamicLibrary.process();
+      _nativeStockfishLib ??= Platform.isAndroid
+          ? DynamicLibrary.open('libstockfish.so')
+          : DynamicLibrary.process();
 
-      _nativeWriteFn ??=
-          _nativeStockfishLib!
-              .lookup<NativeFunction<IntPtr Function(Pointer<Utf8>)>>(
-                'stockfish_stdin_write',
-              )
-              .asFunction<int Function(Pointer<Utf8>)>();
+      _nativeWriteFn ??= _nativeStockfishLib!
+          .lookup<NativeFunction<IntPtr Function(Pointer<Utf8>)>>(
+            'stockfish_stdin_write',
+          )
+          .asFunction<int Function(Pointer<Utf8>)>();
 
       final ptr = '$command\n'.toNativeUtf8();
       try {
@@ -129,6 +128,12 @@ class EnhancedCloudEval {
   final bool fromWhitePerspective; // Track perspective for correct evaluation
   final int? requestedMultiPv;
 
+  /// Actual most recent complete, exact-score iteration for report consumers.
+  /// Board streaming keeps its existing partial-PV behavior separately.
+  final int? completedDepth;
+  final List<Pv>? completedPvs;
+  final String? nativeSearchId;
+
   const EnhancedCloudEval({
     required this.fen,
     required this.knodes,
@@ -137,7 +142,70 @@ class EnhancedCloudEval {
     this.isCancelled = false,
     this.fromWhitePerspective = true,
     this.requestedMultiPv,
+    this.completedDepth,
+    this.completedPvs,
+    this.nativeSearchId,
   });
+}
+
+/// UCI command shared by production and bounded-search regression tests.
+String stockfishGoCommand({
+  required int depth,
+  Duration? searchDuration,
+  int? maxDepth,
+  int? maxNodes,
+}) {
+  final parts = <String>['go'];
+  if (searchDuration != null) {
+    parts.addAll(['movetime', '${searchDuration.inMilliseconds}']);
+    if (maxDepth != null) parts.addAll(['depth', '$maxDepth']);
+  } else {
+    parts.addAll(['depth', '$depth']);
+  }
+  if (maxNodes != null) parts.addAll(['nodes', '$maxNodes']);
+  return parts.join(' ');
+}
+
+/// Retains only a complete effective-depth MultiPV iteration. A partial next
+/// iteration, bound-only score or depthless info never upgrades this snapshot.
+class StockfishReportIteration {
+  StockfishReportIteration(this.width);
+  final int width;
+  final Map<int, Map<int, Pv>> _iterations = {};
+  int depth = 0;
+  List<Pv> pvs = const [];
+  void add(String info) {
+    final d = _infoDepthPattern.firstMatch(info);
+    final pv = _infoPvPattern.firstMatch(info);
+    if (d == null || pv == null) return;
+    final n = int.parse(d.group(1)!);
+    if (n < depth || n <= 0) return;
+    final rank =
+        int.tryParse(_infoMultiPvPattern.firstMatch(info)?.group(1) ?? '1') ??
+        1;
+    if (rank < 1 || rank > width) return;
+    final batch = _iterations.putIfAbsent(n, () => {});
+    if (rank == 1) batch.clear();
+    if (info.contains('lowerbound') || info.contains('upperbound')) return;
+    final cp = _infoScoreCpPattern.firstMatch(info);
+    final mate = _infoScoreMatePattern.firstMatch(info);
+    if (cp == null && mate == null) return;
+    final m = mate == null ? null : int.parse(mate.group(1)!);
+    batch[rank] = Pv(
+      moves: pv.group(1)!.trim(),
+      cp: cp == null ? (m!.sign * 100000) : int.parse(cp.group(1)!),
+      isMate: mate != null,
+      mate: m,
+      whitePerspective: false,
+    );
+    if (batch.length != width ||
+        !List.generate(width, (i) => i + 1).every(batch.containsKey)) {
+      return;
+    }
+    pvs = List.unmodifiable(List.generate(width, (i) => batch[i + 1]!));
+    depth = n;
+    _iterations.removeWhere((key, _) => key < depth);
+  }
 }
 
 class StockfishSingleton {
@@ -149,6 +217,7 @@ class StockfishSingleton {
   /// Prevents race conditions when the same game is opened rapidly —
   /// each provider instance gets a distinct ownerId even for the same game.
   static int _ownerGeneration = 0;
+  static int _nativeSearchGeneration = 0;
 
   /// Returns a unique owner ID incorporating the game identity and a generation
   /// counter. Call once per provider creation.
@@ -263,6 +332,7 @@ class StockfishSingleton {
     int depth = 15,
     Duration? searchDuration,
     int? maxDepth,
+    int? maxNodes,
     int multiPV = 3,
     Function(int depth, int knodes)? onDepthUpdate,
     Function(List<Pv> pvs, int depth)? onPvUpdate,
@@ -316,11 +386,13 @@ class StockfishSingleton {
     // Cache key is FEN-based only - same position = same eval regardless of requester
     final fenParts = fen.split(' ');
     final sideToMove = fenParts.length > 1 ? fenParts[1] : 'w';
-    final searchMode =
-        searchDuration != null
-            ? 'time_${searchDuration.inMilliseconds}'
-            : 'depth_$depth';
-    final cacheKey = '${fen}_${searchMode}_pv${multiPV}_$sideToMove';
+    final searchMode = searchDuration != null
+        ? 'time_${searchDuration.inMilliseconds}'
+        : 'depth_$depth';
+    final boundsKey = maxNodes == null
+        ? ''
+        : '_nodes${maxNodes}_maxDepth$maxDepth';
+    final cacheKey = '${fen}_${searchMode}_pv${multiPV}_$sideToMove$boundsKey';
 
     // Job key includes ownerId to isolate jobs per provider
     // This prevents different providers from sharing completers (which caused wrong evals)
@@ -332,7 +404,7 @@ class StockfishSingleton {
         // A deeper-width result fully satisfies a single-PV request. This is
         // especially useful when board analysis has already visited a report
         // position before the staged mobile pass starts.
-        if (multiPV == 1)
+        if (multiPV == 1 && maxNodes == null)
           for (var cachedPv = 2; cachedPv <= 5; cachedPv++)
             '${fen}_${searchMode}_pv${cachedPv}_$sideToMove',
       ];
@@ -413,10 +485,9 @@ class StockfishSingleton {
     if (isCurrentPosition && _jobQueue.isNotEmpty) {
       int droppedCount = 0;
       _jobQueue.removeWhere((job) {
-        final sameOwner =
-            ownerId == null
-                ? job.ownerId == null
-                : (job.ownerId == ownerId || job.ownerId == null);
+        final sameOwner = ownerId == null
+            ? job.ownerId == null
+            : (job.ownerId == ownerId || job.ownerId == null);
         final isDuplicateHighPriority =
             job.isCurrentPosition && sameOwner && job.fen != fen;
         final isLowPriority = !job.isCurrentPosition;
@@ -475,6 +546,7 @@ class StockfishSingleton {
       completer,
       searchDuration: searchDuration,
       maxDepth: maxDepth,
+      maxNodes: maxNodes,
       multiPV: multiPV,
       onDepthUpdate: onDepthUpdate,
       onPvUpdate: onPvUpdate,
@@ -502,10 +574,9 @@ class StockfishSingleton {
       final int lowPriorityIndex = _jobQueue.lastIndexWhere(
         (job) => !job.isCurrentPosition,
       );
-      final dropped =
-          lowPriorityIndex >= 0
-              ? _jobQueue.removeAt(lowPriorityIndex)
-              : _jobQueue.removeLast();
+      final dropped = lowPriorityIndex >= 0
+          ? _jobQueue.removeAt(lowPriorityIndex)
+          : _jobQueue.removeLast();
       _pendingJobs.remove(dropped.key);
       if (!dropped.completer.isCompleted) {
         dropped.completer.complete(
@@ -597,8 +668,7 @@ class StockfishSingleton {
 
   bool get appIsForeground => _appIsForeground;
 
-  bool get _hasQueuedBoardWork =>
-      _jobQueue.any((job) => job.isCurrentPosition);
+  bool get _hasQueuedBoardWork => _jobQueue.any((job) => job.isCurrentPosition);
 
   bool get _isRunningBoardWork => _currentJob?.isCurrentPosition ?? false;
 
@@ -767,10 +837,9 @@ class StockfishSingleton {
     // Android delivers UCI output later than iOS: every line crosses a
     // ReceivePort into the main isolate, which is exactly the isolate the
     // report and the board are both busy rebuilding on. Give it room.
-    final budget =
-        _isAndroid
-            ? const Duration(milliseconds: 2500)
-            : const Duration(milliseconds: 1200);
+    final budget = _isAndroid
+        ? const Duration(milliseconds: 2500)
+        : const Duration(milliseconds: 1200);
 
     for (var attempt = 0; attempt < attempts && _searchInFlight; attempt++) {
       final waiter = Completer<void>();
@@ -947,6 +1016,7 @@ class StockfishSingleton {
     if (_currentJob == null) return;
 
     final job = _currentJob!;
+    final nativeSearchId = 'native_${_nativeSearchGeneration++}';
     final fen = job.fen;
     final depth = job.depth;
     final searchDuration = job.searchDuration;
@@ -971,6 +1041,18 @@ class StockfishSingleton {
         );
       }
 
+      var reportWidth = multiPV;
+      try {
+        final pos = chess.Chess.fromSetup(chess.Setup.parseFen(fen));
+        var legal = 0;
+        for (final square in chess.Square.values) {
+          if (pos.board.pieceAt(square)?.color == pos.turn) {
+            legal += pos.legalMovesOf(square).size;
+          }
+        }
+        if (legal < reportWidth) reportWidth = legal;
+      } catch (_) {}
+      final reportIteration = StockfishReportIteration(reportWidth);
       final List<Pv> pvs = [];
       int knodes = 0;
       int finalDepth = 0;
@@ -1004,15 +1086,15 @@ class StockfishSingleton {
         // debugPrint('🟢 STOCKFISH STDOUT: $line');
         // Parse info lines for analysis data
         if (line.startsWith('info depth')) {
+          reportIteration.add(line);
           final depthMatch = _infoDepthPattern.firstMatch(line);
           final knodesMatch = _infoNodesPattern.firstMatch(line);
 
           if (depthMatch != null) {
             final currentDepth = int.parse(depthMatch.group(1)!);
-            final int currentKnodes =
-                knodesMatch != null
-                    ? (int.parse(knodesMatch.group(1)!) / 1000).round()
-                    : 0;
+            final int currentKnodes = knodesMatch != null
+                ? (int.parse(knodesMatch.group(1)!) / 1000).round()
+                : 0;
 
             finalDepth = currentDepth;
             if (job.isCurrentPosition) _boardReachedDepth = currentDepth;
@@ -1090,6 +1172,12 @@ class StockfishSingleton {
                       pvs: _normalizeToWhitePerspective(settled, fen),
                       isCancelled: false,
                       requestedMultiPv: job.multiPV,
+                      nativeSearchId: nativeSearchId,
+                      completedDepth: reportIteration.depth,
+                      completedPvs: _normalizeToWhitePerspective(
+                        reportIteration.pvs,
+                        fen,
+                      ),
                     ),
                   );
                   _currentSubscription?.cancel();
@@ -1234,6 +1322,12 @@ class StockfishSingleton {
             pvs: normalizedPvs.isEmpty ? [Pv(moves: '', cp: 0)] : normalizedPvs,
             isCancelled: false,
             requestedMultiPv: job.multiPV,
+            nativeSearchId: nativeSearchId,
+            completedDepth: reportIteration.depth,
+            completedPvs: _normalizeToWhitePerspective(
+              reportIteration.pvs,
+              fen,
+            ),
           );
           if (!completer.isCompleted) {
             _previousJobCompleted = true;
@@ -1269,20 +1363,12 @@ class StockfishSingleton {
         _appliedMultiPv = multiPV;
         _engine!.stdin = 'position fen $fen';
 
-        if (isDynamicSearch) {
-          final moveTimeMs = searchDuration.inMilliseconds;
-          debugPrint(
-            '   → Sending: MultiPV $multiPV, movetime ${moveTimeMs}ms${maxDepth != null ? ", depth $maxDepth" : ""}',
-          );
-          if (maxDepth != null) {
-            _engine!.stdin = 'go movetime $moveTimeMs depth $maxDepth';
-          } else {
-            _engine!.stdin = 'go movetime $moveTimeMs';
-          }
-        } else {
-          debugPrint('   → Sending: MultiPV $multiPV, depth $depth');
-          _engine!.stdin = 'go depth $depth';
-        }
+        _engine!.stdin = stockfishGoCommand(
+          depth: depth,
+          searchDuration: searchDuration,
+          maxDepth: maxDepth,
+          maxNodes: job.maxNodes,
+        );
         _searchInFlight = true;
       } catch (e) {
         _searchInFlight = false;
@@ -1295,6 +1381,12 @@ class StockfishSingleton {
             pvs: [Pv(moves: '', cp: 0)],
             isCancelled: false,
             requestedMultiPv: job.multiPV,
+            nativeSearchId: nativeSearchId,
+            completedDepth: reportIteration.depth,
+            completedPvs: _normalizeToWhitePerspective(
+              reportIteration.pvs,
+              fen,
+            ),
           );
           completer.complete(errorResult);
           _currentJob = null;
@@ -1312,8 +1404,9 @@ class StockfishSingleton {
       } else {
         // Deep searches with multiPV take exponentially longer per depth level.
         // depth 15: ~10s, depth 20: ~30s, depth 25: ~60s, depth 40: ~300s, depth 50+: ~600s
-        final timeoutSeconds =
-            depth <= 15 ? 15 : (depth <= 20 ? 60 : (depth <= 40 ? 300 : 600));
+        final timeoutSeconds = depth <= 15
+            ? 15
+            : (depth <= 20 ? 60 : (depth <= 40 ? 300 : 600));
         safetyTimeout = Duration(seconds: timeoutSeconds);
       }
 
@@ -1322,9 +1415,11 @@ class StockfishSingleton {
 
       // At high depths with multiPV, a single depth level can take 5-10+ seconds
       // with no intermediate output. Scale the stall threshold accordingly.
-      final stallThreshold = Duration(
-        milliseconds: depth <= 20 ? 1200 : (depth <= 40 ? 3500 : 8000),
-      );
+      final stallThreshold = job.maxNodes != null && searchDuration != null
+          ? searchDuration + const Duration(seconds: 1)
+          : Duration(
+              milliseconds: depth <= 20 ? 1200 : (depth <= 40 ? 3500 : 8000),
+            );
 
       stallDetector = Timer.periodic(const Duration(milliseconds: 500), (_) {
         if (lastInfoReceived != null) {
@@ -1350,12 +1445,17 @@ class StockfishSingleton {
                 fen: fen,
                 knodes: knodes,
                 depth: finalDepth > 0 ? finalDepth : 1,
-                pvs:
-                    normalizedPvs.isEmpty
-                        ? [Pv(moves: '', cp: 0)]
-                        : normalizedPvs,
+                pvs: normalizedPvs.isEmpty
+                    ? [Pv(moves: '', cp: 0)]
+                    : normalizedPvs,
                 isCancelled: false,
                 requestedMultiPv: job.multiPV,
+                nativeSearchId: nativeSearchId,
+                completedDepth: reportIteration.depth,
+                completedPvs: _normalizeToWhitePerspective(
+                  reportIteration.pvs,
+                  fen,
+                ),
               );
               completer.complete(result);
               debugPrint('⚠️ STOCKFISH: Forced completion due to stall');
@@ -1393,12 +1493,17 @@ class StockfishSingleton {
               fen: fen,
               knodes: knodes,
               depth: finalDepth > 0 ? finalDepth : 1,
-              pvs:
-                  normalizedPvs.isEmpty
-                      ? [Pv(moves: '', cp: 0)]
-                      : normalizedPvs,
+              pvs: normalizedPvs.isEmpty
+                  ? [Pv(moves: '', cp: 0)]
+                  : normalizedPvs,
               isCancelled: false,
               requestedMultiPv: job.multiPV,
+              nativeSearchId: nativeSearchId,
+              completedDepth: reportIteration.depth,
+              completedPvs: _normalizeToWhitePerspective(
+                reportIteration.pvs,
+                fen,
+              ),
             );
 
             // Try to stop the engine
@@ -1479,10 +1584,9 @@ class StockfishSingleton {
     _engine!.state.addListener(listener);
 
     // Use longer timeout on Android
-    final effectiveTimeout =
-        _isAndroid
-            ? Duration(milliseconds: timeout.inMilliseconds + 1000)
-            : timeout;
+    final effectiveTimeout = _isAndroid
+        ? Duration(milliseconds: timeout.inMilliseconds + 1000)
+        : timeout;
 
     timer = Timer(effectiveTimeout, () {
       if (!completer.isCompleted) {
@@ -2219,6 +2323,7 @@ class _EvalJob {
     this.completer, {
     this.searchDuration,
     this.maxDepth,
+    this.maxNodes,
     this.multiPV = 3,
     this.onDepthUpdate,
     this.onPvUpdate,
@@ -2234,6 +2339,7 @@ class _EvalJob {
   final Completer<EnhancedCloudEval> completer;
   final Duration? searchDuration;
   final int? maxDepth;
+  final int? maxNodes;
   final int multiPV;
   final Function(int depth, int knodes)? onDepthUpdate;
   final Function(List<Pv> pvs, int depth)? onPvUpdate;

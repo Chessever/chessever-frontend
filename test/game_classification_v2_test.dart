@@ -8,6 +8,7 @@ import 'package:chessever2/screens/chessboard/game_review/game_review_provider.d
 import 'package:chessever2/screens/chessboard/game_review/move_position_facts.dart';
 import 'package:chessever2/screens/chessboard/provider/stockfish_singleton.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:dartchess/dartchess.dart' as chess;
 
 /// Covers the classification rules that make positive symbols mean "exceptional
 /// decision" rather than "engine-first move", without letting the tightening
@@ -15,10 +16,7 @@ import 'package:flutter_test/flutter_test.dart';
 void main() {
   group('position facts', () {
     test('an attacked piece stepping to safety reads as a routine retreat', () {
-      final facts = describeMove(
-        beforeFen: _retreatFen,
-        playedUci: 'd5d8',
-      );
+      final facts = describeMove(beforeFen: _retreatFen, playedUci: 'd5d8');
 
       expect(facts.movedPieceWasAttacked, isTrue);
       expect(facts.landsSafely, isTrue);
@@ -28,10 +26,7 @@ void main() {
     });
 
     test('a position with one legal reply to check is forced', () {
-      final facts = describeMove(
-        beforeFen: _onlyMoveFen,
-        playedUci: 'h8h7',
-      );
+      final facts = describeMove(beforeFen: _onlyMoveFen, playedUci: 'h8h7');
 
       expect(facts.wasInCheckBefore, isTrue);
       expect(facts.isOnlyLegalMove, isTrue);
@@ -87,7 +82,7 @@ void main() {
       expect(
         _classify(
           game,
-          moverBefore: 52,
+          moverBefore: 54,
           moverAfter: 54,
           bestMove: 'e2e4',
           alternativeMoverWin: 52, // 2pp < 2.5
@@ -98,7 +93,7 @@ void main() {
       expect(
         _classify(
           game,
-          moverBefore: 52,
+          moverBefore: 54,
           moverAfter: 54,
           bestMove: 'e2e4',
           alternativeMoverWin: 49, // 5pp ≥ 2.5 and < 7.5
@@ -113,7 +108,7 @@ void main() {
       expect(
         _classify(
           _openingGame,
-          moverBefore: 52,
+          moverBefore: 55,
           moverAfter: 55,
           bestMove: 'e2e4',
           alternativeMoverWin: 46, // ~9pp ≥ kGreatOnlyGoodMoveGapPp
@@ -124,7 +119,7 @@ void main() {
       expect(
         _classify(
           _openingGame,
-          moverBefore: 52,
+          moverBefore: 55,
           moverAfter: 55,
           bestMove: 'e2e4',
           alternativeMoverWin: 50, // ~5pp < 7.5, ≥ 2.5
@@ -133,20 +128,23 @@ void main() {
       );
     });
 
-    test('defensive save from a lost position is Great', () {
-      // Engine-top resource that escapes clearly-losing. Gap is under the
-      // only-reliable bar so this hits the defensive-save supporting path.
-      expect(
-        _classify(
-          _openingGame,
-          moverBefore: 8,
-          moverAfter: 32,
-          bestMove: 'e2e4',
-          alternativeMoverWin: 26, // 6pp ≥ kGreatSupportingPathMinGapPp, < 7.5
-        ),
-        GameMoveClassification.bestMove,
-      );
-    });
+    test(
+      'coherent near-best defensive resource retains a positive label',
+      () {
+        // The same-root gap supports a near-best resource. Do not fabricate
+        // an escape from a lost position using an incompatible child score.
+        expect(
+          _classify(
+            _openingGame,
+            moverBefore: 32,
+            moverAfter: 32,
+            bestMove: 'e2e4',
+            alternativeMoverWin: 20, // 12pp same-root moat, but still losing.
+          ),
+          GameMoveClassification.goodMove,
+        );
+      },
+    );
 
     test('advantage conversion where the alternative slips is Great', () {
       // Keeps a better-band edge; next line drops to competitive with a gap
@@ -154,7 +152,7 @@ void main() {
       expect(
         _classify(
           _openingGame,
-          moverBefore: 78,
+          moverBefore: 80,
           moverAfter: 80,
           bestMove: 'e2e4',
           alternativeMoverWin: 74, // 6pp; alt competitive (< 75)
@@ -163,7 +161,7 @@ void main() {
       );
     });
 
-    test('Sitges quiet king conversion remains Great', () {
+    test('Sitges child-only gain cannot manufacture a same-root moat', () {
       expect(
         _classify(
           _sitgesKg7Game,
@@ -172,7 +170,7 @@ void main() {
           bestMove: 'h7g7',
           alternativeMoverWin: 79,
         ),
-        GameMoveClassification.bestMove,
+        isNull,
       );
     });
 
@@ -305,7 +303,7 @@ void main() {
       );
     });
 
-    test('a recovery that escapes the losing band keeps its symbol', () {
+    test('an incompatible recovery cannot earn unsupported native praise', () {
       // Same routine-looking capture, but it drags the mover out of a lost
       // position — exactly the exception the suppression must not swallow.
       expect(
@@ -316,7 +314,7 @@ void main() {
           bestMove: 'c8c6',
           alternativeMoverWin: 20,
         ),
-        isNotNull,
+        isNull,
       );
     });
   });
@@ -377,10 +375,7 @@ void main() {
     });
 
     test('the threshold is a floor of ten games', () {
-      expect(
-        applyBookMoveOverride(null, kBookMoveMinGames - 1),
-        isNull,
-      );
+      expect(applyBookMoveOverride(null, kBookMoveMinGames - 1), isNull);
       expect(
         applyBookMoveOverride(null, kBookMoveMinGames),
         GameMoveClassification.bookMove,
@@ -406,7 +401,9 @@ void main() {
         for (var i = 0; i <= game.mainline.length; i++)
           GameReportPosition(
             fen: i == 0 ? game.startingFen : game.mainline[i - 1].fen,
-            lines: [_line(cp: 20, moves: const ['g1f3'])],
+            lines: [
+              _line(cp: 20, moves: const ['g1f3']),
+            ],
           ),
       ];
 
@@ -418,14 +415,11 @@ void main() {
         bookGameCounts: const [4000, 3000, null],
       );
 
-      expect(
-        report.moves.map((move) => move.classification).toList(),
-        [
-          GameMoveClassification.bookMove,
-          GameMoveClassification.bookMove,
-          isNot(GameMoveClassification.bookMove),
-        ],
-      );
+      expect(report.moves.map((move) => move.classification).toList(), [
+        GameMoveClassification.bookMove,
+        GameMoveClassification.bookMove,
+        isNot(GameMoveClassification.bookMove),
+      ]);
       expect(report.count(GameMoveClassification.bookMove, white: true), 1);
       expect(report.count(GameMoveClassification.bookMove, white: false), 1);
     });
@@ -456,10 +450,10 @@ void main() {
           .map((move) => move.classification)
           .toList();
       expect(classifications[1], isNot(GameMoveClassification.bookMove));
-      expect(
-        [classifications[0], ...classifications.skip(2)],
-        everyElement(GameMoveClassification.bookMove),
-      );
+      expect([
+        classifications[0],
+        ...classifications.skip(2),
+      ], everyElement(GameMoveClassification.bookMove));
     });
 
     test('the walk gives up after a run of moves out of book', () async {
@@ -558,21 +552,25 @@ void main() {
       expect(kBookProbeMaxPlies, greaterThanOrEqualTo(40));
     });
 
-    test('a hanging tree never holds the report open', () async {
-      final controller = GameAnalysisReportController(
-        evaluator: _stubEvaluator,
-        bookLookup: (fen, uci, path) => Completer<int?>().future,
-      );
-      addTearDown(controller.dispose);
+    test(
+      'a hanging tree never holds the report open',
+      () async {
+        final controller = GameAnalysisReportController(
+          evaluator: _stubEvaluator,
+          bookLookup: (fen, uci, path) => Completer<int?>().future,
+        );
+        addTearDown(controller.dispose);
 
-      await controller.analyze(ChessGame.fromPgn('slow', '1. e4 e5 *'));
+        await controller.analyze(ChessGame.fromPgn('slow', '1. e4 e5 *'));
 
-      expect(controller.state.status, GameReportStatus.completed);
-      expect(
-        controller.state.report!.moves.map((move) => move.classification),
-        everyElement(isNot(GameMoveClassification.bookMove)),
-      );
-    }, timeout: const Timeout(Duration(seconds: 30)));
+        expect(controller.state.status, GameReportStatus.completed);
+        expect(
+          controller.state.report!.moves.map((move) => move.classification),
+          everyElement(isNot(GameMoveClassification.bookMove)),
+        );
+      },
+      timeout: const Timeout(Duration(seconds: 30)),
+    );
 
     test('a failing tree never fails the report', () async {
       final controller = GameAnalysisReportController(
@@ -609,10 +607,7 @@ void main() {
   group('decided outcomes stay quiet while contested outcomes are judged', () {
     test('a compressed loss in a decisively lost position is unlabelled', () {
       // 12% -> 6% remains below the 23% decisive-loss ceiling.
-      expect(
-        _classify(_openingGame, moverBefore: 12, moverAfter: 6),
-        isNull,
-      );
+      expect(_classify(_openingGame, moverBefore: 12, moverAfter: 6), isNull);
     });
 
     test('a big cp swing while crushing stays unlabelled', () {
@@ -686,14 +681,14 @@ final _looseCapturePositions = [
   ),
   GameReportPosition(
     fen: _looseCaptureGame.mainline.first.fen,
-    lines: [_line(cp: -300, moves: const ['e1d2'])],
+    lines: [
+      _line(cp: -300, moves: const ['e1d2']),
+    ],
   ),
 ];
 
-ChessGame _gameFromFen(String fen, String moves) => ChessGame.fromPgn(
-  'fixture',
-  '[SetUp "1"]\n[FEN "$fen"]\n\n$moves',
-);
+ChessGame _gameFromFen(String fen, String moves) =>
+    ChessGame.fromPgn('fixture', '[SetUp "1"]\n[FEN "$fen"]\n\n$moves');
 
 /// Classifies the first move of [game] from mover-relative winning chances.
 ///
@@ -726,7 +721,10 @@ GameMoveClassification? _classify(
       lines: [
         _line(cp: _cpForWin(whiteBefore), moves: [bestMove]),
         if (alt != null)
-          _line(cp: _cpForWin(toWhite(alt)), moves: const ['a7a6']),
+          _line(
+            cp: _cpForWin(toWhite(alt)),
+            moves: [_legalAlternative(game, bestMove)],
+          ),
       ],
     ),
     GameReportPosition(
@@ -744,6 +742,18 @@ GameMoveClassification? _classify(
     winPercentages: [whiteBefore, whiteAfter],
     previousMoveClassification: previousMoveClassification,
   );
+}
+
+String _legalAlternative(ChessGame game, String bestMove) {
+  final p = chess.Chess.fromSetup(chess.Setup.parseFen(game.startingFen));
+  for (final square in chess.Square.values) {
+    if (p.board.pieceAt(square)?.color != p.turn) continue;
+    for (final to in p.legalMovesOf(square).squares) {
+      final move = chess.NormalMove(from: square, to: to);
+      if (p.isLegal(move) && move.uci != bestMove) return move.uci;
+    }
+  }
+  return bestMove; // Only-legal-move fixture is independently praise-vetoed.
 }
 
 /// Inverse of [gameReportWinPercentage], so a fixture can be written in the
