@@ -309,6 +309,12 @@ class LibraryCombinedSearchNotifier
 
             final w = (wId != null) ? byId[wId] : null;
             final b = (bId != null) ? byId[bId] : null;
+            // The row's titles are the ones held when the game was played;
+            // the player's title today only fills a row that settles neither.
+            final titlesSettled = ChessTitleUtils.titlesSettled(
+              row['whiteTitle']?.toString(),
+              row['blackTitle']?.toString(),
+            );
 
             if (w != null) {
               row['white_player'] = {
@@ -317,7 +323,7 @@ class LibraryCombinedSearchNotifier
                 'fed': w.fed,
                 'title': w.title,
               };
-              row['whiteTitle'] = w.title ?? '';
+              if (!titlesSettled) row['whiteTitle'] = w.title ?? '';
               row['whiteRating'] = ratingFor(w, tc);
               row['whiteFed'] = w.fed;
             }
@@ -329,7 +335,7 @@ class LibraryCombinedSearchNotifier
                 'fed': b.fed,
                 'title': b.title,
               };
-              row['blackTitle'] = b.title ?? '';
+              if (!titlesSettled) row['blackTitle'] = b.title ?? '';
               row['blackRating'] = ratingFor(b, tc);
               row['blackFed'] = b.fed;
             }

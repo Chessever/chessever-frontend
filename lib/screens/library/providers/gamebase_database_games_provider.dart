@@ -582,11 +582,17 @@ class DatabaseGamesPaginationNotifier
               (preview['blackFed']?.toString().trim().isNotEmpty ?? false)
                   ? preview['blackFed'].toString().trim()
                   : (blackPlayer?.fed ?? '');
-          final whiteTitle = ChessTitleUtils.normalize(
-            preview['whiteTitle']?.toString() ?? whitePlayer?.title,
+          // Titles as held when the game was played; today's only when the
+          // row settles neither side (ChessTitleUtils.listRowTitle).
+          final whiteTitle = ChessTitleUtils.listRowTitle(
+            preview,
+            isWhite: true,
+            fallback: whitePlayer?.title,
           );
-          final blackTitle = ChessTitleUtils.normalize(
-            preview['blackTitle']?.toString() ?? blackPlayer?.title,
+          final blackTitle = ChessTitleUtils.listRowTitle(
+            preview,
+            isWhite: false,
+            fallback: blackPlayer?.title,
           );
           final whiteFideId =
               int.tryParse(preview['whiteFideId']?.toString() ?? '') ??
@@ -905,11 +911,15 @@ final gamebaseDatabaseGamesProvider = FutureProvider.autoDispose<
           final blackPlayer =
               (blackPlayerId != null) ? playerDetails[blackPlayerId] : null;
 
-          final whiteTitle = ChessTitleUtils.normalize(
-            row['whiteTitle']?.toString() ?? whitePlayer?.title,
+          final whiteTitle = ChessTitleUtils.listRowTitle(
+            row,
+            isWhite: true,
+            fallback: whitePlayer?.title,
           );
-          final blackTitle = ChessTitleUtils.normalize(
-            row['blackTitle']?.toString() ?? blackPlayer?.title,
+          final blackTitle = ChessTitleUtils.listRowTitle(
+            row,
+            isWhite: false,
+            fallback: blackPlayer?.title,
           );
 
           final eco = row['eco']?.toString() ?? '';
