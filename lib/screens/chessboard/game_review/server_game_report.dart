@@ -456,6 +456,8 @@ GameAnalysisReport gameAnalysisReportFromServerJson(
         // alternatives that MultiPV found are already resolved server-side into
         // each move's `bestAlternative`.
         lines: [_lineFromJson(raw['evaluation'])],
+        search: _nativeSearchFromJson(raw['search']),
+        uncertainty: raw['uncertainty'] as String?,
       ),
   ];
 
@@ -485,6 +487,20 @@ GameAnalysisReport gameAnalysisReportFromServerJson(
     whiteEstimatedRating: (ratings['white'] as num?)?.toInt(),
     blackEstimatedRating: (ratings['black'] as num?)?.toInt(),
     generatedAt: generatedAt ?? DateTime.now(),
+  );
+}
+
+GameReportSearchEvidence? _nativeSearchFromJson(Object? raw) {
+  if (raw is! Map ||
+      raw['engineId'] is! String ||
+      raw['searchId'] is! String ||
+      raw['complete'] is! bool) {
+    return null;
+  }
+  return GameReportSearchEvidence(
+    engineId: raw['engineId'] as String,
+    searchId: raw['searchId'] as String,
+    complete: raw['complete'] as bool,
   );
 }
 
