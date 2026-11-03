@@ -94,6 +94,27 @@ void main() {
       }
     },
   );
+  test('partner notification uses exact publisher and article identity', () {
+    final route = favoritePlayerNewsDestination({
+      'type': 'favorite_player_news',
+      'news_id': '42',
+      'news_source': 'rookreview',
+      'route': '/app/news/42',
+    });
+    expect(route?.id, '42');
+    expect(route?.section, 'rookreview');
+    expect(route?.uri.path, '/app/news/partners/rookreview/42');
+    for (final source in [null, '', 'unknown', 42, {}]) {
+      expect(
+        favoritePlayerNewsDestination({
+          'type': 'favorite_player_news',
+          'news_id': '42',
+          'news_source': source,
+        }),
+        isNull,
+      );
+    }
+  });
   for (final width in [320.0, 390.0]) {
     testWidgets(
       'actual settings render at $width; News opt-out preserves game and event settings',
@@ -163,15 +184,22 @@ void main() {
       },
     );
   }
-  for (final cold in [false, true]) {
+  for (final scenario in [
+    for (final cold in [false, true])
+      for (final publisher in NewsPublisher.values)
+        (cold: cold, publisher: publisher),
+  ]) {
+    final cold = scenario.cold;
+    final publisher = scenario.publisher;
     testWidgets(
-      'actual notification router opens exact article ${cold ? 'after cold startup' : 'warm'}',
+      'actual notification router opens ${publisher.name} article ${cold ? 'after cold startup' : 'warm'}',
       (tester) async {
         DeepLinkService.instance.dispose();
         addTearDown(DeepLinkService.instance.dispose);
         final nav = GlobalKey<NavigatorState>();
         late WidgetRef captured;
         final loaded = <int?>[];
+        final loadedPublishers = <NewsPublisher>[];
         await tester.pumpWidget(
           ProviderScope(
             overrides: [
@@ -185,8 +213,10 @@ void main() {
               premiumAccessProvider.overrideWithValue(false),
               newsArticleLoaderProvider.overrideWithValue((link) async {
                 loaded.add(link.id);
+                loadedPublishers.add(link.publisher);
                 return FeedNews(
                   id: link.id!,
+                  publisher: link.publisher,
                   title: 'LOCAL FIXTURE exact article ${link.id}',
                   summary: '',
                   content:
@@ -212,6 +242,7 @@ void main() {
         DeepLinkService.instance.ingestNotificationData({
           'type': 'favorite_player_news',
           'news_id': '42',
+          if (publisher.isPartner) 'news_source': publisher.sourceId,
           'route': '/app/events',
         });
         await tester.pump();
@@ -221,6 +252,7 @@ void main() {
         }
         await tester.pumpAndSettle();
         expect(loaded, [42]);
+        expect(loadedPublishers, [publisher]);
         expect(find.byType(NewsReaderScreen), findsOneWidget);
         expect(find.text('LOCAL FIXTURE exact article 42'), findsOneWidget);
         expect(tester.takeException(), isNull);

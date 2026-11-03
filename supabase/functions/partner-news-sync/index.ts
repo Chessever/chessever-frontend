@@ -17,6 +17,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { type PartnerSource, parsePartnerFeed } from "./feed.ts";
+import { processPlayerNotifications } from "./player-notifications.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ??
@@ -111,7 +112,7 @@ async function syncSource(row: SourceRow) {
     assetHosts: row.asset_hosts ?? [],
   };
   try {
-    const articles = parsePartnerFeed(await readFeed(row.feed_url), source);
+    const articles = parsePartnerFeed(await readFeed(row.feed_url), source, { skipFuture: true });
     if (articles.length === 0) throw new Error("feed had no usable items");
     const { data, error } = await supabase.rpc("upsert_partner_news", {
       p_source_id: row.id,
@@ -175,6 +176,15 @@ Deno.serve(async (req) => {
   const results = [];
   for (const row of (data ?? []) as SourceRow[]) {
     results.push(await syncSource(row));
+  }
+  // Separate from feed success: AI failures never prevent readable news imports.
+  // The runtime keeps this bounded durable-job worker alive after the response.
+  const apiKey = Deno.env.get("OPENAI_API_KEY");
+  const model = Deno.env.get("ROOKREVIEW_AI_MODEL");
+  if (Deno.env.get("ROOKREVIEW_AI_ENABLED") === "true" && apiKey && model) {
+    EdgeRuntime.waitUntil(processPlayerNotifications(supabase, { apiKey, model }).catch(() => {
+      console.error("[partner-news-sync] notification_processing_failed");
+    }));
   }
   const failed = results.some((result) => !result.ok);
   return json({ results }, failed ? 502 : 200);
