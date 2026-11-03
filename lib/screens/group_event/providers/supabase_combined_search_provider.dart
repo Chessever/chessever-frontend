@@ -109,6 +109,21 @@ String _dateKey(DateTime? date) {
   return '$year-$month-$day';
 }
 
+/// Coarse relevance bucket for ordering event search results.
+///
+/// Raw scores carry length-ratio noise: every title hit lands between 91 and
+/// 100, and a shorter title or one that merely starts with the query wins by a
+/// fraction. Sorting on that buried "41st European Chess Club Cup 2026" under
+/// 2022-2024 events for "european" (Trello #1346). An exact title match keeps
+/// its own top tier; every other title hit shares one tier so recency decides.
+int _tournamentMatchTier(double score) {
+  const exactTitleScore = 99.5;
+  const titleMatchFloor = 91.0;
+  if (score >= exactTitleScore) return 1000;
+  if (score >= titleMatchFloor) return 999;
+  return score.floor();
+}
+
 int _tournamentPreferenceScore(SearchResult result) {
   const noStageBonus = 40000;
   const matchingYearBonus = 20000;
@@ -568,8 +583,10 @@ final supabaseCombinedSearchProvider = AutoDisposeFutureProvider.family<
     tournamentResults,
   );
   dedupedTournamentResults.sort((a, b) {
-    final scoreCompare = b.score.compareTo(a.score);
-    if (scoreCompare != 0) return scoreCompare;
+    final tierCompare = _tournamentMatchTier(
+      b.score,
+    ).compareTo(_tournamentMatchTier(a.score));
+    if (tierCompare != 0) return tierCompare;
 
     final aDate = a.tournament.startDate;
     final bDate = b.tournament.startDate;
