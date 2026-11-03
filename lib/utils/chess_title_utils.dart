@@ -72,4 +72,85 @@ class ChessTitleUtils {
 
     return value; // Preserve unknown titles as-is.
   }
+
+  /// The title a player held WHEN THE GAME WAS PLAYED, from the game's own
+  /// `WhiteTitle`/`BlackTitle` tags. A player's current title is the wrong
+  /// answer for an old game: the 2014 IM who is a GM today.
+  ///
+  /// - This side's tag holds a title: it is the answer.
+  /// - Only the opponent's tag holds one: the source writes title tags and
+  ///   left this side out, which is how TWIC and Lichess say "untitled" then.
+  /// - Neither does (no archive game before 2010 has one): [fallback], the
+  ///   title the list row or the player profile carries.
+  ///
+  /// A placeholder (`-`, `?`) is no title tag at all: DGT LiveChess relays
+  /// write `[WhiteTitle "-"]` for every player, titled or not. Gamebase
+  /// resolves its own `whiteTitle`/`blackTitle` by the same rule.
+  static String gameTimeTitle(
+    Map<String, Object?> headers, {
+    required bool isWhite,
+    required String fallback,
+  }) {
+    final own = normalize(
+      headers[isWhite ? 'WhiteTitle' : 'BlackTitle']?.toString(),
+    );
+    if (own.isNotEmpty) return own;
+    final other = normalize(
+      headers[isWhite ? 'BlackTitle' : 'WhiteTitle']?.toString(),
+    );
+    if (other.isNotEmpty) return '';
+    return fallback;
+  }
+
+  /// Whether a game's two displayed titles are already the ones held when it
+  /// was played. Gamebase resolves both together ([gameTimeTitle]), so once
+  /// either side has a title the pair is settled: an empty side then means
+  /// untitled at the time, and filling it with today's title is wrong.
+  static bool titlesSettled(String? white, String? black) =>
+      normalize(white).isNotEmpty || normalize(black).isNotEmpty;
+
+  /// One side's title for a gamebase games-list row. [fallback] (today's
+  /// title from a profile lookup) applies only when the row settles neither.
+  static String listRowTitle(
+    Map<String, dynamic> row, {
+    required bool isWhite,
+    String? fallback,
+  }) {
+    final white = normalize(row['whiteTitle']?.toString());
+    final black = normalize(row['blackTitle']?.toString());
+    if (white.isNotEmpty || black.isNotEmpty) return isWhite ? white : black;
+    return normalize(fallback);
+  }
+
+  /// Whether the game's tags hold a real title for either side, which makes
+  /// [gameTimeTitle] authoritative: an empty result then means "untitled at
+  /// the time", not "unknown, look up today's title".
+  static bool carriesTitles(Map<String, Object?> headers) =>
+      normalize(headers['WhiteTitle']?.toString()).isNotEmpty ||
+      normalize(headers['BlackTitle']?.toString()).isNotEmpty;
+
+  static final RegExp _pgnTitleTag = RegExp(
+    r'^\s*\[(White|Black)Title\s+"([^"]*)"\]',
+    multiLine: true,
+  );
+
+  /// [carriesTitles] for a raw PGN string, without a full parse.
+  static bool pgnCarriesTitles(String? pgn) {
+    if (pgn == null || pgn.isEmpty) return false;
+    return _pgnTitleTag
+        .allMatches(pgn)
+        .any((match) => normalize(match.group(2)).isNotEmpty);
+  }
+
+  /// Writes the card titles into a saved game's tags only when the game has
+  /// no titles of its own. Overwriting them baked today's title into copies.
+  static void fillMissingTitleTags(
+    Map<String, dynamic> meta, {
+    required String white,
+    required String black,
+  }) {
+    if (carriesTitles(meta)) return;
+    if (white.isNotEmpty) meta['WhiteTitle'] = white;
+    if (black.isNotEmpty) meta['BlackTitle'] = black;
+  }
 }

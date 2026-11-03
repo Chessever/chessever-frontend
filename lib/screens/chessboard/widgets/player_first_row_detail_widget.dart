@@ -204,12 +204,22 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
           ? effectiveGameModel.whitePlayer
           : effectiveGameModel.blackPlayer;
     }, [effectiveGameModel, isWhitePlayer]);
+    // An archive game whose PGN carries title tags already holds the title of
+    // the day, and an empty one means untitled then. Today's title from a
+    // profile lookup would undo that, so only federation and FIDE id fill.
+    final titleFromGame =
+        isArchiveSource &&
+        (ChessTitleUtils.pgnCarriesTitles(effectiveGameModel.pgn) ||
+            ChessTitleUtils.titlesSettled(
+              effectiveGameModel.whitePlayer.title,
+              effectiveGameModel.blackPlayer.title,
+            ));
     final enrichedPlayerFuture = useMemoized(
       () async {
         final fideId = playerCard.fideId;
         final gamebasePlayerId = playerCard.gamebasePlayerId?.trim();
         final needsEnrichment =
-            playerCard.title.trim().isEmpty ||
+            (playerCard.title.trim().isEmpty && !titleFromGame) ||
             playerCard.countryCode.trim().isEmpty ||
             fideId == null ||
             fideId <= 0;
@@ -284,9 +294,12 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
           }
         }
 
-        return enrichedCard;
+        return titleFromGame
+            ? enrichedCard.copyWith(title: playerCard.title)
+            : enrichedCard;
       },
       [
+        titleFromGame,
         playerCard.fideId,
         playerCard.title,
         playerCard.countryCode,
