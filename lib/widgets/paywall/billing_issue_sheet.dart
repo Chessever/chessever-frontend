@@ -36,6 +36,7 @@ Future<bool> showBillingIssueSheet({required BuildContext context}) async {
     context: context,
     useRootNavigator: true,
     isScrollControlled: true,
+    useSafeArea: true,
     backgroundColor: Colors.transparent,
     constraints: ResponsiveHelper.bottomSheetConstraints,
     builder: (_) => const _BillingIssueSheet(),
@@ -121,70 +122,76 @@ class _BillingIssueSheet extends ConsumerWidget {
           top: false,
           child: Padding(
             padding: EdgeInsets.fromLTRB(20.w, 16.h, 20.w, 24.h),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Center(
-                  child: Container(
-                    width: 36.w,
-                    height: 4.h,
-                    decoration: BoxDecoration(
-                      color: context.colors.textPrimary.withValues(alpha: 0.2),
-                      borderRadius: BorderRadius.circular(2.br),
+            child: SingleChildScrollView(
+              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Center(
+                    child: Container(
+                      width: 36.w,
+                      height: 4.h,
+                      decoration: BoxDecoration(
+                        color: context.colors.textPrimary.withValues(
+                          alpha: 0.2,
+                        ),
+                        borderRadius: BorderRadius.circular(2.br),
+                      ),
                     ),
                   ),
-                ),
-                SizedBox(height: 24.h),
-                // The mark stands bare, no tinted disc behind it.
-                Icon(
-                  Icons.credit_card_off_rounded,
-                  color: context.colors.accentText,
-                  size: 40.ic,
-                ),
-                SizedBox(height: 20.h),
-                Text(
-                  'Update your payment method',
-                  textAlign: TextAlign.center,
-                  style: AppTypography.textLgBold.copyWith(
-                    color: context.colors.textPrimary,
-                    letterSpacing: -0.3,
+                  SizedBox(height: 24.h),
+                  // The mark stands bare, no tinted disc behind it.
+                  Icon(
+                    Icons.credit_card_off_rounded,
+                    color: context.colors.accentText,
+                    size: 40.ic,
                   ),
-                ),
-                SizedBox(height: 12.h),
-                Text(
-                  _bodyCopy(state.expirationDate, isStripe: isStripe),
-                  textAlign: TextAlign.center,
-                  style: AppTypography.textSmRegular.copyWith(
-                    color: context.colors.textPrimary.withValues(alpha: 0.7),
-                    height: 1.4,
+                  SizedBox(height: 20.h),
+                  Text(
+                    'Update your payment method',
+                    textAlign: TextAlign.center,
+                    style: AppTypography.textLgBold.copyWith(
+                      color: context.colors.textPrimary,
+                      letterSpacing: -0.3,
+                    ),
                   ),
-                ),
-                SizedBox(height: 24.h),
-                _PrimaryButton(
-                  label: isStripe
-                      ? 'Manage on chessever.com'
-                      : 'Update payment method',
-                  onTap: () => _openBillingManagement(
-                    context,
-                    isStripe: isStripe,
-                    managementUrl: state.managementUrl,
+                  SizedBox(height: 12.h),
+                  Text(
+                    _bodyCopy(state.expirationDate, isStripe: isStripe),
+                    textAlign: TextAlign.center,
+                    style: AppTypography.textSmRegular.copyWith(
+                      color: context.colors.textPrimary.withValues(alpha: 0.7),
+                      height: 1.4,
+                    ),
                   ),
-                ),
-                SizedBox(height: 12.h),
-                TextButton(
-                  onPressed: () =>
-                      Navigator.of(context, rootNavigator: true).pop(false),
-                  style: TextButton.styleFrom(
-                    minimumSize: Size(double.infinity, 48.h),
-                    foregroundColor:
-                        context.colors.textPrimary.withValues(alpha: 0.6),
+                  SizedBox(height: 24.h),
+                  _PrimaryButton(
+                    label: isStripe
+                        ? 'Manage on chessever.com'
+                        : 'Update payment method',
+                    onTap: () => _openBillingManagement(
+                      context,
+                      isStripe: isStripe,
+                      managementUrl: state.managementUrl,
+                    ),
                   ),
-                  child: Text(
-                    'Remind me later',
-                    style: AppTypography.textSmMedium,
+                  SizedBox(height: 12.h),
+                  TextButton(
+                    onPressed: () =>
+                        Navigator.of(context, rootNavigator: true).pop(false),
+                    style: TextButton.styleFrom(
+                      minimumSize: Size(double.infinity, 48.h),
+                      foregroundColor: context.colors.textPrimary.withValues(
+                        alpha: 0.6,
+                      ),
+                    ),
+                    child: Text(
+                      'Remind me later',
+                      style: AppTypography.textSmMedium,
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ),

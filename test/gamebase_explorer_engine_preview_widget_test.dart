@@ -63,18 +63,17 @@ class _FakeGamebaseRepository extends GamebaseRepository {
     return GamebaseResponse(
       status: 'success',
       data: GamebaseData(
-        moves:
-            inlineGames
-                ? const [
-                  MoveAggregate(
-                    uci: 'e2e4',
-                    white: 4,
-                    black: 3,
-                    draws: 2,
-                    total: 9,
-                  ),
-                ]
-                : const [],
+        moves: inlineGames
+            ? const [
+                MoveAggregate(
+                  uci: 'e2e4',
+                  white: 4,
+                  black: 3,
+                  draws: 2,
+                  total: 9,
+                ),
+              ]
+            : const [],
       ),
     );
   }
@@ -99,21 +98,20 @@ class _FakeGamebaseRepository extends GamebaseRepository {
     int pageNumber = 0,
     int pageSize = 20,
   }) async {
-    final rows =
-        inlineGames
-            ? <Map<String, dynamic>>[
-              {
-                'id': 'g1',
-                'white': 'Magnus Carlsen',
-                'black': 'Hikaru Nakamura',
-                'result': '1-0',
-                'whiteElo': 2800,
-                'blackElo': 2750,
-                'date': '2024-05-12',
-                'continuation': const ['e2e4'],
-              },
-            ]
-            : const <Map<String, dynamic>>[];
+    final rows = inlineGames
+        ? <Map<String, dynamic>>[
+            {
+              'id': 'g1',
+              'white': 'Magnus Carlsen',
+              'black': 'Hikaru Nakamura',
+              'result': '1-0',
+              'whiteElo': 2800,
+              'blackElo': 2750,
+              'date': '2024-05-12',
+              'continuation': const ['e2e4'],
+            },
+          ]
+        : const <Map<String, dynamic>>[];
     return GamebaseSearchQueryResponse(
       status: 'success',
       data: rows,
@@ -253,6 +251,45 @@ Future<void> _pumpExplorer(
 }
 
 void main() {
+  testWidgets(
+    'Explorer preserves its line and panel through Duo size changes',
+    (tester) async {
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = const Size(390, 844);
+      addTearDown(tester.view.reset);
+      final container = _createContainer();
+      addTearDown(container.dispose);
+      await _pumpExplorer(tester, container);
+      container.read(gamebaseExplorerProvider.notifier).setPositionWithMoves(
+        'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1',
+        ['e2e4'],
+        startingFen: _initialFen,
+      );
+      container.read(explorerPageIndexProvider.notifier).state = 1;
+      await tester.pumpAndSettle();
+      final fen = container.read(gamebaseExplorerProvider).currentFen;
+      for (final size in const [
+        Size(720, 900),
+        Size(900, 720),
+        Size(844, 390),
+        Size(390, 844),
+      ]) {
+        tester.view.physicalSize = size;
+        await tester.pumpAndSettle();
+        expect(tester.takeException(), isNull, reason: '$size must fit');
+        expect(container.read(gamebaseExplorerProvider).currentFen, fen);
+        expect(container.read(explorerPageIndexProvider), 1);
+        final board = tester.getRect(find.byType(Chessboard).first);
+        expect(board.left, greaterThanOrEqualTo(0));
+        expect(board.right, lessThanOrEqualTo(size.width));
+        expect(board.bottom, lessThanOrEqualTo(size.height));
+      }
+      await tester.pumpWidget(const SizedBox.shrink());
+      container.dispose();
+      await tester.pump(const Duration(seconds: 4));
+    },
+  );
+
   for (final style in EngineLinesView.values) {
     testWidgets('in-game Off leaves standalone Explorer $style visible', (
       tester,

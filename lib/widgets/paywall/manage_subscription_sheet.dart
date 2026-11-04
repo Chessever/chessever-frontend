@@ -31,6 +31,7 @@ Future<void> showManageSubscriptionSheet(BuildContext context) {
     context: context,
     useRootNavigator: true,
     isScrollControlled: true,
+    useSafeArea: true,
     backgroundColor: Colors.transparent,
     constraints: ResponsiveHelper.bottomSheetConstraints,
     builder: (_) => const _ManageSubscriptionSheet(),
@@ -60,48 +61,48 @@ class _ManageSubscriptionSheet extends ConsumerWidget {
         20.sp,
         20.sp + MediaQuery.of(context).padding.bottom,
       ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Center(
-            child: Container(
-              width: 40.w,
-              height: 4.h,
-              decoration: BoxDecoration(
-                color: context.colors.divider,
-                borderRadius: BorderRadius.circular(2.br),
-              ),
-            ),
-          ),
-          SizedBox(height: 20.h),
-          Text(
-            'Manage subscription',
-            style: AppTypography.displaySmBold.copyWith(
-              color: context.colors.textPrimary,
-              fontSize: 22.f,
-            ),
-          ),
-          SizedBox(height: 8.h),
-          _StatusLine(state: state),
-          SizedBox(height: 20.h),
-          if (isStripe)
-            const _StripeBody()
-          else
-            const _StoreBody(),
-          SizedBox(height: 8.h),
-          Center(
-            child: TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: Text(
-                'Done',
-                style: AppTypography.textSmMedium.copyWith(
-                  color: context.colors.textPrimaryMuted,
+      child: SingleChildScrollView(
+        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(
+              child: Container(
+                width: 40.w,
+                height: 4.h,
+                decoration: BoxDecoration(
+                  color: context.colors.divider,
+                  borderRadius: BorderRadius.circular(2.br),
                 ),
               ),
             ),
-          ),
-        ],
+            SizedBox(height: 20.h),
+            Text(
+              'Manage subscription',
+              style: AppTypography.displaySmBold.copyWith(
+                color: context.colors.textPrimary,
+                fontSize: 22.f,
+              ),
+            ),
+            SizedBox(height: 8.h),
+            _StatusLine(state: state),
+            SizedBox(height: 20.h),
+            if (isStripe) const _StripeBody() else const _StoreBody(),
+            SizedBox(height: 8.h),
+            Center(
+              child: TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: Text(
+                  'Done',
+                  style: AppTypography.textSmMedium.copyWith(
+                    color: context.colors.textPrimaryMuted,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -129,7 +130,11 @@ class _StatusLine extends StatelessWidget {
         : '';
     return Row(
       children: [
-        Icon(Icons.workspace_premium_rounded, size: 16.ic, color: context.colors.accentText),
+        Icon(
+          Icons.workspace_premium_rounded,
+          size: 16.ic,
+          color: context.colors.accentText,
+        ),
         SizedBox(width: 6.w),
         Flexible(
           child: Text(
@@ -262,11 +267,14 @@ class _PrimaryAction extends StatelessWidget {
           children: [
             Icon(icon, size: 18.ic, color: kBlackColor),
             SizedBox(width: 8.w),
-            Text(
-              label,
-              style: AppTypography.textSmMedium.copyWith(
-                color: kBlackColor,
-                fontWeight: FontWeight.w600,
+            Flexible(
+              child: Text(
+                label,
+                textAlign: TextAlign.center,
+                style: AppTypography.textSmMedium.copyWith(
+                  color: kBlackColor,
+                  fontWeight: FontWeight.w600,
+                ),
               ),
             ),
           ],
@@ -278,8 +286,18 @@ class _PrimaryAction extends StatelessWidget {
 
 String _formatDate(DateTime date) {
   const months = [
-    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+    'Jan',
+    'Feb',
+    'Mar',
+    'Apr',
+    'May',
+    'Jun',
+    'Jul',
+    'Aug',
+    'Sep',
+    'Oct',
+    'Nov',
+    'Dec',
   ];
   final m = months[(date.month - 1).clamp(0, 11)];
   return '$m ${date.day}, ${date.year}';

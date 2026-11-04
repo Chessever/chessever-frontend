@@ -24,6 +24,74 @@ class _StoredExplorerPreference extends GamebaseOverlayEnabledNotifier {
 }
 
 void main() {
+  testWidgets('explicit Explorer panel survives layout remount in its route', (
+    tester,
+  ) async {
+    final container = ProviderContainer(
+      overrides: [
+        boardFeatureTeachingTrackerProvider.overrideWith(
+          (_) => BoardFeatureTeachingTracker(QuietBoardTeachingStore()),
+        ),
+        gamebaseExplorerProvider.overrideWith(
+          (ref) => GamebaseExplorerNotifier(ref),
+        ),
+      ],
+    );
+    addTearDown(container.dispose);
+    final bucket = PageStorageBucket();
+    var wide = false;
+    Future<void> pumpLayout(String gameId) async {
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: MaterialApp(
+            home: PageStorage(
+              bucket: bucket,
+              child: wide
+                  ? Row(
+                      children: [
+                        const SizedBox(width: 200),
+                        Expanded(
+                          child: boardAnalysisSwipePanelsForTesting(
+                            gameId: gameId,
+                          ),
+                        ),
+                      ],
+                    )
+                  : Column(
+                      children: [
+                        const SizedBox(height: 200),
+                        Expanded(
+                          child: boardAnalysisSwipePanelsForTesting(
+                            gameId: gameId,
+                          ),
+                        ),
+                      ],
+                    ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+    }
+
+    await pumpLayout('same-game');
+    await tester.drag(find.byType(PageView), const Offset(-700, 0));
+    await tester.pumpAndSettle();
+    expect(find.text('Explorer fixture').hitTestable(), findsOneWidget);
+    wide = true;
+    await pumpLayout('same-game');
+    expect(find.text('Explorer fixture').hitTestable(), findsOneWidget);
+    expect(container.read(boardExplorerPanelVisibleProvider), isTrue);
+    await pumpLayout('new-game');
+    expect(find.text('Notation fixture').hitTestable(), findsOneWidget);
+    expect(container.read(boardExplorerPanelVisibleProvider), isFalse);
+    wide = false;
+    await pumpLayout('same-game');
+    expect(find.text('Explorer fixture').hitTestable(), findsOneWidget);
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
   for (final delayed in [false, true]) {
     testWidgets(
       'new game starts Notation despite ${delayed ? 'late' : 'loaded'} Explorer preference; explicit switch survives',

@@ -17,6 +17,8 @@ import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/pgn_multi_parser.dart';
+import 'package:chessever2/utils/adaptive_window.dart';
+import 'package:chessever2/screens/chessboard/utils/board_workspace_layout.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/app_snack.dart';
 import 'package:chessground/chessground.dart';
@@ -120,18 +122,17 @@ class _BoardEditorScreenState extends ConsumerState<BoardEditorScreen> {
     final whiteName = usePgnOverride ? _analysisWhiteName : 'White';
     final blackName = usePgnOverride ? _analysisBlackName : 'Black';
 
-    final pgn =
-        usePgnOverride
-            ? _analysisPgnOverride!
-            : '[Event "Board Editor"]\n'
-                '[Site "ChessEver"]\n'
-                '[Date "${DateTime.now().toIso8601String().split('T')[0]}"]\n'
-                '[White "$whiteName"]\n'
-                '[Black "$blackName"]\n'
-                '[Result "*"]\n'
-                '[FEN "$fen"]\n'
-                '[SetUp "1"]\n'
-                '\n*';
+    final pgn = usePgnOverride
+        ? _analysisPgnOverride!
+        : '[Event "Board Editor"]\n'
+              '[Site "ChessEver"]\n'
+              '[Date "${DateTime.now().toIso8601String().split('T')[0]}"]\n'
+              '[White "$whiteName"]\n'
+              '[Black "$blackName"]\n'
+              '[Result "*"]\n'
+              '[FEN "$fen"]\n'
+              '[SetUp "1"]\n'
+              '\n*';
 
     final whitePlayer = PlayerCard(
       name: whiteName,
@@ -173,14 +174,13 @@ class _BoardEditorScreenState extends ConsumerState<BoardEditorScreen> {
 
     Navigator.of(context).push(
       MaterialPageRoute(
-        builder:
-            (_) => ChessBoardScreenNew(
-              currentIndex: 0,
-              games: [game],
-              viewSource: ChessboardView.tour,
-              showGamebaseButton: false,
-              disableGamebaseOverlayByDefault: true,
-            ),
+        builder: (_) => ChessBoardScreenNew(
+          currentIndex: 0,
+          games: [game],
+          viewSource: ChessboardView.tour,
+          showGamebaseButton: false,
+          disableGamebaseOverlayByDefault: true,
+        ),
       ),
     );
   }
@@ -231,11 +231,10 @@ class _BoardEditorScreenState extends ConsumerState<BoardEditorScreen> {
       if (!mounted) return;
       Navigator.of(context).push(
         MaterialPageRoute(
-          builder:
-              (_) => PgnImportPreviewScreen(
-                games: parsed.map((e) => e.chessGame).toList(),
-                sourceLabel: 'clipboard',
-              ),
+          builder: (_) => PgnImportPreviewScreen(
+            games: parsed.map((e) => e.chessGame).toList(),
+            sourceLabel: 'clipboard',
+          ),
         ),
       );
       return;
@@ -246,10 +245,9 @@ class _BoardEditorScreenState extends ConsumerState<BoardEditorScreen> {
       final pgnGame = PgnGame.parsePgn(rawPgn);
       // Determine starting position
       final fenHeader = pgnGame.headers['FEN'];
-      final startPos =
-          fenHeader != null
-              ? Chess.fromSetup(Setup.parseFen(fenHeader))
-              : Chess.initial;
+      final startPos = fenHeader != null
+          ? Chess.fromSetup(Setup.parseFen(fenHeader))
+          : Chess.initial;
 
       // Play through mainline to get final position
       Position currentPos = startPos;
@@ -334,14 +332,13 @@ class _BoardEditorScreenState extends ConsumerState<BoardEditorScreen> {
 
         Navigator.of(context).push(
           MaterialPageRoute(
-            builder:
-                (_) => ChessBoardScreenNew(
-                  currentIndex: 0,
-                  games: [game],
-                  viewSource: ChessboardView.tour,
-                  showGamebaseButton: false,
-                  disableGamebaseOverlayByDefault: true,
-                ),
+            builder: (_) => ChessBoardScreenNew(
+              currentIndex: 0,
+              games: [game],
+              viewSource: ChessboardView.tour,
+              showGamebaseButton: false,
+              disableGamebaseOverlayByDefault: true,
+            ),
           ),
         );
       } else {
@@ -381,23 +378,24 @@ class _BoardEditorScreenState extends ConsumerState<BoardEditorScreen> {
         setState(_clearPgnOverride);
         ref.read(boardEditorProvider.notifier).setSideToMove(side);
       },
-      onToggleCastling: ({
-        bool? whiteKingside,
-        bool? whiteQueenside,
-        bool? blackKingside,
-        bool? blackQueenside,
-      }) {
-        HapticFeedback.selectionClick();
-        setState(_clearPgnOverride);
-        ref
-            .read(boardEditorProvider.notifier)
-            .toggleCastling(
-              whiteKingside: whiteKingside,
-              whiteQueenside: whiteQueenside,
-              blackKingside: blackKingside,
-              blackQueenside: blackQueenside,
-            );
-      },
+      onToggleCastling:
+          ({
+            bool? whiteKingside,
+            bool? whiteQueenside,
+            bool? blackKingside,
+            bool? blackQueenside,
+          }) {
+            HapticFeedback.selectionClick();
+            setState(_clearPgnOverride);
+            ref
+                .read(boardEditorProvider.notifier)
+                .toggleCastling(
+                  whiteKingside: whiteKingside,
+                  whiteQueenside: whiteQueenside,
+                  blackKingside: blackKingside,
+                  blackQueenside: blackQueenside,
+                );
+          },
     );
   }
 
@@ -446,9 +444,13 @@ class _BoardEditorScreenState extends ConsumerState<BoardEditorScreen> {
               child: LayoutBuilder(
                 builder: (context, constraints) {
                   final isTablet = ResponsiveHelper.isTablet;
-                  final isLandscape = ResponsiveHelper.isLandscape;
+                  final sideBySide = BoardWorkspaceLayout.usesSideBySide(
+                    constraints.biggest,
+                    boardChrome: 20.sp,
+                    verticalChrome: 160.sp,
+                  );
 
-                  if (isTablet && isLandscape) {
+                  if (sideBySide) {
                     return _buildTabletLandscapeLayout(constraints);
                   } else if (isTablet) {
                     return _buildTabletPortraitLayout(constraints);
@@ -530,18 +532,29 @@ class _BoardEditorScreenState extends ConsumerState<BoardEditorScreen> {
           final maxBoardFromHeight = ((inner.maxHeight - trayOverhead) / 1.225)
               .clamp(0.0, double.infinity);
           // Reserve at least 280px on the right for controls + fen + actions.
-          final maxBoardFromWidth = (inner.maxWidth -
-                  12.sp -
-                  280.0 -
-                  evalBarWidth)
-              .clamp(0.0, double.infinity);
+          final maxBoardFromWidth =
+              (inner.maxWidth - 12.sp - 280.0 - evalBarWidth).clamp(
+                0.0,
+                double.infinity,
+              );
+          final fold = AdaptiveWindow.verticalFoldOf(context);
+          final foldWidth = fold?.leadingExtentFrom(12.sp);
+          final widthBudget = foldWidth == null
+              ? maxBoardFromWidth
+              : (foldWidth - evalBarWidth).clamp(1.0, maxBoardFromWidth);
           final boardSize =
-              (maxBoardFromHeight < maxBoardFromWidth
+              (maxBoardFromHeight < widthBudget
                       ? maxBoardFromHeight
-                      : maxBoardFromWidth)
-                  .clamp(160.0, double.infinity)
+                      : widthBudget)
+                  .clamp(1.0, double.infinity)
                   .toDouble();
           final boardColumnWidth = boardSize + evalBarWidth;
+          final columnGap = fold?.trailingStart == null
+              ? 12.sp
+              : (fold!.trailingStart! - 12.sp - boardColumnWidth).clamp(
+                  12.sp,
+                  double.infinity,
+                );
           final squareSize = boardSize / 8;
 
           return Row(
@@ -564,7 +577,7 @@ class _BoardEditorScreenState extends ConsumerState<BoardEditorScreen> {
                   ],
                 ),
               ),
-              SizedBox(width: 12.sp),
+              SizedBox(width: columnGap),
               // Right column: controls, FEN, actions
               Expanded(
                 child: Column(
@@ -604,15 +617,17 @@ class _BoardEditorScreenState extends ConsumerState<BoardEditorScreen> {
             Expanded(
               child: LayoutBuilder(
                 builder: (context, inner) {
-                  final maxBoardFromHeight = ((inner.maxHeight - trayOverhead) /
-                          1.225)
-                      .clamp(0.0, double.infinity);
+                  final maxBoardFromHeight =
+                      ((inner.maxHeight - trayOverhead) / 1.225).clamp(
+                        0.0,
+                        double.infinity,
+                      );
                   final maxBoardFromWidth = inner.maxWidth;
                   final boardSize =
                       (maxBoardFromHeight < maxBoardFromWidth
                               ? maxBoardFromHeight
                               : maxBoardFromWidth)
-                          .clamp(160.0, double.infinity)
+                          .clamp(1.0, double.infinity)
                           .toDouble();
                   final squareSize = boardSize / 8;
                   return Center(
@@ -897,14 +912,13 @@ class _BoardWithEvalBar extends ConsumerWidget {
                 pieces: editorState.pieces,
                 pointerMode: editorState.pointerMode,
                 // chessground v10: squareHighlights is a plain Map (was IMap).
-                squareHighlights:
-                    editorState.selectedDragSquare != null
-                        ? {
-                          editorState.selectedDragSquare!: SquareHighlight(
-                            details: boardSettings.colorScheme.selected,
-                          ),
-                        }
-                        : const {},
+                squareHighlights: editorState.selectedDragSquare != null
+                    ? {
+                        editorState.selectedDragSquare!: SquareHighlight(
+                          details: boardSettings.colorScheme.selected,
+                        ),
+                      }
+                    : const {},
                 settings: ChessboardSettings(
                   colorScheme: boardSettings.colorScheme,
                   pieceAssets: boardSettings.pieceAssets,
@@ -1039,13 +1053,14 @@ class _TopControls extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // Row 1: Reset, Clear, Side-to-move
-          Row(
+          Wrap(
+            alignment: WrapAlignment.spaceBetween,
+            spacing: 8.w,
+            runSpacing: 8.h,
+            crossAxisAlignment: WrapCrossAlignment.center,
             children: [
               _SmallButton(label: 'Reset', onTap: onReset),
-              SizedBox(width: 8.w),
               _SmallButton(label: 'Clear', onTap: onClear),
-              const Spacer(),
-              // Side-to-move toggle
               _SideToMoveToggle(
                 sideToMove: editorState.sideToMove,
                 onChanged: onSideToMove,
@@ -1143,10 +1158,9 @@ class _SideOption extends StatelessWidget {
         width: 36.h,
         height: 36.h,
         decoration: BoxDecoration(
-          color:
-              isSelected
-                  ? context.colors.textPrimary
-                  : context.colors.surfaceRecessed,
+          color: isSelected
+              ? context.colors.textPrimary
+              : context.colors.surfaceRecessed,
           borderRadius: BorderRadius.circular(8.br),
         ),
         child: Center(
@@ -1154,10 +1168,9 @@ class _SideOption extends StatelessWidget {
             label,
             style: TextStyle(
               fontSize: 20.f,
-              color:
-                  isSelected
-                      ? context.colors.background
-                      : context.colors.textPrimary,
+              color: isSelected
+                  ? context.colors.background
+                  : context.colors.textPrimary,
             ),
           ),
         ),
@@ -1458,20 +1471,16 @@ class _TrayPiece extends StatelessWidget {
           ),
           child: Container(
             decoration: BoxDecoration(
-              color:
-                  isSelected
-                      ? context.colors.textPrimary.withValues(alpha: 0.3)
-                      : Colors.transparent,
+              color: isSelected
+                  ? context.colors.textPrimary.withValues(alpha: 0.3)
+                  : Colors.transparent,
               borderRadius: BorderRadius.circular(6.br),
-              border:
-                  isSelected
-                      ? Border.all(
-                        color: context.colors.textPrimary.withValues(
-                          alpha: 0.6,
-                        ),
-                        width: 1.5,
-                      )
-                      : null,
+              border: isSelected
+                  ? Border.all(
+                      color: context.colors.textPrimary.withValues(alpha: 0.6),
+                      width: 1.5,
+                    )
+                  : null,
             ),
             child: PieceWidget(
               piece: piece,
@@ -1543,9 +1552,13 @@ class _ActionRow extends StatelessWidget {
       padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 12.h),
       child: Row(
         children: [
-          Expanded(child: _ActionButton(label: 'Paste FEN', onTap: onPasteFen)),
+          Expanded(
+            child: _ActionButton(label: 'Paste FEN', onTap: onPasteFen),
+          ),
           SizedBox(width: 12.w),
-          Expanded(child: _ActionButton(label: 'Paste PGN', onTap: onPastePgn)),
+          Expanded(
+            child: _ActionButton(label: 'Paste PGN', onTap: onPastePgn),
+          ),
         ],
       ),
     );

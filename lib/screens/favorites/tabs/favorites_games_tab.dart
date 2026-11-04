@@ -280,8 +280,9 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
       // Bucket by dateStart (stable scheduled day) when available — last_move_time
       // can be clobbered by sync refreshes and misreport old games as "today".
       final date = game.bucketDate;
-      final dateKey =
-          date != null ? DateFormat('yyyy-MM-dd').format(date) : unknownDateKey;
+      final dateKey = date != null
+          ? DateFormat('yyyy-MM-dd').format(date)
+          : unknownDateKey;
       grouped.putIfAbsent(dateKey, () => []).add(game);
     }
 
@@ -433,23 +434,22 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
 
     // Convert PlayerStandingModel to FavoritePlayer for chip display
     final now = DateTime.now();
-    final favorites =
-        playerModels
-            .map(
-              (p) => FavoritePlayer(
-                id: p.fideId?.toString() ?? p.name,
-                userId: '', // Not needed for display
-                playerName: p.name,
-                fideId: p.fideId?.toString(),
-                metadata: {
-                  'countryCode': p.countryCode,
-                  'federation': p.countryCode,
-                },
-                createdAt: now,
-                updatedAt: now,
-              ),
-            )
-            .toList();
+    final favorites = playerModels
+        .map(
+          (p) => FavoritePlayer(
+            id: p.fideId?.toString() ?? p.name,
+            userId: '', // Not needed for display
+            playerName: p.name,
+            fideId: p.fideId?.toString(),
+            metadata: {
+              'countryCode': p.countryCode,
+              'federation': p.countryCode,
+            },
+            createdAt: now,
+            updatedAt: now,
+          ),
+        )
+        .toList();
 
     // Refresh games when favorites list changes
     ref.listen(favoritePlayersNotifierProvider, (prev, next) {
@@ -494,7 +494,14 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
             SliverToBoxAdapter(child: _buildFilterChips(state, favorites)),
 
           // Content
-          _buildContentSliver(state, favorites, viewMode),
+          SliverLayoutBuilder(
+            builder: (context, constraints) => _buildContentSliver(
+              state,
+              favorites,
+              viewMode,
+              constraints.crossAxisExtent,
+            ),
+          ),
 
           // Bottom padding
           SliverToBoxAdapter(child: SizedBox(height: 24.h)),
@@ -599,16 +606,14 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
               width: searchBarHeight,
               height: searchBarHeight,
               decoration: BoxDecoration(
-                color:
-                    hasActiveFilters
-                        ? context.collectionAlertInk.withValues(alpha: 0.15)
-                        : context.colors.background,
+                color: hasActiveFilters
+                    ? context.collectionAlertInk.withValues(alpha: 0.15)
+                    : context.colors.background,
                 borderRadius: BorderRadius.circular(12.br),
                 border: Border.all(
-                  color:
-                      hasActiveFilters
-                          ? context.collectionAlertInk.withValues(alpha: 0.5)
-                          : context.colors.surfaceRecessed,
+                  color: hasActiveFilters
+                      ? context.collectionAlertInk.withValues(alpha: 0.5)
+                      : context.colors.surfaceRecessed,
                 ),
               ),
               child: Stack(
@@ -617,10 +622,9 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
                   Icon(
                     Icons.tune_rounded,
                     size: 20.sp,
-                    color:
-                        hasActiveFilters
-                            ? context.collectionAlertInk
-                            : context.colors.textSecondary,
+                    color: hasActiveFilters
+                        ? context.collectionAlertInk
+                        : context.colors.textSecondary,
                   ),
                   // Badge showing active filter count
                   if (hasActiveFilters)
@@ -787,16 +791,14 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
                     vertical: 8.h,
                   ),
                   decoration: BoxDecoration(
-                    color:
-                        isSelected
-                            ? const Color(0xFFEF4444)
-                            : context.colors.surfaceRecessed,
+                    color: isSelected
+                        ? const Color(0xFFEF4444)
+                        : context.colors.surfaceRecessed,
                     borderRadius: BorderRadius.circular(16.br),
                     border: Border.all(
-                      color:
-                          isSelected
-                              ? const Color(0xFFEF4444)
-                              : context.colors.divider,
+                      color: isSelected
+                          ? const Color(0xFFEF4444)
+                          : context.colors.divider,
                       width: 1,
                     ),
                   ),
@@ -814,8 +816,9 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
                         displayName,
                         style: TextStyle(
                           fontSize: 13.sp,
-                          fontWeight:
-                              isSelected ? FontWeight.w600 : FontWeight.w500,
+                          fontWeight: isSelected
+                              ? FontWeight.w600
+                              : FontWeight.w500,
                           color: context.colors.textPrimary,
                         ),
                       ),
@@ -834,6 +837,7 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
     FavoritesCombinedGamesState state,
     List<FavoritePlayer> favorites,
     GamesListViewMode viewMode,
+    double availableWidth,
   ) {
     if (state.isLoading && state.games.isEmpty) {
       return SliverFillRemaining(
@@ -927,8 +931,14 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
         if (isGrid) {
           // Grid mode: dynamic columns based on device/orientation
           // Tablet landscape: 4 columns, Tablet portrait: 2 columns, Phone: 2 columns
-          final int gridColumns =
-              ResponsiveHelper.isTablet && ResponsiveHelper.isLandscape ? 4 : 2;
+          final int gridColumns = ResponsiveHelper.columnsForWidth(
+            availableWidth -
+                2 * ResponsiveHelper.adaptive(phone: 16.w, tablet: 24.w),
+            minItemWidth: 220,
+            spacing: 16.sp,
+            minColumns: 2,
+            maxColumns: 4,
+          );
 
           for (int i = 0; i < dateGames.length; i += gridColumns) {
             final isLast = i + gridColumns >= dateGames.length;
@@ -1040,15 +1050,14 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
             for (int j = 0; j < entry.gridColumns; j++) ...[
               if (j > 0) SizedBox(width: 12.sp),
               Expanded(
-                child:
-                    j < entry.games.length
-                        ? _buildGridGame(
-                          entry.games[j],
-                          gameIdToIndex[entry.games[j].gameId] ?? 0,
-                          games,
-                          entry.listIndex,
-                        )
-                        : const SizedBox.shrink(),
+                child: j < entry.games.length
+                    ? _buildGridGame(
+                        entry.games[j],
+                        gameIdToIndex[entry.games[j].gameId] ?? 0,
+                        games,
+                        entry.listIndex,
+                      )
+                    : const SizedBox.shrink(),
               ),
             ],
           ],
@@ -1220,11 +1229,9 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
           ),
           SizedBox(height: 24.h),
           TextButton(
-            onPressed:
-                () =>
-                    ref
-                        .read(favoritesCombinedGamesProvider.notifier)
-                        .refreshGames(),
+            onPressed: () => ref
+                .read(favoritesCombinedGamesProvider.notifier)
+                .refreshGames(),
             style: TextButton.styleFrom(
               backgroundColor: context.colors.textPrimary.withValues(
                 alpha: 0.1,
@@ -1329,7 +1336,8 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
             title: player.title,
           );
     } on FavoriteLimitExceededException {
-      if (mounted) await showPremiumPaywallSheet(context: context, allowRewarded: false);
+      if (mounted)
+        await showPremiumPaywallSheet(context: context, allowRewarded: false);
     } catch (error) {
       if (mounted) {
         showAppSnack(
@@ -1346,14 +1354,13 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder:
-            (context) => PlayerProfileScreen(
-              fideId: player.fideId,
-              playerName: player.name,
-              title: player.title,
-              federation: player.countryCode,
-              rating: player.score,
-            ),
+        builder: (context) => PlayerProfileScreen(
+          fideId: player.fideId,
+          playerName: player.name,
+          title: player.title,
+          federation: player.countryCode,
+          rating: player.score,
+        ),
       ),
     );
   }
@@ -1534,10 +1541,9 @@ class _DateHeader extends StatelessWidget {
           ),
           boxShadow: [
             BoxShadow(
-              color:
-                  context.isLightTheme
-                      ? context.colors.shadow
-                      : Colors.black.withValues(alpha: 0.1),
+              color: context.isLightTheme
+                  ? context.colors.shadow
+                  : Colors.black.withValues(alpha: 0.1),
               blurRadius: 4,
               offset: const Offset(0, 2),
             ),

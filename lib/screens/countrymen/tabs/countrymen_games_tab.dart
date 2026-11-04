@@ -279,20 +279,19 @@ class _CountrymenGamesTabState extends ConsumerState<CountrymenGamesTab>
 
     for (final game in games) {
       final raw = game.lastMoveTime;
-      final dateKey =
-          raw == null
-              ? _unknownDateKey
-              : DateFormat('yyyy-MM-dd').format(raw.toLocal());
+      final dateKey = raw == null
+          ? _unknownDateKey
+          : DateFormat('yyyy-MM-dd').format(raw.toLocal());
       grouped.putIfAbsent(dateKey, () => []).add(game);
     }
 
     // Sort keys by date descending (most recent first); unknown sinks to the end.
-    final sortedKeys =
-        grouped.keys.toList()..sort((a, b) {
-          if (a == _unknownDateKey) return 1;
-          if (b == _unknownDateKey) return -1;
-          return b.compareTo(a);
-        });
+    final sortedKeys = grouped.keys.toList()
+      ..sort((a, b) {
+        if (a == _unknownDateKey) return 1;
+        if (b == _unknownDateKey) return -1;
+        return b.compareTo(a);
+      });
 
     return Map.fromEntries(
       sortedKeys.map((key) => MapEntry(key, grouped[key]!)),
@@ -410,7 +409,14 @@ class _CountrymenGamesTabState extends ConsumerState<CountrymenGamesTab>
           ),
 
           // Content
-          _buildContentSliver(state, viewMode, streamEnabled),
+          SliverLayoutBuilder(
+            builder: (context, constraints) => _buildContentSliver(
+              state,
+              viewMode,
+              streamEnabled,
+              constraints.crossAxisExtent,
+            ),
+          ),
 
           // Bottom padding
           SliverToBoxAdapter(child: SizedBox(height: 24.h)),
@@ -513,16 +519,14 @@ class _CountrymenGamesTabState extends ConsumerState<CountrymenGamesTab>
               width: searchBarHeight,
               height: searchBarHeight,
               decoration: BoxDecoration(
-                color:
-                    hasActiveFilters
-                        ? context.collectionAlertInk.withValues(alpha: 0.15)
-                        : context.colors.background,
+                color: hasActiveFilters
+                    ? context.collectionAlertInk.withValues(alpha: 0.15)
+                    : context.colors.background,
                 borderRadius: BorderRadius.circular(12.br),
                 border: Border.all(
-                  color:
-                      hasActiveFilters
-                          ? context.collectionAlertInk.withValues(alpha: 0.5)
-                          : context.colors.surfaceRecessed,
+                  color: hasActiveFilters
+                      ? context.collectionAlertInk.withValues(alpha: 0.5)
+                      : context.colors.surfaceRecessed,
                 ),
               ),
               child: Stack(
@@ -531,10 +535,9 @@ class _CountrymenGamesTabState extends ConsumerState<CountrymenGamesTab>
                   Icon(
                     Icons.tune_rounded,
                     size: 20.sp,
-                    color:
-                        hasActiveFilters
-                            ? context.collectionAlertInk
-                            : context.colors.textSecondary,
+                    color: hasActiveFilters
+                        ? context.collectionAlertInk
+                        : context.colors.textSecondary,
                   ),
                   // Badge showing active filter count
                   if (hasActiveFilters)
@@ -612,6 +615,7 @@ class _CountrymenGamesTabState extends ConsumerState<CountrymenGamesTab>
     CountrymenCombinedGamesState state,
     GamesListViewMode viewMode,
     bool streamEnabled,
+    double availableWidth,
   ) {
     if (state.isLoading && state.games.isEmpty) {
       return SliverFillRemaining(
@@ -698,8 +702,14 @@ class _CountrymenGamesTabState extends ConsumerState<CountrymenGamesTab>
         if (isGrid) {
           // Grid mode: dynamic columns based on device/orientation
           // Tablet landscape: 4 columns, Tablet portrait: 2 columns, Phone: 2 columns
-          final int gridColumns =
-              ResponsiveHelper.isTablet && ResponsiveHelper.isLandscape ? 4 : 2;
+          final int gridColumns = ResponsiveHelper.columnsForWidth(
+            availableWidth -
+                2 * ResponsiveHelper.adaptive(phone: 16.w, tablet: 24.w),
+            minItemWidth: 220,
+            spacing: 16.sp,
+            minColumns: 2,
+            maxColumns: 4,
+          );
 
           for (int i = 0; i < dateGames.length; i += gridColumns) {
             final isLast = i + gridColumns >= dateGames.length;
@@ -821,16 +831,15 @@ class _CountrymenGamesTabState extends ConsumerState<CountrymenGamesTab>
             for (int j = 0; j < entry.gridColumns; j++) ...[
               if (j > 0) SizedBox(width: 12.sp),
               Expanded(
-                child:
-                    j < entry.games.length
-                        ? _buildGridGame(
-                          entry.games[j],
-                          gameIdToIndex[entry.games[j].gameId] ?? 0,
-                          games,
-                          entry.listIndex,
-                          streamEnabled,
-                        )
-                        : const SizedBox.shrink(),
+                child: j < entry.games.length
+                    ? _buildGridGame(
+                        entry.games[j],
+                        gameIdToIndex[entry.games[j].gameId] ?? 0,
+                        games,
+                        entry.listIndex,
+                        streamEnabled,
+                      )
+                    : const SizedBox.shrink(),
               ),
             ],
           ],
@@ -1011,11 +1020,9 @@ class _CountrymenGamesTabState extends ConsumerState<CountrymenGamesTab>
           ),
           SizedBox(height: 24.h),
           TextButton(
-            onPressed:
-                () =>
-                    ref
-                        .read(countrymenCombinedGamesProvider.notifier)
-                        .refreshGames(),
+            onPressed: () => ref
+                .read(countrymenCombinedGamesProvider.notifier)
+                .refreshGames(),
             style: TextButton.styleFrom(
               backgroundColor: context.colors.textPrimary.withValues(
                 alpha: 0.1,
@@ -1291,10 +1298,9 @@ class _DateHeader extends StatelessWidget {
           ),
           boxShadow: [
             BoxShadow(
-              color:
-                  context.isLightTheme
-                      ? context.colors.shadow
-                      : Colors.black.withValues(alpha: 0.1),
+              color: context.isLightTheme
+                  ? context.colors.shadow
+                  : Colors.black.withValues(alpha: 0.1),
               blurRadius: 4,
               offset: const Offset(0, 2),
             ),

@@ -42,10 +42,9 @@ class _BookPreviewScreenState extends ConsumerState<BookPreviewScreen> {
         child: Center(
           child: ConstrainedBox(
             constraints: BoxConstraints(
-              maxWidth:
-                  ResponsiveHelper.isTablet
-                      ? ResponsiveHelper.contentMaxWidth
-                      : double.infinity,
+              maxWidth: ResponsiveHelper.isTablet
+                  ? ResponsiveHelper.contentMaxWidth
+                  : double.infinity,
             ),
             child: previewAsync.when(
               data: (preview) {
@@ -58,10 +57,11 @@ class _BookPreviewScreenState extends ConsumerState<BookPreviewScreen> {
                   preview.color,
                 );
               },
-              loading:
-                  () =>  Center(
-                    child: CircularProgressIndicator(color: context.colors.textPrimary),
-                  ),
+              loading: () => Center(
+                child: CircularProgressIndicator(
+                  color: context.colors.textPrimary,
+                ),
+              ),
               error: (error, _) => _buildError(userFacingError(error)),
             ),
           ),
@@ -102,65 +102,69 @@ class _BookPreviewScreenState extends ConsumerState<BookPreviewScreen> {
         ),
 
         Expanded(
-          child: Padding(
-            padding: EdgeInsets.symmetric(horizontal: 24.w),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                // Folder icon
-                Container(
-                  width: 80.h,
-                  height: 80.h,
-                  decoration: BoxDecoration(
-                    color: context.colors.surfaceRecessed,
-                    borderRadius: BorderRadius.circular(22.br),
-                  ),
-                  child: Center(
-                    child: Icon(
-                      Icons.menu_book_rounded,
-                      size: 40.sp,
-                      color: context.colors.textPrimary.withValues(alpha: 0.85),
+          child: _PreviewBody(
+            child: Padding(
+              padding: EdgeInsets.symmetric(horizontal: 24.w),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  // Folder icon
+                  Container(
+                    width: 80.h,
+                    height: 80.h,
+                    decoration: BoxDecoration(
+                      color: context.colors.surfaceRecessed,
+                      borderRadius: BorderRadius.circular(22.br),
+                    ),
+                    child: Center(
+                      child: Icon(
+                        Icons.menu_book_rounded,
+                        size: 40.sp,
+                        color: context.colors.textPrimary.withValues(
+                          alpha: 0.85,
+                        ),
+                      ),
                     ),
                   ),
-                ),
-                SizedBox(height: 20.h),
+                  SizedBox(height: 20.h),
 
-                // Book name
-                Text(
-                  name,
-                  style: AppTypography.displayXsMedium.copyWith(
-                    color: context.colors.textPrimary,
-                    letterSpacing: -0.5,
-                  ),
-                  textAlign: TextAlign.center,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                SizedBox(height: 6.h),
-
-                // Owner name
-                if (ownerDisplayName != null && ownerDisplayName.isNotEmpty)
+                  // Book name
                   Text(
-                    'by $ownerDisplayName',
-                    style: AppTypography.textMdRegular.copyWith(
-                      color: context.textInk(0.6),
+                    name,
+                    style: AppTypography.displayXsMedium.copyWith(
+                      color: context.colors.textPrimary,
+                      letterSpacing: -0.5,
                     ),
                     textAlign: TextAlign.center,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
                   ),
-                SizedBox(height: 8.h),
+                  SizedBox(height: 6.h),
 
-                // Game count
-                Text(
-                  gameCount == 1 ? '1 game' : '$gameCount games',
-                  style: AppTypography.textSmRegular.copyWith(
-                    color: context.textInk(0.5),
+                  // Owner name
+                  if (ownerDisplayName != null && ownerDisplayName.isNotEmpty)
+                    Text(
+                      'by $ownerDisplayName',
+                      style: AppTypography.textMdRegular.copyWith(
+                        color: context.textInk(0.6),
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  SizedBox(height: 8.h),
+
+                  // Game count
+                  Text(
+                    gameCount == 1 ? '1 game' : '$gameCount games',
+                    style: AppTypography.textSmRegular.copyWith(
+                      color: context.textInk(0.5),
+                    ),
                   ),
-                ),
-                SizedBox(height: 32.h),
+                  SizedBox(height: 32.h),
 
-                // CTA button
-                _buildCta(folderId, currentUserId),
-              ],
+                  // CTA button
+                  _buildCta(folderId, currentUserId),
+                ],
+              ),
             ),
           ),
         ),
@@ -271,8 +275,11 @@ class _BookPreviewScreenState extends ConsumerState<BookPreviewScreen> {
       showAppSnack(
         context,
         e.toString().contains('Duplicate')
-        ? 'Already in your library'
-        : userFacingError(e, fallback: 'Could not add this. Please try again.'),
+            ? 'Already in your library'
+            : userFacingError(
+                e,
+                fallback: 'Could not add this. Please try again.',
+              ),
         tone: AppSnackTone.danger,
       );
     } finally {
@@ -291,27 +298,32 @@ class _BookPreviewScreenState extends ConsumerState<BookPreviewScreen> {
       child: Container(
         padding: EdgeInsets.symmetric(horizontal: 24.w, vertical: 14.h),
         decoration: BoxDecoration(
-          color:
-              isPrimary
-                  ? context.colors.textPrimary.withValues(alpha: 0.15)
-                  : context.colors.textPrimary.withValues(alpha: 0.07),
+          color: isPrimary
+              ? context.colors.textPrimary.withValues(alpha: 0.15)
+              : context.colors.textPrimary.withValues(alpha: 0.07),
           borderRadius: BorderRadius.circular(12.br),
           border: Border.all(
-            color:
-                isPrimary
-                    ? context.colors.textPrimary.withValues(alpha: 0.3)
-                    : context.colors.textPrimary.withValues(alpha: 0.1),
+            color: isPrimary
+                ? context.colors.textPrimary.withValues(alpha: 0.3)
+                : context.colors.textPrimary.withValues(alpha: 0.1),
           ),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, size: 20.sp, color: context.colors.textPrimary.withValues(alpha: 0.85)),
+            Icon(
+              icon,
+              size: 20.sp,
+              color: context.colors.textPrimary.withValues(alpha: 0.85),
+            ),
             SizedBox(width: 10.w),
-            Text(
-              label,
-              style: AppTypography.textMdMedium.copyWith(
-                color: context.colors.textPrimary.withValues(alpha: 0.85),
+            Flexible(
+              child: Text(
+                label,
+                textAlign: TextAlign.center,
+                style: AppTypography.textMdMedium.copyWith(
+                  color: context.colors.textPrimary.withValues(alpha: 0.85),
+                ),
               ),
             ),
           ],
@@ -342,31 +354,33 @@ class _BookPreviewScreenState extends ConsumerState<BookPreviewScreen> {
           ),
         ),
         Expanded(
-          child: Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(
-                  Icons.menu_book_outlined,
-                  size: 64.sp,
-                  color: context.textInk(0.35),
-                ),
-                SizedBox(height: 12.h),
-                Text(
-                  'Folder not found',
-                  style: AppTypography.textLgMedium.copyWith(
-                    color: context.colors.textPrimary.withValues(alpha: 0.85),
+          child: _PreviewBody(
+            child: Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    Icons.menu_book_outlined,
+                    size: 64.sp,
+                    color: context.textInk(0.35),
                   ),
-                ),
-                SizedBox(height: 6.h),
-                Text(
-                  'This folder may have been removed or the link is invalid.',
-                  style: AppTypography.textSmRegular.copyWith(
-                    color: context.textInk(0.55),
+                  SizedBox(height: 12.h),
+                  Text(
+                    'Folder not found',
+                    style: AppTypography.textLgMedium.copyWith(
+                      color: context.colors.textPrimary.withValues(alpha: 0.85),
+                    ),
                   ),
-                  textAlign: TextAlign.center,
-                ),
-              ],
+                  SizedBox(height: 6.h),
+                  Text(
+                    'This folder may have been removed or the link is invalid.',
+                    style: AppTypography.textSmRegular.copyWith(
+                      color: context.textInk(0.55),
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                ],
+              ),
             ),
           ),
         ),
@@ -396,43 +410,62 @@ class _BookPreviewScreenState extends ConsumerState<BookPreviewScreen> {
           ),
         ),
         Expanded(
-          child: Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(
-                  Icons.error_outline_rounded,
-                  size: 56.sp,
-                  color:
-                      context.isLightTheme
-                          ? context.colors.danger
-                          : kRedColor.withValues(alpha: 0.85),
-                ),
-                SizedBox(height: 12.h),
-                Text(
-                  'Something went wrong',
-                  style: AppTypography.textMdMedium.copyWith(
-                    color: context.colors.textPrimary,
+          child: _PreviewBody(
+            child: Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    Icons.error_outline_rounded,
+                    size: 56.sp,
+                    color: context.isLightTheme
+                        ? context.colors.danger
+                        : kRedColor.withValues(alpha: 0.85),
                   ),
-                ),
-                SizedBox(height: 6.h),
-                Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 32.w),
-                  child: Text(
-                    error,
-                    style: AppTypography.textSmRegular.copyWith(
-                      color: context.textInk(0.6),
+                  SizedBox(height: 12.h),
+                  Text(
+                    'Something went wrong',
+                    style: AppTypography.textMdMedium.copyWith(
+                      color: context.colors.textPrimary,
                     ),
-                    textAlign: TextAlign.center,
                   ),
-                ),
-              ],
+                  SizedBox(height: 6.h),
+                  Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 32.w),
+                    child: Text(
+                      error,
+                      style: AppTypography.textSmRegular.copyWith(
+                        color: context.textInk(0.6),
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ),
       ],
     );
   }
+}
+
+/// The header stays reachable while loaded, missing and failed previews
+/// scroll independently when the available height changes.
+class _PreviewBody extends StatelessWidget {
+  const _PreviewBody({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, constraints) => SingleChildScrollView(
+      child: ConstrainedBox(
+        constraints: BoxConstraints(minHeight: constraints.maxHeight),
+        child: Center(child: child),
+      ),
+    ),
+  );
 }
 
 enum _BookRelation { loading, ownBook, subscribed, newBook }

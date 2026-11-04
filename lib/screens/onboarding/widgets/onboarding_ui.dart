@@ -23,6 +23,28 @@ final Curve onboardingSnappySpring = Motion.snappySpring().toCurve;
 /// a large image fading up.
 const Curve onboardingGentleSpring = Curves.easeOutCubic;
 
+/// Keeps a short onboarding step composed at full height, while allowing the
+/// whole step to scroll when folding, the keyboard, or larger text leaves less
+/// room. The column may use spacers without forcing its content off-screen.
+class OnboardingScrollBody extends StatelessWidget {
+  const OnboardingScrollBody({super.key, required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) => SingleChildScrollView(
+        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+        child: ConstrainedBox(
+          constraints: BoxConstraints(minHeight: constraints.maxHeight),
+          child: IntrinsicHeight(child: child),
+        ),
+      ),
+    );
+  }
+}
+
 /// The onboarding call-to-action.
 ///
 /// Full-bleed, `textPrimary`-filled, and the only filled button on a step — the
@@ -65,34 +87,34 @@ class OnboardingPrimaryButton extends HookWidget {
         curve: onboardingSnappySpring,
         child: Container(
           width: double.infinity,
-          height: 52.h,
+          constraints: BoxConstraints(
+            minHeight: 52.h.clamp(44.0, double.infinity),
+          ),
+          padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 12.h),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(14.br),
-            color:
-                onTap != null
-                    ? context.colors.textPrimary
-                    : context.colors.textPrimary.withValues(alpha: 0.2),
+            color: onTap != null
+                ? context.colors.textPrimary
+                : context.colors.textPrimary.withValues(alpha: 0.2),
           ),
           child: Center(
-            child:
-                isLoading
-                    ? SizedBox(
-                      width: 24.w,
-                      height: 24.h,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: context.colors.textInverse,
-                      ),
-                    )
-                    : Text(
-                      label,
-                      style: AppTypography.textMdMedium.copyWith(
-                        color:
-                            onTap != null
-                                ? context.colors.textInverse
-                                : context.textInk(0.5),
-                      ),
+            child: isLoading
+                ? SizedBox(
+                    width: 24.w,
+                    height: 24.h,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: context.colors.textInverse,
                     ),
+                  )
+                : Text(
+                    label,
+                    style: AppTypography.textMdMedium.copyWith(
+                      color: onTap != null
+                          ? context.colors.textInverse
+                          : context.textInk(0.5),
+                    ),
+                  ),
           ),
         ),
       ),

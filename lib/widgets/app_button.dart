@@ -4,6 +4,7 @@ import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:flutter/material.dart';
 import 'package:motor/motor.dart';
+import 'dart:math' as math;
 
 /// Primary button with Motor-powered spring animations.
 /// Clean, minimal design with satisfying tactile feedback.
@@ -138,52 +139,57 @@ class _AppButtonState extends State<AppButton> {
       child: SingleMotionBuilder(
         motion: const CupertinoMotion.snappy(),
         value: _scale,
+        active: !MediaQuery.disableAnimationsOf(context),
         builder: (context, scale, child) {
           return Transform.scale(scale: scale, child: child);
         },
         child: Container(
-          height: height,
+          constraints: BoxConstraints(minHeight: math.max(44, height)),
           width: widget.width ?? double.infinity,
-          padding: widget.padding ?? EdgeInsets.symmetric(horizontal: 24.w),
+          padding:
+              widget.padding ??
+              EdgeInsets.symmetric(horizontal: 24.w, vertical: 12),
           decoration: BoxDecoration(
             color: widget.isOutlined ? Colors.transparent : bgColor,
             borderRadius: BorderRadius.circular(widget.borderRadius.br),
-            border:
-                widget.isOutlined
-                    ? Border.all(
-                      color: context.colors.textPrimary.withValues(alpha: 0.3),
-                      width: 1.5,
-                    )
-                    : null,
+            border: widget.isOutlined
+                ? Border.all(
+                    color: context.colors.textPrimary.withValues(alpha: 0.3),
+                    width: 1.5,
+                  )
+                : null,
           ),
           child: Center(
-            child:
-                widget.isLoading
-                    ? SizedBox(
-                      width: 20.w,
-                      height: 20.w,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        valueColor: AlwaysStoppedAnimation<Color>(txtColor),
-                      ),
-                    )
-                    : Row(
-                      mainAxisSize: MainAxisSize.min,
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        if (widget.icon != null) ...[
-                          widget.icon!,
-                          SizedBox(width: 8.w),
-                        ],
-                        Text(
+            heightFactor: 1,
+            child: widget.isLoading
+                ? SizedBox(
+                    width: 20.w,
+                    height: 20.w,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      valueColor: AlwaysStoppedAnimation<Color>(txtColor),
+                    ),
+                  )
+                : Row(
+                    mainAxisSize: MainAxisSize.min,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      if (widget.icon != null) ...[
+                        widget.icon!,
+                        SizedBox(width: 8.w),
+                      ],
+                      Flexible(
+                        child: Text(
                           widget.text,
+                          textAlign: TextAlign.center,
                           style: AppTypography.textMdMedium.copyWith(
                             color: txtColor,
                             fontWeight: FontWeight.w600,
                           ),
                         ),
-                      ],
-                    ),
+                      ),
+                    ],
+                  ),
           ),
         ),
       ),
@@ -219,7 +225,7 @@ class _AppIconButtonState extends State<AppIconButton> {
 
   @override
   Widget build(BuildContext context) {
-    final size = widget.size ?? 44.w;
+    final size = math.max(44.0, widget.size ?? 44.w);
 
     Widget button = GestureDetector(
       onTapDown: (_) => setState(() => _scale = 0.9),

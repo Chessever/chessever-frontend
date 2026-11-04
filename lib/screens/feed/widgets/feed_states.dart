@@ -1,6 +1,7 @@
 import 'package:chessever2/screens/feed/providers/feed_provider.dart';
 import 'package:chessever2/screens/feed/widgets/feed_action_row.dart';
 import 'package:chessever2/screens/feed/widgets/feed_layout.dart';
+import 'package:chessever2/screens/feed/widgets/feed_page_viewport.dart';
 import 'package:chessever2/screens/feed/widgets/feed_scrub.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/app_typography.dart';
@@ -54,7 +55,7 @@ class FeedSkeletonPost extends StatelessWidget {
     final colors = context.colors;
     final tone = colors.skeleton;
     final toneDeep = colors.surface;
-    return LayoutBuilder(
+    return FeedPageViewport(
       builder: (context, constraints) {
         final l = FeedLayout.resolve(
           constraints,

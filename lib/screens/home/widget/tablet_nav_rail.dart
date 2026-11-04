@@ -21,11 +21,8 @@ class TabletNavRail extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final selectedItem = ref.watch(selectedBottomNavBarItemProvider);
 
-    // Get orientation from MediaQuery for reliable updates
-    final orientation = MediaQuery.orientationOf(context);
-    final isLandscape = orientation == Orientation.landscape;
-
-    // Wider rail in landscape for better touch targets
+    final isLandscape =
+        MediaQuery.orientationOf(context) == Orientation.landscape;
     final railWidth = isLandscape ? 110.0 : 90.0;
 
     return Container(
@@ -45,46 +42,48 @@ class TabletNavRail extends ConsumerWidget {
             ),
             // Navigation items
             Expanded(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.start,
-                children: bottomNavBarOrder.map((item) {
-                  return _NavRailItem(
-                    item: item,
-                    isSelected: selectedItem == item,
-                    onLongPress: () => unawaited(
-                      makeStartScreenDefault(context, ref, section: item),
-                    ),
-                    onTap: () {
-                      final previous = ref.read(
-                        selectedBottomNavBarItemProvider,
-                      );
-                      if (previous == item) {
-                        // Same contract as the phone bar: a re-tap asks
-                        // the tab to jump (Flow: next clip, lists: top).
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.start,
+                  children: bottomNavBarOrder.map((item) {
+                    return _NavRailItem(
+                      item: item,
+                      isSelected: selectedItem == item,
+                      onLongPress: () => unawaited(
+                        makeStartScreenDefault(context, ref, section: item),
+                      ),
+                      onTap: () {
+                        final previous = ref.read(
+                          selectedBottomNavBarItemProvider,
+                        );
+                        if (previous == item) {
+                          // Same contract as the phone bar: a re-tap asks
+                          // the tab to jump (Flow: next clip, lists: top).
+                          ref
+                              .read(bottomNavBarReTapRequestProvider.notifier)
+                              .request(item);
+                          return;
+                        }
+
                         ref
-                            .read(bottomNavBarReTapRequestProvider.notifier)
-                            .request(item);
-                        return;
-                      }
+                                .read(selectedBottomNavBarItemProvider.notifier)
+                                .state =
+                            item;
 
-                      ref
-                              .read(selectedBottomNavBarItemProvider.notifier)
-                              .state =
-                          item;
-
-                      unawaited(
-                        AnalyticsService.instance.trackEvent(
-                          'Tab Changed',
-                          properties: {
-                            'previous_tab': previous.name,
-                            'tab': item.name,
-                            'navigation_type': 'rail',
-                          },
-                        ),
-                      );
-                    },
-                  );
-                }).toList(),
+                        unawaited(
+                          AnalyticsService.instance.trackEvent(
+                            'Tab Changed',
+                            properties: {
+                              'previous_tab': previous.name,
+                              'tab': item.name,
+                              'navigation_type': 'rail',
+                            },
+                          ),
+                        );
+                      },
+                    );
+                  }).toList(),
+                ),
               ),
             ),
           ],
@@ -93,7 +92,6 @@ class TabletNavRail extends ConsumerWidget {
     );
   }
 }
-
 
 class _MenuButton extends StatelessWidget {
   final VoidCallback onTap;
@@ -154,15 +152,12 @@ class _NavRailItemState extends State<_NavRailItem> {
     final iconPath = bottomNavBarIcons[widget.item]!;
     final title = namesBottomNavBarIcons[widget.item]!;
 
-    // Get orientation from MediaQuery for reliable updates
-    final orientation = MediaQuery.orientationOf(context);
-    final isLandscape = orientation == Orientation.landscape;
-
-    // Use fixed pixel sizes for tablet to avoid ResponsiveHelper timing issues
-    final iconSize = isLandscape ? 28.0 : 24.0;
+    final roomyRail =
+        MediaQuery.orientationOf(context) == Orientation.landscape;
+    final iconSize = roomyRail ? 28.0 : 24.0;
     final colors = context.colors;
     final ink = widget.isSelected ? colors.textPrimary : colors.textSecondary;
-    final verticalPadding = isLandscape ? 16.0 : 12.0;
+    final verticalPadding = roomyRail ? 16.0 : 12.0;
 
     return MergeSemantics(
       child: Semantics(
@@ -205,14 +200,17 @@ class _NavRailItemState extends State<_NavRailItem> {
                               iconPath,
                               width: iconSize,
                               height: iconSize,
-                              colorFilter: ColorFilter.mode(ink, BlendMode.srcIn),
+                              colorFilter: ColorFilter.mode(
+                                ink,
+                                BlendMode.srcIn,
+                              ),
                             ),
                     ),
                     const SizedBox(height: 4.0),
                     // Label
                     Text(
                       title,
-                      maxLines: 1,
+                      maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                       textAlign: TextAlign.center,
                       style: TextStyle(

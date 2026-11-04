@@ -22,6 +22,8 @@ import 'package:chessever2/widgets/search/opening_search_suggestion.dart'
 import 'package:chessever2/screens/my_space/widgets/space_first_run_hint.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/utils/adaptive_window.dart';
+import 'package:chessever2/widgets/smooth_bottom_sheet.dart';
 import 'package:country_picker/country_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -226,6 +228,57 @@ Finder get _sheetList => find
     .first;
 
 void main() {
+  testWidgets(
+    'Add sheet consumes keyboard once and keeps its search on a fold',
+    (tester) async {
+      addTearDown(tester.view.reset);
+      tester.view
+        ..physicalSize = const Size(466, 678)
+        ..devicePixelRatio = 1;
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [spaceShortcutsProvider.overrideWith(() => _Store())],
+          child: MaterialApp(
+            theme: AppTheme.darkTheme,
+            builder: (_, child) => AdaptiveWindowScope(child: child!),
+            home: Builder(
+              builder: (context) => Scaffold(
+                body: TextButton(
+                  onPressed: () => showSmoothBottomSheet<void>(
+                    context: context,
+                    builder: (_) =>
+                        const SpaceAddSheet(section: SpaceSection.openings),
+                  ),
+                  child: const Text('Open Add'),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.text('Open Add'));
+      await tester.pumpAndSettle();
+      final state = tester.state(find.byType(SpaceAddSheet));
+      await tester.enterText(find.byType(TextField), 'Najdorf');
+      for (final size in const [Size(466, 678), Size(904, 810)]) {
+        tester.view
+          ..physicalSize = size
+          ..viewInsets = const FakeViewPadding(bottom: 300);
+        await tester.pumpAndSettle();
+        expect(tester.takeException(), isNull);
+        expect(tester.state(find.byType(SpaceAddSheet)), same(state));
+        expect(find.text('Najdorf'), findsOneWidget);
+        expect(
+          tester.getRect(find.byType(SpaceAddSheet)).bottom,
+          lessThanOrEqualTo(size.height - 300),
+        );
+        expect(find.bySemanticsLabel('Done').hitTestable(), findsOneWidget);
+      }
+      await tester.tap(find.bySemanticsLabel('Done'));
+      await tester.pumpAndSettle();
+      expect(find.byType(SpaceAddSheet), findsNothing);
+    },
+  );
   testWidgets('openings not in My Space lead, the added ones follow, '
       'marked as added', (tester) async {
     final seeded = SpaceShortcutsNotifier.planSeed(const [], spaceSeedDrafts());

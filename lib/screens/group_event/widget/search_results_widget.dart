@@ -12,11 +12,11 @@ import 'package:chessever2/utils/event_time_control.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/scroll_cache.dart';
 import 'package:chessever2/widgets/event_card/event_card.dart';
+import 'package:chessever2/widgets/layout_swap_scroll_keeper.dart';
 import 'package:chessever2/widgets/search/enhanced_group_broadcast_local_storage.dart';
 import 'package:chessever2/widgets/generic_error_widget.dart';
 import 'package:chessever2/widgets/skeleton_widget.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -70,8 +70,9 @@ class SearchResultsWidget extends HookConsumerWidget {
     }
 
     Widget buildResults(EnhancedSearchResult results) {
-      var tournaments =
-          results.tournamentResults.map((r) => r.tournament).toList();
+      var tournaments = results.tournamentResults
+          .map((r) => r.tournament)
+          .toList();
 
       // Apply client-side filter if active
       if (searchFilter != defaultFilterPopupState) {
@@ -111,80 +112,77 @@ class SearchResultsWidget extends HookConsumerWidget {
 
   Widget _buildEmptyState(BuildContext context, String query) {
     return Center(
-          child: Padding(
-            padding: EdgeInsets.all(32.sp),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(
-                  Icons.search_off,
-                  size: 64.sp,
-                  color: context.colors.iconSecondary,
+      child: SingleChildScrollView(
+        child: Padding(
+          padding: EdgeInsets.all(32.sp),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                Icons.search_off,
+                size: 64.sp,
+                color: context.colors.iconSecondary,
+              ),
+              SizedBox(height: 16.sp),
+              Text(
+                'No events found',
+                style: TextStyle(
+                  fontSize: 18.sp,
+                  fontWeight: FontWeight.w600,
+                  color: context.colors.textPrimaryMuted,
                 ),
-                SizedBox(height: 16.sp),
-                Text(
-                  'No events found',
-                  style: TextStyle(
-                    fontSize: 18.sp,
-                    fontWeight: FontWeight.w600,
-                    color: context.colors.textPrimaryMuted,
-                  ),
+              ),
+              SizedBox(height: 8.sp),
+              Text(
+                'No events match "$query"',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 14.sp,
+                  color: context.colors.textSecondary,
                 ),
-                SizedBox(height: 8.sp),
-                Text(
-                  'No events match "$query"',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: 14.sp,
-                    color: context.colors.textSecondary,
-                  ),
-                ),
-              ],
-            ),
+              ),
+            ],
           ),
-        )
-        .animate()
-        .fadeIn(duration: 300.ms)
-        .scale(
-          begin: const Offset(0.95, 0.95),
-          end: const Offset(1.0, 1.0),
-          duration: 300.ms,
-        );
+        ),
+      ),
+    );
   }
 
   Widget _buildInitialState(BuildContext context, {bool keepTyping = false}) {
     return Center(
-      child: Padding(
-        padding: EdgeInsets.all(32.sp),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              Icons.search,
-              size: 64.sp,
-              color: context.colors.iconSecondary,
-            ),
-            SizedBox(height: 16.sp),
-            Text(
-              'Search Events',
-              style: TextStyle(
-                fontSize: 18.sp,
-                fontWeight: FontWeight.w600,
-                color: context.colors.textPrimaryMuted,
+      child: SingleChildScrollView(
+        child: Padding(
+          padding: EdgeInsets.all(32.sp),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                Icons.search,
+                size: 64.sp,
+                color: context.colors.iconSecondary,
               ),
-            ),
-            SizedBox(height: 8.sp),
-            Text(
-              keepTyping
-                  ? 'Keep typing to search'
-                  : 'Enter a search term to find events',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 14.sp,
-                color: context.colors.textSecondary,
+              SizedBox(height: 16.sp),
+              Text(
+                'Search Events',
+                style: TextStyle(
+                  fontSize: 18.sp,
+                  fontWeight: FontWeight.w600,
+                  color: context.colors.textPrimaryMuted,
+                ),
               ),
-            ),
-          ],
+              SizedBox(height: 8.sp),
+              Text(
+                keepTyping
+                    ? 'Keep typing to search'
+                    : 'Enter a search term to find events',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 14.sp,
+                  color: context.colors.textSecondary,
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -250,32 +248,45 @@ class _SearchResultsListView extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final hasPlayerCards = players.isNotEmpty;
-    final isTablet = ResponsiveHelper.isTablet;
-    final crossAxisCount = ResponsiveHelper.getGridCrossAxisCount(
-      phoneCount: 1,
-    );
     final horizontalPadding = ResponsiveHelper.adaptive(
       phone: 16.sp,
       tablet: 24.sp,
     );
-
-    return RefreshIndicator(
-      onRefresh: () async {
-        // Invalidate the search provider to refetch
-        ref.invalidate(supabaseCombinedSearchProvider(searchQuery.trim()));
-      },
-      color: context.colors.accentText,
-      backgroundColor: context.colors.surface,
-      displacement: 60.h,
-      strokeWidth: 3.w,
-      child:
-          isTablet && crossAxisCount > 1
-              ? _buildTabletGridLayout(
-                hasPlayerCards,
-                horizontalPadding,
-                crossAxisCount,
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final columns = ResponsiveHelper.isTablet
+            ? ResponsiveHelper.columnsForWidth(
+                constraints.maxWidth - horizontalPadding * 2,
+                spacing: 16.sp,
               )
-              : _buildPhoneListLayout(hasPlayerCards, horizontalPadding),
+            : 1;
+        final cardWidth =
+            (constraints.maxWidth -
+                horizontalPadding * 2 -
+                16.sp * (columns - 1)) /
+            columns;
+        return RefreshIndicator(
+          onRefresh: () async {
+            ref.invalidate(supabaseCombinedSearchProvider(searchQuery.trim()));
+          },
+          color: context.colors.accentText,
+          backgroundColor: context.colors.surface,
+          displacement: 60.h,
+          strokeWidth: 3.w,
+          child: LayoutSwapScrollKeeper(
+            controller: scrollController,
+            layout: columns,
+            child: columns > 1
+                ? _buildTabletGridLayout(
+                    hasPlayerCards,
+                    horizontalPadding,
+                    columns,
+                    EventCard.gridMainAxisExtent(context, cardWidth),
+                  )
+                : _buildPhoneListLayout(hasPlayerCards, horizontalPadding),
+          ),
+        );
+      },
     );
   }
 
@@ -283,6 +294,7 @@ class _SearchResultsListView extends ConsumerWidget {
     bool hasPlayerCards,
     double horizontalPadding,
     int crossAxisCount,
+    double cardHeight,
   ) {
     return CustomScrollView(
       key: PageStorageKey<String>('search_results_$searchQuery'),
@@ -312,7 +324,7 @@ class _SearchResultsListView extends ConsumerWidget {
               crossAxisCount: crossAxisCount,
               crossAxisSpacing: 16.sp,
               mainAxisSpacing: 16.sp,
-              childAspectRatio: ResponsiveHelper.isLandscape ? 2.2 : 1.8,
+              mainAxisExtent: cardHeight,
             ),
             delegate: SliverChildBuilderDelegate((context, index) {
               final tournament = tournaments[index];
@@ -321,6 +333,7 @@ class _SearchResultsListView extends ConsumerWidget {
                 tournament: tournament,
                 isFirst: index == 0,
                 listIndex: index,
+                grid: true,
               );
             }, childCount: tournaments.length),
           ),
@@ -377,8 +390,10 @@ class _SearchEventCard extends ConsumerStatefulWidget {
     required this.tournament,
     required this.isFirst,
     required this.listIndex,
+    this.grid = false,
   });
 
+  final bool grid;
   final GroupEventCardModel tournament;
   final bool isFirst;
   final int listIndex;
@@ -398,18 +413,20 @@ class _SearchEventCardState extends ConsumerState<_SearchEventCard>
 
     final eventId = widget.tournament.id;
     final card = Padding(
-      padding: EdgeInsets.only(top: widget.isFirst ? 0 : 12.sp, bottom: 12.sp),
+      padding: widget.grid
+          ? EdgeInsets.zero
+          : EdgeInsets.only(top: widget.isFirst ? 0 : 12.sp, bottom: 12.sp),
       child: EventCard(
         tourEventCardModel: widget.tournament,
+        forceCompactLayout: !widget.grid,
         heroTagSuffix: 'search-${widget.tournament.id}',
-        onTap:
-            () => ref
-                .read(tournamentNavigationProvider)
-                .openTournament(
-                  context: context,
-                  id: widget.tournament.id,
-                  category: GroupEventCategory.search,
-                ),
+        onTap: () => ref
+            .read(tournamentNavigationProvider)
+            .openTournament(
+              context: context,
+              id: widget.tournament.id,
+              category: GroupEventCategory.search,
+            ),
       ),
     );
 
@@ -428,11 +445,10 @@ List<GroupEventCardModel> _applySearchFilter(
   List<GroupEventCardModel> tournaments,
   FilterPopupState filter,
 ) {
-  final filterSet =
-      filter.formatsAndStates
-          .map((f) => f.trim().toLowerCase())
-          .where((f) => f.isNotEmpty)
-          .toSet();
+  final filterSet = filter.formatsAndStates
+      .map((f) => f.trim().toLowerCase())
+      .where((f) => f.isNotEmpty)
+      .toSet();
   final requestedStatuses = <String>{
     'live',
     'completed',

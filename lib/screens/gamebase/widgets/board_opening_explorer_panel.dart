@@ -6,6 +6,7 @@ import 'package:chessever2/screens/gamebase/gamebase_explorer_screen.dart'
 import 'package:chessever2/screens/gamebase/providers/gamebase_providers.dart';
 import 'package:chessever2/screens/gamebase/utils/explorer_move_line.dart';
 import 'package:chessever2/screens/gamebase/widgets/move_statistics_panel.dart';
+import 'package:chessever2/screens/chessboard/utils/board_workspace_layout.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:dartchess/dartchess.dart';
 import 'package:flutter/foundation.dart';
@@ -98,8 +99,7 @@ class BoardOpeningExplorerPanel extends HookConsumerWidget {
     // once the games strip pins, the engine lines and the move-table header
     // above it have collapsed away. Tablet landscape puts the panel beside the
     // board instead of under it, so the anchor means nothing there.
-    final pagesGames =
-        !(ResponsiveHelper.isTablet && ResponsiveHelper.isLandscape);
+    final pagesGames = !BoardWorkspaceScope.sideBySideOf(context);
     final anchorPixels = GameReviewSheetScope.maybeOf(context)?.anchorPixels;
     final hasActiveFilters = ref.watch(
       gamebaseExplorerProvider.select((state) => state.hasActiveFilters),
@@ -123,8 +123,9 @@ class BoardOpeningExplorerPanel extends HookConsumerWidget {
           onFilter: openFilters,
           hasActiveFilters: hasActiveFilters,
           listBottomPadding: listBottomPadding,
-          gamesPageHeight:
-              anchor == null ? null : anchor + GameReviewSheetExtents.anchorGap,
+          gamesPageHeight: anchor == null
+              ? null
+              : anchor + GameReviewSheetExtents.anchorGap,
         );
       },
     );

@@ -99,12 +99,8 @@ class PlayerSelectionContent extends HookConsumerWidget {
 
     // Get existing favorite fideIds from Supabase (for existing users)
     final existingFavoriteIds = existingFavorites.maybeWhen(
-      data:
-          (favs) =>
-              favs
-                  .map((f) => f.fideId ?? '')
-                  .where((id) => id.isNotEmpty)
-                  .toSet(),
+      data: (favs) =>
+          favs.map((f) => f.fideId ?? '').where((id) => id.isNotEmpty).toSet(),
       orElse: () => <String>{},
     );
     final countryCode = countryState.value?.countryCode ?? 'US';
@@ -203,134 +199,138 @@ class PlayerSelectionContent extends HookConsumerWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               // Header section
-              Padding(
-                padding: EdgeInsets.fromLTRB(20.sp, 12.sp, 20.sp, 0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // Title
-                    Text(
-                      title,
-                      style: AppTypography.textLgBold.copyWith(
-                        color: context.colors.textPrimary,
-                      ),
-                    ).animate().fadeIn(duration: 300.ms, curve: _springCurve),
-                    SizedBox(height: 4.h),
-                    // Selection counter
-                    Text(
-                      'Selected: $selectedCount of $kFreeFavoriteLimit',
-                      style: AppTypography.textSmRegular.copyWith(
-                        color: context.textInk(0.6),
-                      ),
-                    ).animate().fadeIn(duration: 320.ms, curve: _springCurve),
-                    SizedBox(height: 16.h),
-                    // Search bar - simplified
-                    Container(
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(12.br),
-                        color: context.colors.surface,
-                      ),
-                      padding: EdgeInsets.symmetric(
-                        horizontal: 14.sp,
-                        vertical: 12.sp,
-                      ),
-                      child: Row(
-                        children: [
-                          Icon(
-                            Icons.search,
-                            color: context.textInk(0.5),
-                            size: 20.ic,
+              Flexible(
+                fit: FlexFit.loose,
+                child: SingleChildScrollView(
+                  keyboardDismissBehavior:
+                      ScrollViewKeyboardDismissBehavior.onDrag,
+                  child: Padding(
+                    padding: EdgeInsets.fromLTRB(20.sp, 12.sp, 20.sp, 0),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Title
+                        Text(
+                          title,
+                          style: AppTypography.textLgBold.copyWith(
+                            color: context.colors.textPrimary,
                           ),
-                          SizedBox(width: 10.w),
-                          Expanded(
-                            child: TextField(
-                              key: e2eKey(E2eIds.playerSelectionSearchField),
-                              controller: searchController,
-                              style: AppTypography.textSmRegular.copyWith(
-                                color: context.colors.textPrimary,
-                              ),
-                              decoration: InputDecoration(
-                                hintText: 'Find any player...',
-                                hintStyle: AppTypography.textSmRegular.copyWith(
-                                  color: context.textInk(0.4),
-                                ),
-                                border: InputBorder.none,
-                                isDense: true,
-                                contentPadding: EdgeInsets.zero,
-                              ),
-                            ),
+                        ).animate(),
+                        SizedBox(height: 4.h),
+                        // Selection counter
+                        Text(
+                          'Selected: $selectedCount of $kFreeFavoriteLimit',
+                          style: AppTypography.textSmRegular.copyWith(
+                            color: context.textInk(0.6),
                           ),
-                          if (searchQuery.value.isNotEmpty)
-                            GestureDetector(
-                              onTap: () {
-                                searchController.clear();
-                                HapticFeedback.lightImpact();
-                              },
-                              child: Padding(
-                                padding: EdgeInsets.only(left: 8.w),
-                                child: Icon(
-                                  Icons.close_rounded,
-                                  color: context.textInk(0.5),
-                                  size: 20.ic,
+                        ).animate(),
+                        SizedBox(height: 16.h),
+                        // Search bar - simplified
+                        Container(
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(12.br),
+                            color: context.colors.surface,
+                          ),
+                          padding: EdgeInsets.symmetric(
+                            horizontal: 14.sp,
+                            vertical: 12.sp,
+                          ),
+                          child: Row(
+                            children: [
+                              Icon(
+                                Icons.search,
+                                color: context.textInk(0.5),
+                                size: 20.ic,
+                              ),
+                              SizedBox(width: 10.w),
+                              Expanded(
+                                child: TextField(
+                                  key: e2eKey(
+                                    E2eIds.playerSelectionSearchField,
+                                  ),
+                                  controller: searchController,
+                                  style: AppTypography.textSmRegular.copyWith(
+                                    color: context.colors.textPrimary,
+                                  ),
+                                  decoration: InputDecoration(
+                                    hintText: 'Find any player...',
+                                    hintStyle: AppTypography.textSmRegular
+                                        .copyWith(color: context.textInk(0.4)),
+                                    border: InputBorder.none,
+                                    isDense: true,
+                                    contentPadding: EdgeInsets.zero,
+                                  ),
                                 ),
                               ),
-                            ),
-                        ],
-                      ),
-                    ).animate().fadeIn(duration: 360.ms, curve: _springCurve),
-                    SizedBox(height: 12.h),
-                    // Subtitle tip
-                    Text(
-                      subtitle,
-                      style: AppTypography.textXsRegular.copyWith(
-                        color: context.textInk(0.6),
-                      ),
-                    ).animate().fadeIn(duration: 340.ms, curve: _springCurve),
-                  ],
+                              if (searchQuery.value.isNotEmpty)
+                                GestureDetector(
+                                  onTap: () {
+                                    searchController.clear();
+                                    HapticFeedback.lightImpact();
+                                  },
+                                  child: Padding(
+                                    padding: EdgeInsets.only(left: 8.w),
+                                    child: Icon(
+                                      Icons.close_rounded,
+                                      color: context.textInk(0.5),
+                                      size: 20.ic,
+                                    ),
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ).animate(),
+                        SizedBox(height: 12.h),
+                        // Subtitle tip
+                        Text(
+                          subtitle,
+                          style: AppTypography.textXsRegular.copyWith(
+                            color: context.textInk(0.6),
+                          ),
+                        ).animate(),
+                      ],
+                    ),
+                  ),
                 ),
               ),
               SizedBox(height: 12.h),
               // Player list
               Expanded(
+                flex: 2,
                 child: AnimatedSwitcher(
                   duration: const Duration(milliseconds: 250),
-                  child:
-                      isLoading
-                          ? Center(
-                            child: CircularProgressIndicator(
-                              color: context.colors.textPrimary,
-                            ),
-                          )
-                          : Padding(
-                            padding: EdgeInsets.symmetric(horizontal: 20.sp),
-                            child: _buildPlayerList(
+                  child: isLoading
+                      ? Center(
+                          child: CircularProgressIndicator(
+                            color: context.colors.textPrimary,
+                          ),
+                        )
+                      : Padding(
+                          padding: EdgeInsets.symmetric(horizontal: 20.sp),
+                          child: _buildPlayerList(
+                            context,
+                            ref,
+                            controller: listController,
+                            players: isSearching
+                                ? players
+                                : recommendedResult.players,
+                            selectedIds: selectedIds,
+                            onToggle: (player) => _toggleFavorite(
                               context,
                               ref,
-                              controller: listController,
-                              players:
-                                  isSearching
-                                      ? players
-                                      : recommendedResult.players,
-                              selectedIds: selectedIds,
-                              onToggle:
-                                  (player) => _toggleFavorite(
-                                    context,
-                                    ref,
-                                    player,
-                                    isOnboarding: true,
-                                  ),
-                              isSearching: isSearching,
-                              isLoading: isLoading,
-                              hasMore:
-                                  ref
-                                      .read(onboardingPlayerProvider.notifier)
-                                      .hasMore,
-                              isFetchingMore:
-                                  ref
-                                      .read(onboardingPlayerProvider.notifier)
-                                      .isFetching,
+                              player,
+                              isOnboarding: true,
                             ),
+                            isSearching: isSearching,
+                            isLoading: isLoading,
+                            hasMore: ref
+                                .read(onboardingPlayerProvider.notifier)
+                                .hasMore,
+                            isFetchingMore: ref
+                                .read(onboardingPlayerProvider.notifier)
+                                .isFetching,
                           ),
+                        ),
                 ),
               ),
               // Bottom action area
@@ -338,29 +338,28 @@ class PlayerSelectionContent extends HookConsumerWidget {
                 top: false,
                 child: Padding(
                   padding: EdgeInsets.fromLTRB(20.sp, 12.sp, 20.sp, 12.sp),
-                  child: SizedBox(
-                    width: double.infinity,
-                    height: 52.h,
+                  child: ConstrainedBox(
+                    constraints: BoxConstraints(
+                      minWidth: double.infinity,
+                      minHeight: 52.h.clamp(44.0, double.infinity),
+                    ),
                     child: ElevatedButton(
                       key: e2eKey(E2eIds.playerSelectionContinueButton),
-                      onPressed:
-                          selectedCount >= kFreeFavoriteLimit
-                              ? () async {
-                                HapticFeedback.mediumImpact();
-                                await onComplete();
-                              }
-                              : null,
+                      onPressed: selectedCount >= kFreeFavoriteLimit
+                          ? () async {
+                              HapticFeedback.mediumImpact();
+                              await onComplete();
+                            }
+                          : null,
                       style: ElevatedButton.styleFrom(
-                        backgroundColor:
-                            selectedCount >= kFreeFavoriteLimit
-                                ? context.colors.textPrimary
-                                : context.colors.textPrimary.withValues(
-                                  alpha: 0.16,
-                                ),
-                        foregroundColor:
-                            selectedCount >= kFreeFavoriteLimit
-                                ? context.colors.textInverse
-                                : context.textInk(0.6),
+                        backgroundColor: selectedCount >= kFreeFavoriteLimit
+                            ? context.colors.textPrimary
+                            : context.colors.textPrimary.withValues(
+                                alpha: 0.16,
+                              ),
+                        foregroundColor: selectedCount >= kFreeFavoriteLimit
+                            ? context.colors.textInverse
+                            : context.textInk(0.6),
                         elevation: 0,
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(14.br),
@@ -461,14 +460,12 @@ RecommendedPlayersResult _recommendedPlayers(
   }
 
   final normalizedCode = countryCode.toUpperCase();
-  final fromCountry =
-      players
-          .where(
-            (player) =>
-                (player['fed']?.toString().toUpperCase() ?? '') ==
-                normalizedCode,
-          )
-          .toList();
+  final fromCountry = players
+      .where(
+        (player) =>
+            (player['fed']?.toString().toUpperCase() ?? '') == normalizedCode,
+      )
+      .toList();
 
   fromCountry.sort((a, b) => (b['rating'] ?? 0).compareTo(a['rating'] ?? 0));
 
@@ -563,9 +560,9 @@ Widget _buildPlayerList(
 
       return shouldAnimate
           ? tile
-              .animate(delay: delay)
-              .fadeIn(duration: 300.ms, curve: _springCurve)
-              .move(begin: const Offset(0, 8), curve: _springCurve)
+                .animate(delay: delay)
+                .fadeIn(duration: 300.ms, curve: _springCurve)
+                .move(begin: const Offset(0, 8), curve: _springCurve)
           : tile;
     },
   );
@@ -862,22 +859,18 @@ class _PlayerTile extends HookWidget {
                   shape: BoxShape.circle,
                   color: isSelected ? kGreenColor : Colors.transparent,
                   border: Border.all(
-                    color:
-                        isSelected
-                            ? kGreenColor
-                            : context.colors.textPrimary.withValues(
-                              alpha: 0.18,
-                            ),
+                    color: isSelected
+                        ? kGreenColor
+                        : context.colors.textPrimary.withValues(alpha: 0.18),
                     width: isSelected ? 0 : 1,
                   ),
                 ),
                 child: Icon(
                   isSelected ? Icons.check : Icons.add,
                   size: isSelected ? 14.ic : 12.ic,
-                  color:
-                      isSelected
-                          ? context.colors.textPrimary
-                          : context.textInk(0.3),
+                  color: isSelected
+                      ? context.colors.textPrimary
+                      : context.textInk(0.3),
                 ),
               ),
             ],

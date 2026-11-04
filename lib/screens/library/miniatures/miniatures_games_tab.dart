@@ -190,12 +190,12 @@ class _MiniaturesGamesTabState extends ConsumerState<MiniaturesGamesTab>
       grouped.putIfAbsent(_dateKeyOf(game), () => <GamesTourModel>[]).add(game);
     }
 
-    final sortedKeys =
-        grouped.keys.toList()..sort((a, b) {
-          if (a == _unknownDateKey) return 1;
-          if (b == _unknownDateKey) return -1;
-          return b.compareTo(a);
-        });
+    final sortedKeys = grouped.keys.toList()
+      ..sort((a, b) {
+        if (a == _unknownDateKey) return 1;
+        if (b == _unknownDateKey) return -1;
+        return b.compareTo(a);
+      });
 
     return {for (final key in sortedKeys) key: grouped[key]!};
   }
@@ -226,8 +226,9 @@ class _MiniaturesGamesTabState extends ConsumerState<MiniaturesGamesTab>
   String? _footerDetail(GamesTourModel game, {String? hydratedEvent}) {
     final parts = <String>[];
 
-    final event =
-        miniatureRowNamesEvent(game) ? game.tourId.trim() : (hydratedEvent ?? '');
+    final event = miniatureRowNamesEvent(game)
+        ? game.tourId.trim()
+        : (hydratedEvent ?? '');
     if (event.isNotEmpty) parts.add(event);
 
     final eco = game.eco?.trim() ?? '';
@@ -293,7 +294,15 @@ class _MiniaturesGamesTabState extends ConsumerState<MiniaturesGamesTab>
               child: _buildSearchBar(filter),
             ),
           ),
-          _buildContentSliver(state, games, filter, viewMode),
+          SliverLayoutBuilder(
+            builder: (context, constraints) => _buildContentSliver(
+              state,
+              games,
+              filter,
+              viewMode,
+              constraints.crossAxisExtent,
+            ),
+          ),
           SliverToBoxAdapter(child: SizedBox(height: 24.h)),
         ],
       ),
@@ -387,12 +396,11 @@ class _MiniaturesGamesTabState extends ConsumerState<MiniaturesGamesTab>
             child: Icon(
               Icons.tune_rounded,
               size: 20.sp,
-              color:
-                  hasActiveFilters
-                      ? (context.isLightTheme
-                          ? context.colors.danger
-                          : const Color(0xFFEF4444))
-                      : context.colors.textSecondary,
+              color: hasActiveFilters
+                  ? (context.isLightTheme
+                        ? context.colors.danger
+                        : const Color(0xFFEF4444))
+                  : context.colors.textSecondary,
             ),
           ),
           SizedBox(width: 8.w),
@@ -421,6 +429,7 @@ class _MiniaturesGamesTabState extends ConsumerState<MiniaturesGamesTab>
     List<GamesTourModel> games,
     MiniatureGamesFilter filter,
     GamesListViewMode viewMode,
+    double availableWidth,
   ) {
     if (state.isLoading && games.isEmpty) {
       return SliverToBoxAdapter(child: _buildSkeletonList());
@@ -447,19 +456,17 @@ class _MiniaturesGamesTabState extends ConsumerState<MiniaturesGamesTab>
         child: _MiniaturesMessage(
           icon: Icons.bolt_outlined,
           title: 'No miniatures found',
-          subtitle:
-              filter.hasActiveFilters
-                  ? 'Try widening your filters or clearing the search.'
-                  : null,
+          subtitle: filter.hasActiveFilters
+              ? 'Try widening your filters or clearing the search.'
+              : null,
           actionLabel: filter.hasActiveFilters ? 'Clear filters' : null,
-          onAction:
-              filter.hasActiveFilters
-                  ? () {
-                    _searchController.clear();
-                    ref.read(miniaturesFilterProvider.notifier).state =
-                        MiniatureGamesFilter.defaultFilter;
-                  }
-                  : null,
+          onAction: filter.hasActiveFilters
+              ? () {
+                  _searchController.clear();
+                  ref.read(miniaturesFilterProvider.notifier).state =
+                      MiniatureGamesFilter.defaultFilter;
+                }
+              : null,
         ),
       );
     }
@@ -491,8 +498,14 @@ class _MiniaturesGamesTabState extends ConsumerState<MiniaturesGamesTab>
       if (isCollapsed) continue;
 
       if (isGrid) {
-        final gridColumns =
-            ResponsiveHelper.isTablet && ResponsiveHelper.isLandscape ? 4 : 2;
+        final gridColumns = ResponsiveHelper.columnsForWidth(
+          availableWidth -
+              2 * ResponsiveHelper.adaptive(phone: 16.w, tablet: 24.w),
+          minItemWidth: 220,
+          spacing: 16.sp,
+          minColumns: 2,
+          maxColumns: 4,
+        );
         for (var i = 0; i < dateGames.length; i += gridColumns) {
           listEntries.add(
             _MiniatureGridRowEntry(
@@ -582,14 +595,13 @@ class _MiniaturesGamesTabState extends ConsumerState<MiniaturesGamesTab>
             for (var j = 0; j < entry.gridColumns; j++) ...[
               if (j > 0) SizedBox(width: 12.sp),
               Expanded(
-                child:
-                    j < entry.games.length
-                        ? _buildGridGame(
-                          entry.games[j],
-                          gameIdToIndex[entry.games[j].gameId] ?? 0,
-                          games,
-                        )
-                        : const SizedBox.shrink(),
+                child: j < entry.games.length
+                    ? _buildGridGame(
+                        entry.games[j],
+                        gameIdToIndex[entry.games[j].gameId] ?? 0,
+                        games,
+                      )
+                    : const SizedBox.shrink(),
               ),
             ],
           ],
@@ -621,12 +633,9 @@ class _MiniaturesGamesTabState extends ConsumerState<MiniaturesGamesTab>
       // line, so filling it in moves nothing.
       Widget card = Consumer(
         builder: (context, ref, _) {
-          final hydratedEvent =
-              miniatureRowNamesEvent(entry.game)
-                  ? null
-                  : ref.watch(
-                    gamebaseGameEventTitleProvider(entry.game.gameId),
-                  );
+          final hydratedEvent = miniatureRowNamesEvent(entry.game)
+              ? null
+              : ref.watch(gamebaseGameEventTitleProvider(entry.game.gameId));
           return GameCardWrapperWidget(
             key: ValueKey(
               'mini_${entry.isBoard ? 'board' : 'card'}_${entry.game.gameId}',
@@ -838,24 +847,23 @@ class _SquareIconButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     // Paper: the deeper danger ink keeps the active glyph and badge at AA.
-    final activeColor =
-        context.isLightTheme ? context.colors.danger : const Color(0xFFEF4444);
+    final activeColor = context.isLightTheme
+        ? context.colors.danger
+        : const Color(0xFFEF4444);
     return GestureDetector(
       onTap: onTap,
       child: Container(
         width: size,
         height: size,
         decoration: BoxDecoration(
-          color:
-              isActive
-                  ? activeColor.withValues(alpha: 0.15)
-                  : context.colors.background,
+          color: isActive
+              ? activeColor.withValues(alpha: 0.15)
+              : context.colors.background,
           borderRadius: BorderRadius.circular(12.br),
           border: Border.all(
-            color:
-                isActive
-                    ? activeColor.withValues(alpha: 0.5)
-                    : context.colors.surfaceRecessed,
+            color: isActive
+                ? activeColor.withValues(alpha: 0.5)
+                : context.colors.surfaceRecessed,
           ),
         ),
         child: Stack(
@@ -877,10 +885,9 @@ class _SquareIconButton extends StatelessWidget {
                     child: Text(
                       '$badgeCount',
                       style: AppTypography.textXsBold.copyWith(
-                        color:
-                            context.isLightTheme
-                                ? labelOnFill(context, activeColor)
-                                : context.colors.textPrimary,
+                        color: context.isLightTheme
+                            ? labelOnFill(context, activeColor)
+                            : context.colors.textPrimary,
                         fontSize: 9.sp,
                         height: 1,
                       ),

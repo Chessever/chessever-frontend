@@ -84,6 +84,44 @@ void main() {
     expect(find.text('Continue'), findsOneWidget);
   });
 
+  testWidgets(
+    'keeps Continue reachable across folded and short window states',
+    (tester) async {
+      tester.view.devicePixelRatio = 1;
+      tester.platformDispatcher.textScaleFactorTestValue = 1.6;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+      var continued = 0;
+      final step = NotificationPermissionStep(
+        topPadding: 44,
+        bottomPadding: 24,
+        onContinue: () async => continued++,
+      );
+      for (final size in const [
+        Size(393, 852),
+        Size(720, 560),
+        Size(560, 720),
+        Size(844, 390),
+        Size(600, 300),
+      ]) {
+        tester.view.physicalSize = size;
+        await tester.pumpWidget(host(step));
+        await tester.pumpAndSettle();
+        expect(
+          tester.takeException(),
+          isNull,
+          reason: '$size must not overflow',
+        );
+        await tester.ensureVisible(find.text('Continue'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Continue'));
+        await tester.pumpAndSettle();
+      }
+      expect(continued, 5);
+    },
+  );
+
   test('native permission is requested only from the explanatory steps', () {
     final mainSource = File('lib/main.dart').readAsStringSync();
     final authSource = File(

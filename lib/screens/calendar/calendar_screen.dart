@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:chessever2/e2e/e2e_ids.dart';
 import 'package:chessever2/repository/supabase/calendar_event/calendar_event.dart';
@@ -29,6 +30,7 @@ import 'package:chessever2/widgets/simple_search_bar.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/widgets/event_card/event_card.dart';
+import 'package:chessever2/widgets/layout_swap_scroll_keeper.dart';
 import 'package:chessever2/widgets/paywall/past_event_access.dart';
 
 /// Filter mode for the calendar view
@@ -82,8 +84,9 @@ Future<void> openCalendarScreen(
   final navigator = Navigator.of(context);
   final years = container.read(availableYearsProvider);
   // The year dropdown only offers [years]; a day outside them cannot be shown.
-  final focus =
-      day != null && years.contains(day.year) ? DateUtils.dateOnly(day) : null;
+  final focus = day != null && years.contains(day.year)
+      ? DateUtils.dateOnly(day)
+      : null;
   final target = focus ?? DateTime.now();
 
   container.read(selectedYearProvider.notifier).state = target.year;
@@ -222,28 +225,27 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
                               border: Border.all(
                                 // Light matches the sibling search fields:
                                 // an accentText ring, no raw-cyan glow.
-                                color:
-                                    focusNode.hasFocus
-                                        ? (context.isLightTheme
-                                            ? context.colors.accentText
-                                            : kPrimaryColor.withValues(
+                                color: focusNode.hasFocus
+                                    ? (context.isLightTheme
+                                          ? context.colors.accentText
+                                          : kPrimaryColor.withValues(
                                               alpha: 0.5,
                                             ))
-                                        : Colors.transparent,
+                                    : Colors.transparent,
                                 width: 2.0,
                               ),
                               boxShadow:
                                   focusNode.hasFocus && !context.isLightTheme
-                                      ? [
-                                        BoxShadow(
-                                          color: kPrimaryColor.withValues(
-                                            alpha: 0.15,
-                                          ),
-                                          blurRadius: 12,
-                                          offset: const Offset(0, 4),
+                                  ? [
+                                      BoxShadow(
+                                        color: kPrimaryColor.withValues(
+                                          alpha: 0.15,
                                         ),
-                                      ]
-                                      : [],
+                                        blurRadius: 12,
+                                        offset: const Offset(0, 4),
+                                      ),
+                                    ]
+                                  : [],
                             ),
                             child: SimpleSearchBar(
                               key: e2eKey(E2eIds.calendarSearchField),
@@ -255,13 +257,19 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
                                 searchController.clear();
                                 focusNode.unfocus();
                                 ref
-                                    .read(calendarSearchQueryProvider.notifier)
-                                    .state = '';
+                                        .read(
+                                          calendarSearchQueryProvider.notifier,
+                                        )
+                                        .state =
+                                    '';
                               },
                               onChanged: (val) {
                                 ref
-                                    .read(calendarSearchQueryProvider.notifier)
-                                    .state = val;
+                                        .read(
+                                          calendarSearchQueryProvider.notifier,
+                                        )
+                                        .state =
+                                    val;
                                 _searchAnalyticsTimer?.cancel();
                                 final query = val.trim();
                                 if (query.isEmpty) return;
@@ -322,13 +330,12 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
                           ),
                           dropdownColor: context.colors.surface,
                           borderRadius: BorderRadius.circular(8.br),
-                          items:
-                              yearList.map((value) {
-                                return DropdownMenuItem<int>(
-                                  value: value,
-                                  child: Text(value.toString()),
-                                );
-                              }).toList(),
+                          items: yearList.map((value) {
+                            return DropdownMenuItem<int>(
+                              value: value,
+                              child: Text(value.toString()),
+                            );
+                          }).toList(),
                         ),
                       ),
                     ),
@@ -371,8 +378,11 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
                             ),
                             onChanged: (String? newValue) {
                               ref
-                                  .read(calendarTimeControlProvider.notifier)
-                                  .state = newValue;
+                                      .read(
+                                        calendarTimeControlProvider.notifier,
+                                      )
+                                      .state =
+                                  newValue;
                               AnalyticsService.instance.trackEventDetached(
                                 'Calendar Time Control Selected',
                                 properties: {'time_control': newValue ?? 'All'},
@@ -435,142 +445,142 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
           if (_focusDay != null)
             Expanded(child: _buildDayFocus(_focusDay!))
           else
-          Expanded(
-            child: ref
-                .watch(calendarScreenProvider)
-                .when(
-                  data: (rawData) {
-                    final data = orderMonthsByRelevance(
-                      rawData,
-                      ref.watch(selectedYearProvider),
-                    );
-                    if (isListMode) {
-                      return _buildEventList(data);
-                    }
+            Expanded(
+              child: ref
+                  .watch(calendarScreenProvider)
+                  .when(
+                    data: (rawData) {
+                      final data = orderMonthsByRelevance(
+                        rawData,
+                        ref.watch(selectedYearProvider),
+                      );
+                      if (isListMode) {
+                        return _buildEventList(data);
+                      }
 
-                    final isTablet = ResponsiveHelper.isTablet;
-                    final crossAxisCount = isTablet ? 3 : 2;
+                      final crossAxisCount = _monthColumns(context);
 
-                    return RefreshIndicator(
-                      onRefresh: () async {
-                        HapticFeedbackService.medium();
-                        // Invalidate the calendar provider to refresh data
-                        ref.invalidate(calendarScreenProvider);
-                      },
-                      color: context.colors.accentText,
-                      backgroundColor: context.colors.surface,
-                      displacement: 60.h,
-                      strokeWidth: 3.w,
-                      child: GridView.builder(
-                        controller: _scrollController,
-                        // Explicit padding stops the scroll view adding the
-                        // home-indicator inset itself, so add it here: this
-                        // is a pushed route with no bottom bar beneath it.
-                        padding: EdgeInsets.fromLTRB(
-                          16.sp,
-                          0,
-                          16.sp,
-                          12.sp + MediaQuery.viewPaddingOf(context).bottom,
-                        ),
-                        physics: const AlwaysScrollableScrollPhysics(
-                          parent: BouncingScrollPhysics(),
-                        ),
-                        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                          crossAxisCount: crossAxisCount,
-                          mainAxisSpacing: 12.sp,
-                          crossAxisSpacing: 12.sp,
-                          childAspectRatio: 2.2,
-                        ),
-                        itemCount: data.length,
-                        itemBuilder: (context, index) {
-                          final summary = data[index];
-                          return _MonthButton(
-                            monthName: summary.monthName,
-                            eventCount: summary.eventCount,
-                            onTap: () {
-                              ref.read(selectedMonthProvider.notifier).state =
-                                  summary.monthNumber;
-                              AnalyticsService.instance.trackEventDetached(
-                                'Calendar Month Opened',
-                                properties: {
-                                  'month': summary.monthNumber,
-                                  'month_name': summary.monthName,
-                                  'event_count': summary.eventCount,
-                                  'year': ref.read(selectedYearProvider),
-                                },
-                              );
-                              Navigator.pushNamed(
-                                context,
-                                '/calendar_detail_screen',
-                              );
-                            },
-                          );
+                      return RefreshIndicator(
+                        onRefresh: () async {
+                          HapticFeedbackService.medium();
+                          // Invalidate the calendar provider to refresh data
+                          ref.invalidate(calendarScreenProvider);
                         },
-                      ),
-                    );
-                  },
-                  error: (e, _) {
-                    return Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        crossAxisAlignment: CrossAxisAlignment.center,
-                        children: [
-                          Text(
-                            'Failed To Load Months!\nPlease Try Again Later',
-                            style: AppTypography.textLgRegular.copyWith(
-                              color: context.colors.textPrimary,
-                            ),
-                            textAlign: TextAlign.center,
+                        color: context.colors.accentText,
+                        backgroundColor: context.colors.surface,
+                        displacement: 60.h,
+                        strokeWidth: 3.w,
+                        child: GridView.builder(
+                          controller: _scrollController,
+                          // Explicit padding stops the scroll view adding the
+                          // home-indicator inset itself, so add it here: this
+                          // is a pushed route with no bottom bar beneath it.
+                          padding: EdgeInsets.fromLTRB(
+                            16.sp,
+                            0,
+                            16.sp,
+                            12.sp + MediaQuery.viewPaddingOf(context).bottom,
                           ),
-                        ],
-                      ),
-                    );
-                  },
-                  loading: () {
-                    final isTablet = ResponsiveHelper.isTablet;
-                    final crossAxisCount = isTablet ? 3 : 2;
-                    final months = [
-                      'January',
-                      'February',
-                      'March',
-                      'April',
-                      'May',
-                      'June',
-                      'July',
-                      'August',
-                      'September',
-                      'October',
-                      'November',
-                      'December',
-                    ];
+                          physics: const AlwaysScrollableScrollPhysics(
+                            parent: BouncingScrollPhysics(),
+                          ),
+                          gridDelegate:
+                              SliverGridDelegateWithFixedCrossAxisCount(
+                                crossAxisCount: crossAxisCount,
+                                mainAxisSpacing: 12.sp,
+                                crossAxisSpacing: 12.sp,
+                                mainAxisExtent: _monthHeight(context),
+                              ),
+                          itemCount: data.length,
+                          itemBuilder: (context, index) {
+                            final summary = data[index];
+                            return _MonthButton(
+                              monthName: summary.monthName,
+                              eventCount: summary.eventCount,
+                              onTap: () {
+                                ref.read(selectedMonthProvider.notifier).state =
+                                    summary.monthNumber;
+                                AnalyticsService.instance.trackEventDetached(
+                                  'Calendar Month Opened',
+                                  properties: {
+                                    'month': summary.monthNumber,
+                                    'month_name': summary.monthName,
+                                    'event_count': summary.eventCount,
+                                    'year': ref.read(selectedYearProvider),
+                                  },
+                                );
+                                Navigator.pushNamed(
+                                  context,
+                                  '/calendar_detail_screen',
+                                );
+                              },
+                            );
+                          },
+                        ),
+                      );
+                    },
+                    error: (e, _) {
+                      return Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          crossAxisAlignment: CrossAxisAlignment.center,
+                          children: [
+                            Text(
+                              'Failed To Load Months!\nPlease Try Again Later',
+                              style: AppTypography.textLgRegular.copyWith(
+                                color: context.colors.textPrimary,
+                              ),
+                              textAlign: TextAlign.center,
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                    loading: () {
+                      final crossAxisCount = _monthColumns(context);
+                      final months = [
+                        'January',
+                        'February',
+                        'March',
+                        'April',
+                        'May',
+                        'June',
+                        'July',
+                        'August',
+                        'September',
+                        'October',
+                        'November',
+                        'December',
+                      ];
 
-                    return SkeletonWidget(
-                      child: GridView.builder(
-                        padding: EdgeInsets.fromLTRB(
-                          16.sp,
-                          0,
-                          16.sp,
-                          12.sp + MediaQuery.viewPaddingOf(context).bottom,
+                      return SkeletonWidget(
+                        child: GridView.builder(
+                          padding: EdgeInsets.fromLTRB(
+                            16.sp,
+                            0,
+                            16.sp,
+                            12.sp + MediaQuery.viewPaddingOf(context).bottom,
+                          ),
+                          gridDelegate:
+                              SliverGridDelegateWithFixedCrossAxisCount(
+                                crossAxisCount: crossAxisCount,
+                                mainAxisSpacing: 12.sp,
+                                crossAxisSpacing: 12.sp,
+                                mainAxisExtent: _monthHeight(context),
+                              ),
+                          itemCount: 12,
+                          itemBuilder: (context, index) {
+                            return _MonthButton(
+                              monthName: months[index],
+                              eventCount: (index % 3 == 0) ? index + 1 : 0,
+                              onTap: () {},
+                            );
+                          },
                         ),
-                        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                          crossAxisCount: crossAxisCount,
-                          mainAxisSpacing: 12.sp,
-                          crossAxisSpacing: 12.sp,
-                          childAspectRatio: 2.2,
-                        ),
-                        itemCount: 12,
-                        itemBuilder: (context, index) {
-                          return _MonthButton(
-                            monthName: months[index],
-                            eventCount: (index % 3 == 0) ? index + 1 : 0,
-                            onTap: () {},
-                          );
-                        },
-                      ),
-                    );
-                  },
-                ),
-          ),
+                      );
+                    },
+                  ),
+            ),
         ],
       ),
     );
@@ -652,12 +662,13 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
           if (calendarEventRunsOn(e.startDate, e.endDate, day))
             GroupEventCardModel.fromCalendarEvent(e),
       ];
-      final shown =
-          timeControl == null
-              ? events
-              : events
-                  .where((e) => normalizeTimeControl(e.timeControl) == timeControl)
-                  .toList();
+      final shown = timeControl == null
+          ? events
+          : events
+                .where(
+                  (e) => normalizeTimeControl(e.timeControl) == timeControl,
+                )
+                .toList();
       return ref
           .read(tournamentSortingServiceProvider)
           .sortCalendarEvents(shown, prioritizeFavorites: false);
@@ -699,8 +710,7 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
         _DayFocusHeader(
           day: day,
           eventCount: events?.length,
-          onPrevious:
-              day.isAfter(firstDay) ? () => _stepDay(day, -1) : null,
+          onPrevious: day.isAfter(firstDay) ? () => _stepDay(day, -1) : null,
           onNext: day.isBefore(lastDay) ? () => _stepDay(day, 1) : null,
           onShowMonths: () {
             HapticFeedbackService.navigation();
@@ -732,10 +742,6 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
     required String emptyText,
     required String heroPrefix,
   }) {
-    final isTablet = ResponsiveHelper.isTablet;
-    final crossAxisCount = ResponsiveHelper.getGridCrossAxisCount(
-      phoneCount: 1,
-    );
     final horizontalPadding = ResponsiveHelper.adaptive(
       phone: 16.sp,
       tablet: 24.sp,
@@ -744,89 +750,111 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
     // itself; this is a pushed route, so nothing else clears it.
     final bottomInset = MediaQuery.viewPaddingOf(context).bottom;
 
-    return RefreshIndicator(
-      onRefresh: onRefresh,
-      color: context.colors.accentText,
-      backgroundColor: context.colors.surface,
-      displacement: 60.h,
-      strokeWidth: 3.w,
-      child:
-          events.isEmpty
-              ? ListView(
-                controller: _scrollController,
-                physics: const AlwaysScrollableScrollPhysics(
-                  parent: BouncingScrollPhysics(),
-                ),
-                padding: EdgeInsets.fromLTRB(
-                  horizontalPadding,
-                  24.h,
-                  horizontalPadding,
-                  24.h + bottomInset,
-                ),
-                children: [
-                  Center(
-                    child: Text(
-                      emptyText,
-                      style: AppTypography.textLgRegular.copyWith(
-                        color: context.colors.textPrimaryMuted,
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final crossAxisCount = ResponsiveHelper.isTablet
+            ? ResponsiveHelper.columnsForWidth(
+                constraints.maxWidth - horizontalPadding * 2,
+                spacing: 16.sp,
+              )
+            : 1;
+        final cardWidth =
+            (constraints.maxWidth -
+                horizontalPadding * 2 -
+                16.sp * (crossAxisCount - 1)) /
+            crossAxisCount;
+        return LayoutSwapScrollKeeper(
+          controller: _scrollController,
+          layout: crossAxisCount,
+          child: RefreshIndicator(
+            onRefresh: onRefresh,
+            color: context.colors.accentText,
+            backgroundColor: context.colors.surface,
+            displacement: 60.h,
+            strokeWidth: 3.w,
+            child: events.isEmpty
+                ? ListView(
+                    controller: _scrollController,
+                    physics: const AlwaysScrollableScrollPhysics(
+                      parent: BouncingScrollPhysics(),
+                    ),
+                    padding: EdgeInsets.fromLTRB(
+                      horizontalPadding,
+                      24.h,
+                      horizontalPadding,
+                      24.h + bottomInset,
+                    ),
+                    children: [
+                      Center(
+                        child: Text(
+                          emptyText,
+                          style: AppTypography.textLgRegular.copyWith(
+                            color: context.colors.textPrimaryMuted,
+                          ),
+                        ),
+                      ),
+                    ],
+                  )
+                // Use grid layout for tablets, list for phones
+                : crossAxisCount > 1
+                ? GridView.builder(
+                    controller: _scrollController,
+                    physics: const AlwaysScrollableScrollPhysics(
+                      parent: BouncingScrollPhysics(),
+                    ),
+                    padding: EdgeInsets.fromLTRB(
+                      horizontalPadding,
+                      12.h,
+                      horizontalPadding,
+                      12.h + bottomInset,
+                    ),
+                    gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount: crossAxisCount,
+                      crossAxisSpacing: 16.sp,
+                      mainAxisSpacing: 16.sp,
+                      mainAxisExtent: EventCard.gridMainAxisExtent(
+                        context,
+                        cardWidth,
                       ),
                     ),
-                  ),
-                ],
-              )
-              // Use grid layout for tablets, list for phones
-              : isTablet && crossAxisCount > 1
-              ? GridView.builder(
-                controller: _scrollController,
-                physics: const AlwaysScrollableScrollPhysics(
-                  parent: BouncingScrollPhysics(),
-                ),
-                padding: EdgeInsets.fromLTRB(
-                  horizontalPadding,
-                  12.h,
-                  horizontalPadding,
-                  12.h + bottomInset,
-                ),
-                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: crossAxisCount,
-                  crossAxisSpacing: 16.sp,
-                  mainAxisSpacing: 16.sp,
-                  childAspectRatio: ResponsiveHelper.isLandscape ? 2.2 : 1.8,
-                ),
-                itemCount: events.length,
-                itemBuilder: (context, index) {
-                  final event = events[index];
-                  return EventCard(
-                    tourEventCardModel: event,
-                    heroTagSuffix: '$heroPrefix-$index',
-                    onTap: () => _onEventTap(event, events),
-                  );
-                },
-              )
-              : ListView.builder(
-                controller: _scrollController,
-                physics: const AlwaysScrollableScrollPhysics(
-                  parent: BouncingScrollPhysics(),
-                ),
-                padding: EdgeInsets.fromLTRB(
-                  horizontalPadding,
-                  12.h,
-                  horizontalPadding,
-                  12.h + bottomInset,
-                ),
-                itemCount: events.length,
-                itemBuilder: (context, index) {
-                  final event = events[index];
-                  return Padding(
-                    padding: EdgeInsets.only(bottom: 12.h),
-                    child: EventCard(
-                      tourEventCardModel: event,
-                      heroTagSuffix: '$heroPrefix-$index',
-                      onTap: () => _onEventTap(event, events),
+                    itemCount: events.length,
+                    itemBuilder: (context, index) {
+                      final event = events[index];
+                      return EventCard(
+                        tourEventCardModel: event,
+                        heroTagSuffix: '$heroPrefix-$index',
+                        onTap: () => _onEventTap(event, events),
+                      );
+                    },
+                  )
+                : ListView.builder(
+                    controller: _scrollController,
+                    physics: const AlwaysScrollableScrollPhysics(
+                      parent: BouncingScrollPhysics(),
                     ),
-                  );
-                },
-              ),
+                    padding: EdgeInsets.fromLTRB(
+                      horizontalPadding,
+                      12.h,
+                      horizontalPadding,
+                      12.h + bottomInset,
+                    ),
+                    itemCount: events.length,
+                    itemBuilder: (context, index) {
+                      final event = events[index];
+                      return Padding(
+                        padding: EdgeInsets.only(bottom: 12.h),
+                        child: EventCard(
+                          tourEventCardModel: event,
+                          forceCompactLayout: true,
+                          heroTagSuffix: '$heroPrefix-$index',
+                          onTap: () => _onEventTap(event, events),
+                        ),
+                      );
+                    },
+                  ),
+          ),
+        );
+      },
     );
   }
 
@@ -852,8 +880,7 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
         );
 
         final byId = <String, CalendarEvent>{
-          for (final cal in yearEvents)
-            _sanitizeCalendarEventId(cal.name): cal,
+          for (final cal in yearEvents) _sanitizeCalendarEventId(cal.name): cal,
         };
 
         final ordered = <CalendarEvent>[];
@@ -922,20 +949,15 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
       }
     } catch (_) {
       if (!mounted) return;
-      showAppSnack(
-        context,
-        'Unable to open event',
-        tone: AppSnackTone.danger,
-      );
+      showAppSnack(context, 'Unable to open event', tone: AppSnackTone.danger);
     }
   }
 
   String _sanitizeCalendarEventId(String name) {
-    final sanitizedName =
-        name
-            .replaceAll(' ', '_')
-            .replaceAll(RegExp(r'[^\w\-]'), '')
-            .toLowerCase();
+    final sanitizedName = name
+        .replaceAll(' ', '_')
+        .replaceAll(RegExp(r'[^\w\-]'), '')
+        .toLowerCase();
     return 'cal_event_$sanitizedName';
   }
 
@@ -1010,6 +1032,19 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
 }
 
 /// Simple month button - just name and count
+int _monthColumns(BuildContext context) => ResponsiveHelper.columnsForWidth(
+  MediaQuery.sizeOf(context).width - 32.sp,
+  minItemWidth: math.max(
+    160,
+    MediaQuery.textScalerOf(context).scale(16.f) * 10,
+  ),
+  spacing: 12.sp,
+  maxColumns: 4,
+);
+
+double _monthHeight(BuildContext context) =>
+    math.max(64, MediaQuery.textScalerOf(context).scale(16.f) * 1.5 * 2 + 24.h);
+
 class _MonthButton extends StatelessWidget {
   const _MonthButton({
     required this.monthName,
@@ -1033,10 +1068,7 @@ class _MonthButton extends StatelessWidget {
           decoration: BoxDecoration(
             color: context.colors.surface,
             borderRadius: BorderRadius.circular(8.br),
-            border: Border.all(
-              color: context.colors.divider,
-              width: 1,
-            ),
+            border: Border.all(color: context.colors.divider, width: 1),
           ),
           padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 12.h),
           child: Row(
@@ -1045,6 +1077,8 @@ class _MonthButton extends StatelessWidget {
               Expanded(
                 child: Text(
                   monthName,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
                   style: AppTypography.textMdMedium.copyWith(
                     color: context.colors.textPrimary,
                   ),
@@ -1175,10 +1209,9 @@ class _QuickFilterButtons extends ConsumerWidget {
             onTap: () {
               if (isUpcomingDisabled) return;
               final current = ref.read(calendarFilterModeProvider);
-              final next =
-                  current == CalendarFilterMode.upcoming
-                      ? CalendarFilterMode.all
-                      : CalendarFilterMode.upcoming;
+              final next = current == CalendarFilterMode.upcoming
+                  ? CalendarFilterMode.all
+                  : CalendarFilterMode.upcoming;
               ref.read(calendarFilterModeProvider.notifier).state = next;
               AnalyticsService.instance.trackEventDetached(
                 'Calendar Filter Changed',
@@ -1199,10 +1232,9 @@ class _QuickFilterButtons extends ConsumerWidget {
             isSelected: filterMode == CalendarFilterMode.favorites,
             onTap: () {
               final current = ref.read(calendarFilterModeProvider);
-              final next =
-                  current == CalendarFilterMode.favorites
-                      ? CalendarFilterMode.all
-                      : CalendarFilterMode.favorites;
+              final next = current == CalendarFilterMode.favorites
+                  ? CalendarFilterMode.all
+                  : CalendarFilterMode.favorites;
               ref.read(calendarFilterModeProvider.notifier).state = next;
               AnalyticsService.instance.trackEventDetached(
                 'Calendar Filter Changed',
@@ -1241,40 +1273,40 @@ class _FilterButton extends StatelessWidget {
     final iconColor = isDisabled
         ? context.colors.placeholder
         : isSelected
-            ? context.colors.accentText
-            : context.colors.textSecondary;
+        ? context.colors.accentText
+        : context.colors.textSecondary;
     final textColor = isDisabled
         ? context.colors.placeholder
         : isSelected
-            ? context.colors.accentText
-            : context.colors.textPrimary;
+        ? context.colors.accentText
+        : context.colors.textPrimary;
     final badgeColor = isDisabled
         ? context.colors.divider.withValues(alpha: 0.4)
         : isSelected
-            // On the deeper cyan wash the count only just makes 4.5:1 on
-            // paper; light seats it on the surface instead (6.8:1).
-            ? (context.isLightTheme
-                ? context.colors.surface
-                : kPrimaryColor.withValues(alpha: 0.25))
-            : context.colors.surfaceRecessed;
+        // On the deeper cyan wash the count only just makes 4.5:1 on
+        // paper; light seats it on the surface instead (6.8:1).
+        ? (context.isLightTheme
+              ? context.colors.surface
+              : kPrimaryColor.withValues(alpha: 0.25))
+        : context.colors.surfaceRecessed;
     final badgeTextColor = isDisabled
         ? context.colors.placeholder
         : isSelected
-            ? context.colors.accentText
-            : context.colors.textSecondary;
+        ? context.colors.accentText
+        : context.colors.textSecondary;
     final borderColor = isDisabled
         ? context.colors.divider
         : isSelected
-            // Cyan at 0.6 is 1.7:1 on paper; light rings in the accent ink.
-            ? (context.isLightTheme
-                ? context.colors.accentText
-                : kPrimaryColor.withValues(alpha: 0.6))
-            : context.colors.divider;
+        // Cyan at 0.6 is 1.7:1 on paper; light rings in the accent ink.
+        ? (context.isLightTheme
+              ? context.colors.accentText
+              : kPrimaryColor.withValues(alpha: 0.6))
+        : context.colors.divider;
     final backgroundColor = isDisabled
         ? context.colors.surface.withValues(alpha: 0.6)
         : isSelected
-            ? kPrimaryColor.withValues(alpha: 0.12)
-            : context.colors.surface;
+        ? kPrimaryColor.withValues(alpha: 0.12)
+        : context.colors.surface;
 
     return Material(
       color: Colors.transparent,
@@ -1293,17 +1325,16 @@ class _FilterButton extends StatelessWidget {
               width: isSelected ? 1.5.w : 1.w,
             ),
             // Subtle gradient overlay for filter buttons to differentiate from month boxes
-            gradient:
-                isSelected
-                    ? LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: [
-                        kPrimaryColor.withValues(alpha: 0.15),
-                        kPrimaryColor.withValues(alpha: 0.05),
-                      ],
-                    )
-                    : null,
+            gradient: isSelected
+                ? LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      kPrimaryColor.withValues(alpha: 0.15),
+                      kPrimaryColor.withValues(alpha: 0.05),
+                    ],
+                  )
+                : null,
           ),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
@@ -1397,8 +1428,9 @@ class _DayFocusHeader extends StatelessWidget {
     final colors = context.colors;
     // Another year's date carries the year, so its weekday is shortened to
     // keep the title whole on a narrow phone.
-    final pattern =
-        day.year == DateTime.now().year ? 'EEEE, d MMMM' : 'EEE, d MMMM y';
+    final pattern = day.year == DateTime.now().year
+        ? 'EEEE, d MMMM'
+        : 'EEE, d MMMM y';
     final count = eventCount;
     final countLabel = switch (count) {
       null => '',
@@ -1517,9 +1549,6 @@ class _DayLoadingTiles extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final crossAxisCount = ResponsiveHelper.getGridCrossAxisCount(
-      phoneCount: 1,
-    );
     final horizontalPadding = ResponsiveHelper.adaptive(
       phone: 16.sp,
       tablet: 24.sp,
@@ -1535,29 +1564,43 @@ class _DayLoadingTiles extends StatelessWidget {
       vertical: 12.h,
     );
 
-    if (ResponsiveHelper.isTablet && crossAxisCount > 1) {
-      return GridView.builder(
-        physics: const NeverScrollableScrollPhysics(),
-        padding: padding,
-        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-          crossAxisCount: crossAxisCount,
-          crossAxisSpacing: 16.sp,
-          mainAxisSpacing: 16.sp,
-          childAspectRatio: ResponsiveHelper.isLandscape ? 2.2 : 1.8,
-        ),
-        itemCount: crossAxisCount * 2,
-        itemBuilder: (_, _) => tile,
-      );
-    }
-    return ListView.builder(
-      physics: const NeverScrollableScrollPhysics(),
-      padding: padding,
-      itemCount: 4,
-      itemBuilder:
-          (_, _) => Padding(
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final crossAxisCount = ResponsiveHelper.isTablet
+            ? ResponsiveHelper.columnsForWidth(
+                constraints.maxWidth - horizontalPadding * 2,
+                spacing: 16.sp,
+              )
+            : 1;
+        final cardWidth =
+            (constraints.maxWidth -
+                horizontalPadding * 2 -
+                16.sp * (crossAxisCount - 1)) /
+            crossAxisCount;
+        if (crossAxisCount > 1) {
+          return GridView.builder(
+            physics: const NeverScrollableScrollPhysics(),
+            padding: padding,
+            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: crossAxisCount,
+              crossAxisSpacing: 16.sp,
+              mainAxisSpacing: 16.sp,
+              mainAxisExtent: EventCard.gridMainAxisExtent(context, cardWidth),
+            ),
+            itemCount: crossAxisCount * 2,
+            itemBuilder: (_, _) => tile,
+          );
+        }
+        return ListView.builder(
+          physics: const NeverScrollableScrollPhysics(),
+          padding: padding,
+          itemCount: 4,
+          itemBuilder: (_, _) => Padding(
             padding: EdgeInsets.only(bottom: 12.h),
             child: SizedBox(height: 96.h, child: tile),
           ),
+        );
+      },
     );
   }
 }

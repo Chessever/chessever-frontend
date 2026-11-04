@@ -24,6 +24,7 @@ import 'package:chessever2/screens/feed/widgets/feed_end_card.dart';
 import 'package:chessever2/screens/feed/widgets/feed_format.dart';
 import 'package:chessever2/screens/feed/widgets/feed_glyphs.dart';
 import 'package:chessever2/screens/feed/widgets/feed_layout.dart';
+import 'package:chessever2/screens/feed/widgets/feed_page_viewport.dart';
 import 'package:chessever2/screens/feed/widgets/feed_live_board.dart';
 import 'package:chessever2/screens/feed/widgets/feed_move_sound.dart';
 import 'package:chessever2/screens/feed/widgets/feed_move_strip.dart';
@@ -1324,7 +1325,12 @@ class _FeedClipState extends ConsumerState<FeedClip>
       _dockHeart(token);
       return;
     }
-    final to = target.localToGlobal(target.size.center(Offset.zero));
+    final overlay = Overlay.of(context, rootOverlay: true);
+    final overlayBox = overlay.context.findRenderObject() as RenderBox;
+    final flightFrom = overlayBox.globalToLocal(from);
+    final to = overlayBox.globalToLocal(
+      target.localToGlobal(target.size.center(Offset.zero)),
+    );
     _flight?.remove();
     late final OverlayEntry entry;
     // Home: the flight gives way to the button's own heart. Once, whichever
@@ -1344,7 +1350,7 @@ class _FeedClipState extends ConsumerState<FeedClip>
         home: _flightHome,
         onHome: land,
         child: FlyingHeart(
-          from: from,
+          from: flightFrom,
           to: to,
           color: context.colors.danger,
           // Where the burst left off: 55% of the board, as on the board
@@ -1359,7 +1365,7 @@ class _FeedClipState extends ConsumerState<FeedClip>
       ),
     );
     _flight = entry;
-    Overlay.of(context, rootOverlay: true).insert(entry);
+    overlay.insert(entry);
   }
 
   /// The heart reached the button: it fills, with a small pop.
@@ -2191,7 +2197,7 @@ class _FeedClipState extends ConsumerState<FeedClip>
       boardLabel = 'Board, ${feedMoveLabel(_item, shown)}';
     }
 
-    return LayoutBuilder(
+    return FeedPageViewport(
       builder: (context, constraints) {
         // One geometry whether or not the viewer is playing their own line:
         // the board never shrinks or moves when they start moving pieces.

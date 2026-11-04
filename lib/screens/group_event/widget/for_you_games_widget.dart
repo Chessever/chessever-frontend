@@ -28,6 +28,7 @@ import 'package:chessever2/widgets/event_card/event_card.dart';
 import 'package:chessever2/widgets/generic_error_widget.dart';
 import 'package:chessever2/widgets/skeleton_widget.dart';
 import 'package:chessever2/widgets/paywall/past_game_access.dart';
+import 'package:chessever2/widgets/layout_swap_scroll_keeper.dart';
 import 'package:flutter/material.dart';
 // Stable Flutter's material.dart does not export this type (only newer SDKs
 // do), so it is imported explicitly, as in lib/utils/scroll_cache.dart.
@@ -308,7 +309,8 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
     final state = ref.watch(forYouEventsProvider);
     final viewMode = ref.watch(gamesListViewModeProvider);
     final events = state.events;
-    final showNativeAd = NativeAdsConfig.available &&
+    final showNativeAd =
+        NativeAdsConfig.available &&
         ref.watch(homeNativeAdEnabledProvider) &&
         events.length >= 2 &&
         !ref.watch(subscriptionProvider.select((s) => s.isLoading)) &&
@@ -322,10 +324,9 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
       debugPrint('[ForYouGamesWidget] Error: ${state.error}');
       final message = state.error?.trim();
       return GenericErrorWidget(
-        message:
-            message != null && message.isNotEmpty
-                ? userFacingError(message)
-                : null,
+        message: message != null && message.isNotEmpty
+            ? userFacingError(message)
+            : null,
         onRetry: () => ref.read(forYouEventsProvider.notifier).refresh(),
       );
     }
@@ -351,21 +352,44 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
       onRefresh: () => ref.read(forYouEventsProvider.notifier).refresh(),
       color: context.colors.accentText,
       backgroundColor: context.colors.surface,
-      child: _buildEventsList(
-        events,
-        showNativeAd: showNativeAd,
-        viewMode: viewMode,
-        showLoadingMore: state.hasMore && !state.isLoading,
+      // The phone list and the tablet two-column layout are separate
+      // scrollables; iPhone Duo swaps them as it closes and opens.
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final useColumns = _useEventColumns(constraints.maxWidth);
+          return LayoutSwapScrollKeeper(
+            controller: widget.scrollController,
+            layout: useColumns,
+            child: _buildEventsList(
+              events,
+              useColumns: useColumns,
+              showNativeAd: showNativeAd,
+              viewMode: viewMode,
+              showLoadingMore: state.hasMore && !state.isLoading,
+            ),
+          );
+        },
       ),
     );
   }
 
-  Widget _buildLoadingState() {
-    // On tablet, show grid skeleton
-    if (ResponsiveHelper.isTablet) {
-      return _buildTabletLoadingSkeleton();
-    }
+  bool _useEventColumns(double width) =>
+      ResponsiveHelper.isTablet &&
+      ResponsiveHelper.columnsForWidth(
+            width - 2 * (ResponsiveHelper.isLandscape ? 32.sp : 24.sp),
+            minItemWidth: 300,
+            spacing: 16.sp,
+            maxColumns: 2,
+          ) ==
+          2;
 
+  Widget _buildLoadingState() => LayoutBuilder(
+    builder: (context, constraints) =>
+        _buildLoadingLayout(_useEventColumns(constraints.maxWidth)),
+  );
+
+  Widget _buildLoadingLayout(bool useColumns) {
+    if (useColumns) return _buildTabletLoadingSkeleton();
     return ListView(
       padding: EdgeInsets.symmetric(horizontal: 16.sp, vertical: 16.sp),
       physics: const NeverScrollableScrollPhysics(),
@@ -423,11 +447,11 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
   Widget _buildEventsList(
     List<GroupEventCardModel> events, {
     bool showNativeAd = false,
+    required bool useColumns,
     required GamesListViewMode viewMode,
     bool showLoadingMore = false,
   }) {
-    // On tablet, use a beautiful grid layout
-    if (ResponsiveHelper.isTablet) {
+    if (useColumns) {
       return _buildTabletGridLayout(
         events,
         showNativeAd: showNativeAd,
@@ -575,13 +599,12 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
               SizedBox(width: columnSpacing),
               // Right column: event2 + its games (or empty space)
               Expanded(
-                child:
-                    event2 != null
-                        ? _ForYouTabletEventColumn(
-                          key: ValueKey('tablet_col_${event2.id}'),
-                          event: event2,
-                        )
-                        : const SizedBox.shrink(),
+                child: event2 != null
+                    ? _ForYouTabletEventColumn(
+                        key: ValueKey('tablet_col_${event2.id}'),
+                        event: event2,
+                      )
+                    : const SizedBox.shrink(),
               ),
             ],
           ),
@@ -668,26 +691,17 @@ class _ForYouEventSection extends ConsumerWidget {
   Widget _buildEventCard(BuildContext context, WidgetRef ref) {
     final eventCard = EventCard(
       tourEventCardModel: event,
+      forceCompactLayout: true,
       showHeartIndicator: true,
       favoritePlayersSource: EventFavoritePlayersSource.cacheOnly,
       heroTagSuffix: '_foryou',
-      onTap:
-          () => openForYouEvent(
-            context,
-            ref,
-            eventId: event.id,
-            source: ForYouEventSource.today,
-          ),
+      onTap: () => openForYouEvent(
+        context,
+        ref,
+        eventId: event.id,
+        source: ForYouEventSource.today,
+      ),
     );
-
-    // On tablet, wrap in AspectRatio to give the Stack-based layout proper height
-    // This matches the aspect ratio used in CURRENT tab's SliverGrid
-    if (ResponsiveHelper.isTablet) {
-      return AspectRatio(
-        aspectRatio: ResponsiveHelper.isLandscape ? 1.4 : 1.2,
-        child: eventCard,
-      );
-    }
 
     return eventCard;
   }
@@ -774,30 +788,26 @@ class _ForYouTabletEventColumn extends ConsumerWidget {
     WidgetRef ref,
     AsyncValue<ForYouEventGamesSnapshot> snapshotAsync,
   ) {
-    // Aspect ratio for event card in column layout
-    // Landscape: wider cards since we have 2 columns
-    // Portrait: taller cards for better visual
-    final eventCardAspectRatio = ResponsiveHelper.isLandscape ? 1.8 : 1.4;
-
     final column = Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       mainAxisSize: MainAxisSize.min,
       children: [
         // Event card
-        AspectRatio(
-          aspectRatio: eventCardAspectRatio,
-          child: EventCard(
-            tourEventCardModel: event,
-            showHeartIndicator: true,
-            favoritePlayersSource: EventFavoritePlayersSource.cacheOnly,
-            heroTagSuffix: '_foryou_tablet_col',
-            onTap:
-                () => openForYouEvent(
-                  context,
-                  ref,
-                  eventId: event.id,
-                  source: ForYouEventSource.today,
-                ),
+        LayoutBuilder(
+          builder: (context, constraints) => SizedBox(
+            height: EventCard.gridMainAxisExtent(context, constraints.maxWidth),
+            child: EventCard(
+              tourEventCardModel: event,
+              showHeartIndicator: true,
+              favoritePlayersSource: EventFavoritePlayersSource.cacheOnly,
+              heroTagSuffix: '_foryou_tablet_col',
+              onTap: () => openForYouEvent(
+                context,
+                ref,
+                eventId: event.id,
+                source: ForYouEventSource.today,
+              ),
+            ),
           ),
         ),
         SizedBox(height: 10.sp),
@@ -870,18 +880,17 @@ class _ForYouTabletColumnGames extends StatelessWidget {
                   ),
                   SizedBox(width: 8.sp),
                   Expanded(
-                    child:
-                        game2 != null
-                            ? _TabletGameCard(
-                              key: ValueKey('tablet_game_${game2.gameId}'),
-                              game: game2,
-                              orderedGames: orderedGames,
-                              index: i + 1,
-                              eventId: eventId,
-                              pinnedIds: snapshot.pinnedIds,
-                              liveBatchKey: liveBatchKey,
-                            )
-                            : const SizedBox.shrink(),
+                    child: game2 != null
+                        ? _TabletGameCard(
+                            key: ValueKey('tablet_game_${game2.gameId}'),
+                            game: game2,
+                            orderedGames: orderedGames,
+                            index: i + 1,
+                            eventId: eventId,
+                            pinnedIds: snapshot.pinnedIds,
+                            liveBatchKey: liveBatchKey,
+                          )
+                        : const SizedBox.shrink(),
                   ),
                 ],
               ),
@@ -962,14 +971,13 @@ class _TabletGameCard extends ConsumerWidget {
       onChangedWithLiveGames: (updatedGames) =>
           _openForYouGame(context, ref, updatedGames, index),
       pinnedIds: pinnedIds,
-      onPinToggle:
-          (_) => ref
-              .read(forYouPinActionProvider)
-              .togglePin(
-                eventId: eventId,
-                gameId: game.gameId,
-                tourId: game.tourId,
-              ),
+      onPinToggle: (_) => ref
+          .read(forYouPinActionProvider)
+          .togglePin(
+            eventId: eventId,
+            gameId: game.gameId,
+            tourId: game.tourId,
+          ),
     );
   }
 }
@@ -1069,8 +1077,9 @@ class _ForYouEventGames extends ConsumerWidget {
 
     for (int i = 0; i < displayedGames.length; i += 2) {
       final game1 = displayedGames[i];
-      final game2 =
-          i + 1 < displayedGames.length ? displayedGames[i + 1] : null;
+      final game2 = i + 1 < displayedGames.length
+          ? displayedGames[i + 1]
+          : null;
 
       rows.add(
         Padding(
@@ -1090,42 +1099,39 @@ class _ForYouEventGames extends ConsumerWidget {
                   onChangedWithLiveGames: (updatedGames) =>
                       _openForYouGame(context, ref, updatedGames, i),
                   pinnedIds: pinnedIds,
-                  onPinToggle:
-                      (_) => ref
-                          .read(forYouPinActionProvider)
-                          .togglePin(
-                            eventId: eventId,
-                            gameId: game1.gameId,
-                            tourId: game1.tourId,
-                          ),
+                  onPinToggle: (_) => ref
+                      .read(forYouPinActionProvider)
+                      .togglePin(
+                        eventId: eventId,
+                        gameId: game1.gameId,
+                        tourId: game1.tourId,
+                      ),
                 ),
               ),
               SizedBox(width: 12.sp),
               Expanded(
-                child:
-                    game2 != null
-                        ? GridGameCardWrapperWidget(
-                          key: ValueKey('grid_game_${game2.gameId}'),
-                          game: game2,
-                          orderedGames: orderedGames,
-                          gameIndex: i + 1,
-                          liveBatchKey: liveBatchKey,
-                          allowStockfishFallback: true,
-                          streamEnabled: true,
-                          viewSource: ChessboardView.forYou,
-                          onChangedWithLiveGames: (updatedGames) =>
-                              _openForYouGame(context, ref, updatedGames, i + 1),
-                          pinnedIds: pinnedIds,
-                          onPinToggle:
-                              (_) => ref
-                                  .read(forYouPinActionProvider)
-                                  .togglePin(
-                                    eventId: eventId,
-                                    gameId: game2.gameId,
-                                    tourId: game2.tourId,
-                                  ),
-                        )
-                        : const SizedBox.shrink(),
+                child: game2 != null
+                    ? GridGameCardWrapperWidget(
+                        key: ValueKey('grid_game_${game2.gameId}'),
+                        game: game2,
+                        orderedGames: orderedGames,
+                        gameIndex: i + 1,
+                        liveBatchKey: liveBatchKey,
+                        allowStockfishFallback: true,
+                        streamEnabled: true,
+                        viewSource: ChessboardView.forYou,
+                        onChangedWithLiveGames: (updatedGames) =>
+                            _openForYouGame(context, ref, updatedGames, i + 1),
+                        pinnedIds: pinnedIds,
+                        onPinToggle: (_) => ref
+                            .read(forYouPinActionProvider)
+                            .togglePin(
+                              eventId: eventId,
+                              gameId: game2.gameId,
+                              tourId: game2.tourId,
+                            ),
+                      )
+                    : const SizedBox.shrink(),
               ),
             ],
           ),
@@ -1225,14 +1231,13 @@ class _ForYouGameCard extends ConsumerWidget {
         allowStockfishFallback: true,
         streamEnabled: true,
         onBeforeOpen: () => ensurePastGameAccess(context, game: game),
-        onPinToggle:
-            (_) => ref
-                .read(forYouPinActionProvider)
-                .togglePin(
-                  eventId: eventId,
-                  gameId: game.gameId,
-                  tourId: game.tourId,
-                ),
+        onPinToggle: (_) => ref
+            .read(forYouPinActionProvider)
+            .togglePin(
+              eventId: eventId,
+              gameId: game.gameId,
+              tourId: game.tourId,
+            ),
         onReturnFromChessboard: (_) {},
       ),
     );

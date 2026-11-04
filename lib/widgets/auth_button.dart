@@ -80,9 +80,11 @@ class _AuthButtonState extends State<AuthButton>
         );
       },
       child: Container(
-        height: widget.height.h,
+        constraints: BoxConstraints(
+          minHeight: widget.height.h.clamp(44.0, double.infinity),
+        ),
         width: widget.width,
-        padding: widget.padding,
+        padding: widget.padding.add(EdgeInsets.symmetric(vertical: 12.h)),
         decoration: BoxDecoration(
           color: context.colors.textPrimary, // Pure white background
           borderRadius: BorderRadius.circular(widget.borderRadius),
@@ -113,12 +115,12 @@ class _AuthButtonState extends State<AuthButton>
                 preserveOriginalColors: true,
                 colorFilter:
                     widget.svgIconPath == SvgAsset.appleIcon &&
-                            context.isLightTheme
-                        ? ColorFilter.mode(
-                          context.colors.textInverse,
-                          BlendMode.srcIn,
-                        )
-                        : null,
+                        context.isLightTheme
+                    ? ColorFilter.mode(
+                        context.colors.textInverse,
+                        BlendMode.srcIn,
+                      )
+                    : null,
                 fallback: Icon(
                   Icons.apple,
                   size: 24.ic,
@@ -134,7 +136,7 @@ class _AuthButtonState extends State<AuthButton>
                     // plate in light (it was black on ink, ~1.1:1).
                     color: context.colors.textInverse,
                   ),
-                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.center,
                 ),
               ),
             ],

@@ -19,6 +19,12 @@ Future<void> showDiscoveryNudgeTooltip(
     context,
     listen: false,
   ).read(editorialLinkOpenerProvider);
+  final overlay = Navigator.of(context, rootNavigator: true).overlay;
+  final overlayBox = overlay?.context.findRenderObject() as RenderBox?;
+  final overlayTarget = target == null || overlayBox == null
+      ? null
+      : overlayBox.globalToLocal(target.topLeft) & target.size;
+  final originalSize = MediaQuery.sizeOf(context);
   await showDialog<void>(
     context: context,
     useSafeArea: false,
@@ -26,7 +32,11 @@ Future<void> showDiscoveryNudgeTooltip(
     builder: (dialogContext) => SafeArea(
       child: CustomSingleChildLayout(
         delegate: _TooltipLayout(
-          target?.shift(-MediaQuery.paddingOf(dialogContext).topLeft),
+          MediaQuery.sizeOf(dialogContext) == originalSize
+              ? overlayTarget?.shift(
+                  -MediaQuery.paddingOf(dialogContext).topLeft,
+                )
+              : null,
         ),
         child: DiscoveryNudgeTooltip(
           messages: messages,

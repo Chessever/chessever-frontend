@@ -113,72 +113,67 @@ class _NotificationPermissionStepState
     return Center(
       child: ConstrainedBox(
         constraints: BoxConstraints(maxWidth: maxWidth),
-        child: Padding(
-          padding: EdgeInsets.fromLTRB(
-            horizontalPadding,
-            widget.topPadding + 60.h,
-            horizontalPadding,
-            widget.bottomPadding + 16.h,
-          ),
-          child: Column(
-            children: [
-              const Spacer(flex: 1),
+        child: OnboardingScrollBody(
+          child: Padding(
+            padding: EdgeInsets.fromLTRB(
+              horizontalPadding,
+              widget.topPadding + 60.h,
+              horizontalPadding,
+              widget.bottomPadding + 16.h,
+            ),
+            child: Column(
+              children: [
+                const Spacer(flex: 1),
 
-              if (widget.players.isNotEmpty) ...[
-                _FavoritesCluster(players: widget.players)
-                    .animate()
-                    .fadeIn(duration: 600.ms, curve: onboardingGentleSpring)
-                    .scale(
-                      begin: const Offset(0.85, 0.85),
-                      end: const Offset(1, 1),
-                      duration: 700.ms,
+                if (widget.players.isNotEmpty) ...[
+                  _FavoritesCluster(players: widget.players).animate().scale(
+                    begin: const Offset(0.85, 0.85),
+                    end: const Offset(1, 1),
+                    duration: 700.ms,
+                    curve: onboardingSmoothSpring,
+                  ),
+                  SizedBox(height: 40.h),
+                ],
+
+                Text(
+                      'Never miss a game from your favorites',
+                      textAlign: TextAlign.center,
+                      style: AppTypography.displayXsBold.copyWith(
+                        color: context.colors.textPrimary,
+                      ),
+                    )
+                    .animate(delay: 200.ms)
+                    .move(
+                      begin: const Offset(0, 16),
                       curve: onboardingSmoothSpring,
                     ),
-                SizedBox(height: 40.h),
+
+                SizedBox(height: 8.h),
+
+                Text(
+                  _subtitle(),
+                  textAlign: TextAlign.center,
+                  style: AppTypography.textSmRegular.copyWith(
+                    color: context.textInk(0.6),
+                  ),
+                ).animate(delay: 300.ms),
+
+                const Spacer(flex: 2),
+
+                OnboardingPrimaryButton(
+                      label: 'Continue',
+                      onTap: _isContinuing ? null : _continue,
+                      isLoading: _isContinuing,
+                    )
+                    .animate(delay: 450.ms)
+                    .move(
+                      begin: const Offset(0, 30),
+                      curve: onboardingSmoothSpring,
+                    ),
+
+                SizedBox(height: 8.h),
               ],
-
-              Text(
-                    'Never miss a game from your favorites',
-                    textAlign: TextAlign.center,
-                    style: AppTypography.displayXsBold.copyWith(
-                      color: context.colors.textPrimary,
-                    ),
-                  )
-                  .animate(delay: 200.ms)
-                  .fadeIn(duration: 500.ms, curve: onboardingSmoothSpring)
-                  .move(
-                    begin: const Offset(0, 16),
-                    curve: onboardingSmoothSpring,
-                  ),
-
-              SizedBox(height: 8.h),
-
-              Text(
-                    _subtitle(),
-                    textAlign: TextAlign.center,
-                    style: AppTypography.textSmRegular.copyWith(
-                      color: context.textInk(0.6),
-                    ),
-                  )
-                  .animate(delay: 300.ms)
-                  .fadeIn(duration: 500.ms, curve: onboardingSmoothSpring),
-
-              const Spacer(flex: 2),
-
-              OnboardingPrimaryButton(
-                    label: 'Continue',
-                    onTap: _isContinuing ? null : _continue,
-                    isLoading: _isContinuing,
-                  )
-                  .animate(delay: 450.ms)
-                  .fadeIn(duration: 400.ms, curve: onboardingSmoothSpring)
-                  .move(
-                    begin: const Offset(0, 30),
-                    curve: onboardingSmoothSpring,
-                  ),
-
-              SizedBox(height: 8.h),
-            ],
+            ),
           ),
         ),
       ),

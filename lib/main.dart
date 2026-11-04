@@ -42,6 +42,7 @@ import 'package:chessever2/utils/audio_player_service.dart';
 import 'package:chessever2/utils/chessground_image_cache.dart';
 import 'package:chessever2/utils/foreground_task_scheduler.dart';
 import 'package:chessever2/utils/lifecycle_event_handler.dart';
+import 'package:chessever2/utils/adaptive_window.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/auth_state_listener.dart';
 import 'package:chessever2/widgets/board_color_dialog.dart';
@@ -755,12 +756,18 @@ Future<void> _bootstrapE2eSession(WidgetRef ref) async {
 void _initializePostStartupServices(WidgetRef ref) {
   final supabaseUrl = _getEnv('SUPABASE_URL');
   if (!AppEnvironment.isTest && !E2eConfig.isEnabled) {
-    unawaited(WatchCompanionService.instance.initialize(
-      client: Supabase.instance.client,
-      publicKey: _getEnv('SUPABASE_ANON_KEY'), url: supabaseUrl,
-      openGame: (id) => DeepLinkService.instance.handleNotificationData(
-        {'type': 'game_started', 'game_id': id}, navigatorKey, ref),
-    ));
+    unawaited(
+      WatchCompanionService.instance.initialize(
+        client: Supabase.instance.client,
+        publicKey: _getEnv('SUPABASE_ANON_KEY'),
+        url: supabaseUrl,
+        openGame: (id) => DeepLinkService.instance.handleNotificationData(
+          {'type': 'game_started', 'game_id': id},
+          navigatorKey,
+          ref,
+        ),
+      ),
+    );
   }
   final persistSessionKey = _buildPersistSessionKey(supabaseUrl);
 
@@ -1188,11 +1195,20 @@ class MyApp extends HookConsumerWidget {
       }
     });
 
-    /// Initializing Responsive Unit
-    ResponsiveHelper.init(context);
+    /// Initializing Responsive Unit. [AdaptiveWindowScope] below refines it
+    /// to the content area and keeps it current as the window resizes.
+    final windowSize = MediaQuery.sizeOf(context);
+    final safeInsets = MediaQuery.viewPaddingOf(context);
+    ResponsiveHelper.initFromSize(
+      Size(windowSize.width - safeInsets.horizontal, windowSize.height),
+    );
+    final isTablet = ResponsiveHelper.isTablet;
 
     // Set orientation based on device type - tablets get landscape, phones stay portrait
-    // Also ensure status bar is visible and UI is edge-to-edge
+    // Also ensure status bar is visible and UI is edge-to-edge.
+    // Re-run when the device class changes mid-session: iPhone Duo is a phone
+    // while closed and a tablet while open, so the lock has to follow the
+    // fold or the outer display keeps the open state's landscape.
     useEffect(() {
       SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
       final platformDark =
@@ -1207,7 +1223,7 @@ class MyApp extends HookConsumerWidget {
         AppTheme.overlayFor(resolvedDark ? Brightness.dark : Brightness.light),
       );
 
-      if (ResponsiveHelper.isTablet) {
+      if (isTablet) {
         SystemChrome.setPreferredOrientations([
           DeviceOrientation.portraitUp,
           DeviceOrientation.portraitDown,
@@ -1221,7 +1237,7 @@ class MyApp extends HookConsumerWidget {
         ]);
       }
       return null;
-    }, [themeMode]);
+    }, [themeMode, isTablet]);
 
     final upgrader = useMemoized(
       () => PhoneStoreUpgrader(messages: CustomUpgraderMessages()),
@@ -1359,20 +1375,24 @@ class MyApp extends HookConsumerWidget {
             updateRouteObserver,
           ],
           initialRoute: '/',
-          builder: (context, child) => DismissKeyboard(
-            child: AnnotatedRegion<SystemUiOverlayStyle>(
-              value: AppTheme.overlayFor(Theme.of(context).brightness),
-              child: CustomUpgradeAlert(
-                upgrader: upgrader,
-                navigatorKey: navigatorKey,
-                routeObserver: updateRouteObserver,
-                child: RewardedAccessHost(
+          // AdaptiveWindowScope sits above every route, dialog and sheet so
+          // all of them follow the window as it folds, opens or resizes.
+          builder: (context, child) => AdaptiveWindowScope(
+            child: DismissKeyboard(
+              child: AnnotatedRegion<SystemUiOverlayStyle>(
+                value: AppTheme.overlayFor(Theme.of(context).brightness),
+                child: CustomUpgradeAlert(
+                  upgrader: upgrader,
                   navigatorKey: navigatorKey,
-                  upgrade: (context) => showPremiumPaywallSheet(
-                    context: context,
-                    allowRewarded: false,
+                  routeObserver: updateRouteObserver,
+                  child: RewardedAccessHost(
+                    navigatorKey: navigatorKey,
+                    upgrade: (context) => showPremiumPaywallSheet(
+                      context: context,
+                      allowRewarded: false,
+                    ),
+                    child: child ?? const SizedBox.shrink(),
                   ),
-                  child: child ?? const SizedBox.shrink(),
                 ),
               ),
             ),

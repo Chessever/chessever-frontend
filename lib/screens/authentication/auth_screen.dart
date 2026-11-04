@@ -3,7 +3,6 @@ import 'dart:io';
 import 'package:chessever2/e2e/e2e_ids.dart';
 import 'package:chessever2/providers/country_dropdown_provider.dart';
 import 'package:chessever2/repository/local_storage/onboarding/onboarding_repository.dart';
-import 'package:chessever2/screens/authentication/auth_screen_state.dart';
 import 'package:chessever2/services/att_prompt_service.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
@@ -66,8 +65,6 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(authScreenProvider);
-    final isTablet = ResponsiveHelper.isTablet;
-    final isLandscape = ResponsiveHelper.isLandscape;
     final isForcedGuestUpgrade = _isForcedGuestUpgrade;
 
     WidgetsBinding.instance.addPostFrameCallback((_) async {
@@ -97,146 +94,87 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
       unawaited(offerNotificationsAfterSignIn(navigator));
     });
 
-    // Tablet landscape: side-by-side layout
-    if (isTablet && isLandscape) {
-      return ScreenWrapper(
-        child: Scaffold(
-          key: e2eKey(E2eIds.authRoot),
-          body: Stack(
-            children: [
-              const Hero(tag: 'blur', child: BlurBackground()),
-              Row(
-                children: [
-                  // Left side: Logo centered
-                  Expanded(
-                    child: Center(
-                      child: Hero(
-                        tag: 'premium-icon',
-                        child: AnimatedBrandLogo(
-                          height: 180.sp,
-                          width: 340.sp,
-                          showWordmark: true,
-                        ),
-                      ),
-                    ),
-                  ),
-                  // Right side: Auth buttons centered
-                  Expanded(
-                    child: Center(
-                      child:
-                          state.isLoading
-                              ? SkeletonWidget(
-                                ignoreContainers: true,
-                                child: _AuthButtonWidget(
-                                  state: state,
-                                  isTabletLandscape: true,
-                                  isForcedGuestUpgrade: isForcedGuestUpgrade,
-                                ),
-                              )
-                              : _AuthButtonWidget(
-                                state: state,
-                                isTabletLandscape: true,
-                                isForcedGuestUpgrade: isForcedGuestUpgrade,
-                              ),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-      );
-    }
-
-    // Tablet portrait: same structure as phone but with tablet sizing
-    if (isTablet) {
-      return ScreenWrapper(
-        child: Scaffold(
-          key: e2eKey(E2eIds.authRoot),
-          body: Stack(
-            children: [
-              const Hero(tag: 'blur', child: BlurBackground()),
-              Center(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Hero(
-                      tag: 'premium-icon',
-                      child: AnimatedBrandLogo(
-                        height: 160.sp,
-                        width: 300.sp,
-                        showWordmark: true,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              Align(
-                alignment: Alignment.bottomCenter,
-                child:
-                    state.isLoading
-                        ? SkeletonWidget(
-                          ignoreContainers: true,
-                          child: _AuthButtonWidget(
-                            state: state,
-                            isTabletPortrait: true,
-                            isForcedGuestUpgrade: isForcedGuestUpgrade,
-                          ),
-                        )
-                        : _AuthButtonWidget(
-                          state: state,
-                          isTabletPortrait: true,
-                          isForcedGuestUpgrade: isForcedGuestUpgrade,
-                        ),
-              ),
-            ],
-          ),
-        ),
-      );
-    }
-
-    // Phone: stacked layout with bottom buttons
     return ScreenWrapper(
       child: Scaffold(
         key: e2eKey(E2eIds.authRoot),
         body: Stack(
+          fit: StackFit.expand,
           children: [
-            // Background blur layer
             const Hero(tag: 'blur', child: BlurBackground()),
-
-            // Centered Column with Icon and Text
-            Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Hero(
-                    tag: 'premium-icon',
-                    child: const AnimatedBrandLogo(
-                      height: 156,
-                      width: 295,
-                      showWordmark: true,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-
-            // Bottom Auth Button
-            Align(
-              alignment: Alignment.bottomCenter,
-              child:
-                  state.isLoading
-                      ? SkeletonWidget(
-                        ignoreContainers: true,
-                        child: _AuthButtonWidget(
-                          state: state,
-                          isForcedGuestUpgrade: isForcedGuestUpgrade,
+            SafeArea(
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  // Width and usable height decide the arrangement. A folded
+                  // phone can be landscape without room for two usable panes.
+                  final sideBySide =
+                      constraints.maxWidth >= 720 &&
+                      constraints.maxWidth > constraints.maxHeight * 1.15;
+                  final buttons = _AuthButtonWidget(
+                    sideBySide: sideBySide,
+                    isForcedGuestUpgrade: isForcedGuestUpgrade,
+                  );
+                  final actions = state.isLoading
+                      ? SkeletonWidget(ignoreContainers: true, child: buttons)
+                      : buttons;
+                  final logoHeight = ResponsiveHelper.isTablet
+                      ? (sideBySide ? 180.sp : 160.sp)
+                      : 156.0;
+                  final logoWidth = ResponsiveHelper.isTablet
+                      ? (sideBySide ? 340.sp : 300.sp)
+                      : 295.0;
+                  final logo = Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 28),
+                    child: Center(
+                      child: ConstrainedBox(
+                        constraints: BoxConstraints(maxWidth: logoWidth),
+                        child: Hero(
+                          tag: 'premium-icon',
+                          child: AnimatedBrandLogo(
+                            height: logoHeight,
+                            width: logoWidth,
+                            showWordmark: true,
+                          ),
                         ),
-                      )
-                      : _AuthButtonWidget(
-                        state: state,
-                        isForcedGuestUpgrade: isForcedGuestUpgrade,
                       ),
+                    ),
+                  );
+                  // Preserve the existing centered logo and bottom actions
+                  // whenever the window has their original vertical room.
+                  if (!sideBySide && constraints.maxHeight >= 700) {
+                    return Stack(
+                      children: [
+                        Center(child: logo),
+                        Align(
+                          alignment: Alignment.bottomCenter,
+                          child: actions,
+                        ),
+                      ],
+                    );
+                  }
+                  return SingleChildScrollView(
+                    child: ConstrainedBox(
+                      constraints: BoxConstraints(
+                        minHeight: constraints.maxHeight,
+                      ),
+                      child: IntrinsicHeight(
+                        child: sideBySide
+                            ? Row(
+                                children: [
+                                  Expanded(child: logo),
+                                  Expanded(child: actions),
+                                ],
+                              )
+                            : Column(
+                                children: [
+                                  Expanded(child: logo),
+                                  actions,
+                                ],
+                              ),
+                      ),
+                    ),
+                  );
+                },
+              ),
             ),
           ],
         ),
@@ -247,15 +185,11 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
 
 class _AuthButtonWidget extends ConsumerWidget {
   const _AuthButtonWidget({
-    required this.state,
-    this.isTabletLandscape = false,
-    this.isTabletPortrait = false,
     this.isForcedGuestUpgrade = false,
+    this.sideBySide = false,
   });
 
-  final AuthScreenState state;
-  final bool isTabletLandscape;
-  final bool isTabletPortrait;
+  final bool sideBySide;
 
   /// Guest window is over — say so instead of showing bare sign-in buttons.
   final bool isForcedGuestUpgrade;
@@ -263,19 +197,19 @@ class _AuthButtonWidget extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final isIos = Platform.isIOS;
-
-    // Tablet landscape: centered in its container (parent handles centering)
-    // Tablet portrait & phone: positioned at bottom via Align(bottomCenter)
-    final horizontalPadding =
-        (isTabletLandscape || isTabletPortrait) ? 24.sp : 28.sp;
-    final maxWidth =
-        (isTabletLandscape || isTabletPortrait) ? 500.0 : double.infinity;
+    final isTabletLandscape = sideBySide;
+    final isTabletPortrait = ResponsiveHelper.isTablet && !sideBySide;
+    final horizontalPadding = (isTabletLandscape || isTabletPortrait)
+        ? 24.sp
+        : 28.sp;
+    final maxWidth = (isTabletLandscape || isTabletPortrait)
+        ? 500.0
+        : double.infinity;
 
     // Bottom padding for layouts that use Align(bottomCenter) - phone and tablet portrait
-    final bottomPadding =
-        isTabletLandscape
-            ? 0.0
-            : MediaQuery.of(context).viewPadding.bottom + 28.sp;
+    final bottomPadding = isTabletLandscape
+        ? 0.0
+        : MediaQuery.of(context).viewPadding.bottom + 28.sp;
 
     final buttonColumn = Column(
       mainAxisSize: MainAxisSize.min,
@@ -383,8 +317,6 @@ class CountryPickerWidget extends ConsumerStatefulWidget {
 class _CountryPickerWidgetState extends ConsumerState<CountryPickerWidget>
     with SingleTickerProviderStateMixin {
   late AnimationController _controller;
-  late Animation<double> _fadeAnimation;
-  late Animation<Offset> _slideAnimation;
 
   @override
   void initState() {
@@ -395,20 +327,7 @@ class _CountryPickerWidgetState extends ConsumerState<CountryPickerWidget>
       vsync: this,
     );
 
-    // Subtle fade animation
-    _fadeAnimation = Tween<double>(
-      begin: 0.0,
-      end: 1.0,
-    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeOut));
-
-    // Minimal slide animation from top
-    _slideAnimation = Tween<Offset>(
-      begin: const Offset(0, -0.1),
-      end: Offset.zero,
-    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeOutCubic));
-
-    // Start animation
-    _controller.forward();
+    _controller.value = 1;
   }
 
   Future<void> _dismissWithAnimation() async {
@@ -425,136 +344,125 @@ class _CountryPickerWidgetState extends ConsumerState<CountryPickerWidget>
   Widget build(BuildContext context) {
     final notifier = ref.read(authScreenProvider.notifier);
     final countryState = ref.watch(countryDropdownProvider);
-    final isTablet = ResponsiveHelper.isTablet;
-    final isLandscape = ResponsiveHelper.isLandscape;
-
-    // Max width for content on tablets
-    const maxContentWidth = 450.0;
-
     return Scaffold(
       backgroundColor: Colors.transparent,
-      extendBody: true,
-      body: GestureDetector(
-        onTap: widget.isHamburgerMode ? Navigator.of(context).pop : null,
-        child: AnimatedBuilder(
-          animation: _controller,
-          builder: (context, child) {
-            // Tablet landscape: side-by-side layout
-            if (isTablet && isLandscape) {
-              return Stack(
-                children: [
-                  Opacity(
-                    opacity: _fadeAnimation.value,
-                    child: BlurBackground(),
-                  ),
-                  FadeTransition(
-                    opacity: _fadeAnimation,
-                    child: SlideTransition(
-                      position: _slideAnimation,
-                      child: Row(
-                        children: [
-                          // Left side: Country selection
-                          Expanded(
-                            child: Center(
-                              child: ConstrainedBox(
-                                constraints: const BoxConstraints(
-                                  maxWidth: maxContentWidth,
+      body: Stack(
+        fit: StackFit.expand,
+        children: [
+          const BlurBackground(),
+          SlideTransition(
+            position: _controller.drive(
+              Tween<Offset>(begin: const Offset(0, -0.1), end: Offset.zero),
+            ),
+            child: SafeArea(
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final selector = ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 450),
+                    child: _buildCountrySelector(countryState),
+                  );
+                  final button = _buildContinueButton(
+                    context,
+                    countryState,
+                    notifier,
+                  );
+                  if (constraints.maxWidth >= 720 &&
+                      constraints.maxWidth > constraints.maxHeight * 1.15) {
+                    return SingleChildScrollView(
+                      child: ConstrainedBox(
+                        constraints: BoxConstraints(
+                          minHeight: constraints.maxHeight,
+                        ),
+                        child: IntrinsicHeight(
+                          child: Row(
+                            children: [
+                              Expanded(child: Center(child: selector)),
+                              Expanded(
+                                child: Center(
+                                  child: ConstrainedBox(
+                                    constraints: const BoxConstraints(
+                                      maxWidth: 450,
+                                    ),
+                                    child: Padding(
+                                      padding: EdgeInsets.symmetric(
+                                        horizontal: 40.sp,
+                                      ),
+                                      child: button,
+                                    ),
+                                  ),
                                 ),
-                                child: _buildCountrySelector(countryState),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    );
+                  }
+                  if (constraints.maxHeight >= 600) {
+                    return Stack(
+                      children: [
+                        Center(child: selector),
+                        Align(
+                          alignment: Alignment.bottomCenter,
+                          child: ConstrainedBox(
+                            constraints: const BoxConstraints(maxWidth: 450),
+                            child: ClipRRect(
+                              borderRadius: const BorderRadius.vertical(
+                                top: Radius.circular(25),
+                              ),
+                              child: Padding(
+                                padding: EdgeInsets.fromLTRB(
+                                  20.sp,
+                                  20.sp,
+                                  20.sp,
+                                  MediaQuery.viewPaddingOf(context).bottom +
+                                      28.sp,
+                                ),
+                                child: button,
                               ),
                             ),
                           ),
-                          // Right side: Continue button
-                          Expanded(
-                            child: Center(
-                              child: ConstrainedBox(
-                                constraints: const BoxConstraints(
-                                  maxWidth: maxContentWidth,
-                                ),
-                                child: Padding(
-                                  padding: EdgeInsets.symmetric(
-                                    horizontal: 40.sp,
-                                  ),
-                                  child: _buildContinueButton(
+                        ),
+                      ],
+                    );
+                  }
+                  return SingleChildScrollView(
+                    child: ConstrainedBox(
+                      constraints: BoxConstraints(
+                        minHeight: constraints.maxHeight,
+                      ),
+                      child: IntrinsicHeight(
+                        child: Center(
+                          child: ConstrainedBox(
+                            constraints: const BoxConstraints(maxWidth: 450),
+                            child: Padding(
+                              padding: EdgeInsets.symmetric(
+                                horizontal: 24.sp,
+                                vertical: 24.h,
+                              ),
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  _buildCountrySelector(countryState),
+                                  SizedBox(height: 32.h),
+                                  _buildContinueButton(
                                     context,
                                     countryState,
                                     notifier,
                                   ),
-                                ),
+                                ],
                               ),
                             ),
                           ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ],
-              );
-            }
-
-            // Phone and tablet portrait: stacked layout
-            return Stack(
-              children: [
-                // Background content with subtle fade
-                Opacity(opacity: _fadeAnimation.value, child: BlurBackground()),
-
-                // Main content with minimal slide
-                FadeTransition(
-                  opacity: _fadeAnimation,
-                  child: SlideTransition(
-                    position: _slideAnimation,
-                    child: Center(
-                      child: ConstrainedBox(
-                        constraints: const BoxConstraints(
-                          maxWidth: maxContentWidth,
-                        ),
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [_buildCountrySelector(countryState)],
                         ),
                       ),
                     ),
-                  ),
-                ),
-
-                // Bottom button area with fade-in
-                Positioned(
-                  bottom: 0,
-                  left: 0,
-                  right: 0,
-                  child: FadeTransition(
-                    opacity: _fadeAnimation,
-                    child: Center(
-                      child: ConstrainedBox(
-                        constraints: const BoxConstraints(
-                          maxWidth: maxContentWidth,
-                        ),
-                        child: ClipRRect(
-                          borderRadius: const BorderRadius.vertical(
-                            top: Radius.circular(25),
-                          ),
-                          child: Container(
-                            padding: EdgeInsets.fromLTRB(
-                              20.sp,
-                              20.sp,
-                              20.sp,
-                              MediaQuery.of(context).viewPadding.bottom + 28.sp,
-                            ),
-                            child: _buildContinueButton(
-                              context,
-                              countryState,
-                              notifier,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            );
-          },
-        ),
+                  );
+                },
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -578,30 +486,27 @@ class _CountryPickerWidgetState extends ConsumerState<CountryPickerWidget>
           Container(
             padding: EdgeInsets.symmetric(horizontal: 10.sp, vertical: 5.sp),
             child: countryState.when(
-              loading:
-                  () => CountryDropdown(
-                    selectedCountryCode: '',
-                    onChanged: (_) {},
-                    hintText: 'Loading country...',
-                    isLoading: true,
-                    requireAuthToChange: false,
-                  ),
-              error:
-                  (err, _) => AppButton(
-                    padding: EdgeInsets.symmetric(horizontal: 16.sp),
-                    text: 'Retry Getting Countries',
-                    onPressed: () => ref.invalidate(countryDropdownProvider),
-                  ),
-              data:
-                  (country) => CountryDropdown(
-                    selectedCountryCode: country.countryCode,
-                    onChanged: (Country newCountry) {
-                      ref
-                          .read(countryDropdownProvider.notifier)
-                          .selectCountry(newCountry.countryCode);
-                    },
-                    requireAuthToChange: false,
-                  ),
+              loading: () => CountryDropdown(
+                selectedCountryCode: '',
+                onChanged: (_) {},
+                hintText: 'Loading country...',
+                isLoading: true,
+                requireAuthToChange: false,
+              ),
+              error: (err, _) => AppButton(
+                padding: EdgeInsets.symmetric(horizontal: 16.sp),
+                text: 'Retry Getting Countries',
+                onPressed: () => ref.invalidate(countryDropdownProvider),
+              ),
+              data: (country) => CountryDropdown(
+                selectedCountryCode: country.countryCode,
+                onChanged: (Country newCountry) {
+                  ref
+                      .read(countryDropdownProvider.notifier)
+                      .selectCountry(newCountry.countryCode);
+                },
+                requireAuthToChange: false,
+              ),
             ),
           ),
         ],
@@ -619,62 +524,59 @@ class _CountryPickerWidgetState extends ConsumerState<CountryPickerWidget>
         borderRadius: BorderRadius.circular(12),
         // Paper: the stacked ink halo turns into a muddy smear, so light
         // gets one tight contact shadow. Dark keeps its white glow.
-        boxShadow:
-            context.isLightTheme
-                ? [
-                  BoxShadow(
-                    color: context.colors.shadow,
-                    blurRadius: 4,
-                    offset: const Offset(0, 1),
-                  ),
-                ]
-                : [
-                  BoxShadow(
-                    color: context.colors.textPrimary.withValues(alpha: 0.8),
-                    blurRadius: 8,
-                    spreadRadius: 2,
-                    offset: const Offset(-1, 0),
-                  ),
-                  BoxShadow(
-                    color: context.colors.textPrimary.withValues(alpha: 0.5),
-                    blurRadius: 20,
-                    spreadRadius: 2,
-                    offset: const Offset(0, 2),
-                  ),
-                  BoxShadow(
-                    color: context.colors.textPrimary.withValues(alpha: 0.3),
-                    blurRadius: 35,
-                    spreadRadius: 2,
-                    offset: const Offset(0, 4),
-                  ),
-                  BoxShadow(
-                    color: kBlackColor.withValues(alpha: 0.2),
-                    blurRadius: 15,
-                    spreadRadius: 1,
-                    offset: const Offset(0, 8),
-                  ),
-                ],
+        boxShadow: context.isLightTheme
+            ? [
+                BoxShadow(
+                  color: context.colors.shadow,
+                  blurRadius: 4,
+                  offset: const Offset(0, 1),
+                ),
+              ]
+            : [
+                BoxShadow(
+                  color: context.colors.textPrimary.withValues(alpha: 0.8),
+                  blurRadius: 8,
+                  spreadRadius: 2,
+                  offset: const Offset(-1, 0),
+                ),
+                BoxShadow(
+                  color: context.colors.textPrimary.withValues(alpha: 0.5),
+                  blurRadius: 20,
+                  spreadRadius: 2,
+                  offset: const Offset(0, 2),
+                ),
+                BoxShadow(
+                  color: context.colors.textPrimary.withValues(alpha: 0.3),
+                  blurRadius: 35,
+                  spreadRadius: 2,
+                  offset: const Offset(0, 4),
+                ),
+                BoxShadow(
+                  color: kBlackColor.withValues(alpha: 0.2),
+                  blurRadius: 15,
+                  spreadRadius: 1,
+                  offset: const Offset(0, 8),
+                ),
+              ],
       ),
       child: ElevatedButton(
         onPressed: countryState.maybeWhen(
           loading: () => null,
-          orElse:
-              () => () async {
-                await _dismissWithAnimation();
-                if (!context.mounted) return;
+          orElse: () => () async {
+            await _dismissWithAnimation();
+            if (!context.mounted) return;
 
-                notifier.hideCountrySelection();
-                Navigator.of(context).pop();
-                if (!widget.isHamburgerMode) {
-                  final onboardingRepo = ref.read(onboardingRepositoryProvider);
-                  final userId = Supabase.instance.client.auth.currentUser?.id;
-                  final hasCompleted = await onboardingRepo.isCompleted(userId);
-                  if (!context.mounted) return;
-                  final targetRoute =
-                      hasCompleted ? '/home_screen' : '/onboarding';
-                  Navigator.pushReplacementNamed(context, targetRoute);
-                }
-              },
+            notifier.hideCountrySelection();
+            Navigator.of(context).pop();
+            if (!widget.isHamburgerMode) {
+              final onboardingRepo = ref.read(onboardingRepositoryProvider);
+              final userId = Supabase.instance.client.auth.currentUser?.id;
+              final hasCompleted = await onboardingRepo.isCompleted(userId);
+              if (!context.mounted) return;
+              final targetRoute = hasCompleted ? '/home_screen' : '/onboarding';
+              Navigator.pushReplacementNamed(context, targetRoute);
+            }
+          },
         ),
         style: ElevatedButton.styleFrom(
           backgroundColor: countryState.maybeWhen(

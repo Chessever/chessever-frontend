@@ -576,41 +576,36 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
       tablet: 24.w,
     );
 
-    // Use grid layout for tablets
-    if (ResponsiveHelper.isTablet) {
-      final crossAxisCount = ResponsiveHelper.tabletGridColumns.clamp(2, 3);
-      return SliverPadding(
-        padding: EdgeInsets.symmetric(
-          horizontal: horizontalPadding,
-          vertical: 8.h,
-        ),
-        sliver: SliverGrid(
-          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: crossAxisCount,
-            crossAxisSpacing: 16.sp,
-            mainAxisSpacing: 16.sp,
-            childAspectRatio: ResponsiveHelper.isLandscape ? 2.5 : 2.0,
+    return SliverLayoutBuilder(
+      builder: (context, constraints) {
+        final columns = ResponsiveHelper.columnsForWidth(
+          constraints.crossAxisExtent - horizontalPadding * 2,
+          minItemWidth: 300,
+          spacing: 16.sp,
+        );
+        return SliverPadding(
+          padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
+          sliver: SliverList.builder(
+            itemCount: (filteredFolders.length / columns).ceil(),
+            itemBuilder: (context, row) => Padding(
+              padding: EdgeInsets.only(bottom: columns == 1 ? 8.h : 16.sp),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  for (var column = 0; column < columns; column++) ...[
+                    if (column > 0) SizedBox(width: 16.sp),
+                    Expanded(
+                      child: row * columns + column < filteredFolders.length
+                          ? card(filteredFolders[row * columns + column])
+                          : const SizedBox.shrink(),
+                    ),
+                  ],
+                ],
+              ),
+            ),
           ),
-          delegate: SliverChildBuilderDelegate(
-            (context, index) => card(filteredFolders[index]),
-            childCount: filteredFolders.length,
-          ),
-        ),
-      );
-    }
-
-    // Phone layout: CSS padding 16px, gap 8px
-    return SliverPadding(
-      padding: EdgeInsets.symmetric(horizontal: 16.w),
-      sliver: SliverList(
-        delegate: SliverChildBuilderDelegate(
-          (context, index) => Padding(
-            padding: EdgeInsets.only(bottom: 8.h),
-            child: card(filteredFolders[index]),
-          ),
-          childCount: filteredFolders.length,
-        ),
-      ),
+        );
+      },
     );
   }
 
@@ -656,31 +651,43 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
           horizontal: horizontalPadding,
           vertical: 8.h,
         ),
-        child: SkeletonWidget(
-          child: ResponsiveHelper.isTablet
-              ? GridView.builder(
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: ResponsiveHelper.tabletGridColumns.clamp(
-                      2,
-                      3,
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final columns = ResponsiveHelper.columnsForWidth(
+              constraints.maxWidth,
+              minItemWidth: 300,
+              spacing: 16.sp,
+            );
+            return SkeletonWidget(
+              child: Column(
+                children: [
+                  for (
+                    var row = 0;
+                    row < (loadingCards.length / columns).ceil();
+                    row++
+                  )
+                    Padding(
+                      padding: EdgeInsets.only(
+                        bottom: columns == 1 ? 8.h : 16.sp,
+                      ),
+                      child: Row(
+                        children: [
+                          for (var column = 0; column < columns; column++) ...[
+                            if (column > 0) SizedBox(width: 16.sp),
+                            Expanded(
+                              child:
+                                  row * columns + column < loadingCards.length
+                                  ? loadingCards[row * columns + column]
+                                  : const SizedBox.shrink(),
+                            ),
+                          ],
+                        ],
+                      ),
                     ),
-                    crossAxisSpacing: 16.sp,
-                    mainAxisSpacing: 16.sp,
-                    childAspectRatio: ResponsiveHelper.isLandscape ? 2.5 : 2.0,
-                  ),
-                  itemCount: loadingCards.length,
-                  itemBuilder: (context, index) => loadingCards[index],
-                )
-              : Column(
-                  children: [
-                    for (final card in loadingCards) ...[
-                      card,
-                      SizedBox(height: 8.h),
-                    ],
-                  ],
-                ),
+                ],
+              ),
+            );
+          },
         ),
       ),
     );

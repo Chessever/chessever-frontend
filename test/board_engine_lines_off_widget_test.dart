@@ -1,3 +1,4 @@
+import 'package:chessever2/utils/adaptive_window.dart';
 import 'dart:async';
 
 import 'package:chessever2/e2e/e2e_ids.dart';
@@ -102,6 +103,7 @@ void main() {
           UncontrolledProviderScope(
             container: container,
             child: MaterialApp(
+              builder: (_, child) => AdaptiveWindowScope(child: child!),
               theme: ThemeData.dark().copyWith(
                 extensions: const [AppColors.dark],
               ),
@@ -130,6 +132,20 @@ void main() {
           ChessBoardProviderParams(game: game, index: 0),
         );
         final board = container.read(provider.notifier);
+        for (final size in const [
+          Size(720, 900),
+          Size(900, 720),
+          Size(844, 390),
+          Size(390, 844),
+        ]) {
+          tester.view.physicalSize = size;
+          await frames(8);
+          expect(tester.takeException(), isNull, reason: '$size must fit');
+          expect(container.read(provider.notifier), same(board));
+          final boardRect = tester.getRect(find.byType(Chessboard).first);
+          expect(boardRect.right, lessThanOrEqualTo(size.width));
+          expect(boardRect.bottom, lessThanOrEqualTo(size.height));
+        }
         final before = container.read(provider).requireValue;
         expect(before.showEngineAnalysis, isTrue);
         expect(before.isEvaluating, isTrue);

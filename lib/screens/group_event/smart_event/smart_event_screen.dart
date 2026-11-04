@@ -1,3 +1,4 @@
+import 'package:chessever2/widgets/window_metrics_dismissal.dart';
 import 'package:chessever2/widgets/paywall/premium_game_access.dart';
 import 'dart:async';
 
@@ -310,31 +311,29 @@ class _SmartEventScreenState extends ConsumerState<SmartEventScreen> {
         });
       },
       onFilterTap: _openFilterDialog,
-      trailing:
-          _index != 0
-              ? GestureDetector(
-                onTap:
-                    () => ref.read(gamesListViewModeSwitcher).toggleViewMode(),
-                child: Container(
-                  decoration: BoxDecoration(
-                    color: context.colors.background,
-                    borderRadius: BorderRadius.circular(12.br),
-                    border: Border.all(color: context.colors.surfaceRecessed),
-                  ),
-                  child: Center(
-                    child: SvgPicture.asset(
-                      SvgAsset.chase_grid,
-                      width: 20.sp,
-                      height: 20.sp,
-                      colorFilter: ColorFilter.mode(
-                        context.colors.textSecondary,
-                        BlendMode.srcIn,
-                      ),
+      trailing: _index != 0
+          ? GestureDetector(
+              onTap: () => ref.read(gamesListViewModeSwitcher).toggleViewMode(),
+              child: Container(
+                decoration: BoxDecoration(
+                  color: context.colors.background,
+                  borderRadius: BorderRadius.circular(12.br),
+                  border: Border.all(color: context.colors.surfaceRecessed),
+                ),
+                child: Center(
+                  child: SvgPicture.asset(
+                    SvgAsset.chase_grid,
+                    width: 20.sp,
+                    height: 20.sp,
+                    colorFilter: ColorFilter.mode(
+                      context.colors.textSecondary,
+                      BlendMode.srcIn,
                     ),
                   ),
                 ),
-              )
-              : null,
+              ),
+            )
+          : null,
     );
   }
 
@@ -367,8 +366,9 @@ class _SmartEventScreenState extends ConsumerState<SmartEventScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final horizontalPadding =
-        ResponsiveHelper.isTablet ? 24.sp.toDouble() : 16.sp.toDouble();
+    final horizontalPadding = ResponsiveHelper.isTablet
+        ? 24.sp.toDouble()
+        : 16.sp.toDouble();
 
     return _SmartEventRequestScope(
       request: widget.request,
@@ -485,8 +485,8 @@ class _SmartTierFilterScope extends InheritedWidget {
   final String searchQuery;
 
   static _SmartTierFilterScope of(BuildContext context) {
-    final scope =
-        context.dependOnInheritedWidgetOfExactType<_SmartTierFilterScope>();
+    final scope = context
+        .dependOnInheritedWidgetOfExactType<_SmartTierFilterScope>();
     assert(scope != null, '_SmartTierFilterScope was not found');
     return scope!;
   }
@@ -519,10 +519,9 @@ class _PinnedSearchFilterBar extends StatelessWidget {
     return AnimatedBuilder(
       animation: pageController,
       builder: (context, child) {
-        final page =
-            pageController.hasClients
-                ? (pageController.page ?? fallbackPage)
-                : fallbackPage;
+        final page = pageController.hasClients
+            ? (pageController.page ?? fallbackPage)
+            : fallbackPage;
         final t = page.clamp(0.0, 1.0);
         if (t <= 0.0) {
           return const SizedBox.shrink();
@@ -675,7 +674,9 @@ class _AppBar extends ConsumerWidget {
           // Mirrors the toggle + menu on the right so the title stays
           // centred on the screen, not just between the buttons.
           SizedBox(width: 24.ic + 16.w),
-          Expanded(child: Center(child: _AppBarTitle(request: request))),
+          Expanded(
+            child: Center(child: _AppBarTitle(request: request)),
+          ),
           AppBarIcons(
             image: SvgAsset.chase_grid,
             onTap: () {
@@ -725,11 +726,8 @@ class _AppBar extends ConsumerWidget {
                           label: isDirty
                               ? 'Apply changes to ${request.displayName}'
                               : 'Remove ${request.displayName}',
-                          onSelected: () => _manageSavedFavorite(
-                            context,
-                            ref,
-                            savedFavorite,
-                          ),
+                          onSelected: () =>
+                              _manageSavedFavorite(context, ref, savedFavorite),
                         ),
                     ],
                   ),
@@ -795,9 +793,8 @@ class _AppBarTitle extends StatelessWidget {
         duration: const Duration(milliseconds: 220),
         switchInCurve: Curves.easeOutCubic,
         switchOutCurve: Curves.easeInCubic,
-        transitionBuilder:
-            (child, animation) =>
-                FadeTransition(opacity: animation, child: child),
+        transitionBuilder: (child, animation) =>
+            FadeTransition(opacity: animation, child: child),
         child: Text(
           request.displayName,
           key: const ValueKey('smart_title_static'),
@@ -815,9 +812,8 @@ class _AppBarTitle extends StatelessWidget {
       duration: const Duration(milliseconds: 220),
       switchInCurve: Curves.easeOutCubic,
       switchOutCurve: Curves.easeInCubic,
-      transitionBuilder:
-          (child, animation) =>
-              FadeTransition(opacity: animation, child: child),
+      transitionBuilder: (child, animation) =>
+          FadeTransition(opacity: animation, child: child),
       child: _TitleSelector(
         key: const ValueKey('smart_title_dropdown'),
         selectedTier: scope.tier,
@@ -888,21 +884,26 @@ class _TitleSelectorState extends State<_TitleSelector>
       final renderBox = context.findRenderObject() as RenderBox?;
       if (renderBox == null) return;
       final triggerSize = renderBox.size;
-      final triggerOffset = renderBox.localToGlobal(Offset.zero);
+      final overlayBox = overlayState.context.findRenderObject() as RenderBox;
+      final triggerOffset = overlayBox.globalToLocal(
+        renderBox.localToGlobal(Offset.zero),
+      );
       final screenSize = MediaQuery.of(context).size;
 
       _overlay = OverlayEntry(
-        builder:
-            (_) => _TierOverlay(
-              triggerSize: triggerSize,
-              triggerOffset: triggerOffset,
-              screenWidth: screenSize.width,
-              animation: _animation,
-              options: _tierOptions,
-              currentTier: widget.selectedTier,
-              onDismiss: _close,
-              onSelect: _onSelect,
-            ),
+        builder: (_) => WindowMetricsDismissal(
+          onChanged: _close,
+          child: _TierOverlay(
+            triggerSize: triggerSize,
+            triggerOffset: triggerOffset,
+            screenWidth: screenSize.width,
+            animation: _animation,
+            options: _tierOptions,
+            currentTier: widget.selectedTier,
+            onDismiss: _close,
+            onSelect: _onSelect,
+          ),
+        ),
       );
       overlayState.insert(_overlay!);
     });
@@ -947,14 +948,13 @@ class _TitleSelectorState extends State<_TitleSelector>
         animation: _shimmerController,
         builder: (context, child) {
           return CustomPaint(
-            painter:
-                _isOpen
-                    ? null
-                    : FluidShimmerPainter(
-                      progress: _shimmerController.value,
-                      shimmerColor: kPrimaryColor.withValues(alpha: 0.4),
-                      borderRadius: 14.br,
-                    ),
+            painter: _isOpen
+                ? null
+                : FluidShimmerPainter(
+                    progress: _shimmerController.value,
+                    shimmerColor: kPrimaryColor.withValues(alpha: 0.4),
+                    borderRadius: 14.br,
+                  ),
             child: child,
           );
         },
@@ -964,15 +964,13 @@ class _TitleSelectorState extends State<_TitleSelector>
           padding: EdgeInsets.symmetric(horizontal: 14.sp, vertical: 8.sp),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(14.br),
-            color:
-                _isOpen
-                    ? kPrimaryColor.withValues(alpha: 0.15)
-                    : context.colors.textPrimary.withValues(alpha: 0.06),
+            color: _isOpen
+                ? kPrimaryColor.withValues(alpha: 0.15)
+                : context.colors.textPrimary.withValues(alpha: 0.06),
             border: Border.all(
-              color:
-                  _isOpen
-                      ? context.colors.accentText.withValues(alpha: 0.4)
-                      : context.colors.textPrimary.withValues(alpha: 0.12),
+              color: _isOpen
+                  ? context.colors.accentText.withValues(alpha: 0.4)
+                  : context.colors.textPrimary.withValues(alpha: 0.12),
               width: 1,
             ),
           ),
@@ -985,7 +983,9 @@ class _TitleSelectorState extends State<_TitleSelector>
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: AppTypography.textSmMedium.copyWith(
-                    color: _isOpen ? context.colors.accentText : context.colors.textPrimary,
+                    color: _isOpen
+                        ? context.colors.accentText
+                        : context.colors.textPrimary,
                     fontWeight: FontWeight.w700,
                     letterSpacing: 0.3,
                   ),
@@ -999,10 +999,9 @@ class _TitleSelectorState extends State<_TitleSelector>
                 child: Icon(
                   Icons.keyboard_arrow_down_rounded,
                   size: 18.ic,
-                  color:
-                      _isOpen
-                          ? context.colors.accentText
-                          : context.colors.textPrimary.withValues(alpha: 0.7),
+                  color: _isOpen
+                      ? context.colors.accentText
+                      : context.colors.textPrimary.withValues(alpha: 0.7),
                 ),
               ),
             ],
@@ -1070,6 +1069,14 @@ class _TierOverlay extends StatelessWidget {
                 behavior: HitTestBehavior.opaque,
                 child: Container(
                   width: panelWidth,
+                  constraints: BoxConstraints(
+                    maxHeight:
+                        (MediaQuery.sizeOf(context).height -
+                                MediaQuery.paddingOf(context).bottom -
+                                topOffset -
+                                12)
+                            .clamp(0.0, double.infinity),
+                  ),
                   decoration: BoxDecoration(
                     color: context.colors.surface,
                     borderRadius: BorderRadius.circular(16.br),
@@ -1078,10 +1085,9 @@ class _TierOverlay extends StatelessWidget {
                     ),
                     boxShadow: [
                       BoxShadow(
-                        color:
-                            context.isLightTheme
-                                ? context.colors.shadow
-                                : Colors.black.withValues(alpha: 0.18),
+                        color: context.isLightTheme
+                            ? context.colors.shadow
+                            : Colors.black.withValues(alpha: 0.18),
                         blurRadius: 24,
                         spreadRadius: -6,
                         offset: const Offset(0, 8),
@@ -1171,10 +1177,9 @@ class _TierOptionRow extends StatelessWidget {
         onTap: onTap,
         child: Container(
           padding: EdgeInsets.symmetric(horizontal: 16.sp, vertical: 12.sp),
-          color:
-              isSelected
-                  ? kPrimaryColor.withValues(alpha: 0.10)
-                  : Colors.transparent,
+          color: isSelected
+              ? kPrimaryColor.withValues(alpha: 0.10)
+              : Colors.transparent,
           child: Row(
             children: [
               Expanded(
@@ -1183,14 +1188,19 @@ class _TierOptionRow extends StatelessWidget {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: AppTypography.textSmMedium.copyWith(
-                    color:
-                        isSelected ? context.colors.accentText : context.colors.textPrimary,
+                    color: isSelected
+                        ? context.colors.accentText
+                        : context.colors.textPrimary,
                     fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
                   ),
                 ),
               ),
               if (isSelected)
-                Icon(Icons.check_rounded, size: 18.ic, color: context.colors.accentText),
+                Icon(
+                  Icons.check_rounded,
+                  size: 18.ic,
+                  color: context.colors.accentText,
+                ),
             ],
           ),
         ),
@@ -1205,8 +1215,8 @@ class _SmartEventRequestScope extends InheritedWidget {
   final SmartEventRequest request;
 
   static SmartEventRequest of(BuildContext context) {
-    final scope =
-        context.dependOnInheritedWidgetOfExactType<_SmartEventRequestScope>();
+    final scope = context
+        .dependOnInheritedWidgetOfExactType<_SmartEventRequestScope>();
     assert(scope != null, 'SmartEventRequestScope was not found');
     return scope!.request;
   }
@@ -1564,10 +1574,18 @@ class _GamesTabState extends ConsumerState<_GamesTab>
       );
 
       final isGrid = viewMode == GamesListViewMode.chessBoardGrid;
-      // Tablet landscape: 4 columns; tablet portrait / phone: 2 — mirrors
-      // the Favorites / Countrymen games tabs.
-      final gridColumns =
-          ResponsiveHelper.isTablet && ResponsiveHelper.isLandscape ? 4 : 2;
+      // Size boards from their width budget, including near-square unfolded
+      // windows where landscape alone does not justify four columns.
+      final gridColumns = ResponsiveHelper.columnsForWidth(
+        MediaQuery.sizeOf(
+              context,
+            ).width.clamp(0, ResponsiveHelper.contentMaxWidth) -
+            2 * ResponsiveHelper.adaptive(phone: 16.sp, tablet: 24.sp),
+        minItemWidth: 220,
+        spacing: 16.sp,
+        minColumns: 2,
+        maxColumns: 4,
+      );
       final rows = _buildDayRows(games, gridColumns: isGrid ? gridColumns : 1);
       return NotificationListener<ScrollNotification>(
         onNotification: _handleScrollNotification,
@@ -1588,11 +1606,9 @@ class _GamesTabState extends ConsumerState<_GamesTab>
             physics: const AlwaysScrollableScrollPhysics(
               parent: BouncingScrollPhysics(),
             ),
-            itemCount:
-                games.isEmpty
-                    ? 1
-                    : rows.length +
-                        (event.hasMore || event.isLoadingMore ? 1 : 0),
+            itemCount: games.isEmpty
+                ? 1
+                : rows.length + (event.hasMore || event.isLoadingMore ? 1 : 0),
             itemBuilder: (context, i) {
               if (games.isEmpty) {
                 final hasNarrowingControls =
@@ -1607,18 +1623,16 @@ class _GamesTabState extends ConsumerState<_GamesTab>
                   duration: const Duration(milliseconds: 250),
                   switchInCurve: Curves.easeOut,
                   switchOutCurve: Curves.easeIn,
-                  child:
-                      async.isLoading
-                          ? const _GameCardShimmerColumn(
-                            key: ValueKey('smart_games_filter_shimmer'),
-                          )
-                          : _EmptyState(
-                            key: const ValueKey('smart_games_filter_empty'),
-                            message:
-                                hasNarrowingControls
-                                    ? 'No games match your filters'
-                                    : 'No games right now',
-                          ),
+                  child: async.isLoading
+                      ? const _GameCardShimmerColumn(
+                          key: ValueKey('smart_games_filter_shimmer'),
+                        )
+                      : _EmptyState(
+                          key: const ValueKey('smart_games_filter_empty'),
+                          message: hasNarrowingControls
+                              ? 'No games match your filters'
+                              : 'No games right now',
+                        ),
                 );
               }
               if (i >= rows.length) {
@@ -1660,16 +1674,15 @@ class _GamesTabState extends ConsumerState<_GamesTab>
                       for (int j = 0; j < gridColumns; j++) ...[
                         if (j > 0) SizedBox(width: 12.sp),
                         Expanded(
-                          child:
-                              j < rowGames.length
-                                  ? _buildGridGame(
-                                    rowGames[j],
-                                    games,
-                                    gamesData,
-                                    liveBatchKeyByGameId[rowGames[j].gameId],
-                                    allowStockfishFallback,
-                                  )
-                                  : const SizedBox.shrink(),
+                          child: j < rowGames.length
+                              ? _buildGridGame(
+                                  rowGames[j],
+                                  games,
+                                  gamesData,
+                                  liveBatchKeyByGameId[rowGames[j].gameId],
+                                  allowStockfishFallback,
+                                )
+                              : const SizedBox.shrink(),
                         ),
                       ],
                     ],
@@ -1721,10 +1734,8 @@ class _GamesTabState extends ConsumerState<_GamesTab>
     } else if (async.hasError) {
       content = GenericErrorWidget(
         key: const ValueKey('smart_games_error'),
-        onRetry:
-            () => ref.invalidate(
-              smartAggregateEventRepositoryProvider(smartQuery),
-            ),
+        onRetry: () =>
+            ref.invalidate(smartAggregateEventRepositoryProvider(smartQuery)),
       );
     } else {
       content = const _GamesShimmerList(key: ValueKey('smart_games_loading'));
@@ -1837,10 +1848,9 @@ class _GamesTabState extends ConsumerState<_GamesTab>
       // Carried for the player-name tap, which opens the score card straight
       // from the card without going through [navigateToChessBoard].
       viewSource: ChessboardView.smartEvent,
-      onPinToggle:
-          (g) async => await ref
-              .read(gamesTourScreenProvider.notifier)
-              .togglePinGame(g.gameId, sourceTourId: g.tourId),
+      onPinToggle: (g) async => await ref
+          .read(gamesTourScreenProvider.notifier)
+          .togglePinGame(g.gameId, sourceTourId: g.tourId),
       onChangedWithLiveGames: (updatedGames) async {
         final allowed = await _guardGameOpen(context, updatedGames[safeIndex]);
         if (!allowed || !mounted) return;
@@ -1869,8 +1879,8 @@ class _GamesTabState extends ConsumerState<_GamesTab>
       final dateKey = DateFormat('yyyy-MM-dd').format(_gameDay(game));
       gamesByDate.putIfAbsent(dateKey, () => []).add(game);
     }
-    final sortedKeys =
-        gamesByDate.keys.toList()..sort((a, b) => b.compareTo(a));
+    final sortedKeys = gamesByDate.keys.toList()
+      ..sort((a, b) => b.compareTo(a));
 
     final rows = <_GameListRow>[];
     for (final dateKey in sortedKeys) {
@@ -1883,10 +1893,9 @@ class _GamesTabState extends ConsumerState<_GamesTab>
       if (_collapsedDates.contains(dateKey)) continue;
       if (gridColumns > 1) {
         for (var i = 0; i < dateGames.length; i += gridColumns) {
-          final end =
-              i + gridColumns < dateGames.length
-                  ? i + gridColumns
-                  : dateGames.length;
+          final end = i + gridColumns < dateGames.length
+              ? i + gridColumns
+              : dateGames.length;
           rows.add(
             _GameListRow.grid(
               dateGames.sublist(i, end),
@@ -2037,10 +2046,9 @@ List<_EventGameListRow> _buildEventGameRows(
     );
     if (gridColumns > 1) {
       for (var i = 0; i < group.games.length; i += gridColumns) {
-        final end =
-            i + gridColumns < group.games.length
-                ? i + gridColumns
-                : group.games.length;
+        final end = i + gridColumns < group.games.length
+            ? i + gridColumns
+            : group.games.length;
         rows.add(
           _EventGameListRow.grid(
             group.games.sublist(i, end),
@@ -2091,10 +2099,9 @@ class _DateHeader extends StatelessWidget {
           ),
           boxShadow: [
             BoxShadow(
-              color:
-                  context.isLightTheme
-                      ? context.colors.shadow
-                      : Colors.black.withValues(alpha: 0.1),
+              color: context.isLightTheme
+                  ? context.colors.shadow
+                  : Colors.black.withValues(alpha: 0.1),
               blurRadius: 4,
               offset: const Offset(0, 2),
             ),
@@ -2155,8 +2162,8 @@ Future<void> _openIncludedEvent(
   GroupEventCardModel event,
 ) {
   final category = switch (event.tourEventCategory) {
-    TourEventCategory.live || TourEventCategory.ongoing =>
-      GroupEventCategory.current,
+    TourEventCategory.live ||
+    TourEventCategory.ongoing => GroupEventCategory.current,
     TourEventCategory.upcoming => GroupEventCategory.upcoming,
     TourEventCategory.completed => GroupEventCategory.past,
   };
@@ -2248,9 +2255,8 @@ class _AboutTabState extends ConsumerState<_AboutTab>
     if (event == null) {
       if (async.hasError) {
         return GenericErrorWidget(
-          onRetry:
-              () =>
-                  ref.invalidate(smartAggregateEventRepositoryProvider(query)),
+          onRetry: () =>
+              ref.invalidate(smartAggregateEventRepositoryProvider(query)),
         );
       }
       return const Center(child: CircularProgressIndicator());
@@ -2260,10 +2266,9 @@ class _AboutTabState extends ConsumerState<_AboutTab>
         scope.searchQuery.isNotEmpty ||
         scope.filter.hasActiveFilters ||
         scope.tier != 'All';
-    final emptyMessage =
-        hasNarrowingControls
-            ? 'No tournaments match your filters'
-            : 'No games right now';
+    final emptyMessage = hasNarrowingControls
+        ? 'No tournaments match your filters'
+        : 'No games right now';
     final opening = request.openingExplanation;
     final dateSpan = TimeUtils.formatDateRange(event.dateStart, event.dateEnd);
 
@@ -2292,10 +2297,9 @@ class _AboutTabState extends ConsumerState<_AboutTab>
                       key: const ValueKey('smart-opening-scope-code'),
                       style: AppTypography.textSmBold.copyWith(
                         // kDarkBlue is 2.6:1 on paper.
-                        color:
-                            context.isLightTheme
-                                ? context.colors.accentText
-                                : kDarkBlue,
+                        color: context.isLightTheme
+                            ? context.colors.accentText
+                            : kDarkBlue,
                       ),
                     ),
                     SizedBox(width: 10.w),
@@ -2540,10 +2544,9 @@ class _EventsTabState extends ConsumerState<_EventsTab>
       allowStockfishFallback: true,
       streamEnabled: streamEnabled,
       viewSource: ChessboardView.smartEvent,
-      onPinToggle:
-          (updated) async => await ref
-              .read(gamesTourScreenProvider.notifier)
-              .togglePinGame(updated.gameId, sourceTourId: updated.tourId),
+      onPinToggle: (updated) async => await ref
+          .read(gamesTourScreenProvider.notifier)
+          .togglePinGame(updated.gameId, sourceTourId: updated.tourId),
       onChangedWithLiveGames: (updatedGames) async {
         final allowed = await _guardGameOpen(context, updatedGames[safeIndex]);
         if (!allowed || !mounted) return;
@@ -2580,25 +2583,22 @@ class _EventsTabState extends ConsumerState<_EventsTab>
 
     Widget content;
     if (event == null) {
-      content =
-          async.hasError
-              ? GenericErrorWidget(
-                key: const ValueKey('smart_events_error'),
-                onRetry:
-                    () => ref.invalidate(
-                      smartAggregateEventRepositoryProvider(query),
-                    ),
-              )
-              : const _GamesShimmerList(key: ValueKey('smart_events_loading'));
+      content = async.hasError
+          ? GenericErrorWidget(
+              key: const ValueKey('smart_events_error'),
+              onRetry: () =>
+                  ref.invalidate(smartAggregateEventRepositoryProvider(query)),
+            )
+          : const _GamesShimmerList(key: ValueKey('smart_events_loading'));
     } else if (event.games.isEmpty) {
       content = _EmptyState(
         key: const ValueKey('smart_events_empty'),
         message:
             scope.searchQuery.isNotEmpty ||
-                    scope.filter.hasActiveFilters ||
-                    scope.tier != 'All'
-                ? 'No events match your filters'
-                : 'No events right now',
+                scope.filter.hasActiveFilters ||
+                scope.tier != 'All'
+            ? 'No events match your filters'
+            : 'No events right now',
       );
     } else {
       final games = event.games;
@@ -2612,8 +2612,16 @@ class _EventsTabState extends ConsumerState<_EventsTab>
       );
       final viewMode = ref.watch(gamesListViewModeProvider);
       final isGrid = viewMode == GamesListViewMode.chessBoardGrid;
-      final gridColumns =
-          ResponsiveHelper.isTablet && ResponsiveHelper.isLandscape ? 4 : 2;
+      final gridColumns = ResponsiveHelper.columnsForWidth(
+        MediaQuery.sizeOf(
+              context,
+            ).width.clamp(0, ResponsiveHelper.contentMaxWidth) -
+            2 * ResponsiveHelper.adaptive(phone: 16.sp, tablet: 24.sp),
+        minItemWidth: 220,
+        spacing: 16.sp,
+        minColumns: 2,
+        maxColumns: 4,
+      );
       final rows = _buildEventGameRows(
         event,
         gridColumns: isGrid ? gridColumns : 1,
@@ -2701,18 +2709,17 @@ class _EventsTabState extends ConsumerState<_EventsTab>
                           ) ...[
                             if (column > 0) SizedBox(width: 12.sp),
                             Expanded(
-                              child:
-                                  column < rowGames.length
-                                      ? _buildGridGame(
-                                        game: rowGames[column],
-                                        games: games,
-                                        gamesData: gamesData,
-                                        liveBatchKey:
-                                            liveBatchKeyByGameId[rowGames[column]
-                                                .gameId],
-                                        streamEnabled: streamEnabled,
-                                      )
-                                      : const SizedBox.shrink(),
+                              child: column < rowGames.length
+                                  ? _buildGridGame(
+                                      game: rowGames[column],
+                                      games: games,
+                                      gamesData: gamesData,
+                                      liveBatchKey:
+                                          liveBatchKeyByGameId[rowGames[column]
+                                              .gameId],
+                                      streamEnabled: streamEnabled,
+                                    )
+                                  : const SizedBox.shrink(),
                             ),
                           ],
                         ],

@@ -326,10 +326,37 @@ class _ReportsGamesState extends ConsumerState<_ReportsGames> {
     final gameType = ref.watch(reportsGameTypeProvider);
     final reports = ref.watch(reportsPaginationProvider);
     final mode = ref.watch(gamesListViewModeProvider);
-    final perRow = mode == GamesListViewMode.chessBoardGrid
-        ? (ResponsiveHelper.isTablet && ResponsiveHelper.isLandscape ? 4 : 2)
-        : 1;
     final items = _visibleItems(ref.watch(reportsGamesProvider));
+    return LayoutBuilder(
+      builder: (context, constraints) => _buildContent(
+        context,
+        constraints.maxWidth,
+        gameType: gameType,
+        reports: reports,
+        mode: mode,
+        items: items,
+      ),
+    );
+  }
+
+  Widget _buildContent(
+    BuildContext context,
+    double availableWidth, {
+    required ReportGameType? gameType,
+    required ReportsPaginationState reports,
+    required GamesListViewMode mode,
+    required List<GamesTourModel> items,
+  }) {
+    final perRow = mode == GamesListViewMode.chessBoardGrid
+        ? ResponsiveHelper.columnsForWidth(
+            availableWidth -
+                2 * ResponsiveHelper.adaptive(phone: 16.w, tablet: 24.w),
+            minItemWidth: 220,
+            spacing: 16.w,
+            minColumns: 2,
+            maxColumns: 4,
+          )
+        : 1;
     final rows = _rows(items, perRow);
     final horizontalPadding = ResponsiveHelper.adaptive(
       phone: 16.w,

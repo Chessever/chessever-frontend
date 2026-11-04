@@ -1,3 +1,4 @@
+import 'package:chessever2/widgets/window_metrics_dismissal.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/knockout_match_scroll_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_scroll_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/utils/knockout_match_detector.dart';
@@ -31,8 +32,9 @@ class _KnockoutMatchDropdownContent extends HookConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final matchScrollState = ref.watch(knockoutMatchScrollProvider);
-    final matches =
-        ref.read(knockoutMatchScrollProvider.notifier).getMatchHeaders();
+    final matches = ref
+        .read(knockoutMatchScrollProvider.notifier)
+        .getMatchHeaders();
 
     if (matches.isEmpty) {
       return const SizedBox.shrink();
@@ -112,9 +114,12 @@ class _MatchDropdown extends HookConsumerWidget {
                   Text(
                     _shortenMatchTitle(match.matchTitle),
                     style: AppTypography.textXsRegular.copyWith(
-                      color: isSelected ? context.colors.accentText : context.colors.textPrimary,
-                      fontWeight:
-                          isSelected ? FontWeight.w600 : FontWeight.w400,
+                      color: isSelected
+                          ? context.colors.accentText
+                          : context.colors.textPrimary,
+                      fontWeight: isSelected
+                          ? FontWeight.w600
+                          : FontWeight.w400,
                     ),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
@@ -220,88 +225,91 @@ class _MatchDropdown extends HookConsumerWidget {
           return;
         }
         final size = renderBox.size;
-        final offset = renderBox.localToGlobal(Offset.zero);
+        final overlayBox = overlay.context.findRenderObject() as RenderBox;
+        final offset = overlayBox.globalToLocal(
+          renderBox.localToGlobal(Offset.zero),
+        );
         final availableHeight =
-            MediaQuery.of(context).size.height - offset.dy - size.height - 20;
+            (MediaQuery.of(context).size.height - offset.dy - size.height - 20)
+                .clamp(0.0, double.infinity);
 
         overlayEntry = OverlayEntry(
-          builder:
-              (context) => GestureDetector(
-                behavior: HitTestBehavior.translucent,
-                onTap: () => isOpen.value = false,
-                child: Stack(
-                  children: [
-                    Positioned(
-                      left: offset.dx,
-                      top: offset.dy + size.height,
-                      width: 240.w,
-                      child: CompositedTransformFollower(
-                        link: layerLink,
-                        showWhenUnlinked: false,
-                        offset: Offset(-60.w, size.height),
-                        child: Material(
-                          color: Colors.transparent,
-                          child: ConstrainedBox(
-                            constraints: BoxConstraints(
-                              maxHeight: availableHeight,
-                              minWidth: size.width,
+          builder: (context) => WindowMetricsDismissal(
+            onChanged: () => isOpen.value = false,
+            child: GestureDetector(
+              behavior: HitTestBehavior.translucent,
+              onTap: () => isOpen.value = false,
+              child: Stack(
+                children: [
+                  Positioned(
+                    left: offset.dx,
+                    top: offset.dy + size.height,
+                    width: 240.w,
+                    child: CompositedTransformFollower(
+                      link: layerLink,
+                      showWhenUnlinked: false,
+                      offset: Offset(-60.w, size.height),
+                      child: Material(
+                        color: Colors.transparent,
+                        child: ConstrainedBox(
+                          constraints: BoxConstraints(
+                            maxHeight: availableHeight,
+                            minWidth: size.width,
+                          ),
+                          child: Container(
+                            decoration: BoxDecoration(
+                              color: context.colors.surface,
+                              borderRadius: BorderRadius.circular(20.br),
                             ),
-                            child: Container(
-                              decoration: BoxDecoration(
-                                color: context.colors.surface,
-                                borderRadius: BorderRadius.circular(20.br),
-                              ),
-                              padding: EdgeInsets.symmetric(vertical: 8.h),
-                              child: ListView.separated(
-                                padding: EdgeInsets.zero,
-                                shrinkWrap: true,
-                                itemCount: sortedMatches.length,
-                                separatorBuilder: (context, index) {
-                                  return Padding(
-                                    padding: EdgeInsets.symmetric(
-                                      vertical: 5.h,
-                                    ),
-                                    child: DividerWidget(),
-                                  );
-                                },
-                                itemBuilder: (context, index) {
-                                  final match = sortedMatches[index];
-                                  final isSelected =
-                                      match.matchKey == selectedMatch.matchKey;
+                            padding: EdgeInsets.symmetric(vertical: 8.h),
+                            child: ListView.separated(
+                              padding: EdgeInsets.zero,
+                              shrinkWrap: true,
+                              itemCount: sortedMatches.length,
+                              separatorBuilder: (context, index) {
+                                return Padding(
+                                  padding: EdgeInsets.symmetric(vertical: 5.h),
+                                  child: DividerWidget(),
+                                );
+                              },
+                              itemBuilder: (context, index) {
+                                final match = sortedMatches[index];
+                                final isSelected =
+                                    match.matchKey == selectedMatch.matchKey;
 
-                                  return InkWell(
-                                    onTap: () {
-                                      onChanged(match);
-                                      isOpen.value = false;
-                                    },
-                                    child: Container(
-                                      color:
-                                          isSelected
-                                              ? context.colors.surface.withValues(
-                                                alpha: 0.5,
-                                              )
-                                              : Colors.transparent,
-                                      padding: EdgeInsets.symmetric(
-                                        horizontal: 12.w,
-                                        vertical: 6.h,
-                                      ),
-                                      child: _buildMatchRow(
-                                        context,
-                                        match,
-                                        isSelected,
-                                      ),
+                                return InkWell(
+                                  onTap: () {
+                                    onChanged(match);
+                                    isOpen.value = false;
+                                  },
+                                  child: Container(
+                                    color: isSelected
+                                        ? context.colors.surface.withValues(
+                                            alpha: 0.5,
+                                          )
+                                        : Colors.transparent,
+                                    padding: EdgeInsets.symmetric(
+                                      horizontal: 12.w,
+                                      vertical: 6.h,
                                     ),
-                                  );
-                                },
-                              ),
+                                    child: _buildMatchRow(
+                                      context,
+                                      match,
+                                      isSelected,
+                                    ),
+                                  ),
+                                );
+                              },
                             ),
                           ),
                         ),
                       ),
                     ),
-                  ],
-                ),
+                  ),
+                ],
               ),
+            ),
+          ),
         );
         overlay.insert(overlayEntry!);
 

@@ -138,6 +138,9 @@ class _ChessBoardBottomNavBarState extends ConsumerState<ChessBoardBottomNavBar>
     }
   }
 
+  @override
+  void didChangeMetrics() => _hideVideoCoachmark();
+
   late final AnimationController _cameraPulse;
   late final Animation<double> _cameraScale = TweenSequence<double>([
     TweenSequenceItem(
@@ -386,12 +389,12 @@ class _ChessBoardBottomNavBarState extends ConsumerState<ChessBoardBottomNavBar>
     // Button sizing with tablet refinements
     final rawButtonWidth = contentWidth / buttonCount;
     // On tablets, limit individual button width for better touch targets
-    final buttonWidth =
-        isTablet ? math.min(rawButtonWidth, 140.0) : rawButtonWidth;
-    final barHeight =
-        isTablet
-            ? kBottomNavigationBarHeight + 14.0
-            : kBottomNavigationBarHeight;
+    final buttonWidth = isTablet
+        ? math.min(rawButtonWidth, 140.0)
+        : rawButtonWidth;
+    final barHeight = isTablet
+        ? kBottomNavigationBarHeight + 14.0
+        : kBottomNavigationBarHeight;
 
     // Watch the centralized engine depth status provider
     final depthSnapshot = ref.watch(engineDepthStatusProvider);
@@ -455,10 +458,9 @@ class _ChessBoardBottomNavBarState extends ConsumerState<ChessBoardBottomNavBar>
             key: _videoToggleTargetKey,
             width: buttonWidth,
             child: Tooltip(
-              message:
-                  widget.videoVisible
-                      ? 'Turn off the live stream'
-                      : 'Turn on the live stream',
+              message: widget.videoVisible
+                  ? 'Turn off the live stream'
+                  : 'Turn on the live stream',
               // The bar sits at the screen edge, so the bubble must open up.
               preferBelow: false,
               showDuration: const Duration(seconds: 4),
@@ -476,22 +478,21 @@ class _ChessBoardBottomNavBarState extends ConsumerState<ChessBoardBottomNavBar>
                 boxShadow: [
                   context.isLightTheme
                       ? BoxShadow(
-                        color: context.colors.shadow,
-                        blurRadius: 2,
-                        offset: const Offset(0, 1),
-                      )
+                          color: context.colors.shadow,
+                          blurRadius: 2,
+                          offset: const Offset(0, 1),
+                        )
                       : BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.35),
-                        blurRadius: 12,
-                        offset: const Offset(0, 4),
-                      ),
+                          color: Colors.black.withValues(alpha: 0.35),
+                          blurRadius: 12,
+                          offset: const Offset(0, 4),
+                        ),
                 ],
               ),
               textStyle: AppTypography.textSmSemiBold.copyWith(
-                color:
-                    context.isLightTheme
-                        ? context.colors.textInverse
-                        : kBackgroundColor,
+                color: context.isLightTheme
+                    ? context.colors.textInverse
+                    : kBackgroundColor,
               ),
               child: IconButton(
                 key: const ValueKey('board_video_toggle'),
@@ -549,14 +550,12 @@ class _ChessBoardBottomNavBarState extends ConsumerState<ChessBoardBottomNavBar>
     // Subtle translucency only while the explorer panel is open — enough to
     // hint that more games sit under the bar, without washing out the chrome.
     const explorerBarAlpha = 0.86;
-    final barColor =
-        widget.explorerPanelVisible
-            ? context.colors.background.withValues(alpha: explorerBarAlpha)
-            : context.colors.background;
-    final tabletSurface =
-        widget.explorerPanelVisible
-            ? context.colors.surface.withValues(alpha: explorerBarAlpha)
-            : context.colors.surface;
+    final barColor = widget.explorerPanelVisible
+        ? context.colors.background.withValues(alpha: explorerBarAlpha)
+        : context.colors.background;
+    final tabletSurface = widget.explorerPanelVisible
+        ? context.colors.surface.withValues(alpha: explorerBarAlpha)
+        : context.colors.surface;
 
     // Tablet-refined container with subtle top border
     final bar = Container(
@@ -564,18 +563,16 @@ class _ChessBoardBottomNavBarState extends ConsumerState<ChessBoardBottomNavBar>
       decoration: BoxDecoration(
         color: barColor,
         // Add subtle top border for visual separation on tablets
-        border:
-            isTablet
-                ? Border(
-                  top: BorderSide(
-                    color:
-                        context.isLightTheme
-                            ? context.colors.divider
-                            : Colors.white.withValues(alpha: 0.06),
-                    width: 1,
-                  ),
-                )
-                : null,
+        border: isTablet
+            ? Border(
+                top: BorderSide(
+                  color: context.isLightTheme
+                      ? context.colors.divider
+                      : Colors.white.withValues(alpha: 0.06),
+                  width: 1,
+                ),
+              )
+            : null,
       ),
       child: SafeArea(
         top: false,
@@ -645,10 +642,19 @@ class _LiveStreamCoachmark extends StatelessWidget {
     final popupWidth = math.min(screenWidth - 32, 380.0);
     final targetBox =
         targetKey.currentContext?.findRenderObject() as RenderBox?;
-    final targetTop = targetBox?.localToGlobal(Offset.zero).dy ?? screenHeight;
-    final targetCenterX =
-        targetBox?.localToGlobal(Offset(targetBox.size.width / 2, 0)).dx ??
-        screenWidth / 2;
+    final overlayBox =
+        Overlay.of(context, rootOverlay: true).context.findRenderObject()
+            as RenderBox;
+    final targetTop = targetBox == null
+        ? screenHeight
+        : overlayBox.globalToLocal(targetBox.localToGlobal(Offset.zero)).dy;
+    final targetCenterX = targetBox == null
+        ? screenWidth / 2
+        : overlayBox
+              .globalToLocal(
+                targetBox.localToGlobal(Offset(targetBox.size.width / 2, 0)),
+              )
+              .dx;
     final centeredLeft = targetCenterX - popupWidth / 2;
     final clampedLeft = centeredLeft.clamp(16.0, screenWidth - popupWidth - 16);
     final arrowLeft = (targetCenterX - clampedLeft - 8).clamp(
@@ -676,15 +682,15 @@ class _LiveStreamCoachmark extends StatelessWidget {
                       boxShadow: [
                         isLight
                             ? BoxShadow(
-                              color: context.colors.shadow,
-                              blurRadius: 2,
-                              offset: const Offset(0, 1),
-                            )
+                                color: context.colors.shadow,
+                                blurRadius: 2,
+                                offset: const Offset(0, 1),
+                              )
                             : BoxShadow(
-                              color: Colors.black.withValues(alpha: 0.35),
-                              blurRadius: 12,
-                              offset: const Offset(0, 4),
-                            ),
+                                color: Colors.black.withValues(alpha: 0.35),
+                                blurRadius: 12,
+                                offset: const Offset(0, 4),
+                              ),
                       ],
                     ),
                     child: Row(
@@ -748,12 +754,11 @@ class _DownArrowPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final path =
-        Path()
-          ..moveTo(0, 0)
-          ..lineTo(size.width, 0)
-          ..lineTo(size.width / 2, size.height)
-          ..close();
+    final path = Path()
+      ..moveTo(0, 0)
+      ..lineTo(size.width, 0)
+      ..lineTo(size.width / 2, size.height)
+      ..close();
     canvas.drawPath(path, Paint()..color = color);
   }
 

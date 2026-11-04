@@ -63,7 +63,8 @@ class DiscoveryDotAnchor extends ConsumerStatefulWidget {
   ConsumerState<DiscoveryDotAnchor> createState() => _DiscoveryDotAnchorState();
 }
 
-class _DiscoveryDotAnchorState extends ConsumerState<DiscoveryDotAnchor> {
+class _DiscoveryDotAnchorState extends ConsumerState<DiscoveryDotAnchor>
+    with WidgetsBindingObserver {
   Offset? _down;
   OverlayEntry? _bubble;
   Timer? _bubbleLife;
@@ -82,7 +83,17 @@ class _DiscoveryDotAnchorState extends ConsumerState<DiscoveryDotAnchor> {
   }
 
   @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void didChangeMetrics() => _removeBubble();
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _removeBubble();
     super.dispose();
   }
@@ -140,7 +151,9 @@ class _DiscoveryDotAnchorState extends ConsumerState<DiscoveryDotAnchor> {
       return;
     }
     _removeBubble();
-    final target = box.localToGlobal(Offset.zero) & box.size;
+    final overlayBox = overlay.context.findRenderObject() as RenderBox;
+    final target =
+        overlayBox.globalToLocal(box.localToGlobal(Offset.zero)) & box.size;
     final entry = OverlayEntry(
       builder: (_) => _DiscoveryBubbleLayer(
         target: target,

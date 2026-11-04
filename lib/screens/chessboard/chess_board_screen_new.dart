@@ -102,6 +102,8 @@ import 'package:chessever2/providers/pip_mode_provider.dart';
 // import 'package:chessever2/providers/keyboard_total_height_provider.dart'; // UNUSED: Removed with old dialog
 import 'package:chessever2/utils/figurine_notation.dart';
 import 'package:chessever2/utils/pgn_export_utils.dart';
+import 'package:chessever2/utils/adaptive_window.dart';
+import 'package:chessever2/screens/chessboard/utils/board_workspace_layout.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/share_card.dart';
 import 'package:chessever2/utils/string_utils.dart';
@@ -258,8 +260,8 @@ final boardExplorerPanelVisibleProvider = StateProvider<bool>((_) => false);
 
 // Board-local command: stored standalone Explorer preferences do not choose
 // the opening surface of a game. Only an explicit book-button tap toggles it.
-final boardExplorerToggleRequestProvider =
-    StateProvider.autoDispose.family<int, String>((ref, gameId) => 0);
+final boardExplorerToggleRequestProvider = StateProvider.autoDispose
+    .family<int, String>((ref, gameId) => 0);
 
 final _androidPipBoardRecoveryEpochProvider = StateProvider.family<int, String>(
   (_, _) => 0,
@@ -3266,7 +3268,8 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
                 canShowContextual: () =>
                     !_walkthroughCheckPending &&
                     !_pinchTutorialCheckPending &&
-                    ref.read(likeNudgeOfferProvider(_currentPageIndex)) == null &&
+                    ref.read(likeNudgeOfferProvider(_currentPageIndex)) ==
+                        null &&
                     !_showTutorialOverlay &&
                     !_showPinchTutorial &&
                     !_gameSwitcher.isOpen &&
@@ -3473,7 +3476,8 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
 
     final videoLookup = (
       gameId: currentGame.gameId,
-      pgn: currentGame.gameStatus.isFinished ||
+      pgn:
+          currentGame.gameStatus.isFinished ||
               currentGame.source != GameSource.supabase
           ? currentGame.pgn
           : null,
@@ -3573,7 +3577,8 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
                                       _isProgrammaticPageJump ||
                                       _isRouteCovered ||
                                       _isLifecycleBackgrounded ||
-                                      ModalRoute.of(context)?.isCurrent != true) {
+                                      ModalRoute.of(context)?.isCurrent !=
+                                          true) {
                                     _swipeLearningGesture.reset();
                                     return false;
                                   }
@@ -3874,7 +3879,7 @@ class _SwipeTutorialOverlay extends StatefulWidget {
 
 class _SwipeTutorialOverlayState extends State<_SwipeTutorialOverlay>
     with SingleTickerProviderStateMixin {
-  double _opacityTarget = 0.0;
+  double _opacityTarget = 1.0;
   bool _isExiting = false;
   late AnimationController _timerController;
 
@@ -3956,245 +3961,248 @@ class _SwipeTutorialOverlayState extends State<_SwipeTutorialOverlay>
               child: Stack(
                 children: [
                   // Main Content: Bubble + Hand (Centered together)
-                  Center(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        // Modern Message Bubble (Floating Card) with Timer Border
-                        SizedBox(
-                          width: 280.w,
-                          child: Stack(
-                            clipBehavior: Clip.none,
-                            alignment: Alignment.topCenter,
-                            children: [
-                              // Card Background with Progress Border
-                              AnimatedBuilder(
-                                animation: _timerController,
-                                builder: (context, child) {
-                                  return CustomPaint(
-                                    foregroundPainter: _BorderProgressPainter(
-                                      progress: _timerController.value,
-                                      color: kPrimaryColor,
-                                      strokeWidth: 3.0,
-                                      borderRadius: 28.br,
-                                    ),
-                                    child: Container(
-                                      padding: EdgeInsets.fromLTRB(
-                                        24.w,
-                                        36.h,
-                                        24.w,
-                                        24.h,
+                  Positioned.fill(
+                    child: BoardCoachmarkViewport(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          // Modern Message Bubble (Floating Card) with Timer Border
+                          SizedBox(
+                            width: 280.w,
+                            child: Stack(
+                              clipBehavior: Clip.none,
+                              alignment: Alignment.topCenter,
+                              children: [
+                                // Card Background with Progress Border
+                                AnimatedBuilder(
+                                  animation: _timerController,
+                                  builder: (context, child) {
+                                    return CustomPaint(
+                                      foregroundPainter: _BorderProgressPainter(
+                                        progress: _timerController.value,
+                                        color: kPrimaryColor,
+                                        strokeWidth: 3.0,
+                                        borderRadius: 28.br,
                                       ),
-                                      decoration: BoxDecoration(
-                                        // Tutorial card sits on top of a dark
-                                        // dim scrim in both themes, so it stays
-                                        // white with black text for clarity.
-                                        color: Colors.white,
-                                        borderRadius: BorderRadius.circular(
-                                          28.br,
-                                        ),
-                                        boxShadow: [
-                                          BoxShadow(
-                                            color: Colors.black.withValues(
-                                              alpha: 0.3,
-                                            ),
-                                            blurRadius: 30,
-                                            offset: const Offset(0, 12),
-                                            spreadRadius: 0,
-                                          ),
-                                        ],
-                                      ),
-                                      child: Column(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          if (widget.totalSteps > 1 &&
-                                              widget.currentStep > 0) ...[
-                                            TutorialStepIndicator(
-                                              currentStep: widget.currentStep,
-                                              totalSteps: widget.totalSteps,
-                                            ),
-                                            SizedBox(height: 10.h),
-                                          ],
-                                          Text(
-                                            'Swipe to Browse',
-                                            style: AppTypography.textLgBold
-                                                .copyWith(
-                                                  color: kBlackColor,
-                                                  height: 1.2,
-                                                  letterSpacing: -0.5,
-                                                ),
-                                            textAlign: TextAlign.center,
-                                          ),
-                                          SizedBox(height: 8.h),
-                                          Text(
-                                            'Swipe left or right to browse other games in this list.',
-                                            style: AppTypography.textSmMedium
-                                                .copyWith(
-                                                  color: kBlackColor.withValues(
-                                                    alpha: 0.6,
-                                                  ),
-                                                  height: 1.4,
-                                                ),
-                                            textAlign: TextAlign.center,
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  );
-                                },
-                              ),
-                              // Floating Playful Icon
-                              Positioned(
-                                top: -20.h,
-                                child: Container(
-                                  padding: EdgeInsets.all(10.sp),
-                                  decoration: BoxDecoration(
-                                    color: kPrimaryColor,
-                                    shape: BoxShape.circle,
-                                    boxShadow: context.isLightTheme
-                                        ? null
-                                        : [
-                                            BoxShadow(
-                                              color: kPrimaryColor.withValues(
-                                                alpha: 0.4,
-                                              ),
-                                              blurRadius: 12,
-                                              offset: const Offset(0, 6),
-                                            ),
-                                          ],
-                                    border: Border.all(
-                                      color: Colors.white,
-                                      width: 3,
-                                    ),
-                                  ),
-                                  child: Icon(
-                                    Icons.view_carousel_rounded,
-                                    // Paper: accent ink (white on cyan is 2.4:1).
-                                    color: context.isLightTheme
-                                        ? context.colors.inkOnAccent
-                                        : Colors.white,
-                                    size: 22.sp,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        SizedBox(height: 48.h), // Gap between bubble and hand
-                        // Hand Animation
-                        SizedBox(
-                          height: 120
-                              .h, // Reserve space for hand movement vertically
-                          width: double.infinity,
-                          child: AnimatedBuilder(
-                            animation: widget.animationController,
-                            builder: (context, child) {
-                              if (!widget.animationController.isAnimating) {
-                                return const SizedBox.shrink();
-                              }
-
-                              final width = MediaQuery.sizeOf(context).width;
-                              bool canGoNext =
-                                  widget.currentPageIndex <
-                                  widget.totalItems - 1;
-                              double direction = canGoNext ? 1.0 : -1.0;
-
-                              // Reduce drag distance slightly for better visual within column
-                              double maxDrag = width * 0.5;
-                              double handTranslation =
-                                  -1 *
-                                  widget.moveAnimation.value *
-                                  maxDrag *
-                                  direction;
-
-                              return Opacity(
-                                opacity: widget.fadeAnimation.value,
-                                child: Transform.translate(
-                                  offset: Offset(handTranslation, 0),
-                                  child: Transform.scale(
-                                    scale: widget.scaleAnimation.value,
-                                    child: Center(
                                       child: Container(
+                                        padding: EdgeInsets.fromLTRB(
+                                          24.w,
+                                          36.h,
+                                          24.w,
+                                          24.h,
+                                        ),
                                         decoration: BoxDecoration(
-                                          color: Colors.white.withValues(
-                                            alpha: 0.15,
+                                          // Tutorial card sits on top of a dark
+                                          // dim scrim in both themes, so it stays
+                                          // white with black text for clarity.
+                                          color: Colors.white,
+                                          borderRadius: BorderRadius.circular(
+                                            28.br,
                                           ),
-                                          shape: BoxShape.circle,
                                           boxShadow: [
                                             BoxShadow(
                                               color: Colors.black.withValues(
                                                 alpha: 0.3,
                                               ),
-                                              blurRadius: 20,
-                                              spreadRadius: 5,
+                                              blurRadius: 30,
+                                              offset: const Offset(0, 12),
+                                              spreadRadius: 0,
                                             ),
                                           ],
                                         ),
-                                        padding: EdgeInsets.all(24.sp),
-                                        child: Icon(
-                                          Icons.touch_app_rounded,
-                                          size: 52.sp,
-                                          color: Colors.white,
-                                          shadows: [
-                                            BoxShadow(
-                                              color: Colors.black.withValues(
-                                                alpha: 0.5,
+                                        child: Column(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            if (widget.totalSteps > 1 &&
+                                                widget.currentStep > 0) ...[
+                                              TutorialStepIndicator(
+                                                currentStep: widget.currentStep,
+                                                totalSteps: widget.totalSteps,
                                               ),
-                                              blurRadius: 10,
-                                              offset: const Offset(0, 4),
+                                              SizedBox(height: 10.h),
+                                            ],
+                                            Text(
+                                              'Swipe to Browse',
+                                              style: AppTypography.textLgBold
+                                                  .copyWith(
+                                                    color: kBlackColor,
+                                                    height: 1.2,
+                                                    letterSpacing: -0.5,
+                                                  ),
+                                              textAlign: TextAlign.center,
+                                            ),
+                                            SizedBox(height: 8.h),
+                                            Text(
+                                              'Swipe left or right to browse other games in this list.',
+                                              style: AppTypography.textSmMedium
+                                                  .copyWith(
+                                                    color: kBlackColor
+                                                        .withValues(alpha: 0.6),
+                                                    height: 1.4,
+                                                  ),
+                                              textAlign: TextAlign.center,
                                             ),
                                           ],
                                         ),
                                       ),
+                                    );
+                                  },
+                                ),
+                                // Floating Playful Icon
+                                Positioned(
+                                  top: -20.h,
+                                  child: Container(
+                                    padding: EdgeInsets.all(10.sp),
+                                    decoration: BoxDecoration(
+                                      color: kPrimaryColor,
+                                      shape: BoxShape.circle,
+                                      boxShadow: context.isLightTheme
+                                          ? null
+                                          : [
+                                              BoxShadow(
+                                                color: kPrimaryColor.withValues(
+                                                  alpha: 0.4,
+                                                ),
+                                                blurRadius: 12,
+                                                offset: const Offset(0, 6),
+                                              ),
+                                            ],
+                                      border: Border.all(
+                                        color: Colors.white,
+                                        width: 3,
+                                      ),
+                                    ),
+                                    child: Icon(
+                                      Icons.view_carousel_rounded,
+                                      // Paper: accent ink (white on cyan is 2.4:1).
+                                      color: context.isLightTheme
+                                          ? context.colors.inkOnAccent
+                                          : Colors.white,
+                                      size: 22.sp,
                                     ),
                                   ),
                                 ),
-                              );
-                            },
+                              ],
+                            ),
                           ),
-                        ),
-                        SizedBox(height: 48.h), // Gap before control buttons
-                        // Control Buttons - Now inside the centered column
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            TextButton(
-                              onPressed: _handleDontShowAgain,
-                              style: TextButton.styleFrom(
-                                foregroundColor: Colors.white.withValues(
-                                  alpha: 0.6,
-                                ),
-                              ),
-                              child: Text(
-                                "Don't show again",
-                                style: AppTypography.textSmMedium,
-                              ),
+                          SizedBox(height: 48.h), // Gap between bubble and hand
+                          // Hand Animation
+                          SizedBox(
+                            height: 120
+                                .h, // Reserve space for hand movement vertically
+                            width: double.infinity,
+                            child: AnimatedBuilder(
+                              animation: widget.animationController,
+                              builder: (context, child) {
+                                if (!widget.animationController.isAnimating) {
+                                  return const SizedBox.shrink();
+                                }
+
+                                final width = MediaQuery.sizeOf(context).width;
+                                bool canGoNext =
+                                    widget.currentPageIndex <
+                                    widget.totalItems - 1;
+                                double direction = canGoNext ? 1.0 : -1.0;
+
+                                // Reduce drag distance slightly for better visual within column
+                                double maxDrag = width * 0.5;
+                                double handTranslation =
+                                    -1 *
+                                    widget.moveAnimation.value *
+                                    maxDrag *
+                                    direction;
+
+                                return Opacity(
+                                  opacity: widget.fadeAnimation.value,
+                                  child: Transform.translate(
+                                    offset: Offset(handTranslation, 0),
+                                    child: Transform.scale(
+                                      scale: widget.scaleAnimation.value,
+                                      child: Center(
+                                        child: Container(
+                                          decoration: BoxDecoration(
+                                            color: Colors.white.withValues(
+                                              alpha: 0.15,
+                                            ),
+                                            shape: BoxShape.circle,
+                                            boxShadow: [
+                                              BoxShadow(
+                                                color: Colors.black.withValues(
+                                                  alpha: 0.3,
+                                                ),
+                                                blurRadius: 20,
+                                                spreadRadius: 5,
+                                              ),
+                                            ],
+                                          ),
+                                          padding: EdgeInsets.all(24.sp),
+                                          child: Icon(
+                                            Icons.touch_app_rounded,
+                                            size: 52.sp,
+                                            color: Colors.white,
+                                            shadows: [
+                                              BoxShadow(
+                                                color: Colors.black.withValues(
+                                                  alpha: 0.5,
+                                                ),
+                                                blurRadius: 10,
+                                                offset: const Offset(0, 4),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                );
+                              },
                             ),
-                            SizedBox(width: 24.w),
-                            TextButton(
-                              onPressed: animateOut,
-                              style: TextButton.styleFrom(
-                                foregroundColor: Colors.white,
-                                backgroundColor: Colors.white.withValues(
-                                  alpha: 0.1,
+                          ),
+                          SizedBox(height: 48.h), // Gap before control buttons
+                          // Control Buttons - Now inside the centered column
+                          Wrap(
+                            alignment: WrapAlignment.center,
+                            crossAxisAlignment: WrapCrossAlignment.center,
+                            spacing: 24.w,
+                            runSpacing: 8.h,
+                            children: [
+                              TextButton(
+                                onPressed: _handleDontShowAgain,
+                                style: TextButton.styleFrom(
+                                  foregroundColor: Colors.white.withValues(
+                                    alpha: 0.6,
+                                  ),
                                 ),
-                                padding: EdgeInsets.symmetric(
-                                  horizontal: 24.w,
-                                  vertical: 12.h,
-                                ),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(30.br),
+                                child: Text(
+                                  "Don't show again",
+                                  style: AppTypography.textSmMedium,
                                 ),
                               ),
-                              child: Text(
-                                'OK',
-                                style: AppTypography.textSmBold,
+                              TextButton(
+                                onPressed: animateOut,
+                                style: TextButton.styleFrom(
+                                  foregroundColor: Colors.white,
+                                  backgroundColor: Colors.white.withValues(
+                                    alpha: 0.1,
+                                  ),
+                                  padding: EdgeInsets.symmetric(
+                                    horizontal: 24.w,
+                                    vertical: 12.h,
+                                  ),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(30.br),
+                                  ),
+                                ),
+                                child: Text(
+                                  'OK',
+                                  style: AppTypography.textSmBold,
+                                ),
                               ),
-                            ),
-                          ],
-                        ),
-                      ],
+                            ],
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 ],
@@ -4429,7 +4437,7 @@ class _LoadingScreen extends StatelessWidget {
       contentMaxWidth = fullScreenWidth;
     }
 
-    final boardSize = contentMaxWidth - sideBarWidth - 32.w;
+    final preferredBoardSize = contentMaxWidth - sideBarWidth - 32.w;
 
     final scaffold = Scaffold(
       backgroundColor: context.colors.background,
@@ -4443,186 +4451,196 @@ class _LoadingScreen extends StatelessWidget {
         hideEventInfo: hideEventInfo,
         isActivePage: isActivePage,
       ),
-      body: Center(
-        child: ConstrainedBox(
-          constraints: BoxConstraints(maxWidth: contentMaxWidth),
-          child: Skeletonizer(
-            enabled: true,
-            child: Column(
-              children: [
-                // Top player skeleton
-                Container(
-                  margin: EdgeInsets.symmetric(horizontal: 16.w, vertical: 8.h),
-                  padding: EdgeInsets.all(8.sp),
-                  decoration: BoxDecoration(
-                    color: context.colors.surface,
-                    borderRadius: BorderRadius.circular(8.br),
-                  ),
-                  child: Row(
-                    children: [
-                      Container(
-                        width: 40.w,
-                        height: 40.h,
-                        decoration: BoxDecoration(
-                          color: context.colors.textPrimary.withValues(
-                            alpha: 0.1,
-                          ),
-                          shape: BoxShape.circle,
-                        ),
+      body: LayoutBuilder(
+        builder: (context, constraints) {
+          final boardSize = math.max(
+            1.0,
+            math.min(preferredBoardSize, constraints.maxHeight - 220.sp),
+          );
+          return Center(
+            child: ConstrainedBox(
+              constraints: BoxConstraints(maxWidth: contentMaxWidth),
+              child: Skeletonizer(
+                enabled: true,
+                child: Column(
+                  children: [
+                    // Top player skeleton
+                    Container(
+                      margin: EdgeInsets.symmetric(
+                        horizontal: 16.w,
+                        vertical: 8.h,
                       ),
-                      SizedBox(width: 8.w),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Container(
-                              width: 120.w,
+                      padding: EdgeInsets.all(8.sp),
+                      decoration: BoxDecoration(
+                        color: context.colors.surface,
+                        borderRadius: BorderRadius.circular(8.br),
+                      ),
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 40.w,
+                            height: 40.h,
+                            decoration: BoxDecoration(
+                              color: context.colors.textPrimary.withValues(
+                                alpha: 0.1,
+                              ),
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                          SizedBox(width: 8.w),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Container(
+                                  width: 120.w,
+                                  height: 14.h,
+                                  decoration: BoxDecoration(
+                                    color: context.colors.textPrimary
+                                        .withValues(alpha: 0.1),
+                                    borderRadius: BorderRadius.circular(4.br),
+                                  ),
+                                ),
+                                SizedBox(height: 4.h),
+                                Container(
+                                  width: 60.w,
+                                  height: 12.h,
+                                  decoration: BoxDecoration(
+                                    color: context.colors.textPrimary
+                                        .withValues(alpha: 0.1),
+                                    borderRadius: BorderRadius.circular(4.br),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    SizedBox(height: 2.h),
+                    // Board skeleton
+                    Container(
+                      margin: EdgeInsets.symmetric(horizontal: 16.sp),
+                      child: Row(
+                        children: [
+                          // Eval bar skeleton
+                          Container(
+                            width: sideBarWidth,
+                            height: boardSize,
+                            decoration: BoxDecoration(
+                              color: context.colors.textPrimary.withValues(
+                                alpha: 0.05,
+                              ),
+                              borderRadius: BorderRadius.circular(4.br),
+                            ),
+                          ),
+                          // Board skeleton
+                          Container(
+                            width: boardSize,
+                            height: boardSize,
+                            decoration: BoxDecoration(
+                              color: context.colors.textPrimary.withValues(
+                                alpha: 0.05,
+                              ),
+                              borderRadius: BorderRadius.circular(4.br),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    SizedBox(height: 2.h),
+                    // Bottom player skeleton
+                    Container(
+                      margin: EdgeInsets.symmetric(
+                        horizontal: 16.w,
+                        vertical: 8.h,
+                      ),
+                      padding: EdgeInsets.all(8.sp),
+                      decoration: BoxDecoration(
+                        color: context.colors.surface,
+                        borderRadius: BorderRadius.circular(8.br),
+                      ),
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 40.w,
+                            height: 40.h,
+                            decoration: BoxDecoration(
+                              color: context.colors.textPrimary.withValues(
+                                alpha: 0.1,
+                              ),
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                          SizedBox(width: 8.w),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Container(
+                                  width: 120.w,
+                                  height: 14.h,
+                                  decoration: BoxDecoration(
+                                    color: context.colors.textPrimary
+                                        .withValues(alpha: 0.1),
+                                    borderRadius: BorderRadius.circular(4.br),
+                                  ),
+                                ),
+                                SizedBox(height: 4.h),
+                                Container(
+                                  width: 60.w,
+                                  height: 12.h,
+                                  decoration: BoxDecoration(
+                                    color: context.colors.textPrimary
+                                        .withValues(alpha: 0.1),
+                                    borderRadius: BorderRadius.circular(4.br),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    // Moves area skeleton
+                    Expanded(
+                      child: Container(
+                        width: double.infinity,
+                        margin: EdgeInsets.only(top: 8.h),
+                        decoration: BoxDecoration(
+                          color: context.colors.surfaceRecessed.withValues(
+                            alpha: 0.3,
+                          ),
+                          borderRadius: BorderRadius.only(
+                            topLeft: Radius.circular(12.sp),
+                            topRight: Radius.circular(12.sp),
+                          ),
+                        ),
+                        padding: EdgeInsets.all(20.sp),
+                        child: Wrap(
+                          spacing: 6.sp,
+                          runSpacing: 6.sp,
+                          children: List.generate(8, (index) {
+                            return Container(
+                              width: (35 + (index % 5) * 20).w,
                               height: 14.h,
                               decoration: BoxDecoration(
                                 color: context.colors.textPrimary.withValues(
-                                  alpha: 0.1,
+                                  alpha: 0.05,
                                 ),
-                                borderRadius: BorderRadius.circular(4.br),
+                                borderRadius: BorderRadius.circular(3.sp),
                               ),
-                            ),
-                            SizedBox(height: 4.h),
-                            Container(
-                              width: 60.w,
-                              height: 12.h,
-                              decoration: BoxDecoration(
-                                color: context.colors.textPrimary.withValues(
-                                  alpha: 0.1,
-                                ),
-                                borderRadius: BorderRadius.circular(4.br),
-                              ),
-                            ),
-                          ],
+                            );
+                          }),
                         ),
-                      ),
-                    ],
-                  ),
-                ),
-                SizedBox(height: 2.h),
-                // Board skeleton
-                Container(
-                  margin: EdgeInsets.symmetric(horizontal: 16.sp),
-                  child: Row(
-                    children: [
-                      // Eval bar skeleton
-                      Container(
-                        width: sideBarWidth,
-                        height: boardSize,
-                        decoration: BoxDecoration(
-                          color: context.colors.textPrimary.withValues(
-                            alpha: 0.05,
-                          ),
-                          borderRadius: BorderRadius.circular(4.br),
-                        ),
-                      ),
-                      // Board skeleton
-                      Container(
-                        width: boardSize,
-                        height: boardSize,
-                        decoration: BoxDecoration(
-                          color: context.colors.textPrimary.withValues(
-                            alpha: 0.05,
-                          ),
-                          borderRadius: BorderRadius.circular(4.br),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                SizedBox(height: 2.h),
-                // Bottom player skeleton
-                Container(
-                  margin: EdgeInsets.symmetric(horizontal: 16.w, vertical: 8.h),
-                  padding: EdgeInsets.all(8.sp),
-                  decoration: BoxDecoration(
-                    color: context.colors.surface,
-                    borderRadius: BorderRadius.circular(8.br),
-                  ),
-                  child: Row(
-                    children: [
-                      Container(
-                        width: 40.w,
-                        height: 40.h,
-                        decoration: BoxDecoration(
-                          color: context.colors.textPrimary.withValues(
-                            alpha: 0.1,
-                          ),
-                          shape: BoxShape.circle,
-                        ),
-                      ),
-                      SizedBox(width: 8.w),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Container(
-                              width: 120.w,
-                              height: 14.h,
-                              decoration: BoxDecoration(
-                                color: context.colors.textPrimary.withValues(
-                                  alpha: 0.1,
-                                ),
-                                borderRadius: BorderRadius.circular(4.br),
-                              ),
-                            ),
-                            SizedBox(height: 4.h),
-                            Container(
-                              width: 60.w,
-                              height: 12.h,
-                              decoration: BoxDecoration(
-                                color: context.colors.textPrimary.withValues(
-                                  alpha: 0.1,
-                                ),
-                                borderRadius: BorderRadius.circular(4.br),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                // Moves area skeleton
-                Expanded(
-                  child: Container(
-                    width: double.infinity,
-                    margin: EdgeInsets.only(top: 8.h),
-                    decoration: BoxDecoration(
-                      color: context.colors.surfaceRecessed.withValues(
-                        alpha: 0.3,
-                      ),
-                      borderRadius: BorderRadius.only(
-                        topLeft: Radius.circular(12.sp),
-                        topRight: Radius.circular(12.sp),
                       ),
                     ),
-                    padding: EdgeInsets.all(20.sp),
-                    child: Wrap(
-                      spacing: 6.sp,
-                      runSpacing: 6.sp,
-                      children: List.generate(8, (index) {
-                        return Container(
-                          width: (35 + (index % 5) * 20).w,
-                          height: 14.h,
-                          decoration: BoxDecoration(
-                            color: context.colors.textPrimary.withValues(
-                              alpha: 0.05,
-                            ),
-                            borderRadius: BorderRadius.circular(3.sp),
-                          ),
-                        );
-                      }),
-                    ),
-                  ),
+                  ],
                 ),
-              ],
+              ),
             ),
-          ),
-        ),
+          );
+        },
       ),
     );
     return MediaQuery.removeViewInsets(
@@ -4840,8 +4858,14 @@ class _AppBarState extends ConsumerState<_AppBar> {
         if (!await requireFullAuthGuard(context) || !mounted) return;
         final videoGame = await _resolveAppBarShareData();
         if (!mounted) return;
-        await Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) =>
-          GameVideoSubmissionScreen(gameId: widget.game.gameId, pgn: videoGame.pgn)));
+        await Navigator.of(context).push(
+          MaterialPageRoute<void>(
+            builder: (_) => GameVideoSubmissionScreen(
+              gameId: widget.game.gameId,
+              pgn: videoGame.pgn,
+            ),
+          ),
+        );
       case 'watch':
         await _watchInFeed();
       case 'board_settings':
@@ -5986,23 +6010,24 @@ class _TabletPopupMenuWrapper extends StatefulWidget {
 class _TabletPopupMenuWrapperState extends State<_TabletPopupMenuWrapper>
     with WidgetsBindingObserver {
   bool _wasPopupOpen = false;
+  bool _observing = false;
 
   @override
   void initState() {
     super.initState();
     if (ResponsiveHelper.isTablet) {
       WidgetsBinding.instance.addObserver(this);
+      _observing = true;
     }
   }
 
   @override
   void dispose() {
-    if (ResponsiveHelper.isTablet) {
+    if (_observing) {
       WidgetsBinding.instance.removeObserver(this);
-      // Clean up if we had marked a popup as open
-      if (_wasPopupOpen) {
-        _ChessBoardPopupState.markClosed();
-      }
+    }
+    if (_wasPopupOpen) {
+      _ChessBoardPopupState.markClosed();
     }
     super.dispose();
   }
@@ -6303,16 +6328,21 @@ class _GameDropdownOverlay extends StatelessWidget {
     // Board content sits inset by 16.sp inside the column (eval bar + board).
     final horizontalMargin = 16.sp;
     final dropdownWidth = math.max(
-      280.0,
-      boardColumnWidth - horizontalMargin * 2,
+      1.0,
+      math.min(
+        screenWidth - horizontalMargin * 2,
+        math.max(280.0, boardColumnWidth - horizontalMargin * 2),
+      ),
     );
-    final leftOffset = (screenWidth - boardColumnWidth) / 2 + horizontalMargin;
+    final leftOffset = ((screenWidth - boardColumnWidth) / 2 + horizontalMargin)
+        .clamp(0.0, math.max(0.0, screenWidth - dropdownWidth))
+        .toDouble();
     // Gap under the app-bar chip — tight so the panel visually continues
     // into the board area rather than floating mid-air.
     final topOffset = triggerRect.bottom + 6.sp;
     // Cap height so the panel does not swallow the whole board; keep enough
     // room for one full selector card + timeline.
-    final maxPanelHeight = availableHeight.clamp(200.0, 420.0);
+    final maxPanelHeight = availableHeight.clamp(0.0, 420.0);
 
     // On tablets, we need to be more careful about gesture handling.
     // The PageView underneath can compete for gestures, causing the dropdown
@@ -6827,138 +6857,140 @@ class _GameDropdownContentState extends ConsumerState<_GameDropdownContent> {
     // height and shrink the board strip so nothing overflows the board-aligned
     // box.
     final boxHeight = math.min(preferredContentHeight, widget.availableHeight);
-    final stripHeight = math.max(
-      120.0,
-      boxHeight - verticalPad - timelineSpace,
-    );
+    final stripHeight = preferredCardRowHeight;
 
     return SizedBox(
       width: widget.dropdownWidth,
       height: boxHeight,
-      child: Padding(
-        padding: EdgeInsets.symmetric(vertical: _verticalPadding.h),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            SizedBox(
-              height: stripHeight,
-              child: ScrollConfiguration(
-                behavior: ScrollConfiguration.of(
-                  context,
-                ).copyWith(scrollbars: false),
-                child: ListView.separated(
-                  controller: _scrollController,
-                  scrollDirection: Axis.horizontal,
-                  padding: EdgeInsets.symmetric(
-                    horizontal: _gameStripLeadingPad.w,
-                  ),
-                  itemCount: widget.games.length,
-                  separatorBuilder: (_, index) => _buildSeparator(index),
-                  itemBuilder: (context, index) {
-                    final game = widget.games[index];
-                    final isSelected = index == widget.currentGameIndex;
-                    final itemDelay = index * 0.04;
-                    // CurveTween owns no status listener. CurvedAnimation
-                    // created here leaked one status listener per rebuilt
-                    // card for the lifetime of the board route.
-                    final itemAnimation = widget.animation.drive(
-                      CurveTween(
-                        curve: Interval(
-                          itemDelay.clamp(0.0, 0.4),
-                          (itemDelay + 0.5).clamp(0.0, 1.0),
-                          curve: Curves.easeOutCubic,
-                        ),
-                      ),
-                    );
-
-                    return AnimatedBuilder(
-                      animation: itemAnimation,
-                      builder: (context, child) {
-                        final v = itemAnimation.value.clamp(0.0, 1.0);
-                        return Transform.translate(
-                          offset: Offset(0, 8 * (1 - v)),
-                          child: child,
-                        );
-                      },
-                      child: _GameSelectorCard(
-                        game: game,
-                        isSelected: isSelected,
-                        liveBatchKey: liveBatchKeys[game.gameId],
-                        viewSource: widget.viewSource,
-                        gamesContext: widget.games,
-                        playerProfileDataSource: widget.playerProfileDataSource,
-                        onTap: () {
-                          HapticFeedback.selectionClick();
-                          // Any game tap dismisses the popdown. Re-tapping the
-                          // current game is still a selection — parent no-ops
-                          // navigation and closes the panel.
-                          widget.onSelect(index);
-                        },
-                      ),
-                    );
-                  },
-                ),
-              ),
-            ),
-            if (showTimeline) ...[
-              SizedBox(height: _sectionGap.h),
+      // Short landscape windows scroll the complete cards instead of clipping
+      // either player's name or reducing a chessboard to a partial rectangle.
+      child: SingleChildScrollView(
+        child: Padding(
+          padding: EdgeInsets.symmetric(vertical: _verticalPadding.h),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
               SizedBox(
-                height: _timelineHeight.h,
-                width: widget.dropdownWidth,
-                child: ListenableBuilder(
-                  listenable: _scrollController,
-                  builder: (context, _) {
-                    // `hasClients` only means a ScrollPosition is attached — it
-                    // can still be pre-layout (no pixels/viewport measured yet),
-                    // where those getters null-check-crash. Guard first.
-                    final position = _scrollController.hasClients
-                        ? _scrollController.position
-                        : null;
-                    final ready =
-                        position != null &&
-                        position.hasPixels &&
-                        position.hasContentDimensions;
-                    final stride = _gameSelectorCardWidth.w + _cardSpacing.w;
-                    final leadingPad = _gameStripLeadingPad.w;
-                    final lastIndex = widget.games.length - 1;
-
-                    // Focused game = the card whose stride-wide region contains
-                    // the viewport center. A floor (region) mapping — not a
-                    // round-to-nearest — so the index changes monotonically and
-                    // flips only once, when the center crosses into the next
-                    // card's region (no boundary oscillation).
-                    final int focusedIndex;
-                    if (ready) {
-                      final centerX =
-                          position.pixels + position.viewportDimension / 2;
-                      focusedIndex = stride <= 0
-                          ? 0
-                          : ((centerX - leadingPad) / stride).floor().clamp(
-                              0,
-                              lastIndex,
-                            );
-                    } else {
-                      focusedIndex = widget.currentGameIndex.clamp(
-                        0,
-                        lastIndex,
+                height: stripHeight,
+                child: ScrollConfiguration(
+                  behavior: ScrollConfiguration.of(
+                    context,
+                  ).copyWith(scrollbars: false),
+                  child: ListView.separated(
+                    controller: _scrollController,
+                    scrollDirection: Axis.horizontal,
+                    padding: EdgeInsets.symmetric(
+                      horizontal: _gameStripLeadingPad.w,
+                    ),
+                    itemCount: widget.games.length,
+                    separatorBuilder: (_, index) => _buildSeparator(index),
+                    itemBuilder: (context, index) {
+                      final game = widget.games[index];
+                      final isSelected = index == widget.currentGameIndex;
+                      final itemDelay = index * 0.04;
+                      // CurveTween owns no status listener. CurvedAnimation
+                      // created here leaked one status listener per rebuilt
+                      // card for the lifetime of the board route.
+                      final itemAnimation = widget.animation.drive(
+                        CurveTween(
+                          curve: Interval(
+                            itemDelay.clamp(0.0, 0.4),
+                            (itemDelay + 0.5).clamp(0.0, 1.0),
+                            curve: Curves.easeOutCubic,
+                          ),
+                        ),
                       );
-                    }
-                    final activeIndex = _activeRoundIndex(
-                      roundGroups,
-                      focusedIndex,
-                    );
 
-                    return _StickyRoundTimeline(
-                      groups: roundGroups,
-                      activeIndex: activeIndex,
-                      onTapRound: _scrollToRoundStart,
-                    );
-                  },
+                      return AnimatedBuilder(
+                        animation: itemAnimation,
+                        builder: (context, child) {
+                          final v = itemAnimation.value.clamp(0.0, 1.0);
+                          return Transform.translate(
+                            offset: Offset(0, 8 * (1 - v)),
+                            child: child,
+                          );
+                        },
+                        child: _GameSelectorCard(
+                          game: game,
+                          isSelected: isSelected,
+                          liveBatchKey: liveBatchKeys[game.gameId],
+                          viewSource: widget.viewSource,
+                          gamesContext: widget.games,
+                          playerProfileDataSource:
+                              widget.playerProfileDataSource,
+                          onTap: () {
+                            HapticFeedback.selectionClick();
+                            // Any game tap dismisses the popdown. Re-tapping the
+                            // current game is still a selection — parent no-ops
+                            // navigation and closes the panel.
+                            widget.onSelect(index);
+                          },
+                        ),
+                      );
+                    },
+                  ),
                 ),
               ),
+              if (showTimeline) ...[
+                SizedBox(height: _sectionGap.h),
+                SizedBox(
+                  height: _timelineHeight.h,
+                  width: widget.dropdownWidth,
+                  child: ListenableBuilder(
+                    listenable: _scrollController,
+                    builder: (context, _) {
+                      // `hasClients` only means a ScrollPosition is attached — it
+                      // can still be pre-layout (no pixels/viewport measured yet),
+                      // where those getters null-check-crash. Guard first.
+                      final position = _scrollController.hasClients
+                          ? _scrollController.position
+                          : null;
+                      final ready =
+                          position != null &&
+                          position.hasPixels &&
+                          position.hasContentDimensions;
+                      final stride = _gameSelectorCardWidth.w + _cardSpacing.w;
+                      final leadingPad = _gameStripLeadingPad.w;
+                      final lastIndex = widget.games.length - 1;
+
+                      // Focused game = the card whose stride-wide region contains
+                      // the viewport center. A floor (region) mapping — not a
+                      // round-to-nearest — so the index changes monotonically and
+                      // flips only once, when the center crosses into the next
+                      // card's region (no boundary oscillation).
+                      final int focusedIndex;
+                      if (ready) {
+                        final centerX =
+                            position.pixels + position.viewportDimension / 2;
+                        focusedIndex = stride <= 0
+                            ? 0
+                            : ((centerX - leadingPad) / stride).floor().clamp(
+                                0,
+                                lastIndex,
+                              );
+                      } else {
+                        focusedIndex = widget.currentGameIndex.clamp(
+                          0,
+                          lastIndex,
+                        );
+                      }
+                      final activeIndex = _activeRoundIndex(
+                        roundGroups,
+                        focusedIndex,
+                      );
+
+                      return _StickyRoundTimeline(
+                        groups: roundGroups,
+                        activeIndex: activeIndex,
+                        onTapRound: _scrollToRoundStart,
+                      );
+                    },
+                  ),
+                ),
+              ],
             ],
-          ],
+          ),
         ),
       ),
     );
@@ -7841,12 +7873,16 @@ class _BottomNavBar extends ConsumerWidget {
     // Taps follow the existing active line/explicit PV preview. Holds exit
     // those contexts to absolute game endpoints, including at a branch tail.
     final mainline = navigatorState?.game.mainline;
-    final canJumpToStart = isPreviewActive ||
+    final canJumpToStart =
+        isPreviewActive ||
         (navigatorState?.canGoBackward ?? baseCanMoveBackward);
-    final canJumpToEnd = isPreviewActive ||
+    final canJumpToEnd =
+        isPreviewActive ||
         (mainline != null
             ? mainline.isNotEmpty &&
-                !listEquals(navigatorState!.movePointer, [mainline.length - 1])
+                  !listEquals(navigatorState!.movePointer, [
+                    mainline.length - 1,
+                  ])
             : baseCanMoveForward);
 
     final selectionClearKey = _boardSelectionClearKey(game, index);
@@ -7939,7 +7975,8 @@ class _BottomNavBar extends ConsumerWidget {
       videoVisible: hasVideo && video.visible,
       isActivePage: isActivePage,
       gameIndex: index,
-      coachingGameId: '${identityHashCode(ModalRoute.of(context))}:${game.gameId}',
+      coachingGameId:
+          '${identityHashCode(ModalRoute.of(context))}:${game.gameId}',
       showGamebaseButton: showGamebaseButton,
       explorerPanelVisible: explorerPanelVisible,
       onFlip: () => notifier.flipBoard(),
@@ -8227,10 +8264,6 @@ class _AnalysisGameBody extends ConsumerWidget {
     // owns its own page state and (where applicable) syncs with the
     // gamebase toggle provider — no need to rebuild this body on toggle.
 
-    // Check for tablet landscape mode for side-by-side layout
-    final isTabletLandscape =
-        ResponsiveHelper.isTablet && ResponsiveHelper.isLandscape;
-
     // When the user scrolls into explorer games, drop engine PV so the
     // analysis/games panel grows into that space. Bottom nav stays so
     // card-focus arrows remain usable (no slide-hide).
@@ -8259,6 +8292,11 @@ class _AnalysisGameBody extends ConsumerWidget {
         final availableHeight = constraints.maxHeight.isFinite
             ? constraints.maxHeight
             : MediaQuery.sizeOf(context).height;
+        final isTabletLandscape = BoardWorkspaceLayout.usesSideBySide(
+          Size(constraints.maxWidth, availableHeight),
+          boardChrome: 44.sp,
+          verticalChrome: 144.sp,
+        );
         final compactThreshold = 620.h;
         final useCompactLayout =
             availableHeight < compactThreshold && !isTabletLandscape;
@@ -8427,25 +8465,33 @@ class _AnalysisGameBody extends ConsumerWidget {
           // Tablet landscape keeps game switching on the board/chrome, while
           // drags that start inside the notation panel should still reveal
           // the explorer page.
-          return LikeNudgeOverlay(
-            pageIndex: index,
-            child: _AnalysisSwipePanels(
-              key: ValueKey('analysis_panels_${game.gameId}'),
-              gameId: game.gameId,
-              isActivePage: index == currentPageIndex,
-              movesDisplay: movesDisplay,
-              gamebaseDisplay: gamebaseDisplay,
-              syncWithGamebaseToggle: showGamebaseButton,
+          return BoardWorkspaceScope(
+            sideBySide: isTabletLandscape,
+            child: LikeNudgeOverlay(
+              pageIndex: index,
+              child: _AnalysisSwipePanels(
+                key: ValueKey('analysis_panels_${game.gameId}'),
+                gameId: game.gameId,
+                isActivePage: index == currentPageIndex,
+                movesDisplay: movesDisplay,
+                gamebaseDisplay: gamebaseDisplay,
+                syncWithGamebaseToggle: showGamebaseButton,
+              ),
             ),
           );
         }
 
         final video = EventVideoLayoutScope.maybeOf(context);
-        if (video != null && video.watches(game.source == GameSource.supabase ? game.tourId : '')) {
+        if (video != null &&
+            video.watches(
+              game.source == GameSource.supabase ? game.tourId : '',
+            )) {
           return StreamScrollCoachingHost(
             key: ValueKey('stream_scroll_${game.gameId}'),
-            gameId: '${identityHashCode(ModalRoute.of(context))}:${game.gameId}',
-            active: video.isActive(game.gameId) && video.visible && isVisiblePage,
+            gameId:
+                '${identityHashCode(ModalRoute.of(context))}:${game.gameId}',
+            active:
+                video.isActive(game.gameId) && video.visible && isVisiblePage,
             canShow: () => BoardFeatureTeachingHost.allowsContextual(context),
             child: EventVideoGameLayout(
               active: video.isActive(game.gameId),
@@ -8503,11 +8549,32 @@ class _AnalysisGameBody extends ConsumerWidget {
           // Eval bar width
           final evalBarWidth = 20.sp;
 
-          // Board size is the height-constrained value (square board)
-          final optimalBoardSize = math.max(200.0, maxBoardFromHeight);
+          final leadingPadding = 12.sp;
+          final boardChrome = evalBarWidth + 24.sp;
+          var sectionGap = 12.sp;
+          final fold = AdaptiveWindow.verticalFoldOf(context);
+          final leadingExtent = fold?.leadingExtentFrom(leadingPadding);
+          final optimalBoardSize = BoardWorkspaceLayout.boardSize(
+            viewport: Size(constraints.maxWidth, screenHeight),
+            boardChrome: boardChrome,
+            horizontalPadding: leadingPadding,
+            verticalChrome: screenHeight - maxBoardFromHeight,
+            gap: sectionGap,
+            leadingExtent: leadingExtent,
+          );
+          if (fold?.trailingStart != null) {
+            final sectionEnd = leadingPadding + optimalBoardSize + boardChrome;
+            sectionGap = math.max(
+              sectionGap,
+              fold!.trailingStart! - sectionEnd,
+            );
+          }
 
           return Padding(
-            padding: EdgeInsets.symmetric(horizontal: 12.sp, vertical: 8.sp),
+            padding: EdgeInsets.symmetric(
+              horizontal: leadingPadding,
+              vertical: 8.sp,
+            ),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -8565,7 +8632,7 @@ class _AnalysisGameBody extends ConsumerWidget {
                   ),
                 ),
 
-                SizedBox(width: 12.sp),
+                SizedBox(width: sectionGap),
 
                 // ─────────────────────────────────────────────────────────────
                 // RIGHT SECTION: PV cards + Moves display and analysis
@@ -10463,6 +10530,9 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
     }
     anchor.beginFlight();
     final overlay = Overlay.of(context, rootOverlay: true);
+    final overlayBox = overlay.context.findRenderObject() as RenderBox;
+    final flightFrom = overlayBox.globalToLocal(from);
+    final flightTo = overlayBox.globalToLocal(target.center);
     final flightColor = context.colors.danger;
     // Visual continuity: start at the same size the in-board burst just ended
     // at (≈55% of board.shortestSide — matches HeartBurstLayer's default),
@@ -10474,8 +10544,8 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
     late final OverlayEntry entry;
     entry = OverlayEntry(
       builder: (_) => FlyingHeart(
-        from: from,
-        to: target.center,
+        from: flightFrom,
+        to: flightTo,
         color: flightColor,
         startSize: startSize,
         endSize: endSize,
@@ -11374,10 +11444,23 @@ class _AnalysisSwipePanelsState extends ConsumerState<_AnalysisSwipePanels> {
   int _currentPage = 0;
   bool _userPanelDrag = false;
 
+  String get _pageStorageId => 'analysis_panels_page_${widget.gameId}';
+
   @override
   void initState() {
     super.initState();
-    _pageController = PageController(initialPage: _currentPage);
+    final restored = PageStorage.maybeOf(
+      context,
+    )?.readState(context, identifier: _pageStorageId);
+    if (restored is int && (restored == 0 || restored == 1)) {
+      _currentPage = restored;
+    }
+    // The explicit game identifier owns restoration. Implicit PageView storage
+    // can otherwise leak another game's selection into a newly mounted pane.
+    _pageController = PageController(
+      initialPage: _currentPage,
+      keepPage: false,
+    );
     // Seed visibility for bottom-nav translucency (post-frame: ref write safe).
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || !widget.isActivePage) return;
@@ -11441,6 +11524,9 @@ class _AnalysisSwipePanelsState extends ConsumerState<_AnalysisSwipePanels> {
         physics: const ClampingScrollPhysics(),
         onPageChanged: (page) {
           _currentPage = page;
+          PageStorage.maybeOf(
+            context,
+          )?.writeState(context, page, identifier: _pageStorageId);
           // Only the active game publishes chrome/arrow ownership. Preloaded
           // adjacent games must not steal the visible game's focused card.
           if (widget.isActivePage) {
@@ -14380,7 +14466,7 @@ class _PrincipalVariationListState
     final isGameOver = position?.isGameOver ?? false;
 
     const double basePvHeight = 78;
-    final double pvCardHeight = basePvHeight.h;
+    final double pvCardHeight = math.max(64.0, basePvHeight.h);
 
     // Clamp PVs to user preference
     final clampedLines = (widget.state.principalVariations.length > multiPV)

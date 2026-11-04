@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:chessever2/providers/event_favorite_players_provider.dart';
@@ -74,6 +75,19 @@ class EventCard extends ConsumerWidget {
     super.key,
   });
 
+  /// Image cards keep enough room for their two-line title, metadata and
+  /// countdown at the reader's text size. Orientation alone is not a height
+  /// budget: a near-square foldable can be landscape with narrow columns.
+  static double gridMainAxisExtent(BuildContext context, double cardWidth) {
+    final scaler = MediaQuery.textScalerOf(context);
+    final titleHeight = scaler.scale(15.sp) * 1.3 * 2;
+    final metadataHeight = math.max(44.0, scaler.scale(12.f) * 1.3);
+    final countdownHeight = scaler.scale(11.sp) * 1.4 + 3.h;
+    final contentHeight =
+        24.sp + titleHeight + 6.h + metadataHeight + countdownHeight + 16.sp;
+    return math.max(cardWidth / 1.4, contentHeight);
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     if (onTap == null) {
@@ -92,22 +106,21 @@ class EventCard extends ConsumerWidget {
         model: tourEventCardModel,
         spaceDraft: spaceDraft,
         onOpen: onTap!,
-        previewBuilder:
-            (size) => SizedBox.fromSize(
-              size: size,
-              // A second, inert copy of this card: no gestures (onTap null)
-              // and no Heroine (a suffix switches the hero off), so the
-              // menu's copy can never fly or claim this card's hero tag.
-              child: EventCard(
-                tourEventCardModel: tourEventCardModel,
-                showHeartIndicator: showHeartIndicator,
-                favoritePlayersSource: favoritePlayersSource,
-                trailingWidget: trailingWidget,
-                heroTagSuffix: '${heroTagSuffix ?? 'card'}-menu',
-                forceCompactLayout: forceCompactLayout,
-                stacked: stacked,
-              ),
-            ),
+        previewBuilder: (size) => SizedBox.fromSize(
+          size: size,
+          // A second, inert copy of this card: no gestures (onTap null)
+          // and no Heroine (a suffix switches the hero off), so the
+          // menu's copy can never fly or claim this card's hero tag.
+          child: EventCard(
+            tourEventCardModel: tourEventCardModel,
+            showHeartIndicator: showHeartIndicator,
+            favoritePlayersSource: favoritePlayersSource,
+            trailingWidget: trailingWidget,
+            heroTagSuffix: '${heroTagSuffix ?? 'card'}-menu',
+            forceCompactLayout: forceCompactLayout,
+            stacked: stacked,
+          ),
+        ),
         child: _buildCard(context, ref),
       ),
     );
@@ -126,19 +139,17 @@ class EventCard extends ConsumerWidget {
     // For You feed re-resolves the round line on its refresh paths) keep the
     // previous value via AsyncValue.copyWithPrevious, so a refresh must not
     // flip an already-rendered card back to its skeleton.
-    final nextRoundAsync =
-        needsRound
-            ? ref.watch(eventNextRoundProvider(tourEventCardModel.id))
-            : null;
+    final nextRoundAsync = needsRound
+        ? ref.watch(eventNextRoundProvider(tourEventCardModel.id))
+        : null;
     final nextRoundLoading =
         nextRoundAsync != null &&
         nextRoundAsync.isLoading &&
         !nextRoundAsync.hasValue;
 
-    final body =
-        (ResponsiveHelper.isTablet && !forceCompactLayout && !stacked)
-            ? _buildTabletGridCard(context, ref)
-            : _buildPhoneCard(context, ref);
+    final body = (ResponsiveHelper.isTablet && !forceCompactLayout && !stacked)
+        ? _buildTabletGridCard(context, ref)
+        : _buildPhoneCard(context, ref);
 
     return Skeletonizer(
       enabled: nextRoundLoading,
@@ -505,31 +516,28 @@ class _EventCardMenuTriggerState extends ConsumerState<_EventCardMenuTrigger> {
     // Tours not in hand yet keep loading behind the open menu (a screen
     // reader's long-press starts the lookup here); the No Spoilers row
     // settles them if it is chosen first.
-    final pendingTourIds =
-        hasBroadcastActions(model) && knownTourIds == null
-            ? _loadTourIds()
-            : null;
+    final pendingTourIds = hasBroadcastActions(model) && knownTourIds == null
+        ? _loadTourIds()
+        : null;
     unawaited(
       CardContextMenu.open(
         context,
-        actions:
-            (menuContext) => eventMenuActions(
-              context: menuContext,
-              ref: ref,
-              model: model,
-              tourIds: knownTourIds ?? const <String>[],
-              pendingTourIds: pendingTourIds,
-              onOpen: widget.onOpen,
-              spaceDraft: widget.spaceDraft,
-            ),
+        actions: (menuContext) => eventMenuActions(
+          context: menuContext,
+          ref: ref,
+          model: model,
+          tourIds: knownTourIds ?? const <String>[],
+          pendingTourIds: pendingTourIds,
+          onOpen: widget.onOpen,
+          spaceDraft: widget.spaceDraft,
+        ),
         preview: widget.previewBuilder(box.size),
         onPreviewTap: widget.onOpen,
         // A press on the card's right half opens the menu against that edge.
         // A screen reader's long-press action reports no position.
-        origin:
-            details.globalPosition == Offset.zero
-                ? null
-                : details.globalPosition,
+        origin: details.globalPosition == Offset.zero
+            ? null
+            : details.globalPosition,
       ),
     );
   }
@@ -574,21 +582,14 @@ class _MetaLine extends StatelessWidget {
     // `onLight` is misnamed — it really means "rendered over the dark image
     // gradient on the tablet card," so the text always needs to be a light
     // ink with a soft shadow regardless of theme.
-    final baseColor =
-        onLight
-            ? Colors.white.withValues(alpha: 0.9)
-            : context.colors.textPrimaryMuted;
+    final baseColor = onLight
+        ? Colors.white.withValues(alpha: 0.9)
+        : context.colors.textPrimaryMuted;
     final style = AppTypography.textXsMedium.copyWith(
       color: baseColor,
-      shadows:
-          onLight
-              ? [
-                Shadow(
-                  color: Colors.black.withValues(alpha: 0.5),
-                  blurRadius: 3,
-                ),
-              ]
-              : null,
+      shadows: onLight
+          ? [Shadow(color: Colors.black.withValues(alpha: 0.5), blurRadius: 3)]
+          : null,
     );
 
     // When Elo is shown, pin it outside the flexible/ellipsizing prefix so
@@ -602,7 +603,7 @@ class _MetaLine extends StatelessWidget {
       // dot + Elo tail are separate paragraphs. Merging them into one line
       // box moved the title, glyph, dots and the LIVE/next-round line by
       // ~1px, which the no-layout-shift rule forbids.
-      return Row(
+      final row = Row(
         children: [
           Flexible(
             child: Text.rich(
@@ -619,6 +620,37 @@ class _MetaLine extends StatelessWidget {
           if (dates.isNotEmpty)
             Text.rich(TextSpan(style: style, children: [_dotSpan(baseColor)])),
           Text.rich(TextSpan(style: style, children: [timeControlSpan])),
+          Text.rich(
+            TextSpan(
+              style: style,
+              children: [
+                _dotSpan(baseColor),
+                TextSpan(text: 'Ø $elo'),
+              ],
+            ),
+          ),
+        ],
+      );
+      if (MediaQuery.textScalerOf(context).scale(12) <= 12) return row;
+      // Enlarged text needs one flexible prefix. Default-size paragraphs keep
+      // their original baselines; Elo stays outside truncation in both cases.
+      return Row(
+        children: [
+          Expanded(
+            child: Text.rich(
+              TextSpan(
+                style: style,
+                children: [
+                  ...prefix,
+                  if (dates.isNotEmpty) _dotSpan(baseColor),
+                  timeControlSpan,
+                ],
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              softWrap: false,
+            ),
+          ),
           Text.rich(
             TextSpan(
               style: style,
@@ -721,8 +753,8 @@ class _EventImage extends ConsumerWidget {
 
     final imageWidth = phoneImageWidth(context);
     final imageHeight = phoneImageHeight(context);
-    final cacheWidth =
-        (imageWidth * MediaQuery.devicePixelRatioOf(context)).toInt();
+    final cacheWidth = (imageWidth * MediaQuery.devicePixelRatioOf(context))
+        .toInt();
 
     final image = SizedBox(
       width: imageWidth,
@@ -735,10 +767,9 @@ class _EventImage extends ConsumerWidget {
           // white card in light theme. Pure black-at-0.1 is the convention
           // (avoid tinted neutrals — they look like dirt at the edge).
           // Dark theme keeps no border to preserve the original look.
-          border:
-              context.isLightTheme
-                  ? Border.all(color: Colors.black.withValues(alpha: 0.1))
-                  : null,
+          border: context.isLightTheme
+              ? Border.all(color: Colors.black.withValues(alpha: 0.1))
+              : null,
         ),
         clipBehavior: Clip.antiAlias,
         child: imageAsync.when(
@@ -750,39 +781,30 @@ class _EventImage extends ConsumerWidget {
                 memCacheWidth: cacheWidth,
                 fadeInDuration: const Duration(milliseconds: 300),
                 fadeOutDuration: const Duration(milliseconds: 200),
-                placeholder:
-                    (context, url) => Skeletonizer(
-                      enabled: true,
-                      effect: ShimmerEffect(
-                        baseColor: context.colors.surfaceRecessed,
-                        highlightColor: context.colors.divider,
-                        duration: Duration(seconds: 1),
-                      ),
-                      child: Container(color: context.colors.surfaceRecessed),
-                    ),
-                errorWidget:
-                    (context, url, error) =>
-                        _buildFallbackFlag(
-                          context,
-                          imageData.fallbackCountryCode,
-                        ),
+                placeholder: (context, url) => Skeletonizer(
+                  enabled: true,
+                  effect: ShimmerEffect(
+                    baseColor: context.colors.surfaceRecessed,
+                    highlightColor: context.colors.divider,
+                    duration: Duration(seconds: 1),
+                  ),
+                  child: Container(color: context.colors.surfaceRecessed),
+                ),
+                errorWidget: (context, url, error) =>
+                    _buildFallbackFlag(context, imageData.fallbackCountryCode),
               );
             }
-            return _buildFallbackFlag(
-              context,
-              imageData.fallbackCountryCode,
-            );
+            return _buildFallbackFlag(context, imageData.fallbackCountryCode);
           },
-          loading:
-              () => Skeletonizer(
-                enabled: true,
-                effect: ShimmerEffect(
-                  baseColor: context.colors.skeleton,
-                  highlightColor: context.colors.divider,
-                  duration: const Duration(seconds: 1),
-                ),
-                child: Container(color: context.colors.surfaceRecessed),
-              ),
+          loading: () => Skeletonizer(
+            enabled: true,
+            effect: ShimmerEffect(
+              baseColor: context.colors.skeleton,
+              highlightColor: context.colors.divider,
+              duration: const Duration(seconds: 1),
+            ),
+            child: Container(color: context.colors.surfaceRecessed),
+          ),
           error: (_, __) => EventFallbackArtwork(title: event.title),
         ),
       ),
@@ -805,9 +827,7 @@ class _EventImage extends ConsumerWidget {
         fit: StackFit.expand,
         children: [
           Container(
-            decoration: BoxDecoration(
-              gradient: _thumbnailGround(context),
-            ),
+            decoration: BoxDecoration(gradient: _thumbnailGround(context)),
           ),
           CountryFlag.fromCountryCode(
             countryCode,
@@ -887,8 +907,7 @@ class _FlagEventImage extends StatelessWidget {
                 decoration: BoxDecoration(gradient: _thumbnailScrim(context)),
               ),
             ),
-            if (countryCode == null)
-              EventFallbackArtwork(title: fallbackTitle),
+            if (countryCode == null) EventFallbackArtwork(title: fallbackTitle),
           ],
         ),
       ),
@@ -905,10 +924,9 @@ const List<Color> _kDarkFlagGround = [Color(0xFF1F1C2C), Color(0xFF2C5364)];
 LinearGradient _thumbnailGround(BuildContext context) {
   final colors = context.colors;
   return LinearGradient(
-    colors:
-        context.isLightTheme
-            ? [colors.surfaceRecessed, colors.background]
-            : _kDarkFlagGround,
+    colors: context.isLightTheme
+        ? [colors.surfaceRecessed, colors.background]
+        : _kDarkFlagGround,
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
   );
@@ -920,13 +938,12 @@ LinearGradient _thumbnailGround(BuildContext context) {
 LinearGradient _thumbnailScrim(BuildContext context) {
   final ink = context.colors.textPrimary;
   return LinearGradient(
-    colors:
-        context.isLightTheme
-            ? [ink.withValues(alpha: 0.04), ink.withValues(alpha: 0.12)]
-            : [
-              Colors.black.withValues(alpha: 0.35),
-              Colors.black.withValues(alpha: 0.6),
-            ],
+    colors: context.isLightTheme
+        ? [ink.withValues(alpha: 0.04), ink.withValues(alpha: 0.12)]
+        : [
+            Colors.black.withValues(alpha: 0.35),
+            Colors.black.withValues(alpha: 0.6),
+          ],
     begin: Alignment.topCenter,
     end: Alignment.bottomCenter,
   );
@@ -968,10 +985,9 @@ class EventFallbackArtwork extends StatelessWidget {
           overflow: TextOverflow.clip,
           textScaler: TextScaler.noScaling,
           style: AppTypography.textSmSemiBold.copyWith(
-            color:
-                paper
-                    ? colors.textSecondary
-                    : Colors.white.withValues(alpha: 0.72),
+            color: paper
+                ? colors.textSecondary
+                : Colors.white.withValues(alpha: 0.72),
             fontSize: 18.sp,
             height: 1,
             letterSpacing: 0.6,
@@ -1028,11 +1044,10 @@ class _TabletEventBackground extends ConsumerWidget {
             fadeInDuration: const Duration(milliseconds: 300),
             fadeOutDuration: const Duration(milliseconds: 200),
             placeholder: (context, url) => _buildLoadingBackground(context),
-            errorWidget:
-                (context, url, error) => _buildFlagBackground(
-                  imageData.fallbackCountryCode,
-                  fallbackTitle: event.title,
-                ),
+            errorWidget: (context, url, error) => _buildFlagBackground(
+              imageData.fallbackCountryCode,
+              fallbackTitle: event.title,
+            ),
           );
         }
         return _buildFlagBackground(
@@ -1041,8 +1056,8 @@ class _TabletEventBackground extends ConsumerWidget {
         );
       },
       loading: () => _buildLoadingBackground(context),
-      error:
-          (_, __) => EventFallbackArtwork(title: event.title, overImage: true),
+      error: (_, __) =>
+          EventFallbackArtwork(title: event.title, overImage: true),
     );
   }
 
@@ -1051,18 +1066,17 @@ class _TabletEventBackground extends ConsumerWidget {
       enabled: true,
       // Dark theme keeps the original tuned greys; only light theme swaps to
       // theme-aware tokens so the shimmer doesn't paint as a dark patch.
-      effect:
-          context.isLightTheme
-              ? ShimmerEffect(
-                baseColor: context.colors.skeleton,
-                highlightColor: context.colors.divider,
-                duration: const Duration(seconds: 1),
-              )
-              : const ShimmerEffect(
-                baseColor: Color(0xFF2A2A2A),
-                highlightColor: Color(0xFF3A3A3A),
-                duration: Duration(seconds: 1),
-              ),
+      effect: context.isLightTheme
+          ? ShimmerEffect(
+              baseColor: context.colors.skeleton,
+              highlightColor: context.colors.divider,
+              duration: const Duration(seconds: 1),
+            )
+          : const ShimmerEffect(
+              baseColor: Color(0xFF2A2A2A),
+              highlightColor: Color(0xFF3A3A3A),
+              duration: Duration(seconds: 1),
+            ),
       child: ColoredBox(color: context.colors.surface),
     );
   }
@@ -1136,15 +1150,14 @@ class _LiveLabel extends StatelessWidget {
           fontSize: onLight ? 11.sp : 11.f,
           fontWeight: FontWeight.w700,
           letterSpacing: 0.6,
-          shadows:
-              onLight
-                  ? [
-                    Shadow(
-                      color: Colors.black.withValues(alpha: 0.5),
-                      blurRadius: 3,
-                    ),
-                  ]
-                  : null,
+          shadows: onLight
+              ? [
+                  Shadow(
+                    color: Colors.black.withValues(alpha: 0.5),
+                    blurRadius: 3,
+                  ),
+                ]
+              : null,
         ),
       ),
     );
@@ -1179,10 +1192,9 @@ class _StarWidget extends ConsumerWidget {
         !isStarred &&
         (favoritePlayersSource == EventFavoritePlayersSource.automatic ||
             showHeartIndicator);
-    final eventFavoritePlayers =
-        shouldResolveFavoritePlayers
-            ? _watchEventFavoritePlayers(context, ref)
-            : const EventFavoritePlayers.empty();
+    final eventFavoritePlayers = shouldResolveFavoritePlayers
+        ? _watchEventFavoritePlayers(context, ref)
+        : const EventFavoritePlayers.empty();
 
     // Priority: Star icon (user favorited) ALWAYS takes precedence
     // Heart icon shows ONLY when NOT starred but has favorite players
@@ -1199,12 +1211,11 @@ class _StarWidget extends ConsumerWidget {
     }
     return InkWell(
       // Same path as the focus menu's "Add to favorites" row.
-      onTap:
-          () => toggleEventFavorite(
-            context: context,
-            ref: ref,
-            model: tourEventCardModel,
-          ),
+      onTap: () => toggleEventFavorite(
+        context: context,
+        ref: ref,
+        model: tourEventCardModel,
+      ),
       child: Padding(
         padding: EdgeInsets.fromLTRB(6.w, 6.h, 2.w, 6.h),
         child: SvgWidget(
@@ -1394,63 +1405,55 @@ class _NextRoundLine extends ConsumerWidget {
 
     // Tablet image background path always needs light ink; the rest of the
     // card uses theme-aware muted text.
-    final baseColor =
-        onLight
-            ? Colors.white.withValues(alpha: 0.9)
-            : context.colors.textPrimaryMuted;
+    final baseColor = onLight
+        ? Colors.white.withValues(alpha: 0.9)
+        : context.colors.textPrimaryMuted;
 
     final textStyle = AppTypography.textXxsMedium.copyWith(
       color: baseColor,
       fontSize: onLight ? 11.sp : 11.f,
       letterSpacing: 0.1,
-      shadows:
-          onLight
-              ? [
-                Shadow(
-                  color: Colors.black.withValues(alpha: 0.5),
-                  blurRadius: 3,
-                ),
-              ]
-              : null,
+      shadows: onLight
+          ? [Shadow(color: Colors.black.withValues(alpha: 0.5), blurRadius: 3)]
+          : null,
     );
 
     return Padding(
       padding: EdgeInsets.only(top: 3.h),
-      child:
-          showName
-              ? Row(
-                crossAxisAlignment: CrossAxisAlignment.baseline,
-                textBaseline: TextBaseline.alphabetic,
-                children: [
-                  Flexible(
-                    child: Text(
-                      roundName,
-                      style: textStyle.copyWith(fontWeight: FontWeight.w600),
-                      maxLines: 1,
-                      softWrap: false,
-                      overflow: TextOverflow.ellipsis,
-                    ),
+      child: showName
+          ? Row(
+              crossAxisAlignment: CrossAxisAlignment.baseline,
+              textBaseline: TextBaseline.alphabetic,
+              children: [
+                Flexible(
+                  child: Text(
+                    roundName,
+                    style: textStyle.copyWith(fontWeight: FontWeight.w600),
+                    maxLines: 1,
+                    softWrap: false,
+                    overflow: TextOverflow.ellipsis,
                   ),
-                  Text('  ·  ', style: textStyle),
-                  // Gives way too on a narrow card (a trailing save toggle),
-                  // instead of pushing past the card's edge.
-                  Flexible(
-                    child: Text(
-                      label,
-                      style: textStyle,
-                      maxLines: 1,
-                      softWrap: false,
-                      overflow: TextOverflow.ellipsis,
-                    ),
+                ),
+                Text('  ·  ', style: textStyle),
+                // Gives way too on a narrow card (a trailing save toggle),
+                // instead of pushing past the card's edge.
+                Flexible(
+                  child: Text(
+                    label,
+                    style: textStyle,
+                    maxLines: 1,
+                    softWrap: false,
+                    overflow: TextOverflow.ellipsis,
                   ),
-                ],
-              )
-              : Text(
-                label,
-                style: textStyle,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
+                ),
+              ],
+            )
+          : Text(
+              label,
+              style: textStyle,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
     );
   }
 

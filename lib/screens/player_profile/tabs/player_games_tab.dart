@@ -303,14 +303,12 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
 
   GameFilter _storedFilter(GameFilter filter) {
     return filter.copyWith(
-      minYear:
-          filter.minYear == GameFilter.absoluteMinYear
-              ? GameFilter.defaultMinYear
-              : filter.minYear,
-      minRating:
-          filter.minRating == GameFilter.absoluteMinRating
-              ? GameFilter.defaultMinRating
-              : filter.minRating,
+      minYear: filter.minYear == GameFilter.absoluteMinYear
+          ? GameFilter.defaultMinYear
+          : filter.minYear,
+      minRating: filter.minRating == GameFilter.absoluteMinRating
+          ? GameFilter.defaultMinRating
+          : filter.minRating,
     );
   }
 
@@ -360,8 +358,9 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
       }
 
       final refreshed = ref.read(playerProfileGamesKeyProvider(_playerKey));
-      final allFilteredIds =
-          refreshed.filteredGames.map((g) => g.gameId).toSet();
+      final allFilteredIds = refreshed.filteredGames
+          .map((g) => g.gameId)
+          .toSet();
 
       if (!mounted) return;
       setState(() {
@@ -429,10 +428,9 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
   ) {
     final grouped = <String, List<GamesTourModel>>{};
     for (final game in games) {
-      final eventKey =
-          widget.dataSource == PlayerProfileDataSource.twic
-              ? twicCanonicalEventTitleForGame(game)
-              : game.tourId;
+      final eventKey = widget.dataSource == PlayerProfileDataSource.twic
+          ? twicCanonicalEventTitleForGame(game)
+          : game.tourId;
       grouped.putIfAbsent(eventKey, () => []).add(game);
     }
     return grouped;
@@ -530,9 +528,7 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
         (state.hasActiveFilters
             ? PlayerGamesActiveFiltersChip.heightOf(context)
             : 0) +
-        (isSelectionMode
-            ? PlayerGamesSelectionToolbar.heightOf(context)
-            : 0);
+        (isSelectionMode ? PlayerGamesSelectionToolbar.heightOf(context) : 0);
 
     final eventsAsync = ref.watch(playerEventsKeyProvider(_playerKey));
 
@@ -575,7 +571,15 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
           ),
 
           // Content
-          _buildContentSliver(state, viewMode, eventsAsync, isSelectionMode),
+          SliverLayoutBuilder(
+            builder: (context, constraints) => _buildContentSliver(
+              state,
+              viewMode,
+              eventsAsync,
+              isSelectionMode,
+              constraints.crossAxisExtent,
+            ),
+          ),
 
           // Bottom padding
           SliverToBoxAdapter(child: SizedBox(height: 24.h)),
@@ -613,10 +617,9 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
     double horizontalPadding,
     bool isSelectionMode,
   ) {
-    final selectedVisibleCount =
-        state.filteredGames
-            .where((g) => _selectedGameIds.contains(g.gameId))
-            .length;
+    final selectedVisibleCount = state.filteredGames
+        .where((g) => _selectedGameIds.contains(g.gameId))
+        .length;
 
     return Container(
       color: context.colors.background,
@@ -659,7 +662,8 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
       onChanged: _onSearchChanged,
       onClear: _clearSearch,
       onFilterTap: _showFilterDialog,
-      onLayoutToggle: () => ref.read(gamesListViewModeSwitcher).toggleViewMode(),
+      onLayoutToggle: () =>
+          ref.read(gamesListViewModeSwitcher).toggleViewMode(),
       hasQuery: state.searchQuery.isNotEmpty,
       hasActiveFilters: state.hasActiveFilters,
       activeFilterCount: state.activeFilterCount,
@@ -674,26 +678,23 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
   ) {
     return PlayerGamesSelectionToolbar(
       selectedCount: selectedVisibleCount,
-      subtitle:
-          _isLoadingAllPagesForSelection
-              ? (state.totalCount != null &&
-                      state.totalCount! > state.allGames.length
-                  ? 'Loading ${formatCompactCount(state.allGames.length)} of ${formatCompactCount(state.totalCount!)} games...'
-                  : 'Preparing your filtered game list...')
-              : state.hasActiveFilters
-              ? 'Selection follows current filters and search'
-              : 'Tap games manually or use quick select',
-      selectAllLabel:
-          _isLoadingAllPagesForSelection
-              ? (state.totalCount != null &&
-                      state.totalCount! > state.allGames.length
-                  ? 'Loading ${formatCompactCount(state.allGames.length)}/${formatCompactCount(state.totalCount!)}...'
-                  : 'Selecting...')
-              : _selectAllLabel(state),
-      onSelectAll:
-          _isLoadingAllPagesForSelection
-              ? null
-              : () => _selectAllFilteredGames(state),
+      subtitle: _isLoadingAllPagesForSelection
+          ? (state.totalCount != null &&
+                    state.totalCount! > state.allGames.length
+                ? 'Loading ${formatCompactCount(state.allGames.length)} of ${formatCompactCount(state.totalCount!)} games...'
+                : 'Preparing your filtered game list...')
+          : state.hasActiveFilters
+          ? 'Selection follows current filters and search'
+          : 'Tap games manually or use quick select',
+      selectAllLabel: _isLoadingAllPagesForSelection
+          ? (state.totalCount != null &&
+                    state.totalCount! > state.allGames.length
+                ? 'Loading ${formatCompactCount(state.allGames.length)}/${formatCompactCount(state.totalCount!)}...'
+                : 'Selecting...')
+          : _selectAllLabel(state),
+      onSelectAll: _isLoadingAllPagesForSelection
+          ? null
+          : () => _selectAllFilteredGames(state),
       onAddSelected: () => _addSelectedToLibrary(state),
       onClose: () {
         HapticFeedback.lightImpact();
@@ -707,10 +708,9 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
     return PlayerGamesActiveFiltersChip(
       activeFilterCount: state.activeFilterCount,
       gameCount: state.filteredGames.length,
-      resultLabel:
-          state.playerResultFilter != PlayerResultFilter.all
-              ? state.playerResultFilter.label
-              : null,
+      resultLabel: state.playerResultFilter != PlayerResultFilter.all
+          ? state.playerResultFilter.label
+          : null,
       onClear: () {
         HapticFeedback.lightImpact();
         ref
@@ -725,6 +725,7 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
     GamesListViewMode viewMode,
     AsyncValue<List<PlayerEventData>> eventsAsync,
     bool isSelectionMode,
+    double availableWidth,
   ) {
     final isTwicBlockingLoading =
         widget.dataSource == PlayerProfileDataSource.twic && state.isLoading;
@@ -804,10 +805,9 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
         _PlayerEventHeaderEntry(
           eventData: eventData,
           tourId: tourId,
-          tourSlug:
-              widget.dataSource == PlayerProfileDataSource.twic
-                  ? tourId
-                  : eventGames.first.tourSlug,
+          tourSlug: widget.dataSource == PlayerProfileDataSource.twic
+              ? tourId
+              : eventGames.first.tourSlug,
           gameCount: eventGames.length,
           playerScore: playerScore,
           site: eventData?.site ?? siteFromPgn(eventGames.first.pgn),
@@ -823,8 +823,14 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
 
       // Games under this event
       if (isGridMode) {
-        final int gridColumns =
-            ResponsiveHelper.isTablet && ResponsiveHelper.isLandscape ? 4 : 2;
+        final int gridColumns = ResponsiveHelper.columnsForWidth(
+          availableWidth -
+              2 * ResponsiveHelper.adaptive(phone: 16.w, tablet: 24.w),
+          minItemWidth: 220,
+          spacing: 16.sp,
+          minColumns: 2,
+          maxColumns: 4,
+        );
 
         for (int i = 0; i < eventGames.length; i += gridColumns) {
           final isLast = i + gridColumns >= eventGames.length;
@@ -939,15 +945,14 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
             for (int j = 0; j < entry.gridColumns; j++) ...[
               if (j > 0) SizedBox(width: 12.sp),
               Expanded(
-                child:
-                    j < entry.games.length
-                        ? _buildGridGame(
-                          entry.games[j],
-                          gameIdToIndex[entry.games[j].gameId] ?? 0,
-                          games,
-                          isSelectionMode: isSelectionMode,
-                        )
-                        : const SizedBox.shrink(),
+                child: j < entry.games.length
+                    ? _buildGridGame(
+                        entry.games[j],
+                        gameIdToIndex[entry.games[j].gameId] ?? 0,
+                        games,
+                        isSelectionMode: isSelectionMode,
+                      )
+                    : const SizedBox.shrink(),
               ),
             ],
           ],
@@ -1014,18 +1019,15 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
         playerProfileDataSource: widget.dataSource,
         streamEnabled: true,
         viewSource: ChessboardView.playerProfile,
-        onAdd:
-            isSelectionMode
-                ? () => _toggleGameSelection(entry.game.gameId)
-                : () => _showAddToFolderSheet(entry.game),
-        onLiveAdd:
-            isSelectionMode
-                ? null
-                : (liveGame) => _showAddToFolderSheet(liveGame),
-        onTap:
-            isSelectionMode
-                ? () => _toggleGameSelection(entry.game.gameId)
-                : null,
+        onAdd: isSelectionMode
+            ? () => _toggleGameSelection(entry.game.gameId)
+            : () => _showAddToFolderSheet(entry.game),
+        onLiveAdd: isSelectionMode
+            ? null
+            : (liveGame) => _showAddToFolderSheet(liveGame),
+        onTap: isSelectionMode
+            ? () => _toggleGameSelection(entry.game.gameId)
+            : null,
       );
 
       if (isSelectionMode) {
@@ -1154,11 +1156,9 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
       }
 
       return GestureDetector(
-        onTap:
-            () =>
-                ref
-                    .read(playerProfileGamesKeyProvider(_playerKey).notifier)
-                    .loadMore(),
+        onTap: () => ref
+            .read(playerProfileGamesKeyProvider(_playerKey).notifier)
+            .loadMore(),
         child: Container(
           padding: EdgeInsets.symmetric(vertical: 14.h),
           alignment: Alignment.center,
@@ -1199,37 +1199,38 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
     // SliverFillRemaining + Center/ConstrainedBox wrap).
     return ExcludeSemantics(
       child: RepaintBoundary(
-        child: Padding(
-              padding: EdgeInsets.symmetric(horizontal: 16.w),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  for (int i = 0; i < 4; i++) ...[
-                    Container(
-                      width: double.infinity,
-                      height: 96.h,
-                      margin: EdgeInsets.only(bottom: i == 3 ? 0 : 12.h),
-                      decoration: BoxDecoration(
-                        color: context.colors.surface,
-                        borderRadius: BorderRadius.circular(12.br),
+        child:
+            Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 16.w),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      for (int i = 0; i < 4; i++) ...[
+                        Container(
+                          width: double.infinity,
+                          height: 96.h,
+                          margin: EdgeInsets.only(bottom: i == 3 ? 0 : 12.h),
+                          decoration: BoxDecoration(
+                            color: context.colors.surface,
+                            borderRadius: BorderRadius.circular(12.br),
+                          ),
+                        ),
+                      ],
+                      SizedBox(height: 16.h),
+                      Text(
+                        'Loading games...',
+                        style: AppTypography.textSmRegular.copyWith(
+                          color: context.colors.textSecondary,
+                        ),
                       ),
-                    ),
-                  ],
-                  SizedBox(height: 16.h),
-                  Text(
-                    'Loading games...',
-                    style: AppTypography.textSmRegular.copyWith(
-                      color: context.colors.textSecondary,
-                    ),
+                    ],
                   ),
-                ],
-              ),
-            )
-            .animate(onPlay: (controller) => controller.repeat())
-            .shimmer(
-              duration: 1400.ms,
-              color: context.colors.textPrimary.withValues(alpha: 0.1),
-            ),
+                )
+                .animate(onPlay: (controller) => controller.repeat())
+                .shimmer(
+                  duration: 1400.ms,
+                  color: context.colors.textPrimary.withValues(alpha: 0.1),
+                ),
       ),
     );
   }
@@ -1272,13 +1273,9 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
           ),
           SizedBox(height: 24.h),
           TextButton(
-            onPressed:
-                () =>
-                    ref
-                        .read(
-                          playerProfileGamesKeyProvider(_playerKey).notifier,
-                        )
-                        .refresh(),
+            onPressed: () => ref
+                .read(playerProfileGamesKeyProvider(_playerKey).notifier)
+                .refresh(),
             style: TextButton.styleFrom(
               backgroundColor: context.colors.textPrimary.withValues(
                 alpha: 0.1,

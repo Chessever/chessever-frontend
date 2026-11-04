@@ -18,18 +18,30 @@ class ResponsiveHelper {
   static late DeviceType _deviceType;
   static late Orientation _orientation;
 
-  /// Reads only the two aspects it needs.
+  /// Reads only the one aspect it needs.
   ///
   /// `MediaQuery.of` subscribes the calling element to *every* aspect of the
   /// MediaQueryData, `viewInsets` included — so every screen that called this
   /// in its build method rebuilt on each frame of the software keyboard
-  /// sliding in or out. `sizeOf`/`orientationOf` subscribe to one aspect each,
-  /// and neither of them changes while the keyboard animates.
+  /// sliding in or out. `sizeOf` subscribes to size alone, which does not
+  /// change while the keyboard animates; orientation is derived from it.
   static void init(BuildContext context) {
-    final size = MediaQuery.sizeOf(context);
+    initFromSize(MediaQuery.sizeOf(context));
+  }
+
+  /// Same as [init], for a window size already in hand.
+  ///
+  /// [AdaptiveWindowScope] calls this every time the window changes size
+  /// (iPhone Duo folding or opening, iPad Split View, a foldable), so the
+  /// scale factors and [isTablet] always describe the window the app is
+  /// actually drawn in, not the one it launched in.
+  static void initFromSize(Size size) {
     _screenWidth = size.width;
     _screenHeight = size.height;
-    _orientation = MediaQuery.orientationOf(context);
+    // Mirrors MediaQueryData.orientation, which is derived from size alone.
+    _orientation = size.width > size.height
+        ? Orientation.landscape
+        : Orientation.portrait;
 
     // Calculate scale factors
     _scaleWidth = _screenWidth / baseWidth;
@@ -40,21 +52,9 @@ class ResponsiveHelper {
   }
 
   static DeviceType _getDeviceType() {
-    final diagonal = sqrt(pow(_screenWidth, 2) + pow(_screenHeight, 2));
-    final aspectRatio = _screenWidth / _screenHeight;
-
-    // iPad/Tablet detection (larger diagonal, different aspect ratio)
-    if (diagonal > 1100 || (_screenWidth > 600 && aspectRatio > 0.6)) {
-      return DeviceType.tablet;
-    }
-    // Phone detection
-    else if (_screenWidth < 600) {
-      return DeviceType.phone;
-    }
-    // Default to tablet for edge cases
-    else {
-      return DeviceType.tablet;
-    }
+    // Classify the space available to this window. A tall, narrow split-screen
+    // window still needs phone navigation, regardless of its diagonal.
+    return _screenWidth >= 600 ? DeviceType.tablet : DeviceType.phone;
   }
 
   // Scale width based on device type
@@ -154,22 +154,31 @@ class ResponsiveHelper {
   /// (master-detail pattern). Typically used in tablet landscape mode.
   static bool get shouldUseSplitView =>
       isTablet &&
-      isLandscape &&
       _screenWidth >= (tabletSplitMasterMinWidth + tabletSplitDetailMinWidth);
+
+  /// Fits columns to a content area's actual width, including the gaps. Pass
+  /// LayoutBuilder/SliverLayoutBuilder constraints after local padding/rails.
+  static int columnsForWidth(
+    double availableWidth, {
+    double minItemWidth = 280,
+    double spacing = 16,
+    int maxColumns = 3,
+    int minColumns = 1,
+  }) {
+    assert(minItemWidth > 0 && spacing >= 0);
+    assert(minColumns > 0 && maxColumns >= minColumns);
+    if (!availableWidth.isFinite || availableWidth <= 0) return minColumns;
+    return ((availableWidth + spacing) / (minItemWidth + spacing))
+        .floor()
+        .clamp(minColumns, maxColumns);
+  }
 
   /// Returns the recommended number of grid columns for tablet layouts
   /// based on current orientation and screen width.
   /// Max 3 columns to keep content readable
   static int get tabletGridColumns {
     if (!isTablet) return 1;
-    if (isLandscape) {
-      // Max 3 columns for readability
-      if (_screenWidth >= 900) return 3;
-      return 2;
-    } else {
-      // Portrait - max 2 columns
-      return 2;
-    }
+    return columnsForWidth(min(_screenWidth, tabletContentMaxWidth) - 48);
   }
 
   /// Returns appropriate grid cross-axis count for content lists

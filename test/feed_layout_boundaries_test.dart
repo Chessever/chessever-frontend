@@ -52,6 +52,50 @@ import 'package:http/testing.dart';
 /// neighbouring post peeking in; the news cover dissolves into the page with
 /// no seam under the top bar.
 void main() {
+  testWidgets('Feed keeps clip state while folding and rotating', (
+    tester,
+  ) async {
+    await _pump(tester, (const Size(393, 852), 24, 64), false, 1.3, _Kind.game);
+    final state = tester.state(find.byType(FeedClip));
+    for (final size in [
+      const Size(852, 393),
+      const Size(904, 810),
+      const Size(810, 904),
+      const Size(393, 852),
+    ]) {
+      tester.view.physicalSize = size * 3;
+      await tester.pump();
+      expect(tester.takeException(), isNull);
+      expect(tester.state(find.byType(FeedClip)), same(state));
+      expect(
+        tester.getRect(find.byType(FeedLiveBoard)).width,
+        greaterThanOrEqualTo(FeedLayout.minBoard),
+      );
+    }
+    await _tearDown(tester);
+  });
+  for (final kind in [_Kind.game, _Kind.puzzle, _Kind.loading]) {
+    testWidgets('folded landscape keeps ${kind.name} controls reachable', (
+      tester,
+    ) async {
+      await _pump(tester, (const Size(852, 393), 0, 34), false, 1.3, kind);
+      expect(tester.takeException(), isNull);
+      if (kind == _Kind.game) {
+        final like = find.byKey(const ValueKey('feed_like_button'));
+        await tester.ensureVisible(like);
+        await tester.pump();
+        expect(
+          tester.getRect(like).bottom,
+          lessThanOrEqualTo(_pageRect(tester).bottom),
+        );
+        expect(
+          tester.getRect(find.byType(FeedLiveBoard)).width,
+          greaterThanOrEqualTo(FeedLayout.minBoard),
+        );
+      }
+      await _tearDown(tester);
+    });
+  }
   for (final scale in [1.8, 2.0]) {
     testWidgets('exploration keeps the board still and its move line and '
         'controls whole at ${scale}x text', (tester) async {
@@ -131,6 +175,8 @@ void main() {
     '360x640': (Size(360, 640), 24, 64),
     '393x852': (Size(393, 852), 59, 83),
     '430x932': (Size(430, 932), 59, 83),
+    'Duo unfolded 904x810': (Size(904, 810), 24, 0),
+    'Duo rotated 810x904': (Size(810, 904), 24, 0),
   };
 
   for (final size in sizes.entries) {

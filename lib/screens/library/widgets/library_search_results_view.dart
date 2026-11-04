@@ -95,36 +95,31 @@ class _LibrarySearchResultsViewState
 
     final data = row['data'];
     final mdRaw = data is Map ? (data['md'] ?? data['metadata']) : null;
-    final md =
-        mdRaw is Map
-            ? Map<String, dynamic>.from(mdRaw)
-            : const <String, dynamic>{};
+    final md = mdRaw is Map
+        ? Map<String, dynamic>.from(mdRaw)
+        : const <String, dynamic>{};
 
     // Headers fallback
-    final whiteName =
-        (md['White'] as String?)?.trim().isNotEmpty == true
-            ? md['White'].toString()
-            : (row['white']?.toString() ??
-                row['whiteName']?.toString() ??
-                row['white_player']?['name']?.toString() ??
-                'White');
-    final blackName =
-        (md['Black'] as String?)?.trim().isNotEmpty == true
-            ? md['Black'].toString()
-            : (row['black']?.toString() ??
-                row['blackName']?.toString() ??
-                row['black_player']?['name']?.toString() ??
-                'Black');
+    final whiteName = (md['White'] as String?)?.trim().isNotEmpty == true
+        ? md['White'].toString()
+        : (row['white']?.toString() ??
+              row['whiteName']?.toString() ??
+              row['white_player']?['name']?.toString() ??
+              'White');
+    final blackName = (md['Black'] as String?)?.trim().isNotEmpty == true
+        ? md['Black'].toString()
+        : (row['black']?.toString() ??
+              row['blackName']?.toString() ??
+              row['black_player']?['name']?.toString() ??
+              'Black');
 
-    final result =
-        (md['Result'] as String?)?.trim().isNotEmpty == true
-            ? md['Result'].toString()
-            : (row['result']?.toString() ?? '*');
+    final result = (md['Result'] as String?)?.trim().isNotEmpty == true
+        ? md['Result'].toString()
+        : (row['result']?.toString() ?? '*');
 
-    final builtPgn =
-        data is Map
-            ? buildPgnFromGamebaseData(Map<String, dynamic>.from(data))
-            : null;
+    final builtPgn = data is Map
+        ? buildPgnFromGamebaseData(Map<String, dynamic>.from(data))
+        : null;
     var pgn = row['pgn']?.toString() ?? builtPgn;
     final tourId =
         (row['tour_id']?.toString() ??
@@ -132,9 +127,9 @@ class _LibrarySearchResultsViewState
                 ((md['Event'] as String?)?.trim().isNotEmpty == true
                     ? md['Event'].toString()
                     : (row['event']?.toString() ??
-                        row['Event']?.toString() ??
-                        row['tournament']?.toString() ??
-                        'Gamebase')))
+                          row['Event']?.toString() ??
+                          row['tournament']?.toString() ??
+                          'Gamebase')))
             .trim();
 
     DateTime? parseMdDate(String? raw) {
@@ -145,8 +140,9 @@ class _LibrarySearchResultsViewState
       return DateTime.tryParse(normalized);
     }
 
-    final date =
-        row['date'] != null ? DateTime.tryParse(row['date'].toString()) : null;
+    final date = row['date'] != null
+        ? DateTime.tryParse(row['date'].toString())
+        : null;
 
     final dateFromMd = parseMdDate(md['Date'] as String?);
 
@@ -156,12 +152,12 @@ class _LibrarySearchResultsViewState
         row['timeControl']?.toString() ??
         md['TcCategory']?.toString() ??
         md['TimeControl']?.toString();
-    final eco =
-        (md['ECO'] as String?)?.trim().isNotEmpty == true
-            ? md['ECO'].toString()
-            : (row['eco']?.toString() ?? row['ECO']?.toString());
-    final formatCode =
-        (eco != null && eco.isNotEmpty) ? eco : (timeControl ?? '');
+    final eco = (md['ECO'] as String?)?.trim().isNotEmpty == true
+        ? md['ECO'].toString()
+        : (row['eco']?.toString() ?? row['ECO']?.toString());
+    final formatCode = (eco != null && eco.isNotEmpty)
+        ? eco
+        : (timeControl ?? '');
 
     int parseRating(dynamic value) {
       if (value is int) return value;
@@ -184,10 +180,9 @@ class _LibrarySearchResultsViewState
       name: whiteName,
       federation: '',
       title: ChessTitleUtils.normalize(whiteTitleRaw),
-      rating:
-          md['WhiteElo'] != null
-              ? parseRating(md['WhiteElo'])
-              : parseRating(row['whiteRating']),
+      rating: md['WhiteElo'] != null
+          ? parseRating(md['WhiteElo'])
+          : parseRating(row['whiteRating']),
       countryCode:
           row['whiteFed']?.toString().trim() ??
           row['white_player']?['fed']?.toString().trim() ??
@@ -199,10 +194,9 @@ class _LibrarySearchResultsViewState
       name: blackName,
       federation: '',
       title: ChessTitleUtils.normalize(blackTitleRaw),
-      rating:
-          md['BlackElo'] != null
-              ? parseRating(md['BlackElo'])
-              : parseRating(row['blackRating']),
+      rating: md['BlackElo'] != null
+          ? parseRating(md['BlackElo'])
+          : parseRating(row['blackRating']),
       countryCode:
           row['blackFed']?.toString().trim() ??
           row['black_player']?['fed']?.toString().trim() ??
@@ -245,8 +239,9 @@ class _LibrarySearchResultsViewState
 
   @override
   Widget build(BuildContext context) {
-    final fallbackGameModels =
-        widget.results.games.map(_mapToGameModel).toList();
+    final fallbackGameModels = widget.results.games
+        .map(_mapToGameModel)
+        .toList();
 
     // Watch the paginated provider for database games
     final paginationState = ref.watch(gamebaseDatabaseGamesPaginatedProvider);
@@ -306,10 +301,9 @@ class _LibrarySearchResultsViewState
         if (widget.results.players.isNotEmpty) ...[
           _SectionHeader(
             title: 'Players',
-            count:
-                widget.results.playerTotalCount > 0
-                    ? widget.results.playerTotalCount
-                    : widget.results.players.length,
+            count: widget.results.playerTotalCount > 0
+                ? widget.results.playerTotalCount
+                : widget.results.players.length,
           ),
           ListView.separated(
             shrinkWrap: true,
@@ -367,10 +361,9 @@ class _LibrarySearchResultsViewState
     required GamesListViewMode viewMode,
   }) {
     // Use paginated games if available, otherwise fall back to legacy
-    final games =
-        paginationState.games.isNotEmpty
-            ? paginationState.games
-            : (databaseGamesAsync?.valueOrNull ?? fallbackGames);
+    final games = paginationState.games.isNotEmpty
+        ? paginationState.games
+        : (databaseGamesAsync?.valueOrNull ?? fallbackGames);
 
     if (games.isEmpty &&
         !paginationState.isLoading &&
@@ -381,8 +374,9 @@ class _LibrarySearchResultsViewState
     return [
       _SectionHeader(
         title: 'Database Games',
-        count:
-            paginationState.totalCount > 0 ? paginationState.totalCount : null,
+        count: paginationState.totalCount > 0
+            ? paginationState.totalCount
+            : null,
       ),
       if (games.isEmpty && paginationState.isLoading)
         Padding(
@@ -396,7 +390,9 @@ class _LibrarySearchResultsViewState
           padding: EdgeInsets.only(top: 4.h, bottom: 12.h),
           child: Text(
             'Failed to load games',
-            style: AppTypography.textSmRegular.copyWith(color: context.colors.danger),
+            style: AppTypography.textSmRegular.copyWith(
+              color: context.colors.danger,
+            ),
           ),
         )
       else
@@ -408,10 +404,9 @@ class _LibrarySearchResultsViewState
         _LoadMoreButton(
           isLoading: paginationState.isLoading,
           onTap: _loadMoreGames,
-          remainingCount:
-              paginationState.totalCount > 0
-                  ? paginationState.totalCount - games.length
-                  : null,
+          remainingCount: paginationState.totalCount > 0
+              ? paginationState.totalCount - games.length
+              : null,
         ),
       ],
 
@@ -444,46 +439,52 @@ class _LibrarySearchResultsViewState
     final isBoard = viewMode == GamesListViewMode.chessBoard;
 
     if (isGrid) {
-      // Grid mode: dynamic columns based on device/orientation
-      // Tablet landscape: 4 columns, Tablet portrait: 2 columns, Phone: 2 columns
-      final int gridColumns =
-          ResponsiveHelper.isTablet && ResponsiveHelper.isLandscape ? 4 : 2;
-      final items = <Widget>[];
+      return LayoutBuilder(
+        builder: (context, constraints) {
+          final gridColumns = ResponsiveHelper.columnsForWidth(
+            constraints.maxWidth,
+            minItemWidth: 180,
+            spacing: 12.sp,
+            minColumns: 2,
+            maxColumns: 4,
+          );
+          final items = <Widget>[];
 
-      for (int i = 0; i < games.length; i += gridColumns) {
-        final isLast = i + gridColumns >= games.length;
+          for (int i = 0; i < games.length; i += gridColumns) {
+            final isLast = i + gridColumns >= games.length;
 
-        // Gather games for this row
-        final rowGames = <GamesTourModel>[];
-        for (int j = 0; j < gridColumns && i + j < games.length; j++) {
-          rowGames.add(games[i + j]);
-        }
+            // Gather games for this row
+            final rowGames = <GamesTourModel>[];
+            for (int j = 0; j < gridColumns && i + j < games.length; j++) {
+              rowGames.add(games[i + j]);
+            }
 
-        items.add(
-          Padding(
-            padding: EdgeInsets.only(bottom: isLast ? 0 : 12.h),
-            child: Row(
-              children: [
-                for (int j = 0; j < gridColumns; j++) ...[
-                  if (j > 0) SizedBox(width: 12.sp),
-                  Expanded(
-                    child:
-                        j < rowGames.length
+            items.add(
+              Padding(
+                padding: EdgeInsets.only(bottom: isLast ? 0 : 12.h),
+                child: Row(
+                  children: [
+                    for (int j = 0; j < gridColumns; j++) ...[
+                      if (j > 0) SizedBox(width: 12.sp),
+                      Expanded(
+                        child: j < rowGames.length
                             ? _LibraryGridGame(
-                              game: rowGames[j],
-                              gameIndex: i + j,
-                              allGames: games,
-                            )
+                                game: rowGames[j],
+                                gameIndex: i + j,
+                                allGames: games,
+                              )
                             : const SizedBox.shrink(),
-                  ),
-                ],
-              ],
-            ),
-          ),
-        );
-      }
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            );
+          }
 
-      return Column(children: items);
+          return Column(children: items);
+        },
+      );
     }
 
     if (isBoard) {
@@ -541,13 +542,12 @@ class _LoadMoreButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
-      onTap:
-          isLoading
-              ? null
-              : () {
-                HapticFeedbackService.light();
-                onTap();
-              },
+      onTap: isLoading
+          ? null
+          : () {
+              HapticFeedbackService.light();
+              onTap();
+            },
       child: Container(
         padding: EdgeInsets.symmetric(vertical: 14.h, horizontal: 20.w),
         decoration: BoxDecoration(

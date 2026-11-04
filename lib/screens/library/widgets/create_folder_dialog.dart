@@ -134,8 +134,9 @@ class _FolderNameDialogState extends ConsumerState<_FolderNameDialog> {
   Widget build(BuildContext context) {
     final allFolders =
         ref.watch(combinedLibraryFoldersProvider).valueOrNull ?? [];
-    final availableParents =
-        allFolders.where((f) => f.id != kTwicBookId && f.isFolder).toList();
+    final availableParents = allFolders
+        .where((f) => f.id != kTwicBookId && f.isFolder)
+        .toList();
 
     return ConstrainedBox(
       constraints: BoxConstraints(
@@ -151,85 +152,88 @@ class _FolderNameDialogState extends ConsumerState<_FolderNameDialog> {
           boxShadow: [
             context.isLightTheme
                 ? BoxShadow(
-                  color: context.colors.shadow,
-                  blurRadius: 8,
-                  offset: const Offset(0, 2),
-                )
+                    color: context.colors.shadow,
+                    blurRadius: 8,
+                    offset: const Offset(0, 2),
+                  )
                 : BoxShadow(
-                  color: context.colors.shadow,
-                  blurRadius: 40,
-                  offset: const Offset(0, 20),
-                ),
+                    color: context.colors.shadow,
+                    blurRadius: 40,
+                    offset: const Offset(0, 20),
+                  ),
           ],
         ),
-        child: Padding(
-          padding: EdgeInsets.all(28.sp),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              // Header
-              Row(
-                children: [
-                  Container(
-                    padding: EdgeInsets.all(10.sp),
-                    decoration: BoxDecoration(
-                      color: kPrimaryColor.withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(12.br),
-                    ),
-                    child: Icon(
-                      widget.isRename
-                          ? Icons.edit_rounded
-                          : (_isDatabase
-                              ? Icons.storage_rounded
-                              : Icons.folder_rounded),
-                      color: context.colors.accentText,
-                      size: 22.sp,
-                    ),
-                  ),
-                  SizedBox(width: 16.w),
-                  Expanded(
-                    child: Text(
-                      widget.title,
-                      style: AppTypography.textLgBold.copyWith(
-                        color: context.colors.textPrimary,
-                        letterSpacing: -0.5,
+        child: SingleChildScrollView(
+          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+          child: Padding(
+            padding: EdgeInsets.all(28.sp),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                // Header
+                Row(
+                  children: [
+                    Container(
+                      padding: EdgeInsets.all(10.sp),
+                      decoration: BoxDecoration(
+                        color: kPrimaryColor.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(12.br),
+                      ),
+                      child: Icon(
+                        widget.isRename
+                            ? Icons.edit_rounded
+                            : (_isDatabase
+                                  ? Icons.storage_rounded
+                                  : Icons.folder_rounded),
+                        color: context.colors.accentText,
+                        size: 22.sp,
                       ),
                     ),
-                  ),
+                    SizedBox(width: 16.w),
+                    Expanded(
+                      child: Text(
+                        widget.title,
+                        style: AppTypography.textLgBold.copyWith(
+                          color: context.colors.textPrimary,
+                          letterSpacing: -0.5,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+
+                SizedBox(height: 24.h),
+
+                // Type Selection
+                if (!widget.isRename) ...[
+                  _buildTypeSelector(),
+                  SizedBox(height: 20.h),
                 ],
-              ),
 
-              SizedBox(height: 24.h),
+                // Parent selection (if a parent folder is being selected)
+                if (_selectedParentId != null &&
+                    !widget.isLocked &&
+                    !widget.isRename) ...[
+                  _buildParentSelector(availableParents),
+                  SizedBox(height: 20.h),
+                ],
 
-              // Type Selection
-              if (!widget.isRename) ...[
-                _buildTypeSelector(),
-                SizedBox(height: 20.h),
+                // Context message for a locked parent folder
+                if (widget.isLocked && _selectedParentId != null) ...[
+                  _buildLockedContext(availableParents),
+                  SizedBox(height: 20.h),
+                ],
+
+                // Input Field
+                _buildTextField(),
+
+                SizedBox(height: 32.h),
+
+                // Actions
+                _buildActions(),
               ],
-
-              // Parent selection (if a parent folder is being selected)
-              if (_selectedParentId != null &&
-                  !widget.isLocked &&
-                  !widget.isRename) ...[
-                _buildParentSelector(availableParents),
-                SizedBox(height: 20.h),
-              ],
-
-              // Context message for a locked parent folder
-              if (widget.isLocked && _selectedParentId != null) ...[
-                _buildLockedContext(availableParents),
-                SizedBox(height: 20.h),
-              ],
-
-              // Input Field
-              _buildTextField(),
-
-              SizedBox(height: 32.h),
-
-              // Actions
-              _buildActions(),
-            ],
+            ),
           ),
         ),
       ),
@@ -274,7 +278,9 @@ class _FolderNameDialogState extends ConsumerState<_FolderNameDialog> {
     if (parents.isEmpty) {
       return Text(
         'Create a folder first to organize items inside it.',
-        style: AppTypography.textXsRegular.copyWith(color: context.colors.danger),
+        style: AppTypography.textXsRegular.copyWith(
+          color: context.colors.danger,
+        ),
       ).animate().fadeIn();
     }
 
@@ -308,18 +314,17 @@ class _FolderNameDialogState extends ConsumerState<_FolderNameDialog> {
                 color: context.textInk(0.4),
               ),
               isExpanded: true,
-              items:
-                  parents.map((folder) {
-                    return DropdownMenuItem<String>(
-                      value: folder.id,
-                      child: Text(
-                        folder.name,
-                        style: AppTypography.textSmMedium.copyWith(
-                          color: context.colors.textPrimary,
-                        ),
-                      ),
-                    );
-                  }).toList(),
+              items: parents.map((folder) {
+                return DropdownMenuItem<String>(
+                  value: folder.id,
+                  child: Text(
+                    folder.name,
+                    style: AppTypography.textSmMedium.copyWith(
+                      color: context.colors.textPrimary,
+                    ),
+                  ),
+                );
+              }).toList(),
               onChanged: (value) {
                 setState(() => _selectedParentId = value);
                 HapticFeedbackService.light();
@@ -333,8 +338,9 @@ class _FolderNameDialogState extends ConsumerState<_FolderNameDialog> {
 
   Widget _buildLockedContext(List<LibraryFolder> parents) {
     final parent = parents.where((p) => p.id == _selectedParentId).firstOrNull;
-    final contextLabel =
-        parent == null ? 'Inside this folder' : 'Inside "${parent.name}"';
+    final contextLabel = parent == null
+        ? 'Inside this folder'
+        : 'Inside "${parent.name}"';
     return Container(
       padding: EdgeInsets.all(12.sp),
       decoration: BoxDecoration(
@@ -344,7 +350,11 @@ class _FolderNameDialogState extends ConsumerState<_FolderNameDialog> {
       ),
       child: Row(
         children: [
-          Icon(Icons.info_outline_rounded, color: context.colors.accentText, size: 16.sp),
+          Icon(
+            Icons.info_outline_rounded,
+            color: context.colors.accentText,
+            size: 16.sp,
+          ),
           SizedBox(width: 10.w),
           Expanded(
             child: Text(
@@ -470,26 +480,23 @@ class _TypeButton extends StatelessWidget {
         duration: const Duration(milliseconds: 200),
         padding: EdgeInsets.symmetric(vertical: 10.h),
         decoration: BoxDecoration(
-          color:
-              isSelected
-                  ? context.colors.textPrimary.withValues(alpha: 0.08)
-                  : Colors.transparent,
+          color: isSelected
+              ? context.colors.textPrimary.withValues(alpha: 0.08)
+              : Colors.transparent,
           borderRadius: BorderRadius.circular(10.br),
           border: Border.all(
-            color:
-                isSelected
-                    ? context.colors.textPrimary.withValues(alpha: 0.1)
-                    : Colors.transparent,
+            color: isSelected
+                ? context.colors.textPrimary.withValues(alpha: 0.1)
+                : Colors.transparent,
           ),
         ),
         child: Center(
           child: Text(
             label,
             style: AppTypography.textXsBold.copyWith(
-              color:
-                  isSelected
-                      ? context.colors.textPrimary
-                      : context.textInk(0.4),
+              color: isSelected
+                  ? context.colors.textPrimary
+                  : context.textInk(0.4),
             ),
           ),
         ),

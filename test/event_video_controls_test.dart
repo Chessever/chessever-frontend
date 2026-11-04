@@ -6,6 +6,7 @@ import 'package:chessever2/screens/chessboard/widgets/chess_board_bottom_nav_bar
 import 'package:chessever2/screens/chessboard/widgets/chess_board_bottom_navbar.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/utils/adaptive_window.dart';
 import 'package:chessever2/utils/svg_asset.dart';
 import 'package:chessever2/widgets/svg_widget.dart';
 import 'package:flutter/material.dart';
@@ -117,7 +118,13 @@ void main() {
       await tester.pumpWidget(const SizedBox());
     },
   );
-  testWidgets('camera coachmark points at the icon only once', (tester) async {
+  testWidgets('camera coachmark points at its icon inside a left safe inset', (
+    tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(844, 390);
+    tester.view.viewPadding = const FakeViewPadding(left: 64);
+    addTearDown(tester.view.reset);
     var toggles = 0;
     final store = _CoachmarkStore();
     final tracker = LiveStreamCoachmarkTracker(store);
@@ -132,6 +139,7 @@ void main() {
       ],
       child: MaterialApp(
         theme: AppTheme.darkTheme,
+        builder: (context, child) => AdaptiveWindowScope(child: child!),
         home: Builder(
           builder: (context) {
             ResponsiveHelper.init(context);
@@ -237,6 +245,7 @@ void main() {
       ],
       child: MaterialApp(
         theme: AppTheme.darkTheme,
+        builder: (context, child) => AdaptiveWindowScope(child: child!),
         home: Builder(
           builder: (context) {
             ResponsiveHelper.init(context);

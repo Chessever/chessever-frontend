@@ -35,7 +35,7 @@ class LikeTagChip extends ConsumerStatefulWidget {
 }
 
 class _LikeTagChipState extends ConsumerState<LikeTagChip>
-    with TickerProviderStateMixin {
+    with TickerProviderStateMixin, WidgetsBindingObserver {
   /// How long the chip lingers before self-dismissing untagged. Long enough to
   /// notice and reach for, short enough not to squat on the toolbar.
   static const Duration _countdownDuration = Duration(milliseconds: 5200);
@@ -62,6 +62,7 @@ class _LikeTagChipState extends ConsumerState<LikeTagChip>
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _draftLabels = _initialLabels;
     _countdown = AnimationController(
       vsync: this,
@@ -82,6 +83,7 @@ class _LikeTagChipState extends ConsumerState<LikeTagChip>
   void dispose() {
     // Synchronous teardown — no setState — so a chip swapped out mid-menu by
     // the AppBar's AnimatedSwitcher can't leak its overlay entry.
+    WidgetsBinding.instance.removeObserver(this);
     _menuEntry?.remove();
     _menuEntry?.dispose();
     _menuEntry = null;
@@ -125,10 +127,17 @@ class _LikeTagChipState extends ConsumerState<LikeTagChip>
 
   // --- menu lifecycle ------------------------------------------------------
 
-  Rect? _chipGlobalRect() {
+  Rect? _chipOverlayRect(RenderBox overlayBox) {
     final box = _chipKey.currentContext?.findRenderObject() as RenderBox?;
-    if (box == null || !box.attached) return null;
-    return box.localToGlobal(Offset.zero) & box.size;
+    if (box == null || !box.attached || !box.hasSize) return null;
+    return overlayBox.globalToLocal(box.localToGlobal(Offset.zero)) & box.size;
+  }
+
+  @override
+  void didChangeMetrics() {
+    // A fold moves the toolbar. Close this transient surface, keeping its
+    // draft on the chip so reopening continues from the same choices.
+    if (_menuOpen) _closeMenu();
   }
 
   void _toggleMenu() {
@@ -141,16 +150,19 @@ class _LikeTagChipState extends ConsumerState<LikeTagChip>
   }
 
   void _openMenu() {
-    final rect = _chipGlobalRect();
-    if (rect == null) return;
+    final overlay = Overlay.of(context, rootOverlay: true);
+    final overlayBox = overlay.context.findRenderObject() as RenderBox;
+    if (_chipOverlayRect(overlayBox) == null) return;
     HapticFeedback.selectionClick();
     _countdown.stop(); // pause: never time out with the menu open.
     setState(() => _menuOpen = true);
-    final media = MediaQuery.of(context);
     _menuEntry = OverlayEntry(
-      builder: (ctx) => MediaQuery(data: media, child: _buildMenu(ctx, rect)),
+      builder: (ctx) {
+        final rect = _chipOverlayRect(overlayBox);
+        return rect == null ? const SizedBox.shrink() : _buildMenu(ctx, rect);
+      },
     );
-    Overlay.of(context, rootOverlay: true).insert(_menuEntry!);
+    overlay.insert(_menuEntry!);
     if (MediaQuery.disableAnimationsOf(context)) {
       _menu.value = 1;
     } else {

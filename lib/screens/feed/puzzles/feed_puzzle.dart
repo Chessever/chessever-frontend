@@ -19,6 +19,7 @@ import 'package:chessever2/screens/feed/widgets/feed_classification.dart';
 import 'package:chessever2/screens/feed/widgets/feed_glyphs.dart';
 import 'package:chessever2/screens/feed/widgets/feed_post_header.dart';
 import 'package:chessever2/screens/feed/widgets/feed_layout.dart';
+import 'package:chessever2/screens/feed/widgets/feed_page_viewport.dart';
 import 'package:chessever2/screens/feed/widgets/feed_sfx_provider.dart';
 import 'package:chessever2/screens/feed/widgets/feed_states.dart';
 import 'package:chessever2/theme/app_colors.dart';
@@ -664,7 +665,7 @@ class _FeedPuzzlePageState extends ConsumerState<FeedPuzzlePage> {
     final reduceMotion = MediaQuery.disableAnimationsOf(context);
     final shown = s.solverMovesPlayed;
 
-    return LayoutBuilder(
+    return FeedPageViewport(
       builder: (context, constraints) {
         final l = FeedLayout.resolve(
           constraints,

@@ -1,4 +1,5 @@
 import 'dart:ui';
+import 'dart:math' as math;
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:flutter/material.dart';
@@ -58,7 +59,7 @@ class _SmoothBottomSheetWrapper<T> extends StatefulWidget {
 
 class _SmoothBottomSheetWrapperState<T>
     extends State<_SmoothBottomSheetWrapper<T>> {
-  double _slideProgress = 0.0; // 0 = hidden, 1 = fully visible
+  double _slideProgress = 0.0;
   double _barrierOpacity = 0.0;
   double _dragOffset = 0.0;
   bool _isDragging = false;
@@ -80,6 +81,10 @@ class _SmoothBottomSheetWrapperState<T>
   void _close([T? result]) {
     if (_isClosing) return;
     _isClosing = true;
+    if (MediaQuery.disableAnimationsOf(context)) {
+      Navigator.of(context).pop(result);
+      return;
+    }
     setState(() {
       _slideProgress = 0.0;
       _barrierOpacity = 0.0;
@@ -122,8 +127,15 @@ class _SmoothBottomSheetWrapperState<T>
 
   @override
   Widget build(BuildContext context) {
-    final screenHeight = MediaQuery.of(context).size.height;
-    final maxSheetHeight = widget.maxHeight ?? screenHeight * 0.9;
+    final media = MediaQuery.of(context);
+    final availableHeight = math.max(
+      0.0,
+      media.size.height - media.padding.top - media.viewInsets.bottom,
+    );
+    final maxSheetHeight = math.min(
+      widget.maxHeight ?? availableHeight * 0.9,
+      availableHeight,
+    );
 
     return Stack(
       children: [
@@ -136,44 +148,44 @@ class _SmoothBottomSheetWrapperState<T>
             builder: (context, opacity, child) {
               return widget.useBlur
                   ? BackdropFilter(
-                    filter: ImageFilter.blur(
-                      sigmaX: 8 * opacity,
-                      sigmaY: 8 * opacity,
-                    ),
-                    child: Container(
+                      filter: ImageFilter.blur(
+                        sigmaX: 8 * opacity,
+                        sigmaY: 8 * opacity,
+                      ),
+                      child: Container(
+                        color: context.colors.scrim.withValues(
+                          alpha: context.colors.scrim.a * opacity,
+                        ),
+                      ),
+                    )
+                  : Container(
                       color: context.colors.scrim.withValues(
                         alpha: context.colors.scrim.a * opacity,
                       ),
-                    ),
-                  )
-                  : Container(
-                    color: context.colors.scrim.withValues(
-                      alpha: context.colors.scrim.a * opacity,
-                    ),
-                  );
+                    );
             },
           ),
         ),
 
         // Bottom sheet content - tablet has max width
         Positioned(
-          left: ResponsiveHelper.isTablet ? null : 0,
-          right: ResponsiveHelper.isTablet ? null : 0,
-          bottom: 0,
+          left: 0,
+          right: 0,
+          bottom: media.viewInsets.bottom,
           child: Center(
             child: ConstrainedBox(
               constraints: BoxConstraints(
                 maxWidth: ResponsiveHelper.isTablet ? 500.0 : double.infinity,
               ),
               child: SingleMotionBuilder(
-                motion:
-                    _isDragging
-                        ? const LinearMotion(Duration(milliseconds: 1))
-                        : const CupertinoMotion.bouncy(),
+                motion: _isDragging
+                    ? const LinearMotion(Duration(milliseconds: 1))
+                    : const CupertinoMotion.bouncy(),
                 value: _slideProgress,
                 builder: (context, progress, child) {
-                  final slideOffset =
-                      (1 - progress) * maxSheetHeight + _dragOffset;
+                  final slideOffset = media.disableAnimations
+                      ? 0.0
+                      : (1 - progress) * maxSheetHeight + _dragOffset;
 
                   return Transform.translate(
                     offset: Offset(0, slideOffset),
@@ -190,7 +202,8 @@ class _SmoothBottomSheetWrapperState<T>
                       color: Colors.transparent,
                       child: Container(
                         decoration: BoxDecoration(
-                          color: widget.backgroundColor ?? context.colors.surface,
+                          color:
+                              widget.backgroundColor ?? context.colors.surface,
                           borderRadius: BorderRadius.only(
                             topLeft: Radius.circular(20.br),
                             topRight: Radius.circular(20.br),
@@ -213,20 +226,28 @@ class _SmoothBottomSheetWrapperState<T>
                                     // Paper needs a solid ink to clear 3:1
                                     // (30% ink reads ~1.9:1); dark keeps
                                     // its original 30% white.
-                                    color:
-                                        context.isLightTheme
-                                            ? context.colors.placeholder
-                                            : context.colors.textPrimary
-                                                .withValues(alpha: 0.3),
+                                    color: context.isLightTheme
+                                        ? context.colors.placeholder
+                                        : context.colors.textPrimary.withValues(
+                                            alpha: 0.3,
+                                          ),
                                     borderRadius: BorderRadius.circular(2.br),
                                   ),
                                 ),
                               ),
                             // Content
-                            Flexible(child: widget.builder(context)),
+                            Flexible(
+                              child: MediaQuery.removeViewInsets(
+                                context: context,
+                                removeBottom: true,
+                                child: Builder(builder: widget.builder),
+                              ),
+                            ),
                             // Safe area padding
                             SizedBox(
-                              height: MediaQuery.of(context).viewPadding.bottom,
+                              height: media.viewInsets.bottom > 0
+                                  ? 0
+                                  : media.viewPadding.bottom,
                             ),
                           ],
                         ),

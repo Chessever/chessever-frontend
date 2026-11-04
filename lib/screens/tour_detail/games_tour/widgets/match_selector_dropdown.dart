@@ -1,3 +1,4 @@
+import 'package:chessever2/widgets/window_metrics_dismissal.dart';
 import 'package:chessever2/repository/supabase/tour/tour.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/utils/knockout_match_detector.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_screen_provider.dart';
@@ -29,8 +30,9 @@ class MatchSelectorDropdown extends ConsumerWidget {
           .when(
             data: (gamesData) {
               final allGames = gamesData.gamesTourModels;
-              final tourDetail =
-                  ref.watch(tourDetailScreenProvider).valueOrNull;
+              final tourDetail = ref
+                  .watch(tourDetailScreenProvider)
+                  .valueOrNull;
               final sourceStandingsByTourId = <String, List<TournamentPlayer>>{
                 for (final tourModel in tourDetail?.tours ?? const [])
                   tourModel.tour.id: tourModel.tour.players,
@@ -41,16 +43,15 @@ class MatchSelectorDropdown extends ConsumerWidget {
                   KnockoutMatchDetector.groupByMatchesAcrossAllRounds(allGames);
 
               // Convert to list of match headers using the detector's helper
-              final matches =
-                  matchesMap.entries.map((entry) {
-                    final matchKey = entry.key;
-                    final matchGames = entry.value;
-                    return KnockoutMatchDetector.createMatchHeader(
-                      matchKey,
-                      matchGames,
-                      sourceStandingsByTourId: sourceStandingsByTourId,
-                    );
-                  }).toList();
+              final matches = matchesMap.entries.map((entry) {
+                final matchKey = entry.key;
+                final matchGames = entry.value;
+                return KnockoutMatchDetector.createMatchHeader(
+                  matchKey,
+                  matchGames,
+                  sourceStandingsByTourId: sourceStandingsByTourId,
+                );
+              }).toList();
 
               // Sort matches by completion status and name
               matches.sort((a, b) {
@@ -68,15 +69,14 @@ class MatchSelectorDropdown extends ConsumerWidget {
                 },
               );
             },
-            error:
-                (e, _) => Center(
-                  child: Text(
-                    'Error loading matches',
-                    style: AppTypography.textXsRegular.copyWith(
-                      color: context.colors.textPrimaryMuted,
-                    ),
-                  ),
+            error: (e, _) => Center(
+              child: Text(
+                'Error loading matches',
+                style: AppTypography.textXsRegular.copyWith(
+                  color: context.colors.textPrimaryMuted,
                 ),
+              ),
+            ),
             loading: () => const SizedBox.shrink(),
           ),
     );
@@ -175,83 +175,86 @@ class _MatchDropdown extends HookConsumerWidget {
           return;
         }
         final size = renderBox.size;
-        final offset = renderBox.localToGlobal(Offset.zero);
+        final overlayBox = overlay.context.findRenderObject() as RenderBox;
+        final offset = overlayBox.globalToLocal(
+          renderBox.localToGlobal(Offset.zero),
+        );
         final availableHeight =
-            MediaQuery.of(context).size.height - offset.dy - size.height - 20;
+            (MediaQuery.of(context).size.height - offset.dy - size.height - 20)
+                .clamp(0.0, double.infinity);
         overlayEntry = OverlayEntry(
-          builder:
-              (context) => GestureDetector(
-                behavior: HitTestBehavior.translucent,
-                onTap: () => isOpen.value = false,
-                child: Stack(
-                  children: [
-                    Positioned(
-                      left: offset.dx,
-                      top: offset.dy + size.height,
-                      width: 280.w,
-                      child: CompositedTransformFollower(
-                        link: layerLink,
-                        showWhenUnlinked: false,
-                        offset: Offset(-50.w, size.height),
-                        child: Material(
-                          color: Colors.transparent,
-                          child: ConstrainedBox(
-                            constraints: BoxConstraints(
-                              maxHeight: availableHeight,
-                              minWidth: size.width,
+          builder: (context) => WindowMetricsDismissal(
+            onChanged: () => isOpen.value = false,
+            child: GestureDetector(
+              behavior: HitTestBehavior.translucent,
+              onTap: () => isOpen.value = false,
+              child: Stack(
+                children: [
+                  Positioned(
+                    left: offset.dx,
+                    top: offset.dy + size.height,
+                    width: 280.w,
+                    child: CompositedTransformFollower(
+                      link: layerLink,
+                      showWhenUnlinked: false,
+                      offset: Offset(-50.w, size.height),
+                      child: Material(
+                        color: Colors.transparent,
+                        child: ConstrainedBox(
+                          constraints: BoxConstraints(
+                            maxHeight: availableHeight,
+                            minWidth: size.width,
+                          ),
+                          child: Container(
+                            decoration: BoxDecoration(
+                              color: context.colors.surface,
+                              borderRadius: BorderRadius.circular(20.br),
                             ),
-                            child: Container(
-                              decoration: BoxDecoration(
-                                color: context.colors.surface,
-                                borderRadius: BorderRadius.circular(20.br),
-                              ),
-                              padding: EdgeInsets.symmetric(vertical: 8.h),
-                              child: ListView.separated(
-                                padding: EdgeInsets.zero,
-                                shrinkWrap: true,
-                                itemCount: matches.length,
-                                separatorBuilder: (context, index) {
-                                  return Padding(
-                                    padding: EdgeInsets.symmetric(
-                                      vertical: 5.h,
-                                    ),
-                                    child: DividerWidget(),
-                                  );
-                                },
-                                itemBuilder: (context, index) {
-                                  final match = matches[index];
-                                  final isSelected =
-                                      index == selectedIndex.value;
+                            padding: EdgeInsets.symmetric(vertical: 8.h),
+                            child: ListView.separated(
+                              padding: EdgeInsets.zero,
+                              shrinkWrap: true,
+                              itemCount: matches.length,
+                              separatorBuilder: (context, index) {
+                                return Padding(
+                                  padding: EdgeInsets.symmetric(vertical: 5.h),
+                                  child: DividerWidget(),
+                                );
+                              },
+                              itemBuilder: (context, index) {
+                                final match = matches[index];
+                                final isSelected = index == selectedIndex.value;
 
-                                  return InkWell(
-                                    onTap: () {
-                                      selectedIndex.value = index;
-                                      onChanged(match);
-                                      isOpen.value = false;
-                                    },
-                                    child: Container(
-                                      color:
-                                          isSelected
-                                              ? context.colors.surface
-                                                  .withValues(alpha: 0.5)
-                                              : Colors.transparent,
-                                      padding: EdgeInsets.symmetric(
-                                        horizontal: 12.w,
-                                        vertical: 6.h,
-                                      ),
-                                      child: _buildMatchRow(context, match),
+                                return InkWell(
+                                  onTap: () {
+                                    selectedIndex.value = index;
+                                    onChanged(match);
+                                    isOpen.value = false;
+                                  },
+                                  child: Container(
+                                    color: isSelected
+                                        ? context.colors.surface.withValues(
+                                            alpha: 0.5,
+                                          )
+                                        : Colors.transparent,
+                                    padding: EdgeInsets.symmetric(
+                                      horizontal: 12.w,
+                                      vertical: 6.h,
                                     ),
-                                  );
-                                },
-                              ),
+                                    child: _buildMatchRow(context, match),
+                                  ),
+                                );
+                              },
                             ),
                           ),
                         ),
                       ),
                     ),
-                  ],
-                ),
+                  ),
+                ],
               ),
+            ),
+          ),
         );
         overlay.insert(overlayEntry!);
         void removeOverlay() {

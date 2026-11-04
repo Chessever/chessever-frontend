@@ -42,7 +42,7 @@ class BoardPinchCoachmark extends StatefulWidget {
 
 class _BoardPinchCoachmarkState extends State<BoardPinchCoachmark>
     with TickerProviderStateMixin {
-  double _opacityTarget = 0.0;
+  double _opacityTarget = 1.0;
   bool _isExiting = false;
 
   /// 8s auto-dismiss timer that also paints the progress border.
@@ -124,7 +124,7 @@ class _BoardPinchCoachmarkState extends State<BoardPinchCoachmark>
                 height: MediaQuery.sizeOf(context).height,
                 width: MediaQuery.sizeOf(context).width,
                 color: kBlackColor.withValues(alpha: 0.8),
-                child: SafeArea(
+                child: BoardCoachmarkViewport(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
@@ -158,7 +158,9 @@ class _BoardPinchCoachmarkState extends State<BoardPinchCoachmark>
                                       // on the dim scrim in both themes — matches
                                       // the other teaching cards.
                                       color: Colors.white,
-                                      borderRadius: BorderRadius.circular(28.br),
+                                      borderRadius: BorderRadius.circular(
+                                        28.br,
+                                      ),
                                       boxShadow: [
                                         BoxShadow(
                                           color: Colors.black.withValues(
@@ -313,6 +315,25 @@ class _BoardPinchCoachmarkState extends State<BoardPinchCoachmark>
       },
     );
   }
+}
+
+/// Keeps board teaching and its dismissal controls reachable in short windows.
+class BoardCoachmarkViewport extends StatelessWidget {
+  const BoardCoachmarkViewport({super.key, required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => SafeArea(
+    child: LayoutBuilder(
+      builder: (context, constraints) => SingleChildScrollView(
+        child: ConstrainedBox(
+          constraints: BoxConstraints(minHeight: constraints.maxHeight),
+          child: IntrinsicHeight(child: child),
+        ),
+      ),
+    ),
+  );
 }
 
 /// Looping demo: two fingers spread apart and come back together — the visual

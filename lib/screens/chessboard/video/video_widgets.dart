@@ -95,10 +95,9 @@ class EventVideoLayoutScope extends InheritedWidget {
   });
   final EventVideoLayout layout;
 
-  static EventVideoLayout? maybeOf(BuildContext context) =>
-      context
-          .dependOnInheritedWidgetOfExactType<EventVideoLayoutScope>()
-          ?.layout;
+  static EventVideoLayout? maybeOf(BuildContext context) => context
+      .dependOnInheritedWidgetOfExactType<EventVideoLayoutScope>()
+      ?.layout;
 
   /// For callbacks: reads the snapshot without subscribing the caller.
   static EventVideoLayout? read(BuildContext context) =>
@@ -341,18 +340,16 @@ class EventVideoHostState extends State<EventVideoHost>
         final player = _player;
         return EventVideoLayoutScope(
           layout: EventVideoLayout.of(session),
-          child:
-              player == null
-                  ? frame(null)
-                  : ListenableBuilder(
-                    listenable: player,
-                    builder:
-                        (context, _) => frame(
-                          player.fullscreenView == null
-                              ? null
-                              : _FullscreenVideoOverlay(player: player),
-                        ),
+          child: player == null
+              ? frame(null)
+              : ListenableBuilder(
+                  listenable: player,
+                  builder: (context, _) => frame(
+                    player.fullscreenView == null
+                        ? null
+                        : _FullscreenVideoOverlay(player: player),
                   ),
+                ),
         );
       },
     ),
@@ -439,16 +436,24 @@ class EventVideoFlags extends StatelessWidget {
                     ? null
                     : () async {
                         final box = context.findRenderObject() as RenderBox?;
-                        final at =
-                            box?.localToGlobal(Offset.zero) ?? Offset.zero;
+                        final overlayBox =
+                            Navigator.of(
+                                  context,
+                                ).overlay!.context.findRenderObject()
+                                as RenderBox;
                         final chosen = await showMenu<bool>(
                           context: context,
-                          position: RelativeRect.fromLTRB(
-                            at.dx,
-                            at.dy,
-                            at.dx + 1,
-                            at.dy + 1,
-                          ),
+                          positionBuilder: (_, _) {
+                            final at = box == null || !box.attached
+                                ? Offset.zero
+                                : overlayBox.globalToLocal(
+                                    box.localToGlobal(Offset.zero),
+                                  );
+                            return RelativeRect.fromRect(
+                              at & const Size(1, 1),
+                              Offset.zero & overlayBox.size,
+                            );
+                          },
                           items: [
                             PopupMenuItem(
                               value: true,
@@ -568,13 +573,9 @@ class EventVideoSurface extends StatelessWidget {
       builder: (context, constraints) {
         final twitch =
             session.selected!.source.platform == VideoPlatform.twitch;
-        final height =
-            expanded && constraints.hasBoundedHeight
-                ? constraints.maxHeight
-                : math.max(
-                  twitch ? 300.0 : 200.0,
-                  constraints.maxWidth * 9 / 16,
-                );
+        final height = expanded && constraints.hasBoundedHeight
+            ? constraints.maxHeight
+            : math.max(twitch ? 300.0 : 200.0, constraints.maxWidth * 9 / 16);
         // Never mount a second native view behind the expanded one.
         if (!active || (session.expanded && !expanded)) {
           return SizedBox(

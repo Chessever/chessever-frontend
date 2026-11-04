@@ -64,7 +64,7 @@ class EnginePvListView extends StatelessWidget {
   final bool trailingDivider;
 
   /// Fixed height per row so text updates never shift the layout vertically.
-  static double get rowHeight => 30.h;
+  static double get rowHeight => 30.h.clamp(30.0, double.infinity);
 
   @override
   Widget build(BuildContext context) {
@@ -82,13 +82,12 @@ class EnginePvListView extends StatelessWidget {
             ),
           SizedBox(
             height: rowHeight,
-            child:
-                i < items.length
-                    ? _PvRow(item: items[i])
-                    : _PvRowPlaceholder(
-                      isPrimary: i == 0,
-                      isEvaluating: isEvaluating,
-                    ),
+            child: i < items.length
+                ? _PvRow(item: items[i])
+                : _PvRowPlaceholder(
+                    isPrimary: i == 0,
+                    isEvaluating: isEvaluating,
+                  ),
           ),
         ],
         if (trailingDivider) Divider(color: context.colors.divider, height: 1),
@@ -262,21 +261,19 @@ class _PvRowState extends State<_PvRow> {
     if (item.isWhiteWinning) {
       // Light keeps the eval-bar semantics: White's edge is the paper
       // slab, Black's the ink one. Dark is unchanged.
-      evalBgColor =
-          context.isLightTheme ? Colors.white : context.colors.textPrimary;
-      evalTextColor =
-          context.isLightTheme
-              ? context.colors.textPrimary
-              : context.colors.surface;
+      evalBgColor = context.isLightTheme
+          ? Colors.white
+          : context.colors.textPrimary;
+      evalTextColor = context.isLightTheme
+          ? context.colors.textPrimary
+          : context.colors.surface;
     } else if (item.isBlackWinning) {
-      evalBgColor =
-          context.isLightTheme
-              ? context.colors.surfaceInverse
-              : context.colors.divider;
-      evalTextColor =
-          context.isLightTheme
-              ? context.colors.textInverse
-              : context.colors.textPrimary;
+      evalBgColor = context.isLightTheme
+          ? context.colors.surfaceInverse
+          : context.colors.divider;
+      evalTextColor = context.isLightTheme
+          ? context.colors.textInverse
+          : context.colors.textPrimary;
     } else {
       evalBgColor = context.colors.textSecondary.withValues(alpha: 0.3);
       evalTextColor = context.colors.textPrimary;
@@ -377,7 +374,7 @@ class _EnginePvCardsViewState extends State<EnginePvCardsView> {
   @override
   Widget build(BuildContext context) {
     final items = widget.items;
-    final height = widget.cardHeight ?? 78.h;
+    final height = (widget.cardHeight ?? 78.h).clamp(64.0, double.infinity);
     final pageCount = items.isEmpty ? 1 : items.length;
 
     // Keep _currentPage in range if the line count shrinks.
@@ -390,31 +387,28 @@ class _EnginePvCardsViewState extends State<EnginePvCardsView> {
       children: [
         SizedBox(
           height: height,
-          child:
-              items.isEmpty
-                  ? (widget.emptyPlaceholder ?? const SizedBox.shrink())
-                  : PageView.builder(
-                    controller: _pageController,
-                    physics: const BouncingScrollPhysics(
-                      parent: AlwaysScrollableScrollPhysics(),
-                    ),
-                    padEnds: false,
-                    onPageChanged:
-                        (index) => setState(() => _currentPage = index),
-                    itemCount: items.length,
-                    itemBuilder:
-                        (context, index) => _PvCard(item: items[index]),
+          child: items.isEmpty
+              ? (widget.emptyPlaceholder ?? const SizedBox.shrink())
+              : PageView.builder(
+                  controller: _pageController,
+                  physics: const BouncingScrollPhysics(
+                    parent: AlwaysScrollableScrollPhysics(),
                   ),
+                  padEnds: false,
+                  onPageChanged: (index) =>
+                      setState(() => _currentPage = index),
+                  itemCount: items.length,
+                  itemBuilder: (context, index) => _PvCard(item: items[index]),
+                ),
         ),
         SizedBox(height: 4.h),
         Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: List.generate(pageCount, (index) {
             final isActive = index == _currentPage;
-            final accent =
-                items.isEmpty
-                    ? context.colors.textPrimary.withValues(alpha: 0.1)
-                    : items[index.clamp(0, items.length - 1)].accentColor;
+            final accent = items.isEmpty
+                ? context.colors.textPrimary.withValues(alpha: 0.1)
+                : items[index.clamp(0, items.length - 1)].accentColor;
             return Container(
               margin: EdgeInsets.symmetric(horizontal: 4.sp),
               width: 6.w,
@@ -462,18 +456,20 @@ class _PvCardState extends State<_PvCard> {
       if (!mounted || !_controller.hasClients) return;
       final targetContext = key.currentContext;
       final targetBox = targetContext?.findRenderObject();
-      final scrollable =
-          targetContext == null ? null : Scrollable.maybeOf(targetContext);
+      final scrollable = targetContext == null
+          ? null
+          : Scrollable.maybeOf(targetContext);
       final viewportBox = scrollable?.context.findRenderObject();
       if (targetBox is! RenderBox || viewportBox is! RenderBox) return;
 
       final dy = targetBox.localToGlobal(Offset.zero, ancestor: viewportBox).dy;
       final current = _controller.offset;
-      final desired = (current +
-              dy +
-              targetBox.size.height / 2 -
-              viewportBox.size.height / 2)
-          .clamp(0.0, _controller.position.maxScrollExtent);
+      final desired =
+          (current +
+                  dy +
+                  targetBox.size.height / 2 -
+                  viewportBox.size.height / 2)
+              .clamp(0.0, _controller.position.maxScrollExtent);
       if ((desired - current).abs() < 1.0) return;
       _controller.animateTo(
         desired,

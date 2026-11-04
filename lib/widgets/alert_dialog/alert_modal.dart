@@ -132,9 +132,12 @@ class _SmoothAlertWrapperState<T> extends State<_SmoothAlertWrapper<T>> {
                         opacity: 1,
                         child: Transform.scale(
                           scale: scale,
-                          child: GestureDetector(
-                            onTap: () {}, // Absorb tap
-                            child: widget.child,
+                          child: ConstrainedBox(
+                            constraints: const BoxConstraints(maxWidth: 560),
+                            child: GestureDetector(
+                              onTap: () {}, // Absorb tap
+                              child: widget.child,
+                            ),
                           ),
                         ),
                       ),

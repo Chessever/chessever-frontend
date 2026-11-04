@@ -116,8 +116,9 @@ class OnboardingFlowScreen extends HookConsumerWidget {
               child: Center(
                 child: ConstrainedBox(
                   constraints: BoxConstraints(
-                    maxWidth:
-                        ResponsiveHelper.isTablet ? 500.0 : double.infinity,
+                    maxWidth: ResponsiveHelper.isTablet
+                        ? 500.0
+                        : double.infinity,
                   ),
                   child: Padding(
                     padding: EdgeInsets.symmetric(
@@ -236,13 +237,12 @@ class OnboardingFlowScreen extends HookConsumerWidget {
                           await ref
                               .read(onboardingRepositoryProvider)
                               .markAsSeen(
-                                userId:
-                                    Supabase
-                                        .instance
-                                        .client
-                                        .auth
-                                        .currentUser
-                                        ?.id,
+                                userId: Supabase
+                                    .instance
+                                    .client
+                                    .auth
+                                    .currentUser
+                                    ?.id,
                               );
                           if (kDebugMode) {
                             debugPrint(
@@ -297,7 +297,10 @@ Future<void> continueAsGuest(BuildContext context) async {
     if (context.mounted) {
       showAppSnack(
         context,
-        userFacingError( e, fallback: 'Could not continue as guest. Please sign in.', ),
+        userFacingError(
+          e,
+          fallback: 'Could not continue as guest. Please sign in.',
+        ),
         tone: AppSnackTone.danger,
       );
     }
@@ -347,137 +350,89 @@ class _AuthStep extends HookWidget {
     return Center(
       child: ConstrainedBox(
         constraints: BoxConstraints(maxWidth: maxWidth),
-        child: Padding(
-          padding: EdgeInsets.fromLTRB(
-            horizontalPadding,
-            topPadding + 50.h,
-            horizontalPadding,
-            bottomPadding + 8.h,
-          ),
-          child: Column(
-            children: [
-              // Top content - scrollable if needed but designed to fit
-              Expanded(
-                child: Column(
+        child: OnboardingScrollBody(
+          child: Padding(
+            padding: EdgeInsets.fromLTRB(
+              horizontalPadding,
+              topPadding + 50.h,
+              horizontalPadding,
+              bottomPadding + 8.h,
+            ),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Column(
+                  mainAxisSize: MainAxisSize.min,
                   children: [
                     SizedBox(height: 8.h),
-
-                    // Lock icon with glow - smaller size
-                    _UnlockVisual()
-                        .animate()
-                        .fadeIn(duration: 600.ms, curve: _gentleSpring)
-                        .scale(
-                          begin: const Offset(0.8, 0.8),
-                          end: const Offset(1, 1),
-                          duration: 700.ms,
-                          curve: _smoothSpring,
-                        ),
-
+                    _UnlockVisual().animate().scale(
+                      begin: const Offset(0.8, 0.8),
+                      end: const Offset(1, 1),
+                      duration: 700.ms,
+                      curve: _smoothSpring,
+                    ),
                     SizedBox(height: 16.h),
-
-                    // Title
                     Text(
-                          'Unlock the full\nexperience',
-                          textAlign: TextAlign.center,
-                          style: AppTypography.displayXsBold.copyWith(
-                            color: context.colors.textPrimary,
-                            height: 1.2,
-                          ),
-                        )
-                        .animate(delay: 200.ms)
-                        .fadeIn(duration: 500.ms, curve: _smoothSpring)
-                        .move(begin: const Offset(0, 16), curve: _smoothSpring),
-
+                      'Unlock the full\nexperience',
+                      textAlign: TextAlign.center,
+                      style: AppTypography.displayXsBold.copyWith(
+                        color: context.colors.textPrimary,
+                        height: 1.2,
+                      ),
+                    ),
                     SizedBox(height: 6.h),
-
                     Text(
-                          'Create an account to access all features',
-                          textAlign: TextAlign.center,
-                          style: AppTypography.textSmRegular.copyWith(
-                            color: context.textInk(0.6),
-                          ),
-                        )
-                        .animate(delay: 300.ms)
-                        .fadeIn(duration: 500.ms, curve: _smoothSpring),
-
+                      'Create an account to access all features',
+                      textAlign: TextAlign.center,
+                      style: AppTypography.textSmRegular.copyWith(
+                        color: context.textInk(0.6),
+                      ),
+                    ),
                     SizedBox(height: 16.h),
-
-                    // FOMO feature list. Flexible + scrollable so the card
-                    // hugs its content and can never overflow on short
-                    // screens — the bottom of this page carries three
-                    // actions now, which eats into the available height.
-                    Flexible(
-                      child: SingleChildScrollView(
-                        physics: const ClampingScrollPhysics(),
-                        child: _FeaturesList()
-                            .animate(delay: 400.ms)
-                            .fadeIn(duration: 500.ms, curve: _smoothSpring)
-                            .move(
-                              begin: const Offset(0, 20),
-                              curve: _smoothSpring,
-                            ),
+                    _FeaturesList()
+                        .animate(delay: 400.ms)
+                        .move(begin: const Offset(0, 20), curve: _smoothSpring),
+                  ],
+                ),
+                SizedBox(height: 24.h),
+                Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    OnboardingPrimaryButton(
+                      label: 'Create free account',
+                      onTap: onSignIn,
+                    ),
+                    SizedBox(height: 12.h),
+                    TextButton(
+                      onPressed: onSignIn,
+                      style: TextButton.styleFrom(
+                        minimumSize: const Size(44, 44),
+                      ),
+                      child: Text(
+                        'I already have an account',
+                        textAlign: TextAlign.center,
+                        style: AppTypography.textSmMedium.copyWith(
+                          color: context.colors.accentText,
+                        ),
+                      ),
+                    ),
+                    TextButton(
+                      key: e2eKey(E2eIds.onboardingNotNowButton),
+                      onPressed: onNotNow,
+                      style: TextButton.styleFrom(
+                        minimumSize: const Size(44, 44),
+                      ),
+                      child: Text(
+                        'Not now',
+                        style: AppTypography.textSmRegular.copyWith(
+                          color: context.textInk(0.55),
+                        ),
                       ),
                     ),
                   ],
                 ),
-              ),
-
-              // Bottom buttons - fixed at bottom
-              Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  SizedBox(height: 12.h),
-
-                  // Sign in button (primary)
-                  OnboardingPrimaryButton(label: 'Create free account', onTap: onSignIn)
-                      .animate(delay: 600.ms)
-                      .fadeIn(duration: 400.ms, curve: _smoothSpring)
-                      .move(begin: const Offset(0, 30), curve: _smoothSpring),
-
-                  SizedBox(height: 12.h),
-
-                  // "I have an account" link
-                  GestureDetector(
-                        onTap: onSignIn,
-                        behavior: HitTestBehavior.opaque,
-                        child: Padding(
-                          padding: EdgeInsets.symmetric(vertical: 6.h),
-                          child: Text(
-                            'I already have an account',
-                            style: AppTypography.textSmMedium.copyWith(
-                              color: context.colors.accentText,
-                            ),
-                          ),
-                        ),
-                      )
-                      .animate(delay: 900.ms)
-                      .fadeIn(duration: 400.ms, curve: _smoothSpring),
-
-                  // Guest path. Quietest of the three so it never competes
-                  // with signing up, but always reachable — dropping people
-                  // who refuse to sign in is what this exists to stop.
-                  GestureDetector(
-                        key: e2eKey(E2eIds.onboardingNotNowButton),
-                        onTap: onNotNow,
-                        behavior: HitTestBehavior.opaque,
-                        child: Padding(
-                          padding: EdgeInsets.symmetric(
-                            vertical: 10.h,
-                            horizontal: 16.w,
-                          ),
-                          child: Text(
-                            'Not now',
-                            style: AppTypography.textSmRegular.copyWith(
-                              color: context.textInk(0.55),
-                            ),
-                          ),
-                        ),
-                      )
-                      .animate(delay: 1000.ms)
-                      .fadeIn(duration: 400.ms, curve: _smoothSpring),
-                ],
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
@@ -511,15 +466,14 @@ class _UnlockVisual extends HookWidget {
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
                 // Blooms only read on black; paper gets the flat mark.
-                gradient:
-                    context.isLightTheme
-                        ? null
-                        : RadialGradient(
-                          colors: [
-                            kPrimaryColor.withValues(alpha: 0.2),
-                            kPrimaryColor.withValues(alpha: 0.0),
-                          ],
-                        ),
+                gradient: context.isLightTheme
+                    ? null
+                    : RadialGradient(
+                        colors: [
+                          kPrimaryColor.withValues(alpha: 0.2),
+                          kPrimaryColor.withValues(alpha: 0.0),
+                        ],
+                      ),
               ),
             ),
           ),
@@ -535,16 +489,15 @@ class _UnlockVisual extends HookWidget {
                 color: kPrimaryColor.withValues(alpha: 0.3),
                 width: 2,
               ),
-              boxShadow:
-                  context.isLightTheme
-                      ? null
-                      : [
-                        BoxShadow(
-                          color: kPrimaryColor.withValues(alpha: 0.2),
-                          blurRadius: 20,
-                          spreadRadius: 3,
-                        ),
-                      ],
+              boxShadow: context.isLightTheme
+                  ? null
+                  : [
+                      BoxShadow(
+                        color: kPrimaryColor.withValues(alpha: 0.2),
+                        blurRadius: 20,
+                        spreadRadius: 3,
+                      ),
+                    ],
             ),
             child: Center(
               child: Icon(
@@ -871,10 +824,9 @@ class _AuthenticatedUserStep extends HookWidget {
                                             'Your preferences are saved',
                                             style: AppTypography.textSmMedium
                                                 .copyWith(
-                                                  color:
-                                                      context
-                                                          .colors
-                                                          .textPrimary,
+                                                  color: context
+                                                      .colors
+                                                      .textPrimary,
                                                 ),
                                           ),
                                           Text(
@@ -997,15 +949,14 @@ class _UserAvatarVisual extends HookWidget {
               height: 150.h,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                gradient:
-                    context.isLightTheme
-                        ? null
-                        : RadialGradient(
-                          colors: [
-                            kGreenColor.withValues(alpha: 0.18),
-                            kGreenColor.withValues(alpha: 0.0),
-                          ],
-                        ),
+                gradient: context.isLightTheme
+                    ? null
+                    : RadialGradient(
+                        colors: [
+                          kGreenColor.withValues(alpha: 0.18),
+                          kGreenColor.withValues(alpha: 0.0),
+                        ],
+                      ),
               ),
             ),
           ),
@@ -1034,32 +985,29 @@ class _UserAvatarVisual extends HookWidget {
                 color: kGreenColor.withValues(alpha: 0.4),
                 width: 2.5,
               ),
-              boxShadow:
-                  context.isLightTheme
-                      ? null
-                      : [
-                        BoxShadow(
-                          color: kGreenColor.withValues(alpha: 0.2),
-                          blurRadius: 30,
-                          spreadRadius: 5,
-                        ),
-                      ],
+              boxShadow: context.isLightTheme
+                  ? null
+                  : [
+                      BoxShadow(
+                        color: kGreenColor.withValues(alpha: 0.2),
+                        blurRadius: 30,
+                        spreadRadius: 5,
+                      ),
+                    ],
             ),
             child: ClipOval(
-              child:
-                  avatarUrl != null
-                      ? Image.network(
-                        avatarUrl!,
-                        fit: BoxFit.cover,
-                        cacheWidth:
-                            (110 * MediaQuery.devicePixelRatioOf(context))
-                                .toInt(),
-                        cacheHeight:
-                            (110 * MediaQuery.devicePixelRatioOf(context))
-                                .toInt(),
-                        errorBuilder: (_, __, ___) => _buildInitials(context),
-                      )
-                      : _buildInitials(context),
+              child: avatarUrl != null
+                  ? Image.network(
+                      avatarUrl!,
+                      fit: BoxFit.cover,
+                      cacheWidth: (110 * MediaQuery.devicePixelRatioOf(context))
+                          .toInt(),
+                      cacheHeight:
+                          (110 * MediaQuery.devicePixelRatioOf(context))
+                              .toInt(),
+                      errorBuilder: (_, __, ___) => _buildInitials(context),
+                    )
+                  : _buildInitials(context),
             ),
           ),
 
@@ -1074,15 +1022,14 @@ class _UserAvatarVisual extends HookWidget {
                 shape: BoxShape.circle,
                 color: kGreenColor,
                 border: Border.all(color: context.colors.background, width: 3),
-                boxShadow:
-                    context.isLightTheme
-                        ? null
-                        : [
-                          BoxShadow(
-                            color: kGreenColor.withValues(alpha: 0.4),
-                            blurRadius: 8,
-                          ),
-                        ],
+                boxShadow: context.isLightTheme
+                    ? null
+                    : [
+                        BoxShadow(
+                          color: kGreenColor.withValues(alpha: 0.4),
+                          blurRadius: 8,
+                        ),
+                      ],
               ),
               child: Icon(
                 Icons.check_rounded,
@@ -1141,10 +1088,9 @@ class _AmbientGlowPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     // Primary glow - subtle movement
-    final paint1 =
-        Paint()
-          ..color = kPrimaryColor.withValues(alpha: 0.08 + (animation * 0.04))
-          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 120);
+    final paint1 = Paint()
+      ..color = kPrimaryColor.withValues(alpha: 0.08 + (animation * 0.04))
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 120);
 
     canvas.drawCircle(
       Offset(
@@ -1156,12 +1102,11 @@ class _AmbientGlowPainter extends CustomPainter {
     );
 
     // Secondary glow
-    final paint2 =
-        Paint()
-          ..color = const Color(
-            0xFF08647F,
-          ).withValues(alpha: 0.06 + (animation * 0.03))
-          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 100);
+    final paint2 = Paint()
+      ..color = const Color(
+        0xFF08647F,
+      ).withValues(alpha: 0.06 + (animation * 0.03))
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 100);
 
     canvas.drawCircle(
       Offset(
@@ -1198,10 +1143,9 @@ class _FloatingParticles extends HookWidget {
       // Paper: white motes vanish, so they drift as faint ink instead.
       painter: _ParticlePainter(
         animation,
-        base:
-            context.isLightTheme
-                ? context.colors.textPrimary.withValues(alpha: 0.5)
-                : Colors.white,
+        base: context.isLightTheme
+            ? context.colors.textPrimary.withValues(alpha: 0.5)
+            : Colors.white,
       ),
       size: Size.infinite,
     );
@@ -1234,11 +1178,10 @@ class _ParticlePainter extends CustomPainter {
           particle.x +
           math.sin(animation * 2 * math.pi + particle.x * 10) * 0.02;
 
-      final paint =
-          Paint()
-            ..color = base.withValues(
-              alpha: base.a * particle.opacity * (1 - y.abs() * 0.5),
-            );
+      final paint = Paint()
+        ..color = base.withValues(
+          alpha: base.a * particle.opacity * (1 - y.abs() * 0.5),
+        );
 
       canvas.drawCircle(
         Offset(x * size.width, y * size.height),
@@ -1288,10 +1231,9 @@ class _PageIndicator extends StatelessWidget {
             height: 4.h,
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(2.br),
-              color:
-                  isActive
-                      ? context.colors.accentText
-                      : context.colors.textPrimary.withValues(alpha: 0.12),
+              color: isActive
+                  ? context.colors.accentText
+                  : context.colors.textPrimary.withValues(alpha: 0.12),
             ),
           ),
         );
@@ -1329,100 +1271,93 @@ class _WelcomeStep extends HookWidget {
     return Center(
       child: ConstrainedBox(
         constraints: BoxConstraints(maxWidth: maxWidth),
-        child: Padding(
-          padding: EdgeInsets.fromLTRB(
-            horizontalPadding,
-            topPadding + 60.h,
-            horizontalPadding,
-            bottomPadding + 16.h,
-          ),
-          child: Column(
-            children: [
-              const Spacer(flex: 1),
+        child: OnboardingScrollBody(
+          child: Padding(
+            padding: EdgeInsets.fromLTRB(
+              horizontalPadding,
+              topPadding + 60.h,
+              horizontalPadding,
+              bottomPadding + 16.h,
+            ),
+            child: Column(
+              children: [
+                const Spacer(flex: 1),
 
-              // App logo
-              Image.asset(
-                    PngAsset.newAppLogoCircle,
-                    height: 120.h,
-                    width: 120.w,
-                    cacheWidth:
-                        (120 * MediaQuery.devicePixelRatioOf(context)).toInt(),
-                    cacheHeight:
-                        (120 * MediaQuery.devicePixelRatioOf(context)).toInt(),
-                  )
-                  .animate()
-                  .fadeIn(duration: 600.ms, curve: _gentleSpring)
-                  .scale(
-                    begin: const Offset(0.8, 0.8),
-                    end: const Offset(1, 1),
-                    duration: 800.ms,
-                    curve: _smoothSpring,
-                  ),
+                // App logo
+                Image.asset(
+                  PngAsset.newAppLogoCircle,
+                  height: 120.h,
+                  width: 120.w,
+                  cacheWidth: (120 * MediaQuery.devicePixelRatioOf(context))
+                      .toInt(),
+                  cacheHeight: (120 * MediaQuery.devicePixelRatioOf(context))
+                      .toInt(),
+                ).animate().scale(
+                  begin: const Offset(0.8, 0.8),
+                  end: const Offset(1, 1),
+                  duration: 800.ms,
+                  curve: _smoothSpring,
+                ),
 
-              SizedBox(height: 48.h),
+                SizedBox(height: 48.h),
 
-              // Tagline - "Follow Chess Better."
-              RichText(
-                    textAlign: TextAlign.center,
-                    text: TextSpan(
-                      style: AppTypography.displayXsBold.copyWith(
-                        color: context.colors.textPrimary,
-                        height: 1.2,
-                      ),
-                      children: [
-                        const TextSpan(text: 'Follow Chess '),
-                        TextSpan(
-                          text: 'Better.',
-                          style: AppTypography.displayXsBold.copyWith(
-                            color: context.colors.textPrimary,
-                            fontWeight: FontWeight.w800,
-                          ),
+                // Tagline - "Follow Chess Better."
+                RichText(
+                      textAlign: TextAlign.center,
+                      text: TextSpan(
+                        style: AppTypography.displayXsBold.copyWith(
+                          color: context.colors.textPrimary,
+                          height: 1.2,
                         ),
-                      ],
-                    ),
-                  )
-                  .animate(delay: 300.ms)
-                  .fadeIn(duration: 500.ms, curve: _smoothSpring)
-                  .move(begin: const Offset(0, 20), curve: _smoothSpring),
-
-              SizedBox(height: 12.h),
-
-              Text(
-                    'Follow players, Track Events, Analyze games',
-                    textAlign: TextAlign.center,
-                    style: AppTypography.textSmRegular.copyWith(
-                      color: context.textInk(0.6),
-                      letterSpacing: 0.3,
-                    ),
-                  )
-                  .animate(delay: 450.ms)
-                  .fadeIn(duration: 500.ms, curve: _smoothSpring),
-
-              const Spacer(flex: 2),
-
-              // CTA Button
-              OnboardingPrimaryButton(label: 'Get Started', onTap: onNext)
-                  .animate(delay: 600.ms)
-                  .fadeIn(duration: 400.ms, curve: _smoothSpring)
-                  .move(begin: const Offset(0, 30), curve: _smoothSpring),
-
-              SizedBox(height: 16.h),
-
-              // Sign in link for returning users
-              GestureDetector(
-                    onTap: onSignIn,
-                    child: Text(
-                      'I already have an account',
-                      style: AppTypography.textSmMedium.copyWith(
-                        color: context.colors.accentText,
+                        children: [
+                          const TextSpan(text: 'Follow Chess '),
+                          TextSpan(
+                            text: 'Better.',
+                            style: AppTypography.displayXsBold.copyWith(
+                              color: context.colors.textPrimary,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        ],
                       ),
-                    ),
-                  )
-                  .animate(delay: 700.ms)
-                  .fadeIn(duration: 400.ms, curve: _smoothSpring),
+                    )
+                    .animate(delay: 300.ms)
+                    .move(begin: const Offset(0, 20), curve: _smoothSpring),
 
-              SizedBox(height: 8.h),
-            ],
+                SizedBox(height: 12.h),
+
+                Text(
+                  'Follow players, Track Events, Analyze games',
+                  textAlign: TextAlign.center,
+                  style: AppTypography.textSmRegular.copyWith(
+                    color: context.textInk(0.6),
+                    letterSpacing: 0.3,
+                  ),
+                ).animate(delay: 450.ms),
+
+                const Spacer(flex: 2),
+
+                // CTA Button
+                OnboardingPrimaryButton(label: 'Get Started', onTap: onNext)
+                    .animate(delay: 600.ms)
+                    .move(begin: const Offset(0, 30), curve: _smoothSpring),
+
+                SizedBox(height: 16.h),
+
+                // Sign in link for returning users
+                GestureDetector(
+                  onTap: onSignIn,
+                  child: Text(
+                    'I already have an account',
+                    style: AppTypography.textSmMedium.copyWith(
+                      color: context.colors.accentText,
+                    ),
+                  ),
+                ).animate(delay: 700.ms),
+
+                SizedBox(height: 8.h),
+              ],
+            ),
           ),
         ),
       ),
@@ -1461,80 +1396,74 @@ class _CountryStep extends HookConsumerWidget {
     return Center(
       child: ConstrainedBox(
         constraints: BoxConstraints(maxWidth: maxWidth),
-        child: Padding(
-          padding: EdgeInsets.fromLTRB(
-            horizontalPadding,
-            topPadding + 60.h,
-            horizontalPadding,
-            bottomPadding + 16.h,
-          ),
-          child: Column(
-            children: [
-              const Spacer(flex: 1),
+        child: OnboardingScrollBody(
+          child: Padding(
+            padding: EdgeInsets.fromLTRB(
+              horizontalPadding,
+              topPadding + 60.h,
+              horizontalPadding,
+              bottomPadding + 16.h,
+            ),
+            child: Column(
+              children: [
+                const Spacer(flex: 1),
 
-              // Globe visual with flag
-              _GlobeVisual(countryState: countryState)
-                  .animate()
-                  .fadeIn(duration: 600.ms, curve: _gentleSpring)
-                  .scale(
-                    begin: const Offset(0.85, 0.85),
-                    end: const Offset(1, 1),
-                    duration: 700.ms,
-                    curve: _smoothSpring,
+                // Globe visual with flag
+                _GlobeVisual(countryState: countryState).animate().scale(
+                  begin: const Offset(0.85, 0.85),
+                  end: const Offset(1, 1),
+                  duration: 700.ms,
+                  curve: _smoothSpring,
+                ),
+
+                SizedBox(height: 40.h),
+
+                // Title
+                Text(
+                      'Where are you from?',
+                      textAlign: TextAlign.center,
+                      style: AppTypography.displayXsBold.copyWith(
+                        color: context.colors.textPrimary,
+                      ),
+                    )
+                    .animate(delay: 200.ms)
+                    .move(begin: const Offset(0, 16), curve: _smoothSpring),
+
+                SizedBox(height: 8.h),
+
+                Text(
+                  'We\'ll show you players from your region',
+                  textAlign: TextAlign.center,
+                  style: AppTypography.textSmRegular.copyWith(
+                    color: context.textInk(0.6),
                   ),
+                ).animate(delay: 300.ms),
 
-              SizedBox(height: 40.h),
+                SizedBox(height: 32.h),
 
-              // Title
-              Text(
-                    'Where are you from?',
-                    textAlign: TextAlign.center,
-                    style: AppTypography.displayXsBold.copyWith(
-                      color: context.colors.textPrimary,
-                    ),
-                  )
-                  .animate(delay: 200.ms)
-                  .fadeIn(duration: 500.ms, curve: _smoothSpring)
-                  .move(begin: const Offset(0, 16), curve: _smoothSpring),
+                // Country selector card
+                _CountryCard(
+                      countryState: countryState,
+                      onRetry: onRetry,
+                      ref: ref,
+                    )
+                    .animate(delay: 400.ms)
+                    .move(begin: const Offset(0, 20), curve: _smoothSpring),
 
-              SizedBox(height: 8.h),
+                const Spacer(flex: 2),
 
-              Text(
-                    'We\'ll show you players from your region',
-                    textAlign: TextAlign.center,
-                    style: AppTypography.textSmRegular.copyWith(
-                      color: context.textInk(0.6),
-                    ),
-                  )
-                  .animate(delay: 300.ms)
-                  .fadeIn(duration: 500.ms, curve: _smoothSpring),
+                // CTA Button
+                OnboardingPrimaryButton(
+                      label: 'Continue',
+                      onTap: countryState.isLoading ? null : onNext,
+                      isLoading: countryState.isLoading,
+                    )
+                    .animate(delay: 550.ms)
+                    .move(begin: const Offset(0, 30), curve: _smoothSpring),
 
-              SizedBox(height: 32.h),
-
-              // Country selector card
-              _CountryCard(
-                    countryState: countryState,
-                    onRetry: onRetry,
-                    ref: ref,
-                  )
-                  .animate(delay: 400.ms)
-                  .fadeIn(duration: 500.ms, curve: _smoothSpring)
-                  .move(begin: const Offset(0, 20), curve: _smoothSpring),
-
-              const Spacer(flex: 2),
-
-              // CTA Button
-              OnboardingPrimaryButton(
-                    label: 'Continue',
-                    onTap: countryState.isLoading ? null : onNext,
-                    isLoading: countryState.isLoading,
-                  )
-                  .animate(delay: 550.ms)
-                  .fadeIn(duration: 400.ms, curve: _smoothSpring)
-                  .move(begin: const Offset(0, 30), curve: _smoothSpring),
-
-              SizedBox(height: 8.h),
-            ],
+                SizedBox(height: 8.h),
+              ],
+            ),
           ),
         ),
       ),
@@ -1557,27 +1486,21 @@ class _GlobeVisual extends StatelessWidget {
         color: context.colors.surface,
       ),
       child: countryState.when(
-        loading:
-            () => Center(
-              child: SizedBox(
-                width: 24.w,
-                height: 24.h,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  color: context.textInk(0.6),
-                ),
-              ),
+        loading: () => Center(
+          child: SizedBox(
+            width: 24.w,
+            height: 24.h,
+            child: CircularProgressIndicator(
+              strokeWidth: 2,
+              color: context.textInk(0.6),
             ),
-        error:
-            (_, __) => Icon(
-              Icons.public,
-              size: 48.ic,
-              color: context.textInk(0.5),
-            ),
-        data:
-            (country) => Center(
-              child: Text(country.flagEmoji, style: TextStyle(fontSize: 48.f)),
-            ),
+          ),
+        ),
+        error: (_, __) =>
+            Icon(Icons.public, size: 48.ic, color: context.textInk(0.5)),
+        data: (country) => Center(
+          child: Text(country.flagEmoji, style: TextStyle(fontSize: 48.f)),
+        ),
       ),
     );
   }
@@ -1603,59 +1526,56 @@ class _CountryCard extends StatelessWidget {
         color: context.colors.surface,
       ),
       child: countryState.when(
-        loading:
-            () => Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                SizedBox(
-                  width: 18.w,
-                  height: 18.h,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    color: context.textInk(0.5),
-                  ),
-                ),
-                SizedBox(width: 12.w),
-                Text(
-                  'Finding your location...',
-                  style: AppTypography.textSmMedium.copyWith(
-                    color: context.textInk(0.6),
-                  ),
-                ),
-              ],
+        loading: () => Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            SizedBox(
+              width: 18.w,
+              height: 18.h,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: context.textInk(0.5),
+              ),
             ),
-        error:
-            (_, __) => Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Text(
-                  'Couldn\'t detect location',
-                  style: AppTypography.textSmMedium.copyWith(
-                    color: context.textInk(0.6),
-                  ),
-                ),
-                SizedBox(width: 12.w),
-                GestureDetector(
-                  onTap: onRetry,
-                  child: Text(
-                    'Retry',
-                    style: AppTypography.textSmMedium.copyWith(
-                      color: context.colors.accentText,
-                    ),
-                  ),
-                ),
-              ],
+            SizedBox(width: 12.w),
+            Text(
+              'Finding your location...',
+              style: AppTypography.textSmMedium.copyWith(
+                color: context.textInk(0.6),
+              ),
             ),
-        data:
-            (country) => CountryDropdown(
-              selectedCountryCode: country.countryCode,
-              onChanged: (Country newCountry) {
-                ref
-                    .read(countryDropdownProvider.notifier)
-                    .selectCountry(newCountry.countryCode);
-              },
-              requireAuthToChange: false,
+          ],
+        ),
+        error: (_, __) => Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Text(
+              'Couldn\'t detect location',
+              style: AppTypography.textSmMedium.copyWith(
+                color: context.textInk(0.6),
+              ),
             ),
+            SizedBox(width: 12.w),
+            GestureDetector(
+              onTap: onRetry,
+              child: Text(
+                'Retry',
+                style: AppTypography.textSmMedium.copyWith(
+                  color: context.colors.accentText,
+                ),
+              ),
+            ),
+          ],
+        ),
+        data: (country) => CountryDropdown(
+          selectedCountryCode: country.countryCode,
+          onChanged: (Country newCountry) {
+            ref
+                .read(countryDropdownProvider.notifier)
+                .selectCountry(newCountry.countryCode);
+          },
+          requireAuthToChange: false,
+        ),
       ),
     );
   }
@@ -1664,4 +1584,3 @@ class _CountryCard extends StatelessWidget {
 // ════════════════════════════════════════════════════════════════════════════
 // PRIMARY BUTTON
 // ════════════════════════════════════════════════════════════════════════════
-

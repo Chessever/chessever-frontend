@@ -115,6 +115,38 @@ void main() {
     });
   });
 
+  testWidgets(
+    'editor keeps the position and actions through Duo size changes',
+    (tester) async {
+      final fen = fenAfter(['e4', 'e5', 'Nf3']);
+      await _pumpEditor(tester, boardEditorAt(fen), _MemorySpace());
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(BoardEditorScreen)),
+      );
+      for (final size in const [
+        Size(720, 900),
+        Size(900, 720),
+        Size(844, 390),
+        Size(393, 852),
+      ]) {
+        tester.view.physicalSize = size * 3;
+        await tester.pumpAndSettle();
+        expect(tester.takeException(), isNull, reason: '$size must fit');
+        expect(
+          container.read(boardEditorProvider).fullFen.split(' ').take(4),
+          fen.split(' ').take(4),
+        );
+        final board = tester.getRect(find.byType(ChessboardEditor));
+        expect(board.right, lessThanOrEqualTo(size.width));
+        expect(board.bottom, lessThanOrEqualTo(size.height));
+        expect(find.text('Analyze').hitTestable(), findsOneWidget);
+        expect(find.text('Paste FEN').hitTestable(), findsOneWidget);
+        expect(find.text('Paste PGN').hitTestable(), findsOneWidget);
+      }
+      await _tearDown(tester);
+    },
+  );
+
   group('boardEditorAt', () {
     testWidgets('shows the position on the first frame', (tester) async {
       final fen = fenAfter(['e4', 'e5', 'Nf3']);

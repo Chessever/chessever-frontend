@@ -1,3 +1,4 @@
+import 'package:chessever2/widgets/window_metrics_dismissal.dart';
 import 'dart:async';
 import 'dart:math' as math;
 import 'package:collection/collection.dart';
@@ -37,12 +38,12 @@ void scrollToRoundFromTournamentContext(WidgetRef ref, String roundId) {
       .read(gamesAppBarProvider.notifier)
       .calculateRoundIndex(roundId);
 
-  print(
+  debugPrint(
     '🎯 Widget scroll - scopeId: $scopeId, roundId: $roundId, index: $itemIndex, attached: ${controller.isAttached}',
   );
 
   if (itemIndex < 0) {
-    print('❌ Widget scroll - round not found in visible rounds');
+    debugPrint('❌ Widget scroll - round not found in visible rounds');
     return;
   }
 
@@ -70,13 +71,13 @@ void _attemptScroll(
   if (controller.isAttached) {
     try {
       controller.jumpTo(index: itemIndex, alignment: 0.0);
-      print('✅ Widget scroll - jumpTo completed (attempt: $attempt)');
+      debugPrint('✅ Widget scroll - jumpTo completed (attempt: $attempt)');
     } catch (e) {
-      print('❌ Widget scroll - jumpTo failed: $e');
+      debugPrint('❌ Widget scroll - jumpTo failed: $e');
     }
     scrollNotifier.endProgrammaticScroll();
   } else if (attempt < maxAttempts) {
-    print(
+    debugPrint(
       '⏳ Widget scroll - controller not attached, retrying (attempt: ${attempt + 1})',
     );
     Future.delayed(retryDelay, () {
@@ -89,7 +90,7 @@ void _attemptScroll(
       );
     });
   } else {
-    print('❌ Widget scroll - gave up after $maxAttempts attempts');
+    debugPrint('❌ Widget scroll - gave up after $maxAttempts attempts');
     scrollNotifier.endProgrammaticScroll();
   }
 }
@@ -127,13 +128,12 @@ class CategoryDropdown extends ConsumerWidget {
           // Get rounds data
           final rounds = roundsAsync.valueOrNull?.gamesAppBarModels ?? [];
           final selectedRoundId = roundsAsync.valueOrNull?.selectedId;
-          final selectedRound =
-              rounds.isNotEmpty && selectedRoundId != null
-                  ? rounds.firstWhere(
-                    (r) => r.id == selectedRoundId,
-                    orElse: () => rounds.first,
-                  )
-                  : null;
+          final selectedRound = rounds.isNotEmpty && selectedRoundId != null
+              ? rounds.firstWhere(
+                  (r) => r.id == selectedRoundId,
+                  orElse: () => rounds.first,
+                )
+              : null;
 
           return _CategoryDropdownContent(
             categories: tourData.tours,
@@ -159,25 +159,23 @@ class CategoryDropdown extends ConsumerWidget {
             },
           );
         },
-        error:
-            (e, _) => Center(
-              child: Text(
-                'Error',
-                style: AppTypography.textXsRegular.copyWith(
-                  color: context.colors.textPrimaryMuted,
-                ),
-              ),
+        error: (e, _) => Center(
+          child: Text(
+            'Error',
+            style: AppTypography.textXsRegular.copyWith(
+              color: context.colors.textPrimaryMuted,
             ),
-        loading:
-            () => SkeletonWidget(
-              child: _StadiumChipButton(
-                label: 'Loading...',
-                isOpen: false,
-                onTap: () {},
-                showChevron: false,
-                constrainWidth: constrainWidth,
-              ),
-            ),
+          ),
+        ),
+        loading: () => SkeletonWidget(
+          child: _StadiumChipButton(
+            label: 'Loading...',
+            isOpen: false,
+            onTap: () {},
+            showChevron: false,
+            constrainWidth: constrainWidth,
+          ),
+        ),
       ),
     );
   }
@@ -356,76 +354,89 @@ class _CategoryDropdownContent extends HookConsumerWidget {
       }
 
       final size = renderBox.size;
-      final offset = renderBox.localToGlobal(Offset.zero);
+      final overlayBox = overlay.context.findRenderObject() as RenderBox;
+      final offset = overlayBox.globalToLocal(
+        renderBox.localToGlobal(Offset.zero),
+      );
       final screenSize = MediaQuery.of(context).size;
       final availableHeight =
-          screenSize.height - offset.dy - size.height - 32.sp;
+          (screenSize.height - offset.dy - size.height - 32.sp).clamp(
+            0.0,
+            double.infinity,
+          );
 
       overlayEntry = OverlayEntry(
-        builder:
-            (context) => _DropdownOverlay(
-              layerLink: layerLink,
-              triggerSize: size,
-              triggerOffset: offset,
-              screenWidth: screenSize.width,
-              availableHeight: availableHeight,
-              animation: animation,
-              categories: categories,
-              groupName: groupName,
-              openedAt: openedAt,
-              onCategorySelect: (category) {
-                HapticFeedbackService.selection();
-                onCategoryChanged(category);
-                // Close immediately after selection
+        builder: (context) => WindowMetricsDismissal(
+          onChanged: () {
+            TabletPopupState.markClosed();
+            animationController.value = 0;
+            isOpen.value = false;
+          },
+          child: _DropdownOverlay(
+            layerLink: layerLink,
+            triggerSize: size,
+            triggerOffset: offset,
+            screenWidth: screenSize.width,
+            availableHeight: availableHeight,
+            animation: animation,
+            categories: categories,
+            groupName: groupName,
+            openedAt: openedAt,
+            onCategorySelect: (category) {
+              HapticFeedbackService.selection();
+              onCategoryChanged(category);
+              // Close immediately after selection
+              if (ResponsiveHelper.isTablet) {
+                TabletPopupState.markClosed();
+              }
+              animationController.reverse().then((_) {
+                isOpen.value = false;
+              });
+            },
+            onCategoryChange: (category) {
+              // Select category WITHOUT closing dropdown (for expand arrow)
+              HapticFeedbackService.selection();
+              onCategoryChanged(category);
+              // Don't close - let the dropdown stay open to show loaded rounds
+            },
+            onRoundSelect: (round) {
+              debugPrint(
+                '🟢 onRoundSelect called: ${round.name} (${round.id})',
+              );
+              HapticFeedbackService.selection();
+              onRoundChanged(round);
+              // Close immediately after selection
+              if (ResponsiveHelper.isTablet) {
+                TabletPopupState.markClosed();
+              }
+              animationController.reverse().then((_) {
+                isOpen.value = false;
+              });
+            },
+            onDismiss: () {
+              if (ResponsiveHelper.isTablet) {
+                TabletPopupState.markClosed();
+              }
+              animationController.reverse().then((_) {
+                isOpen.value = false;
+              });
+            },
+            onRoundLongPress: (round, rowContext, preview) => _showRoundMenu(
+              chipContext: context,
+              rowContext: rowContext,
+              preview: preview,
+              round: round,
+              ref: ref,
+              dismissDropdown: () {
                 if (ResponsiveHelper.isTablet) {
                   TabletPopupState.markClosed();
                 }
-                animationController.reverse().then((_) {
-                  isOpen.value = false;
-                });
+                animationController.value = 0;
+                isOpen.value = false;
               },
-              onCategoryChange: (category) {
-                // Select category WITHOUT closing dropdown (for expand arrow)
-                HapticFeedbackService.selection();
-                onCategoryChanged(category);
-                // Don't close - let the dropdown stay open to show loaded rounds
-              },
-              onRoundSelect: (round) {
-                print('🟢 onRoundSelect called: ${round.name} (${round.id})');
-                HapticFeedbackService.selection();
-                onRoundChanged(round);
-                // Close immediately after selection
-                if (ResponsiveHelper.isTablet) {
-                  TabletPopupState.markClosed();
-                }
-                animationController.reverse().then((_) {
-                  isOpen.value = false;
-                });
-              },
-              onDismiss: () {
-                if (ResponsiveHelper.isTablet) {
-                  TabletPopupState.markClosed();
-                }
-                animationController.reverse().then((_) {
-                  isOpen.value = false;
-                });
-              },
-              onRoundLongPress:
-                  (round, rowContext, preview) => _showRoundMenu(
-                    chipContext: context,
-                    rowContext: rowContext,
-                    preview: preview,
-                    round: round,
-                    ref: ref,
-                    dismissDropdown: () {
-                      if (ResponsiveHelper.isTablet) {
-                        TabletPopupState.markClosed();
-                      }
-                      animationController.value = 0;
-                      isOpen.value = false;
-                    },
-                  ),
             ),
+          ),
+        ),
       );
 
       overlay.insert(overlayEntry!);
@@ -487,14 +498,13 @@ class _StadiumChipButton extends HookWidget {
       animation: shimmerController,
       builder: (context, child) {
         return CustomPaint(
-          painter:
-              isOpen
-                  ? null
-                  : _FluidShimmerPainter(
-                    progress: shimmerValue,
-                    shimmerColor: kPrimaryColor.withValues(alpha: 0.4),
-                    borderRadius: 12.br,
-                  ),
+          painter: isOpen
+              ? null
+              : _FluidShimmerPainter(
+                  progress: shimmerValue,
+                  shimmerColor: kPrimaryColor.withValues(alpha: 0.4),
+                  borderRadius: 12.br,
+                ),
           child: child,
         );
       },
@@ -504,15 +514,13 @@ class _StadiumChipButton extends HookWidget {
         padding: EdgeInsets.symmetric(horizontal: 12.sp, vertical: 8.sp),
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(12.br),
-          color:
-              isOpen
-                  ? kPrimaryColor.withValues(alpha: 0.15)
-                  : context.colors.textPrimary.withValues(alpha: 0.06),
+          color: isOpen
+              ? kPrimaryColor.withValues(alpha: 0.15)
+              : context.colors.textPrimary.withValues(alpha: 0.06),
           border: Border.all(
-            color:
-                isOpen
-                    ? context.colors.accentText.withValues(alpha: 0.4)
-                    : context.colors.textPrimary.withValues(alpha: 0.12),
+            color: isOpen
+                ? context.colors.accentText.withValues(alpha: 0.4)
+                : context.colors.textPrimary.withValues(alpha: 0.12),
             width: 1.0,
           ),
         ),
@@ -527,7 +535,9 @@ class _StadiumChipButton extends HookWidget {
               child: _MarqueeText(
                 text: label,
                 style: AppTypography.textXsMedium.copyWith(
-                  color: isOpen ? context.colors.accentText : context.colors.textPrimary,
+                  color: isOpen
+                      ? context.colors.accentText
+                      : context.colors.textPrimary,
                   letterSpacing: 0.3,
                 ),
                 continuous: false, // Single cycle for chip button
@@ -541,10 +551,9 @@ class _StadiumChipButton extends HookWidget {
                 curve: Curves.easeOutCubic,
                 child: Icon(
                   Icons.keyboard_arrow_down_rounded,
-                  color:
-                      isOpen
-                          ? context.colors.accentText
-                          : context.colors.textPrimary.withValues(alpha: 0.7),
+                  color: isOpen
+                      ? context.colors.accentText
+                      : context.colors.textPrimary.withValues(alpha: 0.7),
                   size: 18.ic,
                 ),
               ),
@@ -560,13 +569,12 @@ class _StadiumChipButton extends HookWidget {
 
     return GestureDetector(
       onTap: onTap,
-      child:
-          constrainWidth
-              ? ConstrainedBox(
-                constraints: BoxConstraints(maxWidth: chipMaxWidth),
-                child: button,
-              )
-              : button,
+      child: constrainWidth
+          ? ConstrainedBox(
+              constraints: BoxConstraints(maxWidth: chipMaxWidth),
+              child: button,
+            )
+          : button,
     );
   }
 }
@@ -601,12 +609,11 @@ class _FluidShimmerPainter extends CustomPainter {
       stops: const [0.0, 0.5, 1.0],
     );
 
-    final paint =
-        Paint()
-          ..shader = gradient.createShader(rect)
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = 2.0
-          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 2.0);
+    final paint = Paint()
+      ..shader = gradient.createShader(rect)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2.0
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 2.0);
 
     canvas.drawRRect(rrect, paint);
   }
@@ -655,7 +662,7 @@ class _MarqueeText extends HookWidget {
     }, [text, continuous]);
 
     // Calculate scroll duration based on distance - consistent speed
-    Duration _getScrollDuration(double distance) {
+    Duration getScrollDuration(double distance) {
       // Speed: ~20 pixels per second (very slow, readable)
       const pixelsPerSecond = 20.0;
       final seconds = (distance / pixelsPerSecond).clamp(3.0, 15.0);
@@ -687,7 +694,7 @@ class _MarqueeText extends HookWidget {
           try {
             await scrollController.animateTo(
               currentMax,
-              duration: _getScrollDuration(currentMax),
+              duration: getScrollDuration(currentMax),
               curve: Curves.easeInOut,
             );
           } catch (_) {
@@ -714,7 +721,7 @@ class _MarqueeText extends HookWidget {
             // Slow, smooth scroll forward - speed based on distance
             await scrollController.animateTo(
               currentMax,
-              duration: _getScrollDuration(currentMax),
+              duration: getScrollDuration(currentMax),
               curve: Curves.easeInOut,
             );
 
@@ -879,23 +886,21 @@ class _DropdownOverlay extends ConsumerWidget {
     final roundsAsync = ref.watch(gamesAppBarProvider);
 
     final tourData = tourDetailAsync.valueOrNull;
-    final selectedCategory =
-        tourData != null
-            ? (categories.firstWhere(
-              (t) => t.tour.id == tourData.aboutTourModel.id,
-              orElse: () => categories.first,
-            ))
-            : categories.first;
+    final selectedCategory = tourData != null
+        ? (categories.firstWhere(
+            (t) => t.tour.id == tourData.aboutTourModel.id,
+            orElse: () => categories.first,
+          ))
+        : categories.first;
 
     final rounds = roundsAsync.valueOrNull?.gamesAppBarModels ?? [];
     final selectedRoundId = roundsAsync.valueOrNull?.selectedId;
-    final selectedRound =
-        rounds.isNotEmpty && selectedRoundId != null
-            ? rounds.firstWhere(
-              (r) => r.id == selectedRoundId,
-              orElse: () => rounds.first,
-            )
-            : null;
+    final selectedRound = rounds.isNotEmpty && selectedRoundId != null
+        ? rounds.firstWhere(
+            (r) => r.id == selectedRoundId,
+            orElse: () => rounds.first,
+          )
+        : null;
 
     // Wider dropdown for better readability - use available horizontal space
     final minWidth = ResponsiveHelper.isTablet ? 400.0 : 300.w;
@@ -1022,7 +1027,6 @@ class _DropdownContentState extends State<_DropdownContent> {
   bool _isDragging = false;
   bool _pointerStartedOnSelector = false;
   Offset? _dragStartPosition;
-  Offset? _lastPointerPosition;
 
   // Flag to prevent selection when arrow is tapped
   bool _arrowWasTapped = false;
@@ -1039,16 +1043,14 @@ class _DropdownContentState extends State<_DropdownContent> {
   void didUpdateWidget(covariant _DropdownContent oldWidget) {
     super.didUpdateWidget(oldWidget);
 
-    final categoriesChanged =
-        !const ListEquality().equals(
-          oldWidget.categories.map((c) => c.tour.id).toList(),
-          widget.categories.map((c) => c.tour.id).toList(),
-        );
-    final roundsChanged =
-        !const ListEquality().equals(
-          oldWidget.rounds.map((r) => r.id).toList(),
-          widget.rounds.map((r) => r.id).toList(),
-        );
+    final categoriesChanged = !const ListEquality().equals(
+      oldWidget.categories.map((c) => c.tour.id).toList(),
+      widget.categories.map((c) => c.tour.id).toList(),
+    );
+    final roundsChanged = !const ListEquality().equals(
+      oldWidget.rounds.map((r) => r.id).toList(),
+      widget.rounds.map((r) => r.id).toList(),
+    );
     final selectionChanged =
         oldWidget.selectedRound?.id != widget.selectedRound?.id ||
         oldWidget.selectedCategory.tour.id != widget.selectedCategory.tour.id;
@@ -1194,10 +1196,9 @@ class _DropdownContentState extends State<_DropdownContent> {
   void _updateTargetY() {
     double y = 0;
     for (int i = 0; i < _selectedFlatIndex && i < _flatItems.length; i++) {
-      y +=
-          _flatItems[i].type == _ItemType.category
-              ? _categoryItemHeight
-              : _roundItemHeight;
+      y += _flatItems[i].type == _ItemType.category
+          ? _categoryItemHeight
+          : _roundItemHeight;
     }
     setState(() {
       _targetY = y;
@@ -1212,10 +1213,10 @@ class _DropdownContentState extends State<_DropdownContent> {
 
     final selectedHeight =
         _flatItems.isNotEmpty && _selectedFlatIndex < _flatItems.length
-            ? (_flatItems[_selectedFlatIndex].type == _ItemType.category
-                ? _categoryItemHeight
-                : _roundItemHeight)
-            : _categoryItemHeight;
+        ? (_flatItems[_selectedFlatIndex].type == _ItemType.category
+              ? _categoryItemHeight
+              : _roundItemHeight)
+        : _categoryItemHeight;
 
     final itemCenter = _targetY + (selectedHeight / 2);
     final targetScroll = itemCenter - (viewportHeight / 2);
@@ -1298,8 +1299,9 @@ class _DropdownContentState extends State<_DropdownContent> {
     if (box == null) return false;
 
     final localPos = box.globalToLocal(globalPosition);
-    final scrollOffset =
-        _scrollController.hasClients ? _scrollController.offset : 0.0;
+    final scrollOffset = _scrollController.hasClients
+        ? _scrollController.offset
+        : 0.0;
 
     final selectorVisualTop =
         _targetY - scrollOffset + 6.sp; // Account for padding
@@ -1313,7 +1315,6 @@ class _DropdownContentState extends State<_DropdownContent> {
 
   void _handlePointerDown(PointerDownEvent event) {
     _dragStartPosition = event.position;
-    _lastPointerPosition = event.position;
     _pointerStartedOnSelector = _isOnSelector(event.position);
     // Wait for a small move before entering drag mode to avoid treating taps
     // (e.g., on the expand arrow) as selections.
@@ -1322,8 +1323,6 @@ class _DropdownContentState extends State<_DropdownContent> {
 
   void _handlePointerMove(PointerMoveEvent event) {
     if (_dragStartPosition == null) return;
-
-    _lastPointerPosition = event.position;
 
     // Only enter drag mode after a slight movement when the pointer started on the selector
     if (_pointerStartedOnSelector && !_isDragging) {
@@ -1346,7 +1345,6 @@ class _DropdownContentState extends State<_DropdownContent> {
     if (_arrowWasTapped) {
       _arrowWasTapped = false;
       if (mounted) setState(() => _isDragging = false);
-      _lastPointerPosition = null;
       _dragStartPosition = null;
       _pointerStartedOnSelector = false;
       return;
@@ -1374,7 +1372,6 @@ class _DropdownContentState extends State<_DropdownContent> {
       }
     }
     if (mounted) setState(() => _isDragging = false);
-    _lastPointerPosition = null;
     _dragStartPosition = null;
     _pointerStartedOnSelector = false;
   }
@@ -1386,7 +1383,6 @@ class _DropdownContentState extends State<_DropdownContent> {
 
   void _handlePointerCancel(PointerCancelEvent event) {
     if (mounted) setState(() => _isDragging = false);
-    _lastPointerPosition = null;
     _dragStartPosition = null;
     _pointerStartedOnSelector = false;
   }
@@ -1396,8 +1392,9 @@ class _DropdownContentState extends State<_DropdownContent> {
     if (box == null) return;
 
     final localPos = box.globalToLocal(globalPosition);
-    final scrollOffset =
-        _scrollController.hasClients ? _scrollController.offset : 0.0;
+    final scrollOffset = _scrollController.hasClients
+        ? _scrollController.offset
+        : 0.0;
 
     final adjustedY = localPos.dy + scrollOffset - 6.sp; // Account for padding
     final newIndex = _getIndexFromY(adjustedY).clamp(0, _flatItems.length - 1);
@@ -1476,8 +1473,9 @@ class _DropdownContentState extends State<_DropdownContent> {
             ).copyWith(scrollbars: false),
             child: ListView.builder(
               controller: _scrollController,
-              physics:
-                  _isDragging ? const NeverScrollableScrollPhysics() : null,
+              physics: _isDragging
+                  ? const NeverScrollableScrollPhysics()
+                  : null,
               shrinkWrap: true,
               padding: EdgeInsets.symmetric(vertical: 6.sp),
               itemCount: _flatItems.length,
@@ -1528,19 +1526,18 @@ class _DropdownContentState extends State<_DropdownContent> {
                       round: round,
                       isSelected: isSelected,
                       isNested: isNested,
-                      onLongPress:
-                          widget.onRoundLongPress == null
-                              ? null
-                              : (rowContext, preview) {
-                                // A finger already dragging the droplet is
-                                // choosing a row, not asking for its menu.
-                                if (_isDragging) return;
-                                widget.onRoundLongPress!(
-                                  round,
-                                  rowContext,
-                                  preview,
-                                );
-                              },
+                      onLongPress: widget.onRoundLongPress == null
+                          ? null
+                          : (rowContext, preview) {
+                              // A finger already dragging the droplet is
+                              // choosing a row, not asking for its menu.
+                              if (_isDragging) return;
+                              widget.onRoundLongPress!(
+                                round,
+                                rowContext,
+                                preview,
+                              );
+                            },
                       onTap: () {
                         _animateToIndex(index);
                         // Select the parent category ONLY if it's different from current
@@ -1573,22 +1570,22 @@ class _DropdownContentState extends State<_DropdownContent> {
                 child: ListenableBuilder(
                   listenable: _scrollController,
                   builder: (context, _) {
-                    final scrollOffset =
-                        _scrollController.hasClients
-                            ? _scrollController.offset
-                            : 0.0;
+                    final scrollOffset = _scrollController.hasClients
+                        ? _scrollController.offset
+                        : 0.0;
                     final selectorHeight = _getItemHeight(_selectedFlatIndex);
                     // Keep indicator centered within the row regardless of item height
                     final indicatorInset = 2.sp;
-                    final indicatorHeight = (selectorHeight -
-                            indicatorInset * 2)
-                        .clamp(0.0, double.infinity);
+                    final indicatorHeight =
+                        (selectorHeight - indicatorInset * 2).clamp(
+                          0.0,
+                          double.infinity,
+                        );
 
                     return SingleMotionBuilder(
-                      motion:
-                          _isDragging
-                              ? CupertinoMotion.snappy()
-                              : CupertinoMotion.bouncy(),
+                      motion: _isDragging
+                          ? CupertinoMotion.snappy()
+                          : CupertinoMotion.bouncy(),
                       value: _targetY - scrollOffset + 6.sp + indicatorInset,
                       // Account for list padding and center the indicator vertically
                       builder: (context, animatedY, _) {
@@ -1703,12 +1700,12 @@ class _CategoryRow extends StatelessWidget {
                           groupName: groupName,
                         ),
                         style: AppTypography.textSmMedium.copyWith(
-                          color:
-                              isSelected
-                                  ? context.colors.accentText
-                                  : context.colors.textPrimary,
-                          fontWeight:
-                              isSelected ? FontWeight.w600 : FontWeight.w500,
+                          color: isSelected
+                              ? context.colors.accentText
+                              : context.colors.textPrimary,
+                          fontWeight: isSelected
+                              ? FontWeight.w600
+                              : FontWeight.w500,
                         ),
                         continuous: true, // Continuous in open dropdown
                       ),
@@ -1733,10 +1730,9 @@ class _CategoryRow extends StatelessWidget {
                     child: Icon(
                       Icons.keyboard_arrow_down_rounded,
                       size: 20.ic,
-                      color:
-                          isExpanded
-                              ? context.colors.textPrimary
-                              : context.textInk(0.5),
+                      color: isExpanded
+                          ? context.colors.textPrimary
+                          : context.textInk(0.5),
                     ),
                   ),
                 ),
@@ -1816,10 +1812,9 @@ class _RoundRow extends StatelessWidget {
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTap: onTap,
-        onLongPress:
-            onLongPress == null
-                ? null
-                : () => onLongPress!(context, _buildMenuCopy),
+        onLongPress: onLongPress == null
+            ? null
+            : () => onLongPress!(context, _buildMenuCopy),
         child: Container(
           padding: EdgeInsets.only(
             left: isNested ? 28.sp : 14.sp,
@@ -1844,14 +1839,14 @@ class _RoundRow extends StatelessWidget {
                     _MarqueeText(
                       text: round.name,
                       style: AppTypography.textSmRegular.copyWith(
-                        color:
-                            isSelected
-                                ? context.colors.accentText
-                                : context.colors.textPrimary.withValues(
-                                  alpha: 0.85,
-                                ),
-                        fontWeight:
-                            isSelected ? FontWeight.w500 : FontWeight.w400,
+                        color: isSelected
+                            ? context.colors.accentText
+                            : context.colors.textPrimary.withValues(
+                                alpha: 0.85,
+                              ),
+                        fontWeight: isSelected
+                            ? FontWeight.w500
+                            : FontWeight.w400,
                       ),
                       continuous: true, // Continuous in open dropdown
                     ),
@@ -1859,16 +1854,15 @@ class _RoundRow extends StatelessWidget {
                       Text(
                         round.formattedRoundDateTime,
                         style: AppTypography.textXxsRegular.copyWith(
-                          color:
-                              isSelected
-                                  // 0.7 of the paper ink drops to 3.5:1
-                                  // at 10sp; light keeps it solid.
-                                  ? (context.isLightTheme
-                                      ? context.colors.accentText
-                                      : context.colors.accentText.withValues(
+                          color: isSelected
+                              // 0.7 of the paper ink drops to 3.5:1
+                              // at 10sp; light keeps it solid.
+                              ? (context.isLightTheme
+                                    ? context.colors.accentText
+                                    : context.colors.accentText.withValues(
                                         alpha: 0.7,
                                       ))
-                                  : context.textInk(0.5),
+                              : context.textInk(0.5),
                           fontSize: 10.sp,
                         ),
                         maxLines: 1,
@@ -1999,20 +1993,18 @@ class _DropletSelectionPainter extends CustomPainter {
     }
 
     // Fill
-    final fillPaint =
-        Paint()
-          ..color = baseColor.withValues(alpha: isDragging ? 0.18 : 0.10)
-          ..style = PaintingStyle.fill;
+    final fillPaint = Paint()
+      ..color = baseColor.withValues(alpha: isDragging ? 0.18 : 0.10)
+      ..style = PaintingStyle.fill;
     canvas.drawPath(path, fillPaint);
 
     // Border
-    final borderPaint =
-        Paint()
-          ..color = baseColor.withValues(alpha: isDragging ? 0.45 : 0.30)
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = isDragging ? 1.5 : 1.0
-          ..strokeCap = StrokeCap.round
-          ..strokeJoin = StrokeJoin.round;
+    final borderPaint = Paint()
+      ..color = baseColor.withValues(alpha: isDragging ? 0.45 : 0.30)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = isDragging ? 1.5 : 1.0
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round;
     canvas.drawPath(path, borderPaint);
   }
 

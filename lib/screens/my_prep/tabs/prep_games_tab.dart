@@ -484,6 +484,13 @@ class _PrepGamesTabState extends ConsumerState<PrepGamesTab>
   @override
   Widget build(BuildContext context) {
     super.build(context);
+    return LayoutBuilder(
+      builder: (context, constraints) =>
+          _buildContent(context, constraints.maxWidth),
+    );
+  }
+
+  Widget _buildContent(BuildContext context, double availableWidth) {
     final colors = context.colors;
     final gutter = ResponsiveHelper.adaptive(phone: 16.w, tablet: 24.w);
     final mode = ref.watch(gamesListViewModeProvider);
@@ -501,9 +508,13 @@ class _PrepGamesTabState extends ConsumerState<PrepGamesTab>
     final order = <PrepGame>[];
     // Only a list that has events needs its other games set apart from them.
     final headed = sections.any((s) => s.title != null);
-    final columns = ResponsiveHelper.isTablet && ResponsiveHelper.isLandscape
-        ? 4
-        : 2;
+    final columns = ResponsiveHelper.columnsForWidth(
+      availableWidth - gutter * 2,
+      minItemWidth: 180,
+      spacing: 12.sp,
+      minColumns: 2,
+      maxColumns: 4,
+    );
     var hint = mode == GamesListViewMode.gamesCard;
     for (final section in sections) {
       final collapsed = _collapsed.contains(section.key);
