@@ -38,6 +38,8 @@ export interface PartnerArticle {
 export interface ParseOptions {
   now?: Date;
   maxItems?: number;
+  /** Live imports must not turn a future source date into a fresh alert. */
+  skipFuture?: boolean;
 }
 
 const MAX_TITLE = 400;
@@ -827,6 +829,7 @@ export function parsePartnerFeed(
     const timestamp = Date.parse(dateText);
     if (!Number.isFinite(timestamp)) continue;
     if (timestamp > now.getTime() + FUTURE_SLACK_MS) continue;
+    if (options.skipFuture && timestamp > now.getTime()) continue;
     const publishedAt = new Date(Math.min(timestamp, now.getTime()))
       .toISOString();
 

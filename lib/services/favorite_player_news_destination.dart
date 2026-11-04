@@ -11,5 +11,11 @@ AppDestination? favoritePlayerNewsDestination(Map<String, dynamic> data) {
       ? value
       : '';
   if (!RegExp(r'^[1-9][0-9]{0,14}$').hasMatch(id)) return null;
-  return parseAppDestination('/app/news/$id');
+  final source = data['news_source'];
+  if (data.containsKey('news_source') && source != 'rookreview') return null;
+  return parseAppDestination(
+    source == 'rookreview'
+        ? '/app/news/partners/rookreview/$id'
+        : '/app/news/$id',
+  );
 }

@@ -17,6 +17,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { type PartnerSource, parsePartnerFeed } from "./feed.ts";
+import { processPlayerNotifications, verifyPlayerExtraction } from "./player-notifications.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ??
@@ -111,7 +112,7 @@ async function syncSource(row: SourceRow) {
     assetHosts: row.asset_hosts ?? [],
   };
   try {
-    const articles = parsePartnerFeed(await readFeed(row.feed_url), source);
+    const articles = parsePartnerFeed(await readFeed(row.feed_url), source, { skipFuture: true });
     if (articles.length === 0) throw new Error("feed had no usable items");
     const { data, error } = await supabase.rpc("upsert_partner_news", {
       p_source_id: row.id,
@@ -153,11 +154,28 @@ Deno.serve(async (req) => {
   }
 
   let only: string | null = null;
+  let checkAi = false;
   try {
     const body = await req.json();
     if (body && typeof body.source === "string") only = body.source;
+    checkAi = body?.check_ai === true;
   } catch {
     // No body: every enabled source.
+  }
+
+  // This branch is behind the same stream-token authentication as ingestion.
+  // It never reads/imports articles or admits/claims notification jobs.
+  if (checkAi) {
+    const accountId = Deno.env.get("CLOUDFLARE_ACCOUNT_ID");
+    const apiToken = Deno.env.get("CLOUDFLARE_AI_API_TOKEN");
+    if (Deno.env.get("ROOKREVIEW_AI_ENABLED") !== "true" || !accountId || !apiToken) {
+      return json({ error: "ai_not_configured" }, 503);
+    }
+    try {
+      return json({ check_ai: true, ...await verifyPlayerExtraction({ accountId, apiToken }) });
+    } catch {
+      return json({ error: "ai_check_failed" }, 503);
+    }
   }
 
   let query = supabase
@@ -175,6 +193,15 @@ Deno.serve(async (req) => {
   const results = [];
   for (const row of (data ?? []) as SourceRow[]) {
     results.push(await syncSource(row));
+  }
+  // Separate from feed success: AI failures never prevent readable news imports.
+  // The runtime keeps this bounded durable-job worker alive after the response.
+  const accountId = Deno.env.get("CLOUDFLARE_ACCOUNT_ID");
+  const apiToken = Deno.env.get("CLOUDFLARE_AI_API_TOKEN");
+  if (Deno.env.get("ROOKREVIEW_AI_ENABLED") === "true" && accountId && apiToken) {
+    EdgeRuntime.waitUntil(processPlayerNotifications(supabase, { accountId, apiToken }).catch(() => {
+      console.error("[partner-news-sync] notification_processing_failed");
+    }));
   }
   const failed = results.some((result) => !result.ok);
   return json({ results }, failed ? 502 : 200);

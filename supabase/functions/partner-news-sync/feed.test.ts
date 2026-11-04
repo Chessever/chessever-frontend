@@ -267,3 +267,10 @@ test("long summaries are cut on a word", () => {
   assert.ok(article.summary.length <= 600);
   assert.match(article.summary, /word…$/);
 });
+
+
+test("live imports skip future source dates instead of clamping them into fresh notifications", () => {
+  const xml = feed(item({ pubDate: "Mon, 26 Oct 2026 12:01:00 GMT" }));
+  assert.equal(parsePartnerFeed(xml, rookReview, { now, skipFuture: true }).length, 0);
+  assert.equal(parsePartnerFeed(xml, rookReview, { now: new Date("2026-10-26T12:01:00Z"), skipFuture: true }).length, 1);
+});

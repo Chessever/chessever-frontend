@@ -58,3 +58,9 @@ Owner device acceptance remains separate: change News on one signed-in device,
 resume another device and verify the same setting; verify exact article taps,
 account switching, logout, and unchanged game/event alerts. No app build/run or
 physical-device delivery has been performed by this source update.
+
+## RookReview extension
+
+See [RookReview player notifications](rookreview-player-notifications.md) for the
+text-only AI extractor, verified identities, prospective admission and shared
+notification transport. Installation is disabled by default and has no backfill.
