@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:chessever2/screens/group_event/smart_event/starred_smart_events_screen.dart';
 import 'dart:math' as math;
 
 import 'package:chessever2/screens/group_event/providers/live_group_broadcast_id_provider.dart'
@@ -120,9 +121,8 @@ String? smartEventCardSummary(SmartEventRequest request) =>
 
 /// Whether any event [request] gathers is live now, by the category each
 /// member carried when it was gathered.
-bool smartEventHasLive(SmartEventRequest request) => request.events.any(
-  (e) => e.tourEventCategory == TourEventCategory.live,
-);
+bool smartEventHasLive(SmartEventRequest request) =>
+    request.events.any((e) => e.tourEventCategory == TourEventCategory.live);
 
 /// Whether any event [request] gathers is live now, the way an event card
 /// decides its LIVE: the member's category, or the strict live-ids stream,
@@ -472,6 +472,11 @@ class _Header extends StatelessWidget {
                 ),
               ),
             ),
+          ),
+          IconButton(
+            tooltip: 'Starred Smart Events',
+            icon: const Icon(Icons.notifications_outlined),
+            onPressed: () => openStarredSmartEvents(context),
           ),
           Semantics(
             container: true,

@@ -12,14 +12,16 @@ Future<bool> confirmSpaceSmartEventRemoval(
       .toList();
   if (events.isEmpty) return true;
   if (!context.mounted) return false;
+  final removalMessage = events.length == 1
+      ? 'Remove ${events.single.title} from My Space? You can restore it with Undo.'
+      : 'Remove these ${events.length} Smart Events from My Space? You can restore them with Undo.';
   return await showSmoothConfirmDialog(
         context: context,
         title: events.length == 1
             ? 'Remove Smart Event?'
             : 'Remove Smart Events?',
-        message: events.length == 1
-            ? 'Remove ${events.single.title} from My Space? You can restore it with Undo.'
-            : 'Remove these ${events.length} Smart Events from My Space? You can restore them with Undo.',
+        message:
+            '$removalMessage Starred events will still send notifications. To stop them, unstar in Starred Smart Events (Build a Smart Event, bell button).',
         confirmText: 'Remove',
         isDangerous: true,
       ) ==

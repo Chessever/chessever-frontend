@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'package:chessever2/utils/confirmed_saved_row_edit.dart';
 import '../services/watch_companion_service.dart';
 import 'package:chessever2/repository/favorites/models/favorite_event.dart';
 import 'package:chessever2/repository/sqlite/app_database.dart';
@@ -22,10 +23,14 @@ class FavoriteEventsNotifier extends AsyncNotifier<List<FavoriteEvent>> {
   SupabaseClient get _supabase => Supabase.instance.client;
 
   String? _getCurrentUserId() => _supabase.auth.currentUser?.id;
+  String? get smartEventEditUserId => _getCurrentUserId();
 
   /// Guards concurrent fetches so only one Supabase request + cache write
   /// happens at a time.
   Completer<List<FavoriteEvent>>? _fetchCompleter;
+  int _confirmedEditEpoch = 0;
+  int _confirmedEdits = 0;
+  String? _confirmedEditUserId;
 
   @override
   Future<List<FavoriteEvent>> build() async {
@@ -51,6 +56,7 @@ class FavoriteEventsNotifier extends AsyncNotifier<List<FavoriteEvent>> {
   }
 
   Future<List<FavoriteEvent>> _fetchFavoritesFromSupabase() async {
+    final editEpoch = _confirmedEditEpoch;
     // Deduplicate concurrent calls (build + unawaited refresh racing)
     if (_fetchCompleter != null) return _fetchCompleter!.future;
 
@@ -71,13 +77,14 @@ class FavoriteEventsNotifier extends AsyncNotifier<List<FavoriteEvent>> {
           .eq('user_id', userId)
           .order('created_at', ascending: false);
 
-      final events =
-          (response as List)
-              .map((json) => FavoriteEvent.fromSupabase(json))
-              .toList();
+      final events = (response as List)
+          .map((json) => FavoriteEvent.fromSupabase(json))
+          .toList();
 
       // Cache locally in background (Supabase stays primary path)
-      unawaited(_cacheEvents(events, userId));
+      if (_confirmedEdits == 0 && editEpoch == _confirmedEditEpoch) {
+        unawaited(_cacheEvents(events, userId));
+      }
 
       debugPrint(
         '[FavoriteEvents] Fetched ${events.length} events from Supabase',
@@ -94,14 +101,87 @@ class FavoriteEventsNotifier extends AsyncNotifier<List<FavoriteEvent>> {
   }
 
   Future<void> _refreshFromSupabase() async {
+    final epoch = _confirmedEditEpoch;
     try {
       final events = await _fetchFavoritesFromSupabase();
+      if (_confirmedEdits > 0 || epoch != _confirmedEditEpoch) return;
       state = AsyncValue.data(events);
       _syncFavoriteCountAnalytics(events.length);
     } catch (e, st) {
       debugPrint('[FavoriteEvents] Refresh error: $e');
       debugPrint('[FavoriteEvents] Stack: $st');
     }
+  }
+
+  /// Fresh, fail-closed read for an explicit saved Smart Event edit. Unlike
+  /// ordinary first paint this must never interpret an unavailable cache as
+  /// an intentional unstar. No source data is changed by reading.
+  Future<List<FavoriteEvent>> readForSmartEventEdit() async {
+    await future;
+    final uid = _getCurrentUserId();
+    if (_confirmedEdits > 0 && uid != _confirmedEditUserId) {
+      throw const SavedRowConflict();
+    }
+    if (uid == null) return const [];
+    final rows = await _supabase
+        .from('user_favorite_events')
+        .select()
+        .eq('user_id', uid)
+        .order('created_at', ascending: false);
+    if (_getCurrentUserId() != uid) throw const SavedRowConflict();
+    final events = [for (final row in rows) FavoriteEvent.fromSupabase(row)];
+    state = AsyncData(events);
+    await _cacheEvents(events, uid);
+    return events;
+  }
+
+  /// Scope stale background refresh suppression across the coordinator's
+  /// forward writes AND compensation. Unrelated rows are always re-read.
+  void beginConfirmedSmartEventEdit() {
+    if (_confirmedEdits == 0) _confirmedEditUserId = _getCurrentUserId();
+    _confirmedEdits++;
+    _confirmedEditEpoch++;
+  }
+
+  void endConfirmedSmartEventEdit() {
+    _confirmedEdits--;
+    _confirmedEditEpoch++;
+  }
+
+  Future<void> writeSmartEventEdit(
+    FavoriteEvent? before,
+    FavoriteEvent? after,
+  ) async {
+    final uid = _getCurrentUserId();
+    if (uid == null) throw const SavedRowConflict();
+    if (_confirmedEdits > 0 && uid != _confirmedEditUserId) {
+      throw const SavedRowConflict();
+    }
+    Map<String, dynamic>? fields(FavoriteEvent? row) => row == null
+        ? null
+        : {
+            'event_id': row.eventId,
+            'event_name': row.eventName,
+            'metadata': row.metadata,
+          };
+    for (final row in [before, after]) {
+      if (row != null &&
+          (row.userId != uid ||
+              (row.metadata['type'] != 'smart_event' &&
+                  !row.eventId.startsWith('smart_event:')))) {
+        throw const SavedRowConflict();
+      }
+    }
+    await writeConfirmedSavedRow(
+      client: _supabase,
+      userId: uid,
+      table: 'user_favorite_events',
+      keyColumns: const ['event_id'],
+      before: fields(before),
+      after: fields(after),
+    );
+    await readForSmartEventEdit();
+    WatchCompanionService.instance.scheduleSync();
   }
 
   /// Add event to favorites (optimistic update).
@@ -159,11 +239,10 @@ class FavoriteEventsNotifier extends AsyncNotifier<List<FavoriteEvent>> {
     final currentEvents = state.valueOrNull ?? [];
     // Drop any alias rows for the same tournament so we don't keep both a
     // cal_event_* and a GBID star for one event.
-    final withoutAliases =
-        currentEvents
-            .where((e) => !_matchesFavorite(e, eventId, eventName: eventName))
-            .where((e) => !_matchesFavorite(e, storeId, eventName: eventName))
-            .toList();
+    final withoutAliases = currentEvents
+        .where((e) => !_matchesFavorite(e, eventId, eventName: eventName))
+        .where((e) => !_matchesFavorite(e, storeId, eventName: eventName))
+        .toList();
     final updatedEvents = [...withoutAliases, optimisticEvent];
     state = AsyncValue.data(updatedEvents);
 
@@ -173,10 +252,8 @@ class FavoriteEventsNotifier extends AsyncNotifier<List<FavoriteEvent>> {
     try {
       // Remove alias rows first (calendar id vs remapped GBID) so one star
       // remains, keyed by the dispatch-matchable id.
-      final aliasIds = favoriteEventIdCandidates(
-        eventId,
-        eventName: eventName,
-      )..add(storeId);
+      final aliasIds = favoriteEventIdCandidates(eventId, eventName: eventName)
+        ..add(storeId);
       for (final id in aliasIds) {
         if (id == storeId) continue;
         await _supabase
@@ -238,14 +315,12 @@ class FavoriteEventsNotifier extends AsyncNotifier<List<FavoriteEvent>> {
 
     // STEP 1: Optimistic update - update state immediately
     final currentEvents = state.valueOrNull ?? [];
-    final removed =
-        currentEvents
-            .where((e) => _matchesFavorite(e, eventId, eventName: eventName))
-            .toList();
-    final updatedEvents =
-        currentEvents
-            .where((e) => !_matchesFavorite(e, eventId, eventName: eventName))
-            .toList();
+    final removed = currentEvents
+        .where((e) => _matchesFavorite(e, eventId, eventName: eventName))
+        .toList();
+    final updatedEvents = currentEvents
+        .where((e) => !_matchesFavorite(e, eventId, eventName: eventName))
+        .toList();
     state = AsyncValue.data(updatedEvents);
 
     // Cache immediately
@@ -430,13 +505,12 @@ class FavoriteEventsNotifier extends AsyncNotifier<List<FavoriteEvent>> {
       return (storeId: eventId, sourceEventId: null);
     }
     try {
-      final response =
-          await _supabase
-              .from('group_broadcasts')
-              .select('id')
-              .ilike('name', eventName.trim())
-              .limit(1)
-              .maybeSingle();
+      final response = await _supabase
+          .from('group_broadcasts')
+          .select('id')
+          .ilike('name', eventName.trim())
+          .limit(1)
+          .maybeSingle();
       final gbid = response?['id'] as String?;
       if (gbid != null && gbid.isNotEmpty) {
         debugPrint(
@@ -536,15 +610,14 @@ class FavoriteEventsNotifier extends AsyncNotifier<List<FavoriteEvent>> {
 final isEventFavoritedProvider = Provider.family<bool, String>((ref, eventId) {
   final favorites = ref.watch(favoriteEventsProvider);
   return favorites.maybeWhen(
-    data:
-        (events) => events.any(
-          (e) => favoriteEventMatchesId(
-            storedEventId: e.eventId,
-            candidateId: eventId,
-            eventName: e.eventName,
-            metadata: e.metadata,
-          ),
-        ),
+    data: (events) => events.any(
+      (e) => favoriteEventMatchesId(
+        storedEventId: e.eventId,
+        candidateId: eventId,
+        eventName: e.eventName,
+        metadata: e.metadata,
+      ),
+    ),
     orElse: () => false,
   );
 });

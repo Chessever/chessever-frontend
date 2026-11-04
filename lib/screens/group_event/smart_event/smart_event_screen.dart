@@ -1,10 +1,14 @@
 import 'package:chessever2/widgets/window_metrics_dismissal.dart';
 import 'package:chessever2/widgets/paywall/premium_game_access.dart';
 import 'dart:async';
+import 'package:chessever2/screens/group_event/smart_event/saved_smart_event_editor.dart';
+import 'package:chessever2/screens/group_event/smart_event/smart_event_shortcut.dart';
+import 'package:chessever2/screens/group_event/smart_event/starred_smart_events_screen.dart';
+import 'package:chessever2/utils/smart_event_mutation.dart';
+import 'package:chessever2/widgets/app_snack.dart';
+export 'smart_event_shortcut.dart';
 
 import 'package:chessever2/main.dart' show routeObserver;
-import 'package:chessever2/providers/favorite_events_provider.dart';
-import 'package:chessever2/repository/favorites/models/favorite_event.dart';
 import 'package:chessever2/repository/gamebase/search/gamebase_search_models.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
 import 'package:chessever2/screens/chessboard/provider/game_pgn_stream_provider.dart';
@@ -16,7 +20,6 @@ import 'package:chessever2/screens/group_event/widget/appbar_icons_widget.dart';
 import 'package:chessever2/screens/group_event/smart_event/smart_aggregate_event_provider.dart';
 import 'package:chessever2/screens/library/widgets/library_context_menu.dart';
 import 'package:chessever2/screens/my_space/actions/space_menu_action.dart';
-import 'package:chessever2/screens/my_space/models/space_shortcut.dart';
 import 'package:chessever2/screens/my_space/providers/space_shortcuts_provider.dart';
 import 'package:chessever2/utils/event_time_control.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
@@ -37,7 +40,6 @@ import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/svg_asset.dart';
 import 'package:chessever2/utils/time_utils.dart';
-import 'package:chessever2/widgets/auth/auth_upgrade_sheet.dart';
 import 'package:chessever2/widgets/alert_dialog/alert_modal.dart';
 import 'package:chessever2/widgets/event_card/event_card.dart';
 import 'package:chessever2/widgets/event_card/smart_event_star.dart';
@@ -61,47 +63,6 @@ const smartEventTabLabels = <String>['About', 'Games', 'Events'];
 
 /// Index of Games in [smartEventTabLabels].
 const smartEventGamesTab = 1;
-
-/// My Space shortcut for a smart event.
-///
-/// targetId is the criteria key, the same identity the saved favorite lives
-/// under (`smart_event:v2:{criteriaKey}`), so pinning the same filters from
-/// the card and from the app bar dedupes. `params['request']` is
-/// [SmartEventRequest.toFavoriteMetadata] minus the resolved-event snapshot:
-/// a smart event IS its criteria and re-resolves its members on open. Rebuild
-/// it with [smartEventRequestFromSpaceShortcut].
-SpaceShortcut smartEventSpaceDraft(SmartEventRequest request) {
-  final metadata = Map<String, dynamic>.of(request.toFavoriteMetadata())
-    ..remove('events')
-    ..remove('notificationsEnabled');
-  return SpaceShortcut.draft(
-    kind: SpaceShortcutKind.smartEvent,
-    targetId: request.criteriaKey,
-    title: request.displayName,
-    subtitle: request.caption,
-    params: {'request': metadata},
-  );
-}
-
-/// Inverse of [smartEventSpaceDraft]: the request a smartEvent shortcut was
-/// pinned from, parsed through the same path saved smart favorites use.
-/// Returns null when the shortcut carries no request map.
-SmartEventRequest? smartEventRequestFromSpaceShortcut(SpaceShortcut shortcut) {
-  final raw = shortcut.params['request'];
-  if (raw is! Map) return null;
-  final stamp = shortcut.createdAt ?? DateTime.now();
-  return SmartEventRequest.fromFavoriteEvent(
-    FavoriteEvent(
-      id: shortcut.id,
-      userId: '',
-      eventId: 'smart_event:v2:${shortcut.targetId}',
-      eventName: shortcut.title,
-      metadata: Map<String, dynamic>.from(raw),
-      createdAt: stamp,
-      updatedAt: stamp,
-    ),
-  );
-}
 
 /// Full event view for generated level games — an aggregate of every matching
 /// game across broadcasts, not just currently-running events. Renders the
@@ -158,6 +119,9 @@ class _SmartEventScreenState extends ConsumerState<SmartEventScreen> {
   /// apply — so dirty-tracking measures against what is actually persisted,
   /// not against the (stale) opening request.
   late SmartEventRequest _baselineRequest = widget.request;
+  SavedSmartEventEditor? _editor;
+  bool _saving = false;
+  bool _confirmingLeave = false;
 
   final ScrollToTopBus _scrollToTopBus = ScrollToTopBus();
 
@@ -238,49 +202,53 @@ class _SmartEventScreenState extends ConsumerState<SmartEventScreen> {
   /// Elo floor, and even an identity-stable change must refresh the stored
   /// criteria metadata). The Today and Current filters are the reader's own
   /// and stay as they are: no smart event is drawn from them any more.
-  Future<void> _applyConfigChanges() async {
+  Future<bool> _applyConfigChanges() async {
+    if (_saving) return false;
     final updated = _effectiveRequest;
-
-    // Criteria-based lookup so legacy (v1, event-set-keyed) rows are found
-    // and rewritten to the criteria-keyed v2 identity.
-    final savedFavorite = ref.read(
-      smartEventSavedFavoriteProvider(_baselineRequest.criteriaKey),
+    final editor = _editor ??= SavedSmartEventEditor(
+      ProviderScope.containerOf(context, listen: false),
     );
-
-    // Re-point dirty-tracking at what is now persisted, so a later exit
-    // doesn't re-prompt for already-applied changes.
-    if (mounted) setState(() => _baselineRequest = updated);
-
-    if (savedFavorite == null) return;
-
-    final notifier = ref.read(favoriteEventsProvider.notifier);
-    await notifier.removeFavorite(savedFavorite.eventId);
-    await notifier.addFavorite(
-      eventId: updated.favoriteEventId,
-      eventName: updated.displayName,
-      maxAvgElo: updated.minElo > 0 ? updated.minElo : null,
-      extraMetadata: updated.toFavoriteMetadata(),
-    );
+    setState(() => _saving = true);
+    try {
+      await editor.apply(_baselineRequest, updated);
+      if (mounted) setState(() => _baselineRequest = updated);
+      return true;
+    } catch (error) {
+      if (mounted) {
+        showAppSnack(context, error.toString(), tone: AppSnackTone.danger);
+      }
+      return false;
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
   }
 
   /// Back navigation with a dirty config: confirm that the new configuration
   /// gets applied + saved, or let the user discard it and leave as-is.
   /// Dismissing the dialog (tap outside) stays on the screen.
   Future<void> _confirmLeaveWithChanges() async {
-    final navigator = Navigator.of(context);
-    final confirmed = await showSmoothConfirmDialog(
-      context: context,
-      title: 'Apply changes?',
-      message:
-          'You changed the filters this smart event was built from. '
-          'Leaving will apply and save the new configuration.',
-      confirmText: 'Apply & leave',
-      cancelText: 'Discard',
-    );
-    if (!mounted || confirmed == null) return;
-    if (confirmed) await _applyConfigChanges();
-    if (!mounted) return;
-    navigator.pop();
+    if (_saving || _confirmingLeave) return;
+    _confirmingLeave = true;
+    try {
+      final navigator = Navigator.of(context);
+      final confirmed = await showSmoothConfirmDialog(
+        context: context,
+        title: 'Apply changes?',
+        message: _editor?.recoveryRequired == true
+            ? 'The previous save is incomplete. Retry to recover and save it. Stay here to manage Starred Smart Events.'
+            : 'You changed the filters this smart event was built from. '
+                  'Leaving will apply and save the new configuration.',
+        confirmText: 'Apply & leave',
+        cancelText: _editor?.recoveryRequired == true ? 'Stay' : 'Discard',
+      );
+      if (!mounted || confirmed == null) return;
+      if (!confirmed && _editor?.recoveryRequired == true) return;
+      if (confirmed && !await _applyConfigChanges()) return;
+      if (!mounted) return;
+      navigator.pop();
+    } finally {
+      _confirmingLeave = false;
+    }
   }
 
   /// The pinned row: search field + filter button (+ view-mode toggle).
@@ -382,7 +350,7 @@ class _SmartEventScreenState extends ConsumerState<SmartEventScreen> {
         child: PopScope(
           // A dirty config intercepts the pop (back button, system back,
           // swipe-back) so the changes can be confirmed-applied or discarded.
-          canPop: !_isConfigDirty,
+          canPop: !_isConfigDirty && !_saving,
           onPopInvokedWithResult: (didPop, _) {
             if (!didPop) _confirmLeaveWithChanges();
           },
@@ -390,63 +358,66 @@ class _SmartEventScreenState extends ConsumerState<SmartEventScreen> {
             backgroundColor: context.colors.background,
             body: SafeArea(
               bottom: false,
-              child: Column(
-                children: [
-                  _AppBar(
-                    request: _effectiveRequest,
-                    savedRequest: _baselineRequest,
-                    isDirty: _isConfigDirty,
-                    onApplyChanges: _applyConfigChanges,
-                  ),
-                  SizedBox(height: 8.h),
-                  // Search + filter pinned ABOVE the tab switcher — identical
-                  // placement to the regular event view, with the smart
-                  // event's extra filter button kept on the row.
-                  _PinnedSearchFilterBar(
-                    pageController: _page,
-                    fallbackPage: _index.toDouble(),
-                    child: Padding(
-                      padding: EdgeInsets.only(
-                        left: horizontalPadding,
-                        right: horizontalPadding,
-                        top: 4.h,
-                        bottom: 8.h,
-                      ),
-                      child: _buildSearchFilterBar(context),
+              child: AbsorbPointer(
+                absorbing: _saving,
+                child: Column(
+                  children: [
+                    _AppBar(
+                      request: _effectiveRequest,
+                      savedRequest: _baselineRequest,
+                      isDirty: _isConfigDirty,
+                      onApplyChanges: _applyConfigChanges,
                     ),
-                  ),
-                  Padding(
-                    padding: EdgeInsets.symmetric(
-                      horizontal: horizontalPadding,
-                    ),
-                    child: SegmentedSwitcher(
-                      dotScope: 'smart_event.tab',
-                      options: _tabs,
-                      initialSelection: _index,
-                      currentSelection: _index,
-                      onSelectionChanged: _select,
-                      notifyOnReselect: true,
-                    ),
-                  ),
-                  SizedBox(height: 8.h),
-                  Expanded(
-                    child: ScrollToTopScope(
-                      bus: _scrollToTopBus,
-                      child: PageView(
-                        controller: _page,
-                        onPageChanged: (i) {
-                          if (_index != i) _searchFocusNode.unfocus();
-                          setState(() => _index = i);
-                        },
-                        children: const [
-                          _AboutTab(),
-                          _GamesTab(),
-                          _EventsTab(),
-                        ],
+                    SizedBox(height: 8.h),
+                    // Search + filter pinned ABOVE the tab switcher — identical
+                    // placement to the regular event view, with the smart
+                    // event's extra filter button kept on the row.
+                    _PinnedSearchFilterBar(
+                      pageController: _page,
+                      fallbackPage: _index.toDouble(),
+                      child: Padding(
+                        padding: EdgeInsets.only(
+                          left: horizontalPadding,
+                          right: horizontalPadding,
+                          top: 4.h,
+                          bottom: 8.h,
+                        ),
+                        child: _buildSearchFilterBar(context),
                       ),
                     ),
-                  ),
-                ],
+                    Padding(
+                      padding: EdgeInsets.symmetric(
+                        horizontal: horizontalPadding,
+                      ),
+                      child: SegmentedSwitcher(
+                        dotScope: 'smart_event.tab',
+                        options: _tabs,
+                        initialSelection: _index,
+                        currentSelection: _index,
+                        onSelectionChanged: _select,
+                        notifyOnReselect: true,
+                      ),
+                    ),
+                    SizedBox(height: 8.h),
+                    Expanded(
+                      child: ScrollToTopScope(
+                        bus: _scrollToTopBus,
+                        child: PageView(
+                          controller: _page,
+                          onPageChanged: (i) {
+                            if (_index != i) _searchFocusNode.unfocus();
+                            setState(() => _index = i);
+                          },
+                          children: const [
+                            _AboutTab(),
+                            _GamesTab(),
+                            _EventsTab(),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
@@ -618,18 +589,7 @@ class _AppBar extends ConsumerWidget {
   /// under THIS identity until the overrides are applied.
   final SmartEventRequest savedRequest;
   final bool isDirty;
-  final Future<void> Function() onApplyChanges;
-
-  Future<bool> _confirmRemoveFavorite(BuildContext context) async {
-    final confirmed = await showSmoothConfirmDialog(
-      context: context,
-      title: 'Remove ${request.displayName}?',
-      message: 'This will remove ${request.displayName} from your For You.',
-      confirmText: 'Remove',
-      isDangerous: true,
-    );
-    return confirmed == true;
-  }
+  final Future<bool> Function() onApplyChanges;
 
   Future<bool> _confirmApplyChanges(BuildContext context) async {
     final confirmed = await showSmoothConfirmDialog(
@@ -645,13 +605,14 @@ class _AppBar extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    // Criteria-based match (works for legacy v1 and v2 rows alike): saved if
-    // any smart favorite carries the saved OR the overridden criteria.
-    final savedFavorite =
-        ref.watch(smartEventSavedFavoriteProvider(savedRequest.criteriaKey)) ??
-        ref.watch(smartEventSavedFavoriteProvider(request.criteriaKey));
-    // Pins what is on screen: the request with any tier / filter overrides.
-    final spaceDraft = smartEventSpaceDraft(request);
+    // While exploring, the star always belongs to the saved identity. Saving
+    // migrates that intentional state; a star on unrelated target criteria
+    // must never be mistaken for this event's source subscription.
+    final savedFavorite = ref.watch(
+      smartEventSavedFavoriteProvider(savedRequest.criteriaKey),
+    );
+    final busy = ref.watch(smartEventMutationBusyProvider);
+    final spaceDraft = smartEventSpaceDraft(savedRequest);
     final inSpace = ref.watch(spaceShortcutExistsProvider(spaceDraft.key));
 
     return Padding(
@@ -694,41 +655,51 @@ class _AppBar extends ConsumerWidget {
                   showLibraryContextMenu(
                     context: menuContext,
                     actions: [
-                      LibraryMenuAction(
-                        icon: inSpace
-                            ? Icons.dashboard_customize
-                            : Icons.dashboard_customize_outlined,
-                        label: inSpace
-                            ? 'Remove from My Space'
-                            : 'Add to My Space',
-                        onSelected: () => toggleSpaceShortcut(
-                          context: context,
-                          ref: ref,
-                          draft: spaceDraft,
-                        ),
-                      ),
-                      // Starred here as on its card; a starred one manages
-                      // its notifications and itself below.
-                      if (savedFavorite == null)
+                      if (!isDirty)
                         LibraryMenuAction(
-                          icon: Icons.star_outline_rounded,
-                          label: 'Star',
-                          onSelected: () => toggleSmartEventFavorite(
+                          icon: inSpace
+                              ? Icons.dashboard_customize
+                              : Icons.dashboard_customize_outlined,
+                          label: inSpace
+                              ? 'Remove from My Space'
+                              : 'Add to My Space',
+                          enabled: !busy,
+                          onSelected: () => toggleSpaceShortcut(
                             context: context,
-                            request: request,
+                            ref: ref,
+                            draft: spaceDraft,
                           ),
                         ),
-                      if (savedFavorite != null)
+                      if (isDirty)
                         LibraryMenuAction(
-                          icon: isDirty
-                              ? Icons.check_circle_outline_rounded
-                              : Icons.remove_circle_outline_rounded,
-                          label: isDirty
-                              ? 'Apply changes to ${request.displayName}'
-                              : 'Remove ${request.displayName}',
-                          onSelected: () =>
-                              _manageSavedFavorite(context, ref, savedFavorite),
+                          icon: Icons.check_circle_outline_rounded,
+                          label: 'Apply changes to ${request.displayName}',
+                          enabled: !busy,
+                          onSelected: () async {
+                            if (await _confirmApplyChanges(context) &&
+                                context.mounted) {
+                              await onApplyChanges();
+                            }
+                          },
                         ),
+                      LibraryMenuAction(
+                        icon: savedFavorite == null
+                            ? Icons.star_outline_rounded
+                            : Icons.star_rounded,
+                        label: savedFavorite == null
+                            ? 'Star saved event'
+                            : 'Unstar saved event / stop notifications',
+                        enabled: !busy,
+                        onSelected: () => toggleSmartEventFavorite(
+                          context: context,
+                          request: savedRequest,
+                        ),
+                      ),
+                      LibraryMenuAction(
+                        icon: Icons.notifications_outlined,
+                        label: 'Starred Smart Events',
+                        onSelected: () => openStarredSmartEvents(context),
+                      ),
                     ],
                   ),
                 );
@@ -738,35 +709,6 @@ class _AppBar extends ConsumerWidget {
         ],
       ),
     );
-  }
-
-  /// Applies the edited filters to the saved smart event, or removes it.
-  Future<void> _manageSavedFavorite(
-    BuildContext context,
-    WidgetRef ref,
-    FavoriteEvent savedFavorite,
-  ) async {
-    final allowed = await requireFullAuthGuard(context);
-    if (!allowed || !context.mounted) return;
-
-    // Saved + overridden: the action applies + saves the new
-    // config onto the saved smart event (after confirmation).
-    if (isDirty) {
-      final confirmed = await _confirmApplyChanges(context);
-      if (!confirmed || !context.mounted) return;
-      await onApplyChanges();
-      return;
-    }
-
-    final confirmed = await _confirmRemoveFavorite(context);
-    if (!confirmed || !context.mounted) return;
-
-    // Remove by the matched row's actual id — a legacy v1 row's
-    // id differs from the criteria-keyed id we'd compute today.
-    await ref
-        .read(favoriteEventsProvider.notifier)
-        .removeFavorite(savedFavorite.eventId);
-    if (context.mounted) Navigator.of(context).pop();
   }
 }
 

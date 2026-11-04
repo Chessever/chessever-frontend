@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:math' as math;
+import 'package:chessever2/utils/confirmed_saved_row_edit.dart';
 
 import 'package:chessever2/config/feature_flags.dart';
 import 'package:chessever2/providers/auth_state_provider.dart';
@@ -145,6 +146,9 @@ class SpaceShortcutsNotifier extends AsyncNotifier<List<SpaceShortcut>> {
   final _deletes = SpacePendingDeletes();
   final _sortWrites = SpacePendingSortWrites();
   int _sortEpoch = 0;
+  int _confirmedEditEpoch = 0;
+  int _confirmedEdits = 0;
+  String? _confirmedEditUserId;
 
   /// Pins put back (Undo) whose row the server does not hold again yet: a
   /// refresh keeps them in the list meanwhile.
@@ -202,6 +206,7 @@ class SpaceShortcutsNotifier extends AsyncNotifier<List<SpaceShortcut>> {
   /// Replaces the list with the server's. True once the server has answered,
   /// which is also the moment an account can safely be given its defaults.
   Future<bool> _refresh() async {
+    final editEpoch = _confirmedEditEpoch;
     final uid = _userId;
     if (uid == null || _remoteUnavailable) return false;
     try {
@@ -223,7 +228,11 @@ class SpaceShortcutsNotifier extends AsyncNotifier<List<SpaceShortcut>> {
         }
         list.add(s);
       }
-      if (_userId != uid) return false;
+      if (_userId != uid ||
+          _confirmedEdits > 0 ||
+          editEpoch != _confirmedEditEpoch) {
+        return false;
+      }
       final merged = _mergePendingLocals(_reconcile(list));
       state = AsyncData(merged);
       unawaited(_writeCache(merged));
@@ -563,6 +572,127 @@ class SpaceShortcutsNotifier extends AsyncNotifier<List<SpaceShortcut>> {
   }
 
   // ---------------------------------------------------------------- writes
+
+  void beginConfirmedSmartEventEdit() {
+    if (_confirmedEdits == 0) _confirmedEditUserId = _userId;
+    _confirmedEdits++;
+    _confirmedEditEpoch++;
+  }
+
+  void endConfirmedSmartEventEdit() {
+    _confirmedEdits--;
+    _confirmedEditEpoch++;
+    _retryUnsyncedSoon();
+  }
+
+  /// Explicit edits await the cache, then require a server answer when signed
+  /// in. Unsynced local pins stay local. Reading never backfills a shortcut.
+  Future<List<SpaceShortcut>> readForSmartEventEdit() async {
+    await future;
+    final uid = _userId;
+    if (_confirmedEdits > 0 && uid != _confirmedEditUserId) {
+      throw const SavedRowConflict();
+    }
+    if (uid == null) return state.requireValue;
+    if (_remoteUnavailable) throw const SavedRowConflict();
+    final rows = await _db.from(_table).select().eq('user_id', uid);
+    if (_userId != uid) throw const SavedRowConflict();
+    final list = _mergePendingLocals(
+      _reconcile([
+        for (final row in rows)
+          if (SpaceShortcut.fromJson(row) case final pin?) pin,
+      ]),
+    );
+    state = AsyncData(list);
+    await _writeCache(list);
+    return list;
+  }
+
+  /// Strict counterpart of best-effort add/remove for coordinated criteria
+  /// edits. Guard both remote and local snapshots, including compensation.
+  Future<void> writeSmartEventEdit(
+    SpaceShortcut? before,
+    SpaceShortcut? after,
+  ) async {
+    await future;
+    final uid = _userId;
+    if (_confirmedEdits > 0 && uid != _confirmedEditUserId) {
+      throw const SavedRowConflict();
+    }
+    for (final row in [before, after]) {
+      if (row != null &&
+          (row.kind != SpaceShortcutKind.smartEvent ||
+              _syncing.contains(row.key) ||
+              _restoring.contains(row.key) ||
+              _deletes.contains(row.key))) {
+        throw const SavedRowConflict();
+      }
+    }
+    await _sortWrites.settled;
+    bool localAlreadyDone() {
+      final list = state.requireValue;
+      final old = list.where((s) => s.key == before?.key).firstOrNull;
+      final target = list.where((s) => s.key == after?.key).firstOrNull;
+      if (after == null) return old == null;
+      return target != null &&
+          spaceShortcutsMatch(target, after) &&
+          (before == null || before.key == after.key || old == null);
+    }
+
+    void checkLocal() {
+      if (localAlreadyDone()) return;
+      final list = state.requireValue;
+      final current = list
+          .where((s) => s.key == (before ?? after!).key)
+          .firstOrNull;
+      if (before == null
+          ? current != null
+          : current == null || !spaceShortcutsMatch(current, before)) {
+        throw const SavedRowConflict();
+      }
+      if (after != null &&
+          before?.key != after.key &&
+          list.any((s) => s.key == after.key)) {
+        throw const SavedRowConflict();
+      }
+    }
+
+    checkLocal();
+    Map<String, dynamic>? fields(SpaceShortcut? row) => row == null
+        ? null
+        : {
+            ...row.toInsert(),
+            // Compensation may reinsert a deleted duplicate source. Keep its
+            // server ID/history so subsequent Remove/Undo cannot use a stale ID.
+            if (!row.isLocal) 'id': row.id,
+            if (row.createdAt != null)
+              'created_at': row.createdAt!.toUtc().toIso8601String(),
+            'open_count': row.openCount,
+            'last_opened_at': row.lastOpenedAt?.toUtc().toIso8601String(),
+          };
+    if (uid != null && !(before ?? after!).isLocal) {
+      if (_remoteUnavailable) throw const SavedRowConflict();
+      await writeConfirmedSavedRow(
+        client: _db,
+        userId: uid,
+        table: _table,
+        keyColumns: const ['kind', 'target_id'],
+        before: fields(before),
+        after: fields(after),
+      );
+    }
+    if (_userId != uid) throw const SavedRowConflict();
+    checkLocal();
+    if (localAlreadyDone()) return;
+    final list = state.requireValue;
+    final next = _sorted([
+      for (final pin in list)
+        if (pin.key != before?.key && pin.key != after?.key) pin,
+      if (after != null) after,
+    ]);
+    state = AsyncData(next);
+    await _writeCache(next);
+  }
 
   bool contains(SpaceShortcutKind kind, String targetId) =>
       pinFor(kind, targetId) != null;
@@ -1056,6 +1186,7 @@ class SpaceShortcutsNotifier extends AsyncNotifier<List<SpaceShortcut>> {
   /// (user_id, kind, target_id), so a repeat never duplicates. A dropped
   /// connection ends the pass; the next refresh, rejoin or write resumes it.
   Future<void> _syncUnsyncedLocals(String uid) async {
+    if (_confirmedEdits > 0) return;
     if (_syncPassFor == uid) return;
     final keys = [for (final s in _unsyncedLocals()) s.key];
     if (keys.isEmpty) return;
