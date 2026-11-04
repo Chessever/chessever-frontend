@@ -31,10 +31,14 @@ Set<int> collectFideIdsFromGames(Iterable<GamesTourModel> games) {
   return ids;
 }
 
+/// Fills a card's missing name, title, federation and rating from
+/// `chess_players` (today's data). [fillTitle] is false when the game's titles
+/// are already the ones held at the time ([ChessTitleUtils.titlesSettled]).
 PlayerCard enrichPlayerCardFromChessPlayers(
   PlayerCard card,
-  Map<int, ChessPlayer> playersByFideId,
-) {
+  Map<int, ChessPlayer> playersByFideId, {
+  bool fillTitle = true,
+}) {
   final fideId = card.fideId;
   if (fideId == null || fideId <= 0) return card;
 
@@ -42,7 +46,7 @@ PlayerCard enrichPlayerCardFromChessPlayers(
   if (player == null) return card;
 
   final mergedTitle = ChessTitleUtils.normalize(
-    card.title.trim().isNotEmpty ? card.title : player.title,
+    card.title.trim().isNotEmpty || !fillTitle ? card.title : player.title,
   );
   final mergedCountry =
       card.countryCode.trim().isNotEmpty
@@ -64,13 +68,23 @@ GamesTourModel enrichGameWithChessPlayers(
   GamesTourModel game,
   Map<int, ChessPlayer> playersByFideId,
 ) {
+  // An archive game whose titles are settled keeps an empty side empty: that
+  // player was untitled when the game was played.
+  final fillTitle =
+      game.source == GameSource.supabase ||
+      !ChessTitleUtils.titlesSettled(
+        game.whitePlayer.title,
+        game.blackPlayer.title,
+      );
   final white = enrichPlayerCardFromChessPlayers(
     game.whitePlayer,
     playersByFideId,
+    fillTitle: fillTitle,
   );
   final black = enrichPlayerCardFromChessPlayers(
     game.blackPlayer,
     playersByFideId,
+    fillTitle: fillTitle,
   );
   if (white == game.whitePlayer && black == game.blackPlayer) return game;
   return game.copyWith(whitePlayer: white, blackPlayer: black);
@@ -100,10 +114,15 @@ Map<String, dynamic> enrichSearchRowWithChessPlayers(
   if (whitePlayer == null && blackPlayer == null) return row;
 
   final enriched = Map<String, dynamic>.from(row);
+  // Gamebase settles a row's titles as held at the time; see titlesSettled.
+  final titlesSettled = ChessTitleUtils.titlesSettled(
+    row['whiteTitle']?.toString(),
+    row['blackTitle']?.toString(),
+  );
 
   if (whitePlayer != null) {
     final currentTitle = (enriched['whiteTitle']?.toString() ?? '').trim();
-    if (currentTitle.isEmpty) {
+    if (currentTitle.isEmpty && !titlesSettled) {
       enriched['whiteTitle'] = ChessTitleUtils.normalize(whitePlayer.title);
     }
     final currentFed = (enriched['whiteFed']?.toString() ?? '').trim();
@@ -118,7 +137,7 @@ Map<String, dynamic> enrichSearchRowWithChessPlayers(
 
   if (blackPlayer != null) {
     final currentTitle = (enriched['blackTitle']?.toString() ?? '').trim();
-    if (currentTitle.isEmpty) {
+    if (currentTitle.isEmpty && !titlesSettled) {
       enriched['blackTitle'] = ChessTitleUtils.normalize(blackPlayer.title);
     }
     final currentFed = (enriched['blackFed']?.toString() ?? '').trim();

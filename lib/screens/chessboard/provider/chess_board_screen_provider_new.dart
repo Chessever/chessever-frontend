@@ -1448,14 +1448,33 @@ class ChessBoardScreenNotifierNew
           gameData.headers['BlackFed'],
           fallback: game.blackPlayer.federation,
         );
-        final whiteTitle = _headerTitle(
-          gameData.headers['WhiteTitle'],
-          fallback: game.whitePlayer.title,
-        );
-        final blackTitle = _headerTitle(
-          gameData.headers['BlackTitle'],
-          fallback: game.blackPlayer.title,
-        );
+        // Archive games (gamebase, TWIC, explorer, saved) show the title held
+        // when the game was played: the tags decide, and the card's title is
+        // only the fallback when the PGN carries no titles at all. Broadcasts
+        // keep the stored player title for the relay placeholder reason above.
+        final titlesAsPlayed = game.source != GameSource.supabase;
+        final whiteTitle =
+            titlesAsPlayed
+                ? ChessTitleUtils.gameTimeTitle(
+                  gameData.headers,
+                  isWhite: true,
+                  fallback: game.whitePlayer.title,
+                )
+                : _headerTitle(
+                  gameData.headers['WhiteTitle'],
+                  fallback: game.whitePlayer.title,
+                );
+        final blackTitle =
+            titlesAsPlayed
+                ? ChessTitleUtils.gameTimeTitle(
+                  gameData.headers,
+                  isWhite: false,
+                  fallback: game.blackPlayer.title,
+                )
+                : _headerTitle(
+                  gameData.headers['BlackTitle'],
+                  fallback: game.blackPlayer.title,
+                );
         final whiteFideId =
             int.tryParse(gameData.headers['WhiteFideId']?.toString() ?? '') ??
             game.whitePlayer.fideId;

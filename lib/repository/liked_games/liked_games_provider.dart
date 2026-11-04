@@ -12,6 +12,7 @@ import 'package:chessever2/screens/chessboard/utils/like_learning_prompt_tracker
 import 'package:chessever2/screens/chessboard/utils/board_feature_teaching_tracker.dart';
 import 'package:chessever2/screens/library/utils/gamebase_pgn_builder.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
+import 'package:chessever2/utils/chess_title_utils.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -460,12 +461,12 @@ class LikedGamesNotifier extends AsyncNotifier<List<SavedAnalysis>> {
             : game.blackPlayer.federation;
     if (whiteFed.isNotEmpty) meta['WhiteFed'] = whiteFed;
     if (blackFed.isNotEmpty) meta['BlackFed'] = blackFed;
-    if (game.whitePlayer.title.isNotEmpty) {
-      meta['WhiteTitle'] = game.whitePlayer.title;
-    }
-    if (game.blackPlayer.title.isNotEmpty) {
-      meta['BlackTitle'] = game.blackPlayer.title;
-    }
+    // The game's own title tags are the title of the day: keep them.
+    ChessTitleUtils.fillMissingTitleTags(
+      meta,
+      white: game.whitePlayer.title,
+      black: game.blackPlayer.title,
+    );
     if (game.whitePlayer.rating > 0) {
       meta['WhiteElo'] = game.whitePlayer.rating.toString();
     }

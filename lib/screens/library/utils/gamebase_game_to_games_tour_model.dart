@@ -61,9 +61,8 @@ GamesTourModel mapGamebaseGameToGamesTourModel(GamebaseGame game) {
   final whitePlayer = PlayerCard(
     name: whiteName,
     federation: whiteCountryCode,
-    title: ChessTitleUtils.normalize(
-      (md['WhiteTitle']?.toString() ?? '').trim(),
-    ),
+    // Held when the game was played; a tag only for Black means untitled.
+    title: ChessTitleUtils.gameTimeTitle(md, isWhite: true, fallback: ''),
     rating: parseRating(md['WhiteElo']),
     countryCode: whiteCountryCode,
     team: null,
@@ -74,9 +73,7 @@ GamesTourModel mapGamebaseGameToGamesTourModel(GamebaseGame game) {
   final blackPlayer = PlayerCard(
     name: blackName,
     federation: blackCountryCode,
-    title: ChessTitleUtils.normalize(
-      (md['BlackTitle']?.toString() ?? '').trim(),
-    ),
+    title: ChessTitleUtils.gameTimeTitle(md, isWhite: false, fallback: ''),
     rating: parseRating(md['BlackElo']),
     countryCode: blackCountryCode,
     team: null,

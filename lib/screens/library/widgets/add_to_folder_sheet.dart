@@ -14,6 +14,7 @@ import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_mode
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
+import 'package:chessever2/utils/chess_title_utils.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/library_utils.dart';
 import 'package:chessever2/utils/logger/logger.dart';
@@ -155,12 +156,12 @@ class _AddToFolderPageState extends ConsumerState<_AddToFolderPage> {
     if (whiteFed.isNotEmpty) meta['WhiteFed'] = whiteFed;
     if (blackFed.isNotEmpty) meta['BlackFed'] = blackFed;
 
-    if (widget.game.whitePlayer.title.isNotEmpty) {
-      meta['WhiteTitle'] = widget.game.whitePlayer.title;
-    }
-    if (widget.game.blackPlayer.title.isNotEmpty) {
-      meta['BlackTitle'] = widget.game.blackPlayer.title;
-    }
+    // The game's own title tags are the title of the day: keep them.
+    ChessTitleUtils.fillMissingTitleTags(
+      meta,
+      white: widget.game.whitePlayer.title,
+      black: widget.game.blackPlayer.title,
+    );
     if (widget.game.whitePlayer.rating > 0) {
       meta['WhiteElo'] = widget.game.whitePlayer.rating.toString();
     }
