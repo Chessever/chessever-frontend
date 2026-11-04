@@ -7,13 +7,18 @@ the admin branch starts at `origin/main` (`16fa0cc`). No website code changes.
 ## Processing
 
 The existing ten-minute `partner-news-sync` still imports readable articles even
-when AI is disabled or unavailable. Its optional background worker calls OpenAI's
-Responses API with strict structured output and `store: false`. It sends only
+when AI is disabled or unavailable. Its optional background worker calls
+Cloudflare Workers AI with the same `@cf/zai-org/glm-5.3-flash` model and low
+reasoning effort as the chatbot (`chessever_cloudflare/apps/chat/wrangler.jsonc`).
+It uses the account-scoped Chat Completions REST endpoint with a JSON schema and
+`store: false`, because Supabase has no Cloudflare AI binding. It sends only
 headline, summary and body text. Image markup, alt text and URL destinations are
 removed; no image folders are used. There are no model tools or external lookups.
 
 The model selects up to five main subjects/directly quoted chess players and
-returns complete names, exact mentions and verbatim evidence. Passing mentions,
+returns complete names, exact mentions and evidence selected from a schema enum
+of unchanged contiguous source excerpts. Combining or paraphrasing evidence is
+rejected locally and by the database. Passing mentions,
 results-only participants, photographers, relatives and non-chess athletes are
 excluded. Uncertain identities are omitted. A unique exact normalized full-name
 match in `chess_players` supplies the FIDE ID and display name. No model-supplied
@@ -63,8 +68,11 @@ versions are excluded. Native alerts retain their existing version contract.
 
 ## Rollout
 
-This change is local source only: no hosted SQL, deployed functions, real model
-requests or real pushes were executed. The feature remains disabled.
+This change is local source only: no hosted SQL, deployed functions or real
+pushes were executed. The feature remains disabled. A live text-only GLM smoke
+check in the chatbot Cloudflare account passed exact-source validation: it
+selected Denis Lazavik and excluded passing mentions of Mark Smirnov and Daniil
+Dubov. The smoke check never admitted a notification job or touched the queue.
 
 1. Apply mobile migration `20261103213329_rookreview_player_notifications.sql`,
    then admin migration `20261103213332_rookreview_notification_transport.sql`.
@@ -73,13 +81,17 @@ requests or real pushes were executed. The feature remains disabled.
 2. Deploy the admin service and updated `partner-news-sync`. Preserve its existing
    `verify_jwt = false` configuration and stream-token authentication. Use the
    production project `oelbsuggrzyqwzmvidju` when deployment is authorized.
-3. Configure the Edge Function secrets `OPENAI_API_KEY`, `ROOKREVIEW_AI_MODEL`
-   (a Responses/strict-JSON-schema capable model), and `ROOKREVIEW_AI_ENABLED=true`.
-   These are server secrets, never public/mobile build configuration. There is no
-   hardcoded model or key. The session had neither configured, so live extraction
-   quality and account/model availability still need validation before activation.
-4. Release mobile **37.8.3+3787**, and verify an actual warm/cold partner tap on
-   device. Do not bypass the version gate to target older app builds.
+3. Configure the Edge Function secrets `CLOUDFLARE_ACCOUNT_ID` (the same account
+   as the chatbot: `091ffffd15ccb45cae080adb653b17db`),
+   `CLOUDFLARE_AI_API_TOKEN`, and `ROOKREVIEW_AI_ENABLED=true`.
+   Use a scoped Workers AI API token from that account; do not reuse a master
+   deployment/R2 token. These are server secrets, never public/mobile build
+   configuration. The model is pinned to `@cf/zai-org/glm-5.3-flash`; there is no
+   alternative-provider fallback or OpenAI key requirement. The account must
+   already have access to the paid model, as the chatbot does. Configure the
+   server token and validate extraction quality before activation.
+4. Release mobile **37.8.4+3788** (partner tap support requires at least
+   37.8.3+3787), and verify an actual warm/cold partner tap on device. Do not bypass the version gate to target older app builds.
 5. Activate only when ready to admit subsequent articles:
 
 ```sql
@@ -125,5 +137,6 @@ The script creates/drops only a random fixture database in that explicitly named
 container. It covers activation versus an in-flight import, SKIP LOCKED claims,
 competing completion, unsupported activation isolation and reactivation fences.
 
-API references: [Structured outputs](https://developers.openai.com/api/docs/guides/structured-outputs)
+API references: [GLM-5.3 Flash](https://developers.cloudflare.com/workers-ai/models/glm-5.3-flash/),
+[Cloudflare Chat Completions](https://developers.cloudflare.com/workers-ai/configuration/open-ai-compatibility/)
 and [Supabase background tasks](https://supabase.com/docs/guides/functions/background-tasks).

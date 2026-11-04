@@ -179,10 +179,10 @@ Deno.serve(async (req) => {
   }
   // Separate from feed success: AI failures never prevent readable news imports.
   // The runtime keeps this bounded durable-job worker alive after the response.
-  const apiKey = Deno.env.get("OPENAI_API_KEY");
-  const model = Deno.env.get("ROOKREVIEW_AI_MODEL");
-  if (Deno.env.get("ROOKREVIEW_AI_ENABLED") === "true" && apiKey && model) {
-    EdgeRuntime.waitUntil(processPlayerNotifications(supabase, { apiKey, model }).catch(() => {
+  const accountId = Deno.env.get("CLOUDFLARE_ACCOUNT_ID");
+  const apiToken = Deno.env.get("CLOUDFLARE_AI_API_TOKEN");
+  if (Deno.env.get("ROOKREVIEW_AI_ENABLED") === "true" && accountId && apiToken) {
+    EdgeRuntime.waitUntil(processPlayerNotifications(supabase, { accountId, apiToken }).catch(() => {
       console.error("[partner-news-sync] notification_processing_failed");
     }));
   }
