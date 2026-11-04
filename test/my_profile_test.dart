@@ -11,7 +11,7 @@ import 'package:chessever2/screens/my_profile/chess_accounts.dart';
 import 'package:chessever2/screens/my_profile/my_profile_screen.dart';
 import 'package:chessever2/screens/my_profile/race_stats_provider.dart';
 import 'package:chessever2/theme/app_theme.dart';
-import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/utils/adaptive_window.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -21,6 +21,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'puzzle_race_fakes.dart';
+import 'fixtures/duo_window_matrix.dart';
 
 // ---------------------------------------------------------------- doubles
 
@@ -95,11 +96,11 @@ Future<ProviderContainer> _pump(
   List<Override> extraOverrides = const [],
   RaceServerStats? kept,
   ThemeData? theme,
+  Size size = const Size(393, 1400),
 }) async {
-  tester.view.physicalSize = const Size(393, 1400);
+  tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1;
-  addTearDown(tester.view.resetPhysicalSize);
-  addTearDown(tester.view.resetDevicePixelRatio);
+  addTearDown(tester.view.reset);
 
   final container = ProviderContainer(
     overrides: [
@@ -147,9 +148,9 @@ Future<ProviderContainer> _pump(
       container: container,
       child: MaterialApp(
         theme: theme ?? AppTheme.darkTheme,
+        builder: (_, child) => AdaptiveWindowScope(child: child!),
         home: Builder(
           builder: (context) {
-            ResponsiveHelper.init(context);
             return Scaffold(
               body: Center(
                 child: TextButton(
@@ -414,12 +415,62 @@ void main() {
       );
       expect(after.flames, 16);
       final prefs = await SharedPreferences.getInstance();
-      final stored =
-          jsonDecode(prefs.getString(kRaceStatsPrefsKey)!) as Map;
+      final stored = jsonDecode(prefs.getString(kRaceStatsPrefsKey)!) as Map;
       expect(stored['flames'], 16);
       expect(stored['future'], 'kept');
     });
   });
+
+  for (final light in [false, true]) {
+    for (final guest in [false, true]) {
+      testWidgets(
+        'Duo ${guest ? 'guest' : 'signed-in'} profile retains identity through all windows (${light ? 'light' : 'dark'})',
+        (tester) async {
+          tester.platformDispatcher.textScaleFactorTestValue = 1.6;
+          addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+          for (final start in duoWindowCases) {
+            tester.view.devicePixelRatio = 1;
+            applyDuoWindow(tester, start);
+            final container = await _pump(
+              tester,
+              guest: guest,
+              size: start.size,
+              theme: light ? AppTheme.lightTheme : AppTheme.darkTheme,
+            );
+            final element = tester.element(find.byType(MyProfileScreen));
+            final route = ModalRoute.of(element);
+            for (final end in duoWindowCases) {
+              applyDuoWindow(tester, start);
+              await tester.pump();
+              applyDuoWindow(tester, end, mirrorInsets: true);
+              await _settle(tester);
+              expect(
+                tester.takeException(),
+                isNull,
+                reason: '${start.name} to ${end.name}',
+              );
+              expect(
+                tester.element(find.byType(MyProfileScreen)),
+                same(element),
+              );
+              expect(ModalRoute.of(element), same(route));
+              expect(container.read(myProfileIdentityProvider).isGuest, guest);
+              expect(
+                find.text(guest ? 'Guest' : 'Magnus Carlsen'),
+                findsOneWidget,
+              );
+              await tester.ensureVisible(find.text('Free plan'));
+              await _settle(tester);
+              expect(find.text('Free plan').hitTestable(), findsOneWidget);
+              expect(tester.takeException(), isNull);
+            }
+            await tester.pumpWidget(const SizedBox.shrink());
+            await tester.pump();
+          }
+        },
+      );
+    }
+  }
 
   group('My Profile screen', () {
     testWidgets('signed in: identity and plan, no chess accounts or '
@@ -436,6 +487,5 @@ void main() {
       expect(find.text('Start a Puzzle Race'), findsNothing);
       expect(tester.takeException(), isNull);
     });
-
   });
 }

@@ -10,9 +10,10 @@ Future<void> _pump(
   PageController pages, {
   Future<void> Function()? onRefresh,
   ScrollPhysics physics = feedPagePhysics,
+  Size size = const Size(852, 393),
 }) async {
   tester.view
-    ..physicalSize = const Size(852, 393)
+    ..physicalSize = size
     ..devicePixelRatio = 1;
   addTearDown(tester.view.reset);
   await tester.pumpWidget(
@@ -61,7 +62,8 @@ ScrollPosition _content(WidgetTester tester, int index) {
 }
 
 Future<void> _drag(WidgetTester tester, double distance) async {
-  final gesture = await tester.startGesture(const Offset(425, 190));
+  final size = tester.view.physicalSize / tester.view.devicePixelRatio;
+  final gesture = await tester.startGesture(size.center(Offset.zero));
   for (var i = 0; i < 18; i++) {
     await gesture.moveBy(Offset(0, distance / 18));
     await tester.pump(const Duration(milliseconds: 16));
@@ -71,6 +73,25 @@ Future<void> _drag(WidgetTester tester, double distance) async {
 }
 
 void main() {
+  testWidgets(
+    'rail-reduced folded landscape scrolls before handing off a post',
+    (tester) async {
+      final pages = PageController();
+      addTearDown(pages.dispose);
+      // 678x466 minus navigation, safe edge and the page's top bar.
+      await _pump(tester, pages, size: const Size(486, 380));
+      final first = _content(tester, 0);
+      await _drag(tester, -150);
+      expect(first.pixels, greaterThan(0));
+      expect(pages.page, closeTo(0, 0.01));
+      first.jumpTo(first.maxScrollExtent);
+      await tester.pump();
+      await _drag(tester, -250);
+      expect(pages.page, closeTo(1, 0.01));
+      await tester.pumpWidget(const SizedBox.shrink());
+    },
+  );
+
   testWidgets(
     'landscape content scrolls, then hands its edge to next/previous post',
     (tester) async {

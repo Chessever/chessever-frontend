@@ -8300,6 +8300,13 @@ class _AnalysisGameBody extends ConsumerWidget {
         final compactThreshold = 620.h;
         final useCompactLayout =
             availableHeight < compactThreshold && !isTabletLandscape;
+        // A folded portrait window can be wider but shorter than a regular
+        // phone. Keep the player rows, engine lines and notation reachable
+        // instead of allowing the width-sized board to consume their height.
+        final stackedBoardLimit = math.max(
+          1.0,
+          availableHeight - 144.sp - 120.h,
+        );
 
         // PV sits above the swipeable panels on both pages. The explorer
         // suppresses its own internal PV via `showHorizontalPvLines: false`.
@@ -8369,6 +8376,7 @@ class _AnalysisGameBody extends ConsumerWidget {
             currentPageIndex: currentPageIndex,
             state: state,
             game: game,
+            maxSize: isTabletLandscape ? null : stackedBoardLimit,
           ),
           SizedBox(height: 1.h),
           // The Game Analysis sheet's first snap step stops right under this
@@ -8712,6 +8720,7 @@ class _AnalysisGameBody extends ConsumerWidget {
                       currentPageIndex: currentPageIndex,
                       state: state,
                       game: game,
+                      maxSize: stackedBoardLimit,
                     ),
                     SizedBox(height: 4.sp),
                     // Bottom player with padding
@@ -9047,12 +9056,14 @@ class _BoardWithSidebar extends ConsumerStatefulWidget {
   final ChessBoardStateNew state;
   final int currentPageIndex;
   final GamesTourModel game;
+  final double? maxSize;
 
   const _BoardWithSidebar({
     required this.index,
     required this.state,
     required this.currentPageIndex,
     required this.game,
+    this.maxSize,
   });
 
   @override
@@ -9171,7 +9182,13 @@ class _BoardWithSidebarState extends ConsumerState<_BoardWithSidebar> {
         // Respect the available column on tablets while filling the phone
         // width at maximum zoom.
         final screenWidth = constraints.maxWidth;
-        final maxBoardWidth = math.max(1.0, screenWidth - sideBarWidth);
+        final maxBoardWidth = math.max(
+          1.0,
+          math.min(
+            screenWidth - sideBarWidth,
+            widget.maxSize ?? double.infinity,
+          ),
+        );
         final minBoardWidth = math.min(
           maxBoardWidth,
           MediaQuery.sizeOf(context).width / 3,

@@ -573,7 +573,13 @@ class _GamebaseExplorerScreenState extends ConsumerState<GamebaseExplorerScreen>
       explorerEvalProvider.select((value) => value.pvPreview),
     );
     final boardFen = preview?.currentFen ?? state.currentFen;
-    final boardSize = constraints.maxWidth - 48.sp - _evalBarWidth - 4.sp;
+    final boardSize = math.max(
+      1.0,
+      math.min(
+        constraints.maxWidth - 48.sp - _evalBarWidth - 4.sp,
+        constraints.maxHeight - 48.sp - 240.h,
+      ),
+    );
 
     return Center(
       child: ConstrainedBox(
@@ -742,7 +748,13 @@ class _GamebaseExplorerScreenState extends ConsumerState<GamebaseExplorerScreen>
     );
     final boardFen = preview?.currentFen ?? state.currentFen;
     final contentMaxWidth = (constraints.maxWidth * 0.85).clamp(0.0, 720.0);
-    final boardSize = contentMaxWidth - 48.sp - _evalBarWidth - 4.sp;
+    final boardSize = math.max(
+      1.0,
+      math.min(
+        contentMaxWidth - 48.sp - _evalBarWidth - 4.sp,
+        constraints.maxHeight - 48.sp - 240.h,
+      ),
+    );
 
     return SizedBox.expand(
       child: Center(

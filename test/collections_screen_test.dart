@@ -31,6 +31,7 @@ import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card.dart
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/round_header_widget.dart';
 import 'package:chessever2/screens/chessboard/widgets/chess_board_from_fen_new.dart';
 import 'package:chessever2/theme/app_theme.dart';
+import 'package:chessever2/utils/adaptive_window.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/home_top_bar.dart';
 import 'package:chessever2/widgets/figma_player_card.dart';
@@ -39,6 +40,8 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+
+import 'fixtures/duo_window_matrix.dart';
 
 /// Books use a flat Games list; event collections retain section headers.
 
@@ -314,6 +317,7 @@ Future<void> _pump(
   _FakeCollections repo, {
   GamesListViewMode viewMode = GamesListViewMode.gamesCard,
   Size size = const Size(390, 4000),
+  DuoWindowCase? duoWindow,
   bool light = false,
   double textScale = 1,
   Widget? home,
@@ -326,6 +330,10 @@ Future<void> _pump(
 }) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1;
+  if (duoWindow != null) {
+    applyDuoWindow(tester, duoWindow);
+    addTearDown(tester.view.reset);
+  }
   addTearDown(tester.view.resetPhysicalSize);
   addTearDown(tester.view.resetDevicePixelRatio);
 
@@ -362,7 +370,7 @@ Future<void> _pump(
       data: MediaQuery.of(
         context,
       ).copyWith(textScaler: TextScaler.linear(textScale)),
-      child: child!,
+      child: AdaptiveWindowScope(child: child!),
     ),
     home: Builder(
       builder: (context) {
@@ -401,6 +409,94 @@ Future<void> _teardown(WidgetTester tester) async {
 Finder _rich(String text) => find.textContaining(text, findRichText: true);
 
 void main() {
+  _FakeCollections duoRepository() => _FakeCollections(
+    detail: const Collection(
+      id: 'duo-book',
+      slug: 'duo-book',
+      kind: CollectionKind.book,
+      title: 'European Championship Opening Studies',
+      about: 'Opening studies from the championship.',
+      access: CollectionAccess.free,
+    ),
+    games: [_game('duo-one')],
+    players: const [
+      CollectionPlayer(
+        key: 'name:nimzowitsch, aron',
+        name: 'Nimzowitsch, Aron',
+        games: 1,
+      ),
+    ],
+  );
+
+  for (final window in duoWindowCases) {
+    for (final light in [false, true]) {
+      testWidgets('Duo collection tabs fit ${window.name}, '
+          '${light ? 'light' : 'dark'}', (tester) async {
+        await _pump(
+          tester,
+          duoRepository(),
+          size: window.size,
+          duoWindow: window,
+          textScale: 1.3,
+          light: light,
+          premium: true,
+        );
+        expect(tester.takeException(), isNull);
+        for (final tab in ['About', 'Players', 'Games']) {
+          await tester.tap(find.text(tab).first);
+          await tester.pumpAndSettle();
+          expect(tester.takeException(), isNull);
+        }
+        expect(find.byType(GameCard), findsOneWidget);
+        final search = tester.getRect(find.byType(SimpleSearchBar));
+        expect(search.left, greaterThanOrEqualTo(0));
+        expect(search.right, lessThanOrEqualTo(window.size.width));
+        expect(search.bottom, lessThanOrEqualTo(window.size.height));
+        await _teardown(tester);
+      });
+    }
+  }
+  for (final transition in duoWindowTransitions) {
+    testWidgets('Duo collection retains selected tab and search: '
+        '${transition.from.name} to ${transition.to.name}', (tester) async {
+      await _pump(
+        tester,
+        duoRepository(),
+        size: transition.from.size,
+        duoWindow: transition.from,
+        textScale: 1.3,
+        premium: true,
+      );
+      await tester.tap(find.text('Players').first);
+      await tester.pumpAndSettle();
+      final state = tester.state(find.byType(CollectionScreen));
+      final input = find.byKey(const ValueKey('collection_games_search'));
+      final searchController = tester.widget<TextField>(input).controller;
+      final selection = tester
+          .widget<SegmentedSwitcher>(find.byType(SegmentedSwitcher))
+          .currentSelection;
+
+      applyDuoWindow(tester, transition.to, mirrorInsets: true);
+      await tester.pump();
+      await tester.pumpAndSettle();
+
+      expect(tester.state(find.byType(CollectionScreen)), same(state));
+      expect(
+        tester.widget<TextField>(input).controller,
+        same(searchController),
+      );
+      expect(
+        tester
+            .widget<SegmentedSwitcher>(find.byType(SegmentedSwitcher))
+            .currentSelection,
+        selection,
+      );
+      expect(find.byType(FigmaPlayerCard), findsOneWidget);
+      expect(tester.takeException(), isNull);
+      await _teardown(tester);
+    });
+  }
+
   testWidgets(
     'book search stays usable for empty results and clearing restores games',
     (tester) async {

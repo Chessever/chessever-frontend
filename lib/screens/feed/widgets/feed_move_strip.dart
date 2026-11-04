@@ -430,6 +430,25 @@ class FeedBackToGameButton extends StatelessWidget {
   final VoidCallback onTap;
   final double height;
 
+  /// Keeps the existing label and padding whole before the containing strip
+  /// decides whether it needs the page gutter instead of the board column.
+  static double minimumWidth(BuildContext context) {
+    final painter = TextPainter(
+      text: TextSpan(
+        text: 'Back to game',
+        style: DefaultTextStyle.of(context).style.merge(
+          AppTypography.textSmBold.copyWith(fontSize: 13, height: 1.2),
+        ),
+      ),
+      textDirection: Directionality.of(context),
+      textScaler: MediaQuery.textScalerOf(context),
+      maxLines: 1,
+    )..layout();
+    final width = painter.width + 24;
+    painter.dispose();
+    return width;
+  }
+
   @override
   Widget build(BuildContext context) {
     final colors = context.colors;

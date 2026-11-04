@@ -29,6 +29,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
+import 'fixtures/duo_window_matrix.dart';
+
 class _Store extends SpaceShortcutsNotifier {
   _Store([this.initial = const []]);
 
@@ -228,57 +230,79 @@ Finder get _sheetList => find
     .first;
 
 void main() {
-  testWidgets(
-    'Add sheet consumes keyboard once and keeps its search on a fold',
-    (tester) async {
-      addTearDown(tester.view.reset);
-      tester.view
-        ..physicalSize = const Size(466, 678)
-        ..devicePixelRatio = 1;
-      await tester.pumpWidget(
-        ProviderScope(
-          overrides: [spaceShortcutsProvider.overrideWith(() => _Store())],
-          child: MaterialApp(
-            theme: AppTheme.darkTheme,
-            builder: (_, child) => AdaptiveWindowScope(child: child!),
-            home: Builder(
-              builder: (context) => Scaffold(
-                body: TextButton(
-                  onPressed: () => showSmoothBottomSheet<void>(
-                    context: context,
-                    builder: (_) =>
-                        const SpaceAddSheet(section: SpaceSection.openings),
+  for (final light in [false, true]) {
+    testWidgets(
+      '${light ? 'light' : 'dark'} Add sheet preserves search and consumes keyboard once across all Duo transitions',
+      (tester) async {
+        addTearDown(tester.view.reset);
+        tester.view.devicePixelRatio = 1;
+        tester.platformDispatcher.textScaleFactorTestValue = 1.6;
+        addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+        for (final transition in duoWindowTransitions) {
+          tester.view.viewInsets = const FakeViewPadding();
+          applyDuoWindow(tester, transition.from);
+          await tester.pumpWidget(
+            ProviderScope(
+              overrides: [spaceShortcutsProvider.overrideWith(() => _Store())],
+              child: MaterialApp(
+                theme: light ? AppTheme.lightTheme : AppTheme.darkTheme,
+                builder: (_, child) => AdaptiveWindowScope(child: child!),
+                home: Builder(
+                  builder: (context) => Scaffold(
+                    body: TextButton(
+                      onPressed: () => showSmoothBottomSheet<void>(
+                        context: context,
+                        builder: (_) =>
+                            const SpaceAddSheet(section: SpaceSection.openings),
+                      ),
+                      child: const Text('Open Add'),
+                    ),
                   ),
-                  child: const Text('Open Add'),
                 ),
               ),
             ),
-          ),
-        ),
-      );
-      await tester.tap(find.text('Open Add'));
-      await tester.pumpAndSettle();
-      final state = tester.state(find.byType(SpaceAddSheet));
-      await tester.enterText(find.byType(TextField), 'Najdorf');
-      for (final size in const [Size(466, 678), Size(904, 810)]) {
-        tester.view
-          ..physicalSize = size
-          ..viewInsets = const FakeViewPadding(bottom: 300);
-        await tester.pumpAndSettle();
-        expect(tester.takeException(), isNull);
-        expect(tester.state(find.byType(SpaceAddSheet)), same(state));
-        expect(find.text('Najdorf'), findsOneWidget);
-        expect(
-          tester.getRect(find.byType(SpaceAddSheet)).bottom,
-          lessThanOrEqualTo(size.height - 300),
-        );
-        expect(find.bySemanticsLabel('Done').hitTestable(), findsOneWidget);
-      }
-      await tester.tap(find.bySemanticsLabel('Done'));
-      await tester.pumpAndSettle();
-      expect(find.byType(SpaceAddSheet), findsNothing);
-    },
-  );
+          );
+          await tester.tap(find.text('Open Add'));
+          await tester.pumpAndSettle();
+          final state = tester.state(find.byType(SpaceAddSheet));
+          final route = ModalRoute.of(
+            tester.element(find.byType(SpaceAddSheet)),
+          );
+          await tester.enterText(find.byType(TextField), 'Najdorf');
+          for (final window in [transition.from, transition.to]) {
+            tester.view.viewInsets = const FakeViewPadding(bottom: 300);
+            applyDuoWindow(
+              tester,
+              window,
+              mirrorInsets: window == transition.to,
+            );
+            await tester.pumpAndSettle();
+            expect(tester.takeException(), isNull, reason: window.name);
+            expect(tester.state(find.byType(SpaceAddSheet)), same(state));
+            expect(
+              ModalRoute.of(tester.element(find.byType(SpaceAddSheet))),
+              same(route),
+            );
+            expect(find.text('Najdorf'), findsOneWidget);
+            expect(
+              tester.getRect(find.byType(SpaceAddSheet)).bottom,
+              lessThanOrEqualTo(window.size.height - 300),
+            );
+            expect(find.bySemanticsLabel('Done').hitTestable(), findsOneWidget);
+            expect(
+              tester.getSize(find.bySemanticsLabel('Done')).height,
+              greaterThanOrEqualTo(44),
+            );
+          }
+          await tester.tap(find.bySemanticsLabel('Done'));
+          await tester.pumpAndSettle();
+          expect(find.byType(SpaceAddSheet), findsNothing);
+          await tester.pumpWidget(const SizedBox.shrink());
+          await tester.pump();
+        }
+      },
+    );
+  }
   testWidgets('openings not in My Space lead, the added ones follow, '
       'marked as added', (tester) async {
     final seeded = SpaceShortcutsNotifier.planSeed(const [], spaceSeedDrafts());

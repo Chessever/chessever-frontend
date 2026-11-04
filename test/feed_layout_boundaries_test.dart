@@ -32,6 +32,7 @@ import 'package:chessever2/screens/my_space/providers/space_shortcuts_provider.d
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/event_no_spoilers_provider.dart';
 import 'package:chessever2/theme/app_theme.dart';
+import 'package:chessever2/utils/adaptive_window.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/home_top_bar.dart';
 import 'package:dartchess/dartchess.dart';
@@ -40,6 +41,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
+
+import 'fixtures/duo_window_matrix.dart';
 
 /// Every Feed post type starts and ends cleanly on a small, a common and a
 /// tall phone, in both themes, at the default and a large text size: nothing
@@ -52,6 +55,93 @@ import 'package:http/testing.dart';
 /// neighbouring post peeking in; the news cover dissolves into the page with
 /// no seam under the top bar.
 void main() {
+  // Test actual Duo bounds as cold starts. A landscape rail and the safe
+  // system edge can leave only 486pt for the post, even though its window is
+  // 678pt wide. The post must use its local height and width in that case.
+  for (final window in duoWindowCases) {
+    for (final reserved in [
+      0.0,
+      if (_reservedWidth(window) > 0) _reservedWidth(window),
+    ]) {
+      for (final light in [false, true]) {
+        for (final kind in _Kind.values) {
+          testWidgets('Duo ${window.name} ${kind.name}, '
+              '${light ? 'light' : 'dark'}, ${reserved}pt reserved', (
+            tester,
+          ) async {
+            await _pump(
+              tester,
+              (window.size, 24, window.size.width < 600 ? 64 : 0),
+              light,
+              1.3,
+              kind,
+              leftReservation: reserved,
+              duoWindow: window,
+            );
+            await _expectReachablePost(tester, kind);
+            await _tearDown(tester);
+          });
+        }
+      }
+    }
+  }
+
+  for (final transition in duoWindowTransitions) {
+    testWidgets('Duo Feed retains an explored line: '
+        '${transition.from.name} to ${transition.to.name}', (tester) async {
+      final reservation = ValueNotifier(_reservedWidth(transition.from));
+      addTearDown(reservation.dispose);
+      await _pump(
+        tester,
+        (transition.from.size, 24, 0),
+        false,
+        1.3,
+        _Kind.game,
+        reservation: reservation,
+        duoWindow: transition.from,
+      );
+      // The board callback exercises the same legal-move path as a tap,
+      // without requiring a square that may initially be below the fold.
+      tester
+          .widget<FeedLiveBoard>(find.byType(FeedLiveBoard))
+          .onMove(NormalMove(from: Square.e2, to: Square.e3));
+      await tester.pump(const Duration(milliseconds: 50));
+      expect(find.text('Your line'), findsOneWidget);
+      final clipState = tester.state(find.byType(FeedClip));
+      final boardController = tester
+          .widget<FeedLiveBoard>(find.byType(FeedLiveBoard))
+          .controller;
+
+      applyDuoWindow(tester, transition.to, mirrorInsets: true);
+      reservation.value = _reservedWidth(transition.to);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 50));
+
+      expect(tester.state(find.byType(FeedClip)), same(clipState));
+      expect(
+        tester.widget<FeedLiveBoard>(find.byType(FeedLiveBoard)).controller,
+        same(boardController),
+      );
+      expect(find.text('Your line'), findsOneWidget);
+      await _expectReachablePost(tester, _Kind.game);
+      await tester.ensureVisible(find.byType(FeedMoveStrip));
+      await tester.pump();
+      final board = tester.getRect(find.byType(FeedLiveBoard));
+      await tester.tap(find.bySemanticsLabel('Previous move').hitTestable());
+      await tester.pump(const Duration(milliseconds: 50));
+      await tester.tap(find.bySemanticsLabel('Next move').hitTestable());
+      await tester.pump(const Duration(milliseconds: 50));
+      expect(tester.getRect(find.byType(FeedLiveBoard)), board);
+      final back = find.byKey(const ValueKey('feed_back_to_game'));
+      expect(back.hitTestable(), findsOneWidget);
+      await tester.tap(back);
+      await tester.pump(const Duration(milliseconds: 50));
+      expect(find.byType(FeedMoveStrip), findsNothing);
+      expect(tester.takeException(), isNull);
+      await _tearDown(tester);
+    });
+  }
+
   testWidgets('Feed keeps clip state while folding and rotating', (
     tester,
   ) async {
@@ -303,6 +393,44 @@ void main() {
 
 enum _Kind { game, puzzle, news, empty, loading }
 
+double _reservedWidth(DuoWindowCase window) => window.size.width < 600
+    ? 0
+    : window.landscape
+    ? 110 // Horizontal safe edges are applied separately by the view fixture.
+    : 90;
+
+Future<void> _expectReachablePost(WidgetTester tester, _Kind kind) async {
+  expect(tester.takeException(), isNull);
+  final page = _pageRect(tester);
+  if (kind == _Kind.game || kind == _Kind.puzzle) {
+    final board = tester.getRect(
+      kind == _Kind.game
+          ? find.byType(FeedLiveBoard)
+          : find.byKey(const ValueKey('feed_puzzle_board')),
+    );
+    expect(board.width, greaterThanOrEqualTo(FeedLayout.minBoard));
+    expect(board.width, closeTo(board.height, 0.01));
+    expect(board.left, greaterThanOrEqualTo(page.left));
+    expect(board.right, lessThanOrEqualTo(page.right));
+  }
+  if (kind == _Kind.game) {
+    final actions = find.byKey(const ValueKey('feed_like_button'));
+    await tester.ensureVisible(actions);
+    await tester.pump();
+    final rect = tester.getRect(actions);
+    expect(rect.top, greaterThanOrEqualTo(page.top - 0.5));
+    expect(rect.bottom, lessThanOrEqualTo(page.bottom + 0.5));
+    expect(actions.hitTestable(), findsOneWidget);
+  }
+  if (kind == _Kind.empty) {
+    expect(find.text('Nothing to play yet'), findsOneWidget);
+  }
+  if (kind == _Kind.loading) {
+    expect(find.bySemanticsLabel('Loading Feed'), findsOneWidget);
+  }
+  expect(tester.takeException(), isNull);
+}
+
 /// The page area under the Feed's top bar and above the bottom nav. The bar
 /// itself is the home bar every tab shares, on Events' gutter; its placement
 /// is checked by home_top_bar_parity_test.
@@ -355,11 +483,15 @@ Future<void> _pump(
   double scale,
   _Kind kind, {
   bool unclampedClip = false,
+  DuoWindowCase? duoWindow,
+  double leftReservation = 0,
+  ValueNotifier<double>? reservation,
 }) async {
   final (screen, inset, nav) = size;
   tester.view.devicePixelRatio = 3;
   tester.view.physicalSize = screen * 3;
   tester.view.padding = FakeViewPadding(top: inset * 3);
+  if (duoWindow != null) applyDuoWindow(tester, duoWindow);
   tester.platformDispatcher.textScaleFactorTestValue = scale;
   addTearDown(tester.view.reset);
   addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
@@ -433,22 +565,38 @@ Future<void> _pump(
       ],
       child: MaterialApp(
         theme: light ? AppTheme.lightTheme : AppTheme.darkTheme,
+        builder: (_, child) => AdaptiveWindowScope(child: child!),
         home: Builder(
           builder: (context) {
             ResponsiveHelper.init(context);
             return Scaffold(
-              body: unclampedClip
-                  ? SafeArea(
-                      child: FeedClip(
-                        item: _game(),
-                        isCurrent: true,
-                        isVisible: true,
-                        onRequestNext: () {},
-                        onScrollLock: (_) {},
-                      ),
-                    )
-                  : const FeedScreen(),
-              bottomNavigationBar: SizedBox(height: nav),
+              body: ValueListenableBuilder<double>(
+                valueListenable:
+                    reservation ?? AlwaysStoppedAnimation(leftReservation),
+                builder: (context, reserved, child) => Padding(
+                  padding: EdgeInsets.only(left: reserved),
+                  child: child,
+                ),
+                child: unclampedClip
+                    ? SafeArea(
+                        child: FeedClip(
+                          item: _game(),
+                          isCurrent: true,
+                          isVisible: true,
+                          onRequestNext: () {},
+                          onScrollLock: (_) {},
+                        ),
+                      )
+                    : const FeedScreen(),
+              ),
+              bottomNavigationBar:
+                  duoWindow != null && ResponsiveHelper.isTablet
+                  ? null
+                  : SizedBox(
+                      height: duoWindow == null
+                          ? nav
+                          : 48 + MediaQuery.viewPaddingOf(context).bottom,
+                    ),
             );
           },
         ),

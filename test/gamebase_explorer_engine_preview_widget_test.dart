@@ -14,12 +14,15 @@ import 'package:chessever2/screens/gamebase/providers/gamebase_providers.dart';
 import 'package:chessever2/screens/gamebase/widgets/explorer_game_card.dart';
 import 'package:chessever2/screens/gamebase/widgets/move_statistics_panel.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/utils/adaptive_window.dart';
 import 'package:chessground/chessground.dart';
 import 'package:dartchess/dartchess.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+
+import 'fixtures/duo_window_matrix.dart';
 
 const _initialFen = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
 const _pvLines = <ExplorerPvLine>[
@@ -229,17 +232,24 @@ ProviderContainer _createContainer({
 
 Future<void> _pumpExplorer(
   WidgetTester tester,
-  ProviderContainer container,
-) async {
+  ProviderContainer container, {
+  double textScale = 1,
+}) async {
   await tester.pumpWidget(
     UncontrolledProviderScope(
       container: container,
       child: MaterialApp(
+        builder: (_, child) => AdaptiveWindowScope(child: child!),
         home: Builder(
           builder: (context) {
             ResponsiveHelper.init(context);
-            return const GamebaseExplorerScreen(
-              enableWorkspaceCoachmarks: false,
+            return MediaQuery(
+              data: MediaQuery.of(
+                context,
+              ).copyWith(textScaler: TextScaler.linear(textScale)),
+              child: const GamebaseExplorerScreen(
+                enableWorkspaceCoachmarks: false,
+              ),
             );
           },
         ),
@@ -251,44 +261,56 @@ Future<void> _pumpExplorer(
 }
 
 void main() {
-  testWidgets(
-    'Explorer preserves its line and panel through Duo size changes',
-    (tester) async {
-      tester.view.devicePixelRatio = 1;
-      tester.view.physicalSize = const Size(390, 844);
-      addTearDown(tester.view.reset);
-      final container = _createContainer();
-      addTearDown(container.dispose);
-      await _pumpExplorer(tester, container);
-      container.read(gamebaseExplorerProvider.notifier).setPositionWithMoves(
-        'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1',
-        ['e2e4'],
-        startingFen: _initialFen,
-      );
-      container.read(explorerPageIndexProvider.notifier).state = 1;
-      await tester.pumpAndSettle();
-      final fen = container.read(gamebaseExplorerProvider).currentFen;
-      for (final size in const [
-        Size(720, 900),
-        Size(900, 720),
-        Size(844, 390),
-        Size(390, 844),
-      ]) {
-        tester.view.physicalSize = size;
+  for (final transition in duoWindowTransitions) {
+    testWidgets(
+      'Explorer preserves its line and panel from ${transition.from.name} to ${transition.to.name}',
+      (tester) async {
+        tester.view.devicePixelRatio = 1;
+        _setDuoWindow(tester, transition.from);
+        addTearDown(tester.view.reset);
+        final container = _createContainer();
+        addTearDown(container.dispose);
+        await _pumpExplorer(tester, container, textScale: 1.3);
+        container.read(gamebaseExplorerProvider.notifier).setPositionWithMoves(
+          'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1',
+          ['e2e4'],
+          startingFen: _initialFen,
+        );
+        container.read(explorerPageIndexProvider.notifier).state = 1;
         await tester.pumpAndSettle();
-        expect(tester.takeException(), isNull, reason: '$size must fit');
-        expect(container.read(gamebaseExplorerProvider).currentFen, fen);
-        expect(container.read(explorerPageIndexProvider), 1);
-        final board = tester.getRect(find.byType(Chessboard).first);
-        expect(board.left, greaterThanOrEqualTo(0));
-        expect(board.right, lessThanOrEqualTo(size.width));
-        expect(board.bottom, lessThanOrEqualTo(size.height));
-      }
-      await tester.pumpWidget(const SizedBox.shrink());
-      container.dispose();
-      await tester.pump(const Duration(seconds: 4));
-    },
-  );
+        final fen = container.read(gamebaseExplorerProvider).currentFen;
+        final explorer = container.read(gamebaseExplorerProvider.notifier);
+        for (final window in [transition.from, transition.to]) {
+          _setDuoWindow(tester, window, mirrorInsets: window == transition.to);
+          await tester.pumpAndSettle();
+          expect(
+            tester.takeException(),
+            isNull,
+            reason: '${window.name} must fit',
+          );
+          expect(
+            container.read(gamebaseExplorerProvider.notifier),
+            same(explorer),
+          );
+          expect(container.read(gamebaseExplorerProvider).currentFen, fen);
+          expect(container.read(explorerPageIndexProvider), 1);
+          final board = tester.getRect(find.byType(Chessboard).first);
+          expect(board.left, greaterThanOrEqualTo(tester.view.padding.left));
+          expect(
+            board.right,
+            lessThanOrEqualTo(window.size.width - tester.view.padding.right),
+          );
+          expect(
+            board.bottom,
+            lessThanOrEqualTo(window.size.height - tester.view.padding.bottom),
+          );
+        }
+        await tester.pumpWidget(const SizedBox.shrink());
+        container.dispose();
+        await tester.pump(const Duration(seconds: 4));
+      },
+    );
+  }
 
   for (final style in EngineLinesView.values) {
     testWidgets('in-game Off leaves standalone Explorer $style visible', (
@@ -599,4 +621,20 @@ void main() {
       await tester.pump();
     },
   );
+}
+
+void _setDuoWindow(
+  WidgetTester tester,
+  DuoWindowCase window, {
+  bool mirrorInsets = false,
+}) {
+  tester.view.physicalSize = window.size;
+  final padding = FakeViewPadding(
+    left: window.landscape ? (mirrorInsets ? 20 : 62) : 0,
+    right: window.landscape ? (mirrorInsets ? 62 : 20) : 0,
+    top: window.landscape ? 0 : 59,
+    bottom: window.landscape ? 21 : 34,
+  );
+  tester.view.padding = padding;
+  tester.view.viewPadding = padding;
 }

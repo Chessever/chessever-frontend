@@ -13,7 +13,7 @@ import 'package:chessever2/screens/inbox/inbox_unread_dot.dart';
 import 'package:chessever2/services/attention_policy.dart';
 import 'package:chessever2/services/editorial_link_service.dart';
 import 'package:chessever2/theme/app_theme.dart';
-import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/utils/adaptive_window.dart';
 import 'package:chessever2/widgets/hamburger_menu/hamburger_menu.dart';
 import 'package:chessever2/widgets/home_top_bar.dart';
 import 'package:chessever2/widgets/skeleton_widget.dart';
@@ -27,6 +27,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'inbox_fakes.dart';
+import 'fixtures/duo_window_matrix.dart';
 
 final _identity = StateProvider<String?>((ref) => inboxOwnerA);
 ProviderContainer? _testContainer;
@@ -50,11 +51,11 @@ Future<ProviderContainer> _pump(
   double scale = 1,
   bool anonymous = true,
   EditorialLinkOpener? openLink,
+  Size size = const Size(393, 852),
 }) async {
-  tester.view.physicalSize = const Size(393, 852);
+  tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1;
-  addTearDown(tester.view.resetPhysicalSize);
-  addTearDown(tester.view.resetDevicePixelRatio);
+  addTearDown(tester.view.reset);
   final container = ProviderContainer(
     overrides: [
       currentUserProvider.overrideWith((ref) {
@@ -89,11 +90,10 @@ Future<ProviderContainer> _pump(
           data: MediaQuery.of(
             context,
           ).copyWith(textScaler: TextScaler.linear(scale)),
-          child: child!,
+          child: AdaptiveWindowScope(child: child!),
         ),
         home: Builder(
           builder: (context) {
-            ResponsiveHelper.init(context);
             if (!shell) return const InboxScreen();
             return Scaffold(
               key: scaffoldKey,
@@ -430,5 +430,111 @@ void main() {
         await _close(tester);
       },
     );
+    testWidgets(
+      'Duo Inbox list and detail retain route/read state in every window (${light ? 'light' : 'dark'})',
+      (tester) async {
+        for (final start in duoWindowCases) {
+          tester.view.devicePixelRatio = 1;
+          applyDuoWindow(tester, start);
+          final source = FakeInboxSource();
+          await _pump(
+            tester,
+            source,
+            light: light,
+            scale: 1.6,
+            size: start.size,
+          );
+          await tester.pumpAndSettle();
+          final state = tester.state(find.byType(InboxScreen));
+          for (final end in duoWindowCases) {
+            applyDuoWindow(tester, start);
+            await tester.pump();
+            applyDuoWindow(tester, end, mirrorInsets: true);
+            await tester.pumpAndSettle();
+            expect(tester.takeException(), isNull, reason: end.name);
+            expect(tester.state(find.byType(InboxScreen)), same(state));
+            expect(
+              find.byKey(const ValueKey('inbox-row-$inboxIdA')),
+              findsOneWidget,
+            );
+          }
+          await tester.tap(find.byKey(const ValueKey('inbox-row-$inboxIdA')));
+          await tester.pumpAndSettle();
+          final detail = tester.state(find.byType(InboxMessageScreen));
+          final route = ModalRoute.of(
+            tester.element(find.byType(InboxMessageScreen)),
+          );
+          for (final end in duoWindowCases) {
+            applyDuoWindow(tester, start);
+            await tester.pump();
+            applyDuoWindow(tester, end, mirrorInsets: true);
+            await tester.pumpAndSettle();
+            expect(tester.takeException(), isNull, reason: end.name);
+            expect(tester.state(find.byType(InboxMessageScreen)), same(detail));
+            expect(
+              ModalRoute.of(tester.element(find.byType(InboxMessageScreen))),
+              same(route),
+            );
+            expect(
+              find.byKey(const ValueKey('inbox-full-text')),
+              findsOneWidget,
+            );
+            expect(source.marks, [(inboxOwnerA, inboxIdA)]);
+          }
+          await tester.pageBack();
+          await tester.pumpAndSettle();
+          expect(
+            find.byKey(const ValueKey('inbox-row-dot-$inboxIdA')),
+            findsNothing,
+          );
+          await _close(tester);
+        }
+      },
+    );
+    for (final stateName in ['loading', 'empty', 'error']) {
+      testWidgets(
+        'Duo Inbox $stateName covers all windows (${light ? 'light' : 'dark'})',
+        (tester) async {
+          for (final start in duoWindowCases) {
+            tester.view.devicePixelRatio = 1;
+            applyDuoWindow(tester, start);
+            final pending = Completer<List<InboxMessage>>();
+            final source = FakeInboxSource()
+              ..fetchOverride = (_) => switch (stateName) {
+                'loading' => pending.future,
+                'empty' => Future.value([]),
+                _ => Future.error(StateError('LOCAL FIXTURE offline')),
+              };
+            await _pump(
+              tester,
+              source,
+              light: light,
+              scale: 1.6,
+              size: start.size,
+            );
+            await tester.pump(const Duration(milliseconds: 500));
+            final state = tester.state(find.byType(InboxScreen));
+            for (final end in duoWindowCases) {
+              applyDuoWindow(tester, start);
+              await tester.pump();
+              applyDuoWindow(tester, end, mirrorInsets: true);
+              await tester.pump(const Duration(milliseconds: 500));
+              expect(tester.takeException(), isNull, reason: end.name);
+              expect(tester.state(find.byType(InboxScreen)), same(state));
+              if (stateName == 'loading') {
+                expect(find.byType(SkeletonWidget), findsOneWidget);
+              } else if (stateName == 'empty') {
+                expect(find.textContaining('arrive here'), findsOneWidget);
+              } else {
+                await tester.ensureVisible(find.text('Retry'));
+                await tester.pump(const Duration(milliseconds: 100));
+                expect(find.text('Retry').hitTestable(), findsOneWidget);
+              }
+            }
+            await _close(tester);
+          }
+        },
+      );
+    }
   }
 }

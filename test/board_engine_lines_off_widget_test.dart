@@ -35,6 +35,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'support/board_feature_teaching_store.dart';
+import 'fixtures/duo_window_matrix.dart';
 
 void main() {
   setUpAll(() async {
@@ -53,192 +54,272 @@ void main() {
   tearDownAll(GameAnalysisReportStore.debugResetInstance);
 
   for (final style in EngineLinesView.values) {
-    testWidgets(
-      'in-game Off hides $style while a real board eval request completes',
-      (tester) async {
-        tester.view.physicalSize = const Size(390, 844);
-        tester.view.devicePixelRatio = 1;
-        addTearDown(tester.view.reset);
-        final raw = _rawGame();
-        final game = GamesTourModel.fromGame(raw);
-        final pendingEval = Completer<CloudEval>();
-        CascadeEvalParams? request;
-        var requestCount = 0;
-        final store = _VisibilityStore();
-        final container = ProviderContainer(
-          overrides: [
-            boardFeatureTeachingTrackerProvider.overrideWith(
-              (_) => BoardFeatureTeachingTracker(QuietBoardTeachingStore()),
-            ),
-            effectiveCountryProvider.overrideWithValue(
-              const AsyncValue.loading(),
-            ),
-            gamesLocalStorage.overrideWith((ref) => _GamesCache(ref, raw)),
-            gameRepositoryProvider.overrideWithValue(_GamesRepo(raw)),
-            gamebaseRepositoryProvider.overrideWithValue(_GamebaseRepo()),
-            gameStreamRepositoryProvider.overrideWithValue(_GameStream()),
-            localEvalCacheProvider.overrideWith(_EvalCache.new),
-            engineSettingsProviderNew.overrideWith(
-              () => _EngineSettings(style),
-            ),
-            boardEngineLinesVisibilityStoreProvider.overrideWithValue(store),
-            gamebaseOverlayEnabledProvider.overrideWith(_Overlay.new),
-            eventNoSpoilersProvider.overrideWith(
-              (ref, tourId) => _Spoilers(ref: ref, tourId: tourId),
-            ),
-            chessBoardPersistenceEnabledProvider.overrideWithValue(false),
-            spaceShortcutsProvider.overrideWith(_NoShortcuts.new),
-            // Only the cached/backend result is a fixture. The board notifier,
-            // request lifecycle, PV parsing, eval bar and panel are production code.
-            // Native Stockfish remains intentionally disabled in debug.
-            cascadeEvalProviderForBoard.overrideWith((ref, params) {
-              request = params;
-              requestCount++;
-              return pendingEval.future;
-            }),
-          ],
-        );
-        addTearDown(container.dispose);
-        await tester.pumpWidget(
-          UncontrolledProviderScope(
-            container: container,
-            child: MaterialApp(
-              builder: (_, child) => AdaptiveWindowScope(child: child!),
-              theme: ThemeData.dark().copyWith(
-                extensions: const [AppColors.dark],
+    for (final transition in duoWindowTransitions) {
+      testWidgets(
+        'in-game Off hides $style and preserves board from ${transition.from.name} to ${transition.to.name}',
+        (tester) async {
+          tester.view.devicePixelRatio = 1;
+          _setDuoWindow(tester, transition.from);
+          addTearDown(tester.view.reset);
+          final raw = _rawGame();
+          final game = GamesTourModel.fromGame(raw);
+          final pendingEval = Completer<CloudEval>();
+          CascadeEvalParams? request;
+          var requestCount = 0;
+          final store = _VisibilityStore();
+          final container = ProviderContainer(
+            overrides: [
+              boardFeatureTeachingTrackerProvider.overrideWith(
+                (_) => BoardFeatureTeachingTracker(QuietBoardTeachingStore()),
               ),
-              home: Builder(
-                builder: (context) {
-                  ResponsiveHelper.init(context);
-                  return ChessBoardScreenNew(
-                    currentIndex: 0,
-                    games: [game],
-                    viewSource: ChessboardView.tour,
-                  );
-                },
+              effectiveCountryProvider.overrideWithValue(
+                const AsyncValue.loading(),
+              ),
+              gamesLocalStorage.overrideWith((ref) => _GamesCache(ref, raw)),
+              gameRepositoryProvider.overrideWithValue(_GamesRepo(raw)),
+              gamebaseRepositoryProvider.overrideWithValue(_GamebaseRepo()),
+              gameStreamRepositoryProvider.overrideWithValue(_GameStream()),
+              localEvalCacheProvider.overrideWith(_EvalCache.new),
+              engineSettingsProviderNew.overrideWith(
+                () => _EngineSettings(style),
+              ),
+              boardEngineLinesVisibilityStoreProvider.overrideWithValue(store),
+              gamebaseOverlayEnabledProvider.overrideWith(_Overlay.new),
+              eventNoSpoilersProvider.overrideWith(
+                (ref, tourId) => _Spoilers(ref: ref, tourId: tourId),
+              ),
+              chessBoardPersistenceEnabledProvider.overrideWithValue(false),
+              spaceShortcutsProvider.overrideWith(_NoShortcuts.new),
+              // Only the cached/backend result is a fixture. The board notifier,
+              // request lifecycle, PV parsing, eval bar and panel are production code.
+              // Native Stockfish remains intentionally disabled in debug.
+              cascadeEvalProviderForBoard.overrideWith((ref, params) {
+                request = params;
+                requestCount++;
+                return pendingEval.future;
+              }),
+            ],
+          );
+          addTearDown(container.dispose);
+          addTearDown(() async {
+            await tester.pumpWidget(const SizedBox.shrink());
+            await tester.pump();
+          });
+          await tester.pumpWidget(
+            UncontrolledProviderScope(
+              container: container,
+              child: MaterialApp(
+                builder: (_, child) => AdaptiveWindowScope(child: child!),
+                theme: ThemeData.dark().copyWith(
+                  extensions: const [AppColors.dark],
+                ),
+                home: Builder(
+                  builder: (context) {
+                    ResponsiveHelper.init(context);
+                    return MediaQuery(
+                      data: MediaQuery.of(
+                        context,
+                      ).copyWith(textScaler: const TextScaler.linear(1.3)),
+                      child: ChessBoardScreenNew(
+                        currentIndex: 0,
+                        games: [game],
+                        viewSource: ChessboardView.tour,
+                      ),
+                    );
+                  },
+                ),
               ),
             ),
-          ),
-        );
-        Future<void> frames([int count = 10]) async {
-          for (var i = 0; i < count; i++) {
-            await tester.pump(const Duration(milliseconds: 50));
+          );
+          Future<void> frames([int count = 10]) async {
+            for (var i = 0; i < count; i++) {
+              await tester.pump(const Duration(milliseconds: 50));
+            }
           }
-        }
 
-        await frames(20);
-        expect(request, isNotNull);
-        final provider = chessBoardScreenProviderNew(
-          ChessBoardProviderParams(game: game, index: 0),
-        );
-        final board = container.read(provider.notifier);
-        for (final size in const [
-          Size(720, 900),
-          Size(900, 720),
-          Size(844, 390),
-          Size(390, 844),
-        ]) {
-          tester.view.physicalSize = size;
+          await frames(20);
+          expect(request, isNotNull);
+          final provider = chessBoardScreenProviderNew(
+            ChessBoardProviderParams(game: game, index: 0),
+          );
+          final board = container.read(provider.notifier);
+          board.goToMovePointer(const [0]);
           await frames(8);
-          expect(tester.takeException(), isNull, reason: '$size must fit');
-          expect(container.read(provider.notifier), same(board));
-          final boardRect = tester.getRect(find.byType(Chessboard).first);
-          expect(boardRect.right, lessThanOrEqualTo(size.width));
-          expect(boardRect.bottom, lessThanOrEqualTo(size.height));
-        }
-        final before = container.read(provider).requireValue;
-        expect(before.showEngineAnalysis, isTrue);
-        expect(before.isEvaluating, isTrue);
-        expect(find.byKey(e2eKey(E2eIds.boardPvList)), findsOneWidget);
-        expect(find.byKey(e2eKey(E2eIds.boardEvalBar)), findsOneWidget);
-        final settingsBefore = container
-            .read(engineSettingsProviderNew)
-            .requireValue;
-        final requestsBefore = requestCount;
-        // Toggle the very same notifier called by Settings, without remounting
-        // the board or mutating Computer Analysis.
-        final off = container
-            .read(boardEngineLinesVisibleProvider.notifier)
-            .setVisible(false);
-        await tester.pump();
-        await off;
-        await frames(4);
-        expect(find.byKey(e2eKey(E2eIds.boardPvList)), findsNothing);
-        expect(find.byKey(e2eKey(E2eIds.boardEvalBar)), findsOneWidget);
-        expect(container.read(provider.notifier), same(board));
-        expect(container.read(provider).requireValue, same(before));
-        expect(
-          container.read(engineSettingsProviderNew).requireValue,
-          same(settingsBefore),
-        );
-        expect(requestCount, requestsBefore);
-
-        final position = Position.setupPosition(
-          Rule.chess,
-          Setup.parseFen(request!.fen),
-        );
-        final legal = makeLegalMoves(position).entries.first;
-        final move = NormalMove(from: legal.key, to: legal.value.first);
-        pendingEval.complete(
-          CloudEval(
-            fen: request!.fen,
-            knodes: 120,
-            depth: 22,
-            pvs: [Pv(moves: move.uci, cp: 125)],
-            requestedMultiPv: 1,
-          ),
-        );
-        await frames(20);
-        final after = container.read(provider).requireValue;
-        expect(after.isEvaluating, isFalse);
-        expect(after.evaluation?.abs(), 1.25);
-        expect(after.principalVariations, hasLength(1));
-        expect(after.showEngineAnalysis, isTrue);
-        expect(after.showPrincipalVariations, isTrue);
-        expect(
-          after.analysisState.movePointer,
-          before.analysisState.movePointer,
-        );
-        expect(
-          after.analysisState.position.fen,
-          before.analysisState.position.fen,
-        );
-        expect(find.byKey(e2eKey(E2eIds.boardPvList)), findsNothing);
-        final bar = tester.widget<EvaluationBarWidget>(
-          find.byKey(e2eKey(E2eIds.boardEvalBar)),
-        );
-        expect(bar.evaluation, after.evaluation);
-        expect(bar.isEvaluating, isFalse);
-        expect(
-          container
-              .read(engineDepthTrackerProvider)[EngineComponent.evaluationGauge]
-              ?.depth,
-          22,
-        );
-        expect(after.shapes?.whereType<Arrow>(), isNotEmpty);
-        // Re-enable the retained layout without losing results/depth/position.
-        final enable = container
-            .read(boardEngineLinesVisibleProvider.notifier)
-            .setVisible(true);
-        await tester.pump();
-        await enable;
-        await frames(5);
-        expect(find.byKey(e2eKey(E2eIds.boardPvList)), findsOneWidget);
-        expect(container.read(provider).requireValue, same(after));
-        expect(
-          container
+          final chosen = container.read(provider).requireValue.analysisState;
+          expect(chosen.movePointer, const [0]);
+          for (final window in [transition.from, transition.to]) {
+            _setDuoWindow(
+              tester,
+              window,
+              mirrorInsets: window == transition.to,
+            );
+            await frames(8);
+            expect(
+              tester.takeException(),
+              isNull,
+              reason: '${window.name} must fit',
+            );
+            expect(container.read(provider.notifier), same(board));
+            final retained = container
+                .read(provider)
+                .requireValue
+                .analysisState;
+            expect(retained.movePointer, chosen.movePointer);
+            expect(retained.position.fen, chosen.position.fen);
+            final boardRect = tester.getRect(find.byType(Chessboard).first);
+            expect(
+              boardRect.left,
+              greaterThanOrEqualTo(tester.view.padding.left),
+            );
+            expect(
+              boardRect.right,
+              lessThanOrEqualTo(window.size.width - tester.view.padding.right),
+            );
+            expect(
+              boardRect.bottom,
+              lessThanOrEqualTo(
+                window.size.height - tester.view.padding.bottom,
+              ),
+            );
+          }
+          final before = container.read(provider).requireValue;
+          expect(before.showEngineAnalysis, isTrue);
+          expect(before.isEvaluating, isTrue);
+          expect(find.byKey(e2eKey(E2eIds.boardPvList)), findsOneWidget);
+          expect(find.byKey(e2eKey(E2eIds.boardEvalBar)), findsOneWidget);
+          final settingsBefore = container
               .read(engineSettingsProviderNew)
-              .requireValue
-              .engineLinesView,
-          style,
-        );
-        expect(requestCount, requestsBefore);
-        await tester.pumpWidget(const SizedBox.shrink());
-        container.dispose();
-        await tester.pump();
-      },
-    );
+              .requireValue;
+          final requestsBefore = requestCount;
+          // Toggle the very same notifier called by Settings, without remounting
+          // the board or mutating Computer Analysis.
+          final off = container
+              .read(boardEngineLinesVisibleProvider.notifier)
+              .setVisible(false);
+          await tester.pump();
+          await off;
+          await frames(4);
+          expect(find.byKey(e2eKey(E2eIds.boardPvList)), findsNothing);
+          expect(find.byKey(e2eKey(E2eIds.boardEvalBar)), findsOneWidget);
+          expect(container.read(provider.notifier), same(board));
+          expect(container.read(provider).requireValue, same(before));
+          expect(
+            container.read(engineSettingsProviderNew).requireValue,
+            same(settingsBefore),
+          );
+          expect(requestCount, requestsBefore);
+
+          final position = Position.setupPosition(
+            Rule.chess,
+            Setup.parseFen(request!.fen),
+          );
+          final legalMoves = [
+            for (final legal in makeLegalMoves(position).entries)
+              for (final target in legal.value)
+                NormalMove(from: legal.key, to: target),
+          ].take(5).toList();
+          pendingEval.complete(
+            CloudEval(
+              fen: request!.fen,
+              knodes: 120,
+              depth: 22,
+              pvs: [
+                for (final move in legalMoves) Pv(moves: move.uci, cp: 125),
+              ],
+              requestedMultiPv: 5,
+            ),
+          );
+          await frames(20);
+          final after = container.read(provider).requireValue;
+          expect(after.isEvaluating, isFalse);
+          expect(after.evaluation?.abs(), 1.25);
+          expect(after.principalVariations, hasLength(5));
+          expect(after.showEngineAnalysis, isTrue);
+          expect(after.showPrincipalVariations, isTrue);
+          expect(
+            after.analysisState.movePointer,
+            before.analysisState.movePointer,
+          );
+          expect(
+            after.analysisState.position.fen,
+            before.analysisState.position.fen,
+          );
+          expect(find.byKey(e2eKey(E2eIds.boardPvList)), findsNothing);
+          final bar = tester.widget<EvaluationBarWidget>(
+            find.byKey(e2eKey(E2eIds.boardEvalBar)),
+          );
+          expect(bar.evaluation, after.evaluation);
+          expect(bar.isEvaluating, isFalse);
+          expect(
+            container
+                .read(
+                  engineDepthTrackerProvider,
+                )[EngineComponent.evaluationGauge]
+                ?.depth,
+            22,
+          );
+          expect(after.shapes?.whereType<Arrow>(), isNotEmpty);
+          // Re-enable the retained layout without losing results/depth/position.
+          final enable = container
+              .read(boardEngineLinesVisibleProvider.notifier)
+              .setVisible(true);
+          await tester.pump();
+          await enable;
+          await frames(5);
+          expect(find.byKey(e2eKey(E2eIds.boardPvList)), findsOneWidget);
+          expect(container.read(provider).requireValue, same(after));
+          expect(
+            container
+                .read(engineSettingsProviderNew)
+                .requireValue
+                .engineLinesView,
+            style,
+          );
+          expect(requestCount, requestsBefore);
+          // Repeat the directed transition with all five results visible.
+          // Pending evaluation alone cannot exercise the populated PV budget.
+          for (final window in [transition.from, transition.to]) {
+            _setDuoWindow(
+              tester,
+              window,
+              mirrorInsets: window == transition.to,
+            );
+            await frames(8);
+            expect(
+              tester.takeException(),
+              isNull,
+              reason: '${window.name} must fit five populated $style PVs',
+            );
+            expect(find.byKey(e2eKey(E2eIds.boardPvList)), findsOneWidget);
+            expect(container.read(provider.notifier), same(board));
+            final retained = container.read(provider).requireValue;
+            expect(retained.principalVariations, hasLength(5));
+            expect(retained.analysisState.movePointer, chosen.movePointer);
+            expect(retained.analysisState.position.fen, chosen.position.fen);
+          }
+          await tester.pumpWidget(const SizedBox.shrink());
+          container.dispose();
+          await tester.pump();
+        },
+      );
+    }
   }
+}
+
+void _setDuoWindow(
+  WidgetTester tester,
+  DuoWindowCase window, {
+  bool mirrorInsets = false,
+}) {
+  tester.view.physicalSize = window.size;
+  final padding = FakeViewPadding(
+    left: window.landscape ? (mirrorInsets ? 20 : 62) : 0,
+    right: window.landscape ? (mirrorInsets ? 62 : 20) : 0,
+    top: window.landscape ? 0 : 59,
+    bottom: window.landscape ? 21 : 34,
+  );
+  tester.view.padding = padding;
+  tester.view.viewPadding = padding;
 }
 
 Games _rawGame() => Games(
@@ -288,7 +369,7 @@ class _EngineSettings extends EngineSettingsNotifierNew {
   final EngineLinesView style;
   @override
   Future<EngineSettings> build() async =>
-      EngineSettings(engineLinesView: style, principalVariationIndex: 0);
+      EngineSettings(engineLinesView: style, principalVariationIndex: 4);
 }
 
 class _GamesRepo extends GameRepository {

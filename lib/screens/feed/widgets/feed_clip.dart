@@ -2237,6 +2237,16 @@ class _FeedClipState extends ConsumerState<FeedClip>
           ),
         );
 
+        // A short window can leave a board column narrower than the line's
+        // existing controls. Borrow the page gutter in that case, keeping the
+        // graph slot, board and action row at their original positions.
+        final stripRow =
+            exploring &&
+                l.contentWidth <
+                    FeedBackToGameButton.minimumWidth(context) + 44 * 3 + 4
+            ? fullRow
+            : content;
+
         final board = SizedBox.square(
           key: _boardKey,
           dimension: l.board,
@@ -2452,7 +2462,7 @@ class _FeedClipState extends ConsumerState<FeedClip>
                 // "Back to game") stands in the graph's slot: the game's
                 // curve says nothing about the line, and swapping within a
                 // fixed slot keeps the board and every row where they were.
-                content(
+                stripRow(
                   SizedBox(
                     height: l.chartHeight,
                     child: exploring

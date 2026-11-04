@@ -54,9 +54,13 @@ and final on-screen quality require the user's device pass.
 
 ## Device pass
 
-Keep the existing app running on the Duo simulator. Repeat the following on
-the outer display, unfolded display in both orientations, and after refolding.
-Repeat key controls with larger accessibility text and in both themes.
+Hot restart the existing Flutter session (`R`) on the Duo simulator so startup
+clears any earlier orientation lock. Repeat the following on
+all four configurations below, in both landscape directions, and after
+refolding. Test each configuration immediately after a fresh start too.
+Repeat key controls with larger accessibility text and in both themes. From
+each of the four configurations, switch directly to each of the other three
+with the current route or draft open: that is the 12-transition device pass.
 
 1. From Home, scroll Today and Events; search; open a Calendar event. Fold with
    the drawer, a detail route or a dialog open, then use Back.
@@ -88,7 +92,7 @@ controls, text contrast, touch areas, real controls, motion/reduced motion,
 and consistency with existing assets and visual treatments. Existing branding
 is not replaced as part of this device adaptation.
 
-## Validation result
+## Initial validation result (37.8.10)
 
 - Canonical `flutter analyze --no-pub` on all 72 changed Dart files: no issues.
 - Final full Flutter suite: **6,318 passed, 4 skipped, 17 failed**.
@@ -106,32 +110,100 @@ is not replaced as part of this device adaptation.
 - Formatting and `git diff --check` pass. No app build, launch, simulator
   automation, backend operation or release was performed for verification.
 
-## Sideways onboarding follow-up (37.8.11)
+## Orientation correction and complete size matrix (37.8.12)
 
-The user's simulator capture showed the whole interface, including the system
-status UI, sideways inside the unfolded device. The iPhone plist already
-permits landscape. The app's rotation policy nevertheless used its current
-content width to decide whether to permit rotation, allowing a compact or
-letterboxed viewport to keep its own portrait lock in place.
+The user's sideways onboarding capture exposed an orientation-policy problem.
+Version 37.8.11 used full display metrics rather than the constrained viewport,
+but still imposed portrait on compact displays. That was incomplete: it excluded
+folded landscape, including a cold start in that state. This correction
+supersedes that policy and its earlier device-pass advice.
 
-`WindowOrientationScope` now observes the full `FlutterView.display` on metric
-changes. An expanded display defers orientation to the OS; a compact display
-retains the existing portrait policy. The display's shortest logical side
-prevents an ordinary phone held sideways from accidentally unlocking rotation.
-Layout still uses the viewport and local constraints. This follows Flutter's
+`WindowOrientationScope` now clears the app's orientation restriction once at
+startup, including after hot restart. Orientation follows the OS and the native
+supported-orientation list, which already permits portrait and both landscape
+directions. Compact screens, including ordinary phones, may rotate too; there
+is no device-model or pixel-density heuristic that could lock a folded Duo.
+Layout continues to use actual available space. This follows Flutter's
 [orientation guidance](https://api.flutter.dev/flutter/services/SystemChrome/setPreferredOrientations.html).
 
-Eight platform-channel regressions cover a compact viewport on an expanded
-display, display-only unfold/refold, side safe areas, ordinary-phone rotation,
-iPad split windows, startup without display metrics, redundant keyboard metric
-changes and observer teardown. The focused orientation/adaptive/onboarding
-suite passes 30 tests and canonical analysis is clean on the three changed
-Dart files. No native configuration or visual styling changes were needed.
-The follow-up full suite passes 6,326 tests, skips four and retains exactly
-the same 17 confirmed baseline failures, with no additional failing cases.
+The shared test fixture comes from the installed iPhone Duo simulator profile:
+`iPhone Duo.simdevicetype/Contents/Resources/capabilities.plist`. The outer
+display is 1398×2034 pixels and the inner display is 2007×2853, both at 3×.
+These sizes are test inputs only, never production device identification.
 
-After a Flutter hot restart, rotate the unfolded simulator once to each
-landscape direction, refold, then unfold again. Confirm both app content and
-status UI are upright, and that an ordinary iPhone still stays portrait.
-The code and channel behavior are verified; the user's device pass confirms
-the iOS simulator's final orientation.
+| Configuration | Logical size |
+| --- | --- |
+| Folded portrait | 466×678 |
+| Folded landscape | 678×466 |
+| Unfolded portrait | 669×951 |
+| Unfolded landscape | 951×669 |
+
+All four configurations are covered as initial sizes. The shared transition
+iterator produces all 12 directed pairs of different configurations, including
+combined fold-and-rotate changes. Root tests also cover delayed display/viewport
+updates, letterboxing, mirrored landscape side insets, keyboard occlusion,
+retained edits, an open dialog and the Navigator Back stack. Native orientation
+configuration has a separate assertion for both landscape directions.
+Content and workspace fixtures also apply conservative stress insets to both
+`padding` and `viewPadding`: 59/34 points at the portrait top/bottom, and
+62/20 points at the landscape sides plus 21 at the bottom, with the sides
+mirrored at the destination. These inset values are test bounds, not a claim
+about what a particular native posture reports. Feed additionally reserves
+110 points to stress the remaining local width without double-counting
+system insets.
+
+The stricter matrix found layout defects in addition to the orientation lock:
+
+- The folded portrait board consumed height needed by its player rows, PVs and
+  notation. Its existing square board now has an available-height limit.
+- Standalone Explorer similarly caps its stacked board to leave space for
+  engine content and the lower panels.
+- Feed's short-window scroll fallback required a wide local aspect ratio.
+  Navigation-rail and safe-area space could prevent it from activating in
+  folded landscape. It now uses available height, retaining the existing
+  content-first scrolling and gesture handoff at post edges.
+- Feed exploration controls could overflow their height-limited board column.
+  When that column is too narrow, the same controls use the existing wider
+  row space rather than shrinking labels or hiding actions.
+
+Board, Explorer and editor tests include asymmetric side insets in both
+landscape directions; folded landscape then exercises the compact branch
+below 600 points as well. Main-board transitions run with both pending and
+five populated PV results in each existing engine-line presentation.
+
+Additional matrix fixtures exercise actual Events/Search loading, loaded,
+empty and error surfaces; Calendar state and query retention; Feed game,
+puzzle, News and placeholder states; event cards with larger text;
+Miniatures filters; Collections tabs; all five onboarding pages; auth and
+country selection; My Space Add; Library previews and rename; settings;
+signed-in/guest profile; Inbox states/detail; Prep forms; and subscription
+sheets. Tests retain relevant queries, selections, providers, drafts, scroll
+or route state through resizing. This does not simulate every native auth,
+purchase, notification, video or live-data service. Existing routing/access
+suites remain part of the full validation gate.
+
+The source changes only affect orientation, size budgets and the short-window
+scroll fallback. Existing components, typography scales, colors, assets,
+labels and destinations are preserved. The supplied design law was rechecked
+point by point against that preservation scope: no new decorative styling,
+fonts, icons, shadows, effects, copy or interactions were introduced. The
+checks concentrate on visible content, clipping, gutters, alignment, centered
+controls and working existing actions. Final native visual and posture
+verification remains the user's device pass, per project instructions.
+
+## Matrix correction validation
+
+- Focused root/orientation/board/Explorer/editor coverage: **122 passed**.
+- Focused content and gesture coverage with the shared stress insets:
+  **383 passed**.
+- Focused workspace matrix coverage with the same stress insets:
+  **45 passed**.
+- Canonical `flutter analyze --no-pub` on all 27 changed/new Dart files:
+  **no issues**.
+- Final full Flutter suite: **6,676 passed, 4 skipped, 17 failed**.
+- The final 17 failing test identities exactly match the confirmed baseline
+  from `c427395d`; there are no additional failures or missing baseline cases.
+- `dart format` and `git diff --check` pass. Native app execution, simulator
+  control, builds, backend operations and release actions were not performed.
+- The correction is local on `stable`, version **37.8.12+3796**. Use a hot
+  restart before the four-state/12-transition device pass above.

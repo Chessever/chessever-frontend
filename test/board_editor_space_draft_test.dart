@@ -8,12 +8,15 @@ import 'package:chessever2/screens/my_space/defaults/space_defaults.dart';
 import 'package:chessever2/screens/my_space/models/space_shortcut.dart';
 import 'package:chessever2/screens/my_space/providers/space_shortcuts_provider.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/utils/adaptive_window.dart';
 import 'package:chessground/chessground.dart' show ChessboardEditor;
 import 'package:dartchess/dartchess.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+
+import 'fixtures/duo_window_matrix.dart';
 
 /// The board editor's "Add to My Space": it saves the position keyed by its
 /// FEN, the same shortcut the seeded defaults, the + picker and search save
@@ -115,37 +118,62 @@ void main() {
     });
   });
 
-  testWidgets(
-    'editor keeps the position and actions through Duo size changes',
-    (tester) async {
-      final fen = fenAfter(['e4', 'e5', 'Nf3']);
-      await _pumpEditor(tester, boardEditorAt(fen), _MemorySpace());
-      final container = ProviderScope.containerOf(
-        tester.element(find.byType(BoardEditorScreen)),
-      );
-      for (final size in const [
-        Size(720, 900),
-        Size(900, 720),
-        Size(844, 390),
-        Size(393, 852),
-      ]) {
-        tester.view.physicalSize = size * 3;
-        await tester.pumpAndSettle();
-        expect(tester.takeException(), isNull, reason: '$size must fit');
-        expect(
-          container.read(boardEditorProvider).fullFen.split(' ').take(4),
-          fen.split(' ').take(4),
+  for (final transition in duoWindowTransitions) {
+    testWidgets(
+      'editor keeps its edited position and actions from ${transition.from.name} to ${transition.to.name}',
+      (tester) async {
+        final fen = fenAfter(['e4', 'e5', 'Nf3']);
+        addTearDown(tester.view.reset);
+        _setDuoWindow(tester, transition.from);
+        await _pumpEditor(
+          tester,
+          boardEditorAt(fen),
+          _MemorySpace(),
+          size: transition.from.size,
+          textScale: 1.3,
         );
-        final board = tester.getRect(find.byType(ChessboardEditor));
-        expect(board.right, lessThanOrEqualTo(size.width));
-        expect(board.bottom, lessThanOrEqualTo(size.height));
-        expect(find.text('Analyze').hitTestable(), findsOneWidget);
-        expect(find.text('Paste FEN').hitTestable(), findsOneWidget);
-        expect(find.text('Paste PGN').hitTestable(), findsOneWidget);
-      }
-      await _tearDown(tester);
-    },
-  );
+        final container = ProviderScope.containerOf(
+          tester.element(find.byType(BoardEditorScreen)),
+        );
+        final editor = container.read(boardEditorProvider.notifier);
+        editor.setSideToMove(Side.white);
+        final editedFen = container.read(boardEditorProvider).fullFen;
+        expect(editedFen, isNot(fen));
+        for (final window in [transition.from, transition.to]) {
+          _setDuoWindow(tester, window, mirrorInsets: window == transition.to);
+          await tester.pumpAndSettle();
+          expect(
+            tester.takeException(),
+            isNull,
+            reason: '${window.name} must fit',
+          );
+          expect(container.read(boardEditorProvider.notifier), same(editor));
+          expect(container.read(boardEditorProvider).fullFen, editedFen);
+          final board = tester.getRect(find.byType(ChessboardEditor));
+          expect(
+            board.left,
+            greaterThanOrEqualTo(tester.view.padding.left / 3),
+          );
+          expect(
+            board.right,
+            lessThanOrEqualTo(
+              window.size.width - tester.view.padding.right / 3,
+            ),
+          );
+          expect(
+            board.bottom,
+            lessThanOrEqualTo(
+              window.size.height - tester.view.padding.bottom / 3,
+            ),
+          );
+          expect(find.text('Analyze').hitTestable(), findsOneWidget);
+          expect(find.text('Paste FEN').hitTestable(), findsOneWidget);
+          expect(find.text('Paste PGN').hitTestable(), findsOneWidget);
+        }
+        await _tearDown(tester);
+      },
+    );
+  }
 
   group('boardEditorAt', () {
     testWidgets('shows the position on the first frame', (tester) async {
@@ -300,6 +328,7 @@ Future<void> _pumpEditor(
         ),
       ],
       child: MaterialApp(
+        builder: (_, child) => AdaptiveWindowScope(child: child!),
         home: Builder(
           builder: (context) {
             ResponsiveHelper.init(context);
@@ -362,4 +391,20 @@ class _MemorySpace extends SpaceShortcutsNotifier {
     ]);
     return hit;
   }
+}
+
+void _setDuoWindow(
+  WidgetTester tester,
+  DuoWindowCase window, {
+  bool mirrorInsets = false,
+}) {
+  tester.view.physicalSize = window.size * 3;
+  final padding = FakeViewPadding(
+    left: window.landscape ? (mirrorInsets ? 20 : 62) * 3 : 0,
+    right: window.landscape ? (mirrorInsets ? 62 : 20) * 3 : 0,
+    top: window.landscape ? 0 : 59 * 3,
+    bottom: window.landscape ? 21 * 3 : 34 * 3,
+  );
+  tester.view.padding = padding;
+  tester.view.viewPadding = padding;
 }

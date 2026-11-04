@@ -19,11 +19,13 @@ import 'package:chessever2/screens/settings/widgets/botvinnik_settings_body.dart
 import 'package:chessever2/screens/settings/widgets/start_screen_settings_body.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/theme/theme_provider.dart';
-import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/utils/adaptive_window.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+
+import 'fixtures/duo_window_matrix.dart';
 
 class _Board extends BoardSettingsNotifierNew {
   @override
@@ -107,11 +109,11 @@ Future<ProviderContainer> _pumpSettings(
   _AutoPin? autoPin,
   _Botvinnik? botvinnik,
   bool viaRoute = false,
+  Size size = const Size(393, 852),
 }) async {
-  tester.view.physicalSize = const Size(393, 852);
+  tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1;
-  addTearDown(tester.view.resetPhysicalSize);
-  addTearDown(tester.view.resetDevicePixelRatio);
+  addTearDown(tester.view.reset);
   final container = ProviderContainer(
     overrides: [
       boardSettingsProviderNew.overrideWith(_Board.new),
@@ -130,9 +132,9 @@ Future<ProviderContainer> _pumpSettings(
       container: container,
       child: MaterialApp(
         theme: light ? AppTheme.lightTheme : AppTheme.darkTheme,
+        builder: (_, child) => AdaptiveWindowScope(child: child!),
         home: Builder(
           builder: (context) {
-            ResponsiveHelper.init(context);
             if (!viaRoute) {
               return SettingsPage(initiallyExpanded: initiallyExpanded);
             }
@@ -188,6 +190,50 @@ void main() {
     final prefs = SharedPreferencesService.instance.prefsOrNull!;
     await prefs.clear();
   });
+
+  for (final light in [false, true]) {
+    for (final section in SettingsSection.values) {
+      testWidgets(
+        'Duo ${section.name} settings retains its expanded state in every window (${light ? 'light' : 'dark'})',
+        (tester) async {
+          tester.platformDispatcher.textScaleFactorTestValue = 1.6;
+          addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+          for (final start in duoWindowCases) {
+            tester.view.devicePixelRatio = 1;
+            applyDuoWindow(tester, start);
+            await _pumpSettings(
+              tester,
+              initiallyExpanded: section,
+              light: light,
+              size: start.size,
+            );
+            final state = tester.state(find.byType(SettingsPage));
+            final route = ModalRoute.of(
+              tester.element(find.byType(SettingsPage)),
+            );
+            for (final end in duoWindowCases) {
+              applyDuoWindow(tester, start);
+              await tester.pump();
+              applyDuoWindow(tester, end, mirrorInsets: true);
+              await tester.pumpAndSettle();
+              expect(
+                tester.takeException(),
+                isNull,
+                reason: '${section.name}: ${start.name} to ${end.name}',
+              );
+              expect(tester.state(find.byType(SettingsPage)), same(state));
+              expect(
+                ModalRoute.of(tester.element(find.byType(SettingsPage))),
+                same(route),
+              );
+            }
+            await tester.pumpWidget(const SizedBox.shrink());
+            await tester.pump();
+          }
+        },
+      );
+    }
+  }
 
   for (final light in [false, true]) {
     testWidgets(

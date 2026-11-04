@@ -5,9 +5,9 @@ import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/widgets.dart';
 
-/// Keeps a playable board and its controls reachable in a short, wide window.
+/// Keeps a playable board and its controls reachable in a short local viewport.
 ///
-/// Normal pages retain their exact geometry. A short landscape post scrolls
+/// Normal pages retain their exact geometry. A post in a short window scrolls
 /// within a readable column. At either edge its drag continues on the enclosing
 /// PageView, including the first page's existing pull-to-refresh gesture.
 class FeedPageViewport extends StatefulWidget {
@@ -26,7 +26,7 @@ class _FeedPageViewportState extends State<FeedPageViewport> {
   ScrollHoldController? _contentHold;
   VelocityTracker? _velocity;
   int? _pointer;
-  bool _shortWide = false;
+  bool _shortWindow = false;
 
   @override
   void didChangeDependencies() {
@@ -91,7 +91,7 @@ class _FeedPageViewportState extends State<FeedPageViewport> {
   }
 
   bool _handoff(ScrollNotification notification) {
-    if (!_shortWide ||
+    if (!_shortWindow ||
         notification.depth != 0 ||
         notification is! OverscrollNotification ||
         notification.dragDetails == null ||
@@ -134,13 +134,14 @@ class _FeedPageViewportState extends State<FeedPageViewport> {
   @override
   Widget build(BuildContext context) => LayoutBuilder(
     builder: (context, constraints) {
-      _shortWide =
-          constraints.maxHeight < 500 &&
-          constraints.maxWidth > constraints.maxHeight * 1.6;
-      final width = _shortWide
+      // A folded landscape window can lose its wide aspect ratio after the
+      // navigation rail and system-safe edge take their space. Its remaining
+      // height still needs the same scrollable post and edge handoff.
+      _shortWindow = constraints.maxHeight < 500;
+      final width = _shortWindow
           ? math.min(420.0, constraints.maxWidth)
           : constraints.maxWidth;
-      final height = _shortWide
+      final height = _shortWindow
           ? math.max(
               constraints.maxHeight,
               FeedLayout.naturalHeight(
@@ -163,7 +164,7 @@ class _FeedPageViewportState extends State<FeedPageViewport> {
             child: SingleChildScrollView(
               controller: _content,
               primary: false,
-              physics: _shortWide
+              physics: _shortWindow
                   ? const ClampingScrollPhysics()
                   : const NeverScrollableScrollPhysics(),
               child: SizedBox(

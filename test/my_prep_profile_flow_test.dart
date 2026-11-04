@@ -47,7 +47,7 @@ import 'package:chessever2/screens/my_prep/widgets/prep_source_picker.dart';
 import 'package:chessever2/screens/player_profile/widgets/player_games_toolbar.dart';
 import 'package:chessever2/services/rewarded_premium/rewarded_access_provider.dart';
 import 'package:chessever2/theme/app_theme.dart';
-import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/utils/adaptive_window.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:chessever2/widgets/card_context_menu.dart'
@@ -61,6 +61,7 @@ import 'package:dio/dio.dart';
 
 import 'my_prep_sources_test.dart' show databasePlayer, sourceGame;
 import 'support/offline_premium_fakes.dart';
+import 'fixtures/duo_window_matrix.dart';
 
 class _PickerRepository extends PrepRepository {
   _PickerRepository()
@@ -479,12 +480,7 @@ void main() {
               textScaler: TextScaler.linear(scale),
               disableAnimations: true,
             ),
-            child: Builder(
-              builder: (context) {
-                ResponsiveHelper.init(context);
-                return child!;
-              },
-            ),
+            child: AdaptiveWindowScope(child: child!),
           ),
           navigatorKey: navigatorKey,
           onGenerateRoute: onGenerateRoute,
@@ -1214,61 +1210,70 @@ void main() {
     expect(result?.accounts, isEmpty);
   });
 
-  testWidgets('the selected profile form stays scrollable above the keyboard', (
-    tester,
-  ) async {
-    PrepAddResult? result;
-    await pump(
-      tester,
-      Scaffold(
-        body: Builder(
-          builder: (context) => TextButton(
-            onPressed: () async {
-              result = await showPrepSourcePicker(
-                context,
-                kind: PrepKind.opponent,
-              );
-            },
-            child: const Text('Start'),
+  testWidgets(
+    'Duo selected Prep profile stays scrollable across all windows above the keyboard',
+    (tester) async {
+      PrepAddResult? result;
+      await pump(
+        tester,
+        Scaffold(
+          body: Builder(
+            builder: (context) => TextButton(
+              onPressed: () async {
+                result = await showPrepSourcePicker(
+                  context,
+                  kind: PrepKind.opponent,
+                );
+              },
+              child: const Text('Start'),
+            ),
           ),
         ),
-      ),
-      scale: 1.8,
-    );
-    await tester.tap(find.text('Start'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Chess.com'));
-    await tester.pumpAndSettle();
-    await tester.enterText(
-      find.byKey(const ValueKey('prep_source_query')),
-      'ClubPlayer',
-    );
-    await tester.pump(const Duration(milliseconds: 450));
-    await tester.pump();
-    await tester.tap(find.text('Club Player'));
-    await tester.pump();
-    tester.view.viewInsets = FakeViewPadding(
-      bottom: 300 * tester.view.devicePixelRatio,
-    );
-    addTearDown(tester.view.resetViewInsets);
-    await tester.pumpAndSettle();
-    expect(tester.takeException(), isNull);
-    await tester.scrollUntilVisible(
-      find.text('Create profile'),
-      100,
-      scrollable: find
-          .descendant(
-            of: find.byType(ListView),
-            matching: find.byType(Scrollable),
-          )
-          .first,
-    );
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Create profile'));
-    await tester.pumpAndSettle();
-    await confirmScopes(tester, 1);
-    expect(result?.accounts.single.source, PrepSource.chesscom);
-  });
+        scale: 1.8,
+      );
+      await tester.tap(find.text('Start'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Chess.com'));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const ValueKey('prep_source_query')),
+        'ClubPlayer',
+      );
+      await tester.pump(const Duration(milliseconds: 450));
+      await tester.pump();
+      await tester.tap(find.text('Club Player'));
+      await tester.pump();
+      addTearDown(tester.view.reset);
+      for (final transition in duoWindowTransitions) {
+        for (final window in [transition.from, transition.to]) {
+          await tester.binding.setSurfaceSize(window.size);
+          tester.view.viewInsets = FakeViewPadding(
+            bottom: 300 * tester.view.devicePixelRatio,
+          );
+          applyDuoWindow(tester, window, mirrorInsets: window == transition.to);
+          await tester.pumpAndSettle();
+          expect(tester.takeException(), isNull, reason: window.name);
+          await tester.scrollUntilVisible(
+            find.text('Create profile'),
+            100,
+            scrollable: find
+                .descendant(
+                  of: find.byType(ListView),
+                  matching: find.byType(Scrollable),
+                )
+                .first,
+          );
+          await tester.pumpAndSettle();
+          expect(find.text('Create profile').hitTestable(), findsOneWidget);
+          expect(tester.takeException(), isNull, reason: window.name);
+        }
+      }
+      await tester.tap(find.text('Create profile'));
+      await tester.pumpAndSettle();
+      await confirmScopes(tester, 1);
+      expect(result?.accounts.single.source, PrepSource.chesscom);
+    },
+  );
 
   testWidgets(
     'several usernames from both platforms attach together and persist',
