@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:chessever2/screens/chessboard/utils/chessever_report_stamp.dart';
 import 'package:chessever2/screens/chessboard/analysis/chess_game.dart';
 import 'package:chessever2/screens/chessboard/chess_board_screen_new.dart';
 import 'package:chessever2/screens/chessboard/classification_fx/move_class.dart';
@@ -73,7 +74,10 @@ void main() {
       expect(annotation!.useClassificationIcon, isTrue);
     }
 
-    final report = gameAnalysisReportFromPgn(game);
+    // The badges display, but a published collection is not provably our
+    // analysis: without a verified stamp it is never restored as a report.
+    expect(gameAnalysisReportFromPgn(game), isNull);
+    final report = gameAnalysisReportFromPgn(withChesseverReportStamp(game));
     expect(report, isNotNull);
     expect(report!.moves[80].classification, GameMoveClassification.missedWin);
   });

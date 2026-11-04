@@ -100,6 +100,7 @@ const kCrossAppCanonicalExport = '''
 [White "Rewitz, Poul"]
 [Black "Nielsen, Frode Benedikt"]
 [Result "1-0"]
+[ChessEverReport "v1 10ada6736e15ae6bbb776a741bff6fbcf0168ecd2f730b4e872781be3b1a75a4"]
 [TimeControl "40/5400+30:1800+30"]
 
 1. b3 \$6 \$244 { [%eval -0.32] [%clk 1:30:53] } 1... d6 \$247 { [%eval 0.16] [%clk 1:29:21] } 2. Bb2 \$1 \$242 { [%eval 0.14] [%clk 1:31:04] } 2... c6 \$3 \$240 { [%eval 0.25] [%clk 1:29:34] } 3. f4 \$4 \$243 { [%eval -0.16] [%clk 1:28:36] } 3... Nf6 \$2 \$245 { [%eval -0.13] [%clk 1:29:10] } 4. e3 \$4 \$246 { [%eval -0.25] [%clk 1:27:12] } 1-0''';

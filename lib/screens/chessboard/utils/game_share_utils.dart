@@ -2,6 +2,7 @@ import 'package:chessever2/screens/chessboard/analysis/chess_game.dart';
 import 'package:chessever2/screens/chessboard/game_review/classification_style.dart';
 import 'package:chessever2/screens/chessboard/game_review/game_analysis_report.dart';
 import 'package:chessever2/screens/chessboard/game_review/game_analysis_report_store.dart';
+import 'package:chessever2/screens/chessboard/utils/chessever_report_stamp.dart';
 import 'package:chessever2/screens/chessboard/notation/notation_pointer.dart';
 import 'package:chessever2/screens/chessboard/notation/notation_tree.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
@@ -253,13 +254,30 @@ ChessGame mergeGameReportAnnotationsForExport(
       })(),
   ];
 
-  return changed
-      ? game.copyWith(
-        mainline: mainline,
-        analysisCleared: false,
-        overrideAnalysisBackup: true,
-      )
-      : game;
+  final merged =
+      changed
+          ? game.copyWith(
+            mainline: mainline,
+            analysisCleared: false,
+            overrideAnalysisBackup: true,
+          )
+          : game;
+  // Provenance: only a report that judged and scored every mainline move may
+  // vouch for the PGN as ours. A partial report, or a move whose score fell
+  // back to an imported `[%eval]`, would let somebody else's numbers ride
+  // under our stamp. Identical rule to desktop's writer.
+  final coversMainline =
+      game.mainline.isNotEmpty &&
+      Iterable<int>.generate(game.mainline.length).every((index) {
+        final reportMove = byPly[index + 1];
+        return reportMove != null &&
+            reportMove.uci == game.mainline[index].uci &&
+            (reportMove.evaluation.centipawns != null ||
+                reportMove.evaluation.mate != null);
+      });
+  return coversMainline
+      ? withChesseverReportStamp(merged)
+      : withoutChesseverReportStamp(merged);
 }
 
 /// Alias — GIF was the first consumer; identical hydrate to export, so the
@@ -299,6 +317,7 @@ ChessGame mergeUserMoveNagsForExport(
 ) {
   if (userMoveNags.isEmpty) return game;
   var changed = false;
+  var mainlineVerdict = false;
 
   // Mutually recursive with hydrateMove: a variation is a line of moves, each
   // of which can hold variations of its own.
@@ -355,6 +374,9 @@ ChessGame mergeUserMoveNagsForExport(
       if (chesseverNag != null && !next.contains(chesseverNag)) {
         next.add(chesseverNag);
       }
+      // A pointer of length one is a mainline move: the part a report stamp
+      // vouches for.
+      if (userOverridesVerdict && pointer.length == 1) mainlineVerdict = true;
       if (next.length != existingNags.length ||
           !next.every(existingNags.contains)) {
         nags = next;
@@ -382,7 +404,11 @@ ChessGame mergeUserMoveNagsForExport(
   };
 
   final mainline = hydrateLine(game.mainline, const <int>[]);
-  return changed ? game.copyWith(mainline: mainline) : game;
+  final merged = changed ? game.copyWith(mainline: mainline) : game;
+  // The reader's verdict is written with the same `$240`–`$247` codes a report
+  // uses, so once it is baked in nothing in the moves tells the two apart. The
+  // PGN must stop vouching for itself as ChessEver's analysis.
+  return mainlineVerdict ? withoutChesseverReportStamp(merged) : merged;
 }
 
 /// The full export hydrate: the finished report first, the reader's own

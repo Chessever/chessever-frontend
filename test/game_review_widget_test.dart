@@ -13,6 +13,7 @@ import 'package:chessever2/screens/chessboard/game_review/game_review_sheet_host
 import 'package:chessever2/screens/chessboard/notation/notation_tree.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
 import 'package:chessever2/screens/chessboard/provider/stockfish_singleton.dart';
+import 'package:chessever2/screens/chessboard/utils/chessever_report_stamp.dart';
 import 'package:chessever2/screens/chessboard/view_model/chess_board_state_new.dart';
 import 'package:chessever2/screens/chessboard/widgets/notation_footer_actions.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
@@ -1079,9 +1080,11 @@ void main() {
   ) async {
     GameAnalysisReportController.clearSessionCacheForTest();
     addTearDown(GameAnalysisReportController.clearSessionCacheForTest);
-    final chessGame = ChessGame.fromPgn(
-      'saved-sheet',
-      r'1. e4 $247 {[%eval 0.32]} e5 {[%eval 0.22]} 1-0',
+    final chessGame = withChesseverReportStamp(
+      ChessGame.fromPgn(
+        'saved-sheet',
+        r'1. e4 $247 {[%eval 0.32]} e5 {[%eval 0.22]} 1-0',
+      ),
     );
     final report = gameAnalysisReportFromPgn(chessGame)!;
     final store = GameAnalysisReportStore.memory();

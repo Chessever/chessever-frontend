@@ -10,6 +10,7 @@ import 'package:chessever2/screens/chessboard/game_review/game_report_from_pgn.d
 import 'package:chessever2/screens/chessboard/game_review/game_review_provider.dart';
 import 'package:chessever2/screens/chessboard/game_review/game_review_sheet.dart';
 import 'package:chessever2/screens/chessboard/game_review/server_game_report.dart';
+import 'package:chessever2/screens/chessboard/utils/chessever_report_stamp.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -73,14 +74,27 @@ void main() {
   });
 
   test(
-    'legacy verdicts, custom starts, negative mate and score depth survive',
+    'custom starts, negative mate and score depth survive; legacy is not ours',
     () {
-      final game = ChessGame.fromPgn(
-        'custom',
+      // A legacy directive predates the provenance stamp, so nothing proves
+      // it is ours: it is never restored as a report.
+      final legacy = ChessGame.fromPgn(
+        'legacy',
         '[FEN "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1"]\n'
             '[SetUp "1"]\n\n'
             '1... e5 {[%eval -0.25,18] [%chessever_annotation book]} '
             '2. Nf3 {[%eval #-3]} *',
+      );
+      expect(gameAnalysisReportFromPgn(legacy), isNull);
+
+      final game = withChesseverReportStamp(
+        ChessGame.fromPgn(
+          'custom',
+          '[FEN "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1"]\n'
+              '[SetUp "1"]\n\n'
+              '1... e5 \$247 {[%eval -0.25,18]} '
+              '2. Nf3 {[%eval #-3]} *',
+        ),
       );
       final restored = gameAnalysisReportFromPgn(game)!;
       expect(restored.positions.first.fen, game.startingFen);

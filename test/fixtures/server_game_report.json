@@ -3,7 +3,7 @@
   "source": "engine",
   "algorithm": "4",
   "fingerprint": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1|e2e4 e7e5 f1c4 b8c6 d1h5 g8f6 h5f7",
-  "pgn": "[Event \"?\"]\n[Site \"?\"]\n[Date \"????.??.??\"]\n[Round \"?\"]\n[White \"?\"]\n[Black \"?\"]\n[Result \"1-0\"]\n\n1. e4 $247 { [%eval 0.32] } 1... e5 $247 { [%eval 0.32] } 2. Bc4 $247 { [%eval -0.01] } 2... Nc6 $247 { [%eval 0.26] } 3. Qh5 $6 $244 { [%eval -0.34] } 3... Nf6 $4 $246 { [%eval #1] } 4. Qxf7# { [%eval #1] } 1-0\n",
+  "pgn": "[Event \"?\"]\n[Site \"?\"]\n[Date \"????.??.??\"]\n[Round \"?\"]\n[White \"?\"]\n[Black \"?\"]\n[Result \"1-0\"]\n[ChessEverReport \"v1 ac87bd137c2b54f5e1fc9d52e760cdc0141a65ede0a47183e563c8e76d5e637d\"]\n\n1. e4 $247 { [%eval 0.32] } 1... e5 $247 { [%eval 0.32] } 2. Bc4 $247 { [%eval -0.01] } 2... Nc6 $247 { [%eval 0.26] } 3. Qh5 $6 $244 { [%eval -0.34] } 3... Nf6 $4 $246 { [%eval #1] } 4. Qxf7# { [%eval #1] } 1-0\n",
   "generatedAt": "2026-08-03T22:51:59.154995Z",
   "engine": "Stockfish 17.1",
   "search": {

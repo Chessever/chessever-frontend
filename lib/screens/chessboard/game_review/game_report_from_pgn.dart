@@ -1,10 +1,17 @@
 import 'package:chessever2/screens/chessboard/analysis/chess_game.dart';
 import 'package:chessever2/screens/chessboard/game_review/game_analysis_report.dart';
+import 'package:chessever2/screens/chessboard/utils/chessever_report_stamp.dart';
 import 'package:chessever2/screens/chessboard/utils/game_share_utils.dart'
-    show chesseverClassificationsFromMainline;
+    show classificationFromNags;
 
 /// Restores the report already saved with a game, without running an engine.
-/// Ordinary PGN glyphs and partial evaluations are not a completed report.
+///
+/// Only ChessEver's own analysis is restored. The PGN must carry a verified
+/// `[ChessEverReport]` stamp (`chessever_report_stamp.dart`): the report writer
+/// adds it, and it stops verifying the moment a verdict, a score or a move
+/// changes, or the reader's own verdict is baked in. Classes a reader set,
+/// another engine's `[%eval]`, a partly evaluated game or a PGN written before
+/// stamps existed all return null, and the caller analyses instead.
 ///
 /// [whiteRating] and [blackRating] are the players' known ratings, which the
 /// estimated game rating is anchored to exactly as a fresh analysis does.
@@ -17,8 +24,13 @@ GameAnalysisReport? gameAnalysisReportFromPgn(
   if (source == null || source.mainline.isEmpty) return null;
   final fingerprint = gameReportFingerprint(game);
   if (gameReportFingerprint(source) != fingerprint) return null;
-  final classifications = chesseverClassificationsFromMainline(source);
-  if (classifications.isEmpty) return null;
+  if (!carriesVerifiedChesseverReport(source)) return null;
+  // The stamp covers each move's first ChessEver code, which is exactly what
+  // [classificationFromNags] reads.
+  final classifications = <int, GameMoveClassification>{
+    for (var i = 0; i < source.mainline.length; i++)
+      if (classificationFromNags(source.mainline[i].nags) case final c?) i: c,
+  };
 
   // PGN reports carry each played position's score, but not the initial
   // position's score or any search lines. Accuracy and the estimated ratings
