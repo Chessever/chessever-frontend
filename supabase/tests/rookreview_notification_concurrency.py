@@ -61,7 +61,7 @@ try:
  create function net.http_post(url text,body jsonb,headers jsonb,timeout_milliseconds int) returns bigint language sql as $$select 1::bigint$$;
  create function public.get_vault_secret(text) returns text language sql as $$select null::text$$;
  create table chess_players(fideid bigint,name text);insert into chess_players values(101,'Player, Alpha');""")
-    for name in ['20261026120000_partner_news.sql', '20261103213329_rookreview_player_notifications.sql']:
+    for name in ['20261026120000_partner_news.sql', '20261104005515_rookreview_player_notifications.sql']:
         sql((root / 'migrations' / name).read_text())
 
     # An import begun while disabled holds the boundary until it commits. The

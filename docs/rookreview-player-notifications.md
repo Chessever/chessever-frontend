@@ -68,14 +68,22 @@ versions are excluded. Native alerts retain their existing version contract.
 
 ## Rollout
 
-This change is local source only: no hosted SQL, deployed functions or real
-pushes were executed. The feature remains disabled. A live text-only GLM smoke
-check in the chatbot Cloudflare account passed exact-source validation: it
-selected Denis Lazavik and excluded passing mentions of Mark Smirnov and Daniil
-Dubov. The smoke check never admitted a notification job or touched the queue.
+Production rollout completed **November 3, 2026 at 8:04:29 PM EST**. Credentials,
+schemas and both services are deployed; the prospective policy is enabled.
+See [the production rollout record](rookreview-rollout-2026-11-03.md) for exact
+versions, readiness and repeated-sync checks. All 77 existing articles remained
+unenrolled. No opted-in device had a compatible app version at activation, so
+device delivery still requires the app update; no mobile release was performed.
 
-1. Apply mobile migration `20261103213329_rookreview_player_notifications.sql`,
-   then admin migration `20261103213332_rookreview_notification_transport.sql`.
+An authenticated `POST {"check_ai":true}` uses the same stream-token gate and
+verifies the installed GLM credential with fixed synthetic text. It never reads
+or imports articles and never claims or publishes notification jobs. The deployed
+probe returned HTTP 200 and the exact configured model.
+
+The rollout procedure for future deployments is:
+
+1. Apply mobile migration `20261104005515_rookreview_player_notifications.sql`,
+   then admin migration `20261104005636_rookreview_notification_transport.sql`.
    Review the full-directory name-expression index and schema locks in the
    production migration window. Installing either migration does not enable it.
 2. Deploy the admin service and updated `partner-news-sync`. Preserve its existing
@@ -90,7 +98,7 @@ Dubov. The smoke check never admitted a notification job or touched the queue.
    alternative-provider fallback or OpenAI key requirement. The account must
    already have access to the paid model, as the chatbot does. Configure the
    server token and validate extraction quality before activation.
-4. Release mobile **37.8.4+3788** (partner tap support requires at least
+4. Release mobile **37.8.5+3789** (partner tap support requires at least
    37.8.3+3787), and verify an actual warm/cold partner tap on device. Do not bypass the version gate to target older app builds.
 5. Activate only when ready to admit subsequent articles:
 

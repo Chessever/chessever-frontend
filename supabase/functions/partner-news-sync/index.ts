@@ -17,7 +17,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { type PartnerSource, parsePartnerFeed } from "./feed.ts";
-import { processPlayerNotifications } from "./player-notifications.ts";
+import { processPlayerNotifications, verifyPlayerExtraction } from "./player-notifications.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ??
@@ -154,11 +154,28 @@ Deno.serve(async (req) => {
   }
 
   let only: string | null = null;
+  let checkAi = false;
   try {
     const body = await req.json();
     if (body && typeof body.source === "string") only = body.source;
+    checkAi = body?.check_ai === true;
   } catch {
     // No body: every enabled source.
+  }
+
+  // This branch is behind the same stream-token authentication as ingestion.
+  // It never reads/imports articles or admits/claims notification jobs.
+  if (checkAi) {
+    const accountId = Deno.env.get("CLOUDFLARE_ACCOUNT_ID");
+    const apiToken = Deno.env.get("CLOUDFLARE_AI_API_TOKEN");
+    if (Deno.env.get("ROOKREVIEW_AI_ENABLED") !== "true" || !accountId || !apiToken) {
+      return json({ error: "ai_not_configured" }, 503);
+    }
+    try {
+      return json({ check_ai: true, ...await verifyPlayerExtraction({ accountId, apiToken }) });
+    } catch {
+      return json({ error: "ai_check_failed" }, 503);
+    }
   }
 
   let query = supabase

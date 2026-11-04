@@ -125,6 +125,19 @@ export async function extractPlayers(article: NotificationArticle, config: AiCon
   return validateExtraction(JSON.parse(choice.message.content), text);
 }
 
+/** Authenticated operational probe: fixed synthetic text, no RPC/client, jobs,
+ * publications, recipients or provider sends. Validates the installed AI token. */
+export async function verifyPlayerExtraction(config: AiConfig, request: typeof fetch = fetch): Promise<{ ok: true; model: string }> {
+  const players = await extractPlayers({
+    article_id: 0, lease: 'readiness-only',
+    title: 'Magnus Carlsen discusses chess',
+    summary: 'Magnus Carlsen is the main subject of this test article.',
+    content: 'Magnus Carlsen said that he enjoys playing chess.',
+  }, config, request);
+  if (players.length !== 1 || fold(players[0].name) !== 'magnus carlsen') throw Error('ai_check_failed');
+  return { ok: true, model: ROOKREVIEW_PLAYER_MODEL };
+}
+
 export async function processPlayerNotifications(client: RpcClient, config: AiConfig, request: typeof fetch = fetch): Promise<void> {
   validateAiConfig(config);
   const claimed = await client.rpc('claim_partner_news_notifications', { p_limit: 3 });

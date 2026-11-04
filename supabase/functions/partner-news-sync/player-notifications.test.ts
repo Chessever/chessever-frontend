@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { articleText, extractPlayers, processPlayerNotifications, validateExtraction, type NotificationArticle, ROOKREVIEW_PLAYER_MODEL } from './player-notifications.ts';
+import { articleText, extractPlayers, processPlayerNotifications, validateExtraction, type NotificationArticle, ROOKREVIEW_PLAYER_MODEL, verifyPlayerExtraction } from './player-notifications.ts';
 const article: NotificationArticle = { article_id: 1, lease: 'lease-1', title: 'Denis Lazavik speaks about chess', summary: 'Denis Lazavik praised local players.', content: 'Denis Lazavik said: “There are many talented players.” Mark Smirnov also participated.' };
 const subject = { name: 'Denis Lazavik', mention: 'Denis Lazavik', role: 'quotation', evidence: 'Denis Lazavik said: “There are many talented players.”' };
 const config = { accountId: 'a'.repeat(32), apiToken: 'synthetic' };
@@ -86,4 +86,19 @@ test('live GLM smoke result uses exact title evidence and excludes passing menti
 });
 test('no usable text excerpts means no model request', async () => {
  assert.deepEqual(await extractPlayers({...article,title:'',summary:'',content:''},config,async()=>{throw Error('must_not_fetch');}),[]);
+});
+
+test('readiness check uses only fixed synthetic text and cannot claim or publish jobs', async () => {
+ let requests=0;
+ const checked=await verifyPlayerExtraction(config,async(_url,init)=>{
+  requests++;const body=JSON.parse(String(init?.body));
+  assert.match(body.messages[1].content,/Magnus Carlsen discusses chess/);
+  assert.doesNotMatch(body.messages[1].content,/Denis|lease|article_id/);
+  return answer({players:[{name:'Magnus Carlsen',mention:'Magnus Carlsen',role:'subject',evidence:'Magnus Carlsen discusses chess'}]});
+ });
+ assert.deepEqual(checked,{ok:true,model:ROOKREVIEW_PLAYER_MODEL});assert.equal(requests,1);
+});
+test('readiness does not accept an empty extraction or failed provider', async()=>{
+ await assert.rejects(verifyPlayerExtraction(config,async()=>answer({players:[]})),/ai_check_failed/);
+ await assert.rejects(verifyPlayerExtraction(config,async()=>new Response('',{status:403})),/ai_http_403/);
 });

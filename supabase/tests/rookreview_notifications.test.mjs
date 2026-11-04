@@ -16,7 +16,7 @@ before(async()=>{
  create function public.get_vault_secret(text) returns text language sql as $$select null::text$$;
  create table chess_players(fideid bigint,name text);insert into chess_players values(101,'Player, Alpha'),(102,'Player, Beta');`);
  await db.exec(await readFile(new URL('../migrations/20261026120000_partner_news.sql',import.meta.url),'utf8'));
- await load('20261103213329_rookreview_player_notifications.sql');
+ await load('20261104005515_rookreview_player_notifications.sql');
 });
 after(async()=>db.close());
 beforeEach(async()=>{
