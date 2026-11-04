@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:chessever2/screens/my_prep/models/prep_models.dart';
 import 'package:chessever2/screens/my_prep/prep_access.dart';
 import 'package:chessever2/screens/my_prep/prep_actions.dart';
+import 'package:chessever2/screens/my_prep/prep_space_shortcut.dart';
 import 'package:chessever2/screens/my_prep/providers/prep_providers.dart';
 import 'package:chessever2/screens/my_prep/services/prep_repository.dart';
 import 'package:chessever2/screens/my_prep/widgets/prep_import_dialog.dart';
@@ -215,6 +216,9 @@ Future<void> prepChangeAccount(
     // Attach first so a failed validation cannot discard the current account.
     profiles.attach(profile.id, [replacement]);
     await profiles.removeAccount(profile.id, account);
+    if (context.mounted) {
+      unawaited(prepAutoPinProfile(context, profile.id));
+    }
     unawaited(
       ref.read(prepSyncProvider.notifier).syncAccount(profile.id, replacement),
     );

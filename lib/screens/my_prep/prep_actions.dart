@@ -66,6 +66,7 @@ Future<void> prepAddMine(
     profiles.attach(existing.id, result.accounts);
     profileId = existing.id;
   }
+  unawaited(prepAutoPinProfile(context, profileId));
   _readNewDetails(ref, profileId, result.accounts);
   // The card itself reports the download; no snack is needed.
   await prepStartDownloads(
@@ -129,6 +130,7 @@ Future<PrepProfile?> _prepPickPlayer(
             ? favoriteId
             : null,
       );
+  unawaited(prepAutoPinProfile(context, profile.id));
   _readNewDetails(ref, profile.id, result.accounts);
   await prepStartDownloads(
     context,
@@ -173,6 +175,7 @@ Future<void> prepAddAccountTo(
     showAppSnack(context, '$error', tone: AppSnackTone.danger);
     return;
   }
+  unawaited(prepAutoPinProfile(context, profile.id));
   _readNewDetails(ref, profile.id, result.accounts);
   await prepStartDownloads(
     context,
@@ -495,8 +498,7 @@ void _readDetailsOf(
 ) {
   final due = {
     for (final account in accounts)
-      if (account.source != PrepSource.manual &&
-          _detailsRead.add(account.key))
+      if (account.source != PrepSource.manual && _detailsRead.add(account.key))
         account.key,
   };
   if (due.isEmpty) return;
