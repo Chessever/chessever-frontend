@@ -48,6 +48,7 @@ import 'package:chessever2/widgets/auth_state_listener.dart';
 import 'package:chessever2/widgets/board_color_dialog.dart';
 import 'package:chessever2/widgets/custom_upgrade_alert.dart';
 import 'package:chessever2/widgets/dismiss_keyboard.dart';
+import 'package:chessever2/widgets/window_orientation_scope.dart';
 import 'package:chessever2/widgets/guest_session_gate_listener.dart';
 import 'package:chessground/chessground.dart';
 import 'package:flutter/foundation.dart';
@@ -1202,13 +1203,8 @@ class MyApp extends HookConsumerWidget {
     ResponsiveHelper.initFromSize(
       Size(windowSize.width - safeInsets.horizontal, windowSize.height),
     );
-    final isTablet = ResponsiveHelper.isTablet;
-
-    // Set orientation based on device type - tablets get landscape, phones stay portrait
-    // Also ensure status bar is visible and UI is edge-to-edge.
-    // Re-run when the device class changes mid-session: iPhone Duo is a phone
-    // while closed and a tablet while open, so the lock has to follow the
-    // fold or the outer display keeps the open state's landscape.
+    // Rotation is managed separately from layout by WindowOrientationScope.
+    // Keep status-bar appearance and edge-to-edge mode tied to the theme.
     useEffect(() {
       SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
       final platformDark =
@@ -1223,21 +1219,8 @@ class MyApp extends HookConsumerWidget {
         AppTheme.overlayFor(resolvedDark ? Brightness.dark : Brightness.light),
       );
 
-      if (isTablet) {
-        SystemChrome.setPreferredOrientations([
-          DeviceOrientation.portraitUp,
-          DeviceOrientation.portraitDown,
-          DeviceOrientation.landscapeLeft,
-          DeviceOrientation.landscapeRight,
-        ]);
-      } else {
-        SystemChrome.setPreferredOrientations([
-          DeviceOrientation.portraitUp,
-          DeviceOrientation.portraitDown,
-        ]);
-      }
       return null;
-    }, [themeMode, isTablet]);
+    }, [themeMode]);
 
     final upgrader = useMemoized(
       () => PhoneStoreUpgrader(messages: CustomUpgraderMessages()),
@@ -1377,21 +1360,23 @@ class MyApp extends HookConsumerWidget {
           initialRoute: '/',
           // AdaptiveWindowScope sits above every route, dialog and sheet so
           // all of them follow the window as it folds, opens or resizes.
-          builder: (context, child) => AdaptiveWindowScope(
-            child: DismissKeyboard(
-              child: AnnotatedRegion<SystemUiOverlayStyle>(
-                value: AppTheme.overlayFor(Theme.of(context).brightness),
-                child: CustomUpgradeAlert(
-                  upgrader: upgrader,
-                  navigatorKey: navigatorKey,
-                  routeObserver: updateRouteObserver,
-                  child: RewardedAccessHost(
+          builder: (context, child) => WindowOrientationScope(
+            child: AdaptiveWindowScope(
+              child: DismissKeyboard(
+                child: AnnotatedRegion<SystemUiOverlayStyle>(
+                  value: AppTheme.overlayFor(Theme.of(context).brightness),
+                  child: CustomUpgradeAlert(
+                    upgrader: upgrader,
                     navigatorKey: navigatorKey,
-                    upgrade: (context) => showPremiumPaywallSheet(
-                      context: context,
-                      allowRewarded: false,
+                    routeObserver: updateRouteObserver,
+                    child: RewardedAccessHost(
+                      navigatorKey: navigatorKey,
+                      upgrade: (context) => showPremiumPaywallSheet(
+                        context: context,
+                        allowRewarded: false,
+                      ),
+                      child: child ?? const SizedBox.shrink(),
                     ),
-                    child: child ?? const SizedBox.shrink(),
                   ),
                 ),
               ),

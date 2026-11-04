@@ -105,3 +105,33 @@ is not replaced as part of this device adaptation.
   overlay insets, draft retention, and existing routing/access behavior.
 - Formatting and `git diff --check` pass. No app build, launch, simulator
   automation, backend operation or release was performed for verification.
+
+## Sideways onboarding follow-up (37.8.11)
+
+The user's simulator capture showed the whole interface, including the system
+status UI, sideways inside the unfolded device. The iPhone plist already
+permits landscape. The app's rotation policy nevertheless used its current
+content width to decide whether to permit rotation, allowing a compact or
+letterboxed viewport to keep its own portrait lock in place.
+
+`WindowOrientationScope` now observes the full `FlutterView.display` on metric
+changes. An expanded display defers orientation to the OS; a compact display
+retains the existing portrait policy. The display's shortest logical side
+prevents an ordinary phone held sideways from accidentally unlocking rotation.
+Layout still uses the viewport and local constraints. This follows Flutter's
+[orientation guidance](https://api.flutter.dev/flutter/services/SystemChrome/setPreferredOrientations.html).
+
+Eight platform-channel regressions cover a compact viewport on an expanded
+display, display-only unfold/refold, side safe areas, ordinary-phone rotation,
+iPad split windows, startup without display metrics, redundant keyboard metric
+changes and observer teardown. The focused orientation/adaptive/onboarding
+suite passes 30 tests and canonical analysis is clean on the three changed
+Dart files. No native configuration or visual styling changes were needed.
+The follow-up full suite passes 6,326 tests, skips four and retains exactly
+the same 17 confirmed baseline failures, with no additional failing cases.
+
+After a Flutter hot restart, rotate the unfolded simulator once to each
+landscape direction, refold, then unfold again. Confirm both app content and
+status UI are upright, and that an ordinary iPhone still stays portrait.
+The code and channel behavior are verified; the user's device pass confirms
+the iOS simulator's final orientation.
