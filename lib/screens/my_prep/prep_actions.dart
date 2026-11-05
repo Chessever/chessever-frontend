@@ -311,6 +311,7 @@ Future<void> _moveToOpponents(
   ref
       .read(prepProfilesProvider.notifier)
       .edit(profile.id, (p) => p.copyWith(kind: PrepKind.opponent));
+  unawaited(prepAutoPinProfile(context, profile.id));
   _readNewDetails(ref, profile.id, profile.accounts);
   unawaited(prepAttachFavoriteDatabase(ref, profile));
   if (messenger != null) {
@@ -546,7 +547,9 @@ List<LibraryMenuAction> prepProfileMenu(
   bool fromLibrary = false,
 }) {
   final sync = ref.read(prepSyncProvider.notifier);
+  final profiles = ref.read(prepProfilesProvider.notifier);
   final messenger = ScaffoldMessenger.maybeOf(context);
+  final pinProfile = prepProfileAutoPinner(context);
   return [
     LibraryMenuAction(
       icon: Icons.refresh_rounded,
@@ -585,11 +588,10 @@ List<LibraryMenuAction> prepProfileMenu(
         label: 'Add to Profiles',
         prominent: true,
         onSelected: () async {
-          if (!await prepMayAddOpponent(context)) return;
-          ref
-              .read(prepProfilesProvider.notifier)
-              .edit(profile.id, (p) => p.copyWith(kind: PrepKind.opponent));
-          if (messenger != null) {
+          if (!context.mounted || !await prepMayAddOpponent(context)) return;
+          profiles.edit(profile.id, (p) => p.copyWith(kind: PrepKind.opponent));
+          unawaited(pinProfile(profile.id));
+          if (messenger != null && messenger.mounted) {
             showAppSnackOn(messenger, '${profile.name} added to Profiles');
           }
         },

@@ -16,31 +16,42 @@ SpaceShortcut prepProfileSpaceDraft(PrepProfile profile) => SpaceShortcut.draft(
   subtitle: 'Prep',
 );
 
-/// Called only after an explicit account add/change succeeds, never on load,
-/// refresh or automatic favorite hydration. Uses the manual pin's identity and
-/// persistence; taking that pin out of My Space remains an intentional choice.
-/// This runs independently of downloads and can outlive the initiating widget.
-Future<void> prepAutoPinProfile(BuildContext context, String profileId) async {
+/// Captures the store and messenger before an import or menu action can outlive
+/// its widget. Invoke only after an explicit account add/change or promotion
+/// succeeds, never on load, refresh or automatic favorite hydration.
+/// Uses the manual pin's identity and persistence; taking that pin out of
+/// My Space remains an intentional choice.
+Future<void> Function(String profileId) prepProfileAutoPinner(
+  BuildContext context,
+) {
   final container = ProviderScope.containerOf(context, listen: false);
   final messenger = ScaffoldMessenger.maybeOf(context);
-  try {
-    // Do not overwrite a cache still loading or miss a pin it already holds.
-    await container.read(spaceShortcutsProvider.future);
-    final profile = container.read(prepProfileProvider(profileId));
-    if (profile == null || profile.accounts.isEmpty) return;
-    final draft = prepProfileSpaceDraft(profile);
-    // Read after the await: a removal while the store loads must also win.
-    if (container.read(spaceHiddenAutoKeysProvider).contains(draft.key)) return;
-    await container.read(spaceShortcutsProvider.notifier).add(draft);
-  } catch (_) {
-    // The profile/download is still valid. Remote write failures already keep
-    // a local pin in the existing store; this covers failure to load/add it.
-    if (messenger != null && messenger.mounted) {
-      showAppSnackOn(
-        messenger,
-        'Profile saved. Could not add to My Space. Try its profile menu.',
-        tone: AppSnackTone.danger,
-      );
+  return (profileId) async {
+    try {
+      // Do not overwrite a cache still loading or miss a pin it already holds.
+      await container.read(spaceShortcutsProvider.future);
+      final profile = container.read(prepProfileProvider(profileId));
+      if (profile == null || profile.accounts.isEmpty) return;
+      final draft = prepProfileSpaceDraft(profile);
+      // Read after the await: a removal while the store loads must also win.
+      if (container.read(spaceHiddenAutoKeysProvider).contains(draft.key)) {
+        return;
+      }
+      await container.read(spaceShortcutsProvider.notifier).add(draft);
+    } catch (_) {
+      // The profile/download is still valid. Remote write failures already keep
+      // a local pin in the existing store; this covers failure to load/add it.
+      if (messenger != null && messenger.mounted) {
+        showAppSnackOn(
+          messenger,
+          'Profile saved. Could not add to My Space. Try its profile menu.',
+          tone: AppSnackTone.danger,
+        );
+      }
     }
-  }
+  };
 }
+
+/// Starts an automatic pin independently of downloads while the host is mounted.
+Future<void> prepAutoPinProfile(BuildContext context, String profileId) =>
+    prepProfileAutoPinner(context)(profileId);

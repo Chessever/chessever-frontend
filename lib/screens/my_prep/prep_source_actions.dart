@@ -197,6 +197,8 @@ Future<void> prepChangeAccount(
   if (result == null || !context.mounted) return;
   final profiles = ref.read(prepProfilesProvider.notifier);
   final picked = result.accounts.single;
+  final pinProfile = prepProfileAutoPinner(context);
+  final sync = ref.read(prepSyncProvider.notifier);
   final replacement = account.lastSyncAtMs == null
       ? picked
       : picked.copyWith(preferences: account.preferences);
@@ -216,12 +218,8 @@ Future<void> prepChangeAccount(
     // Attach first so a failed validation cannot discard the current account.
     profiles.attach(profile.id, [replacement]);
     await profiles.removeAccount(profile.id, account);
-    if (context.mounted) {
-      unawaited(prepAutoPinProfile(context, profile.id));
-    }
-    unawaited(
-      ref.read(prepSyncProvider.notifier).syncAccount(profile.id, replacement),
-    );
+    unawaited(pinProfile(profile.id));
+    unawaited(sync.syncAccount(profile.id, replacement));
   } catch (error) {
     if (context.mounted) {
       showAppSnack(
@@ -359,6 +357,7 @@ Future<void> prepImportSource(
   final container = ProviderScope.containerOf(context, listen: false);
   final repo = ref.read(prepRepositoryProvider);
   final profiles = ref.read(prepProfilesProvider.notifier);
+  final pinProfile = prepProfileAutoPinner(context);
   await showPrepImportDialog(
     context,
     pickFiles: () async {
@@ -408,6 +407,7 @@ Future<void> prepImportSource(
       if (!reading.resolved) return reading;
       final accounts = <PrepAccount>[];
       final prepared = <PrepAccount>[];
+      final String profileId;
       try {
         for (final (i, input) in inputs.indexed) {
           var account = PrepAccount(
@@ -442,17 +442,20 @@ Future<void> prepImportSource(
           accounts.add(account);
         }
         if (profile == null) {
-          profiles.create(
-            kind: mine ? PrepKind.mine : PrepKind.opponent,
-            name: reading.name,
-            accounts: accounts,
-          );
+          profileId = profiles
+              .create(
+                kind: mine ? PrepKind.mine : PrepKind.opponent,
+                name: reading.name,
+                accounts: accounts,
+              )
+              .id;
         } else {
           if (profiles.byId(profile.id) == null) {
             throw const PrepException('This profile was removed.');
           }
           // Validate every selected database before attaching any of them.
           profiles.attach(profile.id, accounts);
+          profileId = profile.id;
         }
       } catch (_) {
         for (final account in prepared) {
@@ -460,6 +463,8 @@ Future<void> prepImportSource(
         }
         rethrow;
       }
+      // A shortcut failure must never roll back an imported source's files.
+      unawaited(pinProfile(profileId));
       return reading;
     },
   );

@@ -14,6 +14,7 @@ import 'package:chessever2/screens/my_prep/providers/prep_known_accounts_provide
 import 'package:chessever2/screens/my_prep/providers/prep_providers.dart';
 import 'package:chessever2/screens/my_prep/services/prep_repository.dart';
 import 'package:chessever2/screens/my_prep/widgets/prep_dialogs.dart';
+import 'package:chessever2/screens/my_prep/widgets/prep_import_dialog.dart';
 import 'package:chessever2/screens/my_space/actions/space_shortcut_removal.dart';
 import 'package:chessever2/screens/my_space/models/space_shortcut.dart';
 import 'package:chessever2/screens/my_space/navigation/space_shortcut_navigator.dart';
@@ -39,6 +40,28 @@ class _Repository extends PrepRepository {
 
   final synced = <String>[];
   bool failDownload = false;
+  Completer<void>? importStarted;
+  Completer<void>? importReleased;
+  Completer<void>? deleteStarted;
+  Completer<void>? deleteReleased;
+
+  @override
+  Future<File> gamesFile(PrepAccount account) async {
+    if (account.source == PrepSource.manual && importReleased != null) {
+      if (!(importStarted?.isCompleted ?? true)) importStarted!.complete();
+      await importReleased!.future;
+    }
+    return super.gamesFile(account);
+  }
+
+  @override
+  Future<void> deleteGames(PrepAccount account) async {
+    if (deleteReleased != null) {
+      if (!(deleteStarted?.isCompleted ?? true)) deleteStarted!.complete();
+      await deleteReleased!.future;
+    }
+    await super.deleteGames(account);
+  }
 
   @override
   Future<PrepAccount> refreshDetails(PrepAccount account) async => account;
@@ -261,6 +284,235 @@ void main() {
     return profile;
   }))!;
 
+  Future<PrepImportDialog> openImport(
+    WidgetTester tester, {
+    PrepKind kind = PrepKind.opponent,
+  }) async {
+    await tester.runAsync(() async {
+      action = prepImportSource(host, hostRef, target, kind: kind);
+      await Future<void>.delayed(Duration.zero);
+    });
+    await tester.pumpAndSettle();
+    return tester.widget<PrepImportDialog>(find.byType(PrepImportDialog));
+  }
+
+  Future<void> closeImport(WidgetTester tester) async {
+    navigator.currentState!.pop();
+    await tester.pumpAndSettle();
+    await tester.runAsync(() async {
+      await action;
+      await container.read(prepProfilesProvider.notifier).debugDrainWrites();
+    });
+  }
+
+  const importedGames = '''
+[Event "First"]
+[White "Club Player"]
+[Black "First Opponent"]
+[Result "*"]
+
+1. e4 e5 *
+
+[Event "Second"]
+[White "Club Player"]
+[Black "Second Opponent"]
+[Result "*"]
+
+1. d4 d5 *
+''';
+
+  for (final kind in [PrepKind.mine, PrepKind.opponent]) {
+    testWidgets('PGN import creates a $kind profile and its shortcut', (
+      tester,
+    ) async {
+      await pump(tester);
+      final dialog = await openImport(tester, kind: kind);
+      await tester.runAsync(() async {
+        final reading = await dialog.onImport([
+          (label: 'Club games.pgn', pgn: importedGames),
+        ]);
+        expect(reading.resolved, isTrue);
+        await Future<void>.delayed(Duration.zero);
+      });
+      await closeImport(tester);
+      final profile = container.read(prepProfilesProvider).requireValue.single;
+      expect(profile.kind, kind);
+      expect(profile.accounts.single.source, PrepSource.manual);
+      expect(profile.gameCount, 2);
+      expect(
+        container.read(spaceShortcutsProvider).requireValue.single.key,
+        prepProfileSpaceDraft(profile).key,
+      );
+      expect(store.attempts, hasLength(1));
+      expect(repo.synced, isEmpty);
+    });
+  }
+
+  testWidgets(
+    'import into an existing profile pins once and preserves removal',
+    (tester) async {
+      await pump(tester);
+      target = await create(tester, accounts: [_account(PrepSource.lichess)]);
+      final dialog = await openImport(tester);
+      Future<void> import() async {
+        await tester.runAsync(() async {
+          await dialog.onImport([(label: 'Games.pgn', pgn: importedGames)]);
+          await Future<void>.delayed(Duration.zero);
+        });
+      }
+
+      await import();
+      final pin = container.read(spaceShortcutsProvider).requireValue.single;
+      expect(pin.targetId, target!.id);
+      final originalPin = pin.toJson();
+      await import();
+      expect(
+        container.read(spaceShortcutsProvider).requireValue.single.toJson(),
+        originalPin,
+      );
+      final removal = removeSpaceShortcut(hostRef, pin);
+      await removal.written;
+      await import();
+      expect(container.read(spaceShortcutsProvider).requireValue, isEmpty);
+      expect(
+        container.read(prepProfileProvider(target!.id))!.accounts,
+        hasLength(4),
+      );
+      expect(store.attempts, hasLength(2));
+      await closeImport(tester);
+    },
+  );
+
+  testWidgets('cancelled or rejected PGN imports add no profile or shortcut', (
+    tester,
+  ) async {
+    await pump(tester);
+    final dialog = await openImport(tester);
+    await tester.runAsync(() async {
+      await expectLater(
+        dialog.onImport([(label: 'Invalid.pgn', pgn: 'not a chess game')]),
+        throwsA(isA<PrepException>()),
+      );
+      // The first file was prepared, but a later invalid file must roll it back.
+      await expectLater(
+        dialog.onImport([
+          (label: 'Valid.pgn', pgn: importedGames),
+          (label: 'Invalid.pgn', pgn: 'not a chess game'),
+        ], player: 'Club Player'),
+        throwsA(isA<PrepException>()),
+      );
+    });
+    await closeImport(tester);
+    expect(container.read(prepProfilesProvider).requireValue, isEmpty);
+    expect(store.attempts, isEmpty);
+    expect(
+      directory
+          .listSync(recursive: true)
+          .whereType<File>()
+          .where((file) => file.path.endsWith('.pgn')),
+      isEmpty,
+    );
+    await openImport(tester);
+    await closeImport(tester);
+    expect(container.read(prepProfilesProvider).requireValue, isEmpty);
+    expect(store.attempts, isEmpty);
+  });
+
+  testWidgets('shortcut failure cannot roll back successfully imported games', (
+    tester,
+  ) async {
+    await pump(tester);
+    store.failAdd = true;
+    final dialog = await openImport(tester);
+    await tester.runAsync(() async {
+      final reading = await dialog.onImport([
+        (label: 'Games.pgn', pgn: importedGames),
+      ]);
+      expect(reading.resolved, isTrue);
+      await Future<void>.delayed(Duration.zero);
+    });
+    await closeImport(tester);
+    final profile = container.read(prepProfilesProvider).requireValue.single;
+    final file = (await tester.runAsync(
+      () => repo.gamesFile(profile.accounts.single),
+    ))!;
+    expect(profile.gameCount, 2);
+    expect(file.readAsStringSync(), contains('Club Player'));
+    expect(store.attempts, hasLength(1));
+    expect(container.read(spaceShortcutsProvider).requireValue, isEmpty);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('import still pins after the initiating widget is disposed', (
+    tester,
+  ) async {
+    await pump(tester);
+    final dialog = await openImport(tester);
+    late Future<void> imported;
+    await tester.runAsync(() async {
+      repo.importStarted = Completer<void>();
+      repo.importReleased = Completer<void>();
+      imported = dialog
+          .onImport([(label: 'Games.pgn', pgn: importedGames)])
+          .then((reading) => expect(reading.resolved, isTrue));
+      await repo.importStarted!.future.timeout(const Duration(seconds: 10));
+    });
+    await tester.pumpWidget(const SizedBox.shrink());
+    expect(host.mounted, isFalse);
+    await tester.runAsync(() async {
+      repo.importReleased!.complete();
+      await imported;
+      await Future<void>.delayed(Duration.zero);
+    });
+    final profile = container.read(prepProfilesProvider).requireValue.single;
+    expect(
+      container.read(spaceShortcutsProvider).requireValue.single.targetId,
+      profile.id,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  for (final fromMenu in [false, true]) {
+    testWidgets('adding a favorite via ${fromMenu ? 'menu' : 'row'} pins it', (
+      tester,
+    ) async {
+      await pump(tester);
+      target = await create(
+        tester,
+        kind: PrepKind.favorite,
+        accounts: [_account(PrepSource.lichess).copyWith(lastSyncAtMs: 1)],
+      );
+      await tester.runAsync(() async {
+        if (fromMenu) {
+          await prepProfileMenu(
+            host,
+            hostRef,
+            target!,
+          ).singleWhere((item) => item.label == 'Add to Profiles').onSelected();
+        } else {
+          await prepMoveFavoriteToOpponents(host, hostRef, target!);
+        }
+        await Future<void>.delayed(Duration.zero);
+      });
+      final profile = container.read(prepProfileProvider(target!.id))!;
+      expect(profile.kind, PrepKind.opponent);
+      expect(profile.accounts.single.key, target!.accounts.single.key);
+      expect(
+        container.read(spaceShortcutsProvider).requireValue.single.targetId,
+        profile.id,
+      );
+      expect(store.attempts, hasLength(1));
+      final labels = prepProfileMenu(
+        host,
+        hostRef,
+        profile,
+      ).map((item) => item.label);
+      expect(labels, contains('Remove from My Space'));
+      expect(labels, isNot(contains('Add to My Space')));
+      expect(tester.takeException(), isNull);
+    });
+  }
+
   for (final button in ['Mine', 'Opponent']) {
     for (final source in PrepSource.playerSources) {
       testWidgets('$button adding ${source.label} pins the combined profile', (
@@ -282,6 +534,13 @@ void main() {
         expect(profile.accounts.single.key, account.key);
         expect(repo.synced, [account.key]);
         expect(store.attempts, hasLength(1));
+        final labels = prepProfileMenu(
+          host,
+          hostRef,
+          profile,
+        ).map((item) => item.label);
+        expect(labels, contains('Remove from My Space'));
+        expect(labels, isNot(contains('Add to My Space')));
         expect(tester.takeException(), isNull);
       });
     }
@@ -671,5 +930,43 @@ void main() {
       container.read(spaceShortcutsProvider).requireValue.single.targetId,
       target!.id,
     );
+  });
+
+  testWidgets('replacement still pins and downloads after leaving its screen', (
+    tester,
+  ) async {
+    await pump(tester);
+    target = await create(
+      tester,
+      accounts: [_account(PrepSource.lichess, 'Old')],
+    );
+    await tester.runAsync(() async {
+      repo.deleteStarted = Completer<void>();
+      repo.deleteReleased = Completer<void>();
+      await tester.tap(find.text('Change'));
+    });
+    await tester.pumpAndSettle();
+    final replacement = _account(PrepSource.lichess, 'New');
+    await tester.runAsync(() async {
+      navigator.currentState!.pop(PrepAddResult.named([replacement]));
+      await repo.deleteStarted!.future.timeout(const Duration(seconds: 10));
+    });
+    await tester.pumpWidget(const SizedBox.shrink());
+    expect(host.mounted, isFalse);
+    await tester.runAsync(() async {
+      repo.deleteReleased!.complete();
+      await action;
+      await Future<void>.delayed(Duration.zero);
+    });
+    expect(
+      container.read(prepProfileProvider(target!.id))!.accounts.single.key,
+      replacement.key,
+    );
+    expect(
+      container.read(spaceShortcutsProvider).requireValue.single.targetId,
+      target!.id,
+    );
+    expect(repo.synced, [replacement.key]);
+    expect(tester.takeException(), isNull);
   });
 }
