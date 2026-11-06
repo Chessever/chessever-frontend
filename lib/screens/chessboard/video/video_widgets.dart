@@ -3,7 +3,6 @@ import '../../../repository/gamebase/gamebase_repository.dart';
 import '../../../providers/game_video_sources_provider.dart';
 import '../../../widgets/app_snack.dart';
 import 'dart:math' as math;
-import 'dart:ui' show FlutterView;
 import 'package:country_flags/country_flags.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:flutter/material.dart';
@@ -153,10 +152,6 @@ class EventVideoHostState extends State<EventVideoHost>
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    // Seed the metrics baseline, otherwise the first real rotation would look
-    // like a metrics event with no previous size and be ignored.
-    _metricsView = View.of(context);
-    _lastMetricsSize ??= _metricsView!.physicalSize;
     final route = ModalRoute.of(context);
     if (route == _route) return;
     widget.pageObserver?.unsubscribe(this);
@@ -200,7 +195,6 @@ class EventVideoHostState extends State<EventVideoHost>
         widget.player ??
         (config == null ? null : NativeEventVideoPlayer(config.embedOrigin));
     session.addListener(_synchronize);
-    _player?.addListener(_checkFullscreenExit);
     session.setPreferredCountry(widget.preferredCountry);
     // Preferences are initialized during startup; optional storage failures
     // must not postpone stream availability until after the first frame.
@@ -215,22 +209,6 @@ class EventVideoHostState extends State<EventVideoHost>
     roundId: widget.roundId,
   );
   void _synchronize() => _player?.synchronize(session);
-
-  bool _wasFullscreen = false;
-
-  /// Last surface size seen by [didChangeMetrics], so inset-only churn can be
-  /// told apart from a real resize or rotation.
-  Size? _lastMetricsSize;
-  FlutterView? _metricsView;
-
-  void _checkFullscreenExit() {
-    final isFullscreen = _player?.fullscreenView != null;
-    final exited = _wasFullscreen && !isFullscreen;
-    _wasFullscreen = isFullscreen;
-    // Leaving provider fullscreen onto a narrow inline Twitch view must stop
-    // the now-invisible player, mirroring the rotation guard.
-    if (exited) _maybeStopForNarrowTwitch();
-  }
 
   /// Back-press layering: a provider fullscreen overlay consumes the press
   /// before the expanded viewer, the game switcher, or the route itself.
@@ -274,47 +252,10 @@ class EventVideoHostState extends State<EventVideoHost>
         resumeAfterBackground: state == AppLifecycleState.resumed,
       );
   @override
-  void didChangeMetrics() {
-    if (!mounted) return;
-    // Only a real resize or rotation can turn the inline Twitch view into the
-    // expand action. Inset-only churn (system bars, keyboard, the fullscreen
-    // transition) must never stop playback; it used to fire this guard before
-    // the custom-view callback landed and pause the stream on fullscreen.
-    final physicalSize = _metricsView?.physicalSize;
-    if (physicalSize == null) return;
-    final sizeChanged =
-        _lastMetricsSize != null && _lastMetricsSize != physicalSize;
-    _lastMetricsSize = physicalSize;
-    if (!sizeChanged) return;
-    _maybeStopForNarrowTwitch();
-  }
-
-  /// Rotation can replace an inline Twitch view with the expand action. Stop
-  /// the now-invisible player instead of leaving its audio running.
-  /// Fullscreen (native or expanded viewer) owns its own geometry.
-  void _maybeStopForNarrowTwitch() {
-    if (!mounted ||
-        session.expanded ||
-        _player?.fullscreenView != null ||
-        session.selected?.source.platform != VideoPlatform.twitch) {
-      return;
-    }
-    final view = _metricsView;
-    if (view == null) return;
-    final width =
-        (view.physicalSize.width -
-            view.viewPadding.left -
-            view.viewPadding.right) /
-        view.devicePixelRatio;
-    if (width < 400 && session.showVideo) session.stopPlayback();
-  }
-
-  @override
   void dispose() {
     widget.pageObserver?.unsubscribe(this);
     WidgetsBinding.instance.removeObserver(this);
     session.removeListener(_synchronize);
-    _player?.removeListener(_checkFullscreenExit);
     _player?.dispose();
     session.dispose();
     super.dispose();
@@ -578,25 +519,7 @@ class EventVideoSurface extends StatelessWidget {
             : math.max(twitch ? 300.0 : 200.0, constraints.maxWidth * 9 / 16);
         // Never mount a second native view behind the expanded one.
         if (!active || (session.expanded && !expanded)) {
-          return SizedBox(
-            height: twitch && constraints.maxWidth < 400 ? 96 : height,
-          );
-        }
-        if (twitch && constraints.maxWidth < 400) {
-          return SizedBox(
-            height: 96,
-            child: Center(
-              child: FilledButton.icon(
-                key: const ValueKey('video_expand_twitch'),
-                onPressed: () {
-                  scope.onVideoInteraction?.call();
-                  session.setExpanded(true);
-                },
-                icon: const Icon(Icons.open_in_full),
-                label: const Text('Watch Twitch in landscape'),
-              ),
-            ),
-          );
+          return SizedBox(height: height);
         }
         return SizedBox(
           key: const ValueKey('event_video_surface'),

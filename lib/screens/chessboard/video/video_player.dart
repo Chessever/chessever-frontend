@@ -323,8 +323,7 @@ class NativeEventVideoPlayer extends EventVideoPlayer {
 
   @override
   Widget buildView() {
-    // A selected Twitch stream may only have an "expand" button on a phone.
-    // Load it only when a real, sufficiently-sized view requests presentation.
+    // Load the stream only when a real view requests presentation.
     if (_requestedRevision != _revision) {
       _requestedRevision = _revision;
       _scheduleUpdate();

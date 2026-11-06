@@ -303,7 +303,7 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
   testWidgets(
-    'rotation in provider fullscreen keeps playing; exit to narrow stops',
+    'rotation in provider fullscreen keeps playing; exit to narrow keeps it',
     (tester) async {
       tester.view.physicalSize = const Size(800, 600);
       tester.view.devicePixelRatio = 1;
@@ -325,10 +325,10 @@ void main() {
       tester.view.physicalSize = const Size(375, 700);
       await tester.pump();
       expect(session.playing, isTrue);
-      // Leaving fullscreen onto a narrow inline Twitch view stops playback.
+      // Narrow Twitch plays inline, so leaving fullscreen keeps it playing.
       player.exitFullscreen();
       await tester.pump();
-      expect(session.playing, isFalse);
+      expect(session.playing, isTrue);
       await tester.pumpWidget(const SizedBox());
     },
   );
@@ -418,46 +418,26 @@ void main() {
       await tester.pumpWidget(const SizedBox());
     },
   );
-  testWidgets(
-    'narrow Twitch opens a single in-app landscape player and closes paused',
-    (tester) async {
-      tester.view.physicalSize = const Size(375, 700);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.resetPhysicalSize);
-      addTearDown(tester.view.resetDevicePixelRatio);
-      final session = EventVideoSession(
-        repository: FakeVideoRepository(fixtureVideos()),
-        savedCountry: 'DE',
-      );
-      await tester.pumpWidget(harness(session, FakePlayer()));
-      await tester.pump();
-      expect(find.text('Player'), findsNothing);
-      await chooseStream(tester, 'german');
-      await tester.tap(find.byKey(const ValueKey('video_expand_twitch')));
-      await tester.pump();
-      expect(session.expanded, isTrue);
-      expect(find.text('Player'), findsOneWidget);
-      expect(
-        tester.getSize(find.byKey(const ValueKey('event_video_surface'))).width,
-        greaterThanOrEqualTo(400),
-      );
-      expect(
-        tester
-            .getSize(find.byKey(const ValueKey('event_video_surface')))
-            .height,
-        greaterThanOrEqualTo(300),
-      );
-      session.reportPlayback(true, session.playerRevision);
-      await tester.tap(find.byKey(const ValueKey('video_close_expanded')));
-      await tester.pump();
-      expect(session.expanded, isFalse);
-      expect(session.selected!.id, 'german');
-      expect(session.playing, isFalse);
-      expect(find.text('Player'), findsNothing);
-      expect(tester.takeException(), isNull);
-      await tester.pumpWidget(const SizedBox());
-    },
-  );
+  testWidgets('narrow Twitch plays inline with no landscape prompt', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(375, 700);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final session = EventVideoSession(
+      repository: FakeVideoRepository(fixtureVideos()),
+      savedCountry: 'DE',
+    );
+    await tester.pumpWidget(harness(session, FakePlayer()));
+    await tester.pump();
+    await chooseStream(tester, 'german');
+    expect(find.text('Player'), findsOneWidget);
+    expect(find.textContaining('landscape'), findsNothing);
+    expect(session.expanded, isFalse);
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox());
+  });
   testWidgets('tablet landscape places video in the analysis column', (
     tester,
   ) async {
@@ -503,8 +483,9 @@ void main() {
                       key: ValueKey(id),
                       child: Builder(
                         builder: (context) {
-                          final current =
-                              EventVideoScope.maybeOf(context)!.session;
+                          final current = EventVideoScope.maybeOf(
+                            context,
+                          )!.session;
                           return current.isActive(id) && current.showVideo
                               ? const EventVideoSurface()
                               : const SizedBox.shrink();
@@ -549,12 +530,11 @@ void main() {
           player: player,
           child: Scaffold(
             body: PageView(
-              onPageChanged:
-                  (index) => session.openGame(
-                    gameId: 'g${index + 1}',
-                    tourId: 'tour',
-                    roundId: 'round',
-                  ),
+              onPageChanged: (index) => session.openGame(
+                gameId: 'g${index + 1}',
+                tourId: 'tour',
+                roundId: 'round',
+              ),
               children: [
                 for (final id in ['g1', 'g2'])
                   Builder(
@@ -590,31 +570,6 @@ void main() {
     await tester.pumpAndSettle();
     expect(session.playing, isTrue);
     expect(player.loads, loads);
-    await tester.pumpWidget(const SizedBox());
-  });
-
-  testWidgets('rotation to a narrow Twitch layout stops invisible playback', (
-    tester,
-  ) async {
-    tester.view.physicalSize = const Size(800, 600);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.resetPhysicalSize);
-    addTearDown(tester.view.resetDevicePixelRatio);
-    final session = EventVideoSession(
-      repository: FakeVideoRepository(fixtureVideos()),
-      savedCountry: 'DE',
-    );
-    await tester.pumpWidget(harness(session, FakePlayer()));
-    await tester.pump();
-    await chooseStream(tester, 'german');
-    expect(find.text('Player'), findsOneWidget);
-    session.reportPlayback(true, session.playerRevision);
-    tester.view.physicalSize = const Size(375, 700);
-    await tester.pump();
-    expect(find.text('Player'), findsNothing);
-    expect(find.byKey(const ValueKey('video_expand_twitch')), findsOneWidget);
-    expect(session.playing, isFalse);
-    expect(session.playRequested, isFalse);
     await tester.pumpWidget(const SizedBox());
   });
 }
