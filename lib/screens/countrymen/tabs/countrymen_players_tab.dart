@@ -748,7 +748,11 @@ class _CountrymenPlayersTabState extends ConsumerState<CountrymenPlayersTab>
         }
       } on FavoriteLimitExceededException {
         if (mounted) {
-          await showPremiumPaywallSheet(context: context, allowRewarded: false);
+          await showPremiumPaywallSheet(
+            context: context,
+            allowRewarded: false,
+            trigger: PaywallTrigger.favorites,
+          );
         }
       } catch (e) {
         debugPrint('Error toggling favorite: $e');

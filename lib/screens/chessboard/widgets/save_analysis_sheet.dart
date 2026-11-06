@@ -575,7 +575,11 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
       ).length;
       if (!mounted) return;
       if (owned >= kFreeBookCreationLimit) {
-        await showPremiumPaywallSheet(context: context, allowRewarded: false);
+        await showPremiumPaywallSheet(
+          context: context,
+          allowRewarded: false,
+          trigger: PaywallTrigger.database,
+        );
         return;
       }
     }

@@ -363,7 +363,11 @@ class _PlayerList extends ConsumerWidget {
       // Pre-flight `canAddMoreFavorites` already gates the common path; this
       // catches the race where the server-side count is ahead of local state.
       if (context.mounted) {
-        await showPremiumPaywallSheet(context: context, allowRewarded: false);
+        await showPremiumPaywallSheet(
+          context: context,
+          allowRewarded: false,
+          trigger: PaywallTrigger.favorites,
+        );
       }
     } catch (e) {
       debugPrint('Error updating Supabase favorites: $e');

@@ -240,7 +240,11 @@ class _PlayerRow extends ConsumerWidget {
         }
       } on FavoriteLimitExceededException {
         if (context.mounted) {
-          await showPremiumPaywallSheet(context: context, allowRewarded: false);
+          await showPremiumPaywallSheet(
+            context: context,
+            allowRewarded: false,
+            trigger: PaywallTrigger.favorites,
+          );
         }
       } catch (error) {
         if (context.mounted) {

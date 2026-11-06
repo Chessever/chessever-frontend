@@ -1,3 +1,6 @@
+import 'package:chessever2/services/analytics/analytics_service.dart';
+import 'premium_paywall_view.dart';
+export 'premium_paywall_view.dart' show PaywallTrigger, PlanType;
 import 'package:chessever2/services/rewarded_premium/rewarded_access_provider.dart';
 import 'package:chessever2/services/rewarded_premium/rewarded_ads.dart';
 import 'package:chessever2/widgets/paywall/rewarded_premium/rewarded_access_ui.dart';
@@ -11,7 +14,6 @@ import 'package:chessever2/services/appsflyer_service.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
-import 'package:chessever2/utils/extensioms/string_extensions.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/paywall/premium_celebration_overlay.dart';
 import 'package:flutter/material.dart';
@@ -87,6 +89,8 @@ Future<bool> resumePremiumAction(
 /// Show the premium paywall sheet, upgrading guests to a full account first.
 /// Returns `true` if the user already has Premium or successfully subscribes.
 ///
+/// [trigger] selects the reference headline; other entry points use settings.
+///
 /// [featureId] names the feature or CTA that asked for Premium
 /// ('most_liked_rankings') and [returnTo] the surface the caller resumes on
 /// once entitled ('for_you/discovery/most_liked'), so the checkout funnel
@@ -103,6 +107,7 @@ Future<bool> showPremiumPaywallSheet({
   String? returnTo,
   PremiumResume? onEntitled,
   bool allowRewarded = true,
+  PaywallTrigger trigger = PaywallTrigger.settings,
 }) async {
   if (allowRewarded && RewardedAdsConfig.available) {
     final container = ProviderScope.containerOf(context, listen: false);
@@ -120,6 +125,7 @@ Future<bool> showPremiumPaywallSheet({
         featureId: featureId,
         returnTo: returnTo,
         allowRewarded: false,
+        trigger: trigger,
       ),
     );
     if (!unlocked || !context.mounted) return false;
@@ -171,6 +177,10 @@ Future<bool> showPremiumPaywallSheet({
     ),
   );
 
+  AnalyticsService.instance.trackEventDetached(
+    "paywall_shown",
+    properties: {"trigger": trigger.name},
+  );
   final handoff = _PaywallHandoff();
   final result = await showModalBottomSheet<bool>(
     context: context,
@@ -180,12 +190,22 @@ Future<bool> showPremiumPaywallSheet({
     // sheet's bounds. Route via the root navigator so it spans the screen.
     useRootNavigator: true,
     isScrollControlled: true,
+    useSafeArea: true,
     backgroundColor: Colors.transparent,
     constraints: ResponsiveHelper.bottomSheetConstraints,
-    builder:
-        (_) => _PremiumPaywallSheet(hostContext: context, handoff: handoff),
+    builder: (_) => _PremiumPaywallSheet(
+      hostContext: context,
+      handoff: handoff,
+      trigger: trigger,
+    ),
   );
-  if (result != true) return false;
+  if (result != true) {
+    AnalyticsService.instance.trackEventDetached(
+      "paywall_dismissed",
+      properties: {"trigger": trigger.name},
+    );
+    return false;
+  }
   if (!context.mounted) return true;
   return resumePremiumAction(
     context,
@@ -281,41 +301,40 @@ class _PaywallHandoff {
   Future<void>? celebration;
 }
 
-class _PremiumPaywallSheet extends HookWidget {
-  const _PremiumPaywallSheet({required this.hostContext, this.handoff});
-
+class _PremiumPaywallSheet extends StatelessWidget {
+  const _PremiumPaywallSheet({
+    required this.hostContext,
+    this.handoff,
+    required this.trigger,
+  });
   final BuildContext hostContext;
   final _PaywallHandoff? handoff;
-
+  final PaywallTrigger trigger;
   @override
-  Widget build(BuildContext context) {
-    return DraggableScrollableSheet(
-      initialChildSize: 0.9,
-      minChildSize: 0.8,
-      maxChildSize: 0.9,
-      builder: (BuildContext context, ScrollController scrollController) {
-        return Container(
-          decoration: BoxDecoration(
-            // Opaque: at 0.98 the page behind ghosted through the copy.
-            color: context.colors.surface,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(28.sp)),
-          ),
-          child: _PaywallContent(hostContext: hostContext, handoff: handoff),
-        );
-      },
-    );
-  }
+  Widget build(BuildContext context) => SizedBox(
+    height: MediaQuery.sizeOf(context).height,
+    child: _PaywallContent(
+      hostContext: hostContext,
+      handoff: handoff,
+      trigger: trigger,
+    ),
+  );
 }
 
 class _PaywallContent extends HookConsumerWidget {
-  const _PaywallContent({required this.hostContext, this.handoff});
+  const _PaywallContent({
+    required this.hostContext,
+    this.handoff,
+    required this.trigger,
+  });
+
+  final PaywallTrigger trigger;
 
   final BuildContext hostContext;
   final _PaywallHandoff? handoff;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final topPadding = MediaQuery.of(context).padding.top;
     final subscriptionState = ref.watch(subscriptionProvider);
     final selectedPlan = useState<PlanType>(PlanType.annual);
     final isLoading = useState(false);
@@ -375,26 +394,37 @@ class _PaywallContent extends HookConsumerWidget {
     // while the paywall is open. Check mounted first, and fall back to the
     // sheet's own context, which is valid for as long as the sheet is on screen.
     void closePaywall([bool result = false]) {
-      final ctx =
-          hostContext.mounted
-              ? hostContext
-              : (context.mounted ? context : null);
+      final ctx = hostContext.mounted
+          ? hostContext
+          : (context.mounted ? context : null);
       if (ctx == null) return;
       Navigator.maybeOf(ctx, rootNavigator: true)?.pop(result);
     }
 
     Future<void> handlePurchase() async {
-      final package =
-          selectedPlan.value == PlanType.annual
-              ? annualPackage
-              : monthlyPackage;
+      final package = selectedPlan.value == PlanType.annual
+          ? annualPackage
+          : monthlyPackage;
 
       if (package == null) return;
 
+      AnalyticsService.instance.trackEventDetached(
+        "paywall_purchase_started",
+        properties: {"trigger": trigger.name, "plan": selectedPlan.value.name},
+      );
       isLoading.value = true;
-      await ref
+      final result = await ref
           .read(subscriptionProvider.notifier)
           .purchaseSubscription(package);
+      if (result.success) {
+        AnalyticsService.instance.trackEventDetached(
+          "paywall_purchase_succeeded",
+          properties: {
+            "trigger": trigger.name,
+            "plan": selectedPlan.value.name,
+          },
+        );
+      }
       // ref.listen above closes the sheet on success. We only need to
       // unfreeze the button on the cancel / error paths.
       if (context.mounted) isLoading.value = false;
@@ -416,8 +446,8 @@ class _PaywallContent extends HookConsumerWidget {
         // still tag the funnel step and the cached affiliate context so the
         // resulting entitlement transition can be attributed.
         const source = 'ios_native_sheet';
-        final affiliate =
-            await AppsflyerService.instance.getCachedAttributionContext();
+        final affiliate = await AppsflyerService.instance
+            .getCachedAttributionContext();
         ref
             .read(subscriptionProvider.notifier)
             .markRedemptionPending(source: source);
@@ -449,591 +479,59 @@ class _PaywallContent extends HookConsumerWidget {
       );
     }
 
-    return Padding(
-      padding: EdgeInsets.fromLTRB(20.w, topPadding + 16.h, 20.w, 24.h),
-      // "Fill or scroll" — on tall screens the Column fills the sheet and
-      // Spacer() pushes pricing to the bottom; on shorter heights (tablet
-      // landscape) the content scrolls instead of overflowing the flex.
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          return SingleChildScrollView(
-            child: ConstrainedBox(
-              constraints: BoxConstraints(minHeight: constraints.maxHeight),
-              child: IntrinsicHeight(
-                child: Column(
-                  children: [
-          // Handle bar
-          Center(
-            child: Container(
-              width: 36.w,
-              height: 4.h,
-              decoration: BoxDecoration(
-                color: context.colors.textPrimary.withValues(alpha: 0.2),
-                borderRadius: BorderRadius.circular(2.br),
-              ),
-            ),
-          ),
-          SizedBox(height: 12.h),
-          // Close button
-          Align(
-            alignment: Alignment.centerRight,
-            child: GestureDetector(
-              onTap: closePaywall,
-              child: Container(
-                padding: EdgeInsets.all(8.sp),
-                decoration: BoxDecoration(
-                  color: context.colors.textPrimary.withValues(alpha: 0.08),
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(
-                  Icons.close_rounded,
-                  color: context.colors.textPrimary.withValues(alpha: 0.6),
-                  size: 20.ic,
-                ),
-              ),
-            ),
-          ),
-          // Hero Icon
-          // The logo art is a black square, which reads as a hard slab on
-          // either sheet (neither is pure black), so it is rounded into the
-          // app-icon shape it actually is.
-          Center(
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(18.br),
-              child: Image.asset(
-                'assets/pngs/new_app_logo.webp',
-                height: 80.h,
-                cacheHeight:
-                    (80 * MediaQuery.devicePixelRatioOf(context)).toInt(),
-              ),
-            ),
-          ),
-          SizedBox(height: 16.h),
-          // Title
-          Text(
-            'Follow Chess\nLike a Pro',
-            textAlign: TextAlign.center,
-            style: AppTypography.displaySmBold.copyWith(
-              color: context.colors.textPrimary,
-              height: 1.1,
-              letterSpacing: -0.5,
-              fontSize: 28.f,
-            ),
-          ),
-          SizedBox(height: 24.h),
-          // Features
-          _FeaturesList(),
-          const Spacer(),
-
-          // Pricing cards
-          _PricingSection(
-            selectedPlan: selectedPlan,
-            monthlyPackage: monthlyPackage,
-            annualPackage: annualPackage,
-            productsError: subscriptionState.productsError,
-            isRetrying: subscriptionState.isLoadingProducts,
-            onRetry:
-                () => unawaited(
-                  ref
-                      .read(subscriptionProvider.notifier)
-                      .loadProducts(force: true),
-                ),
-          ),
-          SizedBox(height: 24.h),
-          // CTA Button
-          _PurchaseButton(
-            selectedPlan: selectedPlan.value,
-            monthlyPackage: monthlyPackage,
-            annualPackage: annualPackage,
-            isLoading: isLoading.value || subscriptionState.isLoading,
-            // A live-looking CTA that silently returns (handlePurchase bails
-            // on a null package) is worse than a visibly inert one.
-            isEnabled: monthlyPackage != null && annualPackage != null,
-            onTap: handlePurchase,
-          ),
-          SizedBox(height: 12.h),
-          // Restore purchases + redeem code
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              GestureDetector(
-                onTap: isLoading.value ? null : handleRestore,
-                child: Text(
-                  'Restore purchases',
-                  style: AppTypography.textSmMedium.copyWith(
-                    color:
-                        context.isLightTheme
-                            ? context.colors.textSecondary
-                            : context.textInk(0.5),
-                  ),
-                ),
-              ),
-              SizedBox(width: 12.w),
-              Text(
-                '·',
-                style: AppTypography.textSmMedium.copyWith(
-                  color: context.textInk(0.3),
-                ),
-              ),
-              SizedBox(width: 12.w),
-              GestureDetector(
-                onTap: isLoading.value ? null : handleHaveCode,
-                child: Text(
-                  'Have a code?',
-                  style: AppTypography.textSmMedium.copyWith(
-                    color:
-                        context.isLightTheme
-                            ? context.colors.textSecondary
-                            : context.textInk(0.5),
-                  ),
-                ),
-              ),
-            ],
-          ),
-          SizedBox(height: 16.h),
-          // Legal links
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              GestureDetector(
-                onTap: () => _launchUrl('https://chessever.com/privacy-policy'),
-                child: Text(
-                  'Privacy Policy',
-                  style: AppTypography.textXsMedium.copyWith(
-                    color:
-                        context.isLightTheme
-                            ? context.colors.textSecondary
-                            : context.textInk(0.4),
-                    decoration: TextDecoration.underline,
-                    decorationColor:
-                        context.isLightTheme
-                            ? context.colors.textSecondary
-                            : context.textInk(0.4),
-                  ),
-                ),
-              ),
-              SizedBox(width: 16.w),
-              Text(
-                '|',
-                style: AppTypography.textXsMedium.copyWith(
-                  color: context.textInk(0.3),
-                ),
-              ),
-              SizedBox(width: 16.w),
-              GestureDetector(
-                onTap: () => _launchUrl('https://chessever.com/terms-of-use'),
-                child: Text(
-                  'Terms of Use',
-                  style: AppTypography.textXsMedium.copyWith(
-                    color:
-                        context.isLightTheme
-                            ? context.colors.textSecondary
-                            : context.textInk(0.4),
-                    decoration: TextDecoration.underline,
-                    decorationColor:
-                        context.isLightTheme
-                            ? context.colors.textSecondary
-                            : context.textInk(0.4),
-                  ),
-                ),
-              ),
-            ],
-          ),
-          SizedBox(height: 12.h),
-                  ],
-                ),
-              ),
-            ),
-          );
-        },
+    return PremiumPaywallView(
+      trigger: trigger,
+      plan: selectedPlan.value,
+      annual: annualPackage,
+      monthly: monthlyPackage,
+      busy: isLoading.value || subscriptionState.isLoading,
+      loadingProducts: subscriptionState.isLoadingProducts,
+      error: subscriptionState.error == null
+          ? null
+          : "Something went wrong. Please try again.",
+      productsError: subscriptionState.productsError,
+      onSelect: (plan) {
+        selectedPlan.value = plan;
+        AnalyticsService.instance.trackEventDetached(
+          "paywall_plan_selected",
+          properties: {"trigger": trigger.name, "plan": plan.name},
+        );
+      },
+      onPurchase: handlePurchase,
+      onRestore: handleRestore,
+      onRedeem: handleHaveCode,
+      onClose: closePaywall,
+      onRetry: () => unawaited(
+        ref.read(subscriptionProvider.notifier).loadProducts(force: true),
       ),
+      onOpenUrl: _launchUrl,
     );
   }
 }
 
-class _FeaturesList extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    final features = [
-      (Icons.people_rounded, 'Countrymen & Favorites'),
-      (Icons.person_search_rounded, 'Opponent Prep Tools'),
-      (Icons.auto_stories_rounded, 'Database Storage'),
-      (Icons.desktop_windows_rounded, 'ChessEver Desktop Beta'),
-    ];
-
-    return Column(
-      children:
-          features.map((f) => _FeatureItem(icon: f.$1, text: f.$2)).toList(),
-    );
-  }
-}
-
-class _FeatureItem extends StatelessWidget {
-  const _FeatureItem({required this.icon, required this.text});
-  final IconData icon;
-  final String text;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: EdgeInsets.symmetric(vertical: 6.h),
-      child: Row(
-        children: [
-          Icon(icon, size: 20.ic, color: context.colors.accentText),
-          SizedBox(width: 12.w),
-          Text(
-            text,
-            style: AppTypography.textMdMedium.copyWith(
-              color: context.colors.textPrimary.withValues(alpha: 0.9),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// Old feature list removed
-
-enum PlanType { monthly, annual }
-
-/// The two plan cards on their own, for layout and contrast tests.
 @visibleForTesting
 Widget paywallPricingForTest({
   required ValueNotifier<PlanType> selectedPlan,
   required Package? monthlyPackage,
   required Package? annualPackage,
-}) => _PricingSection(
-  selectedPlan: selectedPlan,
-  monthlyPackage: monthlyPackage,
-  annualPackage: annualPackage,
-  productsError: null,
-  isRetrying: false,
-  onRetry: () {},
+}) => ValueListenableBuilder<PlanType>(
+  valueListenable: selectedPlan,
+  builder: (context, plan, _) => PremiumPaywallView(
+    plan: plan,
+    annual: annualPackage,
+    monthly: monthlyPackage,
+    busy: false,
+    loadingProducts: false,
+    onSelect: (value) => selectedPlan.value = value,
+    onPurchase: () {},
+    onRestore: () {},
+    onRedeem: () {},
+    onClose: () {},
+    onRetry: () {},
+    onOpenUrl: (_) {},
+    pricingOnly: true,
+  ),
 );
-
-class _PricingSection extends HookWidget {
-  const _PricingSection({
-    required this.selectedPlan,
-    required this.monthlyPackage,
-    required this.annualPackage,
-    required this.productsError,
-    required this.isRetrying,
-    required this.onRetry,
-  });
-
-  final ValueNotifier<PlanType> selectedPlan;
-  final Package? monthlyPackage;
-  final Package? annualPackage;
-  final String? productsError;
-  final bool isRetrying;
-  final VoidCallback onRetry;
-
-  @override
-  Widget build(BuildContext context) {
-    // Calculate savings
-    double? monthlyCost;
-    double? annualCost;
-    int savingsPercent = 0;
-    String? monthlyEquivalentFromAnnual; // $4.99/mo
-
-    if (monthlyPackage != null) {
-      monthlyCost = monthlyPackage!.storeProduct.price;
-    }
-    if (annualPackage != null) {
-      annualCost = annualPackage!.storeProduct.price;
-    }
-
-    if (monthlyCost != null && annualCost != null) {
-      final yearlyIfMonthly = monthlyCost * 12;
-      savingsPercent =
-          ((yearlyIfMonthly - annualCost) / yearlyIfMonthly * 100).round();
-
-      // Calculate monthly equivalent of annual plan
-      // Attempt to preserve currency symbol if possible
-      final priceStr = monthlyPackage!.storeProduct.priceString;
-      // Simple heuristic: take non-digit prefix as symbol
-      final currencySymbol = priceStr.replaceAll(RegExp(r'[0-9.,\s]'), '');
-
-      // Fallback if regex fails to isolate symbol cleanly, just use '$' default or empty if weird
-      final effectiveSymbol = currencySymbol.isEmpty ? '\$' : currencySymbol;
-
-      monthlyEquivalentFromAnnual =
-          '$effectiveSymbol${(annualCost / 12).toStringAsFixed(2)}/mo';
-    }
-
-    // Don't render pricing cards if packages aren't loaded
-    final hasPackages = monthlyPackage != null && annualPackage != null;
-
-    // Only surface the failure once retries are exhausted. While a fetch is
-    // still in flight the skeleton is honest — it really is loading.
-    final showError = !hasPackages && productsError != null && !isRetrying;
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        if (showError) ...[
-          _ProductsErrorRow(message: productsError!, onRetry: onRetry),
-          SizedBox(height: 12.h),
-        ],
-        // One grid for both plans: equal heights, and every row (title,
-        // note, price, per-month line) on a shared line, whatever the copy.
-        IntrinsicHeight(
-          child: Row(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-        // Monthly card
-        Expanded(
-          child: _PricingCard(
-            isSelected: selectedPlan.value == PlanType.monthly,
-            title: 'Monthly',
-            // BILLED AMOUNT is the main price (Apple requirement)
-            price: monthlyPackage?.storeProduct.priceString,
-            period: '/mo',
-            isLoading: !hasPackages,
-            onTap:
-                hasPackages
-                    ? () => selectedPlan.value = PlanType.monthly
-                    : null,
-          ),
-        ),
-        SizedBox(width: 12.w),
-        // Annual card - BILLED AMOUNT must be most prominent (Apple Guideline 3.1.2)
-        Expanded(
-          child: _PricingCard(
-            isSelected: selectedPlan.value == PlanType.annual,
-            title: 'Annual',
-            // BILLED AMOUNT is the main price (Apple requirement)
-            price: annualPackage?.storeProduct.priceString,
-            period: '/yr',
-            // Monthly equivalent shown as subordinate subtitle
-            subtitle: monthlyEquivalentFromAnnual,
-            note: savingsPercent > 0 ? 'Save $savingsPercent%' : 'Best value',
-            isLoading: !hasPackages,
-            onTap:
-                hasPackages ? () => selectedPlan.value = PlanType.annual : null,
-          ),
-        ),
-          ],
-        ),
-        ),
-      ],
-    );
-  }
-}
-
-/// Shown when offerings could not be loaded after retries. Replaces an
-/// otherwise-permanent shimmer with something the user can act on.
-class _ProductsErrorRow extends StatelessWidget {
-  const _ProductsErrorRow({required this.message, required this.onRetry});
-
-  final String message;
-  final VoidCallback onRetry;
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Expanded(
-          child: Text(
-            message,
-            style: AppTypography.textSmMedium.copyWith(
-              color: context.textInk(0.6),
-            ),
-          ),
-        ),
-        SizedBox(width: 12.w),
-        GestureDetector(
-          onTap: onRetry,
-          behavior: HitTestBehavior.opaque,
-          child: Padding(
-            // 44dp minimum tap target.
-            padding: EdgeInsets.symmetric(vertical: 12.h, horizontal: 4.w),
-            child: Text(
-              'Try again',
-              style: AppTypography.textSmBold.copyWith(color: context.colors.accentText),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _PricingCard extends HookWidget {
-  const _PricingCard({
-    required this.isSelected,
-    required this.title,
-    required this.period,
-    this.price,
-    this.onTap,
-    this.note,
-    this.subtitle,
-    this.isLoading = false,
-  });
-
-  final bool isSelected;
-  final String title;
-  final String? price;
-  final String period;
-  final VoidCallback? onTap;
-
-  /// One quiet line under the title ("Save 33%"). Plain type, no pill: a
-  /// plan without one still holds the slot so both cards keep their rows on
-  /// the same lines.
-  final String? note;
-
-  /// Subordinate per-month line under the price; the slot is held when null.
-  final String? subtitle;
-  final bool isLoading;
-
-  @override
-  Widget build(BuildContext context) {
-    final isPressed = useState(false);
-    final showLoading = isLoading || price == null;
-    final reduceMotion = MediaQuery.disableAnimationsOf(context);
-
-    final light = context.isLightTheme;
-    // The selected ring carries the state (cyan is ~2.2:1 on paper, so light
-    // rings in the accent-text teal). A tonal fill, no bloom.
-    final borderColor =
-        isSelected
-            ? (light ? context.colors.accentText : kPrimaryColor)
-            : context.colors.textPrimary.withValues(alpha: 0.1);
-
-    final backgroundColor =
-        isSelected
-            ? kPrimaryColor.withValues(alpha: 0.15)
-            : context.colors.textPrimary.withValues(alpha: 0.05);
-
-    final noteStyle = AppTypography.textXsBold.copyWith(
-      color: context.colors.accentText,
-    );
-    final subtitleStyle = AppTypography.textXxsRegular.copyWith(
-      // 0.72 keeps the per-month line at AA on the selected tint in dark.
-      color: context.textInk(0.72),
-    );
-
-    // Holds a one-line slot at [style]'s height without drawing anything
-    // (a no-break space). Real copy may take a second line at large text
-    // sizes rather than clip.
-    Widget line(String? text, TextStyle style) => ExcludeSemantics(
-      excluding: text == null,
-      child: Text(
-        text ?? '\u00a0',
-        maxLines: 2,
-        overflow: TextOverflow.ellipsis,
-        style: style,
-      ),
-    );
-
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTapDown: showLoading ? null : (_) => isPressed.value = true,
-      onTapUp:
-          showLoading
-              ? null
-              : (_) {
-                isPressed.value = false;
-                onTap?.call();
-              },
-      onTapCancel: showLoading ? null : () => isPressed.value = false,
-      child: _SpringPress(
-        pressed: isPressed.value,
-        reduceMotion: reduceMotion,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 200),
-          curve: Curves.easeOut,
-          // The border insets the content, so the thinner unselected ring
-          // gives its half pixel back as padding: both cards' rows stay on
-          // the same lines whichever one is selected.
-          padding: EdgeInsets.all(12.sp + (isSelected ? 0 : 0.5)),
-          decoration: BoxDecoration(
-            color: backgroundColor,
-            borderRadius: BorderRadius.circular(16.br),
-            border: Border.all(color: borderColor, width: isSelected ? 2 : 1.5),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      title,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: AppTypography.textMdBold.copyWith(
-                        color:
-                            isSelected
-                                ? context.colors.textPrimary
-                                : context.textInk(0.7),
-                      ),
-                    ),
-                  ),
-                  // The check keeps its slot so the title never shifts.
-                  Opacity(
-                    opacity: isSelected ? 1 : 0,
-                    child: Icon(
-                      Icons.check_circle_rounded,
-                      color: context.colors.accentText,
-                      size: 18.ic,
-                    ),
-                  ),
-                ],
-              ),
-              SizedBox(height: 2.h),
-              line(note, noteStyle),
-              // Price block pinned to the bottom, so both prices share a
-              // baseline even when one card's copy runs longer.
-              const Spacer(),
-              SizedBox(height: 10.h),
-              if (showLoading)
-                Container(
-                  width: 60.w,
-                  height: 24.h,
-                  decoration: BoxDecoration(
-                    color: context.colors.textPrimary.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(4.br),
-                  ),
-                )
-              else
-                // Main Price (BILLED AMOUNT - most prominent, Apple
-                // Guideline 3.1.2)
-                FittedBox(
-                  fit: BoxFit.scaleDown,
-                  alignment: Alignment.centerLeft,
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.baseline,
-                    textBaseline: TextBaseline.alphabetic,
-                    children: [
-                      Text(
-                        price!,
-                        style: AppTypography.displaySmBold.copyWith(
-                          color: context.colors.textPrimary,
-                          fontSize: 20.sp,
-                        ),
-                      ),
-                      SizedBox(width: 2.w),
-                      Text(
-                        period,
-                        style: AppTypography.textSmMedium.copyWith(
-                          color: context.textInk(0.6),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              SizedBox(height: 2.h),
-              line(showLoading ? null : subtitle, subtitleStyle),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
 
 /// The 0.97 press on the paywall's cards and buttons, on a snappy spring so
 /// it stays interruptible; still under reduced motion.
@@ -1058,164 +556,14 @@ class _SpringPress extends StatelessWidget {
     return SingleMotionBuilder(
       motion: reduceMotion ? const Motion.none() : _motion,
       value: pressed ? 0.97 : 1.0,
-      builder:
-          (context, scale, child) => Transform.scale(
-            // Springs settle a hair short of 1.0; snap so text rasterises
-            // crisp at rest.
-            scale: (scale - 1).abs() < 0.002 ? 1.0 : scale,
-            child: child,
-          ),
+      builder: (context, scale, child) => Transform.scale(
+        // Springs settle a hair short of 1.0; snap so text rasterises
+        // crisp at rest.
+        scale: (scale - 1).abs() < 0.002 ? 1.0 : scale,
+        child: child,
+      ),
       child: child,
     );
-  }
-}
-
-class _PurchaseButton extends HookWidget {
-  const _PurchaseButton({
-    required this.selectedPlan,
-    required this.monthlyPackage,
-    required this.annualPackage,
-    required this.isLoading,
-    required this.isEnabled,
-    required this.onTap,
-  });
-
-  final PlanType selectedPlan;
-  final Package? monthlyPackage;
-  final Package? annualPackage;
-  final bool isLoading;
-  final bool isEnabled;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final isPressed = useState(false);
-
-    // Check for trial eligibility from RevenueCat SDK
-    final selectedPackage =
-        selectedPlan == PlanType.annual ? annualPackage : monthlyPackage;
-    final storeProduct = selectedPackage?.storeProduct;
-
-    // iOS: Check introductoryPrice for free trial
-    final introPrice = storeProduct?.introductoryPrice;
-    final hasIosFreeTrial = introPrice != null && introPrice.price == 0;
-
-    // Android: Check defaultOption.freePhase for free trial
-    final freePhase = storeProduct?.defaultOption?.freePhase;
-    final hasAndroidFreeTrial = freePhase != null;
-
-    final priceString = storeProduct?.priceString ?? '';
-    final periodSuffix = selectedPlan == PlanType.annual ? 'year' : 'month';
-
-    String buttonText;
-    if (hasIosFreeTrial) {
-      // iOS trial info from introductoryPrice
-      final trialCount = introPrice.periodNumberOfUnits;
-      final periodUnit = introPrice.periodUnit;
-      final unitString = _getPeriodUnitString(periodUnit, trialCount);
-
-      if (trialCount > 0) {
-        buttonText =
-            'Try $trialCount ${unitString.capitalize()} Free, then $priceString/$periodSuffix';
-      } else {
-        buttonText = 'Try 3 Days Free, then $priceString/$periodSuffix';
-      }
-    } else if (hasAndroidFreeTrial) {
-      // Android trial info from freePhase.billingPeriod
-      final billingPeriod = freePhase.billingPeriod;
-      if (billingPeriod != null) {
-        final trialCount = billingPeriod.value;
-        final periodUnit = billingPeriod.unit;
-        final unitString = _getPeriodUnitString(periodUnit, trialCount);
-
-        if (trialCount > 0) {
-          buttonText =
-              'Try $trialCount ${unitString.capitalize()} Free, then $priceString/$periodSuffix';
-        } else {
-          buttonText = 'Try 3 Days Free, then $priceString/$periodSuffix';
-        }
-      } else {
-        buttonText = 'Try 3 Days Free, then $priceString/$periodSuffix';
-      }
-    } else {
-      buttonText = 'Continue';
-    }
-
-    final isTappable = isEnabled && !isLoading;
-
-    return GestureDetector(
-      onTapDown: isTappable ? (_) => isPressed.value = true : null,
-      onTapUp:
-          isTappable
-              ? (_) {
-                isPressed.value = false;
-                onTap();
-              }
-              : null,
-      onTapCancel: isTappable ? () => isPressed.value = false : null,
-      child: _SpringPress(
-        pressed: isPressed.value,
-        reduceMotion: MediaQuery.disableAnimationsOf(context),
-        child: Opacity(
-          // Reads as "not ready yet" instead of inviting a tap that no-ops.
-          opacity: isEnabled ? 1.0 : 0.4,
-          child: Container(
-          width: double.infinity,
-          height: 54.h,
-          // One solid brand fill with a near-black label (~8:1) in both
-          // themes: no cyan-to-blue gradient, no bloom under it.
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(16.br),
-            color: context.colors.brand,
-          ),
-          child: Center(
-            child:
-                isLoading
-                    ? SizedBox(
-                      width: 24.w,
-                      height: 24.h,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2.5,
-                        valueColor: AlwaysStoppedAnimation<Color>(
-                          context.colors.inkOnAccent,
-                        ),
-                      ),
-                    )
-                    : Padding(
-                      padding: EdgeInsets.symmetric(horizontal: 16.w),
-                      child: FittedBox(
-                        fit: BoxFit.scaleDown,
-                        child: Text(
-                          buttonText,
-                          textAlign: TextAlign.center,
-                          style: AppTypography.textLgBold.copyWith(
-                            color: context.colors.inkOnAccent,
-                            letterSpacing: 0.2,
-                          ),
-                        ),
-                      ),
-                    ),
-          ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// Helper function to convert PeriodUnit to readable string
-String _getPeriodUnitString(PeriodUnit periodUnit, int count) {
-  switch (periodUnit) {
-    case PeriodUnit.day:
-      return count == 1 ? 'day' : 'days';
-    case PeriodUnit.week:
-      return count == 1 ? 'week' : 'weeks';
-    case PeriodUnit.month:
-      return count == 1 ? 'month' : 'months';
-    case PeriodUnit.year:
-      return count == 1 ? 'year' : 'years';
-    case PeriodUnit.unknown:
-      return count == 1 ? 'day' : 'days';
   }
 }
 
@@ -1244,13 +592,12 @@ Future<void> _showAndroidCodeRedeemSheet(
     isScrollControlled: true,
     backgroundColor: Colors.transparent,
     constraints: ResponsiveHelper.bottomSheetConstraints,
-    builder:
-        (_) => _AndroidCodeRedeemSheet(
-          parentRef: ref,
-          monthlyPackage: monthlyPackage,
-          annualPackage: annualPackage,
-          selectedPlan: selectedPlan,
-        ),
+    builder: (_) => _AndroidCodeRedeemSheet(
+      parentRef: ref,
+      monthlyPackage: monthlyPackage,
+      annualPackage: annualPackage,
+      selectedPlan: selectedPlan,
+    ),
   );
 }
 
@@ -1297,10 +644,12 @@ class _AndroidCodeRedeemSheet extends HookConsumerWidget {
       // carries the tag, we fall back to the other plan so a plan-specific
       // code can still override the selection (matches iOS, where ASC custom
       // codes auto-route to whichever subscription they're tied to).
-      final preferred =
-          selectedPlan == PlanType.annual ? annualPackage : monthlyPackage;
-      final fallback =
-          selectedPlan == PlanType.annual ? monthlyPackage : annualPackage;
+      final preferred = selectedPlan == PlanType.annual
+          ? annualPackage
+          : monthlyPackage;
+      final fallback = selectedPlan == PlanType.annual
+          ? monthlyPackage
+          : annualPackage;
       final match = RevenueCatService().findOfferByCode([
         if (preferred != null) preferred,
         if (fallback != null) fallback,
@@ -1316,8 +665,8 @@ class _AndroidCodeRedeemSheet extends HookConsumerWidget {
         // dashboards can see this conversion as a code redemption.
         const source = 'android_offer_token';
         final reportedCode = canonical.toUpperCase();
-        final affiliate =
-            await AppsflyerService.instance.getCachedAttributionContext();
+        final affiliate = await AppsflyerService.instance
+            .getCachedAttributionContext();
         parentRef
             .read(subscriptionProvider.notifier)
             .markRedemptionPending(source: source, code: reportedCode);
@@ -1385,7 +734,9 @@ class _AndroidCodeRedeemSheet extends HookConsumerWidget {
             SizedBox(height: 20.h),
             Text(
               'Redeem a code',
-              style: AppTypography.textLgBold.copyWith(color: context.colors.textPrimary),
+              style: AppTypography.textLgBold.copyWith(
+                color: context.colors.textPrimary,
+              ),
             ),
             SizedBox(height: 6.h),
             Text(
@@ -1437,10 +788,9 @@ class _AndroidCodeRedeemSheet extends HookConsumerWidget {
                 focusedBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12.br),
                   borderSide: BorderSide(
-                    color:
-                        context.isLightTheme
-                            ? context.colors.accentText
-                            : kPrimaryColor,
+                    color: context.isLightTheme
+                        ? context.colors.accentText
+                        : kPrimaryColor,
                   ),
                 ),
               ),
@@ -1450,10 +800,9 @@ class _AndroidCodeRedeemSheet extends HookConsumerWidget {
               Text(
                 errorMessage.value!,
                 style: AppTypography.textSmMedium.copyWith(
-                  color:
-                      context.isLightTheme
-                          ? context.colors.danger
-                          : const Color(0xFFFF6B6B),
+                  color: context.isLightTheme
+                      ? context.colors.danger
+                      : const Color(0xFFFF6B6B),
                 ),
               ),
             ],
@@ -1465,8 +814,9 @@ class _AndroidCodeRedeemSheet extends HookConsumerWidget {
             ),
             SizedBox(height: 8.h),
             TextButton(
-              onPressed:
-                  isSubmitting.value ? null : () => Navigator.of(context).pop(),
+              onPressed: isSubmitting.value
+                  ? null
+                  : () => Navigator.of(context).pop(),
               child: Text(
                 'Cancel',
                 style: AppTypography.textSmMedium.copyWith(
@@ -1499,13 +849,12 @@ class _RedeemButton extends HookWidget {
 
     return GestureDetector(
       onTapDown: tappable ? (_) => isPressed.value = true : null,
-      onTapUp:
-          tappable
-              ? (_) {
-                isPressed.value = false;
-                onTap();
-              }
-              : null,
+      onTapUp: tappable
+          ? (_) {
+              isPressed.value = false;
+              onTap();
+            }
+          : null,
       onTapCancel: tappable ? () => isPressed.value = false : null,
       child: _SpringPress(
         pressed: isPressed.value,
@@ -1522,25 +871,24 @@ class _RedeemButton extends HookWidget {
               color: context.colors.brand,
             ),
             child: Center(
-              child:
-                  isLoading
-                      ? SizedBox(
-                        width: 24.w,
-                        height: 24.h,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2.5,
-                          valueColor: AlwaysStoppedAnimation<Color>(
-                            context.colors.inkOnAccent,
-                          ),
-                        ),
-                      )
-                      : Text(
-                        'Apply discount',
-                        style: AppTypography.textLgBold.copyWith(
-                          color: context.colors.inkOnAccent,
-                          letterSpacing: 0.2,
+              child: isLoading
+                  ? SizedBox(
+                      width: 24.w,
+                      height: 24.h,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2.5,
+                        valueColor: AlwaysStoppedAnimation<Color>(
+                          context.colors.inkOnAccent,
                         ),
                       ),
+                    )
+                  : Text(
+                      'Apply discount',
+                      style: AppTypography.textLgBold.copyWith(
+                        color: context.colors.inkOnAccent,
+                        letterSpacing: 0.2,
+                      ),
+                    ),
             ),
           ),
         ),

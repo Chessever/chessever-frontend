@@ -2005,7 +2005,11 @@ class _SliverScoreboardAppBarState
     } on FavoriteLimitExceededException {
       _revertOptimisticFavorite();
       if (mounted) {
-        await showPremiumPaywallSheet(context: context, allowRewarded: false);
+        await showPremiumPaywallSheet(
+          context: context,
+          allowRewarded: false,
+          trigger: PaywallTrigger.favorites,
+        );
       }
     } catch (e) {
       _revertOptimisticFavorite();

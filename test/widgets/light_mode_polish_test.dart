@@ -79,16 +79,18 @@ final _annual = _package(r'$rc_annual', PackageType.annual, 39.99, r'$39.99');
 Color _over(Color fill, Color ground) => Color.alphaBlend(fill, ground);
 
 void main() {
-  group('paywall plan cards', () {
+  group('paywall plan rows', () {
     for (final entry in _themes.entries) {
       for (final (width, scale) in [(393.0, 1.0), (360.0, 1.3)]) {
         testWidgets(
-          '${entry.key} ${width.toInt()}dp @${scale}x: one grid, no ragged rows',
+          '${entry.key} ${width.toInt()}dp @${scale}x: annual first, selectable, no overflow',
           (tester) async {
+            final selected = ValueNotifier(PlanType.annual);
+            addTearDown(selected.dispose);
             await _pump(
               tester,
               paywallPricingForTest(
-                selectedPlan: ValueNotifier(PlanType.annual),
+                selectedPlan: selected,
                 monthlyPackage: _monthly,
                 annualPackage: _annual,
               ),
@@ -97,65 +99,18 @@ void main() {
               textScale: scale,
             );
             expect(tester.takeException(), isNull);
-
-            Rect card(String title) => tester.getRect(
-              find
-                  .ancestor(
-                    of: find.text(title),
-                    matching: find.byType(AnimatedContainer),
-                  )
-                  .first,
-            );
-            final monthly = card('Monthly');
-            final annual = card('Annual');
-            expect(monthly.height, annual.height, reason: 'equal heights');
-            expect(monthly.top, annual.top);
-
-            // The billed prices share a baseline (to a sub-pixel: at 1.3x
-            // the test font's square glyphs make FittedBox shrink each price
-            // by a slightly different factor).
             expect(
-              tester.getRect(find.text(r'$4.99')).bottom,
-              moreOrLessEquals(
-                tester.getRect(find.text(r'$39.99')).bottom,
-                epsilon: 0.5,
-              ),
+              tester.getTopLeft(find.text('Annual')).dy,
+              lessThan(tester.getTopLeft(find.text('Monthly')).dy),
             );
-            // The savings note is plain type, not a floating pill.
-            expect(find.text('BEST VALUE'), findsNothing);
-            expect(find.text('Save 33%'), findsOneWidget);
+            expect(find.text('SAVE 33%'), findsOneWidget);
+            expect(find.text(r'$39.99'), findsOneWidget);
+            await tester.tap(find.text('Monthly'));
+            await tester.pumpAndSettle();
+            expect(selected.value, PlanType.monthly);
           },
         );
       }
-
-      testWidgets('${entry.key}: note and per-month line read on the card', (
-        tester,
-      ) async {
-        await _pump(
-          tester,
-          paywallPricingForTest(
-            selectedPlan: ValueNotifier(PlanType.annual),
-            monthlyPackage: _monthly,
-            annualPackage: _annual,
-          ),
-          theme: entry.value,
-        );
-        final context = tester.element(find.text('Annual'));
-        final colors = context.colors;
-        final fill = _over(
-          kPrimaryColor.withValues(alpha: 0.15),
-          colors.surface,
-        );
-        final note = tester.widget<Text>(find.text('Save 33%'));
-        _expectContrast(note.style!.color!, fill, min: 4.5, what: 'note');
-        final perMonth = tester.widget<Text>(find.textContaining('/mo').last);
-        _expectContrast(
-          _over(perMonth.style!.color!, fill),
-          fill,
-          min: 4.5,
-          what: 'per-month line',
-        );
-      });
     }
   });
 

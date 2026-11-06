@@ -413,7 +413,11 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
           .length;
       if (!mounted) return;
       if (owned >= kFreeBookCreationLimit) {
-        await showPremiumPaywallSheet(context: context, allowRewarded: false);
+        await showPremiumPaywallSheet(
+          context: context,
+          allowRewarded: false,
+          trigger: PaywallTrigger.database,
+        );
         return;
       }
     }
