@@ -314,6 +314,41 @@ class PremiumPaywallView extends StatelessWidget {
         'Full web & desktop access',
         'Your Premium experience, beyond mobile.',
       ),
+      (
+        Icon(Icons.person_search_outlined, size: 20, color: _C.icon),
+        'Opponent preparation',
+        'Study player statistics, games, and opening tendencies.',
+      ),
+      (
+        Icon(Icons.analytics_outlined, size: 20, color: _C.icon),
+        'Detailed game reports',
+        'Review your games and understand where you can improve.',
+      ),
+      (
+        Icon(Icons.explore_outlined, size: 20, color: _C.icon),
+        'Deeper opening exploration',
+        'Explore positions beyond the free opening-depth limit.',
+      ),
+      (
+        Icon(Icons.account_tree_outlined, size: 20, color: _C.icon),
+        'Build opening trees',
+        'Discover patterns across your databases, collections, and Prep games.',
+      ),
+      (
+        Icon(Icons.file_copy_outlined, size: 20, color: _C.icon),
+        'PGN import & copy',
+        'Bring games into ChessEver and copy PGNs for use elsewhere.',
+      ),
+      (
+        Icon(Icons.people_outline, size: 20, color: _C.icon),
+        'Unlimited Prep profiles',
+        'Add more opponents and connect more of your own accounts.',
+      ),
+      (
+        Icon(Icons.dashboard_customize_outlined, size: 20, color: _C.icon),
+        'Personalized home screen',
+        'Customize your home screen around what matters to you.',
+      ),
     ];
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 4),
