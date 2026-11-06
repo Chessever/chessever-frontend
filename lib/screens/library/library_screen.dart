@@ -192,7 +192,11 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
           .length;
       if (ownedBookCount >= kFreeBookCreationLimit) {
         if (!mounted) return;
-        await showPremiumPaywallSheet(context: context, allowRewarded: false);
+        await showPremiumPaywallSheet(
+          context: context,
+          allowRewarded: false,
+          trigger: PaywallTrigger.database,
+        );
         return;
       }
     }

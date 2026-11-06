@@ -55,5 +55,9 @@ Future<bool> canAddMoreFavorites(
   if (currentCount < kFreeFavoriteLimit) return true;
 
   if (!context.mounted) return false;
-  return await showPremiumPaywallSheet(context: context, allowRewarded: false);
+  return await showPremiumPaywallSheet(
+    context: context,
+    allowRewarded: false,
+    trigger: PaywallTrigger.favorites,
+  );
 }

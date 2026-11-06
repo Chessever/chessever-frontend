@@ -368,7 +368,11 @@ Future<void> _createDatabase(
         .length;
     if (owned >= kFreeBookCreationLimit) {
       if (!context.mounted) return;
-      await showPremiumPaywallSheet(context: context, allowRewarded: false);
+      await showPremiumPaywallSheet(
+        context: context,
+        allowRewarded: false,
+        trigger: PaywallTrigger.database,
+      );
       return;
     }
   }
