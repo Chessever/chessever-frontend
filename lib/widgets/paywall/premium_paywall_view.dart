@@ -164,28 +164,51 @@ class PremiumPaywallView extends StatelessWidget {
               Column(
                 children: [
                   Expanded(
-                    child: SingleChildScrollView(
-                      padding: const EdgeInsets.symmetric(horizontal: 24),
-                      child: Column(
-                        children: [
-                          _hero(),
-                          const SizedBox(height: 8),
-                          _headline(copy),
-                          const SizedBox(height: 10),
-                          Text(
-                            copy.sub,
-                            textAlign: TextAlign.center,
-                            style: _inter(
-                              fontSize: 15,
-                              height: 1.4,
-                              color: _C.textSecondary,
+                    child: Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        SingleChildScrollView(
+                          padding: const EdgeInsets.symmetric(horizontal: 24),
+                          child: Column(
+                            children: [
+                              _hero(),
+                              const SizedBox(height: 8),
+                              _headline(copy),
+                              const SizedBox(height: 10),
+                              Text(
+                                copy.sub,
+                                textAlign: TextAlign.center,
+                                style: _inter(
+                                  fontSize: 15,
+                                  height: 1.4,
+                                  color: _C.textSecondary,
+                                ),
+                              ),
+                              const SizedBox(height: 36),
+                              _benefits(),
+                              const SizedBox(height: 48),
+                            ],
+                          ),
+                        ),
+                        // Hint that the benefits continue beneath checkout.
+                        Positioned(
+                          left: 0,
+                          right: 0,
+                          bottom: 0,
+                          height: 48,
+                          child: IgnorePointer(
+                            child: DecoratedBox(
+                              decoration: BoxDecoration(
+                                gradient: LinearGradient(
+                                  begin: Alignment.topCenter,
+                                  end: Alignment.bottomCenter,
+                                  colors: [_C.bg.withValues(alpha: 0), _C.bg],
+                                ),
+                              ),
                             ),
                           ),
-                          const SizedBox(height: 36),
-                          _benefits(),
-                          const SizedBox(height: 16),
-                        ],
-                      ),
+                        ),
+                      ],
                     ),
                   ),
                   _bottom(),
