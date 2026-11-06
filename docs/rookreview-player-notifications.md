@@ -15,12 +15,17 @@ It uses the account-scoped Chat Completions REST endpoint with a JSON schema and
 headline, summary and body text. Image markup, alt text and URL destinations are
 removed; no image folders are used. There are no model tools or external lookups.
 
-The model selects up to five main subjects/directly quoted chess players and
-returns complete names, exact mentions and evidence selected from a schema enum
-of unchanged contiguous source excerpts. Combining or paraphrasing evidence is
-rejected locally and by the database. Passing mentions,
-results-only participants, photographers, relatives and non-chess athletes are
-excluded. Uncertain identities are omitted. A unique exact normalized full-name
+The model selects up to five chess players explicitly named in the title, summary
+or written prose, including passing mentions, briefly named opponents and short
+result sentences. Main subjects and directly quoted speakers take priority, then
+other prose mentions in article order. The existing `subject` role includes these
+prose mentions; `quotation` identifies directly attributed speakers. It returns
+complete names, exact mentions and unchanged contiguous evidence excerpts selected
+from the schema enum. Combining or paraphrasing evidence is rejected locally and
+by the database. Names appearing only in standings tables, result/score lists or
+pairing lists remain excluded; appearing in written prose can qualify them.
+Images, captions, URLs and non-chess people remain excluded.
+Uncertain identities are omitted. A unique exact normalized full-name
 match in `chess_players` supplies the FIDE ID and display name. No model-supplied
 FIDE IDs, rating-ranked guesses or ambiguous name matches are accepted. Names
 that need unsupported aliases/transliteration remain unresolved.
@@ -148,3 +153,11 @@ competing completion, unsupported activation isolation and reactivation fences.
 API references: [GLM-5.3 Flash](https://developers.cloudflare.com/workers-ai/models/glm-5.3-flash/),
 [Cloudflare Chat Completions](https://developers.cloudflare.com/workers-ai/configuration/open-ai-compatibility/)
 and [Supabase background tasks](https://supabase.com/docs/guides/functions/background-tasks).
+
+## Passing prose mentions — November 6, 2026
+
+Production `partner-news-sync` version 12 broadens extraction to explicitly named chess players in written prose, including passing mentions, briefly named opponents, praise and short result sentences. Names appearing only in standings/result/pairing lists remain excluded. The five-player bound and main-subject/quoted-speaker priority remain. The existing `subject` role covers eligible prose mentions, so directory, publication and favorite-player delivery contracts need no schema change.
+
+Validation: 43 partner tests and 8 native-news tests passed; extractor and test TypeScript checks passed. The deployed authenticated synthetic `check_ai` request 284820 returned HTTP 200 and required both main player Magnus Carlsen and briefly mentioned Hikaru Nakamura. This probe cannot claim jobs, publish articles or send pushes. The production gateway-auth audit passed for 12 functions and public/authenticated proxy probes. `verify_jwt=false` and the function's own stream-token authentication were preserved.
+
+The change does not backfill, requeue or alter the original article freshness/activation boundaries. Images, captions and URL destinations remain excluded as identity evidence. Source version is 37.9.5+3805; no mobile binary build or store release is required for this server-side change.

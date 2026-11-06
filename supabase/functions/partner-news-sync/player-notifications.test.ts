@@ -18,7 +18,7 @@ test('only text is supplied: image paths, alt names and URL destinations are exc
  assert.ok(allowed.length>0);assert.ok(allowed.every((text:string)=>[withImage.title,withImage.summary,withImage.content].join('\n').includes(text)));
  assert.ok(allowed.every((text:string)=>!text.includes('Carlsen')&&!text.includes('https:')));
  assert.doesNotMatch(body.messages[1].content,/Carlsen|Players\/|ratings\.fide|https:/);
- assert.match(body.messages[1].content,/Mark Smirnov/);assert.match(body.messages[0].content,/incidental mentions/);
+ assert.match(body.messages[1].content,/Mark Smirnov/);assert.match(body.messages[0].content,/INCLUDING passing mentions/);assert.match(body.messages[0].content,/ONLY in standings tables/);
 });
 test('grounded roles only; malformed, duplicate and fabricated output is rejected', () => {
  assert.deepEqual(validateExtraction({players:[subject]},articleText(article)),[subject]);
@@ -77,7 +77,7 @@ test('truncated, malformed, tool, reasoning-only and provider-error responses ca
  for (const response of responses) await assert.rejects(extractPlayers(article,config,async()=>Response.json({model:ROOKREVIEW_PLAYER_MODEL,...response})));
 });
 
-test('live GLM smoke result uses exact title evidence and excludes passing mentions', async () => {
+test('captured GLM answer remains valid exact evidence without requiring incidental extraction', async () => {
  const title='"There are many promising and talented players in Kazakhstan!" — Denis Lazavik';
  const source={...article,title,summary:'Denis Lazavik shared his opinion. Mark Smirnov achieved a norm.',content:'Denis Lazavik won the tournament. Daniil Dubov was runner-up.'};
  // Sanitized answer captured from the connected Cloudflare account on 2026-11-03.
@@ -94,11 +94,32 @@ test('readiness check uses only fixed synthetic text and cannot claim or publish
   requests++;const body=JSON.parse(String(init?.body));
   assert.match(body.messages[1].content,/Magnus Carlsen discusses chess/);
   assert.doesNotMatch(body.messages[1].content,/Denis|lease|article_id/);
-  return answer({players:[{name:'Magnus Carlsen',mention:'Magnus Carlsen',role:'subject',evidence:'Magnus Carlsen discusses chess'}]});
+  return answer({players:[{name:'Magnus Carlsen',mention:'Magnus Carlsen',role:'subject',evidence:'Magnus Carlsen discusses chess'},{name:'Hikaru Nakamura',mention:'Hikaru Nakamura',role:'subject',evidence:'Magnus Carlsen said that he enjoys playing chess. Hikaru Nakamura was also briefly mentioned in the discussion.'}]});
  });
  assert.deepEqual(checked,{ok:true,model:ROOKREVIEW_PLAYER_MODEL});assert.equal(requests,1);
 });
 test('readiness does not accept an empty extraction or failed provider', async()=>{
  await assert.rejects(verifyPlayerExtraction(config,async()=>answer({players:[]})),/ai_check_failed/);
  await assert.rejects(verifyPlayerExtraction(config,async()=>new Response('',{status:403})),/ai_http_403/);
+});
+
+test('passing prose mentions resolve through the same directory and leased publication path',async()=>{
+ const passing={name:'Mark Smirnov',mention:'Mark Smirnov',role:'subject',evidence:article.content};
+ let published:any;
+ await processPlayerNotifications({rpc:async(name,args)=>({error:null,data:name==='claim_partner_news_notifications'?[article]:name==='resolve_partner_news_player'?[args.p_name==='Mark Smirnov'?{fide_id:'999',name:'Mark Smirnov'}:{fide_id:'123',name:'Denis Lazavik'}]:(published=args.p_subjects)})},config,async(_url,init)=>{
+  const body=JSON.parse(String(init?.body));
+  assert.match(body.messages[0].content,/central or sustained focus is NOT required/);
+  assert.match(body.messages[0].content,/briefly named opponents/);
+  assert.match(body.messages[0].content,/score\/result lists, pairing lists/);
+  return answer({players:[subject,passing]});
+ });
+ assert.deepEqual(published.map((p:any)=>p.fide_id),['123','999']);
+ assert.equal(published[1].evidence,article.content);
+});
+test('passing mentions still require exact evidence and an unambiguous directory identity',async()=>{
+ const passing={name:'Mark Smirnov',mention:'Mark Smirnov',role:'subject',evidence:article.content};
+ assert.throws(()=>validateExtraction({players:[{...passing,evidence:'Mark Smirnov was invented.'}]},articleText(article)));
+ let published:any;
+ await processPlayerNotifications({rpc:async(name,args)=>({error:null,data:name==='claim_partner_news_notifications'?[article]:name==='resolve_partner_news_player'?[{fide_id:'1',name:'Mark Smirnov'},{fide_id:'2',name:'Mark Smirnov'}]:(published=args.p_subjects)})},config,async()=>answer({players:[passing]}));
+ assert.deepEqual(published,[]);
 });
