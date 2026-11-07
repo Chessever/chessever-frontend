@@ -1,7 +1,13 @@
 # Favorite-player News publication
 
-The protected publisher writes explicit `subject` / `quotation` metadata and its
-visible top `Players involved:` identity links together with a new article.
+The protected publisher writes explicit `subject` / `quotation` metadata together
+with a new article. The local forward migration
+`20261107060000_favorite_player_news_structured_subjects.sql` decouples eligibility
+from the visible `Players involved:` header. It must be applied before a producer
+stops adding the header or an existing article's header is removed. Its `(jsonb,text)`
+signature stays compatible with queue and transport callers; the content argument
+is intentionally ignored. Inline profile links are preserved, never used to infer
+subjects. This migration is LOCAL ONLY, not applied to production by this change.
 The publication migration verifies player identity and records only the first
 eligible publication. Tournament participants, results, pairings, passing mentions,
 imports, edits and republication do not create alerts. Scheduled articles qualify
