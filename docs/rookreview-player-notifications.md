@@ -1,3 +1,5 @@
+> Function ownership moved on November 6, 2026: canonical runtime source, parser/extractor tests and deployment config are now in `Chessever/chessever-web-frontend/supabase/functions/partner-news-sync/`, beside `create-news`. This repository retains the historical SQL migrations, database tests and mobile client. Production behavior and deployed version 12 are unchanged by the move.
+
 # RookReview favorite-player notifications
 
 Implementation branch: `feat/rookreview-players-notification`, in the mobile and
@@ -91,7 +93,7 @@ The rollout procedure for future deployments is:
    then admin migration `20261104005636_rookreview_notification_transport.sql`.
    Review the full-directory name-expression index and schema locks in the
    production migration window. Installing either migration does not enable it.
-2. Deploy the admin service and updated `partner-news-sync`. Preserve its existing
+2. Deploy the admin service and updated `partner-news-sync` from the web repository. Preserve its existing
    `verify_jwt = false` configuration and stream-token authentication. Use the
    production project `oelbsuggrzyqwzmvidju` when deployment is authorized.
 3. Configure the Edge Function secrets `CLOUDFLARE_ACCOUNT_ID` (the same account

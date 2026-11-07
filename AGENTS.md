@@ -133,6 +133,15 @@ We **purposefully deactivate local Stockfish in debug mode** because its native 
 - Tone carries the meaning: `neutral` for confirmations, `danger` for genuine failures, `success` for completed work. The capsule is black in both themes — do not recolour the surface per message.
 - Regression cover lives in `test/app_snack_test.dart` (auto-dismiss, action close, 44dp tap target).
 
+## News function ownership
+
+`create-news` and `partner-news-sync` are maintained and deployed from sibling
+`chessever-web-frontend/supabase/functions/`. Do not add or deploy a mobile copy.
+Historical partner-news SQL migrations and their database tests remain here;
+keep deployed migration history unchanged. Runtime/parser tests run from the web
+repository with `npm run test:partner-news`. The production function URL, cron
+schedule, secrets, own stream-token auth and `verify_jwt=false` are unchanged.
+
 ## Edge Functions: NEVER deploy with `verify_jwt` enabled
 
 **Rule: every ChessEver Edge Function ships with `verify_jwt = false`. No exceptions on the list below.** Gateway JWT verification is not our auth boundary and never was — each function authenticates its own callers, and turning the gateway check on does not add security, it only makes the function unreachable.
