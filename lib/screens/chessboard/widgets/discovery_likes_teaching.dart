@@ -169,7 +169,7 @@ class _DiscoveryLikesTeachingState extends ConsumerState<DiscoveryLikesTeaching>
                       child: DoubleTapHeartTeachingDemo(),
                     ),
                     const Text(
-                      'Double-tap the same square on the board. Find your liked games in My Likes.',
+                      'Double-tap the same square on the board to like the game.',
                     ),
                   ],
                 ),

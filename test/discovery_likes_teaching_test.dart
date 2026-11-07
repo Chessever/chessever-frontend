@@ -90,6 +90,11 @@ void main() {
       await show(tester);
       expect(find.byType(DoubleTapHeartTeachingDemo), findsOneWidget);
       expect(
+        find.text('Double-tap the same square on the board to like the game.'),
+        findsOneWidget,
+      );
+      expect(find.textContaining('Find your liked games'), findsNothing);
+      expect(
         find.descendant(
           of: find.byType(DiscoveryLikesTeaching),
           matching: find.byType(ModalBarrier),
