@@ -29,6 +29,23 @@ class KnockoutMatchDetector {
     return matches.values.any((match) => match.length > 1);
   }
 
+  /// Whether one source round holds two or more games that are all the same
+  /// pairing, i.e. an open-ended head-to-head that keeps appending games.
+  ///
+  /// Dubov vs BulletGrandpa (2026-11-07) put all 100 games into one round,
+  /// board 1..100 in play order; "play until someone leads by two" matches
+  /// have the same shape. Such a round is not a knockout, so
+  /// [hasRepeatedMatchupInSingleSourceRound] skips it and the live game sank
+  /// to the bottom. A Swiss, round-robin or team round always has several
+  /// pairings, so this never matches them.
+  static bool isSinglePairingAppendRound(List<GamesTourModel> games) {
+    if (games.length < 2) return false;
+    if (games.map((game) => game.roundId).toSet().length != 1) return false;
+
+    final matches = groupByMatches(games);
+    return matches.length == 1 && matches.values.single.length == games.length;
+  }
+
   /// Detects if this is a 1v1 match format event (e.g., "12-game Match").
   ///
   /// Returns true when the tour format string contains "match"

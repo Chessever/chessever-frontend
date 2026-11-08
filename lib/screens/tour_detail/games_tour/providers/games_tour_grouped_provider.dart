@@ -425,7 +425,8 @@ final gamesTourGroupedProvider = Provider.autoDispose<GroupedGamesData>((ref) {
         KnockoutMatchDetector.hasRepeatedMatchupInSingleSourceRound(
           isKnockoutTournament: isKnockoutTournament,
           games: roundGames,
-        );
+        ) ||
+        KnockoutMatchDetector.isSinglePairingAppendRound(roundGames);
     final ordered = resolveTournamentRoundPresentationOrder(
       stableOrder: stableOrder,
       roundId: roundId,

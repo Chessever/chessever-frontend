@@ -146,6 +146,75 @@ void main() {
       );
     });
 
+    test('an open-ended head-to-head round shows newest boards first', () {
+      // Dubov vs BulletGrandpa: one round, one pairing, colours alternating,
+      // every new game appended with the next board number.
+      final dubov = _player('Dubov, Daniil', fideId: 24126055);
+      final smith = _player('Smith, Josh', fideId: 30962692);
+      final games = [
+        for (var board = 1; board <= 5; board++)
+          _game(
+            id: 'game-$board',
+            white: board.isOdd ? dubov : smith,
+            black: board.isOdd ? smith : dubov,
+            slug: '100-game-finale',
+            roundId: 'qndQxsJI',
+            boardNr: board,
+          ),
+      ];
+
+      expect(
+        KnockoutMatchDetector.isSinglePairingAppendRound(games),
+        isTrue,
+      );
+    });
+
+    test('single-pairing detection ignores legs in separate rounds', () {
+      final alpha = _player('Alpha', fideId: 11);
+      final beta = _player('Beta', fideId: 22);
+      final games = [
+        _game(id: 'leg-1', white: alpha, black: beta, slug: 'game-1'),
+        _game(id: 'leg-2', white: beta, black: alpha, slug: 'game-2'),
+      ];
+
+      expect(KnockoutMatchDetector.isSinglePairingAppendRound(games), isFalse);
+    });
+
+    test('a non-knockout round with several pairings keeps board order', () {
+      final alpha = _player('Alpha', fideId: 11);
+      final beta = _player('Beta', fideId: 22);
+      final gamma = _player('Gamma', fideId: 33);
+      final delta = _player('Delta', fideId: 44);
+      final games = [
+        _game(
+          id: 'leg-1-board-1',
+          white: alpha,
+          black: beta,
+          slug: 'round-1',
+          boardNr: 1,
+        ),
+        _game(
+          id: 'leg-1-board-2',
+          white: gamma,
+          black: delta,
+          slug: 'round-1',
+          boardNr: 2,
+        ),
+        _game(
+          id: 'leg-2-board-1',
+          white: beta,
+          black: alpha,
+          slug: 'round-1',
+          boardNr: 3,
+        ),
+      ];
+
+      expect(
+        KnockoutMatchDetector.isSinglePairingAppendRound(games),
+        isFalse,
+      );
+    });
+
     test(
       'does not treat legs from separate source rounds as appended boards',
       () {
