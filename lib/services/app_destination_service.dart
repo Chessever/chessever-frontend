@@ -168,9 +168,12 @@ Future<bool> openAppDestination(
                 mostLikedPeriodProvider.overrideWith(
                   (ref) => MostLikedPeriod.values.byName(destination.section!),
                 ),
-                mostLikedDayProvider.overrideWith(
-                  (ref) => DateTime.tryParse(destination.query['date'] ?? ''),
-                ),
+                mostLikedDayProvider.overrideWith((ref) {
+                  final date = destination.query['date'];
+                  return date == null
+                      ? null
+                      : DateTime.tryParse('${date}T00:00:00Z');
+                }),
               ],
             ],
             child: LikesScreen(

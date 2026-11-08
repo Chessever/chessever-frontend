@@ -56,43 +56,46 @@ extension MostLikedViewX on MostLikedView {
 /// 30 May 2026 (`20260530000000_liked_games_special_folder.sql`). The date
 /// navigation stops at the period holding it instead of walking back
 /// through empty years.
-final DateTime kMostLikedFirstDay = DateTime(2026, 5, 30);
+final DateTime kMostLikedFirstDay = DateTime.utc(2026, 5, 30);
 
-/// The local calendar day [t] falls on.
-DateTime mostLikedDay(DateTime t) => DateTime(t.year, t.month, t.day);
+/// The UTC calendar day containing the instant [t].
+DateTime mostLikedDay(DateTime t) {
+  final utc = t.toUtc();
+  return DateTime.utc(utc.year, utc.month, utc.day);
+}
 
-/// The start of the calendar [period] holding [day], in local time: its
-/// midnight, the Monday of its week, the 1st of its month, 1 January.
+/// Shared worldwide calendar boundaries, always at 00:00 UTC.
+/// Weeks start Monday; months on the 1st; years on January 1.
 DateTime mostLikedPeriodStart(MostLikedPeriod period, DateTime day) {
+  final utc = day.toUtc();
   return switch (period) {
-    MostLikedPeriod.today => DateTime(day.year, day.month, day.day),
-    MostLikedPeriod.week => DateTime(
-      day.year,
-      day.month,
-      day.day - (day.weekday - DateTime.monday),
+    MostLikedPeriod.today => DateTime.utc(utc.year, utc.month, utc.day),
+    MostLikedPeriod.week => DateTime.utc(
+      utc.year,
+      utc.month,
+      utc.day - (utc.weekday - DateTime.monday),
     ),
-    MostLikedPeriod.month => DateTime(day.year, day.month),
-    MostLikedPeriod.year => DateTime(day.year),
+    MostLikedPeriod.month => DateTime.utc(utc.year, utc.month),
+    MostLikedPeriod.year => DateTime.utc(utc.year),
   };
 }
 
 /// The start of the [period] that is [steps] periods after the one starting
-/// at [start] (negative walks back). Calendar arithmetic, so a day across a
-/// DST change is still one day and a month is still a month.
+/// at [start] (negative walks back). UTC calendar arithmetic has no DST shifts.
 DateTime mostLikedShift(MostLikedPeriod period, DateTime start, int steps) {
   return switch (period) {
-    MostLikedPeriod.today => DateTime(
+    MostLikedPeriod.today => DateTime.utc(
       start.year,
       start.month,
       start.day + steps,
     ),
-    MostLikedPeriod.week => DateTime(
+    MostLikedPeriod.week => DateTime.utc(
       start.year,
       start.month,
       start.day + 7 * steps,
     ),
-    MostLikedPeriod.month => DateTime(start.year, start.month + steps),
-    MostLikedPeriod.year => DateTime(start.year + steps),
+    MostLikedPeriod.month => DateTime.utc(start.year, start.month + steps),
+    MostLikedPeriod.year => DateTime.utc(start.year + steps),
   };
 }
 
@@ -106,10 +109,10 @@ class MostLikedQuery {
 
   final MostLikedPeriod period;
 
-  /// Local midnight the period starts on.
+  /// 00:00 UTC the period starts on.
   final DateTime start;
 
-  /// Local midnight the next period starts on (exclusive end).
+  /// 00:00 UTC the next period starts on (exclusive end).
   DateTime get end => mostLikedShift(period, start, 1);
 
   /// The `[from, to)` window the ranking RPC counts likes in. A calendar
@@ -146,12 +149,12 @@ class MostLikedQuery {
   /// Sep 23, 2025", "Sep 21–27, 2025", "August 2025"); a week across New
   /// Year carries both ("Dec 28, 2026 – Jan 3, 2027").
   String label(DateTime now) {
-    final thisYear = start.year == now.year;
+    final thisYear = start.year == now.toUtc().year;
     switch (period) {
       case MostLikedPeriod.today:
-        return discoveryWeekday(start, now: now);
+        return discoveryWeekday(start, now: now.toUtc());
       case MostLikedPeriod.week:
-        final last = DateTime(start.year, start.month, start.day + 6);
+        final last = DateTime.utc(start.year, start.month, start.day + 6);
         if (last.year != start.year) {
           return '${DateFormat.yMMMd().format(start)} – '
               '${DateFormat.yMMMd().format(last)}';

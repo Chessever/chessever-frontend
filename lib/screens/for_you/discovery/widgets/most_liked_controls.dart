@@ -102,11 +102,15 @@ class MostLikedDateControl extends StatelessWidget {
           ),
           child: Padding(
             padding: const EdgeInsets.symmetric(vertical: 12),
-            child: label,
+            child: Tooltip(
+              message: 'Resets at 00:00 UTC',
+              triggerMode: TooltipTriggerMode.tap,
+              child: label,
+            ),
           ),
         ),
       ),
-      labelSemantics: 'Most liked, $label',
+      labelSemantics: 'Most liked, $label. Resets at 00:00 UTC',
       previousSemantics: 'Previous $_unit',
       nextSemantics: 'Next $_unit',
       onPrevious: onPrevious,

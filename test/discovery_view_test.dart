@@ -325,27 +325,30 @@ Future<void> _teardownCards(
 void main() {
   group('Most Liked data', () {
     test('every period is a calendar one holding the day', () {
-      final now = DateTime(2026, 9, 23, 15, 30); // a Wednesday
+      final now = DateTime.utc(2026, 9, 23, 15, 30); // a Wednesday
       final today = mostLikedWindow(MostLikedPeriod.today, now);
-      expect(today.from, DateTime(2026, 9, 23));
-      expect(today.to, DateTime(2026, 9, 24));
+      expect(today.from, DateTime.utc(2026, 9, 23));
+      expect(today.to, DateTime.utc(2026, 9, 24));
 
       final week = mostLikedWindow(MostLikedPeriod.week, now);
-      expect(week.from, DateTime(2026, 9, 21)); // Monday
-      expect(week.to, DateTime(2026, 9, 28));
+      expect(week.from, DateTime.utc(2026, 9, 21)); // Monday
+      expect(week.to, DateTime.utc(2026, 9, 28));
 
       final month = mostLikedWindow(MostLikedPeriod.month, now);
-      expect(month.from, DateTime(2026, 9));
-      expect(month.to, DateTime(2026, 10));
+      expect(month.from, DateTime.utc(2026, 9));
+      expect(month.to, DateTime.utc(2026, 10));
 
       final year = mostLikedWindow(MostLikedPeriod.year, now);
-      expect(year.from, DateTime(2026));
-      expect(year.to, DateTime(2027));
+      expect(year.from, DateTime.utc(2026));
+      expect(year.to, DateTime.utc(2027));
 
       // A Sunday belongs to the week that started six days earlier.
       expect(
-        mostLikedWindow(MostLikedPeriod.week, DateTime(2026, 9, 27, 23)).from,
-        DateTime(2026, 9, 21),
+        mostLikedWindow(
+          MostLikedPeriod.week,
+          DateTime.utc(2026, 9, 27, 23),
+        ).from,
+        DateTime.utc(2026, 9, 21),
       );
       expect(MostLikedPeriod.today.isPremium, isFalse);
       expect(MostLikedPeriod.values.where((p) => p.isPremium), [
@@ -356,32 +359,32 @@ void main() {
     });
 
     test('the date control walks calendar periods and stops at the edges', () {
-      final now = DateTime(2026, 9, 23, 15, 30);
+      final now = DateTime.utc(2026, 9, 23, 15, 30);
       final today = MostLikedQuery(MostLikedPeriod.today, now);
       expect(today.isCurrent(now), isTrue);
       expect(today.isFree(now), isTrue);
       expect(today.next(now), isNull); // the future has no ranking
 
       final yesterday = today.previous!;
-      expect(yesterday.start, DateTime(2026, 9, 22));
+      expect(yesterday.start, DateTime.utc(2026, 9, 22));
       expect(yesterday.isFree(now), isFalse); // earlier days open via the guard
       expect(yesterday.next(now), today);
 
       final week = MostLikedQuery(MostLikedPeriod.week, now);
       expect(week.isFree(now), isFalse);
-      expect(week.previous!.start, DateTime(2026, 9, 14));
+      expect(week.previous!.start, DateTime.utc(2026, 9, 14));
 
       // Month steps land on the 1st, even from the 31st.
       expect(
         MostLikedQuery(
           MostLikedPeriod.month,
-          DateTime(2026, 7, 31),
+          DateTime.utc(2026, 7, 31),
         ).next(now)!.start,
-        DateTime(2026, 8),
+        DateTime.utc(2026, 8),
       );
       expect(
         MostLikedQuery(MostLikedPeriod.month, now).previous!.start,
-        DateTime(2026, 8),
+        DateTime.utc(2026, 8),
       );
 
       // Nothing before the first day there were likes, but the period that
@@ -392,52 +395,58 @@ void main() {
       );
       expect(MostLikedQuery(MostLikedPeriod.year, now).previous, isNull);
       expect(
-        MostLikedQuery(MostLikedPeriod.month, DateTime(2026, 5, 31)).previous,
+        MostLikedQuery(
+          MostLikedPeriod.month,
+          DateTime.utc(2026, 5, 31),
+        ).previous,
         isNull,
       );
       final firstWeek = MostLikedQuery(
         MostLikedPeriod.week,
-        DateTime(2026, 6, 1),
+        DateTime.utc(2026, 6, 1),
       ).previous!;
-      expect(firstWeek.start, DateTime(2026, 5, 25));
+      expect(firstWeek.start, DateTime.utc(2026, 5, 25));
       expect(firstWeek.previous, isNull);
 
       // Equal periods are one cache key, whichever day built them.
       expect(
-        MostLikedQuery(MostLikedPeriod.week, DateTime(2026, 9, 21)),
-        MostLikedQuery(MostLikedPeriod.week, DateTime(2026, 9, 27, 22)),
+        MostLikedQuery(MostLikedPeriod.week, DateTime.utc(2026, 9, 21)),
+        MostLikedQuery(MostLikedPeriod.week, DateTime.utc(2026, 9, 27, 22)),
       );
     });
 
     test('the date reads unambiguously', () {
-      final now = DateTime(2026, 9, 23);
+      final now = DateTime.utc(2026, 9, 23);
       String label(MostLikedPeriod p, DateTime day) =>
           MostLikedQuery(p, day).label(now);
       // Month first, like the streak card; the year only outside this one.
       expect(label(MostLikedPeriod.today, now), 'Wed, Sep 23');
       expect(
-        label(MostLikedPeriod.today, DateTime(2025, 9, 23)),
+        label(MostLikedPeriod.today, DateTime.utc(2025, 9, 23)),
         'Tue, Sep 23, 2025',
       );
       expect(label(MostLikedPeriod.week, now), 'Sep 21–27');
       expect(
-        label(MostLikedPeriod.week, DateTime(2026, 10, 1)),
+        label(MostLikedPeriod.week, DateTime.utc(2026, 10, 1)),
         'Sep 28 – Oct 4',
       );
       expect(
-        label(MostLikedPeriod.week, DateTime(2025, 9, 23)),
+        label(MostLikedPeriod.week, DateTime.utc(2025, 9, 23)),
         'Sep 22–28, 2025',
       );
       expect(
-        label(MostLikedPeriod.week, DateTime(2025, 10, 1)),
+        label(MostLikedPeriod.week, DateTime.utc(2025, 10, 1)),
         'Sep 29 – Oct 5, 2025',
       );
       expect(
-        label(MostLikedPeriod.week, DateTime(2026, 12, 30)),
+        label(MostLikedPeriod.week, DateTime.utc(2026, 12, 30)),
         'Dec 28, 2026 – Jan 3, 2027',
       );
       expect(label(MostLikedPeriod.month, now), 'September');
-      expect(label(MostLikedPeriod.month, DateTime(2025, 8, 2)), 'August 2025');
+      expect(
+        label(MostLikedPeriod.month, DateTime.utc(2025, 8, 2)),
+        'August 2025',
+      );
       expect(label(MostLikedPeriod.year, now), '2026');
     });
 
