@@ -3,6 +3,7 @@ import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/utils/text_scale.dart';
 import 'package:chessever2/widgets/alert_dialog/alert_modal.dart';
 import 'package:chessever2/widgets/game_filter/game_filter_model.dart';
 import 'package:chessever2/widgets/game_filter/rating_tier_filter.dart';
@@ -236,7 +237,7 @@ class _BookGamesFilterDialogState extends State<BookGamesFilterDialog> {
         children: [
           Expanded(
             child: SizedBox(
-              height: 44.h,
+              height: 44.h * context.textGrowth,
               child: OutlinedButton(
                 onPressed: _resetFilters,
                 style: OutlinedButton.styleFrom(
@@ -259,7 +260,7 @@ class _BookGamesFilterDialogState extends State<BookGamesFilterDialog> {
           SizedBox(width: 12.w),
           Expanded(
             child: SizedBox(
-              height: 44.h,
+              height: 44.h * context.textGrowth,
               child: ElevatedButton(
                 onPressed: _applyFilters,
                 style: ElevatedButton.styleFrom(

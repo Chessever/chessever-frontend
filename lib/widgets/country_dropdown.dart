@@ -1,8 +1,8 @@
 import 'package:chessever2/providers/country_dropdown_provider.dart';
 import 'package:chessever2/theme/app_colors.dart';
-import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/utils/text_scale.dart';
 import 'package:country_picker/country_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:country_flags/country_flags.dart';
@@ -162,9 +162,9 @@ selectedCountryCode,
             ),
             dropdownSearchData: DropdownSearchData(
               searchController: _searchController,
-              searchInnerWidgetHeight: 56.h,
+              searchInnerWidgetHeight: context.textExtent(56.h),
               searchInnerWidget: Container(
-                height: 56.h,
+                height: context.textExtent(56.h),
                 padding: EdgeInsets.only(
                   top: 8.h,
                   bottom: 4.h,
@@ -237,7 +237,7 @@ selectedCountryCode,
               padding: EdgeInsets.zero,
             ),
             menuItemStyleData: MenuItemStyleData(
-              height: 40.h,
+              height: context.textExtent(40.h),
               padding: EdgeInsets.zero,
             ),
             value: widget.isLoading ? null : selectedCountryCode,
@@ -304,7 +304,7 @@ selectedCountryCode,
                               ),
                             ),
                           ),
-                          height: 44.h,
+                          height: context.textExtent(44.h),
                           child: Row(
                             mainAxisAlignment: MainAxisAlignment.start,
                             children: [

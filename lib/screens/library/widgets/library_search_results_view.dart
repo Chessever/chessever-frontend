@@ -569,14 +569,18 @@ class _LoadMoreButton extends StatelessWidget {
               ),
               SizedBox(width: 10.w),
             ],
-            Text(
-              isLoading
-                  ? 'Loading...'
-                  : remainingCount != null
-                  ? 'Load more (${formatCompactCount(remainingCount!)} remaining)'
-                  : 'Load more games',
-              style: AppTypography.textSmMedium.copyWith(
-                color: context.colors.textPrimary.withValues(alpha: 0.9),
+            Flexible(
+              child: Text(
+                isLoading
+                    ? 'Loading...'
+                    : remainingCount != null
+                    ? 'Load more (${formatCompactCount(remainingCount!)} remaining)'
+                    : 'Load more games',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: AppTypography.textSmMedium.copyWith(
+                  color: context.colors.textPrimary.withValues(alpha: 0.9),
+                ),
               ),
             ),
           ],

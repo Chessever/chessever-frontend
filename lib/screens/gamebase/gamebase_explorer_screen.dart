@@ -44,6 +44,7 @@ import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/adaptive_window.dart';
 import 'package:chessever2/screens/chessboard/utils/board_workspace_layout.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/utils/text_scale.dart';
 import 'package:chessever2/widgets/screen_wrapper.dart';
 import 'package:chessever2/repository/local_storage/local_storage_repository.dart';
 import 'package:chessever2/widgets/game_filter/rating_tier_filter.dart';
@@ -915,7 +916,7 @@ class _GamebaseExplorerScreenState extends ConsumerState<GamebaseExplorerScreen>
                         size: 20.ic,
                       ),
                       SizedBox(width: 10.sp),
-                      Text(item.label),
+                      Flexible(child: Text(item.label)),
                     ],
                   ),
                 ),
@@ -2307,12 +2308,16 @@ class _ExplorerFilterSheetState extends ConsumerState<ExplorerFilterSheet> {
                           child: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              Text(
-                                player.titleAndName,
-                                style: TextStyle(
-                                  color: context.colors.textPrimary,
-                                  fontSize: 12.f,
-                                  fontWeight: FontWeight.w500,
+                              Flexible(
+                                child: Text(
+                                  player.titleAndName,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    color: context.colors.textPrimary,
+                                    fontSize: 12.f,
+                                    fontWeight: FontWeight.w500,
+                                  ),
                                 ),
                               ),
                               SizedBox(width: 6.sp),
@@ -2715,7 +2720,7 @@ class _ExplorerEngineLinesState extends ConsumerState<_ExplorerEngineLines> {
                 : 'opening_explorer_locked_pv_${preview.variantIndex}',
           ),
           items: items,
-          cardHeight: 64.h,
+          cardHeight: context.textExtent(64.h),
           emptyPlaceholder: _EngineLinePlaceholder(
             isPrimary: true,
             isEvaluating: evalState.isEvaluating,

@@ -19,6 +19,7 @@ import 'package:chessever2/utils/droplet_animation_curves.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/tablet_safe_menu.dart';
+import 'package:chessever2/utils/text_scale.dart';
 import 'package:chessever2/widgets/skeleton_widget.dart';
 import 'package:chessever2/widgets/space_shortcut_drafts.dart';
 import 'package:flutter/material.dart';
@@ -112,7 +113,7 @@ class CategoryDropdown extends ConsumerWidget {
     );
 
     return SizedBox(
-      height: 38.h,
+      height: context.textExtent(38.h),
       child: tourDetailAsync.when(
         data: (tourData) {
           if (tourData.tours.isEmpty) {
@@ -763,6 +764,7 @@ class _MarqueeText extends HookWidget {
           text: TextSpan(text: text, style: style),
           maxLines: 1,
           textDirection: TextDirection.ltr,
+          textScaler: context.textScaler,
         )..layout();
 
         final needsScroll = textPainter.width > constraints.maxWidth;

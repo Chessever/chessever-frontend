@@ -1,3 +1,4 @@
+import 'package:chessever2/screens/chessboard/widgets/board_pinch_coachmark.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
@@ -133,7 +134,9 @@ class _SwitchViewsTutorialOverlayState extends State<SwitchViewsTutorialOverlay>
                 height: MediaQuery.sizeOf(context).height,
                 width: MediaQuery.sizeOf(context).width,
                 color: kBlackColor.withValues(alpha: 0.8),
-                child: SafeArea(
+                // Scrolls only when the copy outgrows the screen (large text),
+                // so the dismissal controls stay reachable.
+                child: BoardCoachmarkViewport(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.center,
                     children: [

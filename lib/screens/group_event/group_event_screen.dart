@@ -21,6 +21,7 @@ import 'package:chessever2/screens/player_profile/player_profile_screen.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/utils/text_scale.dart';
 import 'package:chessever2/screens/group_event/widget/filter_popup/filter_popup.dart';
 import 'package:chessever2/providers/for_you_games_provider.dart';
 import 'package:chessever2/screens/group_event/widget/filter_popup/filter_popup_state.dart';
@@ -798,11 +799,20 @@ class _SegmentedSwitcher extends ConsumerWidget {
           } else {
             baseLabel = _mappedName[category]!;
           }
+          // Above the default size a label scales down rather than wrap
+          // into a second line the strip would clip.
+          if (context.textGrowth > 1) {
+            return FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Text(baseLabel, maxLines: 1, softWrap: false),
+            );
+          }
           return Text(baseLabel);
         }).toList();
 
     return SegmentedSwitcher(
       dotScope: 'events.tab',
+      height: context.textExtent(40.h),
       backgroundColor: context.colors.popup,
       selectedBackgroundColor: context.colors.popup,
       options: options,

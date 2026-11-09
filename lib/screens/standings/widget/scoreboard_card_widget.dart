@@ -1,4 +1,5 @@
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/utils/text_scale.dart';
 import 'package:chessever2/widgets/federation_flag.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:flutter/material.dart';
@@ -156,7 +157,8 @@ class ScoreboardCardWidget extends ConsumerWidget {
                   width: scoreChangeSlotWidth.w,
                   child:
                       (scoreChange != null && scoreChange != 0.0)
-                          ? Text(
+                          ? CappedTextScale(
+                            child: Text(
                             scoreChange! > 0
                                 ? '+${scoreChange!.toStringAsFixed(0)}'
                                 : scoreChange!.toStringAsFixed(0),
@@ -164,6 +166,7 @@ class ScoreboardCardWidget extends ConsumerWidget {
                               color:
                                   scoreChange! > 0 ? context.colors.successStrong : context.colors.danger,
                             ),
+                          ),
                           )
                           : null,
                 ),
@@ -192,7 +195,10 @@ class ScoreboardCardWidget extends ConsumerWidget {
                             width: 1.1,
                           ),
                 ),
-                child: Center(
+                // 28px disc: the 24px line box stays inside it up to 1.15x.
+                child: CappedTextScale(
+                  maxScale: 1.15,
+                  child: Center(
                   child: Text(
                     matchScore!,
                     textAlign: TextAlign.center,
@@ -202,6 +208,7 @@ class ScoreboardCardWidget extends ConsumerWidget {
                       color: isWhite! ? Colors.black : Colors.white,
                     ),
                   ),
+                ),
                 ),
               )
             else if (matchScore != null)

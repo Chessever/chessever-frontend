@@ -13,6 +13,7 @@ import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/utils/text_scale.dart';
 import 'package:chessever2/utils/scroll_cache.dart';
 import 'package:chessever2/widgets/figma_player_card.dart';
 import 'package:chessever2/widgets/scroll_to_top_bus.dart';
@@ -191,7 +192,7 @@ class _MiniaturesPlayersTabState extends ConsumerState<MiniaturesPlayersTab>
     final searchBarHeight = 48.h;
 
     return SizedBox(
-      height: searchBarHeight,
+      height: context.textExtent(searchBarHeight),
       child: Row(
         children: [
           Expanded(
@@ -295,18 +296,20 @@ class _MiniaturesPlayersTabState extends ConsumerState<MiniaturesPlayersTab>
                           shape: BoxShape.circle,
                         ),
                         child: Center(
-                          child: Text(
-                            '$activeFilterCount',
-                            style: AppTypography.textXsBold.copyWith(
-                              color:
-                                  context.isLightTheme
-                                      ? labelOnFill(
-                                        context,
-                                        context.colors.danger,
-                                      )
-                                      : context.colors.textPrimary,
-                              fontSize: 9.sp,
-                              height: 1,
+                          child: CappedTextScale(
+                            child: Text(
+                              '$activeFilterCount',
+                              style: AppTypography.textXsBold.copyWith(
+                                color:
+                                    context.isLightTheme
+                                        ? labelOnFill(
+                                          context,
+                                          context.colors.danger,
+                                        )
+                                        : context.colors.textPrimary,
+                                fontSize: 9.sp,
+                                height: 1,
+                              ),
                             ),
                           ),
                         ),

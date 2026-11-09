@@ -38,6 +38,7 @@ import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/scroll_cache.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/utils/text_scale.dart';
 import 'package:chessever2/utils/svg_asset.dart';
 import 'package:chessever2/utils/time_utils.dart';
 import 'package:chessever2/widgets/alert_dialog/alert_modal.dart';
@@ -391,6 +392,7 @@ class _SmartEventScreenState extends ConsumerState<SmartEventScreen> {
                       ),
                       child: SegmentedSwitcher(
                         dotScope: 'smart_event.tab',
+                        height: context.textExtent(40.h),
                         options: _tabs,
                         initialSelection: _index,
                         currentSelection: _index,

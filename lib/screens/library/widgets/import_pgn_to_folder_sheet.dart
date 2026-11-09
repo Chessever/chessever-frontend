@@ -520,10 +520,14 @@ class _ImportPgnToFolderPageState
                                 size: 20.sp,
                               ),
                               SizedBox(width: 8.w),
-                              Text(
-                                'New Database',
-                                style: AppTypography.textSmMedium.copyWith(
-                                  color: context.colors.textPrimary,
+                              Flexible(
+                                child: Text(
+                                  'New Database',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: AppTypography.textSmMedium.copyWith(
+                                    color: context.colors.textPrimary,
+                                  ),
                                 ),
                               ),
                             ],
@@ -569,12 +573,16 @@ class _ImportPgnToFolderPageState
                                 ),
                                 SizedBox(width: 8.w),
                               ],
-                              Text(
-                                selectedFolders.isEmpty
-                                    ? 'Import'
-                                    : 'Import (${selectedFolders.length})',
-                                style: AppTypography.textSmMedium.copyWith(
-                                  color: context.colors.textPrimary,
+                              Flexible(
+                                child: Text(
+                                  selectedFolders.isEmpty
+                                      ? 'Import'
+                                      : 'Import (${selectedFolders.length})',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: AppTypography.textSmMedium.copyWith(
+                                    color: context.colors.textPrimary,
+                                  ),
                                 ),
                               ),
                             ],

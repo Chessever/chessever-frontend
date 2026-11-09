@@ -13,6 +13,7 @@ import 'package:chessever2/services/lichess_move_annotations_service.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
+import 'package:chessever2/utils/text_scale.dart';
 import 'package:chessground/chessground.dart';
 import 'package:dartchess/dartchess.dart';
 import 'package:flutter/material.dart';
@@ -479,7 +480,7 @@ class _RacePuzzleBoardState extends ConsumerState<RacePuzzleBoard> {
         const SizedBox(height: RacePuzzleBoard.statusGap),
         SizedBox(
           width: size,
-          height: RacePuzzleBoard.statusHeight,
+          height: context.textExtent(RacePuzzleBoard.statusHeight),
           child: _BoardStatus(
             stage: _stage,
             solver: solver,

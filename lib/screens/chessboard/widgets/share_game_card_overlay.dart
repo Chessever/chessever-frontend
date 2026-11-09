@@ -1918,14 +1918,21 @@ class _ShareCard extends ConsumerWidget {
       ),
     );
 
+    // The exported image must not depend on the device text size; the
+    // preview mirrors the export.
+    final card = MediaQuery(
+      data: MediaQuery.of(context).copyWith(textScaler: TextScaler.noScaling),
+      child: cardContent,
+    );
+
     if (!isPreview || onClose == null) {
-      return cardContent;
+      return card;
     }
 
     return Stack(
       clipBehavior: Clip.none,
       children: [
-        cardContent,
+        card,
         // The disc sits 8 in from the corner; the padding around it is part
         // of the tap target so the close control clears 44dp.
         Positioned(

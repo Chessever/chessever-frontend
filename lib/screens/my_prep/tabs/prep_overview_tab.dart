@@ -14,6 +14,7 @@ import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/utils/text_scale.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/scheduler.dart';
@@ -1480,13 +1481,16 @@ class _YearBars extends StatelessWidget {
       onTap: onYear == null ? null : () => onYear(y.year),
       press: 0.95,
       mark: _Mark(fill: kPrimaryColor.withValues(alpha: 0.12), radius: 6.br),
-      builder: (context, taken, _) => _Bar(
-        fraction: y.total / most,
-        tally: y.tally,
-        rest: y.total - y.tally.total,
-        label: "'${(y.year % 100).toString().padLeft(2, '0')}",
-        value: prepCount(y.total),
-        chosen: taken,
+      // Axis labels in a fixed-height chart.
+      builder: (context, taken, _) => CappedTextScale(
+        child: _Bar(
+          fraction: y.total / most,
+          tally: y.tally,
+          rest: y.total - y.tally.total,
+          label: "'${(y.year % 100).toString().padLeft(2, '0')}",
+          value: prepCount(y.total),
+          chosen: taken,
+        ),
       ),
     );
     return SizedBox(
@@ -1625,11 +1629,13 @@ class _LengthBars extends StatelessWidget {
                       fill: kPrimaryColor.withValues(alpha: 0.12),
                       radius: 6.br,
                     ),
-                    builder: (context, taken, _) => _Bar(
-                      fraction: lengths[i] / most,
-                      label: _labels[i],
-                      value: prepCount(lengths[i]),
-                      chosen: taken,
+                    builder: (context, taken, _) => CappedTextScale(
+                      child: _Bar(
+                        fraction: lengths[i] / most,
+                        label: _labels[i],
+                        value: prepCount(lengths[i]),
+                        chosen: taken,
+                      ),
                     ),
                   ),
                 ),

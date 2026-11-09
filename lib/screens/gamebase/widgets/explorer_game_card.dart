@@ -571,19 +571,25 @@ class _ExplorerGamesStatusRow extends StatelessWidget {
               ),
             ),
             SizedBox(width: 10.w),
-            Text(
-              message ?? '',
-              style: TextStyle(
-                color: context.colors.textPrimaryMuted,
-                fontSize: 12.f,
+            Flexible(
+              child: Text(
+                message ?? '',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: context.colors.textPrimaryMuted,
+                  fontSize: 12.f,
+                ),
               ),
             ),
           ] else
-            Text(
-              message ?? '',
-              style: TextStyle(
-                color: context.colors.textSecondary,
-                fontSize: 12.f,
+            Flexible(
+              child: Text(
+                message ?? '',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: context.colors.textSecondary,
+                  fontSize: 12.f,
+                ),
               ),
             ),
         ],
@@ -1677,6 +1683,7 @@ class _FadingOverflowText extends StatelessWidget {
           text: TextSpan(text: text, style: style),
           maxLines: 1,
           textDirection: textDir,
+          textScaler: MediaQuery.textScalerOf(context),
         )..layout(maxWidth: maxW);
 
         final overflows =
@@ -1725,6 +1732,7 @@ class _FadingOverflowRichText extends StatelessWidget {
           text: span,
           maxLines: 1,
           textDirection: textDir,
+          textScaler: MediaQuery.textScalerOf(context),
         )..layout(maxWidth: maxW);
 
         final overflows =

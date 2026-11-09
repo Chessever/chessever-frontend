@@ -24,6 +24,7 @@ import 'package:chessever2/utils/foreground_task_scheduler.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/svg_asset.dart';
+import 'package:chessever2/utils/text_scale.dart';
 import 'package:chessever2/widgets/game_filter/game_filter.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -455,7 +456,7 @@ class _CountrymenGamesTabState extends ConsumerState<CountrymenGamesTab>
     final searchBarHeight = 48.h;
 
     return SizedBox(
-      height: searchBarHeight,
+      height: searchBarHeight * context.textGrowth,
       child: Row(
         children: [
           // Search field

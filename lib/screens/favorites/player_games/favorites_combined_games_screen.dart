@@ -17,6 +17,7 @@ import 'package:chessever2/utils/scroll_cache.dart';
 import 'package:chessever2/utils/foreground_task_scheduler.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/utils/text_scale.dart';
 import 'package:chessever2/widgets/federation_flag.dart';
 import 'package:chessever2/widgets/game_filter/game_filter.dart';
 import 'package:flutter/material.dart';
@@ -421,7 +422,7 @@ class _FavoritesCombinedGamesScreenState
                   pinned: true,
                   delegate: _SliverSearchBarDelegate(
                     child: _buildSearchBar(state),
-                    height: 68.h,
+                    height: 68.h * context.textGrowth,
                   ),
                 ),
 
@@ -655,7 +656,7 @@ class _FavoritesCombinedGamesScreenState
     final hasSelection = _selectedPlayerIds.isNotEmpty;
 
     return SizedBox(
-      height: 48.h,
+      height: 48.h * context.textGrowth,
       child: ShaderMask(
         shaderCallback: (Rect bounds) {
           return LinearGradient(

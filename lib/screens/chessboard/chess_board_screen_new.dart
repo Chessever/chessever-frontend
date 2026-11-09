@@ -107,6 +107,7 @@ import 'package:chessever2/screens/chessboard/utils/board_workspace_layout.dart'
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/share_card.dart';
 import 'package:chessever2/utils/string_utils.dart';
+import 'package:chessever2/utils/text_scale.dart';
 import 'package:chessever2/utils/user_error_message.dart';
 import 'package:chessground/chessground.dart';
 import 'package:collection/collection.dart';
@@ -6684,6 +6685,10 @@ class _GameDropdownContentState extends ConsumerState<_GameDropdownContent> {
     return 20.h + 4.h + layout.frameHeight + 4.h + 20.h;
   }
 
+  // Only the two player rows (2 x 20.h) hold text; the board does not.
+  double get _scaledCardRowHeight =>
+      _cardRowHeight + 40.h * (context.textGrowth - 1);
+
   static const double _timelineHeight = 46.0;
   static const double _sectionGap = 6.0;
   static const double _verticalPadding = 10.0;
@@ -6804,7 +6809,7 @@ class _GameDropdownContentState extends ConsumerState<_GameDropdownContent> {
       width: _cardSpacing.w,
       child: Center(
         child: _DashedVerticalLine(
-          height: _cardRowHeight,
+          height: _scaledCardRowHeight,
           color: context.isLightTheme
               ? context.colors.accentText.withValues(alpha: 0.6)
               : kPrimaryColor.withValues(alpha: 0.5),
@@ -6819,7 +6824,7 @@ class _GameDropdownContentState extends ConsumerState<_GameDropdownContent> {
   @override
   Widget build(BuildContext context) {
     if (widget.games.isEmpty) {
-      return SizedBox(height: (_verticalPadding * 2).h + _cardRowHeight);
+      return SizedBox(height: (_verticalPadding * 2).h + _scaledCardRowHeight);
     }
 
     final roundGroups = _buildRoundGroups(widget.games);
@@ -6846,10 +6851,11 @@ class _GameDropdownContentState extends ConsumerState<_GameDropdownContent> {
       );
     });
 
-    final preferredCardRowHeight = _cardRowHeight;
+    final preferredCardRowHeight = _scaledCardRowHeight;
     final verticalPad = (_verticalPadding * 2).h;
     final timelineSpace = showTimeline
-        ? (_sectionGap + _timelineHeight).h
+        ? (_sectionGap + _timelineHeight).h +
+              _timelineHeight.h * (context.textGrowth - 1)
         : 0.0;
     final preferredContentHeight =
         verticalPad + preferredCardRowHeight + timelineSpace;
@@ -6935,7 +6941,7 @@ class _GameDropdownContentState extends ConsumerState<_GameDropdownContent> {
               if (showTimeline) ...[
                 SizedBox(height: _sectionGap.h),
                 SizedBox(
-                  height: _timelineHeight.h,
+                  height: _timelineHeight.h * context.textGrowth,
                   width: widget.dropdownWidth,
                   child: ListenableBuilder(
                     listenable: _scrollController,
@@ -7074,7 +7080,7 @@ class _StickyRoundTimelineState extends State<_StickyRoundTimeline> {
     _ensureKeys();
 
     return SizedBox(
-      height: _GameDropdownContentState._timelineHeight.h,
+      height: _GameDropdownContentState._timelineHeight.h * context.textGrowth,
       child: ScrollConfiguration(
         behavior: ScrollConfiguration.of(context).copyWith(scrollbars: false),
         child: ListView.separated(
@@ -8305,7 +8311,7 @@ class _AnalysisGameBody extends ConsumerWidget {
         // instead of allowing the width-sized board to consume their height.
         final stackedBoardLimit = math.max(
           1.0,
-          availableHeight - 144.sp - 120.h,
+          availableHeight - context.textExtent(144.sp) - 120.h,
         );
 
         // PV sits above the swipeable panels on both pages. The explorer
@@ -8545,7 +8551,7 @@ class _AnalysisGameBody extends ConsumerWidget {
           // Calculate optimal board size to fit within available height
           // Account for: top padding (8) + player card (~56) + spacing (8) +
           // board + spacing (8) + player card (~56) + bottom padding (8) = ~144 extra
-          final playerCardHeight = 56.sp;
+          final playerCardHeight = context.textExtent(56.sp);
           final verticalSpacing = 8.sp;
           final verticalPadding = 8.sp * 2; // top + bottom
           final totalVerticalExtra =
@@ -11075,20 +11081,22 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
       return _wrapWithFlipGesture(
         RepaintBoundary(
           key: boardShareBoundaryKey,
-          child: Stack(
-            children: [
-              chessboard,
-              classificationLanding,
-              if (boardAnnotationBadge != null) boardAnnotationBadge,
-              // Animated falling king overlay using motor springs
-              _FallenKingOverlay(
-                left: effectiveFile * squareSize,
-                top: effectiveRank * squareSize,
-                squareSize: squareSize,
-                pieceImage: pieceImage!,
-                squareColor: compositeColor,
-              ),
-            ],
+          child: MediaQuery.withNoTextScaling(
+            child: Stack(
+              children: [
+                chessboard,
+                classificationLanding,
+                if (boardAnnotationBadge != null) boardAnnotationBadge,
+                // Animated falling king overlay using motor springs
+                _FallenKingOverlay(
+                  left: effectiveFile * squareSize,
+                  top: effectiveRank * squareSize,
+                  squareSize: squareSize,
+                  pieceImage: pieceImage!,
+                  squareColor: compositeColor,
+                ),
+              ],
+            ),
           ),
         ),
       );
@@ -11136,31 +11144,33 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
         return _wrapWithFlipGesture(
           RepaintBoundary(
             key: boardShareBoundaryKey,
-            child: Stack(
-              children: [
-                chessboard,
-                classificationLanding,
-                if (boardAnnotationBadge != null) boardAnnotationBadge,
-                // Mint tint behind each king (re-draws the king on top)
-                if (pieceAssets[PieceKind.whiteKing] != null)
-                  drawKingTint(whiteKingSquare, PieceKind.whiteKing),
-                if (pieceAssets[PieceKind.blackKing] != null)
-                  drawKingTint(blackKingSquare, PieceKind.blackKing),
-                // Animated peace icon on white king
-                _AnimatedPeaceIcon(
-                  square: whiteKingSquare,
-                  squareSize: squareSize,
-                  isFlipped: widget.isFlipped,
-                  delayMs: 0,
-                ),
-                // Animated peace icon on black king (slight delay for stagger effect)
-                _AnimatedPeaceIcon(
-                  square: blackKingSquare,
-                  squareSize: squareSize,
-                  isFlipped: widget.isFlipped,
-                  delayMs: 100,
-                ),
-              ],
+            child: MediaQuery.withNoTextScaling(
+              child: Stack(
+                children: [
+                  chessboard,
+                  classificationLanding,
+                  if (boardAnnotationBadge != null) boardAnnotationBadge,
+                  // Mint tint behind each king (re-draws the king on top)
+                  if (pieceAssets[PieceKind.whiteKing] != null)
+                    drawKingTint(whiteKingSquare, PieceKind.whiteKing),
+                  if (pieceAssets[PieceKind.blackKing] != null)
+                    drawKingTint(blackKingSquare, PieceKind.blackKing),
+                  // Animated peace icon on white king
+                  _AnimatedPeaceIcon(
+                    square: whiteKingSquare,
+                    squareSize: squareSize,
+                    isFlipped: widget.isFlipped,
+                    delayMs: 0,
+                  ),
+                  // Animated peace icon on black king (slight delay for stagger effect)
+                  _AnimatedPeaceIcon(
+                    square: blackKingSquare,
+                    squareSize: squareSize,
+                    isFlipped: widget.isFlipped,
+                    delayMs: 100,
+                  ),
+                ],
+              ),
             ),
           ),
         );
@@ -11170,12 +11180,14 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
     return _wrapWithFlipGesture(
       RepaintBoundary(
         key: boardShareBoundaryKey,
-        child: Stack(
-          children: [
-            chessboard,
-            classificationLanding,
-            if (boardAnnotationBadge != null) boardAnnotationBadge,
-          ],
+        child: MediaQuery.withNoTextScaling(
+          child: Stack(
+            children: [
+              chessboard,
+              classificationLanding,
+              if (boardAnnotationBadge != null) boardAnnotationBadge,
+            ],
+          ),
         ),
       ),
     );
@@ -12272,7 +12284,10 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
                                       ),
                                     );
                                   },
-                                  child: Padding(
+                                  // Scrolls only when larger text outgrows
+                                  // a short notation panel.
+                                  child: SingleChildScrollView(
+                                    primary: false,
                                     padding: EdgeInsets.symmetric(
                                       horizontal: 18.sp,
                                       vertical: 16.sp,
@@ -14865,12 +14880,14 @@ class _PrincipalVariationListState
                           ),
                         ),
                         child: Center(
-                          child: Text(
-                            evalText,
-                            style: AppTypography.textSmBold.copyWith(
-                              color: context.colors.textPrimary,
-                              fontSize: 12.sp,
-                              letterSpacing: -0.3,
+                          child: CappedTextScale(
+                            child: Text(
+                              evalText,
+                              style: AppTypography.textSmBold.copyWith(
+                                color: context.colors.textPrimary,
+                                fontSize: 12.sp,
+                                letterSpacing: -0.3,
+                              ),
                             ),
                           ),
                         ),

@@ -1,5 +1,6 @@
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/utils/text_scale.dart';
 import 'package:flutter/material.dart';
 
 /// [addToSpace] is not in [explorerBoardMenuItems]: its label flips between
@@ -154,27 +155,31 @@ class ExplorerViewToggle extends StatelessWidget {
           borderRadius: BorderRadius.circular(12.br),
           border: Border.all(color: context.colors.divider),
         ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Expanded(
-              child: _ExplorerViewTab(
-                label: 'Explorer',
-                selected: currentPage == 0,
-                onTap: () => onSelected(0),
-                compact: compact,
+        // The toggle's width is set by the app bar, not by its labels.
+        child: CappedTextScale(
+          maxScale: 1.3,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Expanded(
+                child: _ExplorerViewTab(
+                  label: 'Explorer',
+                  selected: currentPage == 0,
+                  onTap: () => onSelected(0),
+                  compact: compact,
+                ),
               ),
-            ),
-            SizedBox(width: 3.sp),
-            Expanded(
-              child: _ExplorerViewTab(
-                label: 'Notation',
-                selected: currentPage == 1,
-                onTap: () => onSelected(1),
-                compact: compact,
+              SizedBox(width: 3.sp),
+              Expanded(
+                child: _ExplorerViewTab(
+                  label: 'Notation',
+                  selected: currentPage == 1,
+                  onTap: () => onSelected(1),
+                  compact: compact,
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

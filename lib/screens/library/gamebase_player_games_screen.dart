@@ -7,6 +7,7 @@ import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/chess_title_utils.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/utils/text_scale.dart';
 import 'package:chessever2/widgets/federation_flag.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -57,6 +58,8 @@ class _GamebasePlayerGamesScreenState
       appBar: AppBar(
         backgroundColor: context.colors.background,
         elevation: 0,
+        // Two-line title (name + federation) grows with the text size.
+        toolbarHeight: context.textExtent(kToolbarHeight),
         leading: IconButton(
           icon:  Icon(Icons.arrow_back_ios, color: context.colors.textPrimary),
           onPressed: () => Navigator.pop(context),

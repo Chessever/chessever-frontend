@@ -32,6 +32,7 @@ import 'package:chessever2/utils/broadcast_custom_scoring.dart';
 import 'package:chessever2/utils/location_service_provider.dart';
 import 'package:chessever2/utils/png_asset.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/utils/text_scale.dart';
 import 'package:chessever2/widgets/federation_flag.dart';
 import 'package:chessever2/widgets/time_control_glyph.dart';
 import 'package:heroine/heroine.dart';
@@ -2248,7 +2249,7 @@ class _RatingDisplay extends ConsumerWidget {
           vertical: ResponsiveHelper.isTablet ? 12.sp : 8.sp,
         ),
         width: double.infinity,
-        height: containerHeight,
+        height: context.textExtent(containerHeight),
         decoration: BoxDecoration(
           color: context.colors.surface,
           borderRadius: BorderRadius.circular(8.br),

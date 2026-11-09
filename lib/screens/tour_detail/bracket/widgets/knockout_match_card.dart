@@ -1,6 +1,7 @@
 import 'package:chessever2/screens/tour_detail/bracket/models/knockout_bracket.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
+import 'package:chessever2/utils/text_scale.dart';
 import 'package:chessever2/widgets/federation_flag.dart';
 import 'package:flutter/material.dart';
 
@@ -31,7 +32,10 @@ class KnockoutMatchCard extends StatelessWidget {
       semantics.write('. ${match.winner!.displayName} advances');
     }
 
-    return Semantics(
+    // Fixed 220x92 canvas cell: two name+metadata rows fit up to 1.3x.
+    return CappedTextScale(
+      maxScale: 1.3,
+      child: Semantics(
       button: true,
       label: semantics.toString(),
       child: Material(
@@ -146,6 +150,7 @@ class KnockoutMatchCard extends StatelessWidget {
             ),
           ),
         ),
+      ),
       ),
     );
   }

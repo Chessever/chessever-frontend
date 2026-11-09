@@ -31,6 +31,7 @@ import 'package:chessever2/utils/user_error_message.dart';
 import 'package:chessever2/utils/favorite_limit_guard.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/svg_asset.dart';
+import 'package:chessever2/utils/text_scale.dart';
 import 'package:chessever2/widgets/federation_flag.dart';
 import 'package:chessever2/widgets/game_filter/game_filter.dart';
 import 'package:chessever2/widgets/app_snack.dart';
@@ -540,7 +541,7 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
     final searchBarHeight = 48.h;
 
     return SizedBox(
-      height: searchBarHeight,
+      height: searchBarHeight * context.textGrowth,
       child: Row(
         children: [
           // Search field
@@ -705,7 +706,7 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
     final hasSelection = state.selectedFideIds.isNotEmpty;
 
     return SizedBox(
-      height: 48.h,
+      height: 48.h * context.textGrowth,
       child: ShaderMask(
         shaderCallback: (Rect bounds) {
           return LinearGradient(

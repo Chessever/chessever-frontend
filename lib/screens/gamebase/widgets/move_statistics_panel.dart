@@ -6,6 +6,7 @@ import 'package:chessever2/screens/gamebase/utils/space_position_draft.dart';
 import 'package:chessever2/screens/library/widgets/library_context_menu.dart';
 import 'package:chessever2/screens/library/widgets/menu_preview_surface.dart';
 import 'package:chessever2/utils/figurine_notation.dart';
+import 'package:chessever2/utils/text_scale.dart';
 import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
 import 'package:chessever2/widgets/space_shortcut_drafts.dart';
 import 'package:dartchess/dartchess.dart';
@@ -164,8 +165,10 @@ class _ExplorerEmpty extends StatelessWidget {
     return LayoutBuilder(
       builder: (context, constraints) {
         final maxHeight = constraints.maxHeight;
-        final compact = maxHeight.isFinite && maxHeight < 132;
-        final ultraCompact = maxHeight.isFinite && maxHeight < 76;
+        // Thresholds are the content heights at the default text size.
+        final growth = context.textGrowth;
+        final compact = maxHeight.isFinite && maxHeight < 132 * growth;
+        final ultraCompact = maxHeight.isFinite && maxHeight < 76 * growth;
 
         return Center(
           child: Padding(

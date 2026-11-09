@@ -22,6 +22,7 @@ import 'package:chessever2/screens/player_profile/player_profile_screen.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/utils/text_scale.dart';
 import 'package:chessever2/widgets/alert_dialog/alert_modal.dart';
 import 'package:chessever2/widgets/home_top_bar.dart';
 import 'package:chessever2/widgets/search/enhanced_rounded_search_bar.dart';
@@ -534,6 +535,7 @@ class _ForYouSegments extends StatelessWidget {
     final current = selectedIndex.clamp(0, options.length - 1);
     return SegmentedSwitcher(
       dotScope: 'home.tab',
+      height: context.textExtent(40.h),
       backgroundColor: colors.popup,
       selectedBackgroundColor: colors.popup,
       options: options,

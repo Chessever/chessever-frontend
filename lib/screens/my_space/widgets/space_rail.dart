@@ -6,6 +6,7 @@ import 'package:chessever2/screens/my_space/widgets/space_player_strip.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_list_view_mode_provider.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/utils/text_scale.dart';
 import 'package:chessever2/widgets/skeleton_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
@@ -140,6 +141,7 @@ class SpaceRailMetrics {
     required this.gridGames,
     this.mode = GamesListViewMode.chessBoardGrid,
     this.boardInset = 0,
+    this.textGrowth = 1,
   });
 
   factory SpaceRailMetrics.of(
@@ -194,6 +196,7 @@ class SpaceRailMetrics {
       gridGames: grid,
       mode: mode,
       boardInset: mode == GamesListViewMode.chessBoard ? 24.sp : 0,
+      textGrowth: context.textGrowth,
     );
   }
 
@@ -214,6 +217,9 @@ class SpaceRailMetrics {
   /// screen: the rail hands them a screen that makes them [game] wide.
   final bool gridGames;
 
+  /// [BuildContext.textGrowth], for the text lines in [estimate].
+  final double textGrowth;
+
   /// Between two faces, the Players rail keeps the strip's own gap; between
   /// anything else, [gap].
   double gapBefore(SpaceRailSlot slot, SpaceRailSlot previous) =>
@@ -232,12 +238,18 @@ class SpaceRailMetrics {
   /// [labelled] games carry a label line over them; a group is an event
   /// card over labelled games.
   double estimate(SpaceRailSlot slot, {bool labelled = false}) {
-    final label = labelled ? 16.0 + 8.w : 0.0;
+    final label = labelled ? 16.0 * textGrowth + 8.w : 0.0;
     switch (slot) {
       case SpaceRailSlot.wide:
         return 108.w * 4 / 5 + 12.sp;
       case SpaceRailSlot.face:
-        return 4.w + SpacePlayerStrip.face + 8.w + 17 + 1.w + 15 + 4.w;
+        return 4.w +
+            SpacePlayerStrip.face +
+            8.w +
+            17 * textGrowth +
+            1.w +
+            15 * textGrowth +
+            4.w;
       case SpaceRailSlot.game:
         final w = game;
         return label +

@@ -7,6 +7,7 @@ import 'package:chessever2/screens/chessboard/widgets/like_tag_offer.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/utils/text_scale.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
@@ -725,7 +726,8 @@ class _TagDropdownState extends State<_TagDropdown> {
 
   Widget _panel(AppColors colors) {
     final tags = kLikeTags;
-    final rowExtent = 48.h;
+    // Two-line tag labels need taller rows at larger text sizes.
+    final rowExtent = context.textExtent(48.h);
     final rowGap = 8.h;
     final padTop = 8.h;
     final padBottom = 10.h;

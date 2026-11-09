@@ -10,6 +10,7 @@ import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/country_utils.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/utils/text_scale.dart';
 import 'package:chessever2/widgets/card_context_menu.dart';
 import 'package:chessever2/widgets/search/enhanced_group_broadcast_local_storage.dart'
     show EnhancedSearchResult;
@@ -187,7 +188,7 @@ class _PlayerSearchCard extends ConsumerWidget {
       behavior: HitTestBehavior.opaque,
       onTap: () => _navigateToProfile(context),
       child: Container(
-        height: isCompact ? 108.sp : 120.sp,
+        height: (isCompact ? 108.sp : 120.sp) * context.textGrowth,
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(12.br),
           border: Border.all(color: context.colors.divider, width: 1),

@@ -10,6 +10,7 @@ import 'package:chessever2/screens/feed/widgets/feed_glyphs.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
+import 'package:chessever2/utils/text_scale.dart';
 import 'package:chessever2/widgets/app_snack.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -574,7 +575,7 @@ class _PuzzleRow extends StatelessWidget {
             Row(
               children: [
                 SizedBox(
-                  width: 40,
+                  width: context.textExtent(40),
                   child: Text(
                     '#$number',
                     style: figures.copyWith(color: raceQuietInk(colors)),
@@ -602,7 +603,7 @@ class _PuzzleRow extends StatelessWidget {
             ),
             const SizedBox(height: 4),
             Padding(
-              padding: const EdgeInsets.only(left: 40),
+              padding: EdgeInsets.only(left: context.textExtent(40)),
               child: Text(
                 solution.isEmpty ? 'No solution sent' : solution,
                 style: AppTypography.textSmRegular.copyWith(

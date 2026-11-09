@@ -5,6 +5,7 @@ import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/app_typography.dart';
 
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/utils/text_scale.dart';
 import 'package:chessever2/widgets/federation_flag.dart';
 import 'package:chessever2/widgets/player_initials_avatar.dart';
 import 'package:flutter/material.dart';
@@ -245,32 +246,35 @@ class FigmaPlayerCard extends ConsumerWidget {
             // slot. Ranked lists retain the gutter to align search results;
             // unranked collections can remove it with reserveRankSpace.
             if (showRank || reserveRankSpace) ...[
-              SizedBox(
-                width: 24.w,
-                child: !showRank
-                    ? const SizedBox.shrink()
-                    : rank != null
-                    ? Text(
-                        rank.toString(),
-                        style: AppTypography.textSmMedium.copyWith(
-                          color: context.colors.textTertiary,
-                        ),
-                        textAlign: TextAlign.center,
-                      )
-                    : skel.Skeletonizer(
-                        enabled: true,
-                        effect: skel.ShimmerEffect(
-                          baseColor: context.colors.skeleton,
-                          highlightColor: context.colors.divider,
-                        ),
-                        child: Text(
-                          '00',
+              // A two-digit rank must stay on one line in the 24-wide gutter.
+              CappedTextScale(
+                child: SizedBox(
+                  width: 24.w,
+                  child: !showRank
+                      ? const SizedBox.shrink()
+                      : rank != null
+                      ? Text(
+                          rank.toString(),
                           style: AppTypography.textSmMedium.copyWith(
                             color: context.colors.textTertiary,
                           ),
                           textAlign: TextAlign.center,
+                        )
+                      : skel.Skeletonizer(
+                          enabled: true,
+                          effect: skel.ShimmerEffect(
+                            baseColor: context.colors.skeleton,
+                            highlightColor: context.colors.divider,
+                          ),
+                          child: Text(
+                            '00',
+                            style: AppTypography.textSmMedium.copyWith(
+                              color: context.colors.textTertiary,
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
                         ),
-                      ),
+                ),
               ),
               SizedBox(width: 12.w),
             ],

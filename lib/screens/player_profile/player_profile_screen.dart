@@ -44,6 +44,7 @@ import 'package:chessever2/utils/haptic_feedback_service.dart';
 
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/svg_asset.dart';
+import 'package:chessever2/utils/text_scale.dart';
 import 'package:chessever2/utils/favorite_constants.dart';
 import 'package:chessever2/utils/favorite_limit_guard.dart';
 import 'package:chessever2/widgets/app_snack.dart';
@@ -1857,7 +1858,7 @@ class _ActionCardState extends State<_ActionCard> {
                       h,
                     )!;
                 return Container(
-                  height: 62.h,
+                  height: 62.h * context.textGrowth,
                   padding: EdgeInsets.symmetric(
                     horizontal: 10.w,
                     vertical: 8.h,

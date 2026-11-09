@@ -21,6 +21,7 @@ import 'package:chessever2/utils/broadcast_custom_scoring.dart';
 import 'package:chessever2/utils/chess_title_utils.dart';
 import 'package:chessever2/utils/pgn_clock_utils.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/utils/text_scale.dart';
 import 'package:chessever2/utils/twic_player_enrichment.dart';
 import 'package:chessever2/widgets/atomic_countdown_text.dart';
 import 'package:chessever2/widgets/alert_dialog/alert_modal.dart';
@@ -880,21 +881,23 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
                                   : playerView == PlayerView.gridView
                                   ? 13.f
                                   : 15.f;
-                          return Text(
-                            label,
-                            style: TextStyle(
-                              fontSize: scoreFontSize,
-                              fontWeight: FontWeight.w500,
-                              color: resultColor,
-                              height: 1.0,
-                              letterSpacing: -0.2,
+                          return CappedTextScale(
+                            child: Text(
+                              label,
+                              style: TextStyle(
+                                fontSize: scoreFontSize,
+                                fontWeight: FontWeight.w500,
+                                color: resultColor,
+                                height: 1.0,
+                                letterSpacing: -0.2,
+                              ),
+                              strutStyle: const StrutStyle(
+                                forceStrutHeight: true,
+                                height: 1.0,
+                                leading: 0,
+                              ),
+                              textAlign: TextAlign.center,
                             ),
-                            strutStyle: const StrutStyle(
-                              forceStrutHeight: true,
-                              height: 1.0,
-                              leading: 0,
-                            ),
-                            textAlign: TextAlign.center,
                           );
                         },
                       ),
@@ -949,6 +952,7 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
                 final textPainter = TextPainter(
                   textDirection: TextDirection.ltr,
                   maxLines: 1,
+                  textScaler: context.textScaler,
                 );
 
                 // Smart truncation: ALWAYS prioritize showing full surname

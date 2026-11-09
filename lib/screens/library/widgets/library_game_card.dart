@@ -11,6 +11,7 @@ import 'package:chessever2/utils/chess_title_utils.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/png_asset.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/utils/text_scale.dart';
 import 'package:chessever2/utils/string_utils.dart';
 import 'package:chessever2/widgets/app_button.dart';
 import 'package:chessever2/widgets/backfilled_federation_flag.dart';
@@ -265,7 +266,7 @@ class LibraryGameCard extends HookConsumerWidget {
                         else
                           // No tags: keep a single chip-row of height so cards
                           // stay uniformly sized across the list.
-                          SizedBox(height: 22.h),
+                          SizedBox(height: 22.h * context.textGrowth),
                       ],
                     ],
                   ),

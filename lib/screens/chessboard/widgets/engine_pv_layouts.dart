@@ -1,6 +1,7 @@
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/utils/text_scale.dart';
 import 'package:flutter/material.dart';
 
 /// A single engine principal-variation entry, rendered by either
@@ -81,7 +82,7 @@ class EnginePvListView extends StatelessWidget {
               endIndent: 12.sp,
             ),
           SizedBox(
-            height: rowHeight,
+            height: context.textExtent(rowHeight),
             child: i < items.length
                 ? _PvRow(item: items[i])
                 : _PvRowPlaceholder(
@@ -518,12 +519,14 @@ class _PvCardState extends State<_PvCard> {
                 ),
               ),
               child: Center(
-                child: Text(
-                  item.evalText,
-                  style: AppTypography.textSmBold.copyWith(
-                    color: context.colors.textPrimary,
-                    fontSize: 12.sp,
-                    letterSpacing: -0.3,
+                child: CappedTextScale(
+                  child: Text(
+                    item.evalText,
+                    style: AppTypography.textSmBold.copyWith(
+                      color: context.colors.textPrimary,
+                      fontSize: 12.sp,
+                      letterSpacing: -0.3,
+                    ),
                   ),
                 ),
               ),

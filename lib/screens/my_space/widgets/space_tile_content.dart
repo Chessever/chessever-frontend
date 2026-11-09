@@ -29,6 +29,7 @@ import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrap
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/utils/text_scale.dart';
 import 'package:chessever2/widgets/event_card/event_image_provider.dart';
 import 'package:chessever2/widgets/event_card/event_next_round_provider.dart';
 import 'package:chessever2/widgets/hub_tile.dart';
@@ -196,41 +197,46 @@ class _PlayerTile extends ConsumerWidget {
             if (federation != null) federation.toUpperCase(),
           ].join(' · ');
 
-    return DecoratedBox(
-      decoration: _plate(context),
-      child: Padding(
-        padding: EdgeInsets.fromLTRB(12.w, 18.w, 12.w, 14.w),
-        child: Column(
-          children: [
-            SpaceAvatarWithFlag(
-              size: 72.w,
-              photoUrl: photo,
-              name: name,
-              title: title,
-              federation: federation,
-              flatFallback: true,
-            ),
-            SizedBox(height: 14.w),
-            // At most two lines, which the plate holds at any text size.
-            _PlayerName(name: name),
-            SizedBox(height: 2.w),
-            Text(
-              status.isNotEmpty ? status : (shortcut.subtitle ?? ''),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              textAlign: TextAlign.center,
-              style: spaceText(
-                context,
-                size: 11,
-                line: 15,
-                color: context.colors.textPrimaryMuted,
+    // Two name lines, the status and "All games" fill the fixed plate at
+    // about 1.39x text.
+    return CappedTextScale(
+      maxScale: 1.3,
+      child: DecoratedBox(
+        decoration: _plate(context),
+        child: Padding(
+          padding: EdgeInsets.fromLTRB(12.w, 18.w, 12.w, 14.w),
+          child: Column(
+            children: [
+              SpaceAvatarWithFlag(
+                size: 72.w,
+                photoUrl: photo,
+                name: name,
+                title: title,
+                federation: federation,
+                flatFallback: true,
               ),
-            ),
-            if (shortcut.kind == SpaceShortcutKind.playerGames) ...[
-              const Spacer(),
-              _OpenRow(label: 'All games'),
+              SizedBox(height: 14.w),
+              // At most two lines, which the plate holds at any text size.
+              _PlayerName(name: name),
+              SizedBox(height: 2.w),
+              Text(
+                status.isNotEmpty ? status : (shortcut.subtitle ?? ''),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.center,
+                style: spaceText(
+                  context,
+                  size: 11,
+                  line: 15,
+                  color: context.colors.textPrimaryMuted,
+                ),
+              ),
+              if (shortcut.kind == SpaceShortcutKind.playerGames) ...[
+                const Spacer(),
+                _OpenRow(label: 'All games'),
+              ],
             ],
-          ],
+          ),
         ),
       ),
     );
@@ -917,63 +923,68 @@ class _EventTile extends ConsumerWidget {
         : shortcut.str('dates') ?? shortcut.subtitle;
     final tcAsset = _timeControlAsset(shortcut.str('timeControl'));
 
-    return DecoratedBox(
-      decoration: _plate(context),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(4.w),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            SizedBox(
-              height: 92.w,
-              child: _EventImage(
-                eventId: _isCommunity ? null : eventId,
-                location: shortcut.str('location'),
-              ),
-            ),
-            Expanded(
-              child: Padding(
-                padding: EdgeInsets.fromLTRB(10.w, 10.w, 10.w, 12.w),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      shortcut.title,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: spaceText(
-                        context,
-                        size: 13,
-                        line: 17,
-                        weight: FontWeight.w600,
-                      ),
-                    ),
-                    SizedBox(height: 6.w),
-                    statusLine,
-                    const Spacer(),
-                    Row(
-                      children: [
-                        if (tcAsset != null) ...[
-                          // The theme's own twin: the dark-stage coins
-                          // vanish on paper.
-                          TimeControlGlyph(tcAsset, size: 13.w),
-                          SizedBox(width: 5.w),
-                        ],
-                        Expanded(
-                          child: Text(
-                            footer ?? '',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: line,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
+    // A two-line title, the status and the foot row fill the plate under
+    // the image at about 1.39x text.
+    return CappedTextScale(
+      maxScale: 1.3,
+      child: DecoratedBox(
+        decoration: _plate(context),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(4.w),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              SizedBox(
+                height: 92.w,
+                child: _EventImage(
+                  eventId: _isCommunity ? null : eventId,
+                  location: shortcut.str('location'),
                 ),
               ),
-            ),
-          ],
+              Expanded(
+                child: Padding(
+                  padding: EdgeInsets.fromLTRB(10.w, 10.w, 10.w, 12.w),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        shortcut.title,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: spaceText(
+                          context,
+                          size: 13,
+                          line: 17,
+                          weight: FontWeight.w600,
+                        ),
+                      ),
+                      SizedBox(height: 6.w),
+                      statusLine,
+                      const Spacer(),
+                      Row(
+                        children: [
+                          if (tcAsset != null) ...[
+                            // The theme's own twin: the dark-stage coins
+                            // vanish on paper.
+                            TimeControlGlyph(tcAsset, size: 13.w),
+                            SizedBox(width: 5.w),
+                          ],
+                          Expanded(
+                            child: Text(
+                              footer ?? '',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: line,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

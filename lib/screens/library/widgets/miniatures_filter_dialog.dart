@@ -4,6 +4,7 @@ import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/utils/text_scale.dart';
 import 'package:chessever2/widgets/alert_dialog/alert_modal.dart';
 import 'package:chessever2/widgets/game_filter/game_filter_model.dart';
 import 'package:chessever2/widgets/game_filter/rating_tier_filter.dart';
@@ -371,7 +372,7 @@ class _MiniaturesFilterDialogState extends State<MiniaturesFilterDialog> {
             child: GestureDetector(
               onTap: _resetFilters,
               child: Container(
-                height: 40.h,
+                height: 40.h * context.textGrowth,
                 decoration: BoxDecoration(
                   color: context.colors.surface,
                   borderRadius: BorderRadius.circular(4.br),
@@ -391,7 +392,7 @@ class _MiniaturesFilterDialogState extends State<MiniaturesFilterDialog> {
             child: GestureDetector(
               onTap: _applyFilters,
               child: Container(
-                height: 40.h,
+                height: 40.h * context.textGrowth,
                 decoration: BoxDecoration(
                   color: context.colors.textPrimary,
                   borderRadius: BorderRadius.circular(4.br),

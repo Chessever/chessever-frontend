@@ -8,6 +8,7 @@ import 'package:chessever2/screens/library/widgets/library_search_overlay.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/utils/text_scale.dart';
 import 'package:chessever2/utils/svg_asset.dart';
 import 'package:chessever2/widgets/simple_search_bar.dart';
 import 'package:chessever2/widgets/svg_widget.dart';
@@ -315,7 +316,7 @@ class _LibrarySearchBarState extends ConsumerState<LibrarySearchBar> {
 
     // CSS: height 40px, padding 4px 12px
     return SizedBox(
-      height: 40.h,
+      height: 40.h * context.textGrowth,
       child: Row(
         children: [
           SizedBox(width: 12.w),

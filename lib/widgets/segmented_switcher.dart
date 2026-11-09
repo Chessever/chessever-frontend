@@ -4,6 +4,7 @@ import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/widgets/discovery_dot.dart';
 import 'package:flutter/material.dart';
 import '../utils/app_typography.dart';
+import 'package:chessever2/utils/text_scale.dart';
 
 class SegmentedSwitcher extends StatefulWidget {
   final List<String> options;
@@ -194,7 +195,7 @@ class _SegmentedSwitcherState extends State<SegmentedSwitcher> {
             (_) => _centerSelectedSegment(),
           );
           return Container(
-            height: widget.height ?? 40.h,
+            height: widget.height ?? context.textExtent(40.h),
             decoration: BoxDecoration(
               color: backgroundColor,
               borderRadius: BorderRadius.circular(borderRadius),
@@ -254,7 +255,7 @@ class _SegmentedSwitcherState extends State<SegmentedSwitcher> {
     }
 
     return Container(
-      height: widget.height ?? 40.h,
+      height: widget.height ?? context.textExtent(40.h),
       decoration: BoxDecoration(
         color: backgroundColor,
         borderRadius: BorderRadius.circular(borderRadius),

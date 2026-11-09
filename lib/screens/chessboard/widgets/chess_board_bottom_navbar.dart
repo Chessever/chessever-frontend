@@ -1,6 +1,7 @@
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/utils/text_scale.dart';
 import 'package:chessever2/widgets/svg_widget.dart';
 import 'package:flutter/material.dart';
 
@@ -138,7 +139,12 @@ class ChessSvgBottomNavbar extends StatelessWidget {
                 bottom: 4.h, // keep within bar bounds
                 left: 0,
                 right: 0,
-                child: Center(child: Text(depthText!, style: depthStyle)),
+                child: Center(
+                  // Pinned under the icon in a fixed bar: grows only a little.
+                  child: CappedTextScale(
+                    child: Text(depthText!, style: depthStyle),
+                  ),
+                ),
               ),
           ],
         ),

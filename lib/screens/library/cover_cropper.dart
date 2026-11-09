@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import 'package:chessever2/repository/library/collection_cover.dart';
 import 'package:chessever2/utils/app_typography.dart';
+import 'package:chessever2/utils/text_scale.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -156,7 +157,7 @@ class _CoverCropperState extends State<CoverCropper> {
           child: Column(
             children: [
               SizedBox(
-                height: 52,
+                height: context.textExtent(52),
                 child: Row(
                   children: [
                     TextButton(

@@ -16,6 +16,7 @@ import 'package:country_flags/country_flags.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/utils/text_scale.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/game_card_wrapper_provider.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/app_typography.dart';
@@ -102,7 +103,7 @@ class GroupEventMatchCard extends ConsumerWidget {
           ref.read(matchExpansionProvider.notifier).toggleMatch(matchKey);
         },
         child: Container(
-          height: 60.h,
+          height: context.textExtent(60.h),
           padding: EdgeInsets.only(left: 12.sp, right: 12.sp),
           decoration: BoxDecoration(
             color: context.colors.surface,

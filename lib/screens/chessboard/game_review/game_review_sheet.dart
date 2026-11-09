@@ -12,6 +12,7 @@ import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_mode
 import 'package:chessever2/services/fide_photo_service.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
+import 'package:chessever2/utils/text_scale.dart';
 import 'package:chessever2/widgets/app_snack.dart';
 import 'package:chessever2/widgets/card_context_menu.dart';
 import 'package:chessever2/widgets/player_initials_avatar.dart';
@@ -944,21 +945,27 @@ class _SummaryMetricRow extends StatelessWidget {
       ),
     );
     if (!cardValues) {
-      return SizedBox(height: 24, child: Center(child: content));
+      return SizedBox(
+        height: context.textExtent(24),
+        child: Center(child: content),
+      );
     }
     return Align(
       alignment: Alignment.center,
       child: FractionallySizedBox(
         widthFactor: 0.82,
         child: Container(
-          height: 44,
+          height: context.textExtent(44),
           alignment: Alignment.center,
           decoration: BoxDecoration(
             color: context.colors.surfaceRecessed,
             borderRadius: BorderRadius.circular(10),
             border: Border.all(color: context.colors.divider),
           ),
-          child: content,
+          // Larger text keeps the value on one line instead of wrapping.
+          child: context.textGrowth > 1
+              ? FittedBox(fit: BoxFit.scaleDown, child: content)
+              : content,
         ),
       ),
     );
@@ -1073,7 +1080,7 @@ class _PlayerColumnState extends State<_PlayerColumn> {
             ),
             const SizedBox(height: 10),
             SizedBox(
-              height: 24,
+              height: context.textExtent(24),
               child: Center(
                 // Federation title (GM, IM, FM…) is tinted apart from the name,
                 // matching the player profile header.
@@ -1166,7 +1173,7 @@ class _ClassificationRecap extends StatelessWidget {
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 8),
             child: SizedBox(
-              height: 30,
+              height: context.textExtent(30),
               child: Row(
                 children: [
                   Expanded(
@@ -1178,7 +1185,7 @@ class _ClassificationRecap extends StatelessWidget {
                     ),
                   ),
                   SizedBox(
-                    width: _kMetricLabelColumnWidth,
+                    width: context.textExtent(_kMetricLabelColumnWidth),
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.start,
                       children: [
@@ -1399,65 +1406,67 @@ class _EvaluationGraph extends StatelessWidget {
                       top: 5,
                       left: 5,
                       right: 5,
-                      child: IgnorePointer(
-                        child: Center(
-                          child: Container(
-                            key: const ValueKey('game-review-graph-info'),
-                            constraints: const BoxConstraints(maxWidth: 260),
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 7,
-                              vertical: 3,
-                            ),
-                            // A dark capsule over the graph in both themes;
-                            // paper gets the inverse ink slab so its label
-                            // (textInverse) reads, not page ink on charcoal.
-                            decoration: BoxDecoration(
-                              color:
-                                  context.isLightTheme
-                                      ? context.colors.surfaceInverse
-                                          .withValues(alpha: 0.94)
-                                      : const Color(
-                                        0xFF303034,
-                                      ).withValues(alpha: 0.92),
-                              borderRadius: BorderRadius.circular(6),
-                              boxShadow: [
-                                BoxShadow(
-                                  color:
-                                      context.isLightTheme
-                                          ? context.colors.shadow
-                                          : Colors.black38,
-                                  blurRadius: 4,
-                                  offset: const Offset(0, 1),
-                                ),
-                              ],
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                if (_activeClassification != null) ...[
-                                  _ClassificationIcon(
-                                    classification: _activeClassification!,
-                                    size: 13,
+                      child: CappedTextScale(
+                        child: IgnorePointer(
+                          child: Center(
+                            child: Container(
+                              key: const ValueKey('game-review-graph-info'),
+                              constraints: const BoxConstraints(maxWidth: 260),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 7,
+                                vertical: 3,
+                              ),
+                              // A dark capsule over the graph in both themes;
+                              // paper gets the inverse ink slab so its label
+                              // (textInverse) reads, not page ink on charcoal.
+                              decoration: BoxDecoration(
+                                color:
+                                    context.isLightTheme
+                                        ? context.colors.surfaceInverse
+                                            .withValues(alpha: 0.94)
+                                        : const Color(
+                                          0xFF303034,
+                                        ).withValues(alpha: 0.92),
+                                borderRadius: BorderRadius.circular(6),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color:
+                                        context.isLightTheme
+                                            ? context.colors.shadow
+                                            : Colors.black38,
+                                    blurRadius: 4,
+                                    offset: const Offset(0, 1),
                                   ),
-                                  const SizedBox(width: 5),
                                 ],
-                                Flexible(
-                                  child: Text(
-                                    _description(),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    textAlign: TextAlign.center,
-                                    style: TextStyle(
-                                      color:
-                                          context.isLightTheme
-                                              ? context.colors.textInverse
-                                              : context.colors.textPrimary,
-                                      fontSize: 10,
-                                      fontWeight: FontWeight.w600,
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  if (_activeClassification != null) ...[
+                                    _ClassificationIcon(
+                                      classification: _activeClassification!,
+                                      size: 13,
+                                    ),
+                                    const SizedBox(width: 5),
+                                  ],
+                                  Flexible(
+                                    child: Text(
+                                      _description(),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      textAlign: TextAlign.center,
+                                      style: TextStyle(
+                                        color:
+                                            context.isLightTheme
+                                                ? context.colors.textInverse
+                                                : context.colors.textPrimary,
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.w600,
+                                      ),
                                     ),
                                   ),
-                                ),
-                              ],
+                                ],
+                              ),
                             ),
                           ),
                         ),

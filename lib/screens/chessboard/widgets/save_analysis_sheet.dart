@@ -25,6 +25,7 @@ import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/logger/logger.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/utils/text_scale.dart';
 import 'package:chessever2/utils/save_to_library_guard.dart';
 import 'package:chessever2/utils/user_error_message.dart';
 import 'package:chessever2/widgets/app_snack.dart';
@@ -1596,7 +1597,7 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
 
   Widget _buildSmallTextField(String hint, TextEditingController controller) {
     return Container(
-      height: 40.h,
+      height: context.textExtent(40.h),
       decoration: BoxDecoration(
         color: context.colors.textPrimary.withValues(alpha: 0.03),
         borderRadius: BorderRadius.circular(8.br),
@@ -1639,7 +1640,7 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
         ),
         SizedBox(height: 6.h),
         Container(
-          height: 44.h,
+          height: context.textExtent(44.h),
           decoration: BoxDecoration(
             color: context.colors.textPrimary.withValues(alpha: 0.03),
             borderRadius: BorderRadius.circular(10.br),

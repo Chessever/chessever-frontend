@@ -554,10 +554,14 @@ class _AddToFolderPageState extends ConsumerState<_AddToFolderPage> {
                         size: 20.sp,
                       ),
                       SizedBox(width: 8.w),
-                      Text(
-                        'New Database',
-                        style: AppTypography.textSmMedium.copyWith(
-                          color: context.colors.textPrimary,
+                      Flexible(
+                        child: Text(
+                          'New Database',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: AppTypography.textSmMedium.copyWith(
+                            color: context.colors.textPrimary,
+                          ),
                         ),
                       ),
                     ],

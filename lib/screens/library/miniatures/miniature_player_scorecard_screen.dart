@@ -19,6 +19,7 @@ import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/utils/text_scale.dart';
 import 'package:chessever2/utils/scroll_cache.dart';
 import 'package:chessever2/widgets/card_context_menu.dart';
 import 'package:chessever2/widgets/federation_flag.dart';
@@ -465,7 +466,7 @@ class _MiniaturePlayerScorecardScreenState
     );
 
     return SizedBox(
-      height: searchBarHeight,
+      height: context.textExtent(searchBarHeight),
       child: Row(
         children: [
           Expanded(child: searchField),
@@ -516,18 +517,20 @@ class _MiniaturePlayerScorecardScreenState
                           shape: BoxShape.circle,
                         ),
                         child: Center(
-                          child: Text(
-                            '$activeFilterCount',
-                            style: AppTypography.textXsBold.copyWith(
-                              color:
-                                  context.isLightTheme
-                                      ? labelOnFill(
-                                        context,
-                                        context.colors.danger,
-                                      )
-                                      : context.colors.textPrimary,
-                              fontSize: 9.sp,
-                              height: 1,
+                          child: CappedTextScale(
+                            child: Text(
+                              '$activeFilterCount',
+                              style: AppTypography.textXsBold.copyWith(
+                                color:
+                                    context.isLightTheme
+                                        ? labelOnFill(
+                                          context,
+                                          context.colors.danger,
+                                        )
+                                        : context.colors.textPrimary,
+                                fontSize: 9.sp,
+                                height: 1,
+                              ),
                             ),
                           ),
                         ),

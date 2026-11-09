@@ -22,6 +22,7 @@ import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/pgn_clock_utils.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/utils/text_scale.dart';
 import 'package:chessever2/utils/string_utils.dart';
 import 'package:chessever2/widgets/board_like_heart.dart';
 import 'package:chessground/chessground.dart';
@@ -1557,9 +1558,13 @@ class _SmallPeaceIconState extends State<_SmallPeaceIcon>
                 Colors.black,
                 BlendMode.srcIn,
               ),
-              child: Text(
-                '🕊️',
-                style: TextStyle(fontSize: containerSize * 0.6),
+              // Sized to the square, so it never follows the text size.
+              child: CappedTextScale(
+                maxScale: 1.0,
+                child: Text(
+                  '🕊️',
+                  style: TextStyle(fontSize: containerSize * 0.6),
+                ),
               ),
             ),
           ),

@@ -22,6 +22,7 @@ import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/utils/text_scale.dart';
 import 'package:chessever2/utils/time_utils.dart';
 import 'package:chessever2/widgets/app_snack.dart';
 import 'package:chessever2/widgets/board_navigation_icon.dart';
@@ -260,9 +261,10 @@ class _TwicContentsScreenState extends ConsumerState<TwicContentsScreen>
 
   void _scrollChipToIndex(int index) {
     if (!_chipScrollController.hasClients) return;
+    final textGrowth = context.textGrowth;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!_chipScrollController.hasClients) return;
-      final estimatedItemWidth = 200.w + 8.w;
+      final estimatedItemWidth = 200.w * textGrowth + 8.w;
       final viewportWidth = _chipScrollController.position.viewportDimension;
       final targetOffset =
           (index * estimatedItemWidth) -
@@ -723,7 +725,7 @@ class _TwicContentsScreenState extends ConsumerState<TwicContentsScreen>
     return Padding(
       padding: EdgeInsets.fromLTRB(0, 6.h, 0, 12.h),
       child: SizedBox(
-        height: 40.h,
+        height: 40.h * context.textGrowth,
         child: ListView.separated(
           controller: _chipScrollController,
           scrollDirection: Axis.horizontal,

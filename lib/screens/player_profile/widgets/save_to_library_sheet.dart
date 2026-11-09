@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:chessever2/screens/player_profile/provider/player_profile_provider.dart';
 import 'package:chessever2/screens/player_profile/player_profile_data_source.dart';
 import 'package:chessever2/screens/library/widgets/bulk_add_to_folder_sheet.dart';
@@ -9,6 +11,7 @@ import 'package:chessever2/utils/logger/logger.dart';
 import 'package:chessever2/utils/number_format_utils.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/save_to_library_guard.dart';
+import 'package:chessever2/utils/text_scale.dart';
 import 'package:chessever2/utils/user_error_message.dart';
 import 'package:chessever2/widgets/app_snack.dart';
 import 'package:flutter/material.dart';
@@ -170,6 +173,9 @@ class _SaveToLibrarySheetState extends ConsumerState<_SaveToLibrarySheet> {
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(playerProfileGamesKeyProvider(widget.playerKey));
+    // Larger text makes the tiles taller; show more of the sheet so the
+    // second action stays on screen.
+    final visible = math.min(1.0, 0.55 * context.textGrowth);
 
     return SheetKeyboardDismissible(
       dismissBehavior: const DragDownSheetKeyboardDismissBehavior(),
@@ -182,9 +188,9 @@ class _SaveToLibrarySheetState extends ConsumerState<_SaveToLibrarySheet> {
                 SpringPagedSheetRoute(
                   scrollConfiguration: const SheetScrollConfiguration(),
                   dragConfiguration: ChessSheetConfigs.commentEditor,
-                  initialOffset: const SheetOffset.proportionalToViewport(0.55),
+                  initialOffset: SheetOffset.proportionalToViewport(visible),
                   snapGrid: SheetSnapGrid(
-                    snaps: const [SheetOffset.proportionalToViewport(0.55)],
+                    snaps: [SheetOffset.proportionalToViewport(visible)],
                     minFlingSpeed: 600.0,
                   ),
                   builder:

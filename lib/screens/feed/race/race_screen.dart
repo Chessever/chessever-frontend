@@ -12,6 +12,7 @@ import 'package:chessever2/screens/my_space/widgets/pixel_flame.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
+import 'package:chessever2/utils/text_scale.dart';
 import 'package:chessever2/widgets/app_snack.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
@@ -348,7 +349,7 @@ class _RaceScreenState extends ConsumerState<RaceScreen> {
               .min(
                 constraints.maxWidth - 24,
                 constraints.maxHeight -
-                    RacePuzzleBoard.statusHeight -
+                    context.textExtent(RacePuzzleBoard.statusHeight) -
                     RacePuzzleBoard.statusGap -
                     24,
               )
@@ -554,7 +555,7 @@ class _TopBar extends StatelessWidget {
           ),
           const SizedBox(height: 4),
           SizedBox(
-            height: 24,
+            height: context.textExtent(24),
             child: Row(
               children: [
                 Expanded(

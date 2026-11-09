@@ -20,6 +20,7 @@ import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/utils/text_scale.dart';
 import 'package:chessever2/utils/scroll_cache.dart';
 import 'package:chessever2/utils/svg_asset.dart';
 import 'package:chessever2/widgets/scroll_to_top_bus.dart';
@@ -383,7 +384,7 @@ class _MiniaturesGamesTabState extends ConsumerState<MiniaturesGamesTab>
     );
 
     return SizedBox(
-      height: searchBarHeight,
+      height: context.textExtent(searchBarHeight),
       child: Row(
         children: [
           Expanded(child: searchField),
@@ -882,14 +883,16 @@ class _SquareIconButton extends StatelessWidget {
                     shape: BoxShape.circle,
                   ),
                   child: Center(
-                    child: Text(
-                      '$badgeCount',
-                      style: AppTypography.textXsBold.copyWith(
-                        color: context.isLightTheme
-                            ? labelOnFill(context, activeColor)
-                            : context.colors.textPrimary,
-                        fontSize: 9.sp,
-                        height: 1,
+                    child: CappedTextScale(
+                      child: Text(
+                        '$badgeCount',
+                        style: AppTypography.textXsBold.copyWith(
+                          color: context.isLightTheme
+                              ? labelOnFill(context, activeColor)
+                              : context.colors.textPrimary,
+                          fontSize: 9.sp,
+                          height: 1,
+                        ),
                       ),
                     ),
                   ),
