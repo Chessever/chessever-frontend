@@ -62,9 +62,12 @@ abstract class AFParams {
   static const returnTo = 'chessever_return_to';
 }
 
+/// Accept utm_source when the SDK supplies it. Privacy-restricted new-user UDL
+/// callbacks only carry deep_link_* fields, so shared links should also map the
+/// partner into deep_link_sub1 for the deferred-install path.
 @visibleForTesting
 String? appsFlyerAffiliateCode(Map payload) {
-  for (final key in const ['af_sub1', 'deep_link_sub1']) {
+  for (final key in const ['af_sub1', 'deep_link_sub1', 'utm_source']) {
     final value = payload[key]?.toString().trim().toLowerCase();
     if (value != null &&
         RegExp(r'^[a-z0-9_-]{1,48}$').hasMatch(value) &&
@@ -87,9 +90,7 @@ Map<String, dynamic>? deferredAppsFlyerAffiliatePayload(
       clickEvent['is_deferred'] != 'true') {
     return null;
   }
-  final code = appsFlyerAffiliateCode({
-    'deep_link_sub1': clickEvent['deep_link_sub1'],
-  });
+  final code = appsFlyerAffiliateCode(clickEvent);
   if (code == null) return null;
   return {
     'af_status': 'Non-organic',
@@ -704,7 +705,7 @@ class AppsflyerService {
       final Map<String, dynamic> cachedData = jsonDecode(cachedDataString);
 
       // af_sub1 is the recommended slot for the affiliate code in OneLink.
-      // Fall back to deep_link_sub1 for older OneLink templates.
+      // Fall back to deep_link_sub1, then utm_source, for alternate links.
       final String? affiliateCode = appsFlyerAffiliateCode(cachedData);
       final String? campaignName = _nonEmptyString(cachedData['campaign']);
       final String? network = _nonEmptyString(cachedData['media_source']);
