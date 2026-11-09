@@ -105,6 +105,118 @@ void main() {
       },
     );
 
+    group('new signup eligibility matches the website', () {
+      final click = DateTime.utc(2026, 11, 9, 12);
+      final now = click.add(const Duration(hours: 1));
+      DateTime? eligible({
+        DateTime? signup,
+        Map? payload,
+        DateTime? checkedAt,
+      }) => appsFlyerSignupAttributionTime(
+        payload: payload ?? {'install_time': click.toIso8601String()},
+        accountCreatedAt: (signup ?? click.add(const Duration(minutes: 10)))
+            .toIso8601String(),
+        now: checkedAt ?? now,
+      );
+
+      test('a new account after the referral qualifies', () {
+        expect(eligible(), click);
+      });
+
+      test('login to an account predating the referral cannot qualify', () {
+        expect(
+          eligible(signup: click.subtract(const Duration(days: 1))),
+          isNull,
+        );
+      });
+
+      test('a deferred install retains the original website click time', () {
+        expect(
+          eligible(
+            payload: {
+              'attribution_at': click.toIso8601String(),
+              'install_time': now.toIso8601String(),
+            },
+          ),
+          click,
+        );
+        expect(
+          eligible(
+            signup: click.subtract(const Duration(days: 1)),
+            payload: {
+              'attribution_at': click.toIso8601String(),
+              'install_time': now.toIso8601String(),
+            },
+          ),
+          isNull,
+        );
+      });
+
+      test('the original referral window cannot restart on a later login', () {
+        expect(eligible(checkedAt: click.add(const Duration(days: 14))), click);
+        expect(
+          eligible(
+            checkedAt: click.add(const Duration(days: 14, milliseconds: 1)),
+          ),
+          isNull,
+        );
+      });
+
+      test('only allows the website five-minute signup clock tolerance', () {
+        expect(
+          eligible(signup: click.subtract(const Duration(minutes: 5))),
+          click,
+        );
+        expect(
+          eligible(
+            signup: click.subtract(const Duration(minutes: 5, milliseconds: 1)),
+          ),
+          isNull,
+        );
+      });
+
+      test('missing or malformed dates fail closed', () {
+        expect(eligible(payload: {}), isNull);
+        expect(eligible(payload: {'install_time': 'not-a-date'}), isNull);
+        expect(
+          appsFlyerSignupAttributionTime(
+            payload: {'install_time': click.toIso8601String()},
+            accountCreatedAt: 'not-a-date',
+            now: now,
+          ),
+          isNull,
+        );
+      });
+
+      test(
+        'future account and referral dates beyond tolerance are rejected',
+        () {
+          expect(eligible(signup: now.add(const Duration(minutes: 6))), isNull);
+          expect(
+            eligible(
+              payload: {
+                'install_time': now
+                    .add(const Duration(minutes: 6))
+                    .toIso8601String(),
+              },
+            ),
+            isNull,
+          );
+          expect(
+            eligible(
+              signup: now.add(const Duration(minutes: 5)),
+              payload: {
+                'install_time': now
+                    .add(const Duration(minutes: 5))
+                    .toIso8601String(),
+              },
+            ),
+            now.add(const Duration(minutes: 5)),
+          );
+        },
+      );
+    });
+
     test('parses AppsFlyer install timestamps as UTC', () {
       expect(
         parseAppsFlyerInstallTime('2026-04-20 12:30:10.123')?.toIso8601String(),
