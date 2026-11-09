@@ -44,6 +44,124 @@ void main() {
     });
 
     test(
+      'utm_source is a normalized fallback behind explicit partner keys',
+      () {
+        expect(
+          appsFlyerAffiliateCode({'utm_source': '  RookReview  '}),
+          'rookreview',
+        );
+        expect(
+          appsFlyerAffiliateCode({
+            'af_sub1': 'original',
+            'deep_link_sub1': 'legacy',
+            'utm_source': 'other',
+          }),
+          'original',
+        );
+        expect(
+          appsFlyerAffiliateCode({
+            'deep_link_sub1': 'legacy',
+            'utm_source': 'other',
+          }),
+          'legacy',
+        );
+        expect(
+          appsFlyerAffiliateCode({'af_sub1': ' ', 'utm_source': 'partner'}),
+          'partner',
+        );
+        for (final value in ['', 'null', '<invalid>', 'a' * 49]) {
+          expect(appsFlyerAffiliateCode({'utm_source': value}), isNull);
+        }
+      },
+    );
+
+    test('utm_source cannot turn an organic install into an affiliate', () {
+      final organic = {'utm_source': 'partner', 'af_status': 'Organic'};
+      expect(appsFlyerAffiliateCode(organic), 'partner');
+      expect(appsFlyerIsNonOrganic(organic), isFalse);
+      expect(appsFlyerIsNonOrganic({'utm_source': 'partner'}), isFalse);
+    });
+
+    test(
+      'deferred utm_source is canonicalized with the original click time',
+      () {
+        final observed = DateTime.utc(2026, 11, 9, 12);
+        final click = observed.subtract(const Duration(days: 1));
+        final payload = deferredAppsFlyerAffiliatePayload({
+          'is_deferred': true,
+          'utm_source': 'RookReview',
+          'deep_link_sub2': click.toIso8601String(),
+        }, observed)!;
+        expect(payload['deep_link_sub1'], 'rookreview');
+        expect(appsFlyerAffiliateCode(payload), 'rookreview');
+        expect(appsFlyerIsNonOrganic(payload), isTrue);
+        expect(payload['install_time'], observed.toIso8601String());
+        expect(payload['attribution_at'], click.toIso8601String());
+        expect(
+          appsFlyerSignupAttributionTime(
+            payload: payload,
+            accountCreatedAt: click
+                .subtract(const Duration(days: 1))
+                .toIso8601String(),
+            now: observed,
+          ),
+          isNull,
+        );
+        expect(
+          appsFlyerSignupAttributionTime(
+            payload: payload,
+            accountCreatedAt: click
+                .add(const Duration(hours: 1))
+                .toIso8601String(),
+            now: observed,
+          ),
+          click,
+        );
+      },
+    );
+
+    test(
+      'deferred callbacks keep explicit partner priority over utm_source',
+      () {
+        final payload = deferredAppsFlyerAffiliatePayload({
+          'is_deferred': true,
+          'af_sub1': 'original',
+          'deep_link_sub1': 'legacy',
+          'utm_source': 'other',
+        }, DateTime.utc(2026, 11, 9))!;
+        expect(payload['deep_link_sub1'], 'original');
+      },
+    );
+
+    test('utm_source on a direct app-open cannot establish a new install', () {
+      for (final deferred in [false, null]) {
+        expect(
+          deferredAppsFlyerAffiliatePayload({
+            'is_deferred': deferred,
+            'utm_source': 'other',
+          }, DateTime.utc(2026, 11, 9)),
+          isNull,
+        );
+      }
+    });
+
+    test('the first utm_source partner survives later canonical referrals', () {
+      final first = {
+        'af_status': 'Non-organic',
+        'utm_source': 'original',
+        'install_time': '2026-11-09T00:00:00Z',
+      };
+      expect(
+        mergeAppsFlyerInstallAttribution(first, {
+          'af_status': 'Non-organic',
+          'af_sub1': 'other',
+          'install_time': '2026-11-10T00:00:00Z',
+        }),
+        first,
+      );
+    });
+
+    test(
       'accepts privacy restricted deferred UDL with only deep_link_sub1',
       () {
         final observed = DateTime.utc(2026, 10, 22);
