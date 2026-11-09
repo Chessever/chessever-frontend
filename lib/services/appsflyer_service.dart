@@ -155,6 +155,33 @@ DateTime? parseAppsFlyerInstallTime(Object? value) {
   );
 }
 
+/// Match website signup attribution: an existing account cannot become a new
+/// referral after following a partner link. Preserve the original website click
+/// time when a deferred app install arrives later.
+@visibleForTesting
+DateTime? appsFlyerSignupAttributionTime({
+  required Map payload,
+  required String accountCreatedAt,
+  required DateTime now,
+}) {
+  final attributionAt =
+      parseAppsFlyerInstallTime(payload['attribution_at']) ??
+      parseAppsFlyerInstallTime(payload['install_time']);
+  final signupAt = DateTime.tryParse(accountCreatedAt)?.toUtc();
+  if (attributionAt == null || signupAt == null) return null;
+
+  const clockSkew = Duration(minutes: 5);
+  const window = Duration(days: 14);
+  final latest = now.toUtc().add(clockSkew);
+  if (attributionAt.isAfter(latest) ||
+      now.toUtc().difference(attributionAt) > window ||
+      signupAt.isBefore(attributionAt.subtract(clockSkew)) ||
+      signupAt.isAfter(latest)) {
+    return null;
+  }
+  return attributionAt;
+}
+
 String? _nonEmptyString(Object? value) {
   if (value == null) return null;
   final str = value.toString().trim();
@@ -689,10 +716,16 @@ class AppsflyerService {
         return;
       }
 
-      final installAt =
-          parseAppsFlyerInstallTime(cachedData['attribution_at']) ??
-          parseAppsFlyerInstallTime(cachedData['install_time']) ??
-          DateTime.now().toUtc();
+      final installAt = appsFlyerSignupAttributionTime(
+        payload: cachedData,
+        accountCreatedAt: account.createdAt,
+        now: DateTime.now().toUtc(),
+      );
+      if (installAt == null) {
+        // A later login is not a new signup. Keep the original install cache
+        // available for a genuinely new account; never modify an existing row.
+        return;
+      }
 
       final platform = Platform.isIOS
           ? 'ios'
