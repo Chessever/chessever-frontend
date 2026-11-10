@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'package:chessever2/screens/webview/app_webview_screen.dart';
+import 'package:chessever2/services/webview_link.dart';
 import 'package:chessever2/screens/feed/news/news_links.dart';
 import 'favorite_player_news_destination.dart';
 import 'package:chessever2/providers/event_video_provider.dart';
@@ -534,6 +536,21 @@ class DeepLinkService {
     WidgetRef ref,
   ) {
     debugPrint('DeepLinkService: Received link: $uri');
+
+    if (isWebViewLink(uri)) {
+      final target = webViewLinkTarget(uri);
+      if (target != null) {
+        unawaited(
+          _navigateToWebView(
+            target,
+            navigatorKey,
+            ref,
+            generation: ++_destinationGeneration,
+          ),
+        );
+      }
+      return;
+    }
 
     final newsLink = NewsLink.parse(uri);
     final appDestination = parseAppDestination(uri.toString()) ??
@@ -1606,6 +1623,28 @@ class DeepLinkService {
     final destination = configuredRoute == null
         ? null
         : parseAppDestination(configuredRoute);
+    final routeUri = configuredRoute == null
+        ? null
+        : Uri.tryParse(configuredRoute);
+    final webTarget = routeUri == null
+        ? null
+        : (webViewLinkTarget(routeUri) ??
+              (destination == null &&
+                      !isWebViewLink(routeUri) &&
+                      !isNativeAppLink(routeUri)
+                  ? webViewUrl(configuredRoute)
+                  : null));
+    if (webTarget != null) {
+      unawaited(
+        _navigateToWebView(
+          webTarget,
+          navigatorKey,
+          ref,
+          generation: generation,
+        ),
+      );
+      return;
+    }
     if (destination != null) {
       unawaited(
         _navigateToAppDestination(
@@ -1634,11 +1673,66 @@ class DeepLinkService {
       );
       return;
     }
-    final portalUrl = Uri.tryParse(data['url'] is String ? data['url'] as String : '');
-    if (portalUrl != null && portalUrl.scheme == 'https' &&
-        const ['chessever.com', 'www.chessever.com'].contains(portalUrl.host)) {
-      handleDeepLink(portalUrl, navigatorKey, ref);
-      return;
+    final portalUrl = Uri.tryParse(
+      data['url'] is String ? data['url'] as String : '',
+    );
+    if (portalUrl != null) {
+      final explicitWebTarget = webViewLinkTarget(portalUrl);
+      if (explicitWebTarget != null) {
+        unawaited(
+          _navigateToWebView(
+            explicitWebTarget,
+            navigatorKey,
+            ref,
+            generation: generation,
+          ),
+        );
+        return;
+      }
+      final webUrl =
+          isWebViewLink(portalUrl) ||
+              (isNativeAppLink(portalUrl) &&
+                  parseAppDestination(portalUrl.toString()) == null)
+          ? null
+          : webViewUrl(portalUrl.toString());
+      if (webUrl != null) {
+        // Preserve existing native URL notifications. Use the explicit
+        // WebView wrapper (or data.route URL) to force those into the browser.
+        final nativeHost =
+            portalUrl.scheme == 'https' &&
+            portalUrl.port == 443 &&
+            const {
+              'chessever.com',
+              'www.chessever.com',
+            }.contains(portalUrl.host);
+        final legacyPath = portalUrl.pathSegments;
+        final nativePath =
+            parseAppDestination(portalUrl.toString()) != null ||
+            NewsLink.parse(portalUrl) != null ||
+            (legacyPath.length >= 2 &&
+                const {
+                  'games',
+                  'broadcast',
+                  'player',
+                  'books',
+                  'databases',
+                  'folders',
+                  'collections',
+                }.contains(legacyPath.first));
+        if (nativeHost && nativePath) {
+          handleDeepLink(portalUrl, navigatorKey, ref);
+        } else {
+          unawaited(
+            _navigateToWebView(
+              webUrl,
+              navigatorKey,
+              ref,
+              generation: generation,
+            ),
+          );
+        }
+        return;
+      }
     }
 
     final type = _asNonEmptyString(data['type'])?.toLowerCase();
@@ -1823,6 +1917,26 @@ class DeepLinkService {
         );
         return;
     }
+  }
+
+  Future<void> _navigateToWebView(
+    Uri url,
+    GlobalKey<NavigatorState> navigatorKey,
+    WidgetRef ref, {
+    required int generation,
+  }) async {
+    await _appReadyCompleter.future;
+    final navigator = navigatorKey.currentState;
+    if (navigator == null ||
+        !navigator.mounted ||
+        generation != _destinationGeneration) {
+      return;
+    }
+    ref.read(appDestinationPageNavigationProvider)(
+      navigator.context,
+      AppWebViewScreen(url: url),
+      '/app/webview',
+    );
   }
 
   Future<void> _navigateToAppDestination(

@@ -14,6 +14,42 @@ databases and players continue to work.
 
 ## Catalog
 
+### In-app web pages
+
+Use `com.chessever.app://webview?url=<encoded-url>` or
+`https://chessever.com/app/webview?url=<encoded-url>` to open a web page inside
+the mobile app. Encode the complete target with `encodeURIComponent` (including
+its query string and fragment). Example:
+
+```text
+com.chessever.app://webview?url=https%3A%2F%2Fchessever.com%2Faccount
+```
+
+Notification payloads can set `data.route` to a plain HTTP(S) URL or one of the
+WebView wrappers. An explicit route takes precedence over `inbox_message_id`.
+`data.url` also opens ordinary web URLs in the WebView, while existing native
+ChessEver destinations (games, events, news, `/app/...`, etc.) retain their native
+routing. Use a wrapper or a plain URL in `data.route` to force a native page into
+the WebView. An inbox publication without an explicit route still opens its
+message, regardless of its article action URL.
+
+Signed-in production users automatically share their Supabase session with
+`https://chessever.com`, `https://www.chessever.com`, and
+`https://broadcast.chessever.com` on port 443. A hidden, inert same-origin
+`/favicon.ico` document seeds the web client's Supabase localStorage key before
+loading the target. The origin is checked inside the same JavaScript invocation
+that writes storage. Access/refresh tokens never enter URLs, request headers or
+logs; OAuth provider tokens are excluded. Other hosts, arbitrary subdomains,
+HTTP pages and alternate ports receive no mobile credentials. Signed-out users
+have any previous session removed before the trusted page loads. This relies on
+the web client's `sb-oelbsuggrzyqwzmvidju-auth-token` storage contract.
+
+Both URL schemes reject embedded username/password credentials and non-web
+targets such as `javascript:`, `data:`, and `file:`. The screen supports Back,
+Close, and retry after a load failure.
+
+### Native destinations
+
 Every path component is meaningful. Unknown suffixes and unknown query keys are
 rejected, including suffixes after an otherwise supported parent. A single
 trailing slash is allowed. Values shown as `<id>` are percent-encoded path
