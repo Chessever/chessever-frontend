@@ -17,6 +17,7 @@ import 'package:chessever2/repository/supabase/tour/tour_repository.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_repo_provider.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_mode_provider.dart';
 import 'package:chessever2/services/deep_link_service.dart';
+import 'package:chessever2/screens/webview/app_webview_screen.dart';
 import 'package:chessever2/screens/feed/news/news_link_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -80,6 +81,72 @@ void main() {
     );
     return captured;
   }
+
+  for (final cold in [true, false]) {
+    for (final data in [
+      {'url': 'https://example.com/article?a=1#part'},
+      {'route': 'https://chessever.com/account', 'inbox_message_id': 'ignored'},
+      {'url': 'https://chessever.com/account'},
+      {
+        'route':
+            'com.chessever.app://webview?url=https%3A%2F%2Fchessever.com%2Fgames%2F123',
+      },
+    ]) {
+      testWidgets('WebView notification $data (cold=$cold)', (tester) async {
+        DeepLinkService.instance.dispose();
+        final opened = <Widget>[];
+        final ref = await pumpHost(
+          tester,
+          overrides: [
+            appDestinationPageNavigationProvider.overrideWithValue(
+              (_, page, __) => opened.add(page),
+            ),
+          ],
+        );
+        if (!cold) {
+          DeepLinkService.instance.attachNotificationRouter(navigatorKey, ref);
+        }
+        DeepLinkService.instance.ingestNotificationData(data);
+        if (cold) {
+          DeepLinkService.instance.attachNotificationRouter(navigatorKey, ref);
+        }
+        await tester.pump();
+        expect(opened, isEmpty, reason: 'must wait for splash navigation');
+        DeepLinkService.notifyAppReady();
+        await tester.pumpAndSettle();
+        expect(opened, hasLength(1));
+        expect(opened.single, isA<AppWebViewScreen>());
+      });
+    }
+  }
+
+  testWidgets('custom WebView deep link opens the requested URL', (
+    tester,
+  ) async {
+    DeepLinkService.instance.dispose();
+    final opened = <Widget>[];
+    final ref = await pumpHost(
+      tester,
+      overrides: [
+        appDestinationPageNavigationProvider.overrideWithValue(
+          (_, page, __) => opened.add(page),
+        ),
+      ],
+    );
+    DeepLinkService.instance.handleDeepLink(
+      Uri.parse(
+        'com.chessever.app://webview?url=https%3A%2F%2Fexample.com%2Fpage',
+      ),
+      navigatorKey,
+      ref,
+    );
+    DeepLinkService.notifyAppReady();
+    await tester.pumpAndSettle();
+    expect(
+      (opened.single as AppWebViewScreen).url,
+      Uri.parse('https://example.com/page'),
+    );
+  });
 
   for (final cold in [true, false]) {
     for (final key in ['url', 'route']) {
@@ -269,7 +336,10 @@ void main() {
           final container = ProviderContainer(overrides: scope.overrides);
           addTearDown(container.dispose);
           expect(container.read(mostLikedPeriodProvider), MostLikedPeriod.week);
-          expect(container.read(mostLikedDayProvider), DateTime(2026, 9, 21));
+          expect(
+            container.read(mostLikedDayProvider),
+            DateTime.utc(2026, 9, 21),
+          );
           expect(
             (scope.child as LikesScreen).initialView,
             MostLikedView.players,

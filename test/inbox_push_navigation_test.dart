@@ -485,7 +485,7 @@ void main() {
     DeepLinkService.notifyAppReady();
     DeepLinkService.instance.ingestNotificationData({
       ..._payload,
-      'route': 'https://example.invalid/app/settings',
+      'route': 'https://chessever.com/app/settings/unknown',
     });
     await tester.pumpAndSettle();
 
