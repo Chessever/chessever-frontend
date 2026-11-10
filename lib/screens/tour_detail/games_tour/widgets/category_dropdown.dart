@@ -22,11 +22,21 @@ import 'package:chessever2/utils/tablet_safe_menu.dart';
 import 'package:chessever2/utils/text_scale.dart';
 import 'package:chessever2/widgets/skeleton_widget.dart';
 import 'package:chessever2/widgets/space_shortcut_drafts.dart';
+import 'package:clarity_flutter/clarity_flutter.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:motor/motor.dart';
 import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
+
+/// Marks the dropdown's open and close path on the session recording, so a
+/// report of "the chip ignores my taps" names the step that swallowed it.
+/// Observability only: it must never stop the dropdown from working.
+void _traceDropdown(String step) {
+  try {
+    Clarity.sendCustomEvent('category_dropdown_$step');
+  } catch (_) {}
+}
 
 /// Scroll to a specific round from widget context (ensures correct ProviderScope)
 void scrollToRoundFromTournamentContext(WidgetRef ref, String roundId) {
@@ -234,6 +244,7 @@ class _CategoryDropdownContent extends HookConsumerWidget {
       if (!hasMultipleOptions) return;
 
       HapticFeedbackService.selection();
+      _traceDropdown('open_requested');
       isOpen.value = true;
       animationController.forward();
 
@@ -248,6 +259,7 @@ class _CategoryDropdownContent extends HookConsumerWidget {
     }
 
     void closeDropdown() {
+      _traceDropdown('closed_by_chip');
       animationController.reverse().then((_) {
         if (isOpen.value) {
           isOpen.value = false;
@@ -342,6 +354,7 @@ class _CategoryDropdownContent extends HookConsumerWidget {
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!context.mounted) {
+        _traceDropdown('aborted_unmounted');
         isOpen.value = false;
         return;
       }
@@ -350,6 +363,7 @@ class _CategoryDropdownContent extends HookConsumerWidget {
       final renderBox = context.findRenderObject() as RenderBox?;
 
       if (renderBox == null) {
+        _traceDropdown('aborted_no_box');
         isOpen.value = false;
         return;
       }
@@ -369,6 +383,7 @@ class _CategoryDropdownContent extends HookConsumerWidget {
       overlayEntry = OverlayEntry(
         builder: (context) => WindowMetricsDismissal(
           onChanged: () {
+            _traceDropdown('closed_by_window_resize');
             TabletPopupState.markClosed();
             animationController.value = 0;
             isOpen.value = false;
@@ -415,6 +430,7 @@ class _CategoryDropdownContent extends HookConsumerWidget {
               });
             },
             onDismiss: () {
+              _traceDropdown('closed_by_backdrop');
               if (ResponsiveHelper.isTablet) {
                 TabletPopupState.markClosed();
               }
@@ -441,6 +457,7 @@ class _CategoryDropdownContent extends HookConsumerWidget {
       );
 
       overlay.insert(overlayEntry!);
+      _traceDropdown('shown');
 
       void removeOverlay() {
         try {
