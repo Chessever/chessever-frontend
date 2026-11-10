@@ -676,8 +676,7 @@ class _TopBar extends ConsumerWidget {
             ),
           ),
           // Balances the star on the right, so the name stays centred.
-          if (prepHasWatchSlot(profile))
-            const SizedBox(width: kPrepWatchStarSlot),
+          const SizedBox(width: kPrepWatchStarSlot),
           Expanded(
             child: Center(
               child: Row(
@@ -711,7 +710,7 @@ class _TopBar extends ConsumerWidget {
               ),
             ),
           ),
-          if (prepHasWatchSlot(profile)) PrepWatchStar(profileId: profile.id),
+          PrepWatchStar(profileId: profile.id),
           CardMoreButton(
             vertical: true,
             color: colors.iconPrimary,

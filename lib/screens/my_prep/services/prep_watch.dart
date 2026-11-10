@@ -12,10 +12,10 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 /// are mirrored to `prep_profile_watches`
 /// (`supabase/migrations/20261017120000_prep_profile_watches.sql`).
 
-/// Whether [profile] has anything the server can watch. The reader's own
-/// games are not news to them, and only online accounts keep getting games.
-bool prepCanWatch(PrepProfile profile) =>
-    profile.kind != PrepKind.mine && prepWatchAccounts(profile).isNotEmpty;
+/// Whether [profile] has anything the server can watch: at least one online
+/// account whose download window is still open. This holds for the reader's
+/// own profile too, so starring it works like any other player.
+bool prepCanWatch(PrepProfile profile) => prepWatchAccounts(profile).isNotEmpty;
 
 /// The accounts the server checks for [profile], counted over the clocks
 /// each one downloads. One with a fixed end date gets no new games.

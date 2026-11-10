@@ -305,10 +305,10 @@ void main() {
     expect(chevron, findsOneWidget);
   });
 
-  testWidgets('your own games are never starred', (tester) async {
+  testWidgets('your own online account is starred too', (tester) async {
     await pumpRow(tester, _profile(PrepKind.mine, PrepSource.lichess));
-    expect(star, findsNothing);
-    expect(chevron, findsOneWidget);
+    expect(star, findsOneWidget);
+    expect(chevron, findsNothing);
   });
 
   testWidgets('in Edit a Prep row has no star, a tap selects', (tester) async {

@@ -111,20 +111,20 @@ void main() {
       ],
     );
     expect(prepCanWatch(ended), isFalse);
-    expect(
-      prepCanWatch(
-        const PrepProfile(
-          id: 'mine',
-          kind: PrepKind.mine,
-          name: 'Me',
-          createdAtMs: 1,
-          accounts: [_lichess],
-        ),
-      ),
-      isFalse,
-    );
     expect(prepWatchSignature(_profile), isNull);
     expect(prepWatchSignature(_profile.copyWith(watching: true)), isNotNull);
+  });
+
+  test('the reader can star their own online account too', () {
+    const mine = PrepProfile(
+      id: 'mine-1',
+      kind: PrepKind.mine,
+      name: 'Me',
+      createdAtMs: 1,
+      accounts: [_lichess],
+    );
+    expect(prepCanWatch(mine), isTrue);
+    expect(prepWatchSignature(mine.copyWith(watching: true)), isNotNull);
   });
 
   test('a star survives a save', () {

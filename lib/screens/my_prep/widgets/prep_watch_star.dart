@@ -16,10 +16,6 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 /// the star is drawn, so the name never moves.
 const double kPrepWatchStarSlot = 44;
 
-/// Whether [profile]'s top bar has a star slot at all: the reader's own
-/// games are never news to them.
-bool prepHasWatchSlot(PrepProfile profile) => profile.kind != PrepKind.mine;
-
 /// Stars or unstars [profile]. A starred player is checked every hour, and a
 /// push says the same day, while the reader is awake, that they have new
 /// online games (twice a day at most). Unstarring stops it.
