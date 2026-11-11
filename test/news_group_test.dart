@@ -99,6 +99,39 @@ void main() {
     expect(normalizeNewsRow(_row(0))!.groupArticleCount, 1);
   });
 
+  test('parent event reference normalizes, caches, and defaults to null', () {
+    final grouped = normalizeNewsRow(
+      _row(3)..['group_broadcast_id'] = 'parent',
+    )!;
+    expect(grouped.groupBroadcastId, 'parent');
+    expect(FeedNews.fromJson(grouped.toJson()), grouped);
+    final withoutParent = normalizeNewsRow(_row(3))!;
+    expect(withoutParent.groupBroadcastId, isNull);
+    expect(grouped, isNot(withoutParent));
+    final legacy = grouped.toJson()..remove('groupBroadcastId');
+    expect(FeedNews.fromJson(legacy)!.groupBroadcastId, isNull);
+  });
+
+  test('parent-reference-only changes invalidate the refresh stamps', () async {
+    String? parent;
+    var reads = 0;
+    Map<String, dynamic> row() => _row(3)..['group_broadcast_id'] = parent;
+    final repo = FeedNewsRepository(
+      cache: _Cache(),
+      fetchRows: (_) async {
+        reads++;
+        return [row()];
+      },
+      fetchStamps: (_) async => [row()..remove('content')],
+    );
+    expect((await repo.refresh())!.items.single.groupBroadcastId, isNull);
+    await repo.refresh();
+    expect(reads, 1);
+    parent = 'parent';
+    expect((await repo.refresh())!.items.single.groupBroadcastId, 'parent');
+    expect(reads, 2);
+  });
+
   test('count-only changes refresh bodies and cached model', () async {
     var count = 2;
     var fullReads = 0;
@@ -118,62 +151,78 @@ void main() {
     expect(fullReads, 2);
   });
 
-  test(
-    'member queries use published anchor, exact scope, exclusion and stable pagination',
-    () async {
-      final requests = <Uri>[];
-      final client = SupabaseClient(
-        'https://example.supabase.co',
-        'public-test-key',
-        httpClient: MockClient((request) async {
-          requests.add(request.url);
-          if (request.url.queryParameters['select'] == 'group_day,group_key') {
+  for (final parentId in <String?>[null, 'parent']) {
+    test(
+      'member queries use server scope and pagination: ${parentId ?? 'tour fallback'}',
+      () async {
+        final groupKey = parentId == null ? 'tour:abc' : 'group:$parentId';
+        final requests = <Uri>[];
+        final client = SupabaseClient(
+          'https://example.supabase.co',
+          'public-test-key',
+          httpClient: MockClient((request) async {
+            requests.add(request.url);
+            if (request.url.queryParameters['select'] ==
+                'group_day,group_key,group_broadcast_id') {
+              return http.Response(
+                jsonEncode([
+                  {
+                    'group_day': '2026-11-11',
+                    'group_key': groupKey,
+                    'group_broadcast_id': parentId,
+                  },
+                ]),
+                200,
+                request: request,
+              );
+            }
             return http.Response(
               jsonEncode([
-                {'group_day': '2026-11-11', 'group_key': 'tour:abc'},
+                for (var i = 0; i < 21; i++)
+                  {
+                    'id': 100 - i,
+                    'group_broadcast_id': parentId,
+                    'title': 'Story $i',
+                    'feed_published_at': '2026-11-11T12:00:00Z',
+                  },
               ]),
               200,
               request: request,
             );
-          }
-          return http.Response(
-            jsonEncode([
-              for (var i = 0; i < 21; i++)
-                {
-                  'id': 100 - i,
-                  'title': 'Story $i',
-                  'feed_published_at': '2026-11-11T12:00:00Z',
-                },
-            ]),
-            200,
-            request: request,
-          );
-        }),
-      );
-      addTearDown(client.dispose);
-      final repo = NewsGroupRepository(client: client);
-      final page = await repo.load(7);
-      expect(page.items, hasLength(20));
-      expect(page.hasMore, isTrue);
-      expect(page.items.first.id, 100);
-      expect(requests.first.path, '/rest/v1/news_group_articles');
-      expect(requests.first.queryParameters['source'], 'eq.news');
-      expect(requests.first.queryParameters['id'], 'eq.7');
-      final query = requests[1].queryParameters;
-      expect(query['source'], 'eq.news');
-      expect(query['group_day'], 'eq.2026-11-11');
-      expect(query['group_key'], 'eq.tour:abc');
-      expect(query['id'], 'neq.7');
-      expect(query['select'], 'id,title,feed_published_at');
-      expect(
-        query['order'],
-        'feed_published_at.desc.nullslast,created_at.desc.nullslast,id.desc.nullslast',
-      );
-      expect(query['limit'], '21');
-      await repo.load(7, offset: 20);
-      expect(requests.last.queryParameters['offset'], '20');
-    },
-  );
+          }),
+        );
+        addTearDown(client.dispose);
+        final repo = NewsGroupRepository(client: client);
+        final page = await repo.load(7);
+        expect(page.items, hasLength(20));
+        expect(page.hasMore, isTrue);
+        expect(page.items.first.id, 100);
+        expect(page.groupBroadcastId, parentId);
+        expect(page.items.first.groupBroadcastId, parentId);
+        expect(requests.first.path, '/rest/v1/news_group_articles');
+        expect(requests.first.queryParameters['source'], 'eq.news');
+        expect(requests.first.queryParameters['id'], 'eq.7');
+        final query = requests[1].queryParameters;
+        expect(query['source'], 'eq.news');
+        expect(query['group_day'], 'eq.2026-11-11');
+        expect(query['group_key'], 'eq.$groupKey');
+        expect(query.containsKey('tour_id'), isFalse);
+        expect(query.containsKey('group_broadcast_id'), isFalse);
+        expect(query['id'], 'neq.7');
+        expect(
+          query['select'],
+          'id,title,feed_published_at,group_broadcast_id',
+        );
+        expect(
+          query['order'],
+          'feed_published_at.desc.nullslast,created_at.desc.nullslast,id.desc.nullslast',
+        );
+        expect(query['limit'], '21');
+        await repo.load(7, offset: 20);
+        expect(requests.last.queryParameters['offset'], '20');
+      },
+    );
+  }
 
   test(
     'missing anchors and singleton groups have no siblings; errors propagate',
@@ -191,7 +240,8 @@ void main() {
             );
           }
           final anchor =
-              request.url.queryParameters['select'] == 'group_day,group_key';
+              request.url.queryParameters['select'] ==
+              'group_day,group_key,group_broadcast_id';
           return http.Response(
             jsonEncode(
               anchor && mode == 'singleton'

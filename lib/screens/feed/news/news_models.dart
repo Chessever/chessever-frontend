@@ -100,6 +100,7 @@ class FeedNews {
     this.sourceUrl,
     this.publisher = NewsPublisher.chessever,
     this.groupArticleCount = 1,
+    this.groupBroadcastId,
   });
 
   /// The row id in [publisher]'s table: ids of different publishers can
@@ -130,6 +131,9 @@ class FeedNews {
   final NewsPublisher publisher;
   final int groupArticleCount;
 
+  /// Saved parent event reference; grouping is resolved by the server views.
+  final String? groupBroadcastId;
+
   /// Unique across publishers: `7` for ChessEver's article 7 (as it always
   /// was), `rookreview:7` for RookReview's.
   String get key => publisher.isPartner ? '${publisher.sourceId}:$id' : '$id';
@@ -145,6 +149,7 @@ class FeedNews {
     'webUrl': webUrl,
     'sourceUrl': sourceUrl,
     'groupArticleCount': groupArticleCount,
+    'groupBroadcastId': groupBroadcastId,
     if (publisher.isPartner) 'publisher': publisher.sourceId,
   };
 
@@ -190,6 +195,9 @@ class FeedNews {
       sourceUrl: sourceUrl is String && sourceUrl.isNotEmpty ? sourceUrl : null,
       publisher: publisher,
       groupArticleCount: newsGroupArticleCount(json['groupArticleCount']),
+      groupBroadcastId: json['groupBroadcastId'] is String
+          ? json['groupBroadcastId'] as String
+          : null,
     );
   }
 
@@ -207,7 +215,8 @@ class FeedNews {
           other.webUrl == webUrl &&
           other.sourceUrl == sourceUrl &&
           other.publisher == publisher &&
-          other.groupArticleCount == groupArticleCount;
+          other.groupArticleCount == groupArticleCount &&
+          other.groupBroadcastId == groupBroadcastId;
 
   @override
   int get hashCode => Object.hash(
@@ -222,6 +231,7 @@ class FeedNews {
     sourceUrl,
     publisher,
     groupArticleCount,
+    groupBroadcastId,
   );
 
   @override
