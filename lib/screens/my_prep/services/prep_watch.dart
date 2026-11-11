@@ -18,27 +18,25 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 /// own profile too, so starring it works like any other player.
 bool prepCanWatch(PrepProfile profile) => prepWatchAccounts(profile).isNotEmpty;
 
-/// The ChessEver database player a profile's star follows when there is no
-/// online account to check (an over-the-board player such as one added
-/// from Players): by FIDE id, or by the database's own name when the player
-/// has none. Starring follows them like the Players star does, so the push
-/// comes when they sit down at a live broadcast board. Null when the star
-/// watches online accounts instead, or there is nothing to follow. The
-/// reader's own profile is never followed into broadcasts: that push would
-/// be about themselves.
+/// Who a profile's star follows when there is no online account for the
+/// hourly check (an over-the-board player, a PGN import, accounts with a
+/// fixed end date): its FIDE id when known, by the database's own name (or
+/// the profile's) otherwise. Starring follows them like the Players star
+/// does, so the push comes when they sit down at a live broadcast board.
+/// Null only when the star watches online accounts instead.
 ({String? fideId, String name})? prepStarPlayer(PrepProfile profile) {
-  if (profile.kind == PrepKind.mine || prepCanWatch(profile)) return null;
-  final database = profile.databaseAccount;
-  final name = (database?.username ?? profile.name).trim();
+  if (prepCanWatch(profile)) return null;
+  final database = profile.databaseAccount?.username.trim();
+  final name = database != null && database.isNotEmpty
+      ? database
+      : profile.name.trim();
   final fide = prepFavoriteFide(profile)?.trim();
-  if (fide != null && (int.tryParse(fide) ?? 0) > 0 && name.isNotEmpty) {
-    return (fideId: fide, name: name);
-  }
-  if (database == null || name.isEmpty) return null;
-  return (fideId: null, name: name);
+  final validFide = fide != null && (int.tryParse(fide) ?? 0) > 0 ? fide : null;
+  if (name.isEmpty && validFide == null) return null;
+  return (fideId: validFide, name: name.isEmpty ? profile.name : name);
 }
 
-/// Whether [profile]'s row and top bar show a star at all.
+/// Whether [profile] shows a star: every profile with a name does.
 bool prepCanStar(PrepProfile profile) =>
     prepCanWatch(profile) || prepStarPlayer(profile) != null;
 

@@ -57,19 +57,19 @@ Future<void> togglePrepWatch(BuildContext context, PrepProfile profile) async {
 bool prepStarred(WidgetRef ref, PrepProfile profile) {
   final player = prepStarPlayer(profile);
   if (player == null) return profile.watching;
+  return _followed(ref, player.fideId, player.name);
+}
+
+bool _followed(WidgetRef ref, String? fideId, String name) {
   final favorites =
       ref.watch(favoritePlayersProviderNew).valueOrNull ?? const [];
   return favorites.any(
-    (f) => favoritePlayerMatchesIdentity(
-      f,
-      fideId: player.fideId,
-      playerName: player.name,
-    ),
+    (f) => favoritePlayerMatchesIdentity(f, fideId: fideId, playerName: name),
   );
 }
 
 /// Stars or unstars [profile] whichever way it is watched: online accounts
-/// through [togglePrepWatch], a database player by following them.
+/// through [togglePrepWatch], anyone else by following them.
 Future<void> togglePrepStar(
   BuildContext context,
   WidgetRef ref,
@@ -77,13 +77,54 @@ Future<void> togglePrepStar(
 ) async {
   final player = prepStarPlayer(profile);
   if (player == null) return togglePrepWatch(context, profile);
+  return _toggleFollow(
+    context,
+    ref,
+    fideId: player.fideId,
+    name: player.name,
+    shownName: profile.name,
+    kind: profile.kind.name,
+    country: profile.country,
+    title: profile.title,
+    gamebasePlayerId: profile.databaseAccount?.externalId,
+  );
+}
 
+/// A My Space card's star when its profile is not on this device (profiles
+/// stay on the phone that made them): follows the player by the card's name.
+bool prepNameStarred(WidgetRef ref, String name) =>
+    _followed(ref, null, name.trim());
+
+Future<void> togglePrepNameStar(
+  BuildContext context,
+  WidgetRef ref,
+  String name,
+) => _toggleFollow(
+  context,
+  ref,
+  fideId: null,
+  name: name.trim(),
+  shownName: name.trim(),
+  kind: 'unknown',
+);
+
+Future<void> _toggleFollow(
+  BuildContext context,
+  WidgetRef ref, {
+  required String? fideId,
+  required String name,
+  required String shownName,
+  required String kind,
+  String? country,
+  String? title,
+  String? gamebasePlayerId,
+}) async {
   final allowed = await requireFullAuthGuard(context);
   if (!allowed || !context.mounted) return;
   final container = ProviderScope.containerOf(context, listen: false);
   final messenger = ScaffoldMessenger.maybeOf(context);
   final notifier = ref.read(favoritePlayersProviderNew.notifier);
-  final starring = !prepStarred(ref, profile);
+  final starring = !_followed(ref, fideId, name);
   if (starring && !await canAddMoreFavorites(context, ref)) return;
   if (!context.mounted) return;
 
@@ -91,14 +132,14 @@ Future<void> togglePrepStar(
   try {
     if (starring) {
       await notifier.addFavorite(
-        fideId: player.fideId,
-        playerName: player.name,
-        countryCode: profile.country,
-        title: profile.title,
-        gamebasePlayerId: profile.databaseAccount?.externalId,
+        fideId: fideId,
+        playerName: name,
+        countryCode: country,
+        title: title,
+        gamebasePlayerId: gamebasePlayerId,
       );
     } else {
-      await notifier.removeFavorite(player.name, fideId: player.fideId);
+      await notifier.removeFavorite(name, fideId: fideId);
     }
   } on FavoriteLimitExceededException {
     // The guard above shows the paywall; a race past it ends here quietly.
@@ -116,11 +157,7 @@ Future<void> togglePrepStar(
   }
   AnalyticsService.instance.trackEventDetached(
     'Prep Profile Star Toggled',
-    properties: {
-      'starred': starring,
-      'kind': profile.kind.name,
-      'via': 'player',
-    },
+    properties: {'starred': starring, 'kind': kind, 'via': 'player'},
   );
   if (!starring) return;
   final reachable = await makePlayerStarReachable(
@@ -130,7 +167,7 @@ Future<void> togglePrepStar(
   if (reachable && messenger != null && messenger.mounted) {
     showAppSnackOn(
       messenger,
-      "We'll tell you the moment ${profile.name} sits down at a live board.",
+      "We'll tell you the moment $shownName sits down at a live board.",
     );
   }
 }
@@ -138,24 +175,44 @@ Future<void> togglePrepStar(
 /// A Prep profile's star, in its top bar and at the end of its rows. Empty,
 /// in the same slot, while the profile has nothing to watch or follow.
 class PrepWatchStar extends ConsumerWidget {
-  const PrepWatchStar({super.key, required this.profileId});
+  const PrepWatchStar({super.key, required this.profileId, this.fallbackName});
 
   final String profileId;
+
+  /// The name a My Space card follows when the profile is not on this
+  /// device. Without it, a missing profile keeps the slot empty.
+  final String? fallbackName;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final profile = ref.watch(prepProfileProvider(profileId));
     const slot = SizedBox.square(dimension: kPrepWatchStarSlot);
-    if (profile == null || !prepCanStar(profile)) return slot;
-    final starred = prepStarred(ref, profile);
+    final fallback = fallbackName?.trim() ?? '';
+    final bool starred;
+    final String name;
+    final VoidCallback onTap;
+    if (profile != null && prepCanStar(profile)) {
+      starred = prepStarred(ref, profile);
+      name = profile.name;
+      onTap = () => togglePrepStar(context, ref, profile);
+    } else if (profile == null &&
+        fallback.isNotEmpty &&
+        // Not while the profiles are still read: it may yet be here.
+        ref.watch(prepProfilesProvider).hasValue) {
+      starred = prepNameStarred(ref, fallback);
+      name = fallback;
+      onTap = () => togglePrepNameStar(context, ref, fallback);
+    } else {
+      return slot;
+    }
     return Semantics(
       button: true,
-      label: starred ? 'Unstar ${profile.name}' : 'Star ${profile.name}',
+      label: starred ? 'Unstar $name' : 'Star $name',
       child: SizedBox.square(
         dimension: kPrepWatchStarSlot,
         child: InkResponse(
           radius: kPrepWatchStarSlot / 2,
-          onTap: () => togglePrepStar(context, ref, profile),
+          onTap: onTap,
           child: Center(
             child: ExcludeSemantics(
               child: SvgWidget(

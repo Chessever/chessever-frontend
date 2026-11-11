@@ -161,7 +161,7 @@ void main() {
     expect(prepCanStar(_profile), isTrue);
   });
 
-  test('the reader is never followed into broadcasts', () {
+  test('every profile can be starred, the reader\'s own included', () {
     const mineOtb = PrepProfile(
       id: 'mine-otb',
       kind: PrepKind.mine,
@@ -169,8 +169,16 @@ void main() {
       createdAtMs: 1,
       accounts: [_database],
     );
-    expect(prepStarPlayer(mineOtb), isNull);
-    expect(prepCanStar(mineOtb), isFalse);
+    expect(prepStarPlayer(mineOtb), (fideId: null, name: 'Carlsen, Magnus'));
+    const pgnOnly = PrepProfile(
+      id: 'pgn',
+      kind: PrepKind.opponent,
+      name: 'Club Rival',
+      createdAtMs: 1,
+      accounts: [],
+    );
+    expect(prepCanStar(pgnOnly), isTrue);
+    expect(prepStarPlayer(pgnOnly), (fideId: null, name: 'Club Rival'));
   });
 
   test('a star survives a save', () {

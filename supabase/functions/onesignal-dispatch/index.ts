@@ -280,6 +280,24 @@ async function processClaimedItems(items: OutboxItem[]) {
   return results;
 }
 
+/** Reserve the all-user round message before follower targeting or grouped dedupe.
+ * Database acceptance is durable, including the wait for fresh standings.
+ * Failures retry the outbox item; never send a competing follower alert.
+ * Owned by chessever-admin-portal (integrations/onesignal-dispatch); kept
+ * here so a deploy from this repo never drops it.
+ */
+async function reserveTournamentNotification(outboxId: string): Promise<boolean> {
+  const reserved = await runQuery<boolean>(
+    "Tournament broadcast reservation",
+    () =>
+      supabase.rpc("chessever_admin_tournaments", {
+        operation: "observe",
+        input: { outboxId },
+      }),
+  );
+  return reserved === true;
+}
+
 async function processItem(item: OutboxItem) {
   // Keep targeting and outbox semantics intact; switch only the transport.
   // Once handed off, an outbox "sent" row means durably accepted by our service.
@@ -348,6 +366,10 @@ async function processItem(item: OutboxItem) {
           reason: "round_not_live_yet",
         };
       }
+      if (await reserveTournamentNotification(item.id)) {
+        await markSent(item.id);
+        return { id: item.id, status: "sent", reason: "tournament_broadcast_reserved" };
+      }
       if (await hasSentGroupedRoundStart(item, context)) {
         await markSkipped(item.id, "duplicate_grouped_round_start");
         return {
@@ -356,6 +378,10 @@ async function processItem(item: OutboxItem) {
           reason: "duplicate_grouped_round_start",
         };
       }
+    }
+    if (item.event_type === "round_finished" && await reserveTournamentNotification(item.id)) {
+      await markSent(item.id);
+      return { id: item.id, status: "sent", reason: "tournament_broadcast_reserved" };
     }
     if (item.event_type === "round_finished" && isCombinedTour(context.tour)) {
       await markSkipped(item.id, "combined_round_results_suppressed");

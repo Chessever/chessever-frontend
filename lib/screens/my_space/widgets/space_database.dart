@@ -2414,8 +2414,12 @@ class SpaceSavedRow extends ConsumerWidget {
     final prep = shortcut.kind == SpaceShortcutKind.prepProfile
         ? ref.watch(prepProfileProvider(shortcut.targetId))
         : null;
-    // A Prep player it can watch: the row ends in the player's own star.
-    final starrable = disclosure && prep != null && prepCanStar(prep);
+    // Every Prep card ends in a star, the profile's own; one whose profile
+    // is not on this device follows the player by the card's name.
+    final starrable =
+        disclosure &&
+        shortcut.kind == SpaceShortcutKind.prepProfile &&
+        (prep == null ? shortcut.title.trim().isNotEmpty : prepCanStar(prep));
     if (shortcut.kind == SpaceShortcutKind.collection) {
       final collections = ref.watch(collectionsProvider).asData?.value;
       Collection? collection;
@@ -2530,7 +2534,10 @@ class SpaceSavedRow extends ConsumerWidget {
             // is how its "playing now" push is turned on. The shortcut
             // stays either way.
             if (starrable)
-              PrepWatchStar(profileId: prep.id)
+              PrepWatchStar(
+                profileId: shortcut.targetId,
+                fallbackName: shortcut.title,
+              )
             else if (disclosure) ...[
               Icon(
                 Icons.chevron_right_rounded,
@@ -2554,9 +2561,15 @@ class SpaceSavedRow extends ConsumerWidget {
       customSemanticsActions: starrable
           ? {
               CustomSemanticsAction(
-                label: prepStarred(ref, prep) ? 'Unstar' : 'Star',
-              ): () =>
-                  togglePrepStar(context, ref, prep),
+                label:
+                    (prep == null
+                        ? prepNameStarred(ref, shortcut.title)
+                        : prepStarred(ref, prep))
+                    ? 'Unstar'
+                    : 'Star',
+              ): () => prep == null
+                  ? togglePrepNameStar(context, ref, shortcut.title)
+                  : togglePrepStar(context, ref, prep),
             }
           : null,
       child: TappableScale(

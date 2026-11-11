@@ -13,6 +13,7 @@ import 'package:chessever2/screens/my_space/providers/space_shortcuts_provider.d
 import 'package:chessever2/screens/my_space/widgets/space_database.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/screens/my_prep/services/prep_watch.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -286,8 +287,10 @@ void main() {
       ) async {
         await pumpRow(
           tester,
-          _profile(PrepKind.opponent, source)
-              .copyWith(name: 'Long named opponent preparation profile'),
+          _profile(
+            PrepKind.opponent,
+            source,
+          ).copyWith(name: 'Long named opponent preparation profile'),
           width: width,
         );
         expect(star, findsOneWidget);
@@ -297,12 +300,18 @@ void main() {
     }
   }
 
-  testWidgets('a player with no online account keeps its chevron', (
+  // The report: an over-the-board player ended in an arrow. Every Prep
+  // card is starrable now; this one follows the player.
+  testWidgets('a player with no online account ends in its star too', (
     tester,
   ) async {
     await pumpRow(tester, _profile(PrepKind.opponent, PrepSource.manual));
-    expect(star, findsNothing);
-    expect(chevron, findsOneWidget);
+    expect(star, findsOneWidget);
+    expect(chevron, findsNothing);
+    expect(
+      prepStarPlayer(_profile(PrepKind.opponent, PrepSource.manual)),
+      isNotNull,
+    );
   });
 
   testWidgets('your own online account is starred too', (tester) async {
@@ -327,10 +336,7 @@ void main() {
     final handle = tester.ensureSemantics();
     await pumpRow(tester, _profile(PrepKind.opponent, PrepSource.lichess));
     final node = tester.getSemantics(find.byType(SpaceSavedRow));
-    expect(
-      node.getSemanticsData().customSemanticsActionIds,
-      isNotEmpty,
-    );
+    expect(node.getSemanticsData().customSemanticsActionIds, isNotEmpty);
     handle.dispose();
   });
 }
