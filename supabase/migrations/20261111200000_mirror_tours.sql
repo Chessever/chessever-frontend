@@ -39,17 +39,17 @@
 
 set lock_timeout = '5s';
 
--- Take both table locks up front, games first: a reader holding games while it
--- waits for tours is the deadlock the two ALTERs would otherwise invite. If the
--- lock is not granted within lock_timeout the migration fails cleanly; retry.
-lock table public.games, public.tours in access exclusive mode;
+-- No LOCK TABLE: the Supabase CLI applies a migration as one implicit
+-- transaction, where LOCK TABLE fails (25P01). The ALTERs take the locks
+-- themselves, games first, then tours. If a lock is not granted within
+-- lock_timeout the migration fails cleanly; retry.
 
 -- ---------------------------------------------------------------------------
 -- Columns
 -- ---------------------------------------------------------------------------
 
-alter table public.tours add column if not exists is_mirror boolean not null default false;
 alter table public.games add column if not exists is_mirror boolean not null default false;
+alter table public.tours add column if not exists is_mirror boolean not null default false;
 
 comment on column public.tours.is_mirror is
   'Combined/mirror section that repeats boards of real sections. Kept by tours_zzz_mirror_flag; override with tours.info.mirror.';
