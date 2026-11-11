@@ -211,7 +211,20 @@ class PremiumPaywallView extends StatelessWidget {
                       ],
                     ),
                   ),
-                  _bottom(),
+                  // Checkout stays pinned, but in a short window (folded Duo in
+                  // landscape) with larger text it may not take the whole sheet:
+                  // past 70% of the height it scrolls within itself.
+                  Builder(
+                    builder: (context) => ConstrainedBox(
+                      constraints: BoxConstraints(
+                        maxHeight: MediaQuery.sizeOf(context).height * 0.7,
+                      ),
+                      child: SingleChildScrollView(
+                        physics: const ClampingScrollPhysics(),
+                        child: _bottom(),
+                      ),
+                    ),
+                  ),
                 ],
               ),
               _handle(),
