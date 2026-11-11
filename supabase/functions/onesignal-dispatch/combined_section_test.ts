@@ -4,6 +4,7 @@
 import { assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import {
   isCombinedSection,
+  isMirrorSection,
   speaksForEventStars,
   suppressCombinedMirror,
 } from "./combined_section.ts";
@@ -27,6 +28,53 @@ Deno.test("isCombinedSection reads the name or the slug as a whole word", () => 
     false,
   );
   assertEquals(isCombinedSection(null), false);
+});
+
+const flaggedMirror = {
+  name: "Some Open 2026 | All Groups",
+  slug: "some-open-2026-all-groups",
+  is_mirror: true,
+};
+
+Deno.test("isMirrorSection honours the tour flag regardless of name", () => {
+  assertEquals(isMirrorSection(flaggedMirror), true);
+  assertEquals(isMirrorSection({ ...groupA, is_mirror: false }), false);
+  assertEquals(isMirrorSection(groupA), false);
+  assertEquals(isMirrorSection(null), false);
+});
+
+Deno.test("The Combined name still marks a mirror when the flag is missing or false", () => {
+  // Outbox rows queued before the migration, or a flag not yet backfilled.
+  assertEquals(isMirrorSection(combined), true);
+  assertEquals(isMirrorSection({ ...combined, is_mirror: null }), true);
+  assertEquals(isMirrorSection({ ...combined, is_mirror: false }), true);
+});
+
+Deno.test("A flagged mirror's board and round pushes are dropped while real sections exist", () => {
+  for (
+    const type of [
+      "game_started",
+      "game_finished",
+      "round_started",
+      "round_heads_up",
+    ]
+  ) {
+    assertEquals(suppressCombinedMirror(type, flaggedMirror, 4), true, type);
+  }
+  assertEquals(suppressCombinedMirror("game_started", flaggedMirror, 0), false);
+});
+
+Deno.test("Event-star sections exclude flagged and named mirrors", () => {
+  // Mirrors index.ts: sectionTourIds = grouped tours filtered by !isMirrorSection.
+  const grouped = [
+    { id: "A", ...groupA, is_mirror: false },
+    { id: "M", ...flaggedMirror },
+    { id: "C", ...combined, is_mirror: null },
+  ];
+  assertEquals(
+    grouped.filter((row) => !isMirrorSection(row)).map((row) => row.id),
+    ["A"],
+  );
 });
 
 Deno.test("Combined board and round pushes are dropped while real sections exist", () => {

@@ -749,6 +749,8 @@ void main() {
             query['or'],
             r'(pgn.like.%$24%,pgn.ilike.%chessever_annotation%)',
           );
+          // A Combined section's copies never reach Reports.
+          expect(query['is_mirror'], 'eq.false');
           expect(
             query['select']!.split(',').map((s) => s.trim()),
             contains('pgn'),

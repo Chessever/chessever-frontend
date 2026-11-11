@@ -139,11 +139,15 @@ final knockoutTournamentStateProvider = Provider.autoDispose.family<
   final metadataDetectionIsLoading =
       !hasTourNameStageEvidence && roundEvidenceAsync.isLoading;
   final gamesDetectionIsLoading = !gamesAsync.hasValue && !gamesAsync.hasError;
+  // A team verdict reached before the games load can still be overturned by
+  // them ([gamesOnlyPairTeammates]: a Combined section flagged teamTable).
+  // Keep it pending until then so the layout tracker does not lock it in.
   final isDetectionPending =
-      !isTeamEvent &&
-      !hasExplicitNonKnockoutFormat &&
-      !isKnockout &&
-      (metadataDetectionIsLoading || gamesDetectionIsLoading);
+      (isTeamEvent && gamesDetectionIsLoading) ||
+      (!isTeamEvent &&
+          !hasExplicitNonKnockoutFormat &&
+          !isKnockout &&
+          (metadataDetectionIsLoading || gamesDetectionIsLoading));
 
   if (models.isEmpty && !isKnockout) {
     // Team detection keys off the format string, so it is known even
@@ -316,6 +320,11 @@ bool _isGenericKnockoutLeg(String name, String slug) {
 ///     - Otherwise a tour is team when its games show real team matches
 ///       ([gamesShowTeamMatches]) or most of the roster (>= 80%) carries a
 ///       non-empty team tag.
+///
+/// Every signal above yields to the games themselves: a tour whose loaded,
+/// team-tagged boards never pair two DIFFERENT teams is not a team event
+/// ([gamesOnlyPairTeammates]). Total Chess published a "Combined" section
+/// with `teamTable` on whose every board was "Group A" vs "Group A".
 bool resolveIsTeamEvent({
   required bool? teamTable,
   required String? formatString,
@@ -323,6 +332,8 @@ bool resolveIsTeamEvent({
   required List<GamesTourModel> games,
   bool hasOfficialTeamTable = false,
 }) {
+  if (gamesOnlyPairTeammates(games)) return false;
+
   // A validated organizer team table (Chess-Results/Info64) is proof on its
   // own: the 2026 Russian Rapid Teams feeds carry no teamTable flag, a
   // "9-round Swiss" format and no team labels, yet the event is a team one.
@@ -382,6 +393,26 @@ bool gamesShowTeamMatches(List<GamesTourModel> games) {
     boardsPerMatch[key] = boards;
   }
   return false;
+}
+
+/// True when at least two boards carry a team tag on both sides and every one
+/// of them pairs two players of the SAME team: a tour that groups players
+/// ("Group A") rather than one where teams meet. One board between two
+/// different teams clears it, as do games without tags (team events whose
+/// roster labels never reach the games, such as the official-table Russian
+/// Rapid Teams feeds).
+bool gamesOnlyPairTeammates(List<GamesTourModel> games) {
+  var teammateBoards = 0;
+  for (final g in games) {
+    final wTeam = g.whitePlayer.team?.trim();
+    final bTeam = g.blackPlayer.team?.trim();
+    if (wTeam == null || wTeam.isEmpty || bTeam == null || bTeam.isEmpty) {
+      continue;
+    }
+    if (wTeam != bTeam) return false;
+    teammateBoards++;
+  }
+  return teammateBoards >= 2;
 }
 
 /// True when the current tour is a team event (drives the 4-tab layout).

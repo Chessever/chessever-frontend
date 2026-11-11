@@ -245,6 +245,136 @@ void main() {
     });
   });
 
+  group('resolveIsTeamEvent — a Combined section of groups is not a team', () {
+    // Total Chess "Combined": every board pairs two players of one group.
+    List<GamesTourModel> combinedGames() => [
+      _game(round: 'r1', whiteTeam: 'Group A', blackTeam: 'Group A', board: 1),
+      _game(round: 'r1', whiteTeam: 'Group B', blackTeam: 'Group B', board: 2),
+      _game(round: 'r1', whiteTeam: 'Group C', blackTeam: 'Group C', board: 3),
+    ];
+
+    test('teamTable true yields when every board pairs teammates', () {
+      expect(
+        resolveIsTeamEvent(
+          teamTable: true,
+          formatString: '6-player double round-robin',
+          players: [
+            _player('A', team: 'Group A'),
+            _player('B', team: 'Group B'),
+          ],
+          games: combinedGames(),
+        ),
+        isFalse,
+      );
+    });
+
+    test('an official team table yields to the same evidence', () {
+      expect(
+        resolveIsTeamEvent(
+          teamTable: null,
+          formatString: null,
+          players: const [],
+          games: combinedGames(),
+          hasOfficialTeamTable: true,
+        ),
+        isFalse,
+      );
+    });
+
+    test('a fully teamed roster does not make it a team event', () {
+      expect(
+        resolveIsTeamEvent(
+          teamTable: null,
+          formatString: null,
+          players: [
+            _player('A', team: 'Group A'),
+            _player('B', team: 'Group A'),
+          ],
+          games: combinedGames(),
+        ),
+        isFalse,
+      );
+    });
+
+    test('teamTable true stays team while games are not loaded', () {
+      expect(
+        resolveIsTeamEvent(
+          teamTable: true,
+          formatString: null,
+          players: const [],
+          games: const [],
+        ),
+        isTrue,
+      );
+    });
+
+    test('a single teammate board is not enough evidence', () {
+      expect(
+        resolveIsTeamEvent(
+          teamTable: true,
+          formatString: null,
+          players: const [],
+          games: [_game(round: 'r1', whiteTeam: 'Alpha', blackTeam: 'Alpha')],
+        ),
+        isTrue,
+      );
+    });
+
+    test('one board between two different teams keeps a real team event', () {
+      expect(
+        resolveIsTeamEvent(
+          teamTable: true,
+          formatString: null,
+          players: const [],
+          games: [
+            ...combinedGames(),
+            _game(round: 'r2', whiteTeam: 'Alpha', blackTeam: 'Beta'),
+          ],
+        ),
+        isTrue,
+      );
+    });
+
+    test('a real team match stays team', () {
+      expect(
+        resolveIsTeamEvent(
+          teamTable: true,
+          formatString: null,
+          players: const [],
+          games: _teamMatchGames(),
+        ),
+        isTrue,
+      );
+    });
+  });
+
+  group('gamesOnlyPairTeammates', () {
+    test('untagged games are no evidence', () {
+      expect(
+        gamesOnlyPairTeammates([
+          _game(round: 'r1', whiteTeam: '', blackTeam: ''),
+          _game(round: 'r1', whiteTeam: '', blackTeam: '', board: 2),
+        ]),
+        isFalse,
+      );
+    });
+
+    test('two teammate boards and nothing else is evidence', () {
+      expect(
+        gamesOnlyPairTeammates([
+          _game(round: 'r1', whiteTeam: 'Group A', blackTeam: 'Group A'),
+          _game(
+            round: 'r1',
+            whiteTeam: ' Group A ',
+            blackTeam: 'Group A',
+            board: 2,
+          ),
+        ]),
+        isTrue,
+      );
+    });
+  });
+
   group('TourInfo.teamTable parsing', () {
     test('parses explicit booleans and keeps absence as null', () {
       expect(TourInfo.fromJson(const {'teamTable': true}).teamTable, isTrue);

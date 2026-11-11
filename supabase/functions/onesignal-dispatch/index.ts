@@ -1,7 +1,7 @@
 import { handoffNotification } from "./notification_handoff.ts";
 import { HISTORICAL_EVENT_TYPES } from "./historical_guard.ts";
 import {
-  isCombinedSection,
+  isMirrorSection,
   speaksForEventStars,
   suppressCombinedMirror,
 } from "./combined_section.ts";
@@ -91,6 +91,7 @@ type TourRow = {
   name: string | null;
   slug: string | null;
   group_broadcast_id: string | null;
+  is_mirror: boolean | null;
 };
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
@@ -388,7 +389,7 @@ async function processItem(item: OutboxItem) {
       await markSent(item.id);
       return { id: item.id, status: "sent", reason: "tournament_broadcast_reserved" };
     }
-    if (item.event_type === "round_finished" && isCombinedSection(context.tour)) {
+    if (item.event_type === "round_finished" && isMirrorSection(context.tour)) {
       await markSkipped(item.id, "combined_round_results_suppressed");
       return {
         id: item.id,
@@ -1448,7 +1449,7 @@ async function buildContext(item: OutboxItem) {
     tour = await runQuery<TourRow>("Tour lookup", () =>
       supabase
         .from("tours")
-        .select("id,name,slug,group_broadcast_id")
+        .select("id,name,slug,group_broadcast_id,is_mirror")
         .eq("id", tourId)
         .maybeSingle());
     groupBroadcastId = groupBroadcastId ?? tour?.group_broadcast_id ?? null;
@@ -1468,17 +1469,17 @@ async function buildContext(item: OutboxItem) {
     eventName = groupBroadcast?.name ?? null;
 
     const groupedTours = await runQuery<
-      Pick<TourRow, "id" | "name" | "slug">[]
+      Pick<TourRow, "id" | "name" | "slug" | "is_mirror">[]
     >(
       "Group sections lookup",
       () =>
         supabase
           .from("tours")
-          .select("id,name,slug")
+          .select("id,name,slug,is_mirror")
           .eq("group_broadcast_id", broadcastId),
     );
     sectionTourIds = (groupedTours ?? [])
-      .filter((row) => !isCombinedSection(row))
+      .filter((row) => !isMirrorSection(row))
       .map((row) => row.id);
   }
 

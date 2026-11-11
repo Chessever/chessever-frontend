@@ -1401,6 +1401,20 @@ class PlayerAnalytics {
   }
 }
 
+/// The Events tab reads behind [playerEventsProvider] and
+/// [playerEventsKeyProvider], exposed so tests can check their queries.
+@visibleForTesting
+Future<List<PlayerEventData>> playerEventsFromGamesForTest(
+  SupabaseClient supabase, {
+  int? fideId,
+  PlayerProfileKey? playerKey,
+}) {
+  assert((fideId == null) != (playerKey == null));
+  return playerKey != null
+      ? _getPlayerEventsFromGamesWithKey(supabase, playerKey)
+      : _getPlayerEventsFromGames(supabase, fideId!);
+}
+
 /// Provider to fetch events/tournaments for a player
 final playerEventsProvider = FutureProvider.family
     .autoDispose<List<PlayerEventData>, int>((ref, fideId) async {
@@ -2133,6 +2147,7 @@ Future<List<PlayerEventData>> _getPlayerEventsFromGamesWithKey(
             'tour_id, tour_slug, status, players, date_start, player_white, player_black',
           )
           .contains('player_fide_ids', [playerKey.fideId])
+          .eq('is_mirror', false)
           .order('date_start', ascending: false)
           .limit(500);
     } else {
@@ -2145,6 +2160,7 @@ Future<List<PlayerEventData>> _getPlayerEventsFromGamesWithKey(
           .or(
             'player_white.eq."${playerKey.playerName}",player_black.eq."${playerKey.playerName}"',
           )
+          .eq('is_mirror', false)
           .order('date_start', ascending: false)
           .limit(500);
     }
@@ -2335,6 +2351,7 @@ Future<List<PlayerEventData>> _getPlayerEventsFromGames(
         .from('games')
         .select('tour_id, tour_slug, status, players, date_start')
         .contains('player_fide_ids', [fideId])
+        .eq('is_mirror', false)
         .order('date_start', ascending: false)
         .limit(500);
     final responseList = response as List;
