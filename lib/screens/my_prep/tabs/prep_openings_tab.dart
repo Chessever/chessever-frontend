@@ -37,8 +37,6 @@ class PrepOpeningsTab extends StatefulWidget {
 class _PrepOpeningsTabState extends State<PrepOpeningsTab> {
   PrepSide _side = PrepSide.white;
 
-  bool get _mine => widget.profile.kind == PrepKind.mine;
-
   String? get _color => switch (_side) {
     PrepSide.white => 'white',
     PrepSide.black => 'black',
@@ -95,14 +93,12 @@ class _PrepOpeningsTabState extends State<PrepOpeningsTab> {
       filters: criteria,
     );
     final total = first.fold<int>(0, (sum, m) => sum + m.total);
-    final who = _mine ? 'you' : 'they';
 
     return ListView(
       padding: EdgeInsets.fromLTRB(gutter, 4.h, gutter, 40.h),
       children: [
         PrepSidePicker(
           side: _side,
-          mine: _mine,
           onChanged: (s) => setState(() => _side = s),
         ),
         SizedBox(height: 12.h),
@@ -135,7 +131,7 @@ class _PrepOpeningsTabState extends State<PrepOpeningsTab> {
                       ),
                       SizedBox(height: 2.h),
                       Text(
-                        'Step through every line $who played, with the games '
+                        'Step through every line played, with the games '
                         'behind each move.',
                         style: AppTypography.textXsRegular.copyWith(
                           color: colors.textInverse.withValues(alpha: 0.7),
@@ -155,16 +151,14 @@ class _PrepOpeningsTabState extends State<PrepOpeningsTab> {
         ),
         SizedBox(height: 20.h),
         Text(
-          _side == PrepSide.black
-              ? (_mine ? 'Your answers to White' : 'Their answers to White')
-              : (_mine ? 'Your first moves' : 'Their first moves'),
+          _side == PrepSide.black ? 'Answers to White' : 'First moves',
           style: AppTypography.textMdBold.copyWith(color: colors.textPrimary),
         ),
         SizedBox(height: 4.h),
         Text(
           _side == PrepSide.black
-              ? 'White’s first move in their Black games. Tap one to see '
-                    'how they answer it.'
+              ? 'White’s first move in the Black games. Tap one to see '
+                    'the answers to it.'
               : 'Tap a move to open the explorer on it.',
           style: AppTypography.textXsRegular.copyWith(
             color: colors.textSecondary,

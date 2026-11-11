@@ -27,8 +27,6 @@ import 'package:smooth_sheets/smooth_sheets.dart';
 /// the sheet then pushes a page per chosen account for its clocks and period,
 /// and hands the accounts back carrying them. [initial] accounts are already
 /// chosen when the sheet opens, for a player whose accounts are known.
-/// [mayAdd] is asked, with how many are chosen so far, before another
-/// account joins them; without it any number may.
 Future<PrepAddResult?> showPrepSourcePicker(
   BuildContext context, {
   required PrepKind kind,
@@ -39,7 +37,6 @@ Future<PrepAddResult?> showPrepSourcePicker(
   bool askScope = true,
   String? lockedFideId,
   List<PrepAccount> initial = const [],
-  Future<bool> Function(int chosen)? mayAdd,
 }) => Navigator.of(context, rootNavigator: true).push(
   MotionSheetRoute<PrepAddResult>(
     barrierColor: context.colors.scrim,
@@ -59,7 +56,6 @@ Future<PrepAddResult?> showPrepSourcePicker(
         askScope: askScope,
         lockedFideId: lockedFideId,
         initial: initial,
-        mayAdd: mayAdd,
       ),
     ),
   ),
@@ -241,7 +237,6 @@ class _SourcePicker extends ConsumerStatefulWidget {
     this.only,
     this.lockedFideId,
     this.initial = const [],
-    this.mayAdd,
   });
   final _PickerFlow flow;
   final PrepKind kind;
@@ -252,7 +247,6 @@ class _SourcePicker extends ConsumerStatefulWidget {
   final bool askScope;
   final String? lockedFideId;
   final List<PrepAccount> initial;
-  final Future<bool> Function(int chosen)? mayAdd;
 
   @override
   ConsumerState<_SourcePicker> createState() => _SourcePickerState();
@@ -349,24 +343,15 @@ class _SourcePickerState extends ConsumerState<_SourcePicker> {
         .read(prepProfilesProvider.notifier)
         .owning(account.source, account.externalId ?? account.username);
     if (owner != null && owner.kind != PrepKind.favorite) {
-      return 'Already in ${owner.kind == PrepKind.mine ? 'Games' : owner.name}';
+      return 'Already in ${owner.name}';
     }
     return null;
   }
 
-  /// Whether one more account may join the chosen ones.
-  Future<bool> _mayAdd() async {
-    final mayAdd = widget.mayAdd;
-    return mayAdd == null || await mayAdd(_pending.length);
-  }
-
-  Future<void> _select(PrepAccount account) async {
+  void _select(PrepAccount account) {
     if (_unavailable(account) != null) return;
     FocusScope.of(context).unfocus();
     if (widget.multiple) {
-      if (!await _mayAdd() || !mounted || _unavailable(account) != null) {
-        return;
-      }
       _debounce?.cancel();
       _generation++;
       _query.clear();
@@ -403,10 +388,9 @@ class _SourcePickerState extends ConsumerState<_SourcePicker> {
   ].where((account) => _unavailable(account) == null).toList();
 
   /// A known handle joins the chosen accounts without being searched for.
-  Future<void> _quickAdd(PrepAccount account) async {
+  void _quickAdd(PrepAccount account) {
     if (_unavailable(account) != null) return;
     HapticFeedbackService.selection();
-    if (!await _mayAdd() || !mounted || _unavailable(account) != null) return;
     setState(() => _pending.add(account));
   }
 

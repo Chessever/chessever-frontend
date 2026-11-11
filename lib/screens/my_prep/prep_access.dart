@@ -6,12 +6,19 @@ import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
-/// How many of their own accounts My Games holds without a paid
-/// subscription: a ChessEver record, a username or an imported PGN each.
-const kFreePrepOwnAccounts = 3;
+/// How many profiles Prep holds without a paid subscription. The reader's
+/// own profile and their opponents count alike, each with any number of
+/// sources.
+const kFreePrepProfiles = 2;
 
-/// How many opponents Profiles holds without a paid subscription.
-const kFreePrepOpponents = 1;
+/// Whether [profile] counts towards [kFreePrepProfiles]. A player kept in
+/// Players does not, and the reader's own profile counts from its first
+/// source: Games shows it as empty until then.
+bool prepCountsAsProfile(PrepProfile profile) => switch (profile.kind) {
+  PrepKind.favorite => false,
+  PrepKind.mine => profile.accounts.isNotEmpty,
+  PrepKind.opponent => true,
+};
 
 bool _promptOpen = false;
 
@@ -42,9 +49,8 @@ bool hasPrepAccess(WidgetRef ref) => ref.read(premiumAccessProvider);
 
 /// A profile's statistics, its games and its trees are Premium, with the
 /// watch-an-ad unlock every Premium surface offers. Adding players and
-/// downloading their games is free, within [kFreePrepOwnAccounts] and
-/// [kFreePrepOpponents]. [feature] names what asked, for the paywall
-/// analytics.
+/// downloading their games is free, within [kFreePrepProfiles]. [feature]
+/// names what asked, for the paywall analytics.
 Future<bool> ensurePrepAccess(
   BuildContext context, {
   required String feature,
@@ -62,32 +68,29 @@ final prepUnlimitedProvider = Provider<bool>(
   (ref) => ref.watch(subscriptionProvider.select((s) => s.isSubscribed)),
 );
 
-/// Whether My Games may hold [total] of the reader's own accounts. Past
-/// [kFreePrepOwnAccounts] the subscription paywall asks.
-Future<bool> prepMayHoldOwnAccounts(BuildContext context, int total) =>
-    _withinLimit(
-      context,
-      total: total,
-      limit: kFreePrepOwnAccounts,
-      feature: 'prep_own_accounts',
-    );
-
-/// Whether one more opponent may join Profiles. Past [kFreePrepOpponents]
-/// the subscription paywall asks.
-Future<bool> prepMayAddOpponent(BuildContext context) {
+/// Whether one more profile may join Prep, the reader's own or an
+/// opponent's. Past [kFreePrepProfiles] the subscription paywall asks.
+Future<bool> prepMayAddProfile(BuildContext context) {
   final profiles = ProviderScope.containerOf(
     context,
     listen: false,
   ).read(prepProfilesProvider).valueOrNull;
-  final opponents =
-      profiles?.where((p) => p.kind == PrepKind.opponent).length ?? 0;
+  final held = profiles?.where(prepCountsAsProfile).length ?? 0;
   return _withinLimit(
     context,
-    total: opponents + 1,
-    limit: kFreePrepOpponents,
-    feature: 'prep_opponents',
+    total: held + 1,
+    limit: kFreePrepProfiles,
+    feature: 'prep_profiles',
   );
 }
+
+/// Whether sources may join [profile], or start a new one where it is
+/// null. Only a profile that is not counted yet is asked about: one already
+/// kept takes any number of sources.
+Future<bool> prepMayAttach(BuildContext context, PrepProfile? profile) async =>
+    profile != null &&
+        (profile.kind != PrepKind.mine || profile.accounts.isNotEmpty) ||
+    await prepMayAddProfile(context);
 
 Future<bool> _withinLimit(
   BuildContext context, {

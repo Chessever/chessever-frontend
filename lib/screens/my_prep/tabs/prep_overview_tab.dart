@@ -711,7 +711,6 @@ class _Statistics extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final s = stats;
-    final mine = profile.kind == PrepKind.mine;
     final scale = _scale;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -731,12 +730,7 @@ class _Statistics extends StatelessWidget {
             for (final side in [PrepSide.white, PrepSide.black]) ...[
               if (side == PrepSide.black) SizedBox(height: 20.h),
               _ColourRow(
-                label: switch ((mine, side)) {
-                  (true, PrepSide.white) => 'As White',
-                  (true, _) => 'As Black',
-                  (false, PrepSide.white) => 'Their White',
-                  (false, _) => 'Their Black',
-                },
+                label: side == PrepSide.white ? 'As White' : 'As Black',
                 tally: side == PrepSide.white ? s.asWhite : s.asBlack,
                 games: side == PrepSide.white ? s.whiteGames : s.blackGames,
                 selected: filter.side == side,

@@ -1080,50 +1080,6 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('the add sheet asks before an account past a limit joins', (
-    tester,
-  ) async {
-    final asks = <int>[];
-    await pump(
-      tester,
-      Scaffold(
-        body: Builder(
-          builder: (context) => TextButton(
-            onPressed: () => showPrepSourcePicker(
-              context,
-              kind: PrepKind.mine,
-              multiple: true,
-              // Room for one more account only.
-              mayAdd: (chosen) async {
-                asks.add(chosen);
-                return chosen < 1;
-              },
-            ),
-            child: const Text('Start'),
-          ),
-        ),
-      ),
-    );
-    await tester.tap(find.text('Start'));
-    await tester.pumpAndSettle();
-    for (final source in [PrepSource.lichess, PrepSource.chesscom]) {
-      await tester.tap(find.text(source.label));
-      await tester.pumpAndSettle();
-      await tester.enterText(
-        find.byKey(const ValueKey('prep_source_query')),
-        'ClubPlayer',
-      );
-      await tester.pump(const Duration(milliseconds: 450));
-      await tester.pump();
-      await tester.tap(find.text('Club Player'));
-      await tester.pumpAndSettle();
-    }
-    expect(asks, [0, 1]);
-    expect(find.text('Attach account'), findsOneWidget);
-    expect(find.text('Attach 2 accounts'), findsNothing);
-    expect(tester.takeException(), isNull);
-  });
-
   testWidgets('the add sheet rests on the bottom edge and back steps a page', (
     tester,
   ) async {
@@ -1711,8 +1667,8 @@ void main() {
     },
   );
 
-  testWidgets('without a subscription Profiles holds one opponent and My '
-      'Games three of your own accounts', (tester) async {
+  testWidgets('without a subscription Prep holds two profiles, your own and '
+      'an opponent alike, each with any number of sources', (tester) async {
     final container = await pump(tester, const MyPrepHomeScreen());
     await tester.pumpAndSettle();
     await tester.runAsync(() async {
@@ -1732,15 +1688,18 @@ void main() {
     await tester.pumpAndSettle();
     final fab = find.byKey(const ValueKey('prep_add_floating'));
 
-    // A fourth account of your own asks for the subscription, not an ad.
+    // A fourth account of your own joins without asking: a profile already
+    // kept takes any number of sources.
     await tester.tap(fab);
     await tester.pumpAndSettle();
     await tester.tap(find.text('Lichess').last);
     await tester.pumpAndSettle();
-    expect(asked, [('prep_own_accounts', false)]);
-    expect(find.text('Attach your usernames'), findsNothing);
+    expect(asked, isEmpty);
+    expect(find.text('Attach your usernames'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('prep_source_cancel')));
+    await tester.pumpAndSettle();
 
-    // So does a second opponent.
+    // A third profile asks for the subscription, not an ad.
     await tester.tap(find.text('Profiles'));
     await tester.pumpAndSettle();
     expect(find.text('Rival'), findsOneWidget);
@@ -1748,7 +1707,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('Chess.com').last);
     await tester.pumpAndSettle();
-    expect(asked.last, ('prep_opponents', false));
+    expect(asked, [('prep_profiles', false)]);
     expect(find.text('Add an opponent'), findsNothing);
 
     // Subscribed, the sheet opens.
@@ -1760,6 +1719,41 @@ void main() {
     expect(find.text('Add an opponent'), findsOneWidget);
     await tester.tap(find.byKey(const ValueKey('prep_source_cancel')));
     await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('your own profile counts towards the two like any other, from '
+      'its first source', (tester) async {
+    final container = await pump(tester, const MyPrepHomeScreen());
+    await tester.pumpAndSettle();
+    await tester.runAsync(() async {
+      final profiles = container.read(prepProfilesProvider.notifier);
+      profiles.create(kind: PrepKind.opponent, name: 'Rival', accounts: []);
+      // Every source detached: Games shows it as empty, and it is not kept.
+      profiles.create(kind: PrepKind.mine, name: 'Me', accounts: []);
+      await profiles.debugDrainWrites();
+    });
+    await tester.pumpAndSettle();
+
+    // One opponent kept: your own accounts are the second profile.
+    await tester.tap(find.text('Attach your username'));
+    await tester.pumpAndSettle();
+    expect(asked, isEmpty);
+    expect(find.text('Attach your usernames'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('prep_source_cancel')));
+    await tester.pumpAndSettle();
+
+    // Two opponents kept: your own accounts would be a third.
+    await tester.runAsync(() async {
+      final profiles = container.read(prepProfilesProvider.notifier);
+      profiles.create(kind: PrepKind.opponent, name: 'Second', accounts: []);
+      await profiles.debugDrainWrites();
+    });
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Attach your username'));
+    await tester.pumpAndSettle();
+    expect(asked, [('prep_profiles', false)]);
+    expect(find.text('Attach your usernames'), findsNothing);
     expect(tester.takeException(), isNull);
   });
 
@@ -1810,7 +1804,7 @@ void main() {
     expect(find.byKey(const ValueKey('prep_filter_banner')), findsNothing);
     await tester.tap(find.text('Performance by colour'));
     await tester.pumpAndSettle();
-    expect(find.text('Their White'), findsNothing);
+    expect(find.text('As White'), findsNothing);
     await tester.tap(find.text('Games'));
     await tester.pumpAndSettle();
     expect(find.byType(PrepGamesTab), findsNothing);
@@ -1833,7 +1827,7 @@ void main() {
     grant = true;
     await tester.tap(find.text('Performance by colour'));
     await tester.pumpAndSettle();
-    expect(find.text('Their White'), findsOneWidget);
+    expect(find.text('As White'), findsOneWidget);
     await tester.tap(find.text('Wins'));
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('prep_filter_banner')), findsOneWidget);
@@ -1899,7 +1893,7 @@ void main() {
 
     await tester.tap(find.text('Performance by colour'));
     await tester.pumpAndSettle();
-    expect(find.text('Their White'), findsOneWidget);
+    expect(find.text('As White'), findsOneWidget);
     await tester.tap(find.text('Wins'));
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('prep_filter_banner')), findsOneWidget);
@@ -2241,7 +2235,7 @@ void main() {
         await tester.pumpAndSettle();
         await tester.tap(find.text('Both colours'));
         await tester.pumpAndSettle();
-        await tester.tap(find.text('Their Black').last);
+        await tester.tap(find.text('As Black').last);
         await tester.pumpAndSettle();
         await Scrollable.ensureVisible(
           tester.element(find.text('All clocks')),
@@ -2264,13 +2258,13 @@ void main() {
           buttons().every((b) => b.timeControl == TimeControl.blitz),
           isTrue,
         );
-        expect(find.text('Their Black · Blitz'), findsOneWidget);
+        expect(find.text('As Black · Blitz'), findsOneWidget);
 
         await tester.tap(find.byTooltip('Filter opening trees'));
         await tester.pumpAndSettle();
-        await tester.tap(find.text('Their Black'));
+        await tester.tap(find.text('As Black'));
         await tester.pumpAndSettle();
-        await tester.tap(find.text('Their White').last);
+        await tester.tap(find.text('As White').last);
         await tester.pumpAndSettle();
         await tester.tap(find.byTooltip('Close filters'));
         await tester.pumpAndSettle();
@@ -2285,7 +2279,7 @@ void main() {
         await tester.pumpAndSettle();
         expect(buttons().every((b) => b.color == null), isTrue);
         expect(buttons().every((b) => b.timeControl == null), isTrue);
-        expect(find.text('Their Black · Blitz'), findsNothing);
+        expect(find.text('As Black · Blitz'), findsNothing);
         expect(tester.takeException(), isNull);
       },
     );

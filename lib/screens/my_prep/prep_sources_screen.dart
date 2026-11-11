@@ -39,10 +39,7 @@ class PrepSourcesScreen extends ConsumerWidget {
         backgroundColor: colors.background,
         foregroundColor: colors.textPrimary,
         centerTitle: true,
-        title: Text(
-          profile?.kind == PrepKind.mine ? 'My accounts' : 'Sources',
-          style: AppTypography.textMdBold,
-        ),
+        title: Text('Sources', style: AppTypography.textMdBold),
         actions: [
           if (profile != null)
             PopupMenuButton<PrepSource>(

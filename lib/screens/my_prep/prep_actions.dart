@@ -24,9 +24,9 @@ import 'package:chessever2/widgets/app_snack.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
-/// Adds the reader's own accounts to My Games. They all live on one
-/// profile, so their games read together as "me". Without a paid
-/// subscription it holds [kFreePrepOwnAccounts] of them.
+/// Adds the reader's own accounts to Games. They all live on one profile,
+/// so their games read together. Its first source makes it a profile like
+/// any other, counted towards [kFreePrepProfiles].
 Future<void> prepAddMine(
   BuildContext context,
   WidgetRef ref, {
@@ -36,10 +36,7 @@ Future<void> prepAddMine(
   final profiles = ref.read(prepProfilesProvider.notifier);
   final mine = ref.read(prepProfilesOfKindProvider(PrepKind.mine)) ?? const [];
   final existing = mine.isEmpty ? null : mine.first;
-  final held = existing?.accounts.length ?? 0;
-  if (!await prepMayHoldOwnAccounts(context, held + 1) || !context.mounted) {
-    return;
-  }
+  if (!await prepMayAttach(context, existing) || !context.mounted) return;
   final result = await showPrepSourcePicker(
     context,
     kind: PrepKind.mine,
@@ -48,7 +45,6 @@ Future<void> prepAddMine(
     attaching: existing != null,
     multiple: true,
     lockedFideId: existing?.fideId,
-    mayAdd: (chosen) => prepMayHoldOwnAccounts(context, held + chosen + 1),
   );
   if (result == null || !context.mounted) return;
   await _releaseFromFavorites(ref, result.accounts);
@@ -80,7 +76,7 @@ Future<void> prepAddMine(
 
 /// Adds an opponent with every account the reader typed. They stay on the
 /// list, where the new card reports its download. Without a paid
-/// subscription Profiles holds [kFreePrepOpponents].
+/// subscription Prep holds [kFreePrepProfiles] profiles.
 Future<void> prepAddOpponent(
   BuildContext context,
   WidgetRef ref, {
@@ -94,7 +90,7 @@ Future<void> _prepAddPlayer(
   PrepSource? source,
 ) async {
   HapticFeedbackService.buttonPress();
-  if (!await prepMayAddOpponent(context) || !context.mounted) return;
+  if (!await prepMayAddProfile(context) || !context.mounted) return;
   await _prepPickPlayer(context, ref, kind, only: source);
 }
 
@@ -143,17 +139,14 @@ Future<PrepProfile?> _prepPickPlayer(
 }
 
 /// Attaches a database player or online account to an existing profile.
-/// My Games keeps to [kFreePrepOwnAccounts] without a paid subscription.
+/// A profile takes any number of them.
 Future<void> prepAddAccountTo(
   BuildContext context,
   WidgetRef ref,
   PrepProfile profile, {
   PrepSource? source,
 }) async {
-  final mine = profile.kind == PrepKind.mine;
-  final held = profile.accounts.length;
-  if (mine && !await prepMayHoldOwnAccounts(context, held + 1)) return;
-  if (!context.mounted) return;
+  if (!await prepMayAttach(context, profile) || !context.mounted) return;
   final result = await showPrepSourcePicker(
     context,
     kind: profile.kind,
@@ -162,9 +155,6 @@ Future<void> prepAddAccountTo(
     multiple: true,
     lockedFideId: profile.fideId,
     existingKeys: {for (final a in profile.accounts) a.key},
-    mayAdd: mine
-        ? (chosen) => prepMayHoldOwnAccounts(context, held + chosen + 1)
-        : null,
   );
   if (result == null || !context.mounted) return;
   await _releaseFromFavorites(ref, result.accounts);
@@ -257,7 +247,7 @@ Future<void> _addRanked(
     }
     return;
   }
-  if (!await prepMayAddOpponent(context) || !context.mounted) return;
+  if (!await prepMayAddProfile(context) || !context.mounted) return;
   onResolved?.call();
   final profile = await _prepPickPlayer(
     context,
@@ -307,7 +297,7 @@ Future<void> _moveToOpponents(
     }
     return;
   }
-  if (!await prepMayAddOpponent(context) || !context.mounted) return;
+  if (!await prepMayAddProfile(context) || !context.mounted) return;
   ref
       .read(prepProfilesProvider.notifier)
       .edit(profile.id, (p) => p.copyWith(kind: PrepKind.opponent));
@@ -588,7 +578,7 @@ List<LibraryMenuAction> prepProfileMenu(
         label: 'Add to Profiles',
         prominent: true,
         onSelected: () async {
-          if (!context.mounted || !await prepMayAddOpponent(context)) return;
+          if (!context.mounted || !await prepMayAddProfile(context)) return;
           profiles.edit(profile.id, (p) => p.copyWith(kind: PrepKind.opponent));
           unawaited(pinProfile(profile.id));
           if (messenger != null && messenger.mounted) {
@@ -636,8 +626,6 @@ Future<bool> prepConfirmRemove(
     context: context,
     title: favorite
         ? 'Clear ${profile.name}’s games?'
-        : profile.kind == PrepKind.mine
-        ? 'Remove your accounts?'
         : 'Remove ${profile.name}?',
     message: favorite
         ? 'The downloaded games are deleted from this device. They stay in '

@@ -34,11 +34,7 @@ class _PrepTreesTabState extends ConsumerState<PrepTreesTab> {
   Future<void> _showFilters() async {
     final result = await showAlertModal<(int, int)>(
       context: context,
-      child: _TreeFilterDialog(
-        mine: widget.profile.kind == PrepKind.mine,
-        side: _side,
-        clock: _clock,
-      ),
+      child: _TreeFilterDialog(side: _side, clock: _clock),
     );
     if (result == null || !mounted) return;
     setState(() {
@@ -64,7 +60,7 @@ class _PrepTreesTabState extends ConsumerState<PrepTreesTab> {
       3 => TimeControl.classical,
       _ => null,
     };
-    final sides = _sideLabels(profile.kind == PrepKind.mine);
+    const sides = _sideLabels;
     final activeFilters = [
       if (_side > 0) sides[_side],
       if (_clock > 0) _clockLabels[_clock],
@@ -156,19 +152,12 @@ class _PrepTreesTabState extends ConsumerState<PrepTreesTab> {
   }
 }
 
-List<String> _sideLabels(bool mine) => mine
-    ? const ['Both colours', 'As White', 'As Black']
-    : const ['Both colours', 'Their White', 'Their Black'];
+const _sideLabels = ['Both colours', 'As White', 'As Black'];
 
 const _clockLabels = ['All clocks', 'Blitz', 'Rapid', 'Classical'];
 
 class _TreeFilterDialog extends StatefulWidget {
-  const _TreeFilterDialog({
-    required this.mine,
-    required this.side,
-    required this.clock,
-  });
-  final bool mine;
+  const _TreeFilterDialog({required this.side, required this.clock});
   final int side;
   final int clock;
 
@@ -182,7 +171,7 @@ class _TreeFilterDialogState extends State<_TreeFilterDialog> {
 
   @override
   Widget build(BuildContext context) {
-    final sides = _sideLabels(widget.mine);
+    const sides = _sideLabels;
     return PrepFilterPopup(
       title: 'Tree filters',
       onReset: () => Navigator.of(context).pop((0, 0)),

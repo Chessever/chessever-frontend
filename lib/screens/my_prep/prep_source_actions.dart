@@ -335,26 +335,16 @@ int _exportCombined((String, List<String>) input) =>
 
 /// Whose games a PGN holds is read from the games themselves (see
 /// [readPrepPgnPlayer]), so their side is never guessed and nobody types a
-/// name. Each imported file is a source, so My Games counts it towards
-/// [kFreePrepOwnAccounts]. Without a [profile] the files start a new one of
-/// [kind], named after the player in the PGN.
+/// name. Each imported file is a source. Without a [profile] the files
+/// start a new one of [kind], named after the player in the PGN and counted
+/// towards [kFreePrepProfiles].
 Future<void> prepImportSource(
   BuildContext context,
   WidgetRef ref,
   PrepProfile? profile, {
   PrepKind kind = PrepKind.opponent,
 }) async {
-  final mine = (profile?.kind ?? kind) == PrepKind.mine;
-  final held = profile?.accounts.length ?? 0;
-  if (mine && !await prepMayHoldOwnAccounts(context, held + 1)) return;
-  if (!context.mounted) return;
-  if (!mine && profile == null && !await prepMayAddOpponent(context)) return;
-  if (!context.mounted) return;
-  // Already at the limit, the check above only let the reader on through a
-  // subscription, which may not have reached the subscription state yet:
-  // the files are not counted against the free limit then.
-  final subscribedPastLimit = held >= kFreePrepOwnAccounts;
-  final container = ProviderScope.containerOf(context, listen: false);
+  if (!await prepMayAttach(context, profile) || !context.mounted) return;
   final repo = ref.read(prepRepositoryProvider);
   final profiles = ref.read(prepProfilesProvider.notifier);
   final pinProfile = prepProfileAutoPinner(context);
@@ -368,16 +358,6 @@ Future<void> prepImportSource(
         withData: false,
       );
       if (files == null || files.files.isEmpty) return null;
-      if (mine &&
-          !subscribedPastLimit &&
-          held + files.files.length > kFreePrepOwnAccounts &&
-          !container.read(prepUnlimitedProvider)) {
-        final room = kFreePrepOwnAccounts - held;
-        throw PrepException(
-          'Games keeps $kFreePrepOwnAccounts of your sources without '
-          'Premium. ${room == 1 ? 'Choose one file.' : 'Choose up to $room files.'}',
-        );
-      }
       final inputs = <PrepPgnInput>[];
       for (final file in files.files) {
         if (file.size > kPrepImportMaxBytes) {
@@ -444,7 +424,8 @@ Future<void> prepImportSource(
         if (profile == null) {
           profileId = profiles
               .create(
-                kind: mine ? PrepKind.mine : PrepKind.opponent,
+                // A PGN starts the reader's own profile or an opponent's.
+                kind: kind == PrepKind.mine ? kind : PrepKind.opponent,
                 name: reading.name,
                 accounts: accounts,
               )

@@ -501,19 +501,17 @@ class PrepSidePicker extends StatelessWidget {
     super.key,
     required this.side,
     required this.onChanged,
-    this.mine = false,
   });
 
   final PrepSide side;
   final ValueChanged<PrepSide> onChanged;
-  final bool mine;
 
   @override
   Widget build(BuildContext context) {
     String label(PrepSide s) => switch (s) {
       PrepSide.both => 'Both colours',
-      PrepSide.white => mine ? 'As White' : 'Their White',
-      PrepSide.black => mine ? 'As Black' : 'Their Black',
+      PrepSide.white => 'As White',
+      PrepSide.black => 'As Black',
     };
     return Wrap(
       runSpacing: 6,
