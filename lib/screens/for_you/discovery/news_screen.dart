@@ -1,3 +1,4 @@
+import 'package:chessever2/screens/feed/news/news_group_card.dart';
 import 'dart:async';
 import 'dart:math' as math;
 
@@ -344,66 +345,54 @@ class _NewsCard extends StatelessWidget {
     return Semantics(
       button: true,
       label:
-          '${news.title}. ${formatNewsDate(news.publishedAt)}. ${news.summary}',
+          '${news.title}. ${formatNewsDate(news.publishedAt)}. ${news.summary}'
+          '${news.groupArticleCount > 1 && !news.publisher.isPartner ? '. ${news.groupArticleCount} articles. Latest' : ''}',
       excludeSemantics: true,
       onTap: onTap,
-      child: Material(
-        color: colors.surface,
-        borderRadius: BorderRadius.circular(12),
-        clipBehavior: Clip.antiAlias,
-        child: InkWell(
-          onTap: onTap,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              AspectRatio(
-                aspectRatio: compact ? 4 / 3 : 16 / 9,
-                child: NewsHeroCover(
-                  tag: heroTag,
-                  imageUrl: news.imageUrl,
-                  radius: const BorderRadius.vertical(top: Radius.circular(12)),
+      child: NewsGroupCard(
+        news: news,
+        child: Material(
+          color: colors.surface,
+          borderRadius: BorderRadius.circular(12),
+          clipBehavior: Clip.antiAlias,
+          child: InkWell(
+            onTap: onTap,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                AspectRatio(
+                  aspectRatio: compact ? 4 / 3 : 16 / 9,
+                  child: NewsHeroCover(
+                    tag: heroTag,
+                    imageUrl: news.imageUrl,
+                    radius: const BorderRadius.vertical(
+                      top: Radius.circular(12),
+                    ),
+                  ),
                 ),
-              ),
-              Expanded(
-                child: Padding(
-                  padding: EdgeInsets.all(compact ? 12 : 16),
-                  child: compact
-                      ? Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              news.title,
-                              maxLines: 4,
-                              overflow: TextOverflow.ellipsis,
-                              style: AppTypography.textMdBold.copyWith(
-                                fontSize: 15,
-                                height: 1.3,
-                                color: colors.textPrimary,
+                Expanded(
+                  child: Padding(
+                    padding: EdgeInsets.all(compact ? 12 : 16),
+                    child: compact
+                        ? Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                news.title,
+                                maxLines: 4,
+                                overflow: TextOverflow.ellipsis,
+                                style: AppTypography.textMdBold.copyWith(
+                                  fontSize: 15,
+                                  height: 1.3,
+                                  color: colors.textPrimary,
+                                ),
                               ),
-                            ),
-                            const Spacer(),
-                            Text(
-                              DateFormat(
-                                'MMM d, y',
-                              ).format(news.publishedAt.toLocal()),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: AppTypography.textXsMedium.copyWith(
-                                fontSize: 12,
-                                height: 1.4,
-                                color: colors.textSecondary,
-                              ),
-                            ),
-                          ],
-                        )
-                      : Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            SizedBox(
-                              height: scaler.scale(12) * 1.4 * 2,
-                              child: Text(
-                                formatNewsDate(news.publishedAt),
-                                maxLines: 2,
+                              const Spacer(),
+                              Text(
+                                DateFormat(
+                                  'MMM d, y',
+                                ).format(news.publishedAt.toLocal()),
+                                maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                                 style: AppTypography.textXsMedium.copyWith(
                                   fontSize: 12,
@@ -411,40 +400,58 @@ class _NewsCard extends StatelessWidget {
                                   color: colors.textSecondary,
                                 ),
                               ),
-                            ),
-                            const SizedBox(height: 10),
-                            SizedBox(
-                              height: scaler.scale(18) * 1.3 * 3,
-                              child: Text(
-                                news.title,
-                                maxLines: 3,
-                                overflow: TextOverflow.ellipsis,
-                                style: AppTypography.textLgBold.copyWith(
-                                  fontSize: 18,
-                                  height: 1.3,
-                                  color: colors.textPrimary,
+                            ],
+                          )
+                        : Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              SizedBox(
+                                height: scaler.scale(12) * 1.4 * 2,
+                                child: Text(
+                                  formatNewsDate(news.publishedAt),
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: AppTypography.textXsMedium.copyWith(
+                                    fontSize: 12,
+                                    height: 1.4,
+                                    color: colors.textSecondary,
+                                  ),
                                 ),
                               ),
-                            ),
-                            const SizedBox(height: 10),
-                            SizedBox(
-                              height: scaler.scale(14) * 1.5 * 3,
-                              child: Text(
-                                news.summary,
-                                maxLines: 3,
-                                overflow: TextOverflow.ellipsis,
-                                style: AppTypography.textSmRegular.copyWith(
-                                  fontSize: 14,
-                                  height: 1.5,
-                                  color: colors.textSecondary,
+                              const SizedBox(height: 10),
+                              SizedBox(
+                                height: scaler.scale(18) * 1.3 * 3,
+                                child: Text(
+                                  news.title,
+                                  maxLines: 3,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: AppTypography.textLgBold.copyWith(
+                                    fontSize: 18,
+                                    height: 1.3,
+                                    color: colors.textPrimary,
+                                  ),
                                 ),
                               ),
-                            ),
-                          ],
-                        ),
+                              const SizedBox(height: 10),
+                              SizedBox(
+                                height: scaler.scale(14) * 1.5 * 3,
+                                child: Text(
+                                  news.summary,
+                                  maxLines: 3,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: AppTypography.textSmRegular.copyWith(
+                                    fontSize: 14,
+                                    height: 1.5,
+                                    color: colors.textSecondary,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
