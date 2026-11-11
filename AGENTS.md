@@ -199,7 +199,12 @@ chessever_frontend_desktop_oss/scripts/which_repo_owns_function.sh <slug>
   Events list, Discovery and the Prep profile, because starring is how their
   notifications are turned on (unstarring turns them off; smart events and
   Prep players have no separate switch). The star is the thing's own
-  favorite; the shortcut stays when it is unstarred.
+  favorite; the shortcut stays when it is unstarred, except for Prep players.
+- Prep player star (product decision, 2026-11-12): it only turns that Prep
+  profile's new-game pushes on or off (`PrepProfile.watching`). It never
+  follows, favorites or unfavorites the player; the heart does that.
+  Unstarring a Prep card in My Space stops the pushes and takes the card out
+  of My Space (one Undo restores both); the profile stays in Prep.
 
 ## Broadcast clocks: the event's time control is only a guess for a game
 

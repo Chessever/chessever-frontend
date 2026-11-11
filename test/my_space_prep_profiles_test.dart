@@ -13,7 +13,6 @@ import 'package:chessever2/screens/my_space/providers/space_shortcuts_provider.d
 import 'package:chessever2/screens/my_space/widgets/space_database.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
-import 'package:chessever2/screens/my_prep/services/prep_watch.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -301,17 +300,13 @@ void main() {
   }
 
   // The report: an over-the-board player ended in an arrow. Every Prep
-  // card is starrable now; this one follows the player.
+  // card is starrable now.
   testWidgets('a player with no online account ends in its star too', (
     tester,
   ) async {
     await pumpRow(tester, _profile(PrepKind.opponent, PrepSource.manual));
     expect(star, findsOneWidget);
     expect(chevron, findsNothing);
-    expect(
-      prepStarPlayer(_profile(PrepKind.opponent, PrepSource.manual)),
-      isNotNull,
-    );
   });
 
   testWidgets('your own online account is starred too', (tester) async {

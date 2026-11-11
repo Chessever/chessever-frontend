@@ -31,10 +31,12 @@ import 'package:chessever2/screens/my_space/actions/space_menu_action.dart';
 import 'package:chessever2/screens/my_space/actions/space_player_actions.dart';
 import 'package:chessever2/screens/my_space/library/space_library_bridge.dart';
 import 'package:chessever2/screens/my_space/models/space_shortcut.dart';
+import 'package:chessever2/screens/my_prep/models/prep_models.dart';
 import 'package:chessever2/screens/my_prep/providers/prep_providers.dart';
 import 'package:chessever2/screens/my_prep/services/prep_watch.dart';
 import 'package:chessever2/screens/my_prep/widgets/prep_common.dart';
 import 'package:chessever2/screens/my_prep/widgets/prep_watch_star.dart';
+import 'package:chessever2/screens/my_space/actions/space_shortcut_removal.dart';
 import 'package:chessever2/screens/my_space/my_prep_screen.dart';
 import 'package:chessever2/screens/my_space/navigation/space_shortcut_navigator.dart';
 import 'package:chessever2/screens/my_space/providers/space_game_card_provider.dart';
@@ -2414,12 +2416,21 @@ class SpaceSavedRow extends ConsumerWidget {
     final prep = shortcut.kind == SpaceShortcutKind.prepProfile
         ? ref.watch(prepProfileProvider(shortcut.targetId))
         : null;
-    // Every Prep card ends in a star, the profile's own; one whose profile
-    // is not on this device follows the player by the card's name.
+    // Every Prep card ends in its profile's star: it turns the profile's
+    // new-game pushes on, and unstarring here also takes the card out of My
+    // Space (the profile stays in Prep, favorites are never touched). A
+    // profile not on this device (profiles stay on the phone that made
+    // them) has no star to show and keeps the chevron.
     final starrable =
         disclosure &&
         shortcut.kind == SpaceShortcutKind.prepProfile &&
-        (prep == null ? shortcut.title.trim().isNotEmpty : prepCanStar(prep));
+        prep != null &&
+        prepCanStar(prep);
+    void unstar(PrepProfile profile) => unstarPrepFromSpace(
+      context,
+      profile,
+      removeFromSpace: spaceShortcutRemover(ref, shortcut),
+    );
     if (shortcut.kind == SpaceShortcutKind.collection) {
       final collections = ref.watch(collectionsProvider).asData?.value;
       Collection? collection;
@@ -2530,14 +2541,8 @@ class SpaceSavedRow extends ConsumerWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             SizedBox(width: 4.w),
-            // The Prep player's own star, the one on its profile: starring
-            // is how its "playing now" push is turned on. The shortcut
-            // stays either way.
             if (starrable)
-              PrepWatchStar(
-                profileId: shortcut.targetId,
-                fallbackName: shortcut.title,
-              )
+              PrepWatchStar(profileId: shortcut.targetId, onUnstar: unstar)
             else if (disclosure) ...[
               Icon(
                 Icons.chevron_right_rounded,
@@ -2561,15 +2566,9 @@ class SpaceSavedRow extends ConsumerWidget {
       customSemanticsActions: starrable
           ? {
               CustomSemanticsAction(
-                label:
-                    (prep == null
-                        ? prepNameStarred(ref, shortcut.title)
-                        : prepStarred(ref, prep))
-                    ? 'Unstar'
-                    : 'Star',
-              ): () => prep == null
-                  ? togglePrepNameStar(context, ref, shortcut.title)
-                  : togglePrepStar(context, ref, prep),
+                label: prep.watching ? 'Unstar' : 'Star',
+              ): () =>
+                  prep.watching ? unstar(prep) : togglePrepWatch(context, prep),
             }
           : null,
       child: TappableScale(

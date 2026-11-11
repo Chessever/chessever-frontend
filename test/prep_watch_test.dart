@@ -127,7 +127,9 @@ void main() {
     expect(prepWatchSignature(mine.copyWith(watching: true)), isNotNull);
   });
 
-  test('an over-the-board player is starred by following them', () {
+  // The star only asks for the profile's pushes; it never follows or
+  // favorites the player (the heart does that).
+  test('every profile can be starred, the reader\'s own included', () {
     // Paulo Santanna in the report: a database record and nothing online.
     const otb = PrepProfile(
       id: 'opponent-otb',
@@ -144,24 +146,9 @@ void main() {
     );
     expect(prepCanWatch(otb), isFalse);
     expect(prepCanStar(otb), isTrue);
-    expect(prepStarPlayer(otb), (fideId: '2100000', name: 'Santanna, Paulo'));
+    // Nothing for the server to check yet, so nothing is written.
+    expect(prepWatchSignature(otb.copyWith(watching: true)), isNull);
 
-    // Without a FIDE id the database name is followed.
-    const noFide = PrepProfile(
-      id: 'opponent-db',
-      kind: PrepKind.opponent,
-      name: 'Magnus Carlsen',
-      createdAtMs: 1,
-      accounts: [_database],
-    );
-    expect(prepStarPlayer(noFide), (fideId: null, name: 'Carlsen, Magnus'));
-
-    // Online accounts keep the hourly watch; nothing is followed.
-    expect(prepStarPlayer(_profile), isNull);
-    expect(prepCanStar(_profile), isTrue);
-  });
-
-  test('every profile can be starred, the reader\'s own included', () {
     const mineOtb = PrepProfile(
       id: 'mine-otb',
       kind: PrepKind.mine,
@@ -169,7 +156,7 @@ void main() {
       createdAtMs: 1,
       accounts: [_database],
     );
-    expect(prepStarPlayer(mineOtb), (fideId: null, name: 'Carlsen, Magnus'));
+    expect(prepCanStar(mineOtb), isTrue);
     const pgnOnly = PrepProfile(
       id: 'pgn',
       kind: PrepKind.opponent,
@@ -178,7 +165,7 @@ void main() {
       accounts: [],
     );
     expect(prepCanStar(pgnOnly), isTrue);
-    expect(prepStarPlayer(pgnOnly), (fideId: null, name: 'Club Rival'));
+    expect(prepCanStar(_profile), isTrue);
   });
 
   test('a star survives a save', () {

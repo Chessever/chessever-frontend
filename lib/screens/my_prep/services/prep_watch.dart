@@ -1,6 +1,5 @@
 import 'dart:convert';
 
-import 'package:chessever2/screens/my_prep/data/prep_favorites.dart';
 import 'package:chessever2/screens/my_prep/models/prep_models.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -18,27 +17,11 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 /// own profile too, so starring it works like any other player.
 bool prepCanWatch(PrepProfile profile) => prepWatchAccounts(profile).isNotEmpty;
 
-/// Who a profile's star follows when there is no online account for the
-/// hourly check (an over-the-board player, a PGN import, accounts with a
-/// fixed end date): its FIDE id when known, by the database's own name (or
-/// the profile's) otherwise. Starring follows them like the Players star
-/// does, so the push comes when they sit down at a live broadcast board.
-/// Null only when the star watches online accounts instead.
-({String? fideId, String name})? prepStarPlayer(PrepProfile profile) {
-  if (prepCanWatch(profile)) return null;
-  final database = profile.databaseAccount?.username.trim();
-  final name = database != null && database.isNotEmpty
-      ? database
-      : profile.name.trim();
-  final fide = prepFavoriteFide(profile)?.trim();
-  final validFide = fide != null && (int.tryParse(fide) ?? 0) > 0 ? fide : null;
-  if (name.isEmpty && validFide == null) return null;
-  return (fideId: validFide, name: name.isEmpty ? profile.name : name);
-}
-
-/// Whether [profile] shows a star: every profile with a name does.
-bool prepCanStar(PrepProfile profile) =>
-    prepCanWatch(profile) || prepStarPlayer(profile) != null;
+/// Whether [profile] shows a star: every profile with a name does. The
+/// star only ever asks for this profile's new-game pushes ([prepCanWatch]
+/// says whether the server has an account to check yet); it never follows
+/// or favorites the player, which is the heart's job.
+bool prepCanStar(PrepProfile profile) => profile.name.trim().isNotEmpty;
 
 /// The accounts the server checks for [profile], counted over the clocks
 /// each one downloads. One with a fixed end date gets no new games.
