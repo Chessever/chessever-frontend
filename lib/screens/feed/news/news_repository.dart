@@ -105,7 +105,7 @@ class FeedNewsRepository {
 
   /// Newest articles read from each table.
   static const int limit = 20;
-  static const String cacheKey = 'feed_news_grouped_v2';
+  static const String cacheKey = 'feed_news_grouped_v3';
 
   final NewsRowsFetcher _fetchRows;
   final NewsRowsFetcher? _fetchStamps;
@@ -371,6 +371,7 @@ List<FeedNews>? decodeFeedNewsCache(String value) {
 /// fetches just these and compares them with the last full fetch.
 const String _newsStampColumns =
     'id,title,summary,source_url,image_url,status,published_at,created_at,'
+    'group_broadcast_id,'
     'updated_at';
 
 const _groupedNewsStampColumns =

@@ -89,6 +89,7 @@ FeedNews? normalizeNewsRow(Map<String, dynamic> row) {
   return FeedNews(
     id: id,
     groupArticleCount: newsGroupArticleCount(row['group_article_count']),
+    groupBroadcastId: row['group_broadcast_id'] as String?,
     title: title,
     summary: summary,
     content: content,
