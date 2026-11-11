@@ -2968,6 +2968,13 @@ class GameRepository extends BaseRepository {
     });
   }
 
+  /// Drops pairings that have not started from the Favorites and Countrymen
+  /// day lists. Broadcasts publish a later round's boards hours early, and on
+  /// a two-round day those rows carry today's `game_day`, so without this the
+  /// lists show starting-position boards for games still to come. A finished
+  /// game keeps its result even when it never recorded a move time.
+  static const _startedGameFilter = 'status.neq.*,last_move_time.not.is.null';
+
   /// Get ALL games by FIDE IDs for a specific date.
   /// No pagination - returns all games for the date.
   /// Server-side filters from [filter] are applied so the result already
@@ -3011,7 +3018,8 @@ class GameRepository extends BaseRepository {
           .from('games')
           .select(selectCols)
           .overlaps('player_fide_ids', fideIdInts)
-          .or(dayFilter);
+          .or(dayFilter)
+          .or(_startedGameFilter);
 
       dbQuery = applyFavoritesFilterToSupabaseQuery(
         query: dbQuery,
@@ -3152,6 +3160,7 @@ class GameRepository extends BaseRepository {
           .select(selectCols)
           .contains('player_feds', [normalizedCode])
           .or(dayFilter)
+          .or(_startedGameFilter)
           .gte('player_max_rating', effectiveMinElo);
 
       dbQuery = applyCountryFilterToSupabaseQuery(
