@@ -64,7 +64,7 @@ void main() {
           );
           final checkoutTop = tester.getTopLeft(find.text('Annual')).dy;
           await tester.drag(
-            find.byType(SingleChildScrollView),
+            find.byType(SingleChildScrollView).first,
             const Offset(0, -200),
           );
           await tester.pumpAndSettle();

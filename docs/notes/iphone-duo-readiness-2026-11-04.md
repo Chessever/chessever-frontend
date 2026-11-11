@@ -207,3 +207,20 @@ verification remains the user's device pass, per project instructions.
   control, builds, backend operations and release actions were not performed.
 - The correction is local on `stable`, version **37.8.12+3796**. Use a hot
   restart before the four-state/12-transition device pass above.
+
+## Re-check after user feedback (38.2.1, 2026-11-11)
+
+A user on 37.9.4 asked for iPhone Duo support. 37.9.4 already contains
+37.8.12, so the Duo work was released before that report; it was not waiting
+on a merge. PR #399 remains open only as the superseded source of that work.
+
+- The full Duo matrix and adaptive suites still pass on 38.2.0 (644 tests).
+- The paywall was rewritten after 37.8.12 (`PremiumPaywallView`) and had no
+  Duo coverage. Its pinned checkout could not shrink: folded landscape with
+  1.3× text and an error line overflowed by 80 px, hiding Get Premium and the
+  legal links. The checkout now stays pinned but is capped at 70% of the
+  screen height and scrolls within itself. `test/duo_paywall_matrix_test.dart`
+  covers all four Duo states × two text scales × with/without errors.
+- Simulator pass: the Duo simulator exists locally (iOS 27.2), but the device
+  tooling did not expose it, so on-screen verification remains the user's
+  device pass above.
