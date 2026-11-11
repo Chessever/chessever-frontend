@@ -86,6 +86,9 @@ class RoundRepository extends BaseRepository {
           .from('rounds')
           .select('tour_id,starts_at,games!games_round_id_fkey!inner(id)')
           .inFilter('tour_id', tourIds)
+          // A Combined (mirror) tour replays its sections' rounds; it must
+          // not tie with them for the event's default tab.
+          .eq('games.is_mirror', false)
           .not('starts_at', 'is', null)
           .lte('starts_at', (now ?? DateTime.now()).toUtc().toIso8601String())
           .order('starts_at', ascending: false);

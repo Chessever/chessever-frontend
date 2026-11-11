@@ -27,7 +27,6 @@ import 'package:chessever2/widgets/alert_dialog/alert_modal.dart';
 import 'package:chessever2/widgets/home_top_bar.dart';
 import 'package:chessever2/widgets/search/enhanced_rounded_search_bar.dart';
 import 'package:chessever2/widgets/segmented_switcher.dart';
-import 'package:chessever2/widgets/stable_height_slot.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
@@ -440,65 +439,63 @@ class ForYouScreen extends HookConsumerWidget {
               ),
               SizedBox(height: 12.h),
               Expanded(
-                child: StableHeightSlot(
-                  child: NotificationListener<ScrollEndNotification>(
-                    // A selection made while a gesture owned the PageView (a
-                    // segment tapped mid-fling) was left for the gesture to
-                    // finish; put the view on it now. Deferred: the
-                    // notification fires from inside the position's own
-                    // activity change.
-                    onNotification: (notification) {
-                      if (notification.depth == 0 && !isJumping.value) {
-                        Future<void>.microtask(() => syncPage(force: false));
+                child: NotificationListener<ScrollEndNotification>(
+                  // A selection made while a gesture owned the PageView (a
+                  // segment tapped mid-fling) was left for the gesture to
+                  // finish; put the view on it now. Deferred: the
+                  // notification fires from inside the position's own
+                  // activity change.
+                  onNotification: (notification) {
+                    if (notification.depth == 0 && !isJumping.value) {
+                      Future<void>.microtask(() => syncPage(force: false));
+                    }
+                    return false;
+                  },
+                  child: PageView.builder(
+                    controller: pageController,
+                    itemCount: pageCount,
+                    onPageChanged: (index) {
+                      if (isJumping.value || index >= _tabCount) return;
+                      final tab = ForYouTab.values[index];
+                      // Already there: nothing to select, and no reason to
+                      // drop the keyboard.
+                      if (ref.read(forYouSearchQueryProvider).isEmpty &&
+                          ref.read(selectedForYouTabProvider) == tab) {
+                        return;
                       }
-                      return false;
+                      // A swipe onto a regular page leaves the search (the
+                      // Search page is always last, so a swipe can only move
+                      // off it, never onto it). The gesture is already
+                      // carrying the view there, so the sync effect skips it.
+                      swipedTo.value = index;
+                      selectTab(tab);
                     },
-                    child: PageView.builder(
-                      controller: pageController,
-                      itemCount: pageCount,
-                      onPageChanged: (index) {
-                        if (isJumping.value || index >= _tabCount) return;
-                        final tab = ForYouTab.values[index];
-                        // Already there: nothing to select, and no reason to
-                        // drop the keyboard.
-                        if (ref.read(forYouSearchQueryProvider).isEmpty &&
-                            ref.read(selectedForYouTabProvider) == tab) {
-                          return;
-                        }
-                        // A swipe onto a regular page leaves the search (the
-                        // Search page is always last, so a swipe can only move
-                        // off it, never onto it). The gesture is already
-                        // carrying the view there, so the sync effect skips it.
-                        swipedTo.value = index;
-                        selectTab(tab);
-                      },
-                      itemBuilder: (context, index) {
-                        // Built: the selected page and any page a swipe shows
-                        // beside it. At rest that is the selected page alone;
-                        // the others keep their provider caches, not their
-                        // widget trees.
-                        final shown = shownPages.value;
-                        final inView =
-                            shown != null &&
-                            index >= shown.$1 &&
-                            index <= shown.$2;
-                        if (index >= pageCount ||
-                            (index != selectedIndex && !inView)) {
-                          return const SizedBox.shrink();
-                        }
-                        if (index >= _tabCount) {
-                          return SearchResultsWidget(
-                            scrollController: searchScrollController,
-                            searchQuery: searchQuery,
-                          );
-                        }
-                        return buildPage(
-                          context,
-                          ForYouTab.values[index],
-                          controllerForIndex(index),
+                    itemBuilder: (context, index) {
+                      // Built: the selected page and any page a swipe shows
+                      // beside it. At rest that is the selected page alone;
+                      // the others keep their provider caches, not their
+                      // widget trees.
+                      final shown = shownPages.value;
+                      final inView =
+                          shown != null &&
+                          index >= shown.$1 &&
+                          index <= shown.$2;
+                      if (index >= pageCount ||
+                          (index != selectedIndex && !inView)) {
+                        return const SizedBox.shrink();
+                      }
+                      if (index >= _tabCount) {
+                        return SearchResultsWidget(
+                          scrollController: searchScrollController,
+                          searchQuery: searchQuery,
                         );
-                      },
-                    ),
+                      }
+                      return buildPage(
+                        context,
+                        ForYouTab.values[index],
+                        controllerForIndex(index),
+                      );
+                    },
                   ),
                 ),
               ),
@@ -559,8 +556,9 @@ class _ForYouSegments extends StatelessWidget {
                 maxLines: 1,
                 softWrap: false,
                 style: TextStyle(
-                  color:
-                      i == current ? colors.textPrimary : colors.textSecondary,
+                  color: i == current
+                      ? colors.textPrimary
+                      : colors.textSecondary,
                   fontWeight: i == current ? FontWeight.w700 : FontWeight.w500,
                 ),
               ),

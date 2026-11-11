@@ -7,11 +7,25 @@
  * alert; Combined stays silent whenever at least one of them exists.
  */
 
-type SectionLabel = { name: string | null; slug: string | null };
+type SectionLabel = {
+  name: string | null;
+  slug: string | null;
+  /** `tours.is_mirror`, kept by a DB trigger. Absent on rows read before it existed. */
+  is_mirror?: boolean | null;
+};
 
 export function isCombinedSection(tour: SectionLabel | null): boolean {
   const label = `${tour?.name ?? ""} ${tour?.slug ?? ""}`.toLowerCase();
   return /(^|[^a-z0-9])combined([^a-z0-9]|$)/.test(label);
+}
+
+/**
+ * A mirror section repeats other sections' boards. The tour flag decides,
+ * whatever the section is called; the "Combined" name rule stays as a
+ * fallback for outbox rows queued before the flag existed.
+ */
+export function isMirrorSection(tour: SectionLabel | null): boolean {
+  return tour?.is_mirror === true || isCombinedSection(tour);
 }
 
 /** Pushes a Combined section never sends while a real section covers it. */
@@ -29,7 +43,7 @@ export function suppressCombinedMirror(
 ): boolean {
   return COMBINED_MIRRORED_EVENTS.has(eventType) &&
     realSectionCount > 0 &&
-    isCombinedSection(tour);
+    isMirrorSection(tour);
 }
 
 /**

@@ -286,7 +286,9 @@ class DiscoveryRepository {
         )
         .inFilter('status', _kFinalStatuses.toList(growable: false))
         .like('pgn', r'%[\%eval %')
-        .or(r'pgn.like.%$24%,pgn.ilike.%chessever_annotation%');
+        .or(r'pgn.like.%$24%,pgn.ilike.%chessever_annotation%')
+        // A Combined section's copies of its real sections' games.
+        .eq('is_mirror', false);
     if (gameType != null) {
       query = query.contains('report_game_classification', {
         'tags': [gameType.key],
