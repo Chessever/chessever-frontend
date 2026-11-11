@@ -549,25 +549,30 @@ class _TapTitleHintState extends State<_TapTitleHint>
             color: context.colors.surface,
             borderRadius: BorderRadius.circular(14.br),
           ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              _TapTitleSegment(
-                label: 'Explorer',
-                isActive: tapOnLeft,
-                pulseStrength: tapOnLeft ? pulse : 0,
-              ),
-              SizedBox(width: 8.w),
-              _TapTitleDot(isSelected: tapOnLeft),
-              SizedBox(width: 4.w),
-              _TapTitleDot(isSelected: !tapOnLeft),
-              SizedBox(width: 8.w),
-              _TapTitleSegment(
-                label: 'Notation',
-                isActive: !tapOnLeft,
-                pulseStrength: !tapOnLeft ? pulse : 0,
-              ),
-            ],
+          // Scale the hint down rather than overflow the coachmark card at
+          // larger text sizes (folded and unfolded iPhone Duo widths).
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _TapTitleSegment(
+                  label: 'Explorer',
+                  isActive: tapOnLeft,
+                  pulseStrength: tapOnLeft ? pulse : 0,
+                ),
+                SizedBox(width: 8.w),
+                _TapTitleDot(isSelected: tapOnLeft),
+                SizedBox(width: 4.w),
+                _TapTitleDot(isSelected: !tapOnLeft),
+                SizedBox(width: 8.w),
+                _TapTitleSegment(
+                  label: 'Notation',
+                  isActive: !tapOnLeft,
+                  pulseStrength: !tapOnLeft ? pulse : 0,
+                ),
+              ],
+            ),
           ),
         );
       },

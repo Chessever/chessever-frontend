@@ -470,17 +470,18 @@ class _PlayerAboutTabState extends ConsumerState<PlayerAboutTab>
       ),
     );
 
-    // Apply tablet max-width constraint
-    if (ResponsiveHelper.isTablet) {
-      content = Center(
-        child: ConstrainedBox(
-          constraints: BoxConstraints(
-            maxWidth: ResponsiveHelper.contentMaxWidth,
-          ),
-          child: content,
+    // Cap the width on tablets (contentMaxWidth is unbounded on phones). The
+    // wrapper is always present so folding or unfolding an iPhone Duo between
+    // phone and tablet widths keeps the same tree, and the list keeps its
+    // scroll position instead of remounting at the top.
+    content = Center(
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxWidth: ResponsiveHelper.contentMaxWidth,
         ),
-      );
-    }
+        child: SizedBox.expand(child: content),
+      ),
+    );
 
     // Wrap with motor-powered filter flash overlay
     return Stack(

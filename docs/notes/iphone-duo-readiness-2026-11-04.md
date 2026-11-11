@@ -224,3 +224,37 @@ on a merge. PR #399 remains open only as the superseded source of that work.
 - Simulator pass: the Duo simulator exists locally (iOS 27.2), but the device
   tooling did not expose it, so on-screen verification remains the user's
   device pass above.
+
+## Area audit (38.3.5, 2026-11-12)
+
+Six area audits added four-state × two-text-scale Duo tests for surfaces
+changed since 37.8.12 or not yet covered: Prep, Feed/News/For You, Events
+(bracket, standings, countrymen, favorites), My Space/Library, board panels
+and sheets, and account/misc screens. They are 767 tests in
+`test/duo_*_audit_test.dart`. Fixed defects:
+
+- **Add to Library sheet**: when folded at 1.3× text, the sheet overflowed
+  its default height cap. In folded landscape, "Import PGN file" was out of
+  reach. It now sizes to its content and scrolls.
+- **Prep Games board grid**: when folded, the phone grid card was sized from
+  half the window width rather than its grid cell, which overflowed by up to
+  14 px. It is now clamped to the cell.
+- **Fold/unfold scroll loss**: Countrymen, Favorites, player profile tabs and
+  My Likes added their tablet width cap only on tablets. Crossing between
+  phone and tablet widths remounted the list at the top. The wrapper is now
+  always present, and phones are unaffected because the cap is unbounded there.
+- **Switch-views coachmark**: the "Explorer • • Notation" hint overflowed in
+  portrait at 1.3× text (by 27 px unfolded). It now scales down to fit.
+- **Country dropdown**: on unfolded (tablet-width) windows, the quick-close
+  guard reopened the menu right after a pick. A pick now keeps it closed.
+
+Not fixed: `PremiumGamesScreen` grid cards overflow in unfolded portrait at
+1.3× text, but no route opens that screen. The tests are skipped with the reason.
+
+Validation: `flutter analyze --no-pub` on all changed files reported no issues.
+The full suite had **7,589 passed, 11 skipped and 18 failed**. The 18 failures
+are the same pre-existing tests confirmed at 38.2.1 by stashing the change.
+
+Simulator: the iPhone Duo simulator (iOS 27.2) is installed, but the device
+tooling still does not list it, so the on-screen pass remains the device pass
+above.

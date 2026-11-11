@@ -41,6 +41,9 @@ class _CountryDropdownState extends ConsumerState<CountryDropdown> {
   DateTime? _openedAt;
   bool _reopenAttempted = false;
   bool _isReopening = false;
+  // A pick closes the menu on purpose; the tablet quick-close guard below
+  // must not reopen it (seen on an unfolded iPhone Duo).
+  bool _selectedSinceOpen = false;
   // Tablet phantom-tap guard: keep menu open briefly before allowing dismiss.
   static const _minOpenDuration = Duration(milliseconds: 600);
 
@@ -245,6 +248,7 @@ selectedCountryCode,
                 widget.isLoading
                     ? null
                     : (value) async {
+                      _selectedSinceOpen = true;
                       if (value != null) {
                         if (widget.requireAuthToChange) {
                           final allowed = await requireFullAuthGuard(context);
@@ -259,8 +263,10 @@ selectedCountryCode,
                     },
 
             onMenuStateChange: (isOpen) {
+              if (!mounted) return;
               if (isOpen) {
                 _openedAt = DateTime.now();
+                _selectedSinceOpen = false;
                 if (_isReopening) {
                   _isReopening = false;
                 } else {
@@ -268,13 +274,22 @@ selectedCountryCode,
                 }
               } else if (ResponsiveHelper.isTablet && _openedAt != null) {
                 final elapsed = DateTime.now().difference(_openedAt!);
-                if (elapsed < _minOpenDuration && !_reopenAttempted) {
+                if (elapsed < _minOpenDuration &&
+                    !_reopenAttempted &&
+                    !_selectedSinceOpen) {
                   _reopenAttempted = true;
                   _isReopening = true;
                   WidgetsBinding.instance.addPostFrameCallback((_) {
-                    if (mounted) {
-                      _dropdownKey.currentState?.callTap();
+                    if (!mounted) return;
+                    if (_selectedSinceOpen) {
+                      // The pick landed just after the close: stay closed.
+                      _isReopening = false;
+                      isDropDownOpen = false;
+                      _searchController.clear();
+                      setState(() {});
+                      return;
                     }
+                    _dropdownKey.currentState?.callTap();
                   });
                   return;
                 }

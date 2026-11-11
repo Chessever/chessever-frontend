@@ -23,6 +23,10 @@ Future<AddToLibraryChoice?> showAddToLibrarySheet(
     context: context,
     backgroundColor: Colors.transparent,
     barrierColor: context.colors.scrim,
+    // A folded landscape window caps a default sheet at ~260 pt, which hid
+    // the last source; let it take the height it needs and scroll beyond.
+    isScrollControlled: true,
+    useSafeArea: true,
     builder:
         (context) => SafeArea(
           top: false,
@@ -33,7 +37,9 @@ Future<AddToLibraryChoice?> showAddToLibrarySheet(
               borderRadius: BorderRadius.circular(20.br),
               border: Border.all(color: context.colors.divider),
             ),
-            child: Column(
+            clipBehavior: Clip.antiAlias,
+            child: SingleChildScrollView(
+              child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
                 Padding(
@@ -92,6 +98,7 @@ Future<AddToLibraryChoice?> showAddToLibrarySheet(
                 ],
                 SizedBox(height: 8.h),
               ],
+            ),
             ),
           ),
         ),

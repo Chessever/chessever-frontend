@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 import 'package:chessever2/providers/board_settings_provider_new.dart';
 import 'package:chessever2/providers/engine_settings_provider.dart';
 import 'package:chessever2/repository/gamebase/gamebase_repository.dart';
@@ -823,10 +824,24 @@ class GridChessBoardFromFENNew extends ConsumerWidget {
     }
 
     // On phone, use the original fixed calculation for 2-column grid
+    // but never wider than the cell it is given: grids with their own gutters
+    // (Prep Games on a folded iPhone Duo, landscape safe insets) are narrower
+    // than half the window.
     if (ResponsiveHelper.isPhone) {
-      final screenWidth = gameGridCardPhoneWidth(context);
-      final boardSize = screenWidth - sideBarWidth;
-      return card(context, boardSize: boardSize, width: screenWidth);
+      return LayoutBuilder(
+        builder: (cardContext, constraints) {
+          final phoneWidth = gameGridCardPhoneWidth(cardContext);
+          final width =
+              constraints.hasBoundedWidth
+                  ? math.min(phoneWidth, constraints.maxWidth)
+                  : phoneWidth;
+          return card(
+            cardContext,
+            boardSize: width - sideBarWidth,
+            width: width,
+          );
+        },
+      );
     }
 
     // On tablet, use LayoutBuilder to adapt to parent constraints
