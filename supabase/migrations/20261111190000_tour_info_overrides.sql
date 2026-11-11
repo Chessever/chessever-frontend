@@ -49,12 +49,15 @@ create trigger tours_zz_apply_info_override
 before insert or update on public.tours
 for each row execute function public.tours_apply_info_override();
 
+-- Later the same day the Combined tour was omitted from the data hub
+-- (omitted_events id 180) and deleted, which cascades this row away; the
+-- guard keeps a replay from failing on the foreign key.
 insert into broadcasting_private.tour_info_overrides (tour_id, info_patch, reason)
-values (
+select
   'wLrwkC0C',
   '{"teamTable": false, "format": "6-player double round-robin"}'::jsonb,
   'Total Chess Combined mirrors Group Stage A-D; the Lichess team flag and group-as-team tags are not a team event.'
-)
+where exists (select 1 from public.tours where id = 'wLrwkC0C')
 on conflict (tour_id) do update
   set info_patch = excluded.info_patch, reason = excluded.reason;
 
