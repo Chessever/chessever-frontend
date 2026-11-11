@@ -75,36 +75,7 @@ class _GamesTourScreenState extends ConsumerState<GamesTourScreen>
                 child:
                     data.isSearchMode && data.searchQuery != null
                         ? EmptySearchWidget(query: data.searchQuery!)
-                        : Padding(
-                          padding: EdgeInsets.symmetric(horizontal: 12.sp),
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              SizedBox(height: 40.h),
-                              SvgPicture.asset(
-                                SvgAsset.tournamentIcon,
-                                height: 35.h,
-                                width: 35.w,
-                                // White stroke art: tint it for paper.
-                                colorFilter:
-                                    context.isLightTheme
-                                        ? ColorFilter.mode(
-                                          context.colors.iconSecondary,
-                                          BlendMode.srcIn,
-                                        )
-                                        : null,
-                              ),
-                              SizedBox(height: 10.h),
-                              Text(
-                                'No games going on',
-                                style: AppTypography.textMdRegular.copyWith(
-                                  color: context.colors.textPrimary,
-                                ),
-                                textAlign: TextAlign.center,
-                              ),
-                            ],
-                          ),
-                        ),
+                        : const NoGamesPlaceholder(),
               );
             }
             // TABLET-ONLY: Check if rounds contain knockout-stage IDs.
@@ -204,5 +175,44 @@ class _GamesTourScreenState extends ConsumerState<GamesTourScreen>
       futures.add(ref.read(gamesTourScreenProvider.notifier).refreshGames());
       await Future.wait(futures);
     } catch (_) {}
+  }
+}
+
+/// Shown when an event has no boards to list. Shared with the Combined list.
+class NoGamesPlaceholder extends StatelessWidget {
+  const NoGamesPlaceholder({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.symmetric(horizontal: 12.sp),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          SizedBox(height: 40.h),
+          SvgPicture.asset(
+            SvgAsset.tournamentIcon,
+            height: 35.h,
+            width: 35.w,
+            // White stroke art: tint it for paper.
+            colorFilter:
+                context.isLightTheme
+                    ? ColorFilter.mode(
+                      context.colors.iconSecondary,
+                      BlendMode.srcIn,
+                    )
+                    : null,
+          ),
+          SizedBox(height: 10.h),
+          Text(
+            'No games going on',
+            style: AppTypography.textMdRegular.copyWith(
+              color: context.colors.textPrimary,
+            ),
+            textAlign: TextAlign.center,
+          ),
+        ],
+      ),
+    );
   }
 }

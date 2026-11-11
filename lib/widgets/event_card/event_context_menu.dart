@@ -9,6 +9,7 @@ import 'package:chessever2/screens/gamebase/event_view/gamebase_virtual_event_id
 import 'package:chessever2/screens/library/widgets/library_context_menu.dart';
 import 'package:chessever2/screens/my_space/actions/space_menu_action.dart';
 import 'package:chessever2/screens/my_space/models/space_shortcut.dart';
+import 'package:chessever2/screens/tour_detail/combined/combined_category_actions.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/event_no_spoilers_provider.dart';
 import 'package:chessever2/services/analytics/analytics_service.dart';
 import 'package:chessever2/utils/favorite_event_ids.dart';
@@ -236,7 +237,8 @@ Future<List<String>> loadEventMenuTourIds(
 const Duration _kNoSpoilersResolveCap = Duration(seconds: 5);
 
 /// The rows of an event's focus menu, in one order everywhere an event card
-/// can be long-pressed: Open, No Spoilers, Share, Copy PGN, My Space. The
+/// can be long-pressed: Open, Open combined (events with several
+/// categories), No Spoilers, Share, Copy PGN, My Space. The
 /// card's own star is where an event is favorited.
 ///
 /// [tourIds] comes from [loadEventMenuTourIds]. Once they are known the No
@@ -270,6 +272,22 @@ List<LibraryMenuAction> eventMenuActions({
         icon: Icons.open_in_new_rounded,
         label: 'Open event',
         onSelected: onOpen,
+      ),
+    // Several tours behind one card are its categories: open them as one
+    // Games list (Premium). The choice is remembered for this event, exactly
+    // as picking Combined inside it would be.
+    if (onOpen != null && broadcastActions && tourIds.length > 1)
+      LibraryMenuAction(
+        icon: Icons.call_merge_rounded,
+        label: 'Open combined',
+        onSelected: () async {
+          final opened = await openCombinedCategory(
+            context,
+            groupId: model.id,
+            returnTo: 'event_card/combined',
+          );
+          if (opened) onOpen();
+        },
       ),
     if (broadcastActions && tourIds.isNotEmpty)
       LibraryMenuAction(

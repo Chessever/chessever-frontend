@@ -7,6 +7,9 @@ import 'package:chessever2/screens/group_event/model/tour_detail_view_model.dart
 import 'package:chessever2/screens/group_event/widget/appbar_icons_widget.dart';
 import 'package:chessever2/screens/gamebase/event_view/gamebase_virtual_event_id.dart';
 import 'package:chessever2/screens/library/widgets/library_context_menu.dart';
+import 'package:chessever2/screens/tour_detail/combined/combined_category.dart';
+import 'package:chessever2/screens/tour_detail/combined/combined_category_actions.dart';
+import 'package:chessever2/screens/tour_detail/combined/combined_games_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/event_no_spoilers_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_app_bar_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_pin_provider.dart';
@@ -84,7 +87,11 @@ class TournamentMenuButton extends ConsumerWidget {
     void open() => unawaited(
       CardContextMenu.open(
         context,
-        actions: (menuContext) => _menuActions(menuContext, ref),
+        // The button's own context outlives the menu: Combined needs it for
+        // the Premium gate that may follow the tap.
+        actions:
+            (menuContext) =>
+                _menuActions(menuContext, ref, hostContext: context),
       ),
     );
 
@@ -106,7 +113,11 @@ class TournamentMenuButton extends ConsumerWidget {
     );
   }
 
-  List<LibraryMenuAction> _menuActions(BuildContext context, WidgetRef ref) {
+  List<LibraryMenuAction> _menuActions(
+    BuildContext context,
+    WidgetRef ref, {
+    required BuildContext hostContext,
+  }) {
     final isGamesTab =
         ref.read(selectedTourModeProvider) == TournamentDetailScreenMode.games;
     final groupBroadcastId = tourData.aboutTourModel.groupBroadcastId;
@@ -114,12 +125,124 @@ class TournamentMenuButton extends ConsumerWidget {
         (groupBroadcastId != null && groupBroadcastId.isNotEmpty)
             ? ref.read(eventMuteProvider(groupBroadcastId)).valueOrNull ?? false
             : false;
+    final combinedSelected = ref.read(combinedCategorySelectedProvider);
 
     return [
-      if (isGamesTab) ..._gamesTabActions(ref),
+      ..._combinedActions(ref, hostContext, combinedSelected),
+      if (isGamesTab)
+        ...(combinedSelected
+            ? _combinedGamesTabActions(ref)
+            : _gamesTabActions(ref)),
       // Notifications + share are shared across tabs.
       ..._sharedActions(ref, context, isMuted),
       ..._spaceActions(ref, context, isGamesTab),
+    ];
+  }
+
+  /// Combined on/off, on every tab of an event with categories to merge.
+  /// It leads the menu: it is the answer the "combine?" question points to.
+  List<LibraryMenuAction> _combinedActions(
+    WidgetRef ref,
+    BuildContext hostContext,
+    bool combinedSelected,
+  ) {
+    final groupId = ref.read(combinedCategoryGroupIdProvider);
+    if (groupId == null || !ref.read(combinedCategoriesProvider).canCombine) {
+      return const <LibraryMenuAction>[];
+    }
+    return [
+      LibraryMenuAction(
+        icon:
+            combinedSelected
+                ? Icons.call_split_rounded
+                : Icons.call_merge_rounded,
+        label: combinedSelected ? 'Show one category' : 'Combine categories',
+        onSelected: () {
+          if (combinedSelected) {
+            unawaited(closeCombinedCategory(ref, groupId));
+          } else if (hostContext.mounted) {
+            unawaited(
+              openCombinedCategory(
+                hostContext,
+                groupId: groupId,
+                returnTo: 'tournament_detail/games',
+              ),
+            );
+          }
+        },
+      ),
+    ];
+  }
+
+  /// The Games-tab rows while the list is Combined. Each one acts on every
+  /// merged category, where the single-category rows act on the selected one.
+  /// "Live games first" is left out: Combined has its own order.
+  List<LibraryMenuAction> _combinedGamesTabActions(WidgetRef ref) {
+    final tourIds = ref.read(combinedCategoriesProvider).tourIds;
+    final roundIds = ref.read(combinedGamesPresentationProvider).roundIds;
+
+    final spoilerStates = [
+      for (final tourId in tourIds) ref.read(eventNoSpoilersProvider(tourId)),
+    ];
+    final noSpoilersEnabled =
+        spoilerStates.isNotEmpty &&
+        spoilerStates.every((state) => state.enabled);
+    final isAnyPinned = tourIds.any(
+      (tourId) => ref.read(gamesPinprovider(tourId)).allPins.isNotEmpty,
+    );
+    final isAllCollapsed = areAllVisibleSectionsCollapsed(
+      visibleRoundIds: roundIds,
+      visibleMatchKeys: const <String>[],
+      roundExpansionState: ref.read(roundExpansionProvider),
+      matchExpansionState: const <String, bool>{},
+    );
+
+    return [
+      LibraryMenuAction(
+        icon:
+            noSpoilersEnabled
+                ? Icons.visibility_off_outlined
+                : Icons.visibility_outlined,
+        label: noSpoilersEnabled ? "Disable No Spoilers" : "No Spoilers",
+        onSelected: () {
+          final enabled = eventNoSpoilersNextEnabled(spoilerStates);
+          for (final tourId in tourIds) {
+            unawaited(
+              ref
+                  .read(eventNoSpoilersProvider(tourId).notifier)
+                  .setEnabled(enabled),
+            );
+          }
+        },
+      ),
+      LibraryMenuAction(
+        icon: isAnyPinned ? Icons.push_pin : Icons.push_pin_outlined,
+        label: isAnyPinned ? "Unpin all" : "Pin all",
+        onSelected: () async {
+          for (final tourId in tourIds) {
+            final pins = ref.read(gamesPinprovider(tourId).notifier);
+            if (isAnyPinned) {
+              // Manual pins and auto-pins are two separate stores.
+              await pins.disableAutoPin();
+              await pins.clearManualPins();
+            } else {
+              await pins.enableAutoPin();
+            }
+          }
+        },
+      ),
+      LibraryMenuAction(
+        icon: isAllCollapsed ? Icons.unfold_more : Icons.unfold_less,
+        label: isAllCollapsed ? "Expand all" : "Collapse all",
+        onSelected: () {
+          final rounds = ref.read(roundExpansionProvider.notifier);
+          if (isAllCollapsed) {
+            rounds.expandAll(roundIds);
+          } else {
+            rounds.collapseAll(roundIds);
+          }
+        },
+      ),
     ];
   }
 

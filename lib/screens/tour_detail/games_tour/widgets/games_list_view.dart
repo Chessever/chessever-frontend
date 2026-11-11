@@ -1,3 +1,5 @@
+import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart'
+    show BoardNavigationListPolicy;
 import 'package:chessever2/screens/chessboard/provider/game_pgn_stream_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/event_no_spoilers_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_list_view_mode_provider.dart';
@@ -37,6 +39,9 @@ class GamesListView extends ConsumerWidget {
     this.isSearchMode = false,
     this.onReturnFromChessboard,
     required this.layout,
+    this.roundHeaderBuilder,
+    this.onPinToggle,
+    this.navigationListPolicy,
   });
 
   final Map<String, List<GamesTourModel>> gamesByRound;
@@ -47,6 +52,24 @@ class GamesListView extends ConsumerWidget {
   final bool isSearchMode;
   final void Function(int)? onReturnFromChessboard;
   final GamesTourFlattenedLayout layout;
+
+  /// Replaces the round header. The Combined list names the category each
+  /// round belongs to; the single-category list keeps [RoundHeader].
+  final Widget Function(
+    BuildContext context,
+    GamesTourRoundHeaderEntry entry,
+    bool isExpanded,
+    VoidCallback? onToggle,
+  )?
+  roundHeaderBuilder;
+
+  /// Replaces the pin action. Defaults to the selected tour's pin store; a
+  /// list spanning several tours pins each board into its own tour.
+  final Future<void> Function(GamesTourModel game)? onPinToggle;
+
+  /// Which games the board screen pages through. Defaults to the policy the
+  /// selected tour's list implies.
+  final BoardNavigationListPolicy? navigationListPolicy;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -153,21 +176,29 @@ class GamesListView extends ConsumerWidget {
                         : ref.watch(
                           roundExpansionStateProvider(lookup.round.id),
                         );
+                final VoidCallback? onToggleRound =
+                    isSearchMode
+                        ? null // Disable toggle in search mode
+                        : () {
+                          ref
+                              .read(roundExpansionProvider.notifier)
+                              .toggleRound(lookup.round.id);
+                        };
                 return Padding(
                   padding: EdgeInsets.only(bottom: 16.sp),
-                  child: RoundHeader(
-                    round: lookup.round,
-                    roundGames: lookup.roundGames,
-                    isExpanded: isRoundExpanded,
-                    onToggle:
-                        isSearchMode
-                            ? null // Disable toggle in search mode
-                            : () {
-                              ref
-                                  .read(roundExpansionProvider.notifier)
-                                  .toggleRound(lookup.round.id);
-                            },
-                  ),
+                  child:
+                      roundHeaderBuilder?.call(
+                        context,
+                        lookup,
+                        isRoundExpanded,
+                        onToggleRound,
+                      ) ??
+                      RoundHeader(
+                        round: lookup.round,
+                        roundGames: lookup.roundGames,
+                        isExpanded: isRoundExpanded,
+                        onToggle: onToggleRound,
+                      ),
                 );
               }
 
@@ -355,7 +386,9 @@ class GamesListView extends ConsumerWidget {
                 _scrollToGameIndex(returnedIndex);
                 onReturnFromChessboard?.call(returnedIndex);
               },
-              listPolicy: boardNavigationListPolicyForGamesData(gamesData),
+              listPolicy:
+                  navigationListPolicy ??
+                  boardNavigationListPolicyForGamesData(gamesData),
             );
       },
       pinnedIds: gamesData.pinnedGamedIs,
@@ -363,9 +396,12 @@ class GamesListView extends ConsumerWidget {
       allowStockfishFallback: allowStockfishFallback,
       streamEnabled: streamEnabled,
       onPinToggle:
-          (_) async => await ref
-              .read(gamesTourScreenProvider.notifier)
-              .togglePinGame(game.gameId, sourceTourId: game.tourId),
+          (_) async =>
+              onPinToggle != null
+                  ? await onPinToggle!(game)
+                  : await ref
+                      .read(gamesTourScreenProvider.notifier)
+                      .togglePinGame(game.gameId, sourceTourId: game.tourId),
     );
   }
 
@@ -390,7 +426,10 @@ class GamesListView extends ConsumerWidget {
       gamesData: modifiedGamesData,
       gameIndex: item.globalIndex1,
       isChessBoardVisible: gamesListViewMode == GamesListViewMode.chessBoard,
-      navigationListPolicy: boardNavigationListPolicyForGamesData(gamesData),
+      onPinToggle: onPinToggle,
+      navigationListPolicy:
+          navigationListPolicy ??
+          boardNavigationListPolicyForGamesData(gamesData),
       fixedBottomSide: item.fixedBottomSide1,
       allowStockfishFallback: allowStockfishFallback,
       streamEnabled: streamEnabled,

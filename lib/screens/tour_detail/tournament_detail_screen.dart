@@ -18,6 +18,10 @@ import 'package:chessever2/screens/tour_detail/bracket/views/knockout_bracket_sc
 import 'package:chessever2/screens/tour_detail/player_tour/player_tour_screen.dart';
 import 'package:chessever2/screens/tour_detail/team_tour/team_tour_screen.dart';
 import 'package:chessever2/screens/tour_detail/about_tour_screen.dart';
+import 'package:chessever2/screens/tour_detail/combined/combined_category.dart';
+import 'package:chessever2/screens/tour_detail/combined/combined_category_actions.dart';
+import 'package:chessever2/screens/tour_detail/combined/combined_category_prompt.dart';
+import 'package:chessever2/screens/tour_detail/combined/combined_games_screen.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/views/games_tour_screen.dart';
 import 'package:chessever2/screens/group_event/model/tour_detail_view_model.dart';
 import 'package:chessever2/screens/tour_detail/player_tour/player_tour_screen_provider.dart';
@@ -35,6 +39,7 @@ import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/foreground_task_scheduler.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/user_error_message.dart';
+import 'package:chessever2/widgets/app_snack.dart';
 import 'package:chessever2/widgets/screen_wrapper.dart';
 import 'package:chessever2/widgets/scroll_to_top_bus.dart';
 import 'package:chessever2/widgets/segmented_switcher.dart';
@@ -69,6 +74,95 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
       TournamentDetailLayoutTracker();
   late List<TournamentDetailScreenMode> _renderedModes;
   String? _scheduledReferencedRoundId;
+
+  /// The "combine?" question is raised at most once per visit to this screen.
+  bool _combineQuestionRaised = false;
+  Timer? _combineQuestionTimer;
+
+  /// Asks whether to open a multi-category event in Combined (Trello
+  /// "Combined"): once per event, never after "Never ask", and not when the
+  /// event was opened onto a specific round.
+  void _maybeAskToCombine(WidgetRef scopedRef) {
+    if (_combineQuestionRaised) return;
+    final groupId = scopedRef.watch(combinedCategoryGroupIdProvider);
+    if (groupId == null) return;
+    // An event with one category never reads storage for this.
+    final categories = scopedRef.watch(combinedCategoriesProvider);
+    if (!categories.canCombine) return;
+    // Reading the stored answers is what makes the question askable, and
+    // what restores Combined for an event that was left in it.
+    unawaited(
+      scopedRef
+          .read(combinedCategoryPrefsProvider.notifier)
+          .ensureLoaded(groupId),
+    );
+    final shouldAsk = scopedRef.watch(
+      combinedCategoryPrefsProvider.select((prefs) => prefs.shouldAsk(groupId)),
+    );
+    if (!shouldAsk) return;
+    if (scopedRef.read(pendingRoundNavigationProvider) != null) return;
+
+    _combineQuestionRaised = true;
+    // Let the push transition finish so the question lands on a settled
+    // screen. Cancelled with the screen, so leaving early asks nothing.
+    _combineQuestionTimer = Timer(
+      const Duration(milliseconds: 500),
+      () => unawaited(_askToCombine(groupId, categories)),
+    );
+  }
+
+  Future<void> _askToCombine(
+    String groupId,
+    CombinedCategories categories,
+  ) async {
+    // Skip it if the viewer has already moved on to a board.
+    if (!mounted || ModalRoute.of(context)?.isCurrent != true) return;
+
+    final prefs = ref.read(combinedCategoryPrefsProvider.notifier);
+    final answer = await showCombineCategoriesPrompt(
+      context,
+      categories: categories,
+      isPremium: ref.read(combinedCategoryEntitledProvider),
+    );
+    // Any answer, a dismissal included, settles the question for this event.
+    await prefs.markAnswered(groupId);
+    if (!mounted) return;
+
+    switch (answer) {
+      case CombinePromptAnswer.combine:
+        await openCombinedCategory(
+          context,
+          groupId: groupId,
+          returnTo: 'tournament_detail/games',
+        );
+      case CombinePromptAnswer.neverAsk:
+        await prefs.setNeverAsk();
+        if (mounted) _showCombineLaterHint();
+      case CombinePromptAnswer.notNow:
+      case null:
+        _showCombineLaterHint();
+    }
+  }
+
+  void _showCombineLaterHint() {
+    showAppSnack(
+      context,
+      'You can combine categories anytime from the menu at the top right.',
+    );
+  }
+
+  /// Combined only changes the Games tab, so opening it from About or
+  /// Standings brings Games forward.
+  void _showGamesTab() {
+    if (!mounted) return;
+    final index = _renderedModes.indexOf(TournamentDetailScreenMode.games);
+    if (index < 0 ||
+        ref.read(selectedTourModeProvider) ==
+            TournamentDetailScreenMode.games) {
+      return;
+    }
+    _handleTabSelection(index, _renderedModes);
+  }
 
   void _scheduleReferencedRoundSelection(
     WidgetRef scopedRef,
@@ -184,13 +278,18 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
           final rounds =
               ref.read(gamesAppBarProvider).valueOrNull?.gamesAppBarModels ??
               const <GamesAppBarModel>[];
-          final representedTourIds = representedTournamentIdsForDisplayRounds(
-            rounds: rounds,
-            selectedTourId: aboutTourModel.id,
-            knownTourIds:
-                tourDetail?.tours.map((tour) => tour.tour.id) ??
-                const <String>[],
-          );
+          final representedTourIds = <String>{
+            ...representedTournamentIdsForDisplayRounds(
+              rounds: rounds,
+              selectedTourId: aboutTourModel.id,
+              knownTourIds:
+                  tourDetail?.tours.map((tour) => tour.tour.id) ??
+                  const <String>[],
+            ),
+            // The Combined list shows every category, not just the selected
+            // one, so all of them catch up after a background spell.
+            ...ref.read(combinedLiveTourIdsProvider),
+          };
           await Future.wait(
             representedTourIds.map((tourId) async {
               try {
@@ -264,6 +363,7 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
     WidgetsBinding.instance.removeObserver(this);
     clearGamesTourScrollScopeActive(_scrollScopeId);
     ForegroundTaskScheduler.cancel('tournament_detail_resume_$hashCode');
+    _combineQuestionTimer?.cancel();
     pageController.dispose();
     _scrollToTopBus.dispose();
     super.dispose();
@@ -327,6 +427,14 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
             selectedBroadcastModelProvider,
           );
           final selectedTour = tourDetailAsync.valueOrNull?.aboutTourModel;
+          final combinedSelected = scopedRef.watch(
+            combinedCategorySelectedProvider,
+          );
+          scopedRef.listen<int>(
+            combinedGamesTabRequestProvider,
+            (_, __) => _showGamesTab(),
+          );
+          _maybeAskToCombine(scopedRef);
 
           return ScreenWrapper(
             child: Scaffold(
@@ -403,7 +511,12 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
                                     enabled:
                                         effectiveMode ==
                                         TournamentDetailScreenMode.games,
-                                    child: const GamesTourScreen(),
+                                    // Combined swaps the list, not the tab:
+                                    // every category's rounds in one place.
+                                    child:
+                                        combinedSelected
+                                            ? const CombinedGamesScreen()
+                                            : const GamesTourScreen(),
                                   );
                                 case TournamentDetailScreenMode.bracket:
                                   return const KnockoutBracketScreen();

@@ -3,6 +3,8 @@ import 'dart:async';
 import 'dart:math' as math;
 import 'package:collection/collection.dart';
 import 'package:chessever2/repository/supabase/tour/tour.dart';
+import 'package:chessever2/screens/tour_detail/combined/combined_category.dart';
+import 'package:chessever2/screens/tour_detail/combined/combined_category_actions.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_app_bar_view_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_app_bar_provider.dart';
 import 'package:chessever2/screens/library/widgets/library_context_menu.dart';
@@ -121,6 +123,12 @@ class CategoryDropdown extends ConsumerWidget {
     final groupName = ref.watch(
       selectedBroadcastModelProvider.select((broadcast) => broadcast?.name),
     );
+    // Combined is a Games-tab view: About and Standings keep naming the real
+    // category they describe, even while Games is combined.
+    final combinedSelected =
+        ref.watch(selectedTourModeProvider) ==
+            TournamentDetailScreenMode.games &&
+        ref.watch(combinedCategorySelectedProvider);
 
     return SizedBox(
       height: context.textExtent(38.h),
@@ -157,12 +165,28 @@ class CategoryDropdown extends ConsumerWidget {
             // from the screen entirely.
             groupName: tourData.tours.length > 1 ? groupName : null,
             constrainWidth: constrainWidth,
+            combinedSelected: combinedSelected,
+            onCombinedSelected: () {
+              final groupId = ref.read(combinedCategoryGroupIdProvider);
+              if (groupId == null) return;
+              // The chip outlives the dropdown, so the Premium gate and the
+              // switch that follows it have a live context to land on.
+              unawaited(
+                openCombinedCategory(
+                  context,
+                  groupId: groupId,
+                  returnTo: 'tournament_detail/games',
+                ),
+              );
+            },
             onCategoryChanged: (category) {
+              _leaveCombinedOnGamesTab(ref);
               ref
                   .read(tourDetailScreenProvider.notifier)
                   .updateSelection(category.tour.id);
             },
             onRoundChanged: (round) {
+              _leaveCombinedOnGamesTab(ref);
               // Select the round in the provider
               ref.read(gamesAppBarProvider.notifier).select(round);
               // Also trigger scroll directly from widget context (has correct scope)
@@ -190,6 +214,19 @@ class CategoryDropdown extends ConsumerWidget {
       ),
     );
   }
+
+  /// Picking a real category or one of its rounds on the Games tab leaves
+  /// Combined. On the other tabs the pick only changes which category they
+  /// describe, and Games stays combined.
+  void _leaveCombinedOnGamesTab(WidgetRef ref) {
+    if (ref.read(selectedTourModeProvider) !=
+        TournamentDetailScreenMode.games) {
+      return;
+    }
+    final groupId = ref.read(combinedCategoryGroupIdProvider);
+    if (groupId == null || !ref.read(combinedCategorySelectedProvider)) return;
+    unawaited(closeCombinedCategory(ref, groupId));
+  }
 }
 
 class _CategoryDropdownContent extends HookConsumerWidget {
@@ -199,6 +236,10 @@ class _CategoryDropdownContent extends HookConsumerWidget {
   final GamesAppBarModel? selectedRound;
   final String? groupName;
   final bool constrainWidth;
+
+  /// The Games tab is showing every category at once.
+  final bool combinedSelected;
+  final VoidCallback onCombinedSelected;
   final ValueChanged<TourModel> onCategoryChanged;
   final ValueChanged<GamesAppBarModel> onRoundChanged;
 
@@ -209,6 +250,8 @@ class _CategoryDropdownContent extends HookConsumerWidget {
     required this.selectedRound,
     required this.groupName,
     required this.constrainWidth,
+    required this.combinedSelected,
+    required this.onCombinedSelected,
     required this.onCategoryChanged,
     required this.onRoundChanged,
   });
@@ -270,11 +313,22 @@ class _CategoryDropdownContent extends HookConsumerWidget {
     return CompositedTransformTarget(
       link: layerLink,
       child: _StadiumChipButton(
-        label: tourCategoryLabel(
-          selectedCategory.tour.name,
-          groupName: groupName,
-        ),
-        status: selectedRound?.roundStatus ?? selectedCategory.roundStatus,
+        label:
+            combinedSelected
+                ? kCombinedCategoryLabel
+                : tourCategoryLabel(
+                  selectedCategory.tour.name,
+                  groupName: groupName,
+                ),
+        // Combined is live while any of its categories is.
+        status:
+            combinedSelected
+                ? (categories.any(
+                      (category) => category.roundStatus == RoundStatus.live,
+                    )
+                    ? RoundStatus.live
+                    : null)
+                : selectedRound?.roundStatus ?? selectedCategory.roundStatus,
         isOpen: isOpen.value,
         showChevron: hasMultipleOptions,
         constrainWidth: constrainWidth,
@@ -414,6 +468,18 @@ class _CategoryDropdownContent extends HookConsumerWidget {
               HapticFeedbackService.selection();
               onCategoryChanged(category);
               // Don't close - let the dropdown stay open to show loaded rounds
+            },
+            onCombinedSelect: () {
+              HapticFeedbackService.selection();
+              if (ResponsiveHelper.isTablet) {
+                TabletPopupState.markClosed();
+              }
+              // Close first: a viewer without Premium gets the paywall next,
+              // and it must not open underneath the dropdown.
+              animationController.reverse().then((_) {
+                isOpen.value = false;
+              });
+              onCombinedSelected();
             },
             onRoundSelect: (round) {
               debugPrint(
@@ -869,6 +935,7 @@ class _DropdownOverlay extends ConsumerWidget {
   final DateTime openedAt;
   final ValueChanged<TourModel> onCategorySelect;
   final ValueChanged<TourModel> onCategoryChange; // Select without closing
+  final VoidCallback onCombinedSelect;
   final ValueChanged<GamesAppBarModel> onRoundSelect;
   final VoidCallback onDismiss;
   final _RoundLongPress? onRoundLongPress;
@@ -885,6 +952,7 @@ class _DropdownOverlay extends ConsumerWidget {
     required this.openedAt,
     required this.onCategorySelect,
     required this.onCategoryChange,
+    required this.onCombinedSelect,
     required this.onRoundSelect,
     required this.onDismiss,
     this.onRoundLongPress,
@@ -920,6 +988,15 @@ class _DropdownOverlay extends ConsumerWidget {
             orElse: () => rounds.first,
           )
         : null;
+
+    // Combined, read live like the rest: it turns on after a purchase made
+    // from this very dropdown.
+    final combinedCategories = ref.watch(combinedCategoriesProvider);
+    final combinedSelected =
+        ref.watch(selectedTourModeProvider) ==
+            TournamentDetailScreenMode.games &&
+        ref.watch(combinedCategorySelectedProvider);
+    final combinedLocked = !ref.watch(combinedCategoryEntitledProvider);
 
     // Wider dropdown for better readability - use available horizontal space
     final minWidth = ResponsiveHelper.isTablet ? 400.0 : 300.w;
@@ -985,8 +1062,15 @@ class _DropdownOverlay extends ConsumerWidget {
                         selectedCategory: selectedCategory,
                         rounds: rounds,
                         selectedRound: selectedRound,
+                        combinedCount:
+                            combinedCategories.canCombine
+                                ? combinedCategories.items.length
+                                : 0,
+                        combinedSelected: combinedSelected,
+                        combinedLocked: combinedLocked,
                         onCategorySelect: onCategorySelect,
                         onCategoryChange: onCategoryChange,
+                        onCombinedSelect: onCombinedSelect,
                         onRoundSelect: onRoundSelect,
                         onRoundLongPress: onRoundLongPress,
                       ),
@@ -1010,9 +1094,17 @@ class _DropdownContent extends StatefulWidget {
   final TourModel selectedCategory;
   final List<GamesAppBarModel> rounds;
   final GamesAppBarModel? selectedRound;
+
+  /// How many categories Combined merges; 0 leaves the row out.
+  final int combinedCount;
+  final bool combinedSelected;
+
+  /// Combined is Premium: a viewer without it sees the row with a lock.
+  final bool combinedLocked;
   final ValueChanged<TourModel> onCategorySelect;
   final ValueChanged<TourModel>
   onCategoryChange; // Select without closing dropdown
+  final VoidCallback onCombinedSelect;
   final ValueChanged<GamesAppBarModel> onRoundSelect;
   final _RoundLongPress? onRoundLongPress;
 
@@ -1023,8 +1115,12 @@ class _DropdownContent extends StatefulWidget {
     required this.selectedCategory,
     required this.rounds,
     required this.selectedRound,
+    required this.combinedCount,
+    required this.combinedSelected,
+    required this.combinedLocked,
     required this.onCategorySelect,
     required this.onCategoryChange,
+    required this.onCombinedSelect,
     required this.onRoundSelect,
     this.onRoundLongPress,
   });
@@ -1072,7 +1168,9 @@ class _DropdownContentState extends State<_DropdownContent> {
     );
     final selectionChanged =
         oldWidget.selectedRound?.id != widget.selectedRound?.id ||
-        oldWidget.selectedCategory.tour.id != widget.selectedCategory.tour.id;
+        oldWidget.selectedCategory.tour.id != widget.selectedCategory.tour.id ||
+        oldWidget.combinedSelected != widget.combinedSelected ||
+        oldWidget.combinedCount != widget.combinedCount;
 
     if (categoriesChanged || roundsChanged || selectionChanged) {
       _buildFlatItems();
@@ -1105,6 +1203,12 @@ class _DropdownContentState extends State<_DropdownContent> {
     final hasMultipleCategories = widget.categories.length > 1;
 
     if (hasMultipleCategories) {
+      // Combined leads the list: it is every category below it at once.
+      if (widget.combinedCount > 0) {
+        _flatItems.add(
+          _DropdownItem(type: _ItemType.category, isCombined: true),
+        );
+      }
       for (final category in widget.categories) {
         _flatItems.add(
           _DropdownItem(type: _ItemType.category, category: category),
@@ -1142,6 +1246,17 @@ class _DropdownContentState extends State<_DropdownContent> {
     final hasMultipleCategories = widget.categories.length > 1;
 
     if (hasMultipleCategories) {
+      // Combined is what the Games tab shows, whichever category is unfolded
+      // underneath it.
+      if (widget.combinedSelected) {
+        final combinedIndex = _flatItems.indexWhere((item) => item.isCombined);
+        if (combinedIndex >= 0) {
+          _selectedFlatIndex = combinedIndex;
+          _updateTargetY();
+          return;
+        }
+      }
+
       // When category is expanded, prioritize finding the selected round
       // This syncs the indicator with the games listview scroll position
       final isSelectedCategoryExpanded =
@@ -1374,7 +1489,9 @@ class _DropdownContentState extends State<_DropdownContent> {
       // Select the item at current index
       if (_selectedFlatIndex >= 0 && _selectedFlatIndex < _flatItems.length) {
         final item = _flatItems[_selectedFlatIndex];
-        if (item.type == _ItemType.category && item.category != null) {
+        if (item.isCombined) {
+          widget.onCombinedSelect();
+        } else if (item.type == _ItemType.category && item.category != null) {
           widget.onCategorySelect(item.category!);
         } else if (item.type == _ItemType.round && item.round != null) {
           // Select the parent category ONLY if it's different from current
@@ -1504,6 +1621,28 @@ class _DropdownContentState extends State<_DropdownContent> {
 
                 // Create key for measurement
                 _itemKeys[index] ??= GlobalKey();
+
+                if (item.isCombined) {
+                  return KeyedSubtree(
+                    key: _itemKeys[index],
+                    child: _CombinedRow(
+                      index: index,
+                      animation: widget.animation,
+                      categoryCount: widget.combinedCount,
+                      isSelected: isSelected,
+                      isLocked: widget.combinedLocked,
+                      // Keeps the row exactly as tall as the category rows
+                      // under it, which the droplet's arithmetic assumes.
+                      reserveArrowSlot: widget.rounds.isNotEmpty,
+                      onTap: () {
+                        // A locked row opens the paywall; the droplet stays
+                        // on what is actually shown until Premium is active.
+                        if (!widget.combinedLocked) _animateToIndex(index);
+                        widget.onCombinedSelect();
+                      },
+                    ),
+                  );
+                }
 
                 if (item.type == _ItemType.category) {
                   final category = item.category!;
@@ -1639,12 +1778,196 @@ class _DropdownItem {
   final GamesAppBarModel? round;
   final String? parentCategoryId;
 
+  /// The synthetic Combined row. It is laid out as a category row (same
+  /// height, same tap target) but stands for no single tour.
+  final bool isCombined;
+
   _DropdownItem({
     required this.type,
     this.category,
     this.round,
     this.parentCategoryId,
+    this.isCombined = false,
   });
+}
+
+/// The Combined row: every category of the event in one Games list.
+class _CombinedRow extends StatelessWidget {
+  final int index;
+  final Animation<double> animation;
+  final int categoryCount;
+  final bool isSelected;
+  final bool isLocked;
+  final bool reserveArrowSlot;
+  final VoidCallback onTap;
+
+  const _CombinedRow({
+    required this.index,
+    required this.animation,
+    required this.categoryCount,
+    required this.isSelected,
+    required this.isLocked,
+    required this.reserveArrowSlot,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final itemDelay = index * 0.05;
+    final itemAnimation = CurvedAnimation(
+      parent: animation,
+      curve: Interval(
+        itemDelay.clamp(0.0, 0.4),
+        (itemDelay + 0.5).clamp(0.0, 1.0),
+        curve: Curves.easeOutCubic,
+      ),
+    );
+    final ink =
+        isSelected ? context.colors.accentText : context.colors.textPrimary;
+    // The category rows end in an expand arrow of this footprint.
+    final arrowSlot = 20.ic + 12.sp;
+
+    return Semantics(
+      button: true,
+      selected: isSelected,
+      label:
+          isLocked
+              ? '$kCombinedCategoryLabel, all $categoryCount categories, '
+                  'Premium'
+              : '$kCombinedCategoryLabel, all $categoryCount categories',
+      // One node for the whole row; it still has to be activatable.
+      excludeSemantics: true,
+      onTap: onTap,
+      child: AnimatedBuilder(
+        animation: itemAnimation,
+        builder: (context, child) {
+          final clampedValue = itemAnimation.value.clamp(0.0, 1.0);
+          return Transform.translate(
+            offset: Offset(0, 12 * (1 - clampedValue)),
+            child: Opacity(opacity: clampedValue, child: child),
+          );
+        },
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: onTap,
+          child: Container(
+            padding: EdgeInsets.symmetric(horizontal: 14.sp, vertical: 10.sp),
+            color: Colors.transparent,
+            child: Row(
+              children: [
+                CustomPaint(
+                  size: Size.square(16.ic),
+                  painter: _ConfluencePainter(color: ink),
+                ),
+                SizedBox(width: 8.sp),
+                Expanded(
+                  child: Text.rich(
+                    TextSpan(
+                      text: kCombinedCategoryLabel,
+                      children: [
+                        TextSpan(
+                          text: '   all $categoryCount',
+                          style: AppTypography.textXsRegular.copyWith(
+                            color: context.textInk(0.55),
+                          ),
+                        ),
+                      ],
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: AppTypography.textSmMedium.copyWith(
+                      color: ink,
+                      fontWeight:
+                          isSelected ? FontWeight.w600 : FontWeight.w500,
+                    ),
+                  ),
+                ),
+                if (reserveArrowSlot) ...[
+                  SizedBox(width: 8.sp),
+                  SizedBox(
+                    width: arrowSlot,
+                    height: arrowSlot,
+                    child:
+                        isLocked
+                            ? Icon(
+                              Icons.lock_outline_rounded,
+                              size: 16.ic,
+                              color: context.textInk(0.55),
+                            )
+                            : null,
+                  ),
+                ] else if (isLocked) ...[
+                  SizedBox(width: 8.sp),
+                  Icon(
+                    Icons.lock_outline_rounded,
+                    size: 16.ic,
+                    color: context.textInk(0.55),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Three lanes running into one: the mark for the Combined category.
+class _ConfluencePainter extends CustomPainter {
+  const _ConfluencePainter({required this.color});
+
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final w = size.width;
+    final h = size.height;
+    final paint =
+        Paint()
+          ..color = color
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = w * 0.1
+          ..strokeCap = StrokeCap.round
+          ..strokeJoin = StrokeJoin.round;
+
+    final left = w * 0.09;
+    final join = w * 0.56;
+    final right = w * 0.91;
+    final middle = h * 0.5;
+    final spread = h * 0.31;
+
+    final path =
+        Path()
+          // Middle lane, straight through to the single outlet.
+          ..moveTo(left, middle)
+          ..lineTo(right, middle)
+          // Upper lane bends down into it.
+          ..moveTo(left, middle - spread)
+          ..cubicTo(
+            w * 0.34,
+            middle - spread,
+            w * 0.34,
+            middle,
+            join,
+            middle,
+          )
+          // Lower lane bends up into it.
+          ..moveTo(left, middle + spread)
+          ..cubicTo(
+            w * 0.34,
+            middle + spread,
+            w * 0.34,
+            middle,
+            join,
+            middle,
+          );
+    canvas.drawPath(path, paint);
+  }
+
+  @override
+  bool shouldRepaint(_ConfluencePainter oldDelegate) =>
+      oldDelegate.color != color;
 }
 
 /// Category row with expand/collapse arrow

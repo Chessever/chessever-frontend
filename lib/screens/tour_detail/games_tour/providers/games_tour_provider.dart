@@ -12,6 +12,7 @@ import 'package:chessever2/repository/local_storage/tournament/games/games_local
 import 'package:chessever2/repository/supabase/game/games.dart';
 import 'package:chessever2/repository/supabase/game/game_repository.dart';
 import 'package:chessever2/screens/gamebase/event_view/gamebase_virtual_event.dart';
+import 'package:chessever2/screens/tour_detail/combined/combined_category.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_mode_provider.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_screen_provider.dart';
 import 'package:flutter/foundation.dart';
@@ -169,6 +170,15 @@ class GamesTourNotifier extends StateNotifier<AsyncValue<List<Games>>> {
         _startPeriodicRefresh();
       },
     );
+    // Entering or leaving the Combined list changes this tour's cadence.
+    _combinedListener = ref.listen<Set<String>>(combinedLiveTourIdsProvider, (
+      previous,
+      next,
+    ) {
+      final wasCombined = previous?.contains(tourId) ?? false;
+      if (wasCombined == next.contains(tourId) || !_shouldRunSafetyNet) return;
+      _startPeriodicRefresh();
+    });
   }
 
   final Ref ref;
@@ -180,6 +190,7 @@ class GamesTourNotifier extends StateNotifier<AsyncValue<List<Games>>> {
   ProviderSubscription? _shouldStreamListener;
   ProviderSubscription? _selectedModeListener;
   ProviderSubscription? _primaryTourListener;
+  ProviderSubscription? _combinedListener;
   Timer? _refreshTimer;
   bool _refreshLoopActive = false;
   bool _safetyNetRefreshInFlight = false;
@@ -345,9 +356,16 @@ class GamesTourNotifier extends StateNotifier<AsyncValue<List<Games>>> {
   // arrive while a card is off-screen. Keep the selected tour responsive, but
   // avoid starting a synchronized network loop for every sibling stage in
   // multi-stage events.
+  //
+  // The Combined list shows every category of the event at once, so each of
+  // its tours is on screen without being the selected one. They poll between
+  // the two: often enough that a new round in any category shows up promptly,
+  // staggered so a dozen categories do not fire in the same second.
   static const Duration _primarySafetyNetInterval = Duration(seconds: 5);
+  static const Duration _combinedSafetyNetInterval = Duration(seconds: 12);
   static const Duration _siblingSafetyNetInterval = Duration(seconds: 45);
   static const Duration _primaryFirstSafetyNetDelay = Duration(seconds: 2);
+  static const Duration _combinedFirstSafetyNetDelayBase = Duration(seconds: 3);
   static const Duration _siblingFirstSafetyNetDelayBase = Duration(seconds: 24);
 
   bool get _isPrimaryTour {
@@ -374,14 +392,23 @@ class GamesTourNotifier extends StateNotifier<AsyncValue<List<Games>>> {
     return hash % 12;
   }
 
-  Duration get _safetyNetInterval =>
-      _isPrimaryTour ? _primarySafetyNetInterval : _siblingSafetyNetInterval;
+  bool get _isCombinedTour =>
+      ref.read(combinedLiveTourIdsProvider).contains(tourId);
 
-  Duration get _firstSafetyNetDelay =>
-      _isPrimaryTour
-          ? _primaryFirstSafetyNetDelay
-          : _siblingFirstSafetyNetDelayBase +
-              Duration(seconds: _stableTourJitterSeconds);
+  Duration get _safetyNetInterval {
+    if (_isPrimaryTour) return _primarySafetyNetInterval;
+    return _isCombinedTour
+        ? _combinedSafetyNetInterval
+        : _siblingSafetyNetInterval;
+  }
+
+  Duration get _firstSafetyNetDelay {
+    if (_isPrimaryTour) return _primaryFirstSafetyNetDelay;
+    final jitter = Duration(seconds: _stableTourJitterSeconds);
+    return _isCombinedTour
+        ? _combinedFirstSafetyNetDelayBase + jitter
+        : _siblingFirstSafetyNetDelayBase + jitter;
+  }
 
   void _startPeriodicRefresh() {
     // Gamebase-only events are finished with no live feed; never poll Supabase
@@ -610,6 +637,7 @@ class GamesTourNotifier extends StateNotifier<AsyncValue<List<Games>>> {
     _shouldStreamListener?.close();
     _selectedModeListener?.close();
     _primaryTourListener?.close();
+    _combinedListener?.close();
     super.dispose();
   }
 }
