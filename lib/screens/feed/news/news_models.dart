@@ -99,6 +99,7 @@ class FeedNews {
     this.updatedAt,
     this.sourceUrl,
     this.publisher = NewsPublisher.chessever,
+    this.groupArticleCount = 1,
   });
 
   /// The row id in [publisher]'s table: ids of different publishers can
@@ -127,6 +128,7 @@ class FeedNews {
   final String? sourceUrl;
 
   final NewsPublisher publisher;
+  final int groupArticleCount;
 
   /// Unique across publishers: `7` for ChessEver's article 7 (as it always
   /// was), `rookreview:7` for RookReview's.
@@ -142,6 +144,7 @@ class FeedNews {
     'imageUrl': imageUrl,
     'webUrl': webUrl,
     'sourceUrl': sourceUrl,
+    'groupArticleCount': groupArticleCount,
     if (publisher.isPartner) 'publisher': publisher.sourceId,
   };
 
@@ -186,6 +189,7 @@ class FeedNews {
       webUrl: webUrl is String && webUrl.isNotEmpty ? webUrl : null,
       sourceUrl: sourceUrl is String && sourceUrl.isNotEmpty ? sourceUrl : null,
       publisher: publisher,
+      groupArticleCount: newsGroupArticleCount(json['groupArticleCount']),
     );
   }
 
@@ -202,7 +206,8 @@ class FeedNews {
           other.imageUrl == imageUrl &&
           other.webUrl == webUrl &&
           other.sourceUrl == sourceUrl &&
-          other.publisher == publisher;
+          other.publisher == publisher &&
+          other.groupArticleCount == groupArticleCount;
 
   @override
   int get hashCode => Object.hash(
@@ -216,6 +221,7 @@ class FeedNews {
     webUrl,
     sourceUrl,
     publisher,
+    groupArticleCount,
   );
 
   @override
@@ -461,3 +467,7 @@ class NewsPairingsSnapshot {
   final List<NewsTeam> notPaired;
   final List<NewsTeam> byes;
 }
+
+/// Counts absent from individual article rows represent a singleton.
+int newsGroupArticleCount(Object? value) =>
+    value is int && value > 0 ? value : 1;

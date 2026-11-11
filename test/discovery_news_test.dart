@@ -598,7 +598,10 @@ void main() {
         testWidgets(
           'grid and reader fit $width with large text in ${light ? 'light' : 'dark'}',
           (tester) async {
-            final own = _Rows([for (var i = 1; i <= 6; i++) _row(i)]);
+            final own = _Rows([
+              for (var i = 1; i <= 6; i++)
+                _row(i)..['group_article_count'] = i == 1 ? 17 : 1,
+            ]);
             await _pump(
               tester,
               create: () => _catalog(own, _Rows([])),
@@ -606,6 +609,7 @@ void main() {
               scale: 1.8,
               light: light,
             );
+            expect(find.text('17 articles · Latest'), findsOneWidget);
             expect(find.byType(SliverGrid), findsOneWidget);
             final grid = tester.widget<SliverGrid>(find.byType(SliverGrid));
             final delegate =

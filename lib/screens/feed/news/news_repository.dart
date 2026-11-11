@@ -105,7 +105,7 @@ class FeedNewsRepository {
 
   /// Newest articles read from each table.
   static const int limit = 20;
-  static const String cacheKey = 'feed_news_v1';
+  static const String cacheKey = 'feed_news_grouped_v2';
 
   final NewsRowsFetcher _fetchRows;
   final NewsRowsFetcher? _fetchStamps;
@@ -373,16 +373,19 @@ const String _newsStampColumns =
     'id,title,summary,source_url,image_url,status,published_at,created_at,'
     'updated_at';
 
+const _groupedNewsStampColumns =
+    '$_newsStampColumns,feed_published_at,group_article_count';
+
 Future<List<Map<String, dynamic>>> _fetchPublishedNewsRows(int limit) =>
-    _selectPublishedNews('$_newsStampColumns,content', limit);
+    _selectPublishedNews('$_groupedNewsStampColumns,content', limit);
 
 Future<List<Map<String, dynamic>>> _fetchPublishedNewsStamps(int limit) =>
-    _selectPublishedNews(_newsStampColumns, limit);
+    _selectPublishedNews(_groupedNewsStampColumns, limit);
 
 /// What [rows] say about the list apart from the bodies: equal for the full
 /// rows and the stamp rows of the same, unchanged list.
 String _newsStampsOf(List<Map<String, dynamic>> rows) {
-  final columns = _newsStampColumns.split(',');
+  final columns = _groupedNewsStampColumns.split(',');
   return jsonEncode([
     for (final row in rows) [for (final column in columns) row[column]],
   ]);
@@ -394,10 +397,10 @@ Future<List<Map<String, dynamic>>> _selectPublishedNews(
   int offset = 0,
 }) async {
   final rows = await Supabase.instance.client
-      .from('news')
+      .from('news_daily_feed')
       .select(columns)
       .eq('status', 'published')
-      .order('published_at', ascending: false, nullsFirst: false)
+      .order('feed_published_at', ascending: false)
       .order('created_at', ascending: false)
       .order('id', ascending: false)
       .range(offset, offset + limit - 1)
@@ -484,7 +487,7 @@ class NewsCatalogRepository {
        _fetchOwn =
            fetchOwn ??
            ((offset, limit) => _selectPublishedNews(
-             '$_newsStampColumns,content',
+             '$_groupedNewsStampColumns,content',
              limit,
              offset: offset,
            )),

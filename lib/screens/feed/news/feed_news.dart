@@ -358,6 +358,15 @@ class _Headline extends StatelessWidget {
             shadows: shadows,
           ),
         ),
+        if (news.groupArticleCount > 1 && !news.publisher.isPartner) ...[
+          const SizedBox(height: 6),
+          Text(
+            '${news.groupArticleCount} articles · Latest',
+            style: AppTypography.textSmMedium.copyWith(
+              color: colors.textPrimary,
+            ),
+          ),
+        ],
         const SizedBox(height: 10),
         Semantics(
           header: true,

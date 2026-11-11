@@ -8,6 +8,7 @@ import 'package:chessever2/screens/feed/news/news_models.dart';
 import 'package:chessever2/screens/feed/news/news_pull_next.dart';
 import 'package:chessever2/screens/feed/news/news_reader_pager.dart';
 import 'package:chessever2/screens/feed/news/news_repository.dart';
+import 'package:chessever2/screens/feed/news/news_related_articles.dart';
 import 'package:chessever2/screens/feed/news/news_rich_blocks.dart';
 import 'package:chessever2/screens/feed/widgets/feed_glyphs.dart';
 import 'package:chessever2/services/deep_link_service.dart';
@@ -62,6 +63,7 @@ class NewsReaderScreen extends ConsumerStatefulWidget {
     super.key,
     required this.news,
     this.heroTag,
+    this.showRelatedArticles = true,
     this.onNext,
     this.nextIsAd = false,
     this.onPrevious,
@@ -69,6 +71,7 @@ class NewsReaderScreen extends ConsumerStatefulWidget {
   });
 
   final FeedNews news;
+  final bool showRelatedArticles;
   final Object? heroTag;
   final Future<void> Function()? onNext;
   final bool nextIsAd;
@@ -351,6 +354,8 @@ class _NewsReaderScreenState extends ConsumerState<NewsReaderScreen> {
             onTap: () => _openExternal(webUri),
           ),
       ],
+      if (widget.showRelatedArticles && !publisher.isPartner)
+        NewsRelatedArticles(key: ValueKey(news.key), articleId: news.id),
     ];
 
     return Scaffold(

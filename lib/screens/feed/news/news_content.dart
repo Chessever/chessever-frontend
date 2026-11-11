@@ -88,6 +88,7 @@ FeedNews? normalizeNewsRow(Map<String, dynamic> row) {
   final slug = newsSlug(title);
   return FeedNews(
     id: id,
+    groupArticleCount: newsGroupArticleCount(row['group_article_count']),
     title: title,
     summary: summary,
     content: content,
