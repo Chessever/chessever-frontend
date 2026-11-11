@@ -2415,7 +2415,7 @@ class SpaceSavedRow extends ConsumerWidget {
         ? ref.watch(prepProfileProvider(shortcut.targetId))
         : null;
     // A Prep player it can watch: the row ends in the player's own star.
-    final starrable = disclosure && prep != null && prepCanWatch(prep);
+    final starrable = disclosure && prep != null && prepCanStar(prep);
     if (shortcut.kind == SpaceShortcutKind.collection) {
       final collections = ref.watch(collectionsProvider).asData?.value;
       Collection? collection;
@@ -2554,8 +2554,9 @@ class SpaceSavedRow extends ConsumerWidget {
       customSemanticsActions: starrable
           ? {
               CustomSemanticsAction(
-                label: prep.watching ? 'Unstar' : 'Star',
-              ): () => togglePrepWatch(context, prep),
+                label: prepStarred(ref, prep) ? 'Unstar' : 'Star',
+              ): () =>
+                  togglePrepStar(context, ref, prep),
             }
           : null,
       child: TappableScale(

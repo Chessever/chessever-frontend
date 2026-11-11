@@ -16,6 +16,7 @@ function push(overrides: Partial<PrepGamesPush>): PrepGamesPush {
     accounts: [{ source: "lichess", username: "durarbayli" }],
     earlierToday: 0,
     otherPlayers: 0,
+    profileKind: null,
     ...overrides,
   };
 }
@@ -116,4 +117,54 @@ Deno.test("the payload is read defensively", () => {
   assertEquals(read.otherPlayers, 0);
   // Rows queued before earlier_today existed read as a first push.
   assertEquals(prepGamesPushFromPayload({ slot: 2 }).earlierToday, 0);
+});
+
+Deno.test("the reader's own profile speaks to them, never about them", () => {
+  const own = push({
+    profileKind: "mine",
+    profileName: "Berkay",
+    profileTitle: null,
+    games: 7,
+    accounts: [
+      { source: "lichess", username: "berkay" },
+      { source: "chesscom", username: "berkay" },
+    ],
+  });
+  assertEquals(prepGamesAddedCopy(own), {
+    title: "7 new games of yours. Spot the leak?",
+    body:
+      "They're all in Prep on Lichess and Chess.com. Tap to see the opening you keep reaching, and how it's really going.",
+  });
+});
+
+Deno.test("the reader's one new game", () => {
+  assertEquals(
+    prepGamesAddedCopy(push({ profileKind: "mine", games: 1 })),
+    {
+      title: "Your new game is in. Where did it turn?",
+      body:
+        "It's waiting in Prep, next to every game you've played on Lichess. Tap to find the move that decided it.",
+    },
+  );
+});
+
+Deno.test("the reader's later push gives the day's total", () => {
+  assertEquals(
+    prepGamesAddedCopy(
+      push({ profileKind: "mine", games: 4, earlierToday: 6, otherPlayers: 2 }),
+    ),
+    {
+      title: "10 games today. Still the same opening?",
+      body:
+        "4 more on Lichess just landed in Prep. 2 of your players are at it too. Tap to see which lines held up and which keep costing you.",
+    },
+  );
+});
+
+Deno.test("profile_kind is read from the payload", () => {
+  assertEquals(
+    prepGamesPushFromPayload({ profile_kind: "mine" }).profileKind,
+    "mine",
+  );
+  assertEquals(prepGamesPushFromPayload({}).profileKind, null);
 });

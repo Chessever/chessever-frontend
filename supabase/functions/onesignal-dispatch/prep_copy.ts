@@ -6,6 +6,10 @@
  * more" and gives the day's total, so the number never repeats games the
  * reader was already told about. The body names the accounts the games came
  * from. Tapping opens the player's Games tab.
+ *
+ * The reader's own profile (kind "mine") is about them, so it speaks to
+ * them: "7 new games of yours. Spot the leak?". It promises a
+ * look at their play, never a result the push cannot know.
  */
 export type PrepGamesCopy = { title: string; body: string };
 
@@ -24,6 +28,8 @@ export type PrepGamesPush = {
   earlierToday: number;
   /** Other starred players with new games today, each with a push of their own. */
   otherPlayers: number;
+  /** "mine" for the reader's own profile; null from older apps. */
+  profileKind: string | null;
 };
 
 const SITES: Record<string, string> = {
@@ -39,7 +45,49 @@ function accountList(accounts: PrepGamesPush["accounts"]): string {
   return named.join(" and ");
 }
 
+/** Sites the games came from, "Lichess and Chess.com", for the reader's own copy. */
+function siteList(accounts: PrepGamesPush["accounts"]): string {
+  const sites = [
+    ...new Set(accounts.map((a) => SITES[a.source] ?? a.source)),
+  ].filter((s) => s.trim() !== "").slice(0, 2);
+  return sites.join(" and ");
+}
+
+/** The reader's own new games: their play, waiting to be looked at. */
+function ownGamesCopy(push: PrepGamesPush): PrepGamesCopy {
+  const n = Math.max(1, push.games);
+  const sites = siteList(push.accounts);
+  const on = sites ? ` on ${sites}` : "";
+  const others = push.otherPlayers === 1
+    ? " One of your players is at it too."
+    : push.otherPlayers > 1
+    ? ` ${push.otherPlayers} of your players are at it too.`
+    : "";
+
+  if (push.earlierToday > 0) {
+    const total = push.earlierToday + n;
+    return {
+      title: `${total} games today. Still the same opening?`,
+      body: `${n} more${on} just landed in Prep.${others} ` +
+        "Tap to see which lines held up and which keep costing you.",
+    };
+  }
+  if (n === 1) {
+    return {
+      title: "Your new game is in. Where did it turn?",
+      body: `It's waiting in Prep, next to every game you've played${on}.` +
+        `${others} Tap to find the move that decided it.`,
+    };
+  }
+  return {
+    title: `${n} new games of yours. Spot the leak?`,
+    body: `They're all in Prep${on}.${others} ` +
+      "Tap to see the opening you keep reaching, and how it's really going.",
+  };
+}
+
 export function prepGamesAddedCopy(push: PrepGamesPush): PrepGamesCopy {
+  if (push.profileKind === "mine") return ownGamesCopy(push);
   const name = push.profileName.trim() || "Your player";
   const title = push.profileTitle?.trim();
   const who = title && !name.startsWith(`${title} `)
@@ -93,5 +141,6 @@ export function prepGamesPushFromPayload(
     accounts,
     earlierToday: Math.max(0, toInt(p.earlier_today, 0)),
     otherPlayers: Math.max(0, toInt(p.other_players, 0)),
+    profileKind: typeof p.profile_kind === "string" ? p.profile_kind : null,
   };
 }

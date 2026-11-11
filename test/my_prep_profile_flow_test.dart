@@ -48,6 +48,7 @@ import 'package:chessever2/screens/player_profile/widgets/player_games_toolbar.d
 import 'package:chessever2/services/rewarded_premium/rewarded_access_provider.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/adaptive_window.dart';
+import 'package:chessever2/screens/my_prep/widgets/prep_watch_star.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:chessever2/widgets/card_context_menu.dart'
@@ -2770,8 +2771,13 @@ void main() {
         of: find.text(name),
         matching: find.byType(PrepProfileCard),
       );
-      Finder more(Finder within) =>
-          find.descendant(of: within, matching: find.byType(CardMoreButton));
+      // What ends a row: its star, or the more button when it has none.
+      Finder more(Finder within) => find.descendant(
+        of: within,
+        matching: find.byWidgetPredicate(
+          (w) => w is CardMoreButton || w is PrepWatchStar,
+        ),
+      );
       const lichess = ValueKey('prep_account_lichess:clubplayer');
       const chesscom = ValueKey('prep_account_chesscom:secondaccount');
 

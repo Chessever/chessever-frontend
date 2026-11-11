@@ -25,6 +25,8 @@ import 'package:chessever2/widgets/generic_loading_widget.dart';
 import 'package:chessever2/widgets/popover_add_fab.dart';
 import 'package:chessever2/widgets/segmented_switcher.dart';
 import 'package:chessever2/widgets/skeleton_widget.dart';
+import 'package:chessever2/screens/my_prep/services/prep_watch.dart';
+import 'package:chessever2/screens/my_prep/widgets/prep_watch_star.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:motor/motor.dart';
@@ -355,6 +357,12 @@ class _ProfileRow extends StatelessWidget {
             PrepProfileCard(
               profile: profile,
               fideId: prepFavoriteFide(profile),
+              // The same star as the profile's top bar and its My Space
+              // card: starring is how the player's pushes are turned on. It
+              // takes the more button's slot; the menu stays on a long press.
+              action: prepCanStar(profile)
+                  ? PrepWatchStar(profileId: profile.id)
+                  : null,
               expanded: open,
               onExpand: profile.accounts.isEmpty
                   ? null

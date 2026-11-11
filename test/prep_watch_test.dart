@@ -127,6 +127,52 @@ void main() {
     expect(prepWatchSignature(mine.copyWith(watching: true)), isNotNull);
   });
 
+  test('an over-the-board player is starred by following them', () {
+    // Paulo Santanna in the report: a database record and nothing online.
+    const otb = PrepProfile(
+      id: 'opponent-otb',
+      kind: PrepKind.opponent,
+      name: 'Paulo Santanna',
+      createdAtMs: 1,
+      accounts: [
+        PrepAccount(
+          source: PrepSource.chessever,
+          username: 'Santanna, Paulo',
+          fideId: '2100000',
+        ),
+      ],
+    );
+    expect(prepCanWatch(otb), isFalse);
+    expect(prepCanStar(otb), isTrue);
+    expect(prepStarPlayer(otb), (fideId: '2100000', name: 'Santanna, Paulo'));
+
+    // Without a FIDE id the database name is followed.
+    const noFide = PrepProfile(
+      id: 'opponent-db',
+      kind: PrepKind.opponent,
+      name: 'Magnus Carlsen',
+      createdAtMs: 1,
+      accounts: [_database],
+    );
+    expect(prepStarPlayer(noFide), (fideId: null, name: 'Carlsen, Magnus'));
+
+    // Online accounts keep the hourly watch; nothing is followed.
+    expect(prepStarPlayer(_profile), isNull);
+    expect(prepCanStar(_profile), isTrue);
+  });
+
+  test('the reader is never followed into broadcasts', () {
+    const mineOtb = PrepProfile(
+      id: 'mine-otb',
+      kind: PrepKind.mine,
+      name: 'Me',
+      createdAtMs: 1,
+      accounts: [_database],
+    );
+    expect(prepStarPlayer(mineOtb), isNull);
+    expect(prepCanStar(mineOtb), isFalse);
+  });
+
   test('a star survives a save', () {
     final saved = PrepProfile.fromJson(
       jsonDecode(jsonEncode(_profile.copyWith(watching: true).toJson())),
