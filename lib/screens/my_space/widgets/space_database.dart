@@ -1717,9 +1717,8 @@ class _SavedSmartEvent extends ConsumerWidget {
       live: watchSmartEventLive(ref, request),
       spaceDraft: smartEventSpaceDraft(request),
       disclosure: disclosure,
-      // The smart event's own star (its favorites row), notifications
-      // question included. The shortcut stays either way.
-      starRequest: disclosure ? request : null,
+      // No star here: it is the smart event's favorite, and nothing in My
+      // Space adds or removes a favorite. The source screens own it.
       onTap: () => openSpaceShortcut(context, ref, shortcut),
     );
   }
@@ -2448,7 +2447,13 @@ class SpaceSavedRow extends ConsumerWidget {
         'title': shortcut.title,
         'kind': shortcut.params['collectionKind'],
       });
-      return CollectionCard(collection: collection, stacked: stacked);
+      // In My Space the card ends in a chevron, not the collection's star:
+      // nothing in My Space adds or removes a favorite.
+      return CollectionCard(
+        collection: collection,
+        stacked: stacked,
+        showStar: false,
+      );
     }
     final colors = context.colors;
     final isLight = context.isLightTheme;

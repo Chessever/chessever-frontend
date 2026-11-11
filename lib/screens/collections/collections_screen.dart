@@ -436,10 +436,15 @@ class CollectionCard extends ConsumerWidget {
     this.note,
     this.opening,
     this.stacked = false,
+    this.showStar = true,
   });
 
   final Collection collection;
   final bool stacked;
+
+  /// False in My Space, where the card ends in a chevron: its star is the
+  /// collection's favorite, and My Space never adds or removes one.
+  final bool showStar;
   final String? note;
   final CollectionOpening? opening;
 
@@ -543,7 +548,20 @@ class CollectionCard extends ConsumerWidget {
         ?caption,
       ].join(', '),
       onTap: open,
-      trailing: _CollectionStar(collection: c, count: isBook ? stars : null),
+      trailing: showStar
+          ? _CollectionStar(collection: c, count: isBook ? stars : null)
+          : Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                SizedBox(width: 4.w),
+                Icon(
+                  Icons.chevron_right_rounded,
+                  size: 20.ic,
+                  color: context.colors.iconSecondary,
+                ),
+                SizedBox(width: 4.w),
+              ],
+            ),
       menuActions: (menuContext) => [
         LibraryMenuAction(
           icon: Icons.open_in_new_rounded,
