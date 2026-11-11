@@ -1,5 +1,10 @@
 import { handoffNotification } from "./notification_handoff.ts";
 import { HISTORICAL_EVENT_TYPES } from "./historical_guard.ts";
+import {
+  isCombinedSection,
+  speaksForEventStars,
+  suppressCombinedMirror,
+} from "./combined_section.ts";
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import {
@@ -383,12 +388,28 @@ async function processItem(item: OutboxItem) {
       await markSent(item.id);
       return { id: item.id, status: "sent", reason: "tournament_broadcast_reserved" };
     }
-    if (item.event_type === "round_finished" && isCombinedTour(context.tour)) {
+    if (item.event_type === "round_finished" && isCombinedSection(context.tour)) {
       await markSkipped(item.id, "combined_round_results_suppressed");
       return {
         id: item.id,
         status: "skipped",
         reason: "combined_round_results_suppressed",
+      };
+    }
+    // Combined repeats the real sections' boards under new game ids; letting
+    // it speak doubles every start, result and heads-up for the same users.
+    if (
+      suppressCombinedMirror(
+        item.event_type,
+        context.tour,
+        context.sectionTourIds.length,
+      )
+    ) {
+      await markSkipped(item.id, "combined_section_mirror");
+      return {
+        id: item.id,
+        status: "skipped",
+        reason: "combined_section_mirror",
       };
     }
 
@@ -629,13 +650,20 @@ async function processItem(item: OutboxItem) {
       const huTimeControl = await resolveGameTimeControl(
         buildTimeControlLookup(item, context),
       );
-      const { playerRecipients, eventRecipients } =
+      const { playerRecipients, eventRecipients: headsUpEventRecipients } =
         await filterHeadsUpRecipients(
           context.eventUserIds,
           context.playerUserIds,
           leadMinutes,
           huTimeControl,
         );
+      let eventRecipients = headsUpEventRecipients;
+      if (
+        eventRecipients.length > 0 &&
+        !(await speaksForEventStarsAtStart(roundId, context))
+      ) {
+        eventRecipients = [];
+      }
 
       if (playerRecipients.length === 0 && eventRecipients.length === 0) {
         await markSkipped(item.id, "no_recipients");
@@ -1388,7 +1416,7 @@ async function buildContext(item: OutboxItem) {
   let tour: TourRow | null = null;
   let eventName: string | null = null;
   let groupBroadcastId = item.group_broadcast_id ?? null;
-  let groupSectionCount = 0;
+  let sectionTourIds: string[] = [];
 
   // Every lookup here fails loud. They used to discard `error` and carry on
   // with a null row, so one dropped HTTP/2 stream on the games read turned a
@@ -1449,14 +1477,15 @@ async function buildContext(item: OutboxItem) {
           .select("id,name,slug")
           .eq("group_broadcast_id", broadcastId),
     );
-    groupSectionCount = (groupedTours ?? [])
-      .filter((row) => !isCombinedTour(row as TourRow)).length;
+    sectionTourIds = (groupedTours ?? [])
+      .filter((row) => !isCombinedSection(row))
+      .map((row) => row.id);
   }
 
   const displayEventName = buildRoundEventDisplayName(
     eventName,
     tour?.name ?? null,
-    groupSectionCount,
+    sectionTourIds.length,
   );
 
   const playerNames = new Set<string>();
@@ -1546,6 +1575,7 @@ async function buildContext(item: OutboxItem) {
     eventName,
     displayEventName,
     groupBroadcastId,
+    sectionTourIds,
     tourId,
     eventUserIds,
     playerUserIds,
@@ -1555,9 +1585,23 @@ async function buildContext(item: OutboxItem) {
   };
 }
 
-function isCombinedTour(tour: TourRow | null): boolean {
-  const label = `${tour?.name ?? ""} ${tour?.slug ?? ""}`.toLowerCase();
-  return /(^|[^a-z0-9])combined([^a-z0-9]|$)/.test(label);
+/** One heads-up per event and start time for event stars, not one per section. */
+async function speaksForEventStarsAtStart(
+  roundId: string,
+  context: { round: RoundRow | null; sectionTourIds: string[] },
+): Promise<boolean> {
+  const startsAt = context.round?.starts_at;
+  if (!roundId || !startsAt || context.sectionTourIds.length < 2) return true;
+  const rows = await runQuery<{ id: string }[]>(
+    "Simultaneous section rounds lookup",
+    () =>
+      supabase
+        .from("rounds")
+        .select("id")
+        .in("tour_id", context.sectionTourIds)
+        .eq("starts_at", startsAt),
+  );
+  return speaksForEventStars(roundId, (rows ?? []).map((row) => row.id));
 }
 
 function groupedRoundStartCollapseKey(
