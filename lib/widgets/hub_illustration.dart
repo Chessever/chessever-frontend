@@ -30,6 +30,15 @@ class HubIllustration extends StatelessWidget {
   /// partway across and read as a picture cut short.
   static const _field = Color(0xFF0E0E10);
 
+  /// Luma key: the field (about 0x0E) turns transparent, while the board's
+  /// darkest squares (0x17 and up) and the subjects stay opaque.
+  static const _fieldKey = ColorFilter.matrix(<double>[
+    1, 0, 0, 0, 0, //
+    0, 1, 0, 0, 0, //
+    0, 0, 1, 0, 0, //
+    5.315, 17.88, 1.805, 0, -382.5,
+  ]);
+
   @override
   Widget build(BuildContext context) => ExcludeSemantics(
     child: IgnorePointer(
@@ -44,9 +53,10 @@ class HubIllustration extends StatelessWidget {
                   final height = 100.sp.clamp(0.0, constraints.maxHeight);
                   final width = height * 3;
                   final onPaper = context.isLightTheme;
-                  final span = onPaper
-                      ? math.max(width, constraints.maxWidth)
-                      : width;
+                  // The board floor is carried to the card's far edge in
+                  // both themes, so a wide card (iPhone Duo, tablets) never
+                  // shows the picture's board stopping partway across.
+                  final span = math.max(width, constraints.maxWidth);
                   return ClipRect(
                     child: OverflowBox(
                       alignment: Alignment.topRight,
@@ -74,6 +84,14 @@ class HubIllustration extends StatelessWidget {
                               const Positioned.fill(
                                 child: ColoredBox(color: _field),
                               ),
+                            Positioned.fill(
+                              child: CustomPaint(
+                                painter: _BoardFloorPainter(
+                                  pictureLeft: span + shift - width,
+                                  pictureHeight: height,
+                                ),
+                              ),
+                            ),
                             Positioned(
                               top: 0,
                               right: -shift,
@@ -111,13 +129,19 @@ class HubIllustration extends StatelessWidget {
                                         1,
                                       ],
                                     ).createShader(bounds),
-                                child: Image.asset(
-                                  asset,
-                                  width: width,
-                                  height: height,
-                                  fit: BoxFit.contain,
-                                  cacheWidth: 768,
-                                  filterQuality: FilterQuality.medium,
+                                // The picture's flat field drops out, so the
+                                // painted floor below shows exactly where the
+                                // picture's own board fades away.
+                                child: ColorFiltered(
+                                  colorFilter: _fieldKey,
+                                  child: Image.asset(
+                                    asset,
+                                    width: width,
+                                    height: height,
+                                    fit: BoxFit.contain,
+                                    cacheWidth: 768,
+                                    filterQuality: FilterQuality.medium,
+                                  ),
                                 ),
                               ),
                             ),
@@ -138,4 +162,106 @@ class HubIllustration extends StatelessWidget {
       ),
     ),
   );
+}
+
+/// The study scenes' perspective board floor, continued past the picture.
+///
+/// Measured from the 768x256 sources (both share one floor): every column
+/// line runs to one vanishing point, rows are evenly spaced in depth, and the
+/// tones step down the way the art's do. Painting in the source's own pixel
+/// space keeps every line on the picture's lines, so the two read as one.
+class _BoardFloorPainter extends CustomPainter {
+  const _BoardFloorPainter({
+    required this.pictureLeft,
+    required this.pictureHeight,
+  });
+
+  /// Where the picture's left edge sits, in this painter's coordinates.
+  final double pictureLeft;
+  final double pictureHeight;
+
+  static const double _sourceHeight = 256;
+  static const Offset _vanish = Offset(852, -726);
+
+  /// Column lines cross y = 5 every 70.67px from x = 540.
+  static const double _columnY = 5;
+  static const double _columnX0 = 540;
+  static const double _columnStep = 70.67;
+
+  /// Row lines: 1 / (y - vanish.dy) falls by a constant step per row.
+  static const double _rowInv0 = 1 / 759; // row line at y = 33
+  static const double _rowInvStep = 7.39e-5;
+
+  static const _light = [Color(0xFF2D2D2E), Color(0xFF222223)];
+  static const _dark = [Color(0xFF19191A), Color(0xFF161617)];
+
+  double _columnXAt(double column, double y) {
+    final x0 = _columnX0 + column * _columnStep;
+    return _vanish.dx +
+        (x0 - _vanish.dx) * (y - _vanish.dy) / (_columnY - _vanish.dy);
+  }
+
+  double _columnAt(double x, double y) {
+    final x0 =
+        _vanish.dx +
+        (x - _vanish.dx) * (_columnY - _vanish.dy) / (y - _vanish.dy);
+    return (x0 - _columnX0) / _columnStep;
+  }
+
+  double _rowY(int row) => _vanish.dy + 1 / (_rowInv0 - row * _rowInvStep);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (size.isEmpty || pictureHeight <= 0) return;
+    final scale = pictureHeight / _sourceHeight;
+    final left = -pictureLeft / scale;
+    final right = (size.width - pictureLeft) / scale;
+    final bottom = math.min(_sourceHeight, size.height / scale);
+    final area = Rect.fromLTRB(left, 0, right, bottom);
+
+    canvas.save();
+    canvas.translate(pictureLeft, 0);
+    canvas.scale(scale);
+    canvas.clipRect(area);
+
+    Paint tone(List<Color> colors) => Paint()
+      ..isAntiAlias = true
+      ..shader = LinearGradient(
+        begin: Alignment.topCenter,
+        end: Alignment.bottomCenter,
+        colors: colors,
+      ).createShader(const Rect.fromLTWH(0, 0, 1, _sourceHeight));
+
+    // Dark squares are the floor; light squares are drawn over it, so
+    // neighbouring quads never leave an anti-aliasing hairline.
+    canvas.drawRect(area, tone(_dark));
+    final light = tone(_light);
+
+    final firstColumn =
+        math.min(_columnAt(left, 0), _columnAt(left, bottom)).floor() - 1;
+    final lastColumn =
+        math.max(_columnAt(right, 0), _columnAt(right, bottom)).ceil() + 1;
+    for (var row = -1; _rowY(row) < bottom; row++) {
+      final top = math.max(0.0, _rowY(row));
+      final base = math.min(bottom, _rowY(row + 1));
+      if (base <= top) continue;
+      for (var column = firstColumn; column < lastColumn; column++) {
+        if ((column + row).isEven) continue;
+        canvas.drawPath(
+          Path()
+            ..moveTo(_columnXAt(column.toDouble(), top), top)
+            ..lineTo(_columnXAt(column + 1.0, top), top)
+            ..lineTo(_columnXAt(column + 1.0, base), base)
+            ..lineTo(_columnXAt(column.toDouble(), base), base)
+            ..close(),
+          light,
+        );
+      }
+    }
+    canvas.restore();
+  }
+
+  @override
+  bool shouldRepaint(_BoardFloorPainter old) =>
+      old.pictureLeft != pictureLeft || old.pictureHeight != pictureHeight;
 }
