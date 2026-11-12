@@ -1,3 +1,4 @@
+import 'package:chessever2/screens/tour_detail/combined/combined_category.dart';
 import 'package:chessever2/providers/engine_settings_provider.dart';
 import 'package:chessever2/repository/gamebase/gamebase_repository.dart';
 import 'package:chessever2/repository/supabase/chess_player/chess_player_repository.dart';
@@ -748,6 +749,22 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
                 (gamesContext != null && gamesContext.isNotEmpty)
                     ? gamesContext
                     : [gamesTourModel];
+            hasEventContext = true;
+          } else if (ref.read(
+            combinedOtherCategoryProvider(effectiveGameModel.tourId),
+          )) {
+            // A Combined game from a category other than the selected one.
+            // The tournament providers only know the selected category, so
+            // name this game's own: the score card loads that category.
+            final allBoardGames = hasExplicitGames
+                ? scoreCardGamesContext
+                : ref.read(chessBoardAllGamesProvider);
+            final categoryGames = allBoardGames
+                .where((g) => g.tourId == effectiveGameModel.tourId)
+                .toList();
+            gamesContext = categoryGames.isNotEmpty
+                ? categoryGames
+                : [gamesTourModel];
             hasEventContext = true;
           } else {
             // For tournament view, selectedBroadcastModelProvider will be set

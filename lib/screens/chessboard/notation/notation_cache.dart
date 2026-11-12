@@ -60,9 +60,12 @@ final notationTreeProvider = Provider.autoDispose
       }
 
       final tree = NotationTreeBuilder.build(params.game);
+      // Taken now: by the time the microtask runs this provider may already
+      // be marked for a rebuild (a game switch), when `ref` may not be read.
+      final cacheNotifier = ref.read(notationTreeCacheProvider.notifier);
       Future.microtask(() {
-        ref
-            .read(notationTreeCacheProvider.notifier)
+        if (!cacheNotifier.mounted) return;
+        cacheNotifier
             .store(
               params.gameId,
               CachedNotationTree(signature: params.signature, tree: tree),

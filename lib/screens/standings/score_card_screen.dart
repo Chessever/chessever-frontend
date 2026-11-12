@@ -1,3 +1,4 @@
+import 'package:chessever2/screens/tour_detail/combined/combined_category.dart';
 import 'package:chessever2/widgets/paywall/premium_game_access.dart';
 import 'dart:io' as io;
 import 'dart:math' as math;
@@ -525,6 +526,14 @@ class _ScoreCardPage extends ConsumerWidget {
         hasExplicitContextEvent &&
         profileDataSource != PlayerProfileDataSource.twic;
 
+    // Opened from a Combined game of a category other than the selected one:
+    // the merged tournament provider below only holds the selected category,
+    // where this player has no game. Load the game's own category instead.
+    final bool isOtherCombinedCategory =
+        shouldFetchFullEventGames &&
+        selectedBroadcast != null &&
+        ref.watch(combinedOtherCategoryProvider(contextEvent));
+
     if (shouldFetchFullTwicEventGames) {
       // TWIC event context: fetch full player event history from backend.
       final request = TwicScorecardEventGamesRequest(
@@ -542,7 +551,7 @@ class _ScoreCardPage extends ConsumerWidget {
         },
         error: (_, __) => gamesContext ?? [],
       );
-    } else if (selectedBroadcast != null) {
+    } else if (selectedBroadcast != null && !isOtherCombinedCategory) {
       // Tournament broadcast context — always prefer the merged provider so
       // games across pagination-purposed sub-tours (e.g. EICC "Boards 1-66" +
       // "Boards 67-126") are unified. This must win over shouldFetchFullEventGames:

@@ -202,14 +202,30 @@ class EventVideoSession extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Tours that belong to the same event as [tourId]: its categories (Group
+  /// A-D, Open/Women). A list can hold games of several of them at once (the
+  /// Combined category), and moving from one to the next is browsing the
+  /// event, not opening another one.
+  Set<String> get eventTourIds => _eventTourIds;
+  Set<String> _eventTourIds = const <String>{};
+
+  /// Whether a page showing a game of [id] belongs to the event being watched.
+  bool isEventTour(String id) => id == tourId || _eventTourIds.contains(id);
+
   void openGame({
     required String gameId,
     required String tourId,
     required String roundId,
+    Set<String> eventTourIds = const <String>{},
   }) {
     if (this.gameId == gameId &&
         this.tourId == tourId &&
         this.roundId == roundId) {
+      // The event's categories can load after the first game opened.
+      if (!setEquals(_eventTourIds, eventTourIds)) {
+        _eventTourIds = eventTourIds;
+        notifyListeners();
+      }
       return;
     }
     if (this.gameId != gameId) {
@@ -220,8 +236,16 @@ class EventVideoSession extends ChangeNotifier {
         selected = streams.firstOrNull;
       }
     }
-    final newEvent = this.tourId != tourId;
-    final newScope = newEvent || this.roundId != roundId;
+    // A sibling category of the same event keeps the stream, like another
+    // round does. Both sides must agree, so a stale set never joins two
+    // unrelated events.
+    final sameEvent =
+        this.tourId == tourId ||
+        (_eventTourIds.contains(tourId) && eventTourIds.contains(this.tourId));
+    final newEvent = !sameEvent;
+    final newScope =
+        newEvent || this.tourId != tourId || this.roundId != roundId;
+    _eventTourIds = eventTourIds;
     if (newEvent) {
       _selectionLocked = false;
       _orderingCountry = effectiveCountry;

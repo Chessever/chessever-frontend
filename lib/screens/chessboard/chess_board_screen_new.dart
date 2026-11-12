@@ -2,6 +2,7 @@ import 'package:chessever2/screens/chessboard/video/game_video_submission_screen
 import 'package:chessever2/providers/game_video_sources_provider.dart';
 import 'video/game_analysis_sources.dart';
 import 'package:chessever2/screens/chessboard/widgets/board_game_menu_host.dart';
+import 'package:chessever2/screens/tour_detail/combined/combined_category.dart';
 import 'package:chessever2/widgets/paywall/game_report_access.dart';
 import 'package:chessever2/config/feature_flags.dart';
 import 'package:chessever2/providers/country_dropdown_provider.dart';
@@ -176,6 +177,29 @@ const Color kGameEndingRedColor = Color(0xCCF53236);
 const boardGamesPageViewTestKey = ValueKey<String>(
   'board-games-page-view-test',
 );
+
+/// Never part of a tour id.
+const String _eventTourIdSeparator = ',';
+
+/// The tours whose pages share [game]'s event stream: every category of the
+/// open event when [game] is one of its games, otherwise none.
+///
+/// [openEventTourIds] is the open event's tour ids joined by a comma, or null
+/// when no event is open (a board reached from For You, a link, the library).
+@visibleForTesting
+Set<String> eventTourIdsForVideo({
+  required GamesTourModel game,
+  required String? openEventTourIds,
+}) {
+  if (game.source != GameSource.supabase ||
+      openEventTourIds == null ||
+      openEventTourIds.isEmpty) {
+    return const <String>{};
+  }
+  final ids = openEventTourIds.split(_eventTourIdSeparator).toSet();
+  // A game of some other event keeps to its own tour.
+  return ids.length > 1 && ids.contains(game.tourId) ? ids : const <String>{};
+}
 
 /// Stable widget-test handle for the game-switcher content.
 @visibleForTesting
@@ -3484,6 +3508,23 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
           : null,
     );
     final analysisSources = ref.watch(gameVideoSourcesProvider(videoLookup));
+    // The open event's categories share its stream. A list that spans several
+    // of them (the Combined category) must page between their games the way a
+    // single category does: without stopping the stream or swapping layouts.
+    // Read as one string so a refresh that changes nothing rebuilds nothing.
+    final openEventTourIds = ref.exists(tourDetailScreenProvider)
+        ? ref.watch(
+            tourDetailScreenProvider.select(
+              (detail) => detail.valueOrNull?.tours
+                  .map((tour) => tour.tour.id)
+                  .join(_eventTourIdSeparator),
+            ),
+          )
+        : null;
+    final eventTourIds = eventTourIdsForVideo(
+      game: currentGame,
+      openEventTourIds: openEventTourIds,
+    );
     return EventVideoHost(
       completed: currentGame.gameStatus.isFinished,
       analysisStreams: gameAnalysisStreams(currentGame, analysisSources),
@@ -3508,6 +3549,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
       roundId: currentGame.source == GameSource.supabase
           ? currentGame.roundId
           : '',
+      eventTourIds: eventTourIds,
       child: withLikeFlightScope(
         PopScope(
           canPop: false,
@@ -6523,16 +6565,25 @@ class _RoundGroup {
 /// Groups an already round-sorted game list into contiguous round runs,
 /// keyed by `roundSlug ?? roundId` — the same grouping the previous vertical
 /// dropdown used for its round separators.
-List<_RoundGroup> _buildRoundGroups(List<GamesTourModel> games) {
+///
+/// [categoryLabels] names the categories of a list that spans several of them
+/// (the Combined category). Every category has its own "Round 3", so there a
+/// run also ends where the category changes and reads "B · Round 3".
+List<_RoundGroup> _buildRoundGroups(
+  List<GamesTourModel> games, {
+  Map<String, String>? categoryLabels,
+}) {
   final groups = <_RoundGroup>[];
   String? lastRoundKey;
   for (var i = 0; i < games.length; i++) {
     final game = games[i];
-    final roundKey = game.roundSlug ?? game.roundId;
+    final roundKey = _dropdownRoundKey(game, categoryLabels);
     if (roundKey != lastRoundKey) {
+      final round = _formatRoundLabel(game.roundSlug ?? game.roundId);
+      final category = categoryLabels?[game.tourId];
       groups.add(
         _RoundGroup(
-          label: _formatRoundLabel(roundKey),
+          label: category == null ? round : '$category · $round',
           date: game.bucketDate,
           startIndex: i,
         ),
@@ -6541,6 +6592,34 @@ List<_RoundGroup> _buildRoundGroups(List<GamesTourModel> games) {
     }
   }
   return groups;
+}
+
+/// What makes two neighbouring games the same round in the switcher.
+String _dropdownRoundKey(
+  GamesTourModel game,
+  Map<String, String>? categoryLabels,
+) {
+  final round = game.roundSlug ?? game.roundId;
+  return categoryLabels == null ? round : '${game.tourId}/$round';
+}
+
+/// The picker's name for each category in [games], when the list holds games
+/// of two or more categories of the open event. Null otherwise: one category,
+/// or a list that is not that event's (For You, favorites).
+Map<String, String>? _dropdownCategoryLabels(
+  List<GamesTourModel> games,
+  CombinedCategories categories,
+) {
+  if (!categories.canCombine) return null;
+  final labels = <String, String>{
+    for (final category in categories.items) category.tourId: category.label,
+  };
+  final tourIds = <String>{};
+  for (final game in games) {
+    if (!labels.containsKey(game.tourId)) return null;
+    tourIds.add(game.tourId);
+  }
+  return tourIds.length < 2 ? null : labels;
 }
 
 /// Index into [groups] of the round that contains [gameIndex].
@@ -6788,12 +6867,14 @@ class _GameDropdownContentState extends ConsumerState<_GameDropdownContent> {
     );
   }
 
+  /// Category names for a list spanning several categories; see
+  /// [_dropdownCategoryLabels]. Refreshed by every build.
+  Map<String, String>? _categoryLabels;
+
   bool _startsNewRound(int index) {
     if (index <= 0) return true;
-    final prev =
-        widget.games[index - 1].roundSlug ?? widget.games[index - 1].roundId;
-    final curr = widget.games[index].roundSlug ?? widget.games[index].roundId;
-    return prev != curr;
+    return _dropdownRoundKey(widget.games[index - 1], _categoryLabels) !=
+        _dropdownRoundKey(widget.games[index], _categoryLabels);
   }
 
   /// Separator between item [index] and [index+1]. At a round boundary it is a
@@ -6827,7 +6908,18 @@ class _GameDropdownContentState extends ConsumerState<_GameDropdownContent> {
       return SizedBox(height: (_verticalPadding * 2).h + _scaledCardRowHeight);
     }
 
-    final roundGroups = _buildRoundGroups(widget.games);
+    // Only an open event has categories; never create its provider from a
+    // board reached some other way.
+    _categoryLabels = ref.exists(tourDetailScreenProvider)
+        ? _dropdownCategoryLabels(
+            widget.games,
+            ref.watch(combinedCategoriesProvider),
+          )
+        : null;
+    final roundGroups = _buildRoundGroups(
+      widget.games,
+      categoryLabels: _categoryLabels,
+    );
     final showTimeline = roundGroups.length > 1;
 
     // Live-game batching — byte-for-byte the Games tab's scheme

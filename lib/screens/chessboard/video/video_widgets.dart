@@ -5,6 +5,7 @@ import '../../../widgets/app_snack.dart';
 import 'dart:math' as math;
 import 'package:country_flags/country_flags.dart';
 import 'package:chessever2/theme/app_theme.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:chessever2/repository/local_storage/local_storage_repository.dart'
@@ -52,27 +53,36 @@ class EventVideoLayout {
     required this.visible,
     required this.gameId,
     required this.tourId,
+    this.eventTourIds = const <String>{},
   });
 
   factory EventVideoLayout.of(EventVideoSession session) {
     final hasVideo = session.hasVideo;
+    final showVideo = session.showVideo;
     return EventVideoLayout(
       hasVideo: hasVideo,
       visible: hasVideo && session.visible,
       // Irrelevant facts are blanked so they cannot trigger a rebuild.
       gameId: hasVideo ? session.gameId : '',
-      tourId: session.showVideo ? session.tourId : '',
+      tourId: showVideo ? session.tourId : '',
+      eventTourIds: showVideo ? session.eventTourIds : const <String>{},
     );
   }
 
   final bool hasVideo, visible;
   final String gameId, tourId;
 
+  /// The other categories of the event being watched. Their pages use the
+  /// watch layout too, so a list spanning several categories (Combined) does
+  /// not swap layouts between neighbouring games.
+  final Set<String> eventTourIds;
+
   bool get showVideo => hasVideo && visible;
   bool isActive(String id) => hasVideo && gameId == id;
 
   /// Whether pages of [tourId] use the watch layout.
-  bool watches(String tourId) => showVideo && this.tourId == tourId;
+  bool watches(String tourId) =>
+      showVideo && (this.tourId == tourId || eventTourIds.contains(tourId));
 
   @override
   bool operator ==(Object other) =>
@@ -80,10 +90,17 @@ class EventVideoLayout {
       other.hasVideo == hasVideo &&
       other.visible == visible &&
       other.gameId == gameId &&
-      other.tourId == tourId;
+      other.tourId == tourId &&
+      setEquals(other.eventTourIds, eventTourIds);
 
   @override
-  int get hashCode => Object.hash(hasVideo, visible, gameId, tourId);
+  int get hashCode => Object.hash(
+    hasVideo,
+    visible,
+    gameId,
+    tourId,
+    Object.hashAllUnordered(eventTourIds),
+  );
 }
 
 class EventVideoLayoutScope extends InheritedWidget {
@@ -113,6 +130,7 @@ class EventVideoHost extends StatefulWidget {
     required this.gameId,
     required this.tourId,
     required this.roundId,
+    this.eventTourIds = const <String>{},
     this.analysisStreams = const [],
     this.completed = false,
     required this.child,
@@ -125,6 +143,10 @@ class EventVideoHost extends StatefulWidget {
     this.configuration,
   });
   final String gameId, tourId, roundId;
+
+  /// Tours of the event [tourId] belongs to, itself included. Empty when the
+  /// game stands alone.
+  final Set<String> eventTourIds;
   final List<EventVideoStream> analysisStreams;
   final bool completed;
   final String? preferredCountry;
@@ -207,6 +229,7 @@ class EventVideoHostState extends State<EventVideoHost>
     gameId: widget.gameId,
     tourId: widget.tourId,
     roundId: widget.roundId,
+    eventTourIds: widget.eventTourIds,
   );
   void _synchronize() => _player?.synchronize(session);
 

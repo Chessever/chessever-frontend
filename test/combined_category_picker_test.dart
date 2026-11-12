@@ -134,6 +134,52 @@ Future<void> _drain(WidgetTester tester) async {
 }
 
 void main() {
+  test('only a merged category other than the selected one is "other"', () {
+    ProviderContainer container({required bool combined}) {
+      final container = ProviderContainer(
+        overrides: [
+          combinedCategorySelectedProvider.overrideWithValue(combined),
+          combinedCategoriesProvider.overrideWithValue(
+            CombinedCategories.fromTours([
+              for (final tour in [_groupA, _groupB])
+                TourModel(tour: tour, roundStatus: RoundStatus.ongoing),
+            ]),
+          ),
+          tourDetailScreenProviderOverride(
+            TourDetailViewModel(
+              aboutTourModel: AboutTourModel.fromTour(_groupA),
+              liveTourIds: const [],
+              tours: [
+                for (final tour in [_groupA, _groupB, _mirror])
+                  TourModel(tour: tour, roundStatus: RoundStatus.ongoing),
+              ],
+            ),
+          ),
+        ],
+      );
+      addTearDown(container.dispose);
+      return container;
+    }
+
+    final combined = container(combined: true);
+    // Group B is merged in but is not the category selected underneath.
+    expect(combined.read(combinedOtherCategoryProvider('tour-b')), isTrue);
+    // The selected category, the organizer mirror and a stranger are not.
+    expect(combined.read(combinedOtherCategoryProvider('tour-a')), isFalse);
+    expect(
+      combined.read(combinedOtherCategoryProvider('tour-combined')),
+      isFalse,
+    );
+    expect(combined.read(combinedOtherCategoryProvider('elsewhere')), isFalse);
+    expect(combined.read(combinedOtherCategoryProvider('')), isFalse);
+
+    // Outside Combined nothing changes for anyone.
+    expect(
+      container(combined: false).read(combinedOtherCategoryProvider('tour-b')),
+      isFalse,
+    );
+  });
+
   testWidgets('the picker offers Combined above the categories it merges', (
     tester,
   ) async {

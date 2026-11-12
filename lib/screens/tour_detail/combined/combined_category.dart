@@ -335,6 +335,28 @@ final combinedCategorySelectedProvider = Provider<bool>((ref) {
   );
 });
 
+/// Whether [tourId] is a category the Combined list shows other than the one
+/// selected underneath.
+///
+/// Everything outside the Games list still describes the selected category:
+/// its games provider, its standings. A surface opened from a Combined game
+/// (a player's score card above all) must ask for that game's own category
+/// instead, or it comes up empty for every category but one.
+final combinedOtherCategoryProvider = Provider.autoDispose.family<bool, String>(
+  (ref, tourId) {
+    if (tourId.isEmpty || !ref.watch(combinedCategorySelectedProvider)) {
+      return false;
+    }
+    final selectedTourId = ref.watch(
+      tourDetailScreenProvider.select(
+        (state) => state.valueOrNull?.aboutTourModel.id,
+      ),
+    );
+    return tourId != selectedTourId &&
+        ref.watch(combinedCategoriesProvider).tourIds.contains(tourId);
+  },
+);
+
 /// Tours whose games the Combined list is showing right now. Their games
 /// providers poll at the combined cadence instead of the slow sibling one, so
 /// a new round in any category appears promptly. Empty off the Games tab.

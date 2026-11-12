@@ -766,6 +766,59 @@ void main() {
     session.toggle();
     session.toggle();
   });
+  test('a sibling category of the same event keeps the running stream', () async {
+    final session = EventVideoSession(
+      repository: FakeVideoRepository(fixtureVideos()),
+    );
+    addTearDown(session.dispose);
+    const groups = {'group-a', 'group-b'};
+    session.openGame(
+      gameId: 'g1',
+      tourId: 'group-b',
+      roundId: 'b-round',
+      eventTourIds: groups,
+    );
+    session.streams = fixtureVideos();
+    session.select('english-main');
+    session.reportPlayback(true, session.playerRevision);
+    final revision = session.playerRevision;
+
+    // Paging from Group B to Group A in a Combined list: same event.
+    session.openGame(
+      gameId: 'g2',
+      tourId: 'group-a',
+      roundId: 'a-round',
+      eventTourIds: groups,
+    );
+    await Future<void>.delayed(Duration.zero);
+    expect(session.selected!.id, 'english-main');
+    expect(session.playing, isTrue);
+    expect(session.playerRevision, revision);
+    expect(session.isEventTour('group-b'), isTrue);
+
+    // A game of another event still starts over.
+    session.openGame(gameId: 'g3', tourId: 'elsewhere', roundId: 'r');
+    expect(session.playing, isFalse);
+    expect(session.isEventTour('group-a'), isFalse);
+  });
+  test('two events never join through one side\'s category list', () {
+    final session = EventVideoSession(
+      repository: FakeVideoRepository(fixtureVideos()),
+    );
+    addTearDown(session.dispose);
+    session.openGame(gameId: 'g1', tourId: 'solo', roundId: 'r');
+    session.streams = fixtureVideos();
+    session.select('english-main');
+    session.reportPlayback(true, session.playerRevision);
+    // The next game's event lists other tours, not the one being left.
+    session.openGame(
+      gameId: 'g2',
+      tourId: 'group-a',
+      roundId: 'r',
+      eventTourIds: const {'group-a', 'group-b'},
+    );
+    expect(session.playing, isFalse);
+  });
   test('returning from background continues a stream that was live', () {
     final session = EventVideoSession(
       repository: FakeVideoRepository(fixtureVideos()),
