@@ -102,7 +102,7 @@ class _FavoritesTabScreenState extends ConsumerState<FavoritesTabScreen> {
           ),
           child: Column(
             children: [
-              SizedBox(height: MediaQuery.of(context).viewPadding.top + 4.h),
+              SizedBox(height: MediaQuery.viewPaddingOf(context).top + 4.h),
               _buildAppBar(context, selectedMode),
               SizedBox(height: 8.h),
               _buildSegmentedSwitcher(selectedMode),

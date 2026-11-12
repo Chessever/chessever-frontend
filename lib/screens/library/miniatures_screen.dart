@@ -99,7 +99,7 @@ class _MiniaturesScreenState extends ConsumerState<MiniaturesScreen> {
       body: ScreenWrapper(
         child: Column(
           children: [
-            SizedBox(height: MediaQuery.of(context).viewPadding.top + 8.h),
+            SizedBox(height: MediaQuery.viewPaddingOf(context).top + 8.h),
             _buildHeader(),
             SizedBox(height: 12.h),
             Padding(

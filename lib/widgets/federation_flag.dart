@@ -61,18 +61,40 @@ class FederationFlag extends StatelessWidget {
       return true;
     }
 
+    final iso2 = _resolveIso2(raw, normalized);
+
+    return iso2 != null && iso2.length == 2;
+  }
+
+  // country_picker's CountryService builds ~250 Country objects in its
+  // constructor. A flag sits in every game card and standings row, and
+  // hasVisibleFlag plus build each looked the country up, so one instance and a
+  // memo per federation string replace a table rebuild on every card build.
+  static final CountryService _countries = CountryService();
+  static final Map<String, String?> _iso2ByFederation = {};
+
+  /// ISO2 for a trimmed federation value that is not one of the special cases
+  /// handled by the callers (unknown sentinels, FIDE, UK subdivisions).
+  static String? _resolveIso2(String raw, String normalized) {
+    if (_iso2ByFederation.containsKey(raw)) return _iso2ByFederation[raw];
+
     String? iso2;
     if (normalized.length == 2) {
-      iso2 = CountryService().findByCode(normalized)?.countryCode;
+      iso2 = _countries.findByCode(normalized)?.countryCode;
     } else if (normalized.length == 3) {
       final mapped = CountryUtils.toIso2Code(normalized);
-      iso2 = CountryService().findByCode(mapped)?.countryCode;
+      iso2 = _countries.findByCode(mapped)?.countryCode;
     } else {
+      // Country name (e.g. "Norway", "Austria") — use manual mapping first
+      // (more reliable), then fall back to country_picker's name lookup.
       final manual = CountryUtils.countryNameToIso2(raw);
       iso2 = manual.isNotEmpty ? manual : CountryUtils.getCountryCode(raw);
     }
 
-    return iso2 != null && iso2.length == 2;
+    // Federation values are a small closed set; the cap only guards against
+    // unexpected free text from an API.
+    if (_iso2ByFederation.length >= 2048) _iso2ByFederation.clear();
+    return _iso2ByFederation[raw] = iso2;
   }
 
   @override
@@ -104,18 +126,7 @@ class FederationFlag extends StatelessWidget {
     if (lowerRaw == 'scotland') return _ukSubdivisionFlag(context, 'SCO');
     if (lowerRaw == 'wales') return _ukSubdivisionFlag(context, 'WLS');
 
-    String? iso2;
-    if (normalized.length == 2) {
-      iso2 = CountryService().findByCode(normalized)?.countryCode;
-    } else if (normalized.length == 3) {
-      final mapped = CountryUtils.toIso2Code(normalized);
-      iso2 = CountryService().findByCode(mapped)?.countryCode;
-    } else {
-      // Country name (e.g. "Norway", "Austria") — use manual mapping first
-      // (more reliable), then fall back to country_picker's name lookup.
-      final manual = CountryUtils.countryNameToIso2(raw);
-      iso2 = manual.isNotEmpty ? manual : CountryUtils.getCountryCode(raw);
-    }
+    final iso2 = _resolveIso2(raw, normalized);
 
     if (iso2 == null || iso2.length != 2) {
       return _noFlag();

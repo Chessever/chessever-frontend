@@ -781,14 +781,18 @@ class _EventImage extends ConsumerWidget {
                 memCacheWidth: cacheWidth,
                 fadeInDuration: const Duration(milliseconds: 300),
                 fadeOutDuration: const Duration(milliseconds: 200),
-                placeholder: (context, url) => Skeletonizer(
-                  enabled: true,
-                  effect: ShimmerEffect(
-                    baseColor: context.colors.surfaceRecessed,
-                    highlightColor: context.colors.divider,
-                    duration: Duration(seconds: 1),
+                // The shimmer repaints every frame while the thumbnail loads;
+                // its own layer keeps that from re-recording the whole card.
+                placeholder: (context, url) => RepaintBoundary(
+                  child: Skeletonizer(
+                    enabled: true,
+                    effect: ShimmerEffect(
+                      baseColor: context.colors.surfaceRecessed,
+                      highlightColor: context.colors.divider,
+                      duration: Duration(seconds: 1),
+                    ),
+                    child: Container(color: context.colors.surfaceRecessed),
                   ),
-                  child: Container(color: context.colors.surfaceRecessed),
                 ),
                 errorWidget: (context, url, error) =>
                     _buildFallbackFlag(context, imageData.fallbackCountryCode),
@@ -796,14 +800,16 @@ class _EventImage extends ConsumerWidget {
             }
             return _buildFallbackFlag(context, imageData.fallbackCountryCode);
           },
-          loading: () => Skeletonizer(
-            enabled: true,
-            effect: ShimmerEffect(
-              baseColor: context.colors.skeleton,
-              highlightColor: context.colors.divider,
-              duration: const Duration(seconds: 1),
+          loading: () => RepaintBoundary(
+            child: Skeletonizer(
+              enabled: true,
+              effect: ShimmerEffect(
+                baseColor: context.colors.skeleton,
+                highlightColor: context.colors.divider,
+                duration: const Duration(seconds: 1),
+              ),
+              child: Container(color: context.colors.surfaceRecessed),
             ),
-            child: Container(color: context.colors.surfaceRecessed),
           ),
           error: (_, __) => EventFallbackArtwork(title: event.title),
         ),

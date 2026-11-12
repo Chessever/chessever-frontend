@@ -196,7 +196,7 @@ class _CountrymenTabScreenState extends ConsumerState<CountrymenTabScreen> {
           ),
           child: Column(
             children: [
-              SizedBox(height: MediaQuery.of(context).viewPadding.top + 4.h),
+              SizedBox(height: MediaQuery.viewPaddingOf(context).top + 4.h),
               _buildAppBar(context, effectiveCountryAsync, selectedMode),
               SizedBox(height: 8.h),
               _buildSegmentedSwitcher(selectedMode),

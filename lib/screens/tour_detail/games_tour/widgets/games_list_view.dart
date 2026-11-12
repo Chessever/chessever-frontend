@@ -134,7 +134,7 @@ class GamesListView extends ConsumerWidget {
       thumbWidth: 4.sp,
       padding: EdgeInsets.only(
         top: 0,
-        bottom: MediaQuery.of(context).viewPadding.bottom + 8.sp,
+        bottom: MediaQuery.viewPaddingOf(context).bottom + 8.sp,
       ),
       child: LayoutBuilder(
         builder: (context, outerConstraints) {
@@ -280,7 +280,7 @@ class GamesListView extends ConsumerWidget {
               left: horizontalPadding,
               right: horizontalPadding,
               top: 8.sp,
-              bottom: MediaQuery.of(context).viewPadding.bottom + 8.sp,
+              bottom: MediaQuery.viewPaddingOf(context).bottom + 8.sp,
             ),
           );
         },

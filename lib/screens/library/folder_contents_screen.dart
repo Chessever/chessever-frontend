@@ -618,7 +618,7 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
     BuildContext context,
     AsyncValue<PaginatedBookState> bookAsync,
   ) {
-    final topPadding = MediaQuery.of(context).viewPadding.top;
+    final topPadding = MediaQuery.viewPaddingOf(context).top;
 
     return Container(
       padding: EdgeInsets.only(top: topPadding + 8.h, bottom: 6.h),

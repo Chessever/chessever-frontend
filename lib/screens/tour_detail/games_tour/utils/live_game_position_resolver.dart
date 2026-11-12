@@ -22,25 +22,77 @@ class PgnPositionSnapshot {
 const int _kMaxPgnPositionCacheEntries = 500;
 final Map<String, PgnPositionSnapshot> _pgnPositionCache = {};
 
+// PGNs that resolve to no position (no moves yet, or unparseable). Every
+// function here is pure in its string arguments and runs inside card builds,
+// so a not-started game must not be parsed again on each rebuild.
+final Set<String> _unresolvablePgns = {};
+
+const int _kMaxFenValidityCacheEntries = 1000;
+final Map<String, bool> _fenValidityCache = {};
+
+final RegExp _whitespaceRun = RegExp(r'\s+');
+
 bool isValidGameFen(String? fen) {
   final raw = fen?.trim();
   if (raw == null || raw.isEmpty) return false;
 
+  final cached = _fenValidityCache[raw];
+  if (cached != null) return cached;
+
+  bool valid;
   try {
     Setup.parseFen(raw);
-    return true;
+    valid = true;
   } catch (_) {
-    return false;
+    valid = false;
   }
+  if (_fenValidityCache.length >= _kMaxFenValidityCacheEntries) {
+    _fenValidityCache.remove(_fenValidityCache.keys.first);
+  }
+  return _fenValidityCache[raw] = valid;
 }
 
 PgnPositionSnapshot? resolveFinalPositionFromPgn(String? pgn) {
-  final raw = pgn?.trim();
-  if (raw == null || raw.isEmpty) return null;
+  if (pgn == null) return null;
+
+  // Look up the string as given first. trim() allocates a new string whenever
+  // the PGN has edge whitespace, and a new string re-hashes the whole PGN on
+  // every lookup.
+  final direct = _pgnPositionCache[pgn];
+  if (direct != null) return direct;
+  if (_unresolvablePgns.contains(pgn)) return null;
+
+  final raw = pgn.trim();
+  if (raw.isEmpty) return null;
 
   final cached = _pgnPositionCache[raw];
-  if (cached != null) return cached;
+  if (cached != null) {
+    if (!identical(raw, pgn)) _rememberPgnPosition(pgn, cached);
+    return cached;
+  }
 
+  final snapshot = _replayPgn(raw);
+  if (snapshot == null) {
+    if (_unresolvablePgns.length >= _kMaxPgnPositionCacheEntries) {
+      _unresolvablePgns.remove(_unresolvablePgns.first);
+    }
+    _unresolvablePgns.add(pgn);
+    return null;
+  }
+
+  _rememberPgnPosition(raw, snapshot);
+  if (!identical(raw, pgn)) _rememberPgnPosition(pgn, snapshot);
+  return snapshot;
+}
+
+void _rememberPgnPosition(String key, PgnPositionSnapshot snapshot) {
+  if (_pgnPositionCache.length >= _kMaxPgnPositionCacheEntries) {
+    _pgnPositionCache.remove(_pgnPositionCache.keys.first);
+  }
+  _pgnPositionCache[key] = snapshot;
+}
+
+PgnPositionSnapshot? _replayPgn(String raw) {
   try {
     final game = PgnGame.parsePgn(raw);
     var position = PgnGame.startingPosition(game.headers);
@@ -69,11 +121,6 @@ PgnPositionSnapshot? resolveFinalPositionFromPgn(String? pgn) {
       // card's PGN, so the replay stays as cheap as before.
       finalEval: _recordedEval(lastNode?.comments),
     );
-
-    if (_pgnPositionCache.length >= _kMaxPgnPositionCacheEntries) {
-      _pgnPositionCache.remove(_pgnPositionCache.keys.first);
-    }
-    _pgnPositionCache[raw] = snapshot;
 
     return snapshot;
   } catch (_) {
@@ -131,7 +178,7 @@ String? resolveFreshestGameFen({
 }
 
 int? plyFromFen(String? fen) {
-  final parts = fen?.trim().split(RegExp(r'\s+'));
+  final parts = fen?.trim().split(_whitespaceRun);
   if (parts == null || parts.length < 6) return null;
 
   final fullMove = int.tryParse(parts[5]);

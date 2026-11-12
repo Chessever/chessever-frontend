@@ -893,7 +893,7 @@ class GameRepository extends BaseRepository {
     int offset = 0,
   }) async {
     return handleApiCall(() async {
-      final jsonList = <String>[];
+      final jsonList = <Map<String, dynamic>>[];
       var pageOffset = offset;
       var remaining = limit;
 
@@ -914,7 +914,7 @@ class GameRepository extends BaseRepository {
             .range(pageOffset, pageOffset + pageSize - 1);
 
         final responseList = response as List;
-        jsonList.addAll(responseList.map((item) => json.encode(item)));
+        jsonList.addAll(responseList.cast<Map<String, dynamic>>());
 
         if (!shouldFetchAnotherTourGamesPage(
           responseList.length,
@@ -1113,7 +1113,7 @@ class GameRepository extends BaseRepository {
       final response = await query;
 
       final jsonList = (response as List)
-          .map((item) => json.encode(item))
+          .cast<Map<String, dynamic>>()
           .toList();
 
       final games = await compute(_decodeGamesInIsolate, jsonList);
@@ -1142,7 +1142,7 @@ class GameRepository extends BaseRepository {
           .range(offset, offset + limit - 1);
 
       final jsonList = (response as List)
-          .map((item) => json.encode(item))
+          .cast<Map<String, dynamic>>()
           .toList();
 
       final games = await compute(_decodeGamesInIsolate, jsonList);
@@ -1217,7 +1217,7 @@ class GameRepository extends BaseRepository {
           .range(offset, offset + limit - 1);
 
       final jsonList = (response as List)
-          .map((item) => json.encode(item))
+          .cast<Map<String, dynamic>>()
           .toList();
 
       final games = await compute(_decodeGamesInIsolate, jsonList);
@@ -1250,7 +1250,7 @@ class GameRepository extends BaseRepository {
           .order('id', ascending: true);
 
       final jsonList = (response as List)
-          .map((item) => json.encode(item))
+          .cast<Map<String, dynamic>>()
           .toList();
 
       final games = await compute(_decodeGamesInIsolate, jsonList);
@@ -1286,7 +1286,7 @@ class GameRepository extends BaseRepository {
           .range(offset, offset + limit - 1);
 
       final jsonList = (response as List)
-          .map((item) => json.encode(item))
+          .cast<Map<String, dynamic>>()
           .toList();
 
       final games = await compute(_decodeGamesInIsolate, jsonList);
@@ -1324,7 +1324,7 @@ class GameRepository extends BaseRepository {
           .range(offset, offset + limit - 1);
 
       final jsonList = (response as List)
-          .map((item) => json.encode(item))
+          .cast<Map<String, dynamic>>()
           .toList();
 
       final games = await compute(_decodeGamesInIsolate, jsonList);
@@ -1360,7 +1360,7 @@ class GameRepository extends BaseRepository {
           .range(offset, offset + limit - 1);
 
       final jsonList = (response as List)
-          .map((item) => json.encode(item))
+          .cast<Map<String, dynamic>>()
           .toList();
 
       final games = await compute(_decodeGamesInIsolate, jsonList);
@@ -1533,7 +1533,7 @@ class GameRepository extends BaseRepository {
       final response = await query;
 
       final jsonList = (response as List)
-          .map((item) => json.encode(item))
+          .cast<Map<String, dynamic>>()
           .toList();
 
       var games = await compute(_decodeGamesInIsolate, jsonList);
@@ -1572,7 +1572,7 @@ class GameRepository extends BaseRepository {
           .range(offset, offset + limit - 1);
 
       final jsonList = (response as List)
-          .map((item) => json.encode(item))
+          .cast<Map<String, dynamic>>()
           .toList();
 
       final games = await compute(_decodeGamesInIsolate, jsonList);
@@ -1620,7 +1620,7 @@ class GameRepository extends BaseRepository {
       debugPrint('===== GameRepository: Raw response count: $rawCount =====');
 
       final jsonList = (response as List)
-          .map((item) => json.encode(item))
+          .cast<Map<String, dynamic>>()
           .toList();
 
       final games = await compute(_decodeGamesInIsolate, jsonList);
@@ -1673,7 +1673,7 @@ class GameRepository extends BaseRepository {
           .limit(limit);
 
       final jsonList = (response as List)
-          .map((item) => json.encode(item))
+          .cast<Map<String, dynamic>>()
           .toList();
 
       final games = await compute(_decodeGamesInIsolate, jsonList);
@@ -1710,7 +1710,7 @@ class GameRepository extends BaseRepository {
           .limit(limit);
 
       final jsonList = (response as List)
-          .map((item) => json.encode(item))
+          .cast<Map<String, dynamic>>()
           .toList();
 
       final games = await compute(_decodeGamesInIsolate, jsonList);
@@ -1747,7 +1747,7 @@ class GameRepository extends BaseRepository {
           .limit(limit * 3); // Fetch extra for filtering
 
       final jsonList = (response as List)
-          .map((item) => json.encode(item))
+          .cast<Map<String, dynamic>>()
           .toList();
 
       var games = await compute(_decodeGamesInIsolate, jsonList);
@@ -1820,7 +1820,7 @@ class GameRepository extends BaseRepository {
           .range(offset, offset + limit - 1);
 
       final jsonList = (response as List)
-          .map((item) => json.encode(item))
+          .cast<Map<String, dynamic>>()
           .toList();
 
       final games = await compute(_decodeGamesInIsolate, jsonList);
@@ -1874,7 +1874,7 @@ class GameRepository extends BaseRepository {
       final rawCount = (response as List).length;
       debugPrint('[GameRepository] searchGamesFlexible: got $rawCount results');
 
-      final jsonList = response.map((item) => json.encode(item)).toList();
+      final jsonList = response.cast<Map<String, dynamic>>().toList();
       final games = await compute(_decodeGamesInIsolate, jsonList);
       return games;
     });
@@ -1933,7 +1933,7 @@ class GameRepository extends BaseRepository {
         '[GameRepository] searchCountrymenGames: raw results = ${(response as List).length}',
       );
 
-      final jsonList = response.map((item) => json.encode(item)).toList();
+      final jsonList = response.cast<Map<String, dynamic>>().toList();
       final games = await compute(_decodeGamesInIsolate, jsonList);
 
       return _hydratePgnForSecondaryPeriodGames(games);
@@ -1996,7 +1996,7 @@ class GameRepository extends BaseRepository {
       );
 
       final jsonList = (response as List)
-          .map((item) => json.encode(item))
+          .cast<Map<String, dynamic>>()
           .toList();
       final games = await compute(_decodeGamesInIsolate, jsonList);
 
@@ -2040,7 +2040,7 @@ class GameRepository extends BaseRepository {
         return <Games>[];
       }
 
-      final jsonList = responseList.map((item) => json.encode(item)).toList();
+      final jsonList = responseList.cast<Map<String, dynamic>>().toList();
 
       final games = await compute(_decodeGamesInIsolate, jsonList);
 
@@ -2453,7 +2453,7 @@ class GameRepository extends BaseRepository {
         extraFilter: extraFilter,
       );
 
-      final jsonList = response.map((item) => json.encode(item)).toList();
+      final jsonList = response.cast<Map<String, dynamic>>().toList();
       var games = await compute(_decodeGamesInIsolate, jsonList);
 
       if (eventTimeControls != null &&
@@ -2542,7 +2542,7 @@ class GameRepository extends BaseRepository {
       final nowIso = DateTime.now().toUtc().toIso8601String();
       final trimmedQuery = query?.trim();
 
-      final jsonList = <String>[];
+      final jsonList = <Map<String, dynamic>>[];
       var pageOffset = offset;
       var remaining = limit;
 
@@ -2586,7 +2586,7 @@ class GameRepository extends BaseRepository {
             .range(pageOffset, pageOffset + pageSize - 1);
 
         final responseList = response as List;
-        jsonList.addAll(responseList.map((item) => json.encode(item)));
+        jsonList.addAll(responseList.cast<Map<String, dynamic>>());
 
         if (!shouldFetchAnotherTourGamesPage(
           responseList.length,
@@ -2922,7 +2922,7 @@ class GameRepository extends BaseRepository {
       final games = <Games>[];
       if (gamesResponse.isNotEmpty) {
         final jsonList = gamesResponse
-            .map((item) => json.encode(item))
+            .cast<Map<String, dynamic>>()
             .toList();
         games.addAll(await compute(_decodeGamesInIsolate, jsonList));
       }
@@ -2948,7 +2948,7 @@ class GameRepository extends BaseRepository {
           .limit(limit);
 
       final jsonList = (response as List)
-          .map((item) => json.encode(item))
+          .cast<Map<String, dynamic>>()
           .toList();
 
       final games = await compute(_decodeGamesInIsolate, jsonList);
@@ -3076,7 +3076,7 @@ class GameRepository extends BaseRepository {
       );
 
       final jsonList = (response as List)
-          .map((item) => json.encode(item))
+          .cast<Map<String, dynamic>>()
           .toList();
 
       final games = await compute(_decodeGamesInIsolate, jsonList);
@@ -3219,7 +3219,7 @@ class GameRepository extends BaseRepository {
       );
 
       final jsonList = (response as List)
-          .map((item) => json.encode(item))
+          .cast<Map<String, dynamic>>()
           .toList();
 
       final games = await compute(_decodeGamesInIsolate, jsonList);
@@ -3348,11 +3348,12 @@ class GameRepository extends BaseRepository {
   }
 }
 
-List<Games> _decodeGamesInIsolate(List<String> gameJsonList) {
-  final games = gameJsonList.map((e) {
-    final decoded = json.decode(e) as Map<String, dynamic>;
-    return Games.fromJson(decoded);
-  }).toList();
+// Takes the rows as PostgREST decoded them. Callers used to json.encode every
+// row (PGN included) on the UI isolate so this could json.decode it again here;
+// the maps are sent as they are instead, and strings are shared between
+// isolates, not copied.
+List<Games> _decodeGamesInIsolate(List<Map<String, dynamic>> rows) {
+  final games = rows.map(Games.fromJson).toList();
   return _deduplicateGames(games);
 }
 

@@ -643,22 +643,27 @@ class CountryUtils {
     return fideToIso2[upper] ?? upper;
   }
 
+  // One table for every lookup: the CountryService constructor rebuilds ~250
+  // Country objects, and getCountryCode used to do that up to three times per
+  // call. Lookups only; the list is never handed out or mutated.
+  static final CountryService _countryLookup = CountryService();
+
   static String? getCountryCode(String? location) {
     if (location == null || location.isEmpty) return null;
 
     // Try to match by name
-    final country = CountryService().findByName(location);
+    final country = _countryLookup.findByName(location);
     if (country != null) return country.countryCode;
 
     // Try to match by code directly (if location is just "US")
-    final countryByCode = CountryService().findByCode(location);
+    final countryByCode = _countryLookup.findByCode(location);
     if (countryByCode != null) return countryByCode.countryCode;
 
     // Try to find country in a longer string (e.g. "Baku, Azerbaijan")
     final parts = location.split(',');
     for (final part in parts) {
       final trimmed = part.trim();
-      final c = CountryService().findByName(trimmed);
+      final c = _countryLookup.findByName(trimmed);
       if (c != null) return c.countryCode;
     }
 

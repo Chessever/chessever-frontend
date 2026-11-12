@@ -576,22 +576,20 @@ class _StadiumChipButton extends HookWidget {
       return null;
     }, [isOpen]);
 
-    final shimmerValue = useAnimation(shimmerController);
-
-    final button = AnimatedBuilder(
-      animation: shimmerController,
-      builder: (context, child) {
-        return CustomPaint(
-          painter: isOpen
-              ? null
-              : _FluidShimmerPainter(
-                  progress: shimmerValue,
-                  shimmerColor: kPrimaryColor.withValues(alpha: 0.4),
-                  borderRadius: 12.br,
-                ),
-          child: child,
-        );
-      },
+    // The shimmer never rests while the menu is closed, so it must cost a
+    // repaint and nothing else: the painter listens to the controller itself
+    // (no widget rebuild per tick, which used to rebuild the label and
+    // re-measure its text every frame), and the boundary keeps the tick from
+    // re-recording the app bar around the chip.
+    final button = RepaintBoundary(
+      child: CustomPaint(
+      painter: isOpen
+          ? null
+          : _FluidShimmerPainter(
+              progress: shimmerController,
+              shimmerColor: kPrimaryColor.withValues(alpha: 0.4),
+              borderRadius: 12.br,
+            ),
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
         curve: Curves.easeOutCubic,
@@ -645,6 +643,7 @@ class _StadiumChipButton extends HookWidget {
           ],
         ),
       ),
+      ),
     );
 
     // Chip width - wider now that the search icon no longer sits in the app
@@ -664,7 +663,7 @@ class _StadiumChipButton extends HookWidget {
 }
 
 class _FluidShimmerPainter extends CustomPainter {
-  final double progress;
+  final Animation<double> progress;
   final Color shimmerColor;
   final double borderRadius;
 
@@ -672,14 +671,14 @@ class _FluidShimmerPainter extends CustomPainter {
     required this.progress,
     required this.shimmerColor,
     required this.borderRadius,
-  });
+  }) : super(repaint: progress);
 
   @override
   void paint(Canvas canvas, Size size) {
     final rect = Rect.fromLTWH(0, 0, size.width, size.height);
     final rrect = RRect.fromRectAndRadius(rect, Radius.circular(borderRadius));
 
-    final sweepAngle = progress * 2 * math.pi;
+    final sweepAngle = progress.value * 2 * math.pi;
 
     final gradient = SweepGradient(
       center: Alignment.center,
@@ -704,7 +703,10 @@ class _FluidShimmerPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_FluidShimmerPainter oldDelegate) {
-    return progress != oldDelegate.progress;
+    // Ticks arrive through the repaint listenable, not through a new painter.
+    return progress != oldDelegate.progress ||
+        shimmerColor != oldDelegate.shimmerColor ||
+        borderRadius != oldDelegate.borderRadius;
   }
 }
 
@@ -851,6 +853,7 @@ class _MarqueeText extends HookWidget {
         )..layout();
 
         final needsScroll = textPainter.width > constraints.maxWidth;
+        textPainter.dispose();
 
         if (!needsScroll) {
           // Text fits - show normally, no animation needed
@@ -904,20 +907,23 @@ class _LiveDot extends HookWidget {
       return controller.stop;
     }, [controller]);
 
-    return AnimatedBuilder(
-      animation: controller,
-      builder: (context, child) {
-        return Container(
-          width: 8.sp,
-          height: 8.sp,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            color: context.colors.accentText.withValues(
-              alpha: 1 - controller.value * 0.3,
+    // Own layer: the pulse repaints an 8 px dot, not the chip or row around it.
+    return RepaintBoundary(
+      child: AnimatedBuilder(
+        animation: controller,
+        builder: (context, child) {
+          return Container(
+            width: 8.sp,
+            height: 8.sp,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: context.colors.accentText.withValues(
+                alpha: 1 - controller.value * 0.3,
+              ),
             ),
-          ),
-        );
-      },
+          );
+        },
+      ),
     );
   }
 }

@@ -493,7 +493,7 @@ class _PrepProfileScreenState extends ConsumerState<PrepProfileScreen> {
           ),
           child: Column(
             children: [
-              SizedBox(height: MediaQuery.of(context).viewPadding.top + 4.h),
+              SizedBox(height: MediaQuery.viewPaddingOf(context).top + 4.h),
               _TopBar(
                 profile: profile,
                 // On Games the menu also acts on the games it shows.

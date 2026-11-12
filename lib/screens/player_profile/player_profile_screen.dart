@@ -896,7 +896,7 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
           ),
           child: Column(
             children: [
-              SizedBox(height: MediaQuery.of(context).viewPadding.top + 4.h),
+              SizedBox(height: MediaQuery.viewPaddingOf(context).top + 4.h),
 
               // App bar
               _buildAppBar(

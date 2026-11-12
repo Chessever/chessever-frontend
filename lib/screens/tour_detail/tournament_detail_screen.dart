@@ -461,7 +461,7 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
                   child: Column(
                     children: [
                       SizedBox(
-                        height: MediaQuery.of(context).viewPadding.top + 4.h,
+                        height: MediaQuery.viewPaddingOf(context).top + 4.h,
                       ),
                       tourDetailAsync.when(
                         data:

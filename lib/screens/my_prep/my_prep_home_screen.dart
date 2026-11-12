@@ -149,7 +149,7 @@ class _MyPrepHomeScreenState extends ConsumerState<MyPrepHomeScreen> {
           ),
           child: Column(
             children: [
-              SizedBox(height: MediaQuery.of(context).viewPadding.top + 4.h),
+              SizedBox(height: MediaQuery.viewPaddingOf(context).top + 4.h),
               const _AppBar(),
               SizedBox(height: 8.h),
               Padding(

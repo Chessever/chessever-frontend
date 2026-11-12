@@ -19,6 +19,46 @@ abstract class ChessboardBackground extends StatelessWidget {
   final Color darkSquare;
 }
 
+// CHESSEVER PATCH (performance): coordinate labels are laid out once and
+// reused. Upstream built and laid out 16 TextPainters inside every paint() of
+// the board background, which runs on each frame of a piece animation and each
+// time a board enters a scrolling list, and never disposed them. The style is
+// fixed apart from the colour, so (text, colour) identifies a label; a laid-out
+// TextPainter paints the same glyphs at any offset.
+final Map<(String, Color), TextPainter> _coordPainters = {};
+bool _coordPaintersListenToFonts = false;
+
+TextPainter _coordPainter(String text, Color color) {
+  if (!_coordPaintersListenToFonts) {
+    _coordPaintersListenToFonts = true;
+    // A font that loads later changes the metrics; drop the stale layouts.
+    PaintingBinding.instance.systemFonts.addListener(_clearCoordPainters);
+  }
+  // 16 labels per colour pair per theme: far below this in practice.
+  if (_coordPainters.length > 512) _clearCoordPainters();
+  return _coordPainters[(text, color)] ??= TextPainter(
+    text: TextSpan(
+      text: text,
+      style: TextStyle(
+        inherit: false,
+        fontWeight: FontWeight.bold,
+        fontSize: 10.0,
+        color: color,
+        fontFamily: 'Roboto',
+        height: 1.0,
+      ),
+    ),
+    textDirection: TextDirection.ltr,
+  )..layout();
+}
+
+void _clearCoordPainters() {
+  for (final painter in _coordPainters.values) {
+    painter.dispose();
+  }
+  _coordPainters.clear();
+}
+
 /// A chessboard background with solid color squares.
 class SolidColorChessboardBackground extends ChessboardBackground {
   const SolidColorChessboardBackground({
@@ -65,23 +105,12 @@ class _SolidColorChessboardPainter extends CustomPainter {
         final paint = Paint()..color = (rank + file).isEven ? lightSquare : darkSquare;
         canvas.drawRect(square, paint);
         if (coordinates && (file == 7 || rank == 7)) {
-          final coordStyle = TextStyle(
-            inherit: false,
-            fontWeight: FontWeight.bold,
-            fontSize: 10.0,
-            color: (rank + file).isEven ? darkSquare : lightSquare,
-            fontFamily: 'Roboto',
-            height: 1.0,
-          );
+          final coordColor = (rank + file).isEven ? darkSquare : lightSquare;
           if (file == 7) {
-            final coord = TextPainter(
-              text: TextSpan(
-                text: orientation == Side.white ? '${8 - rank}' : '${rank + 1}',
-                style: coordStyle,
-              ),
-              textDirection: TextDirection.ltr,
+            final coord = _coordPainter(
+              orientation == Side.white ? '${8 - rank}' : '${rank + 1}',
+              coordColor,
             );
-            coord.layout();
             const edgeOffset = 2.0;
             final offset = Offset(
               file * squareSize + (squareSize - coord.width) - edgeOffset,
@@ -90,17 +119,12 @@ class _SolidColorChessboardPainter extends CustomPainter {
             coord.paint(canvas, offset);
           }
           if (rank == 7) {
-            final coord = TextPainter(
-              text: TextSpan(
-                text:
-                    orientation == Side.white
-                        ? String.fromCharCode(97 + file)
-                        : String.fromCharCode(97 + 7 - file),
-                style: coordStyle,
-              ),
-              textDirection: TextDirection.ltr,
+            final coord = _coordPainter(
+              orientation == Side.white
+                  ? String.fromCharCode(97 + file)
+                  : String.fromCharCode(97 + 7 - file),
+              coordColor,
             );
-            coord.layout();
             const edgeOffset = 2.0;
             final offset = Offset(
               file * squareSize + edgeOffset,
@@ -174,14 +198,7 @@ class _ImageBackgroundCoordinatePainter extends CustomPainter {
     for (var rank = 0; rank < 8; rank++) {
       for (var file = 0; file < 8; file++) {
         if (file == 7 || rank == 7) {
-          final coordStyle = TextStyle(
-            inherit: false,
-            fontWeight: FontWeight.bold,
-            fontSize: 10.0,
-            color: (rank + file).isEven ? darkSquare : lightSquare,
-            fontFamily: 'Roboto',
-            height: 1.0,
-          );
+          final coordColor = (rank + file).isEven ? darkSquare : lightSquare;
           final square = Rect.fromLTWH(
             file * squareSize,
             rank * squareSize,
@@ -191,14 +208,10 @@ class _ImageBackgroundCoordinatePainter extends CustomPainter {
           final paint = Paint()..color = const Color(0x00000000);
           canvas.drawRect(square, paint);
           if (file == 7) {
-            final coord = TextPainter(
-              text: TextSpan(
-                text: orientation == Side.white ? '${8 - rank}' : '${rank + 1}',
-                style: coordStyle,
-              ),
-              textDirection: TextDirection.ltr,
+            final coord = _coordPainter(
+              orientation == Side.white ? '${8 - rank}' : '${rank + 1}',
+              coordColor,
             );
-            coord.layout();
             const edgeOffset = 2.0;
             final offset = Offset(
               file * squareSize + (squareSize - coord.width) - edgeOffset,
@@ -207,17 +220,12 @@ class _ImageBackgroundCoordinatePainter extends CustomPainter {
             coord.paint(canvas, offset);
           }
           if (rank == 7) {
-            final coord = TextPainter(
-              text: TextSpan(
-                text:
-                    orientation == Side.white
-                        ? String.fromCharCode(97 + file)
-                        : String.fromCharCode(97 + 7 - file),
-                style: coordStyle,
-              ),
-              textDirection: TextDirection.ltr,
+            final coord = _coordPainter(
+              orientation == Side.white
+                  ? String.fromCharCode(97 + file)
+                  : String.fromCharCode(97 + 7 - file),
+              coordColor,
             );
-            coord.layout();
             const edgeOffset = 2.0;
             final offset = Offset(
               file * squareSize + edgeOffset,

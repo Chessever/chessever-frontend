@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'package:dartchess/dartchess.dart';
-import 'package:flutter/scheduler.dart';
 import 'package:flutter/widgets.dart';
 import '../board_settings.dart';
 import '../fen.dart';
@@ -72,7 +71,6 @@ class StaticChessboard extends StatefulWidget with ChessboardGeometry {
 }
 
 class _StaticChessboardState extends State<StaticChessboard> with SingleTickerProviderStateMixin {
-  bool _deferImagesLoading = false;
   bool _imagesLoaded = false;
   bool _highlightImagesLoaded = false;
   late final BoardHighlightNotifier _highlightNotifier;
@@ -232,28 +230,16 @@ class _StaticChessboardState extends State<StaticChessboard> with SingleTickerPr
     _piecesNotifier.value = newPieces;
   }
 
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    verifyRecommendedDeferredLoading();
-  }
-
-  void verifyRecommendedDeferredLoading() {
-    if (!mounted) return;
-
-    if (Scrollable.recommendDeferredLoadingForContext(context)) {
-      _deferImagesLoading = true;
-      SchedulerBinding.instance.scheduleFrameCallback((_) {
-        scheduleMicrotask(() => verifyRecommendedDeferredLoading());
-      });
-    } else {
-      setState(() => _deferImagesLoading = false);
-    }
-  }
+  // CHESSEVER PATCH (performance): upstream polled
+  // Scrollable.recommendDeferredLoadingForContext on every frame of a fast
+  // fling and called setState on every mounted board in the frame the fling
+  // slowed down. The flag it maintained only fed PiecesPainter.imagesLoaded,
+  // which paint() never reads, so pieces were drawn during the fling anyway:
+  // the polling deferred nothing and only produced that rebuild burst.
 
   @override
   Widget build(BuildContext context) {
-    final imagesLoaded = _imagesLoaded && !_deferImagesLoading;
+    final imagesLoaded = _imagesLoaded;
     final hasBorder = settings.border != null;
 
     final background =
@@ -299,10 +285,16 @@ class _StaticChessboardState extends State<StaticChessboard> with SingleTickerPr
       animation: _translationAnimation,
     );
 
-    final Map<Square, HighlightDetails> customHighlights = {
-      for (final MapEntry(key: square, value: highlight) in widget.squareHighlights.entries)
-        square: highlight.details,
-    };
+    // CHESSEVER PATCH (performance): one shared empty map when there are no
+    // highlights (the common case) instead of a fresh map per build.
+    final Map<Square, HighlightDetails> customHighlights =
+        widget.squareHighlights.isEmpty
+            ? const <Square, HighlightDetails>{}
+            : {
+              for (final MapEntry(key: square, value: highlight)
+                  in widget.squareHighlights.entries)
+                square: highlight.details,
+            };
 
     final highlightsPainter = HighlightsPainter(
       interactionNotifier: _highlightNotifier,

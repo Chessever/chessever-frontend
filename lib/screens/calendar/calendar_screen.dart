@@ -189,7 +189,7 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          SizedBox(height: 24.h + MediaQuery.of(context).viewPadding.top),
+          SizedBox(height: 24.h + MediaQuery.viewPaddingOf(context).top),
 
           /// Search bar + Filters
           Padding(

@@ -90,6 +90,39 @@ patch lets the landed PIECE itself settle, which an overlay cannot do.
 Wire it from the app by passing the classified move's destination square and a
 per-ply key (the same `trigger` given to `ClassificationLanding`).
 
+## Patch 4: performance (no visual or behavioural change)
+
+**Files:** `lib/src/widgets/background.dart`, `lib/src/widgets/static_board.dart`,
+`lib/src/widgets/board_painter.dart`
+**Why:** boards are on almost every screen, many at once in scrolling lists.
+Each item below removes work that produced the same pixels as before. All are
+candidates to send upstream.
+
+- **Coordinate labels are laid out once** (`background.dart`, `_coordPainter`).
+  Upstream built and laid out 16 `TextPainter`s inside every `paint()` of the
+  board background (both the solid and the image background) and never disposed
+  them. That ran on each frame of a piece animation and each time a board
+  entered a list. They are now cached by `(text, colour)` and dropped when the
+  system fonts change.
+- **`StaticChessboard` no longer polls during a fling** (`static_board.dart`).
+  Upstream checked `Scrollable.recommendDeferredLoadingForContext` every frame
+  of a fast fling and called `setState` on every mounted board when it slowed.
+  The flag only fed `PiecesPainter.imagesLoaded`, which `paint()` never reads,
+  so nothing was deferred. The override, the poll and the flag are deleted.
+- **Highlights repaint only when they change** (`static_board.dart`,
+  `board_painter.dart`). `StaticChessboard` passes one shared empty map when
+  there are no square highlights, `HighlightsPainter.shouldRepaint` compares the
+  map by content (`mapEquals`), and `BoardHighlightNotifier.update` returns
+  early when all seven fields are unchanged. Before, every parent rebuild
+  repainted the whole board layer.
+- **Static pieces ignore the game notifier unless they need it**
+  (`board_painter.dart`, `PiecesPainter`). The painter reads the game only for
+  `sideToMove`, used only by `PieceOrientationBehavior.sideToPlay`; it listens
+  to `gameNotifier` only in that mode. `updatePosition` assigns a new `GameData`
+  on every call, so the other modes repainted all pieces on each call.
+
+Checked with `flutter test` in this directory (202 tests).
+
 ## How to bump to a newer chessground (keep at newest)
 
 1. `flutter pub get` with `chessground: ^<newest>` so the new version lands in

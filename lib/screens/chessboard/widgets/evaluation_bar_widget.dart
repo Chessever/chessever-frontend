@@ -162,7 +162,11 @@ class _EvaluationBarWidgetState extends State<EvaluationBarWidget> {
             ? '#$displayMate'
             : _formatSignedEval(displayEval);
 
-    return SingleMotionBuilder(
+    // The spring changes the two bar heights on every tick. Without its own
+    // layer the nearest repaint boundary is the whole game page, so the app
+    // bar, player rows and engine lines were re-recorded for each tick.
+    return RepaintBoundary(
+      child: SingleMotionBuilder(
       motion: const CupertinoMotion.smooth(),
       value: _whiteRatioTarget,
       builder: (context, animatedRatio, _) {
@@ -239,6 +243,7 @@ class _EvaluationBarWidgetState extends State<EvaluationBarWidget> {
           ),
         );
       },
+      ),
     );
   }
 }

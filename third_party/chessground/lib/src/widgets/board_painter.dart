@@ -2,7 +2,7 @@ import 'dart:math' show pi;
 import 'dart:ui' as ui;
 
 import 'package:dartchess/dartchess.dart';
-import 'package:flutter/foundation.dart' show ValueListenable;
+import 'package:flutter/foundation.dart' show ValueListenable, mapEquals, setEquals;
 import 'package:flutter/widgets.dart';
 
 import '../board_settings.dart';
@@ -46,6 +46,19 @@ class BoardHighlightNotifier extends ChangeNotifier {
     required Move? premove,
     required Square? checkSquare,
   }) {
+    // CHESSEVER PATCH (performance): the board calls this from every
+    // didUpdateWidget, so an unconditional notify repainted the highlights
+    // (and the board layer they share) on each parent rebuild even when no
+    // highlight changed.
+    if (this.selected == selected &&
+        this.lastMove == lastMove &&
+        this.premove == premove &&
+        this.checkSquare == checkSquare &&
+        setEquals(this.moveDests, moveDests) &&
+        setEquals(this.premoveDests, premoveDests) &&
+        setEquals(this.occupiedSquares, occupiedSquares)) {
+      return;
+    }
     this.selected = selected;
     this.moveDests = moveDests;
     this.premoveDests = premoveDests;
@@ -213,7 +226,10 @@ class HighlightsPainter extends CustomPainter {
         lastMoveDetails != oldDelegate.lastMoveDetails ||
         selectedDetails != oldDelegate.selectedDetails ||
         validMoveColor != oldDelegate.validMoveColor ||
-        squareHighlights != oldDelegate.squareHighlights;
+        // CHESSEVER PATCH (performance): compare by content. The boards build
+        // this map on every build, so an identity check was always true and
+        // every rebuild repainted the whole board layer.
+        !mapEquals(squareHighlights, oldDelegate.squareHighlights);
   }
 }
 
@@ -248,7 +264,13 @@ class PiecesPainter extends CustomPainter {
            // pieces become static again.
            translatingPiecesNotifier,
            draggedPieceSquareNotifier,
-           gameNotifier,
+           // CHESSEVER PATCH (performance): paint() reads the game only for
+           // sideToMove, and only PieceOrientationBehavior.sideToPlay uses it.
+           // The game notifier fires on every updatePosition, even with an
+           // unchanged position, so listening in the other two modes repainted
+           // all pieces for nothing. A real position change still arrives
+           // through piecesNotifier.
+           if (pieceOrientationBehavior == PieceOrientationBehavior.sideToPlay) gameNotifier,
            pendingPromotionNotifier,
            landingSquareNotifier,
          ]),
