@@ -6776,6 +6776,24 @@ class _GameDropdownContentState extends ConsumerState<_GameDropdownContent> {
 
   static const double _timelineHeight = 46.0;
   static const double _sectionGap = 6.0;
+
+  /// Height of the round timeline: the design's 46.h, or the round label,
+  /// date and active bar measured in the type the strip really draws when
+  /// that is taller. Rows scale by `.h` and type by `.f`, and on tablets and
+  /// the iPhone Duo `.h` shrinks faster, so 46.h alone clipped the date.
+  static double timelineExtent(BuildContext context) {
+    final scaler = MediaQuery.textScalerOf(context);
+    double line(TextStyle style) =>
+        scaler.scale(style.fontSize ?? 14) * (style.height ?? 1);
+    final content =
+        line(AppTypography.textXsMedium) +
+        2.h +
+        line(AppTypography.textXxsRegular) +
+        3.h +
+        2;
+    return math.max(_timelineHeight.h * context.textGrowth, content);
+  }
+
   static const double _verticalPadding = 10.0;
 
   // Live streaming for the mini-boards is gated by `shouldStreamProvider`, which
@@ -6962,8 +6980,7 @@ class _GameDropdownContentState extends ConsumerState<_GameDropdownContent> {
     final preferredCardRowHeight = _scaledCardRowHeight;
     final verticalPad = (_verticalPadding * 2).h;
     final timelineSpace = showTimeline
-        ? (_sectionGap + _timelineHeight).h +
-              _timelineHeight.h * (context.textGrowth - 1)
+        ? _sectionGap.h + timelineExtent(context)
         : 0.0;
     final preferredContentHeight =
         verticalPad + preferredCardRowHeight + timelineSpace;
@@ -7049,7 +7066,7 @@ class _GameDropdownContentState extends ConsumerState<_GameDropdownContent> {
               if (showTimeline) ...[
                 SizedBox(height: _sectionGap.h),
                 SizedBox(
-                  height: _timelineHeight.h * context.textGrowth,
+                  height: timelineExtent(context),
                   width: widget.dropdownWidth,
                   child: ListenableBuilder(
                     listenable: _scrollController,
@@ -7188,7 +7205,7 @@ class _StickyRoundTimelineState extends State<_StickyRoundTimeline> {
     _ensureKeys();
 
     return SizedBox(
-      height: _GameDropdownContentState._timelineHeight.h * context.textGrowth,
+      height: _GameDropdownContentState.timelineExtent(context),
       child: ScrollConfiguration(
         behavior: ScrollConfiguration.of(context).copyWith(scrollbars: false),
         child: ListView.separated(
