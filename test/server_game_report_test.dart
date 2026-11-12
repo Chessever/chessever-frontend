@@ -1,10 +1,15 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
 import 'package:chessever2/screens/chessboard/game_review/game_analysis_report.dart';
+import 'package:chessever2/screens/chessboard/game_review/game_review_provider.dart';
 import 'package:chessever2/screens/chessboard/game_review/server_game_report.dart';
 import 'package:chessever2/screens/chessboard/analysis/chess_game.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
 
 /// The wire contract with the `chessever-analysis` Worker.
 ///
@@ -128,6 +133,255 @@ void main() {
     final returnedPgn = payload['pgn'] as String;
     expect(returnedPgn, contains(r'$247')); // book
     expect(returnedPgn, contains(r'$246')); // blunder
+  });
+
+  test('a report backed by official Lichess analysis still rebuilds', () {
+    // Such a report has no engine or search block, no evaluation for the
+    // starting position, no search depth or line anywhere, and extra keys on
+    // every position and move. Reshaped here from the captured response
+    // rather than stored: the real ones are other people's games.
+    Map<String, dynamic> sourceEvaluation(Object? evaluation) => {
+      ...evaluation as Map<String, dynamic>,
+      'depth': null,
+      'moves': <String>[],
+    };
+    final positions = (payload['positions'] as List)
+        .cast<Map<String, dynamic>>();
+    final lichess = <String, dynamic>{
+      ...payload,
+      'source': 'lichess',
+      'engine': null,
+      'search': null,
+      'provenance': {'provider': 'lichess', 'coverage': 'complete'},
+      'positions': [
+        {
+          'fen': positions.first['fen'],
+          'evaluation': null,
+          'winPercentage': null,
+          'provenance': 'lichess_initial_policy',
+        },
+        for (final raw in positions.skip(1))
+          {
+            ...raw,
+            'evaluation': sourceEvaluation(raw['evaluation']),
+            'provenance': 'lichess',
+          },
+      ],
+      'moves': [
+        for (final raw
+            in (payload['moves'] as List).cast<Map<String, dynamic>>())
+          {
+            ...raw,
+            'evaluation': sourceEvaluation(raw['evaluation']),
+            'evidence': {'evaluation': 'lichess', 'book': 'gamebase'},
+          },
+      ],
+    };
+
+    final original = gameAnalysisReportFromServerJson(payload, game: game);
+    final report = gameAnalysisReportFromServerJson(lichess, game: game);
+
+    expect(report.moves, hasLength(game.mainline.length));
+    expect(report.positions, hasLength(game.mainline.length + 1));
+    expect(
+      report.moves.map((move) => move.classification),
+      original.moves.map((move) => move.classification),
+    );
+    expect(
+      report.moves.map((move) => move.evaluation.centipawns),
+      original.moves.map((move) => move.evaluation.centipawns),
+    );
+    expect(
+      report.moves.map((move) => move.evaluation.mate),
+      original.moves.map((move) => move.evaluation.mate),
+    );
+    // No score for the starting position reads as "no information", and an
+    // unknown depth as zero, never as a failure.
+    expect(report.positions.first.bestLine.centipawns, isNull);
+    expect(report.positions.first.bestLine.mate, isNull);
+    expect(report.moves.map((move) => move.evaluation.depth), everyElement(0));
+    expect(report.whiteAccuracy, original.whiteAccuracy);
+    expect(report.blackAccuracy, original.blackAccuracy);
+  });
+
+  group('the game id in the report request', () {
+    /// Runs one report through the controller-facing runner against a stub
+    /// Worker and returns the body it posted. The stub answers the create call
+    /// with a finished job, so nothing waits on a poll.
+    Future<Map<String, dynamic>> postedBody({String? gameId}) async {
+      Map<String, dynamic>? body;
+      final runner = serverGameReportRunner(
+        gameId: gameId,
+        clientFactory: () => ServerGameReportClient(
+          baseUrl: 'https://analysis.test',
+          accessToken: () => 'token',
+          httpClient: MockClient((request) async {
+            if (request.method == 'POST') {
+              expect(request.url.path, '/v1/reports');
+              body = jsonDecode(request.body) as Map<String, dynamic>;
+              return http.Response(
+                '{"id":"job-1","status":"succeeded","progress":1}',
+                200,
+              );
+            }
+            expect(request.url.path, '/v1/reports/job-1/result');
+            return http.Response.bytes(utf8.encode(jsonEncode(payload)), 200);
+          }),
+        ),
+      )!;
+      final report = await runner(
+        game,
+        onProgress: (_, _) {},
+        isCancelled: () => false,
+      );
+      expect(report.moves, hasLength(game.mainline.length));
+      return body!;
+    }
+
+    test('is sent for every id shape the games table holds', () async {
+      for (final id in const [
+        'GLT6Si5W',
+        'chess.com:181569501439',
+        '0kWCULYV-13etm2g',
+        'gb_0000c846-df42-4105-bb7a-c01a82e4b80f',
+      ]) {
+        final body = await postedBody(gameId: id);
+        expect(body['gameId'], id, reason: id);
+        expect(body['pgn'], contains('Qxf7#'), reason: id);
+      }
+    });
+
+    test('is left out when the game has none', () async {
+      expect(await postedBody(), isNot(contains('gameId')));
+    });
+
+    test('is left out when it cannot be a games id', () async {
+      // The Worker would only drop these, and an id with a space or a slash is
+      // one of the app's own (a virtual gamebase event, an import), never a
+      // row.
+      for (final id in [
+        '',
+        ' ',
+        'GLT6Si5W ',
+        'GLT6Si5W\n',
+        'gamebase::Tata Steel 2026',
+        'games/GLT6Si5W',
+        'a' * 65,
+      ]) {
+        expect(
+          await postedBody(gameId: id),
+          isNot(contains('gameId')),
+          reason: '"$id"',
+        );
+      }
+    });
+
+    test('comes only from a board opened on a broadcast game', () {
+      GamesTourModel board(String id, GameSource source) {
+        PlayerCard player(String name) => PlayerCard(
+          name: name,
+          federation: '',
+          title: '',
+          rating: 0,
+          countryCode: '',
+          team: null,
+        );
+        return GamesTourModel(
+          gameId: id,
+          source: source,
+          whitePlayer: player('White'),
+          blackPlayer: player('Black'),
+          whiteTimeDisplay: '--:--',
+          blackTimeDisplay: '--:--',
+          whiteClockCentiseconds: 0,
+          blackClockCentiseconds: 0,
+          gameStatus: GameStatus.whiteWins,
+          roundId: 'round',
+          tourId: 'tour',
+        );
+      }
+
+      expect(
+        reportDatabaseGameId(board('GLT6Si5W', GameSource.supabase)),
+        'GLT6Si5W',
+      );
+      // Every other source carries an id of the app's own making, which names
+      // no row even when it happens to look like one.
+      for (final source in GameSource.values) {
+        if (source == GameSource.supabase) continue;
+        expect(
+          reportDatabaseGameId(board('GLT6Si5W', source)),
+          isNull,
+          reason: source.name,
+        );
+      }
+    });
+  });
+
+  group('the poll delay', () {
+    test('is short while the job is young, then the usual two seconds', () {
+      const fast = Duration(milliseconds: 750);
+      const slow = Duration(seconds: 2);
+
+      expect(ServerGameReportClient.pollDelay(Duration.zero), fast);
+      expect(
+        ServerGameReportClient.pollDelay(const Duration(seconds: 5)),
+        fast,
+      );
+      expect(
+        ServerGameReportClient.pollDelay(
+          const Duration(seconds: 19, milliseconds: 999),
+        ),
+        fast,
+      );
+      expect(
+        ServerGameReportClient.pollDelay(const Duration(seconds: 20)),
+        slow,
+      );
+      expect(
+        ServerGameReportClient.pollDelay(const Duration(minutes: 5)),
+        slow,
+      );
+      expect(ServerGameReportClient.pollInterval, slow);
+    });
+
+    testWidgets('a young job is asked again after the short delay', (
+      tester,
+    ) async {
+      // On the test clock, so the wait costs nothing and the moment of the
+      // first poll is exact.
+      var polls = 0;
+      final client = ServerGameReportClient(
+        baseUrl: 'https://analysis.test',
+        accessToken: () => 'token',
+        httpClient: MockClient((request) async {
+          if (request.method == 'POST') {
+            return http.Response(
+              '{"id":"job-1","status":"queued","progress":0}',
+              202,
+            );
+          }
+          if (request.url.path.endsWith('/result')) {
+            return http.Response.bytes(utf8.encode(jsonEncode(payload)), 200);
+          }
+          polls++;
+          return http.Response(
+            '{"id":"job-1","status":"succeeded","progress":1}',
+            200,
+          );
+        }),
+      );
+      addTearDown(client.close);
+      GameAnalysisReport? report;
+      unawaited(client.analyze(game).then((value) => report = value));
+
+      await tester.pump(const Duration(milliseconds: 749));
+      expect(polls, 0);
+      await tester.pump(const Duration(milliseconds: 1));
+      await tester.pump();
+      expect(polls, 1);
+      expect(report, isNotNull);
+    });
   });
 
   group('ANALYSIS_API_BASE', () {

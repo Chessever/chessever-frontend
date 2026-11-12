@@ -137,21 +137,46 @@ class ServerGameReportException implements Exception {
   String toString() => 'ServerGameReportException($code): $message';
 }
 
+/// Every id shape in the Supabase `games.id` column: Lichess ids,
+/// `chess.com:123`, `gb_<uuid>`. The Worker drops anything else, so an id that
+/// cannot be one is not sent in the first place.
+final RegExp _databaseGameIdPattern = RegExp(r'^[A-Za-z0-9_.:-]{1,64}$');
+
 /// Runs a whole-game report on the server and reports progress as it goes.
 class ServerGameReportClient {
-  ServerGameReportClient({http.Client? httpClient, String? baseUrl})
-    : _http = httpClient ?? http.Client(),
-      _baseUrl = _trimSlash(baseUrl ?? kAnalysisApiBase);
+  /// [accessToken] replaces the Supabase session lookup. For tests only.
+  ServerGameReportClient({
+    http.Client? httpClient,
+    String? baseUrl,
+    String? Function()? accessToken,
+  }) : _http = httpClient ?? http.Client(),
+       _baseUrl = _trimSlash(baseUrl ?? kAnalysisApiBase),
+       _readAccessToken = accessToken ?? _accessToken;
 
   final http.Client _http;
   final String _baseUrl;
+  final String? Function() _readAccessToken;
 
-  /// How often the job is polled.
+  /// How often a job is polled once it is older than [fastPollWindow].
   ///
-  /// A whole-game report is tens of seconds at least, so a tight poll buys
+  /// A report still running by then is a long one, so a tight poll buys
   /// nothing but requests. The Worker's phase-aware fraction seeds the bar;
   /// the controller's local progress simulator carries it between polls.
   static const Duration pollInterval = Duration(seconds: 2);
+
+  /// How often a job is polled while it is younger than [fastPollWindow].
+  ///
+  /// Most reports finish in 5 to 15 seconds, where waiting out a 2 second poll
+  /// after the job is already done is a visible share of the whole wait.
+  static const Duration fastPollInterval = Duration(milliseconds: 750);
+
+  /// How long after the job was created [fastPollInterval] applies.
+  static const Duration fastPollWindow = Duration(seconds: 20);
+
+  /// The wait before the next poll of a job created [elapsed] ago.
+  @visibleForTesting
+  static Duration pollDelay(Duration elapsed) =>
+      elapsed < fastPollWindow ? fastPollInterval : pollInterval;
 
   /// Ceiling on one report, matching the Workflow's own 30-minute step timeout.
   static const Duration overallTimeout = Duration(minutes: 30);
@@ -181,14 +206,18 @@ class ServerGameReportClient {
   /// is polled between requests so a user who leaves the tab stops the wait
   /// immediately — the job itself keeps running server-side and its result stays
   /// cached, so coming back is free rather than a second analysis.
+  ///
+  /// [gameId] is the Supabase `games.id` of [game] when it was opened from a
+  /// broadcast, and null for every other game. See [_createJob].
   Future<GameAnalysisReport> analyze(
     ChessGame game, {
+    String? gameId,
     int? whiteRating,
     int? blackRating,
     void Function(double progress, String message)? onProgress,
     bool Function()? isCancelled,
   }) async {
-    final token = _accessToken();
+    final token = _readAccessToken();
     if (token == null) {
       throw const ServerGameReportException(
         'Sign in to run Game Analysis on the server.',
@@ -199,11 +228,15 @@ class ServerGameReportClient {
     final job = await _createJob(
       token,
       game: game,
+      gameId: gameId,
       whiteRating: whiteRating,
       blackRating: blackRating,
     );
 
     final deadline = DateTime.now().add(overallTimeout);
+    // The job's age, which sets the poll rate. A stopwatch because a wall
+    // clock corrected during the wait would stretch or cut the fast window.
+    final jobAge = Stopwatch()..start();
     var status = job.status;
     var progress = job.progress;
     var message = job.message;
@@ -229,7 +262,7 @@ class ServerGameReportClient {
       }
 
       onProgress?.call(progress, message ?? _statusMessage(status));
-      await Future<void>.delayed(pollInterval);
+      await Future<void>.delayed(pollDelay(jobAge.elapsed));
 
       final polled = await _pollJob(token, job.id);
       status = polled.status;
@@ -251,6 +284,7 @@ class ServerGameReportClient {
   Future<_ReportJob> _createJob(
     String token, {
     required ChessGame game,
+    String? gameId,
     int? whiteRating,
     int? blackRating,
   }) async {
@@ -262,6 +296,13 @@ class ServerGameReportClient {
         // same writer Copy PGN uses, so the server parses exactly the game the
         // user is looking at.
         'pgn': exportGameToPgn(game),
+        // Names the stored game so the Worker can keep the finished report on
+        // it, and every other viewer opens the game already analysed. The
+        // Worker compares that game with this PGN itself and ignores an id
+        // that is unknown or names another game. Older Workers ignore the
+        // field.
+        if (gameId != null && _databaseGameIdPattern.hasMatch(gameId))
+          'gameId': gameId,
         if (whiteRating != null) 'whiteRating': whiteRating,
         if (blackRating != null) 'blackRating': blackRating,
       }),
@@ -348,8 +389,13 @@ class ServerGameReportClient {
 ///
 /// Returns null when the build turned the service off, which leaves the
 /// controller on its local engine path with nothing to fall back from.
+///
+/// [gameId] is the Supabase `games.id` of the game this runner reports on, for
+/// a board opened from a broadcast. Leave it null for any other game: its id
+/// is not a `games` row.
 GameReportRemoteRunner? serverGameReportRunner({
   ServerGameReportClient Function()? clientFactory,
+  String? gameId,
 }) {
   if (kAnalysisApiBase.isEmpty) return null;
   final create = clientFactory ?? ServerGameReportClient.new;
@@ -368,6 +414,7 @@ GameReportRemoteRunner? serverGameReportRunner({
     try {
       return await client.analyze(
         game,
+        gameId: gameId,
         whiteRating: whiteRating,
         blackRating: blackRating,
         onProgress: onProgress,
