@@ -2,6 +2,7 @@ import 'dart:math' as math;
 import 'package:flutter/cupertino.dart';
 import 'package:flutter_watchos/flutter_watchos.dart';
 import 'package:motor/motor.dart';
+import '../core/watch_models.dart';
 
 /// watchOS is always dark. The board is the identity, so every surface is
 /// drawn from it: rows are a green-black lifted off the OLED floor toward the
@@ -119,8 +120,13 @@ class WatchPage extends StatelessWidget {
     this.boardFirst = false,
     this.boardBackLabel = 'Back to games',
     this.scrollController,
+    this.header,
   });
   final String title;
+
+  /// Replaces the plain title heading with a composed header (the event
+  /// hero). The title still names the page for VoiceOver.
+  final Widget? header;
   final List<Widget> children;
   final Future<void> Function()? onRefresh;
   final bool refreshing;
@@ -160,7 +166,7 @@ class WatchPage extends StatelessWidget {
                 ),
                 sliver: SliverList.list(
                   children: [
-                    if (!root && !boardFirst)
+                    if (!root && !boardFirst && header == null)
                       Align(
                         alignment: Alignment.centerLeft,
                         child: WatchPressable(
@@ -182,7 +188,9 @@ class WatchPage extends StatelessWidget {
                           ),
                         ),
                       ),
-                    if (!boardFirst)
+                    if (!boardFirst && header != null)
+                      Semantics(header: true, label: title, child: header),
+                    if (!boardFirst && header == null)
                       Semantics(
                         header: true,
                         child: Padding(
@@ -196,7 +204,7 @@ class WatchPage extends StatelessWidget {
                         ),
                       ),
                     ...children,
-                    if (boardFirst)
+                    if (boardFirst || (header != null && !root))
                       WatchRow(
                         label: boardBackLabel,
                         showChevron: false,
@@ -455,6 +463,50 @@ class WatchNote extends StatelessWidget {
       liveRegion: live,
       child: Text(text, style: WatchStyle.caption),
     ),
+  );
+}
+
+/// A player's name on one line, set whole when it fits and shortened only
+/// when it does not (`Rapport, Richard` → `Rapport, R.`), so a narrow watch
+/// keeps the surname readable instead of cutting it with an ellipsis.
+/// VoiceOver always reads the full name.
+class WatchFittedName extends StatelessWidget {
+  const WatchFittedName(this.name, {super.key, required this.style});
+  final String name;
+  final TextStyle style;
+
+  @override
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, constraints) {
+      final scaler = MediaQuery.textScalerOf(context);
+      final direction = Directionality.of(context);
+      bool fits(String text) {
+        final painter = TextPainter(
+          text: TextSpan(text: text, style: style),
+          maxLines: 1,
+          textScaler: scaler,
+          textDirection: direction,
+        )..layout();
+        final ok = painter.width <= constraints.maxWidth;
+        painter.dispose();
+        return ok;
+      }
+
+      var shown = name;
+      if (constraints.hasBoundedWidth && !fits(name)) {
+        final short = watchShortName(name);
+        final comma = name.indexOf(',');
+        final surname = comma > 0 ? name.substring(0, comma).trim() : short;
+        shown = fits(short) ? short : surname;
+      }
+      return Text(
+        shown,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        semanticsLabel: name,
+        style: style,
+      );
+    },
   );
 }
 

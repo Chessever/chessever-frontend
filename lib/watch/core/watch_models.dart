@@ -177,3 +177,129 @@ bool watchPlayerMatches(Player player, WatchStanding standing) =>
     (int.tryParse(standing.fideId ?? '') ?? 0) > 0 && player.fideId > 0
     ? player.fideId.toString() == standing.fideId
     : player.name.trim().toLowerCase() == standing.name.trim().toLowerCase();
+
+/// Short form of a player's name for tight rows: `Carlsen, Magnus` →
+/// `Carlsen, M.`, `Magnus Carlsen` → `M. Carlsen`. Names that cannot be
+/// shortened come back unchanged.
+String watchShortName(String name) {
+  final trimmed = name.trim();
+  final comma = trimmed.indexOf(',');
+  if (comma > 0) {
+    final last = trimmed.substring(0, comma).trim();
+    final first = trimmed.substring(comma + 1).trim();
+    if (first.isEmpty) return last;
+    return '$last, ${String.fromCharCode(first.runes.first)}.';
+  }
+  final parts = trimmed.split(RegExp(r'\s+'));
+  if (parts.length < 2) return trimmed;
+  return '${String.fromCharCode(parts.first.runes.first)}. ${parts.skip(1).join(' ')}';
+}
+
+/// Where a round stands, read from its boards and its start time.
+enum WatchRoundPhase { upcoming, live, finished, empty }
+
+class WatchRoundState {
+  const WatchRoundState(
+    this.phase, {
+    this.live = 0,
+    this.done = 0,
+    this.total = 0,
+  });
+  final WatchRoundPhase phase;
+  final int live;
+  final int done;
+  final int total;
+}
+
+bool watchGameIsFinished(Games game) =>
+    const ['1-0', '0-1', '1/2-1/2'].contains(game.status?.trim());
+
+WatchRoundState watchRoundState(
+  WatchRound? round,
+  List<Games> games,
+  DateTime now,
+) {
+  final live = games.where(watchGameIsLive).length;
+  final done = games.where(watchGameIsFinished).length;
+  if (round?.startsAt != null &&
+      round!.startsAt!.isAfter(now) &&
+      live == 0 &&
+      done == 0) {
+    return const WatchRoundState(WatchRoundPhase.upcoming);
+  }
+  if (games.isEmpty) return const WatchRoundState(WatchRoundPhase.empty);
+  return WatchRoundState(
+    live > 0 ? WatchRoundPhase.live : WatchRoundPhase.finished,
+    live: live,
+    done: done,
+    total: games.length,
+  );
+}
+
+/// One team match inside a round: the boards between the same two teams.
+/// [home] is the team named first by the organiser, read from the lowest
+/// board. Colours alternate per board in team chess, so every point is
+/// credited to the team of the player who earned it, never to a colour.
+class WatchTeamMatch {
+  WatchTeamMatch(this.home, this.away);
+  final String home;
+  final String away;
+  final List<Games> games = [];
+  double homeScore = 0;
+  double awayScore = 0;
+
+  String get key => watchTeamMatchKey(home, away);
+  bool get live => games.any(watchGameIsLive);
+  bool get finished => games.isNotEmpty && games.every(watchGameIsFinished);
+  int get firstBoard => games
+      .map((g) => g.boardNr ?? 1 << 20)
+      .fold(1 << 20, (a, b) => a < b ? a : b);
+}
+
+String watchTeamMatchKey(String a, String b) {
+  final names = [a.trim().toLowerCase(), b.trim().toLowerCase()]..sort();
+  return names.join('\u0000');
+}
+
+String? _team(Player? player) {
+  final team = player?.team.trim();
+  return team == null || team.isEmpty ? null : team;
+}
+
+/// Groups a round's boards into team matches, or returns null when the
+/// round is not a team round (fewer than three in four boards name two
+/// different teams). Boards without teams are left out of the matches.
+List<WatchTeamMatch>? watchTeamMatches(List<Games> games) {
+  if (games.isEmpty) return null;
+  final teamed = games.where((g) {
+    final white = _team(g.players?.elementAtOrNull(0));
+    final black = _team(g.players?.elementAtOrNull(1));
+    return white != null &&
+        black != null &&
+        white.toLowerCase() != black.toLowerCase();
+  }).toList();
+  if (teamed.length * 4 < games.length * 3) return null;
+  teamed.sort((a, b) => (a.boardNr ?? 1 << 20).compareTo(b.boardNr ?? 1 << 20));
+  final matches = <String, WatchTeamMatch>{};
+  for (final game in teamed) {
+    final white = _team(game.players![0])!;
+    final black = _team(game.players![1])!;
+    final match = matches.putIfAbsent(
+      watchTeamMatchKey(white, black),
+      () => WatchTeamMatch(white, black),
+    );
+    match.games.add(game);
+    final whiteIsHome =
+        white.trim().toLowerCase() == match.home.trim().toLowerCase();
+    final (double w, double b) = switch (game.status?.trim()) {
+      '1-0' => (1, 0),
+      '0-1' => (0, 1),
+      '1/2-1/2' => (0.5, 0.5),
+      _ => (0, 0),
+    };
+    match.homeScore += whiteIsHome ? w : b;
+    match.awayScore += whiteIsHome ? b : w;
+  }
+  return matches.values.toList()
+    ..sort((a, b) => a.firstBoard.compareTo(b.firstBoard));
+}

@@ -10,6 +10,11 @@ import 'watch_widgets.dart';
 /// round has started; the card then falls back to the time control.
 String? watchNextRound(DateTime? start, DateTime now, {bool use24h = true}) {
   if (start == null || !start.isAfter(now)) return null;
+  return 'Next round ${watchWhen(start, now, use24h: use24h)}';
+}
+
+/// "14:00", "Tomorrow 14:00", "Fri 16:15" or "Nov 20 16:15" from [now].
+String watchWhen(DateTime start, DateTime now, {bool use24h = true}) {
   final time = (use24h ? DateFormat.Hm() : DateFormat.jm()).format(start);
   final today = DateTime(now.year, now.month, now.day);
   final day = DateTime(start.year, start.month, start.day);
@@ -17,10 +22,11 @@ String? watchNextRound(DateTime? start, DateTime now, {bool use24h = true}) {
   final when = switch (days) {
     0 => time,
     1 => 'Tomorrow $time',
-    < 7 => '${DateFormat.E().format(start)} $time',
+    -1 => 'Yesterday $time',
+    > 1 && < 7 => '${DateFormat.E().format(start)} $time',
     _ => '${DateFormat.MMMd().format(start)} $time',
   };
-  return 'Next round $when';
+  return when;
 }
 
 /// An event as a picture: the tournament's own photograph fills the card and
@@ -78,7 +84,7 @@ class WatchEventCard extends StatelessWidget {
                       color: pressed
                           ? WatchStyle.surfacePressed
                           : WatchStyle.surface,
-                      child: _EventPhoto(
+                      child: WatchEventPhoto(
                         repository: repository,
                         eventId: event.id,
                       ),
@@ -171,8 +177,12 @@ class WatchEventCard extends StatelessWidget {
   }
 }
 
-class _EventPhoto extends StatelessWidget {
-  const _EventPhoto({required this.repository, required this.eventId});
+class WatchEventPhoto extends StatelessWidget {
+  const WatchEventPhoto({
+    super.key,
+    required this.repository,
+    required this.eventId,
+  });
   final WatchRepository repository;
   final String eventId;
 
@@ -199,7 +209,11 @@ class _EventPhoto extends StatelessWidget {
   );
 }
 
-Widget? watchFederation(String? federation) =>
+Widget? watchFederation(String? federation, {double width = 21}) =>
     FederationFlag.hasVisibleFlag(federation)
-    ? FederationFlag(federation: federation, width: 21, height: 14)
+    ? FederationFlag(
+        federation: federation,
+        width: width,
+        height: width * 2 / 3,
+      )
     : null;

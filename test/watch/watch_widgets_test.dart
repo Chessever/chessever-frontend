@@ -248,12 +248,11 @@ void main() {
         await show(tester, event);
         await tester.tap(event);
         await tester.pumpAndSettle();
-        // One tap from Current lands directly on a complete board.
-        expect(find.byType(WatchBoardTile), findsOneWidget);
-        final tile = tester.getRect(find.byType(WatchBoardTile));
-        expect(tile.top, greaterThanOrEqualTo(40));
-        expect(tile.bottom, lessThanOrEqualTo(screen.height + 8));
-        await screenshot(tester, 'event-boards-${screen.width.toInt()}');
+        // The event opens on its round: the round bar, then the pairings.
+        expect(find.text('Round 1'), findsOneWidget);
+        await screenshot(tester, 'event-${screen.width.toInt()}');
+        await show(tester, find.byType(WatchPairingRow));
+        expect(find.byType(WatchPairingRow), findsOneWidget);
         await show(tester, find.text('Standings'));
         await tester.tap(find.text('Standings'));
         await tester.pumpAndSettle();
@@ -267,6 +266,15 @@ void main() {
         await show(tester, find.text('Back'));
         await tester.tap(find.text('Back'));
         await tester.pumpAndSettle();
+        // A pairing opens the full board feed on that board.
+        await show(tester, find.byType(WatchPairingRow));
+        await tester.tap(find.byType(WatchPairingRow));
+        await tester.pumpAndSettle();
+        expect(find.byType(WatchBoardTile), findsOneWidget);
+        final tile = tester.getRect(find.byType(WatchBoardTile));
+        expect(tile.top, greaterThanOrEqualTo(40));
+        expect(tile.bottom, lessThanOrEqualTo(screen.height + 8));
+        await screenshot(tester, 'event-boards-${screen.width.toInt()}');
         final game = find.byType(WatchBoardTile).first;
         await show(tester, game);
         await tester.tap(game);
@@ -325,6 +333,11 @@ void main() {
         await tester.tap(find.text('Back to games'));
         await tester.pumpAndSettle();
         expect(find.byType(WatchBoardTile), findsOneWidget);
+        await show(tester, find.text('Back to event'));
+        await tester.tap(find.text('Back to event'));
+        await tester.pumpAndSettle();
+        await show(tester, find.byType(WatchPairingRow));
+        expect(find.byType(WatchPairingRow), findsOneWidget);
         await show(tester, find.text('Back to Current'));
         await tester.tap(find.text('Back to Current'));
         await tester.pumpAndSettle();
