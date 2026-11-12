@@ -77,4 +77,11 @@ class TimeUtils {
     final localDate = date.toLocal();
     return DateFormat('d MMM yyyy HH:mm').format(localDate);
   }
+
+  /// Short round time for a one-line header: "12 Nov 17:00", in the phone's
+  /// local timezone. The year is left out; the list is about this event.
+  static String formatShortRoundDateTime(DateTime? date) {
+    if (date == null) return '';
+    return DateFormat('d MMM HH:mm').format(date.toLocal());
+  }
 }

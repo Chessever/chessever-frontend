@@ -640,6 +640,11 @@ class Tour {
   final String? groupBroadcastId;
   final int? avgElo;
 
+  /// The database's `tours.is_mirror`: an organizer section that repeats the
+  /// boards of the real sections beside it (a "Combined" section). Its games
+  /// are copies, so a view spanning several sections must leave it out.
+  final bool isMirror;
+
   Tour({
     required this.id,
     required this.name,
@@ -654,6 +659,7 @@ class Tour {
     this.search,
     this.groupBroadcastId,
     this.avgElo,
+    this.isMirror = false,
   });
 
   /// Build a synthetic Tour for a gamebase-only event so it can render in the
@@ -719,6 +725,7 @@ class Tour {
           ? json['group_broadcast_id'] as String
           : null,
       avgElo: _parseInt(json['avg_elo']),
+      isMirror: json['is_mirror'] == true,
     );
   }
 
@@ -759,6 +766,7 @@ class Tour {
       'search': search,
       'group_broadcast_id': groupBroadcastId,
       'avg_elo': avgElo,
+      'is_mirror': isMirror,
     };
   }
 

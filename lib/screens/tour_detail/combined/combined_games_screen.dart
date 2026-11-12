@@ -20,6 +20,7 @@ import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/utils/time_utils.dart';
 import 'package:chessever2/utils/user_error_message.dart';
 import 'package:chessever2/widgets/scroll_to_top_bus.dart';
 import 'package:chessever2/widgets/search/gameSearch/game_search_overlay.dart';
@@ -28,7 +29,8 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
 
 /// The Games tab while the event is shown in Combined: every category's
-/// rounds in one list, each block named after its category.
+/// rounds in one list, strongest category first, each round under one slim
+/// line naming its category.
 ///
 /// It paints with the same list, cards, view modes and live streams as the
 /// single-category tab; only the grouping differs.
@@ -163,18 +165,18 @@ class _CombinedGamesScreenState extends ConsumerState<CombinedGamesScreen>
         navigationListPolicy: BoardNavigationListPolicy.preserve,
         roundHeaderBuilder: (context, entry, isExpanded, onToggle) {
           final category = presentation.categoryLabelFor(entry.round.id);
-          final when = entry.round.formattedRoundDateTime;
+          final when = TimeUtils.formatShortRoundDateTime(
+            entry.round.startsAt,
+          );
+          // One slim line per round: the category, the round, when.
           return TournamentRoundHeader(
-            title: category ?? entry.round.name,
-            subtitle: category == null
-                ? (when.isEmpty ? null : when)
-                : (when.isEmpty
-                      ? entry.round.name
-                      : '${entry.round.name} · $when'),
+            title: category == null
+                ? entry.round.name
+                : '$category · ${entry.round.name}',
+            detail: when.isEmpty ? null : when,
             isExpanded: isExpanded,
             onToggle: onToggle,
-            multiline: true,
-            titleMaxLines: 1,
+            dense: true,
           );
         },
       ),

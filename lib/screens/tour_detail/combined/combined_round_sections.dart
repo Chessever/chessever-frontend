@@ -41,16 +41,19 @@ class CombinedRoundSection {
 
 /// Lays every category's rounds out as one list.
 ///
-/// Product order (Trello "Combined"):
+/// Product order (Trello "Combined"), the first rule outranking the second:
 ///
-/// 1. Whatever started latest is on top, so the rounds being played now lead
-///    and yesterday's follow.
-/// 2. Rounds that started together, which is the normal case for parallel
-///    groups, read strongest category first (highest average rating), then
-///    in picker order.
-/// 3. Rounds not started yet close the list, soonest first. While nothing is
-///    being played anywhere, each category's next round moves to the top
-///    instead: its pairings are the next thing to watch.
+/// 1. The strongest category is on top (highest average rating), then the
+///    others. A weaker category never reads above a stronger one. Equally
+///    rated categories: the one that starts later first, then picker order.
+/// 2. Inside a category, whatever started latest is on top. Rounds not
+///    started yet close the category, soonest first; while none of its boards
+///    is being played, its next round leads instead, because those pairings
+///    are the next thing to watch there.
+///
+/// No board is listed twice: a category whose boards are copies of the other
+/// categories' boards (an organizer's own combined section that nobody
+/// flagged) is left out, see [findMirrorTourIds].
 List<CombinedRoundSection> buildCombinedRoundSections({
   required List<CombinedCategory> categories,
   required Map<String, List<GamesTourModel>> gamesByTourId,
@@ -60,10 +63,17 @@ List<CombinedRoundSection> buildCombinedRoundSections({
   DateTime? now,
 }) {
   final effectiveNow = now ?? DateTime.now();
-  final started = <CombinedRoundSection>[];
-  final upcoming = <CombinedRoundSection>[];
+  final ranked = List<CombinedCategory>.of(categories)
+    ..sort(_compareCategories);
+  final mirrorTourIds = findMirrorTourIds(
+    tourIds: [for (final category in ranked) category.tourId],
+    gamesByTourId: gamesByTourId,
+    roundsByTourId: roundsByTourId,
+  );
 
-  for (final category in categories) {
+  final sections = <CombinedRoundSection>[];
+  for (final category in ranked) {
+    if (mirrorTourIds.contains(category.tourId)) continue;
     final games = gamesByTourId[category.tourId];
     if (games == null || games.isEmpty) continue;
 
@@ -80,6 +90,8 @@ List<CombinedRoundSection> buildCombinedRoundSections({
       (gamesByRoundId[game.roundId] ??= <GamesTourModel>[]).add(game);
     }
 
+    final started = <CombinedRoundSection>[];
+    final upcoming = <CombinedRoundSection>[];
     for (final entry in gamesByRoundId.entries) {
       final roundGames = _orderBoards(entry.value, pinnedGameIds);
       final known = roundsById[entry.key];
@@ -116,45 +128,157 @@ List<CombinedRoundSection> buildCombinedRoundSections({
       );
       (hasStarted ? started : upcoming).add(section);
     }
-  }
 
-  started.sort(_compareStarted);
-  upcoming.sort(_compareUpcoming);
+    started.sort(_compareStarted);
+    upcoming.sort(_compareUpcoming);
 
-  final somethingIsBeingPlayed = started.any(
-    (section) => !section.isFullyPlayed,
-  );
-  if (somethingIsBeingPlayed || upcoming.isEmpty) {
-    return <CombinedRoundSection>[...started, ...upcoming];
+    final isBeingPlayed = started.any((section) => !section.isFullyPlayed);
+    if (isBeingPlayed || upcoming.isEmpty) {
+      sections
+        ..addAll(started)
+        ..addAll(upcoming);
+    } else {
+      // Between rounds: this category's next round leads it.
+      sections
+        ..add(upcoming.first)
+        ..addAll(started)
+        ..addAll(upcoming.skip(1));
+    }
   }
-
-  // Between rounds: every category's next round leads.
-  final nextByTourId = <String, CombinedRoundSection>{};
-  for (final section in upcoming) {
-    nextByTourId.putIfAbsent(section.category.tourId, () => section);
-  }
-  final next = nextByTourId.values.toSet();
-  return <CombinedRoundSection>[
-    ...upcoming.where(next.contains),
-    ...started,
-    ...upcoming.where((section) => !next.contains(section)),
-  ];
+  return sections;
 }
 
+/// How far apart two rounds may start and still be the same sitting. An
+/// organizer's copy of a round starts with the original, give or take the
+/// seconds between two feeds; a replay or a tiebreak of the same pairing is
+/// hours away.
+const Duration _sameSittingWindow = Duration(minutes: 30);
+
+/// Tours whose boards are copies of boards in the other tours.
+///
+/// Some organizers publish a section that repeats every board of the real
+/// sections (Total Chess "Group Stage Combined"). The database flags those
+/// and their names say so, and both are filtered before this runs. This is
+/// the last line: it reads the boards themselves, so a mirror that was
+/// neither flagged nor named still cannot put a game on the list twice.
+///
+/// Two boards are the same game when the same player has White, the same
+/// player has Black, and their rounds start within half an hour of each
+/// other. A tour is a mirror when most of its boards are such copies. A copy
+/// and its original always accuse each other, so the tour with more boards
+/// goes first: it is the one that gathers several sections. Removing it
+/// clears the sections it repeated, and the check runs again until nothing
+/// accuses anything.
+@visibleForTesting
+Set<String> findMirrorTourIds({
+  required List<String> tourIds,
+  required Map<String, List<GamesTourModel>> gamesByTourId,
+  required Map<String, List<Round>> roundsByTourId,
+}) {
+  final boardsByTourId = <String, List<_Board>>{};
+  for (final tourId in tourIds) {
+    final games = gamesByTourId[tourId];
+    if (games == null || games.length < 2) continue;
+    final startsByRoundId = <String, DateTime?>{
+      for (final round in roundsByTourId[tourId] ?? const <Round>[])
+        round.id: round.startsAt,
+    };
+    boardsByTourId[tourId] = [
+      for (final game in games)
+        _Board(
+          pairing:
+              '${_playerKey(game.whitePlayer.name)}|'
+              '${_playerKey(game.blackPlayer.name)}',
+          startsAt: startsByRoundId[game.roundId],
+          roundSlug: game.roundSlug,
+        ),
+    ];
+  }
+  if (boardsByTourId.length < 2) return const <String>{};
+
+  final mirrors = <String>{};
+  while (true) {
+    final remaining = [
+      for (final tourId in tourIds)
+        if (boardsByTourId.containsKey(tourId) && !mirrors.contains(tourId))
+          tourId,
+    ];
+    if (remaining.length < 2) break;
+
+    final boardsByPairing = <String, List<(String, _Board)>>{};
+    for (final tourId in remaining) {
+      for (final board in boardsByTourId[tourId]!) {
+        (boardsByPairing[board.pairing] ??= <(String, _Board)>[]).add((
+          tourId,
+          board,
+        ));
+      }
+    }
+
+    String? worst;
+    var worstSize = 0;
+    // Later in the list loses a tie, so of two identical tours the first in
+    // rank order stays.
+    for (final tourId in remaining.reversed) {
+      final boards = boardsByTourId[tourId]!;
+      var copies = 0;
+      for (final board in boards) {
+        final candidates = boardsByPairing[board.pairing]!;
+        if (candidates.any(
+          (other) => other.$1 != tourId && board.isSameGameAs(other.$2),
+        )) {
+          copies++;
+        }
+      }
+      if (copies * 2 > boards.length && boards.length > worstSize) {
+        worst = tourId;
+        worstSize = boards.length;
+      }
+    }
+    if (worst == null) break;
+    mirrors.add(worst);
+  }
+  return mirrors;
+}
+
+class _Board {
+  const _Board({
+    required this.pairing,
+    required this.startsAt,
+    required this.roundSlug,
+  });
+
+  final String pairing;
+  final DateTime? startsAt;
+  final String? roundSlug;
+
+  bool isSameGameAs(_Board other) {
+    final a = startsAt;
+    final b = other.startsAt;
+    if (a != null && b != null) {
+      return a.difference(b).abs() <= _sameSittingWindow;
+    }
+    // No schedule to compare: the copy keeps the round's own name.
+    return roundSlug != null && roundSlug == other.roundSlug;
+  }
+}
+
+/// A copy comes from the same feed as its original, so the name is spelled
+/// the same; only case and stray spaces are evened out.
+String _playerKey(String name) => name.trim().toLowerCase();
+
+/// Rounds of one category: the one that started latest first.
 int _compareStarted(CombinedRoundSection a, CombinedRoundSection b) {
   final byStart = _compareDates(a.startsAt, b.startsAt, latestFirst: true);
   if (byStart != 0) return byStart;
-  final byCategory = _compareCategories(a.category, b.category);
-  if (byCategory != 0) return byCategory;
-  // Same category, same start: the later round is the newer one.
+  // Same start: the later round is the newer one.
   return b.roundOrder.compareTo(a.roundOrder);
 }
 
+/// Rounds of one category still to come: the soonest first.
 int _compareUpcoming(CombinedRoundSection a, CombinedRoundSection b) {
   final byStart = _compareDates(a.startsAt, b.startsAt, latestFirst: false);
   if (byStart != 0) return byStart;
-  final byCategory = _compareCategories(a.category, b.category);
-  if (byCategory != 0) return byCategory;
   return a.roundOrder.compareTo(b.roundOrder);
 }
 
@@ -166,10 +290,13 @@ int _compareDates(DateTime? a, DateTime? b, {required bool latestFirst}) {
   return latestFirst ? b.compareTo(a) : a.compareTo(b);
 }
 
-/// Strongest category first; unrated categories after rated ones.
+/// Strongest category first; unrated categories after rated ones. Equal
+/// ratings: the category that starts later, then picker order.
 int _compareCategories(CombinedCategory a, CombinedCategory b) {
   final byRating = (b.avgElo ?? -1).compareTo(a.avgElo ?? -1);
-  return byRating != 0 ? byRating : a.order.compareTo(b.order);
+  if (byRating != 0) return byRating;
+  final byStart = _compareDates(a.startsAt, b.startsAt, latestFirst: true);
+  return byStart != 0 ? byStart : a.order.compareTo(b.order);
 }
 
 List<GamesTourModel> _orderBoards(

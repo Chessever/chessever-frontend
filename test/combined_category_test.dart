@@ -12,7 +12,13 @@ import 'package:flutter_test/flutter_test.dart';
 /// Fixed clock so "started" never depends on the wall clock.
 final _now = DateTime.utc(2026, 11, 11, 18);
 
-TourModel _tour(String name, {int? avgElo, String? id, String? slug}) {
+TourModel _tour(
+  String name, {
+  int? avgElo,
+  String? id,
+  String? slug,
+  bool isMirror = false,
+}) {
   return TourModel(
     tour: Tour(
       id: id ?? name,
@@ -25,13 +31,24 @@ TourModel _tour(String name, {int? avgElo, String? id, String? slug}) {
       dates: [DateTime.utc(2026, 11, 11)],
       players: const <TournamentPlayer>[],
       avgElo: avgElo,
+      isMirror: isMirror,
     ),
     roundStatus: RoundStatus.ongoing,
   );
 }
 
-CombinedCategory _category(String label, {int? avgElo, required int order}) =>
-    CombinedCategory(tourId: label, label: label, avgElo: avgElo, order: order);
+CombinedCategory _category(
+  String label, {
+  int? avgElo,
+  required int order,
+  DateTime? startsAt,
+}) => CombinedCategory(
+  tourId: label,
+  label: label,
+  avgElo: avgElo,
+  order: order,
+  startsAt: startsAt,
+);
 
 Round _round(String id, String tourId, String name, DateTime? startsAt) =>
     Round(
@@ -61,13 +78,15 @@ GamesTourModel _game(
   int? board,
   GameStatus status = GameStatus.draw,
   String? lastMove = 'e2e4',
-  String white = 'White',
-  String black = 'Black',
+  String? white,
+  String? black,
   DateTime? lastMoveTime,
 }) => GamesTourModel(
   gameId: id,
-  whitePlayer: _player(white),
-  blackPlayer: _player(black, fed: 'NOR'),
+  // Every board has its own two players unless a test says otherwise, so a
+  // board is never mistaken for a copy of another.
+  whitePlayer: _player(white ?? 'White $id'),
+  blackPlayer: _player(black ?? 'Black $id', fed: 'NOR'),
   whiteTimeDisplay: '10:00',
   blackTimeDisplay: '10:00',
   whiteClockCentiseconds: 60000,
@@ -137,6 +156,28 @@ void main() {
         ['Group Stage A', 'Group Stage B'],
       );
       expect(categories.tourIds, hasLength(2));
+    });
+
+    test('skips a section the database flags as a mirror, whatever its name', () {
+      final categories = CombinedCategories.fromTours([
+        _tour('Open', avgElo: 2500),
+        _tour('Women', avgElo: 2300),
+        _tour('All boards', avgElo: 2400, isMirror: true),
+      ]);
+      expect(categories.tourIds, ['Open', 'Women']);
+    });
+
+    test('reads the mirror flag from the tours row', () {
+      Map<String, dynamic> row({Object? isMirror}) => {
+        'id': 't',
+        'name': 'Event | All boards',
+        'slug': 'event-all-boards',
+        'is_mirror': ?isMirror,
+      };
+      expect(Tour.fromJson(row(isMirror: true)).isMirror, isTrue);
+      expect(Tour.fromJson(row(isMirror: false)).isMirror, isFalse);
+      // A cached row from before the column existed.
+      expect(Tour.fromJson(row()).isMirror, isFalse);
     });
 
     test('one real category beside its mirror has nothing to combine', () {
@@ -253,7 +294,7 @@ void main() {
         ],
     };
 
-    test('latest round first; a tie reads strongest category first', () {
+    test('strongest category first; inside it the latest round first', () {
       final sections = buildCombinedRoundSections(
         categories: categories,
         gamesByTourId: {
@@ -279,15 +320,16 @@ void main() {
 
       expect(_order(sections), [
         'Group B Round 2',
-        'Group A Round 2',
-        'Group C Round 2',
         'Group B Round 1',
+        'Group A Round 2',
         'Group A Round 1',
+        'Group C Round 2',
         'Group C Round 1',
       ]);
     });
 
-    test('a category that started later leads the ones before it', () {
+    test('a weaker category never reads above a stronger one, even when '
+        'it started later', () {
       final staggered = rounds();
       staggered['Group C'] = [
         _round(
@@ -331,13 +373,50 @@ void main() {
       );
 
       expect(_order(sections), [
-        'Group C Round 1',
         'Group B Round 2',
         'Group A Round 2',
+        'Group C Round 1',
       ]);
     });
 
-    test('published pairings wait at the bottom while anything is live', () {
+    test('equal ratings: the category that starts later, then picker '
+        'order; unrated last', () {
+      final tied = [
+        _category('Unrated', order: 0, startsAt: r3),
+        _category('Early', avgElo: 2700, order: 1, startsAt: r1),
+        _category('Late', avgElo: 2700, order: 2, startsAt: r2),
+        _category('Late too', avgElo: 2700, order: 3, startsAt: r2),
+        _category('Top', avgElo: 2750, order: 4, startsAt: r1),
+      ];
+      final sections = buildCombinedRoundSections(
+        categories: tied,
+        gamesByTourId: {
+          for (final category in tied)
+            category.tourId: [
+              _game(
+                category.tourId,
+                tourId: category.tourId,
+                roundId: '${category.tourId}-r1',
+              ),
+            ],
+        },
+        roundsByTourId: {
+          for (final category in tied)
+            category.tourId: [
+              _round('${category.tourId}-r1', category.tourId, 'Round 1', r1),
+            ],
+        },
+        liveRoundIds: const <String>[],
+        now: _now,
+      );
+
+      expect(
+        [for (final section in sections) section.category.label],
+        ['Top', 'Late', 'Late too', 'Early', 'Unrated'],
+      );
+    });
+
+    test('a category\'s published pairings wait below its round in play', () {
       final sections = buildCombinedRoundSections(
         categories: categories.take(2).toList(),
         gamesByTourId: {
@@ -372,15 +451,17 @@ void main() {
         now: _now,
       );
 
+      // Group B has finished round 2, so its next pairings lead it. Group A
+      // is still playing round 2, so its round 3 pairings wait.
       expect(_order(sections), [
+        'Group B Round 3',
         'Group B Round 2',
         'Group A Round 2',
-        'Group B Round 3',
         'Group A Round 3',
       ]);
     });
 
-    test('between rounds every category\'s next round leads', () {
+    test('between rounds a category\'s next round leads it', () {
       final sections = buildCombinedRoundSections(
         categories: categories.take(2).toList(),
         gamesByTourId: {
@@ -404,10 +485,10 @@ void main() {
 
       expect(_order(sections), [
         'Group B Round 3',
-        'Group A Round 3',
         'Group B Round 2',
-        'Group A Round 2',
         'Group B Round 1',
+        'Group A Round 3',
+        'Group A Round 2',
         'Group A Round 1',
       ]);
     });
@@ -473,6 +554,152 @@ void main() {
         now: _now,
       );
       expect(_order(sections), ['Group A Round 1']);
+    });
+  });
+
+  group('no board is listed twice', () {
+    final r1 = DateTime.utc(2026, 11, 11, 14);
+    final r2 = DateTime.utc(2026, 11, 11, 16);
+
+    // Two real groups of two boards a round, and a section that repeats all
+    // of them under its own tour, round and game ids. Nothing flags it and
+    // its name does not say "combined".
+    List<GamesTourModel> group(String tourId, String prefix) => [
+      for (final round in ['r1', 'r2'])
+        for (final board in [1, 2])
+          _game(
+            '$tourId-$round-$board',
+            tourId: tourId,
+            roundId: '$tourId-$round',
+            board: board,
+            white: '$prefix White $round $board',
+            black: '$prefix Black $round $board',
+          ),
+    ];
+    List<GamesTourModel> copyOf(List<GamesTourModel> games, String tourId) => [
+      for (final game in games)
+        _game(
+          '$tourId-${game.gameId}',
+          tourId: tourId,
+          roundId: '$tourId-${game.roundId.split('-').last}',
+          white: game.whitePlayer.name,
+          black: game.blackPlayer.name,
+        ),
+    ];
+    Map<String, List<Round>> schedule(
+      List<String> tourIds, {
+      Duration mirrorLag = Duration.zero,
+    }) => {
+      for (final tourId in tourIds)
+        tourId: [
+          _round(
+            '$tourId-r1',
+            tourId,
+            'Round 1',
+            tourId == 'All' ? r1.add(mirrorLag) : r1,
+          ),
+          _round(
+            '$tourId-r2',
+            tourId,
+            'Round 2',
+            tourId == 'All' ? r2.add(mirrorLag) : r2,
+          ),
+        ],
+    };
+
+    final a = group('A', 'a');
+    final b = group('B', 'b');
+    final all = [...copyOf(a, 'All'), ...copyOf(b, 'All')];
+
+    test('an unflagged section repeating the others is left out', () {
+      // The mirror is rated like the strongest group, so it would lead.
+      final sections = buildCombinedRoundSections(
+        categories: [
+          _category('All', avgElo: 2750, order: 0),
+          _category('A', avgElo: 2700, order: 1),
+          _category('B', avgElo: 2750, order: 2),
+        ],
+        gamesByTourId: {'All': all, 'A': a, 'B': b},
+        // The copy's feed starts each round a few seconds late.
+        roundsByTourId: schedule([
+          'All',
+          'A',
+          'B',
+        ], mirrorLag: const Duration(seconds: 40)),
+        liveRoundIds: const <String>[],
+        now: _now,
+      );
+
+      expect(
+        {for (final section in sections) section.category.label},
+        {'A', 'B'},
+      );
+      final pairings = [
+        for (final section in sections)
+          for (final game in section.games)
+            '${game.whitePlayer.name} v ${game.blackPlayer.name}',
+      ];
+      expect(pairings, hasLength(8));
+      expect(pairings.toSet(), hasLength(8));
+    });
+
+    test('of two identical sections the first in rank stays', () {
+      expect(
+        findMirrorTourIds(
+          tourIds: ['A', 'Copy'],
+          gamesByTourId: {'A': a, 'Copy': copyOf(a, 'Copy')},
+          roundsByTourId: {
+            ...schedule(['A']),
+            'Copy': [
+              _round('Copy-r1', 'Copy', 'Round 1', r1),
+              _round('Copy-r2', 'Copy', 'Round 2', r2),
+            ],
+          },
+        ),
+        {'Copy'},
+      );
+    });
+
+    test('a playoff between the same players hours later is kept', () {
+      final playoff = [
+        for (final game in a.take(2))
+          _game(
+            'playoff-${game.gameId}',
+            tourId: 'Playoff',
+            roundId: 'Playoff-r1',
+            white: game.whitePlayer.name,
+            black: game.blackPlayer.name,
+          ),
+      ];
+      expect(
+        findMirrorTourIds(
+          tourIds: ['A', 'Playoff'],
+          gamesByTourId: {'A': a, 'Playoff': playoff},
+          roundsByTourId: {
+            ...schedule(['A']),
+            'Playoff': [
+              _round(
+                'Playoff-r1',
+                'Playoff',
+                'Playoff',
+                r1.add(const Duration(hours: 3)),
+              ),
+            ],
+          },
+        ),
+        isEmpty,
+      );
+    });
+
+    test('categories that share no board are all kept', () {
+      expect(
+        findMirrorTourIds(
+          tourIds: ['A', 'B'],
+          gamesByTourId: {'A': a, 'B': b},
+          roundsByTourId: schedule(['A', 'B']),
+        ),
+        isEmpty,
+      );
     });
   });
 

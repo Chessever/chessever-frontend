@@ -17,8 +17,8 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 /// Challengers) makes a viewer switch back and forth to follow all of them.
 /// Combined is a client-side category that lists every real category's games
 /// in one Games tab. It never exists in the database: it reuses each
-/// category's own games provider, so nothing is fetched twice and no game is
-/// duplicated.
+/// category's own games provider, so nothing is fetched twice. An organizer's
+/// own Combined section is never merged in, so no board is listed twice.
 ///
 /// Premium only. The choice is remembered per event.
 
@@ -44,6 +44,7 @@ class CombinedCategory {
     required this.label,
     required this.avgElo,
     required this.order,
+    this.startsAt,
   });
 
   final String tourId;
@@ -55,6 +56,10 @@ class CombinedCategory {
   /// Position in the picker, used as the last ordering tie-break.
   final int order;
 
+  /// When the category begins. Between two equally rated categories the one
+  /// that starts later reads first.
+  final DateTime? startsAt;
+
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -62,10 +67,11 @@ class CombinedCategory {
           other.tourId == tourId &&
           other.label == label &&
           other.avgElo == avgElo &&
-          other.order == order;
+          other.order == order &&
+          other.startsAt == startsAt;
 
   @override
-  int get hashCode => Object.hash(tourId, label, avgElo, order);
+  int get hashCode => Object.hash(tourId, label, avgElo, order, startsAt);
 }
 
 /// The categories Combined merges for one event. Value-equal, so a metadata
@@ -79,19 +85,22 @@ class CombinedCategories {
   /// Picks the real categories out of [tours].
   ///
   /// An organizer's own Combined section is left out: it mirrors the others,
-  /// so merging it would list every board twice. With no real section beside
-  /// it, a tour that merely has "combined" in its name is an ordinary
-  /// category and stays.
+  /// so merging it would list every board twice. It is recognised by the
+  /// database's mirror flag or by its name. With no real section beside it, a
+  /// tour that merely has "combined" in its name is an ordinary category and
+  /// stays. A mirror nobody flagged or named is still caught later, from its
+  /// boards (see `findMirrorTourIds`).
   factory CombinedCategories.fromTours(
     List<TourModel> tours, {
     String? groupName,
   }) {
     final real = [
       for (final model in tours)
-        if (!isCombinedSectionLabel(
-          name: model.tour.name,
-          slug: model.tour.slug,
-        ))
+        if (!model.tour.isMirror &&
+            !isCombinedSectionLabel(
+              name: model.tour.name,
+              slug: model.tour.slug,
+            ))
           model,
     ];
     final source = real.isEmpty ? tours : real;
@@ -103,6 +112,9 @@ class CombinedCategories {
             label: tourCategoryLabel(source[i].tour.name, groupName: groupName),
             avgElo: source[i].tour.avgElo,
             order: i,
+            startsAt: source[i].tour.dates.isEmpty
+                ? null
+                : source[i].tour.dates.first,
           ),
       ]),
     );

@@ -131,27 +131,46 @@ class TournamentRoundHeader extends StatelessWidget {
     super.key,
     required this.title,
     this.subtitle,
+    this.detail,
     this.isExpanded = true,
     this.onToggle,
     this.multiline = false,
+    this.dense = false,
     this.titleMaxLines = 2,
     this.contentInset = 0,
   });
   final String title;
   final String? subtitle;
+
+  /// Quieter text set after the title on the same line ("Round 4 · 12 Nov
+  /// 17:30"). Single-line headers only.
+  final String? detail;
   final bool isExpanded;
   final VoidCallback? onToggle;
   final bool multiline;
+
+  /// A slimmer header for lists that repeat it often: the Combined list has
+  /// one per category round, so it must not cost more than a line.
+  final bool dense;
   final int titleMaxLines;
   final double contentInset;
 
   @override
   Widget build(BuildContext context) {
+    final titleStyle = TextStyle(
+      color: context.colors.textPrimary,
+      fontSize: dense ? 14.sp : 16.sp,
+      fontWeight: FontWeight.w600,
+    );
+    final hasDetail = detail?.isNotEmpty == true;
     return InkWell(
       onTap: onToggle,
       borderRadius: BorderRadius.circular(12.br),
       child: Container(
-        padding: EdgeInsets.symmetric(horizontal: 16.sp, vertical: 14.sp),
+        padding: EdgeInsets.symmetric(
+          horizontal: dense ? 12.sp : 16.sp,
+          vertical: dense ? 8.sp : 14.sp,
+        ),
         decoration: BoxDecoration(
           color: context.colors.surfaceRecessed,
           borderRadius: BorderRadius.circular(12.br),
@@ -174,22 +193,31 @@ class TournamentRoundHeader extends StatelessWidget {
             if (contentInset > 0) SizedBox(width: contentInset),
             Container(
               width: 4.w,
-              height: 20.h,
+              height: dense ? 16.h : 20.h,
               decoration: BoxDecoration(
                 color: context.colors.accentText,
                 borderRadius: BorderRadius.circular(2),
               ),
             ),
-            SizedBox(width: 12.w),
+            SizedBox(width: dense ? 10.w : 12.w),
             Expanded(
               child: !multiline
-                  ? Text(
-                      subtitle == null ? title : '$title · $subtitle',
-                      style: TextStyle(
-                        color: context.colors.textPrimary,
-                        fontSize: 16.sp,
-                        fontWeight: FontWeight.w600,
+                  ? Text.rich(
+                      TextSpan(
+                        text: subtitle == null ? title : '$title · $subtitle',
+                        children: [
+                          if (hasDetail)
+                            TextSpan(
+                              text: '  $detail',
+                              style: TextStyle(
+                                color: context.colors.textSecondary,
+                                fontSize: dense ? 12.sp : 13.sp,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                        ],
                       ),
+                      style: titleStyle,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     )
@@ -198,11 +226,7 @@ class TournamentRoundHeader extends StatelessWidget {
                       children: [
                         Text(
                           title,
-                          style: TextStyle(
-                            color: context.colors.textPrimary,
-                            fontSize: 16.sp,
-                            fontWeight: FontWeight.w600,
-                          ),
+                          style: titleStyle,
                           maxLines: titleMaxLines,
                           overflow: TextOverflow.ellipsis,
                         ),
@@ -222,13 +246,13 @@ class TournamentRoundHeader extends StatelessWidget {
                     ),
             ),
             if (onToggle != null) ...[
-              SizedBox(width: 12.w),
+              SizedBox(width: dense ? 8.w : 12.w),
               Icon(
                 isExpanded
                     ? Icons.keyboard_arrow_up_rounded
                     : Icons.keyboard_arrow_down_rounded,
                 color: context.textInk(0.5),
-                size: 20.sp,
+                size: dense ? 18.sp : 20.sp,
               ),
             ],
           ],
