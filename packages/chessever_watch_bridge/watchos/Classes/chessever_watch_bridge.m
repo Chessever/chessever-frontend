@@ -54,3 +54,11 @@ EXPORT void chessever_watch_stop(void) {
 }
 
 EXPORT void chessever_watch_free(char *pointer) { free(pointer); }
+
+// Power budget for live polling. Bit 0: Low Power Mode is on. Bits 1-2:
+// NSProcessInfoThermalState (0 nominal, 1 fair, 2 serious, 3 critical).
+EXPORT int32_t chessever_watch_power_state(void) {
+  NSProcessInfo *info = NSProcessInfo.processInfo;
+  int32_t state = info.isLowPowerModeEnabled ? 1 : 0;
+  return state | ((int32_t)info.thermalState << 1);
+}

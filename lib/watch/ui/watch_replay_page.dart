@@ -135,11 +135,25 @@ class _WatchReplayPageState extends State<WatchReplayPage>
   Widget _step(String label, IconData icon, VoidCallback? action) => Expanded(
     child: Semantics(
       label: label,
-      child: CupertinoButton(
-        padding: EdgeInsets.zero,
-        minimumSize: const Size(44, 44),
-        onPressed: action,
-        child: Icon(icon, size: 23),
+      child: WatchPressable(
+        onPressed: action == null
+            ? null
+            : () {
+                WatchHaptics.click();
+                action();
+              },
+        builder: (context, pressed) => SizedBox(
+          height: 44,
+          child: Icon(
+            icon,
+            size: 19,
+            color: action == null
+                ? WatchStyle.disabled
+                : pressed
+                ? WatchStyle.secondary
+                : WatchStyle.ink,
+          ),
+        ),
       ),
     ),
   );
@@ -173,7 +187,7 @@ class _WatchReplayPageState extends State<WatchReplayPage>
             padding: EdgeInsets.all(12),
             child: Center(child: CupertinoActivityIndicator()),
           ),
-        if (_error != null) WatchNote(_error!),
+        if (_error != null) WatchNote.status(_error!),
         if (!_busy && !ready && _error == null)
           const WatchNote('Moves have not been published yet.'),
         if (position != null) ...[
@@ -217,19 +231,19 @@ class _WatchReplayPageState extends State<WatchReplayPage>
             children: [
               _step(
                 'Previous move',
-                CupertinoIcons.backward_end_fill,
+                CupertinoIcons.arrowtriangle_left_fill,
                 _index > 0 ? () => _select(_index - 1) : null,
               ),
               _step(
                 'Next move',
-                CupertinoIcons.forward_end_fill,
+                CupertinoIcons.arrowtriangle_right_fill,
                 _index < _positions.length - 1
                     ? () => _select(_index + 1)
                     : null,
               ),
               _step(
                 'Last recorded move',
-                CupertinoIcons.forward_fill,
+                CupertinoIcons.forward_end_fill,
                 _index < _positions.length - 1
                     ? () => _select(_positions.length - 1)
                     : null,
@@ -237,11 +251,11 @@ class _WatchReplayPageState extends State<WatchReplayPage>
             ],
           ),
           WatchRow(
-            label: _crownReview ? 'Crown: moves' : 'Crown: scroll',
+            label: _crownReview ? 'Crown steps' : 'Crown scrolls',
             showChevron: false,
             onTap: _toggleCrown,
           ),
-          const WatchNote('Tap board: moves / scroll'),
+          const WatchNote('Tap the board to switch.'),
         ],
         if (!ready && !_busy)
           WatchRow(

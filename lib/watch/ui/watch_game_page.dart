@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:chessever_watch_bridge/chessever_watch_bridge.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter_watchos/flutter_watchos.dart';
 import '../../repository/supabase/game/games.dart';
@@ -56,7 +57,13 @@ class _WatchGamePageState extends State<WatchGamePage>
   void _updatePolling() {
     _timer?.cancel();
     if (_active && !WatchAlwaysOn.isActive && watchGameIsLive(_game)) {
-      _timer = Timer.periodic(const Duration(seconds: 15), (_) {
+      _timer = Timer.periodic(const Duration(seconds: 15), (timer) {
+        if (!watchShouldPoll(
+          timer.tick,
+          constrained: ChesseverWatchBridge.powerConstrained,
+        )) {
+          return;
+        }
         if (ModalRoute.of(context)?.isCurrent ?? false) unawaited(_refresh());
       });
     }
@@ -68,6 +75,14 @@ class _WatchGamePageState extends State<WatchGamePage>
     try {
       final game = await widget.controller.repository.game(_game.id);
       if (!mounted) return;
+      // A game you are watching just ended: tap the wrist once, the way a
+      // finished timer does, so the result is felt without looking.
+      if (game != null &&
+          watchGameIsLive(_game) &&
+          !watchGameIsLive(game) &&
+          watchResult(game.status) != 'Scheduled') {
+        WatchHaptics.play(WatchHapticType.notification);
+      }
       setState(() {
         if (game != null) _game = game;
         _error = game == null ? 'Game no longer available.' : null;
@@ -90,9 +105,13 @@ class _WatchGamePageState extends State<WatchGamePage>
     if (mounted) {
       setState(() {
         _sending = false;
-        _handoff = accepted
+        // A signed-out iPhone accepts the game but shows sign-in first, so
+        // say so instead of promising a game that will not appear yet.
+        _handoff = !accepted
+            ? 'Open ChessEver on your iPhone, then try again.'
+            : widget.controller.account.signedIn
             ? 'Sent to iPhone.'
-            : 'Open ChessEver on your iPhone, then try again.';
+            : 'Sent. Sign in on iPhone to see it.';
       });
     }
   }
@@ -112,7 +131,7 @@ class _WatchGamePageState extends State<WatchGamePage>
         _player(_game.players![1], false),
       WatchNote(
         '${watchResult(_game.status)}'
-        '${_game.lastMove == null ? '' : ' · ${_game.lastMove}'}',
+        '${_game.lastMove == null ? '' : ' · ${watchLastMoveLabel(_game.fen, _game.lastMove)}'}',
       ),
       if (_fetchedAt != null)
         WatchNote(
@@ -121,7 +140,7 @@ class _WatchGamePageState extends State<WatchGamePage>
           '${_fetchedAt!.minute.toString().padLeft(2, '0')}:'
           '${_fetchedAt!.second.toString().padLeft(2, '0')}',
         ),
-      if (_error != null) WatchNote(_error!),
+      if (_error != null) WatchNote.status(_error!),
       WatchRow(
         label: 'Review moves',
         icon: CupertinoIcons.gobackward,
@@ -146,7 +165,7 @@ class _WatchGamePageState extends State<WatchGamePage>
         icon: CupertinoIcons.device_phone_portrait,
         onTap: _sending ? null : _sendToPhone,
       ),
-      if (_handoff != null) WatchNote(_handoff!),
+      if (_handoff != null) WatchNote.status(_handoff!),
     ],
   );
 
@@ -163,11 +182,21 @@ class _WatchGamePageState extends State<WatchGamePage>
     final selected = standing;
     return WatchRow(
       label: player.name,
-      visual: watchFederation(player.fed),
-      detail:
-          '${white ? 'White' : 'Black'}'
-          '${player.rating > 0 ? ' · ${player.rating}' : ''}'
-          '${seconds == null ? '' : ' · ${watchClock(seconds)}'}',
+      semanticLabel: white ? 'White' : 'Black',
+      visual: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          WatchSideMark(white: white),
+          if (watchFederation(player.fed) case final flag?) ...[
+            const SizedBox(width: 5),
+            flag,
+          ],
+        ],
+      ),
+      detail: player.rating > 0 ? '${player.rating}' : null,
+      value: seconds == null ? null : watchClock(seconds),
+      valueLit:
+          watchIsLive(_game.status) && watchWhiteToMove(_game.fen) == white,
       onTap: tour == null || selected == null
           ? null
           : () => watchPush(

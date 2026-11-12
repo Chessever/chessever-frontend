@@ -18,3 +18,4 @@ flutter:
           - chessever_watch_listen
           - chessever_watch_stop
           - chessever_watch_free
+          - chessever_watch_power_state

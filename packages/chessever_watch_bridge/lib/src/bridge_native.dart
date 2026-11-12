@@ -10,6 +10,24 @@ typedef _Callback = Void Function(Pointer<Utf8>);
 /// use the same push callback; the host replays taps received before Dart starts.
 class ChesseverWatchBridge {
   static void registerWith() {}
+
+  static int Function()? _powerState;
+
+  /// True when watchOS asks apps to do less: Low Power Mode is on, or the
+  /// device is at a serious or critical thermal state. Reads live each call,
+  /// so a change takes effect on the next poll.
+  static bool get powerConstrained {
+    try {
+      final state = (_powerState ??= DynamicLibrary.process()
+          .lookupFunction<Int32 Function(), int Function()>(
+            'chessever_watch_power_state',
+          ))();
+      return state & 1 == 1 || (state >> 1) >= 2;
+    } on ArgumentError {
+      return false; // Symbol absent: not the watch host.
+    }
+  }
+
   final _events = StreamController<Map<String, dynamic>>.broadcast();
   NativeCallable<_Callback>? _callback;
   void Function()? _stop;

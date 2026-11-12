@@ -1,14 +1,20 @@
 import 'dart:math' as math;
 import 'package:flutter/cupertino.dart';
 import 'package:flutter_watchos/flutter_watchos.dart';
+import 'package:motor/motor.dart';
 
-/// watchOS is always dark. Quiet neutral surfaces leave the real chess position
-/// and reported scores as the identity; the system face preserves Dynamic Type.
+/// watchOS is always dark. The board is the identity, so every surface is
+/// drawn from it: rows are a green-black lifted off the OLED floor toward the
+/// dark square, never a stock UI-kit grey, and secondary type carries the same
+/// faint green. Numbers read like a scoresheet (tabular figures). The system
+/// face preserves Dynamic Type.
 abstract final class WatchStyle {
   static const contentInset = 11.0;
   static const background = Color(0xFF000000);
-  static const surface = Color(0xFF1B1B1B);
-  static const secondary = Color(0xFFB7B7B7);
+  static const surface = Color(0xFF151A14);
+  static const surfacePressed = Color(0xFF222A20);
+  static const secondary = Color(0xFFADB5A8);
+  static const disabled = Color(0xFF4F584C);
   static const ink = Color(0xFFF5F5F5);
   static const lightSquare = Color(0xFFBDC4B8);
   static const darkSquare = Color(0xFF596653);
@@ -32,6 +38,74 @@ abstract final class WatchStyle {
     color: secondary,
     height: 1.3,
   );
+
+  /// Clocks, scores and ratings: fixed-width digits so a ticking clock or a
+  /// column of scores never shifts sideways.
+  static const figures = TextStyle(
+    fontFamily: 'CupertinoSystemText',
+    fontSize: 12,
+    color: secondary,
+    height: 1.3,
+    fontFeatures: [FontFeature.tabularFigures()],
+  );
+
+  /// Press feedback shared by every target: a short spring to 0.97, the same
+  /// motion as the phone's tab bar.
+  static const press = CupertinoMotion.snappy(
+    duration: Duration(milliseconds: 220),
+  );
+}
+
+/// A tap target that answers the finger: it settles to 0.97 on a spring and
+/// hands its pressed state to [builder] for a tonal lift. Reduce Motion keeps
+/// the tonal change and drops the scale. Semantics match a button; the
+/// minimum target is 44 points.
+class WatchPressable extends StatefulWidget {
+  const WatchPressable({
+    super.key,
+    required this.onPressed,
+    required this.builder,
+  });
+  final VoidCallback? onPressed;
+  final Widget Function(BuildContext context, bool pressed) builder;
+
+  @override
+  State<WatchPressable> createState() => _WatchPressableState();
+}
+
+class _WatchPressableState extends State<WatchPressable> {
+  bool _pressed = false;
+
+  void _set(bool value) {
+    if (_pressed != value && mounted) setState(() => _pressed = value);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final enabled = widget.onPressed != null;
+    return Semantics(
+      button: true,
+      enabled: enabled,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTapDown: enabled ? (_) => _set(true) : null,
+        onTapUp: enabled ? (_) => _set(false) : null,
+        onTapCancel: enabled ? () => _set(false) : null,
+        onTap: widget.onPressed,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
+          child: SingleMotionBuilder(
+            motion: WatchStyle.press,
+            value: _pressed ? 0.97 : 1.0,
+            active: !MediaQuery.disableAnimationsOf(context),
+            builder: (context, scale, child) =>
+                Transform.scale(scale: scale, child: child),
+            child: widget.builder(context, _pressed),
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class WatchPage extends StatelessWidget {
@@ -89,14 +163,12 @@ class WatchPage extends StatelessWidget {
                     if (!root && !boardFirst)
                       Align(
                         alignment: Alignment.centerLeft,
-                        child: CupertinoButton(
-                          padding: EdgeInsets.zero,
-                          minimumSize: const Size(44, 44),
+                        child: WatchPressable(
                           onPressed: () {
                             WatchHaptics.click();
                             Navigator.of(context).maybePop();
                           },
-                          child: const Row(
+                          builder: (context, _) => const Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
                               Icon(
@@ -238,21 +310,33 @@ class WatchRow extends StatelessWidget {
     super.key,
     required this.label,
     this.detail,
+    this.value,
+    this.valueLit = false,
     this.trailing,
     this.visual,
     this.icon,
     this.onTap,
     this.semanticLabel,
     this.showChevron = true,
+    this.maxLines = 2,
   });
   final String label;
   final String? detail;
+
+  /// A figure set flush right on the detail line (a clock, a score), in
+  /// tabular digits. [valueLit] raises it to ink, e.g. the side to move.
+  final String? value;
+  final bool valueLit;
   final Widget? trailing;
   final Widget? visual;
   final IconData? icon;
   final VoidCallback? onTap;
   final String? semanticLabel;
   final bool showChevron;
+
+  /// Long event names hold to two lines instead of a four-line staircase;
+  /// VoiceOver still reads the whole name.
+  final int maxLines;
 
   @override
   Widget build(BuildContext context) {
@@ -265,13 +349,13 @@ class WatchRow extends StatelessWidget {
                 size: 13,
                 color: WatchStyle.secondary,
               ));
-    final content = Container(
+    Widget content(bool pressed) => Container(
       width: double.infinity,
       constraints: const BoxConstraints(minHeight: 48),
       padding: const EdgeInsets.all(WatchStyle.contentInset),
       decoration: BoxDecoration(
-        color: WatchStyle.surface,
-        borderRadius: BorderRadius.circular(13),
+        color: pressed ? WatchStyle.surfacePressed : WatchStyle.surface,
+        borderRadius: BorderRadius.circular(14),
       ),
       child: Row(
         children: [
@@ -283,8 +367,8 @@ class WatchRow extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _WatchRowLabel(label),
-                if (detail != null) ...[
+                _WatchRowLabel(label, maxLines: maxLines),
+                if (detail != null || value != null) ...[
                   const SizedBox(height: 3),
                   Row(
                     children: [
@@ -292,7 +376,19 @@ class WatchRow extends StatelessWidget {
                         ExcludeSemantics(child: visual!),
                         const SizedBox(width: 6),
                       ],
-                      Expanded(child: Text(detail!, style: WatchStyle.caption)),
+                      Expanded(
+                        child: Text(detail ?? '', style: WatchStyle.figures),
+                      ),
+                      if (value != null) ...[
+                        const SizedBox(width: 6),
+                        Text(
+                          value!,
+                          style: WatchStyle.figures.copyWith(
+                            color: valueLit ? WatchStyle.ink : null,
+                            fontWeight: valueLit ? FontWeight.w600 : null,
+                          ),
+                        ),
+                      ],
                     ],
                   ),
                 ],
@@ -306,52 +402,47 @@ class WatchRow extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.only(bottom: 6),
       child: onTap == null
-          ? content
+          ? content(false)
           : Semantics(
               label: semanticLabel,
-              child: CupertinoButton(
-                padding: EdgeInsets.zero,
-                minimumSize: const Size(44, 44),
+              child: WatchPressable(
                 onPressed: () {
                   WatchHaptics.click();
                   onTap!();
                 },
-                child: content,
+                builder: (context, pressed) => content(pressed),
               ),
             ),
     );
   }
 }
 
-/// Fit only an overlong word, retaining normal wrapping and Dynamic Type.
+/// One size for every row label; long names end in an ellipsis on screen
+/// while VoiceOver reads them whole.
 class _WatchRowLabel extends StatelessWidget {
-  const _WatchRowLabel(this.text);
+  const _WatchRowLabel(this.text, {this.maxLines = 2});
   final String text;
+  final int maxLines;
 
   @override
-  Widget build(BuildContext context) => LayoutBuilder(
-    builder: (context, constraints) {
-      final painter = TextPainter(
-        text: TextSpan(
-          text: text.split(RegExp(r'\s+')).join('\n'),
-          style: WatchStyle.body,
-        ),
-        textDirection: Directionality.of(context),
-        textScaler: MediaQuery.textScalerOf(context),
-      )..layout();
-      final widest = painter.width;
-      painter.dispose();
-      final size = widest > constraints.maxWidth
-          ? (16 * constraints.maxWidth / widest).clamp(13.0, 16.0)
-          : 16.0;
-      return Text(text, style: WatchStyle.body.copyWith(fontSize: size));
-    },
+  Widget build(BuildContext context) => Text(
+    text,
+    maxLines: maxLines,
+    overflow: TextOverflow.ellipsis,
+    style: WatchStyle.body.copyWith(fontWeight: FontWeight.w500),
   );
 }
 
 class WatchNote extends StatelessWidget {
-  const WatchNote(this.text, {super.key});
+  const WatchNote(this.text, {super.key}) : live = false;
+
+  /// A note that appears in response to an action (a sync, a handoff, an
+  /// error). It is a live region, so VoiceOver speaks it when it appears or
+  /// changes instead of leaving the user to hunt for it.
+  const WatchNote.status(this.text, {super.key}) : live = true;
+
   final String text;
+  final bool live;
   @override
   Widget build(BuildContext context) => Padding(
     padding: const EdgeInsets.fromLTRB(
@@ -360,7 +451,10 @@ class WatchNote extends StatelessWidget {
       WatchStyle.contentInset,
       12,
     ),
-    child: Text(text, style: WatchStyle.caption),
+    child: Semantics(
+      liveRegion: live,
+      child: Text(text, style: WatchStyle.caption),
+    ),
   );
 }
 
@@ -429,7 +523,7 @@ class _WatchDataPageState<T> extends State<WatchDataPage<T>> {
           padding: EdgeInsets.all(12),
           child: Center(child: CupertinoActivityIndicator()),
         ),
-      if (_error != null) WatchNote(_error!),
+      if (_error != null) WatchNote.status(_error!),
       if (!_busy && _error == null && _data.isEmpty) WatchNote(widget.empty),
       ...widget.items(context, _data),
       if (_more && !_busy)

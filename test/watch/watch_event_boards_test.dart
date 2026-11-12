@@ -3,10 +3,13 @@ import 'package:chessever2/watch/core/watch_models.dart';
 import 'package:chessever2/watch/core/watch_repository.dart';
 import 'package:chessever2/watch/ui/watch_event_boards_page.dart';
 import 'package:chessever2/watch/ui/watch_board.dart';
+import 'package:chessever2/watch/ui/watch_widgets.dart';
 import 'package:chessever2/watch/watch_app.dart';
 import 'package:chessever2/watch/watch_controller.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:sensors_plus/sensors_plus.dart';
+import 'dart:async';
 import 'watch_core_test.dart' show fixtureGame;
 
 class _BoardsRepository extends WatchRepository {
@@ -72,7 +75,7 @@ void main() {
       expect(tester.getRect(first).top, greaterThanOrEqualTo(45));
       final firstContent = find.descendant(
         of: first,
-        matching: find.byType(CupertinoButton),
+        matching: find.byType(WatchPressable),
       );
       expect(tester.getRect(firstContent).bottom, lessThanOrEqualTo(212));
       final board = tester.getRect(
@@ -113,7 +116,7 @@ void main() {
       expect(tester.getRect(older).top, greaterThanOrEqualTo(45));
       final olderContent = find.descendant(
         of: older,
-        matching: find.byType(CupertinoButton),
+        matching: find.byType(WatchPressable),
       );
       expect(tester.getRect(olderContent).bottom, lessThanOrEqualTo(212));
       repository.fail = true;
@@ -130,4 +133,58 @@ void main() {
       controller.dispose();
     },
   );
+
+  testWidgets('a recorded wrist flick steps the real feed between boards', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(184, 224);
+    tester.view.devicePixelRatio = 1;
+    tester.view.padding = const FakeViewPadding(
+      top: 45,
+      left: 12,
+      right: 12,
+      bottom: 12,
+    );
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.resetPadding);
+    final gyro = StreamController<GyroscopeEvent>.broadcast();
+    WatchEventBoardsPage.debugGyroscope = () => gyro.stream;
+    addTearDown(() {
+      WatchEventBoardsPage.debugGyroscope = null;
+      gyro.close();
+    });
+    final controller = WatchController(repository: _BoardsRepository())
+      ..events = [const WatchEvent(id: 'event', name: 'Club Championship')]
+      ..hasMore = false;
+    await tester.pumpWidget(ChessEverWatchApp(controller: controller));
+    await tester.tap(find.text('Club Championship'));
+    await tester.pumpAndSettle();
+    expect(gyro.hasListener, isTrue, reason: 'feed listens while visible');
+
+    // A real flick recorded at 50 Hz: out past 6 rad/s, snap back.
+    Future<void> flick(double sign) async {
+      for (final x in [1.0, 7.5, 2.0, -5.0, -0.5]) {
+        gyro.add(GyroscopeEvent(sign * x, 0.6, 0.4, DateTime.now()));
+      }
+      await tester.pumpAndSettle();
+    }
+
+    double top(int i) =>
+        tester.getRect(find.byKey(ValueKey('watch-board-current-$i'))).top;
+    final restingTop = top(0);
+    await flick(1);
+    expect(top(1), closeTo(restingTop, 1), reason: 'board 2 now in place');
+    // The flick cooldown runs on real time; wait it out for real.
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 950)),
+    );
+    await flick(-1);
+    expect(top(0), closeTo(restingTop, 1), reason: 'back on board 1');
+
+    // Opening a game covers the feed: the gyroscope must stop.
+    await tester.tap(find.byKey(const ValueKey('watch-board-current-0')));
+    await tester.pumpAndSettle();
+    expect(gyro.hasListener, isFalse);
+  });
 }

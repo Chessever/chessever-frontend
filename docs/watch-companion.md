@@ -2,7 +2,7 @@
 
 This adds a compact companion to the production iPhone app. It uses
 [flutter-watchos](https://flutterwatch.dev/), pinned to
-`ad4dffc3550ffb8b44004c08fab406a695ce8fbc`, and the toolchain's
+`7f70894b9b32fb290d693b5785a3cf3794bf6389`, and the toolchain's
 [`flutter_watch_link`](https://github.com/flutterwatch/plugins/tree/main/packages/flutter_watch_link)
 WatchConnectivity implementation.
 

@@ -1,9 +1,13 @@
 import 'dart:async';
 import 'dart:math' as math;
+import 'package:chessever_watch_bridge/chessever_watch_bridge.dart';
 import 'package:flutter/cupertino.dart';
+import 'package:flutter/physics.dart';
+import 'package:sensors_plus/sensors_plus.dart';
 import 'package:flutter_watchos/flutter_watchos.dart';
 import '../../repository/supabase/game/games.dart';
 import '../core/watch_models.dart';
+import '../core/watch_wrist_flick.dart';
 import '../core/watch_repository.dart';
 import '../watch_controller.dart';
 import 'watch_board.dart';
@@ -20,6 +24,12 @@ class WatchEventBoardsPage extends StatefulWidget {
   });
   final WatchController controller;
   final WatchEvent event;
+
+  /// Test seam: replaces the CoreMotion gyroscope so a recorded flick can be
+  /// replayed through the real feed off-watch.
+  @visibleForTesting
+  static Stream<GyroscopeEvent> Function()? debugGyroscope;
+
   @override
   State<WatchEventBoardsPage> createState() => _WatchEventBoardsPageState();
 }
@@ -36,6 +46,14 @@ class _WatchEventBoardsPageState extends State<WatchEventBoardsPage>
   String? _error;
   Timer? _timer;
   final _scroll = ScrollController();
+  final _tileKeys = <String, GlobalKey>{};
+
+  // Wrist flick: the gyroscope runs only while this feed is the visible
+  // screen, the app is active and Always On is not dimming it.
+  final _flick = WatchWristFlick();
+  final _clock = Stopwatch();
+  StreamSubscription<GyroscopeEvent>? _gyro;
+  bool _covered = false;
 
   WatchRepository get _repository => widget.controller.repository;
   @override
@@ -47,12 +65,124 @@ class _WatchEventBoardsPageState extends State<WatchEventBoardsPage>
   }
 
   void _poll() {
+    _updateFlick();
     _timer?.cancel();
     if (_active && !WatchAlwaysOn.isActive && _games.any(watchGameIsLive)) {
-      _timer = Timer.periodic(const Duration(seconds: 15), (_) {
+      _timer = Timer.periodic(const Duration(seconds: 15), (timer) {
+        if (!watchShouldPoll(
+          timer.tick,
+          constrained: ChesseverWatchBridge.powerConstrained,
+        )) {
+          return;
+        }
         if (ModalRoute.of(context)?.isCurrent ?? false) unawaited(_refresh());
       });
     }
+  }
+
+  void _updateFlick() {
+    final source = WatchEventBoardsPage.debugGyroscope;
+    final want =
+        (FlutterWatchosPlatform.isWatch || source != null) &&
+        _active &&
+        !_covered &&
+        !WatchAlwaysOn.isActive &&
+        _games.length > 1;
+    if (want && _gyro == null) {
+      _flick.reset();
+      _clock
+        ..reset()
+        ..start();
+      final stream =
+          source?.call() ??
+          gyroscopeEventStream(samplingPeriod: SensorInterval.gameInterval);
+      _gyro = stream.listen(
+        (e) {
+          final step = _flick.add(e.x, e.y, e.z, _clock.elapsed);
+          if (step != 0) _stepBoard(step);
+        },
+        onError: (_) => _stopFlick(),
+        cancelOnError: true,
+      );
+    } else if (!want) {
+      _stopFlick();
+    }
+  }
+
+  void _stopFlick() {
+    unawaited(_gyro?.cancel());
+    _gyro = null;
+    _clock.stop();
+  }
+
+  /// Moves the feed one board forward or back, landing the next board in
+  /// the same resting slot under the clock that the first board occupies,
+  /// with a haptic so the move is felt.
+  void _stepBoard(int direction) {
+    final viewport = context.findRenderObject();
+    if (!_scroll.hasClients || _games.isEmpty || viewport == null) return;
+    final resting = WatchStatusBar.heightOf(context) + 4;
+    double? topOf(int i) {
+      final box =
+          _tileKeys[_games[i].id]?.currentContext?.findRenderObject()
+              as RenderBox?;
+      if (box == null || !box.attached) return null;
+      return box.localToGlobal(Offset.zero, ancestor: viewport).dy;
+    }
+
+    var current = 0;
+    var best = double.infinity;
+    for (var i = 0; i < _games.length; i++) {
+      final top = topOf(i);
+      if (top != null && (top - resting).abs() < best) {
+        best = (top - resting).abs();
+        current = i;
+      }
+    }
+    final target = (current + direction).clamp(0, _games.length - 1);
+    final targetTop = topOf(target);
+    if (target == current || targetTop == null) {
+      WatchHaptics.play(WatchHapticType.failure);
+      return;
+    }
+    WatchHaptics.play(
+      direction > 0
+          ? WatchHapticType.directionDown
+          : WatchHapticType.directionUp,
+    );
+    final position = _scroll.position;
+    final to = (position.pixels + targetTop - resting).clamp(
+      position.minScrollExtent,
+      position.maxScrollExtent,
+    );
+    if (MediaQuery.disableAnimationsOf(context)) {
+      _scroll.jumpTo(to);
+    } else {
+      unawaited(
+        _scroll.animateTo(
+          to,
+          duration: const Duration(milliseconds: 420),
+          curve: const _SpringCurve(),
+        ),
+      );
+    }
+  }
+
+  Future<void> _openGame(int index) async {
+    setState(() => _covered = true);
+    _updateFlick();
+    await Navigator.of(context).push(
+      CupertinoPageRoute<void>(
+        builder: (_) => WatchGamePage(
+          controller: widget.controller,
+          game: _games[index],
+          tour: _tour,
+        ),
+      ),
+    );
+    if (!mounted) return;
+    setState(() => _covered = false);
+    _updateFlick();
   }
 
   @override
@@ -205,10 +335,6 @@ class _WatchEventBoardsPageState extends State<WatchEventBoardsPage>
         detail: _tour?.name == widget.event.name
             ? 'Change round'
             : _tour?.name ?? 'Choose a section',
-        visual: WatchEventArtwork(
-          repository: _repository,
-          eventId: widget.event.id,
-        ),
         onTap: _busy ? null : _choose,
       ),
       if (_tour != null)
@@ -218,7 +344,7 @@ class _WatchEventBoardsPageState extends State<WatchEventBoardsPage>
           onTap: () =>
               watchPush(context, watchStandingsPage(widget.controller, _tour!)),
         ),
-      if (_error != null) WatchNote(_error!),
+      if (_error != null) WatchNote.status(_error!),
     ],
   );
 
@@ -242,16 +368,12 @@ class _WatchEventBoardsPageState extends State<WatchEventBoardsPage>
         if (!_busy || _tour != null) _roundInfo(),
       ],
       for (var index = 0; index < _games.length; index++) ...[
-        WatchBoardTile(
-          key: ValueKey('watch-board-${_games[index].id}'),
-          game: _games[index],
-          onTap: () => watchPush(
-            context,
-            WatchGamePage(
-              controller: widget.controller,
-              game: _games[index],
-              tour: _tour,
-            ),
+        KeyedSubtree(
+          key: _tileKeys.putIfAbsent(_games[index].id, GlobalKey.new),
+          child: WatchBoardTile(
+            key: ValueKey('watch-board-${_games[index].id}'),
+            game: _games[index],
+            onTap: () => _openGame(index),
           ),
         ),
         if (index == 0) _roundInfo(),
@@ -279,6 +401,7 @@ class _WatchEventBoardsPageState extends State<WatchEventBoardsPage>
 
   @override
   void dispose() {
+    _stopFlick();
     _timer?.cancel();
     _scroll.dispose();
     WatchAlwaysOn.state.removeListener(_poll);
@@ -300,12 +423,24 @@ class WatchBoardTile extends StatelessWidget {
         : null;
     final flag = watchFederation(player?.fed);
     final clock = index == 0 ? game.lastClockWhite : game.lastClockBlack;
+    final white = index == 0;
+    final won = switch (game.status) {
+      '1-0' => white,
+      '0-1' => !white,
+      _ => null,
+    };
     final value = switch (game.status) {
-      '1-0' => index == 0 ? '1' : '0',
-      '0-1' => index == 0 ? '0' : '1',
+      '1-0' => white ? '1' : '0',
+      '0-1' => white ? '0' : '1',
       '1/2-1/2' => '½',
       _ => clock == null ? '' : watchClock(clock),
     };
+    // Scoresheet emphasis: the winner, or the side whose clock is running,
+    // sits in ink; everyone else steps back to the secondary tone.
+    final lit =
+        won ??
+        (watchIsLive(game.status) && watchWhiteToMove(game.fen) == white);
+    final tone = lit ? WatchStyle.ink : WatchStyle.secondary;
     return Row(
       key: ValueKey('watch-player-strip-$index'),
       children: [
@@ -315,17 +450,22 @@ class WatchBoardTile extends StatelessWidget {
         ],
         Expanded(
           child: Text(
-            player?.name ?? (index == 0 ? 'White' : 'Black'),
+            player?.name ?? (white ? 'White' : 'Black'),
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: WatchStyle.caption.copyWith(color: WatchStyle.ink),
+            style: WatchStyle.caption.copyWith(
+              color: won == false ? WatchStyle.secondary : WatchStyle.ink,
+            ),
           ),
         ),
         if (value.isNotEmpty) ...[
           const SizedBox(width: 5),
           Text(
             value,
-            style: WatchStyle.caption.copyWith(color: WatchStyle.ink),
+            style: WatchStyle.figures.copyWith(
+              color: tone,
+              fontWeight: lit ? FontWeight.w600 : FontWeight.w400,
+            ),
           ),
         ],
       ],
@@ -350,13 +490,18 @@ class WatchBoardTile extends StatelessWidget {
         child: Semantics(
           button: true,
           label:
-              'Board ${game.boardNr ?? ''}. ${game.players?.map((p) => p.name).join(' versus ') ?? 'Game'}. ${watchResult(game.status)}. Open game.',
+              'Board ${game.boardNr ?? ''}. ${game.players?.map((p) => p.name).join(' versus ') ?? 'Game'}. ${watchResult(game.status)}.',
+          hint: 'Opens game tools',
+          // excludeSemantics drops the CupertinoButton's own tap action, so
+          // the merged node must carry it or VoiceOver cannot activate it.
+          onTap: onTap,
           excludeSemantics: true,
-          child: CupertinoButton(
-            padding: EdgeInsets.zero,
-            minimumSize: const Size(44, 44),
-            onPressed: onTap,
-            child: Center(
+          child: WatchPressable(
+            onPressed: () {
+              WatchHaptics.click();
+              onTap();
+            },
+            builder: (context, _) => Center(
               child: SizedBox(
                 width: board,
                 child: Column(
@@ -375,4 +520,20 @@ class WatchBoardTile extends StatelessWidget {
       );
     },
   );
+}
+
+/// A critically damped spring expressed as a curve, so the flick step moves
+/// like the rest of ChessEver's physics-based motion rather than an easing.
+class _SpringCurve extends Curve {
+  const _SpringCurve();
+  static final _spring = SpringSimulation(
+    SpringDescription.withDampingRatio(mass: 1, stiffness: 300),
+    0,
+    1,
+    0,
+  );
+
+  // 0.42 s of spring time: within 0.4 % of rest, so the end is seamless.
+  @override
+  double transformInternal(double t) => _spring.x(t * 0.42);
 }

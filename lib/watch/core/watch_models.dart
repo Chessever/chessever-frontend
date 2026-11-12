@@ -8,15 +8,23 @@ class WatchEvent {
     required this.id,
     required this.name,
     this.timeControl = '',
+    this.closestRound,
   });
   factory WatchEvent.fromJson(Map<String, dynamic> json) => WatchEvent(
     id: json['id'].toString(),
     name: json['name'] as String? ?? 'Event',
     timeControl: json['time_control'] as String? ?? '',
+    closestRound: DateTime.tryParse(
+      json['date_closest_round'] as String? ?? '',
+    )?.toLocal(),
   );
   final String id;
   final String name;
   final String timeControl;
+
+  /// The feed's closest round start. It can already be in the past (a round
+  /// in progress, or a finished event still listed as current).
+  final DateTime? closestRound;
 }
 
 class WatchTour {
@@ -121,6 +129,29 @@ class WatchRound {
 
 bool watchGameIsLive(Games game) =>
     ['*', 'live', 'ongoing'].contains(game.status?.trim().toLowerCase());
+
+/// Feed time controls arrive lowercase (`rapid`, `standard`); set them as a
+/// label: `Rapid`, `Classical`.
+String? watchTimeControl(String? value) {
+  if (value == null || value.isEmpty) return value;
+  if (value.toLowerCase() == 'standard') return 'Classical';
+  return value[0].toUpperCase() + value.substring(1);
+}
+
+/// Whose move it is in [fen], or null when the FEN is missing.
+bool? watchWhiteToMove(String? fen) {
+  final parts = fen?.split(' ');
+  if (parts == null || parts.length < 2) return null;
+  return parts[1] == 'w';
+}
+
+/// Live polling keeps its normal tick, but when watchOS is in Low Power Mode
+/// or under thermal pressure only every fourth tick fetches (15 s → 60 s).
+bool watchShouldPoll(int tick, {required bool constrained}) =>
+    !constrained || tick % 4 == 0;
+
+bool watchIsLive(String? status) =>
+    status == '*' || status == 'live' || status == 'ongoing';
 
 String watchResult(String? status) => switch (status) {
   '1/2-1/2' => '½–½',

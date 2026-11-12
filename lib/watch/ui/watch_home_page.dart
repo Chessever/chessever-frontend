@@ -32,23 +32,10 @@ class WatchHomePage extends StatelessWidget {
                 : 'No current events. Check back soon.',
           ),
         for (final event in controller.visibleEvents)
-          WatchRow(
-            label: event.name,
-            visual: WatchEventArtwork(
-              repository: controller.repository,
-              eventId: event.id,
-            ),
-            detail: event.timeControl == 'standard'
-                ? 'Classical'
-                : event.timeControl,
-            trailing: controller.account.followsEvent(event.id, event.name)
-                ? const Icon(
-                    CupertinoIcons.star_fill,
-                    semanticLabel: 'Followed on iPhone',
-                    size: 14,
-                    color: WatchStyle.ink,
-                  )
-                : null,
+          WatchEventCard(
+            repository: controller.repository,
+            event: event,
+            followed: controller.account.followsEvent(event.id, event.name),
             onTap: () => watchPush(context, watchEventPage(controller, event)),
           ),
         if (controller.hasMore &&
@@ -169,7 +156,7 @@ class _WatchAccountPageState extends State<WatchAccountPage> {
             icon: CupertinoIcons.refresh,
             onTap: _busy ? null : _sync,
           ),
-          if (_message != null) WatchNote(_message!),
+          if (_message != null) WatchNote.status(_message!),
         ],
       );
     },

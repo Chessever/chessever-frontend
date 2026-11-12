@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:chessever_watch_bridge/chessever_watch_bridge.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter_watchos/flutter_watchos.dart';
+import 'core/watch_models.dart';
 import 'core/watch_notification_route.dart';
 import 'core/watch_repository.dart';
 import 'ui/watch_event_pages.dart';
@@ -61,7 +62,13 @@ class _ChessEverWatchAppState extends State<ChessEverWatchApp>
   void _displayChanged() {
     _timer?.cancel();
     if (_active && !WatchAlwaysOn.isActive) {
-      _timer = Timer.periodic(const Duration(seconds: 45), (_) {
+      _timer = Timer.periodic(const Duration(seconds: 45), (timer) {
+        if (!watchShouldPoll(
+          timer.tick,
+          constrained: ChesseverWatchBridge.powerConstrained,
+        )) {
+          return;
+        }
         if (!_controller.loading &&
             _navigator.currentState?.canPop() == false) {
           unawaited(_controller.refresh());

@@ -16,7 +16,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-version: 38.5.4+3839
+version: 38.5.5+3840
 environment:
   sdk: ^3.12.0
   flutter: '>=3.44.0'
@@ -34,10 +34,13 @@ dependencies:
   flutter_watchos:
     git:
       url: https://github.com/flutterwatch/flutter-watchos.git
-      ref: ad4dffc3550ffb8b44004c08fab406a695ce8fbc
+      ref: 7f70894b9b32fb290d693b5785a3cf3794bf6389
       path: packages/flutter_watchos
   flutter_watch_link: ^0.1.1
   shared_preferences_watchos: ^0.1.1
+  # Wrist-flick board stepping on the watch (CoreMotion gyroscope).
+  sensors_plus: ^7.1.1
+  sensors_plus_watchos: ^0.1.1
   chessever_watch_bridge:
     path: packages/chessever_watch_bridge
   flutter_markdown_plus: ^1.0.12

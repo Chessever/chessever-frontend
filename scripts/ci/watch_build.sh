@@ -42,7 +42,8 @@ check_native_bridge() {
     return 1
   fi
   local symbol
-  for symbol in chessever_watch_listen chessever_watch_stop chessever_watch_free; do
+  for symbol in chessever_watch_listen chessever_watch_stop chessever_watch_free \
+    chessever_watch_power_state; do
     if ! grep -Eq "[[:space:]]_${symbol}$" "$symbols"; then
       rm -f "$symbols"
       echo "::error::Watch notification bridge symbol $symbol is missing. Check its watchos/Package.swift."

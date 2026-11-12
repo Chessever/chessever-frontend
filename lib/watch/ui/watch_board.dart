@@ -33,6 +33,78 @@ Set<int> watchLastMoveSquares(String? move) {
   return result;
 }
 
+/// Readable last move from the relay's UCI and the position after it:
+/// `e5f7` → `Ne5–f7`, `e1g1` → `O-O`, `e7e8q` → `e7–e8=Q`. Capture and check
+/// are unknowable without the previous position, so they are left out rather
+/// than guessed. Returns the input unchanged when it is not UCI.
+String? watchLastMoveLabel(String? fen, String? uci) {
+  if (uci == null) return null;
+  final m = RegExp(r'^([a-h][1-8])([a-h][1-8])([qrbn])?$').firstMatch(uci);
+  if (m == null) return uci;
+  final from = m.group(1)!, to = m.group(2)!, promo = m.group(3);
+  final squares = watchFenSquares(fen);
+  final moved = squares?[(8 - int.parse(to[1])) * 8 + to.codeUnitAt(0) - 97];
+  final kind = moved?.toUpperCase();
+  if (kind == 'K' && from[1] == to[1]) {
+    final delta = to.codeUnitAt(0) - from.codeUnitAt(0);
+    if (delta == 2) return 'O-O';
+    if (delta == -2) return 'O-O-O';
+  }
+  final letter = kind == null || kind == 'P' || promo != null ? '' : kind;
+  return '$letter$from–$to${promo == null ? '' : '=${promo.toUpperCase()}'}';
+}
+
+/// VoiceOver reading of a position, grouped by side with the king first:
+/// "White: king g2, queen f6, pawns f2, g3, h2. Black: …".
+String watchPositionDescription(List<String?> squares) {
+  const order = ['k', 'q', 'r', 'b', 'n', 'p'];
+  const names = {
+    'k': ('king', 'king'),
+    'q': ('queen', 'queens'),
+    'r': ('rook', 'rooks'),
+    'b': ('bishop', 'bishops'),
+    'n': ('knight', 'knights'),
+    'p': ('pawn', 'pawns'),
+  };
+  String side(bool white) {
+    final parts = <String>[];
+    for (final kind in order) {
+      final at = <String>[];
+      for (var i = 0; i < 64; i++) {
+        final piece = squares[i];
+        if (piece == (white ? kind.toUpperCase() : kind)) {
+          at.add('${String.fromCharCode(97 + i % 8)}${8 - i ~/ 8}');
+        }
+      }
+      if (at.isEmpty) continue;
+      at.sort();
+      final (one, many) = names[kind]!;
+      parts.add('${at.length == 1 ? one : many} ${at.join(', ')}');
+    }
+    return '${white ? 'White' : 'Black'}: ${parts.join(', ')}.';
+  }
+
+  return '${side(true)} ${side(false)}';
+}
+
+/// The side a player has, drawn with the board's own Cburnett king so the
+/// rows speak the same visual language as the position above them.
+class WatchSideMark extends StatelessWidget {
+  const WatchSideMark({super.key, required this.white, this.size = 15});
+  final bool white;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) => Image.asset(
+    'packages/chessground/assets/piece_sets/cburnett/'
+    '${white ? 'w' : 'b'}K.webp',
+    width: size,
+    height: size,
+    filterQuality: FilterQuality.medium,
+    excludeFromSemantics: true,
+  );
+}
+
 class WatchBoard extends StatelessWidget {
   const WatchBoard({
     super.key,
@@ -49,27 +121,9 @@ class WatchBoard extends StatelessWidget {
     final squares = watchFenSquares(fen);
     if (squares == null) return const WatchNote('Position not available yet.');
     final highlights = watchLastMoveSquares(lastMove);
-    final position = <String>[];
-    const names = {
-      'p': 'pawn',
-      'n': 'knight',
-      'b': 'bishop',
-      'r': 'rook',
-      'q': 'queen',
-      'k': 'king',
-    };
-    for (var i = 0; i < 64; i++) {
-      final piece = squares[i];
-      if (piece == null) continue;
-      final color = piece == piece.toUpperCase() ? 'White' : 'Black';
-      position.add(
-        '$color ${names[piece.toLowerCase()]} '
-        '${String.fromCharCode(97 + i % 8)}${8 - i ~/ 8}',
-      );
-    }
     return Semantics(
       label: 'Chess position',
-      value: position.join(', '),
+      value: watchPositionDescription(squares),
       child: ExcludeSemantics(
         child: AspectRatio(
           aspectRatio: 1,

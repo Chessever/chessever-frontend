@@ -67,7 +67,7 @@ class WatchRepository {
 
   Future<List<WatchEvent>> events({int offset = 0}) async =>
       (await _get('group_broadcasts_current', {
-        'select': 'id,name,time_control',
+        'select': 'id,name,time_control,date_closest_round',
         'order': 'max_avg_elo.desc.nullslast,id.asc',
         'offset': '$offset',
         'limit': '$pageSize',
@@ -197,7 +197,7 @@ class WatchRepository {
 
   Future<WatchEvent?> currentEvent(String id) async {
     final rows = await _get('group_broadcasts_current', {
-      'select': 'id,name,time_control',
+      'select': 'id,name,time_control,date_closest_round',
       'id': 'eq.$id',
       'limit': '1',
     });

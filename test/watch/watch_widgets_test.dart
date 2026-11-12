@@ -292,8 +292,9 @@ void main() {
         await tester.tap(find.text('Done'));
         await tester.pumpAndSettle();
         expect(WatchCrown.instance.isEnabled, isFalse);
-        await show(tester, find.text('White · 2750 · 0:00'));
-        expect(find.text('White · 2750 · 0:00'), findsOneWidget);
+        await show(tester, find.text('2750'));
+        expect(find.text('2750'), findsOneWidget);
+        expect(find.text('0:00'), findsWidgets);
         await show(tester, find.text('Black at bottom'));
         await tester.tap(find.text('Black at bottom'));
         await tester.pumpAndSettle();
@@ -360,7 +361,7 @@ void main() {
     expect(tester.getTopLeft(find.text('Huang, Renjie')).dx, title);
     final button = find.ancestor(
       of: find.text('Huang, Renjie'),
-      matching: find.byType(CupertinoButton),
+      matching: find.byType(WatchPressable),
     );
     final chevron = find.byIcon(CupertinoIcons.chevron_forward);
     expect(tester.getCenter(chevron).dy, tester.getCenter(button).dy);
@@ -406,7 +407,7 @@ void main() {
     final target = find
         .ancestor(
           of: find.text('European Club Championship'),
-          matching: find.byType(CupertinoButton),
+          matching: find.byType(WatchPressable),
         )
         .first;
     expect(tester.getSize(target).height, greaterThanOrEqualTo(44));

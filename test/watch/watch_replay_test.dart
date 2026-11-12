@@ -160,8 +160,8 @@ void main() {
       await tester.tap(find.byType(WatchBoard));
       await tester.pumpAndSettle();
       expect(bindings.mode, 0);
-      await show(tester, find.text('Crown: scroll'));
-      await tester.tap(find.text('Crown: scroll'));
+      await show(tester, find.text('Crown scrolls'));
+      await tester.tap(find.text('Crown scrolls'));
       await tester.pumpAndSettle();
       expect(bindings.mode, 1);
       await show(tester, find.text('Done'));
