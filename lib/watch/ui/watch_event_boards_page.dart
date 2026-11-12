@@ -1398,9 +1398,13 @@ class WatchBoardTile extends StatelessWidget {
                   children: [
                     WatchPlayerLine(game: game, index: 1),
                     const SizedBox(height: 4),
-                    WatchBoard(
-                      fen: game.fen ?? watchEmptyFen,
-                      lastMove: game.fen == null ? null : game.lastMove,
+                    // The board flies into the game page from here.
+                    Hero(
+                      tag: watchBoardHeroTag(game.id),
+                      child: WatchBoard(
+                        fen: game.fen ?? watchEmptyFen,
+                        lastMove: game.fen == null ? null : game.lastMove,
+                      ),
                     ),
                     const SizedBox(height: 4),
                     WatchPlayerLine(game: game, index: 0),

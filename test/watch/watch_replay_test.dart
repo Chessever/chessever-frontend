@@ -188,11 +188,11 @@ void main() {
       await tester.pumpAndSettle();
       await show(tester, find.byType(WatchBoard));
       expect(tester.widget<WatchBoard>(find.byType(WatchBoard)).fen, lastFen);
-      // The board fills the width under the clock band, White's line under
-      // it, nothing else above the fold.
+      // The board fills the width beside the engine bar, under the clock
+      // band, White's line under it, nothing else above the fold.
       final board = tester.getRect(find.byType(WatchBoard));
-      expect(board.width, 162);
-      expect(board.left, 0);
+      expect(board.left, WatchGamePage.evalBarWidth + WatchGamePage.evalBarGap);
+      expect(board.width, 162 - board.left - 2);
       expect(
         find.text(
           'Board 1 of 2 · swipe the board sideways',
@@ -277,14 +277,14 @@ void main() {
     await tester.pumpAndSettle();
     expect(bindings.mode, 0, reason: 'nothing to review yet');
     expect(find.byType(WatchBoard), findsOneWidget);
-    expect(find.text('Live · Nb8–c6'), findsOneWidget);
+    expect(find.text('Live · Nb8–c6', skipOffstage: false), findsOneWidget);
     repository.withholdMoves = false;
     repository.moved = true;
     await show(tester, find.text('Refresh'));
     await tester.tap(find.text('Refresh'));
     await tester.pumpAndSettle();
     expect(bindings.mode, 1);
-    expect(find.text('2… Nc6 · Live'), findsOneWidget);
+    expect(find.text('2… Nc6 · Live', skipOffstage: false), findsOneWidget);
     await tester.pumpWidget(const SizedBox());
   });
 }

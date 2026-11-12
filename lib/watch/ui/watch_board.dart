@@ -111,10 +111,15 @@ class WatchBoard extends StatelessWidget {
     required this.fen,
     this.lastMove,
     this.flipped = false,
+    this.fill = false,
   });
   final String? fen;
   final String? lastMove;
   final bool flipped;
+
+  /// Takes the size it is given instead of staying square: the game page
+  /// lets the board stretch a little to use the whole screen.
+  final bool fill;
 
   @override
   Widget build(BuildContext context) {
@@ -125,38 +130,37 @@ class WatchBoard extends StatelessWidget {
       label: 'Chess position',
       value: watchPositionDescription(squares),
       child: ExcludeSemantics(
-        child: AspectRatio(
-          aspectRatio: 1,
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(5),
-            child: Column(
+        child: fill
+            ? _grid(squares, highlights)
+            : AspectRatio(aspectRatio: 1, child: _grid(squares, highlights)),
+      ),
+    );
+  }
+
+  Widget _grid(List<String?> squares, Set<int> highlights) => ClipRRect(
+    borderRadius: BorderRadius.circular(5),
+    child: Column(
+      children: [
+        for (var rank = 0; rank < 8; rank++)
+          Expanded(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                for (var rank = 0; rank < 8; rank++)
+                for (var file = 0; file < 8; file++)
                   Expanded(
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        for (var file = 0; file < 8; file++)
-                          Expanded(
-                            child: _square(
-                              squares,
-                              flipped
-                                  ? 63 - (rank * 8 + file)
-                                  : rank * 8 + file,
-                              highlights,
-                              (rank + file).isEven,
-                            ),
-                          ),
-                      ],
+                    child: _square(
+                      squares,
+                      flipped ? 63 - (rank * 8 + file) : rank * 8 + file,
+                      highlights,
+                      (rank + file).isEven,
                     ),
                   ),
               ],
             ),
           ),
-        ),
-      ),
-    );
-  }
+      ],
+    ),
+  );
 
   Widget _square(
     List<String?> squares,

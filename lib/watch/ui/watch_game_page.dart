@@ -4,6 +4,7 @@ import 'package:chessever_watch_bridge/chessever_watch_bridge.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter_watchos/flutter_watchos.dart';
 import '../../repository/supabase/game/games.dart';
+import '../core/watch_eval.dart';
 import '../core/watch_models.dart';
 import '../core/watch_replay.dart';
 import '../watch_controller.dart';
@@ -13,13 +14,17 @@ import 'watch_event_pages.dart';
 import 'watch_visuals.dart';
 import 'watch_widgets.dart';
 
-/// A game on the wrist: the board as large as the screen allows, under the
-/// clock band, with Black's name and clock in the band and White's under
-/// the board. The Digital Crown steps through the moves from the moment the
-/// page opens; a live game follows the relay until the Crown turns back.
-/// Swiping the board sideways moves to the next or previous board of the
-/// list it was opened from. Arrows and the rest sit under the board, one
-/// finger scroll away.
+/// The hero tag a board carries from a list into its game page.
+String watchBoardHeroTag(String gameId) => 'watch-board-$gameId';
+
+/// A game on the wrist as the board itself: it grows out of its tile into
+/// the whole screen, under the clock band, with the engine's bar down its
+/// left edge. Black's name and clock sit in the band beside the time,
+/// White's under the board. The Digital Crown steps through the moves from
+/// the moment the page opens; two translucent arrows rest on the board's
+/// lower corners, lit for a moment and then faded so the position keeps the
+/// eye. A sideways swipe moves to the next or previous board of the list
+/// the game came from. Everything else is one finger scroll below.
 class WatchGamePage extends StatefulWidget {
   const WatchGamePage({
     super.key,
@@ -44,6 +49,10 @@ class WatchGamePage extends StatefulWidget {
 
   /// Label of the row that closes the page.
   static const backLabel = 'Back to boards';
+
+  /// The engine bar and its gap, to the left of the board.
+  static const evalBarWidth = 5.0;
+  static const evalBarGap = 3.0;
 
   @override
   State<WatchGamePage> createState() => _WatchGamePageState();
@@ -82,6 +91,16 @@ class _WatchGamePageState extends State<WatchGamePage>
   bool _foreground = true;
   bool _visible = false;
   bool _covered = false;
+
+  // The engine's bar.
+  WatchEval? _eval;
+  String? _evalFor;
+  Timer? _evalDebounce;
+
+  // The arrows on the board: lit when the page opens or a hand touches
+  // them, faded otherwise.
+  bool _arrowsLit = true;
+  Timer? _arrowsTimer;
 
   WatchTour? get _tour {
     if (_game.id == widget.game.id && widget.tour != null) return widget.tour;
@@ -167,8 +186,12 @@ class _WatchGamePageState extends State<WatchGamePage>
     _error = null;
     _handoff = null;
     _fetchedAt = null;
+    _eval = null;
+    _evalFor = null;
+    _lightArrows();
     if (mounted) setState(() {});
     _sync();
+    _askEval();
     await Future.wait([_loadMoves(), _refresh()]);
   }
 
@@ -188,6 +211,7 @@ class _WatchGamePageState extends State<WatchGamePage>
         }
       });
       _sync();
+      _askEval();
     } catch (_) {
       // The live position still shows; the moves come with the next poll.
     }
@@ -218,7 +242,11 @@ class _WatchGamePageState extends State<WatchGamePage>
         _error = game == null ? 'Game no longer available.' : null;
       });
       _sync();
-      if (moved) unawaited(_loadMoves());
+      if (moved) {
+        unawaited(_loadMoves());
+      } else {
+        _askEval();
+      }
     } catch (_) {
       if (mounted) {
         setState(() => _error = 'Offline · showing the last position.');
@@ -226,6 +254,36 @@ class _WatchGamePageState extends State<WatchGamePage>
     } finally {
       if (mounted) setState(() => _busy = false);
     }
+  }
+
+  /// Asks the engine cloud about the shown position, a moment after the
+  /// Crown settles, so a fast turn through the game asks once.
+  void _askEval() {
+    final fen = _shown.$1;
+    if (fen == null) return;
+    final cached = WatchEvalSource.shared.cached(fen);
+    if (cached != null || _evalFor == fen) {
+      if (cached != null && _eval != cached) setState(() => _eval = cached);
+      _evalFor = fen;
+      return;
+    }
+    _evalDebounce?.cancel();
+    _evalDebounce = Timer(const Duration(milliseconds: 250), () async {
+      final eval = await WatchEvalSource.shared.eval(fen);
+      if (!mounted || _shown.$1 != fen) return;
+      setState(() {
+        _eval = eval;
+        _evalFor = fen;
+      });
+    });
+  }
+
+  void _lightArrows() {
+    _arrowsTimer?.cancel();
+    _arrowsLit = true;
+    _arrowsTimer = Timer(const Duration(milliseconds: 1800), () {
+      if (mounted) setState(() => _arrowsLit = false);
+    });
   }
 
   void _select(int next, {bool resetDial = true}) {
@@ -237,6 +295,7 @@ class _WatchGamePageState extends State<WatchGamePage>
       _move = clamped;
       _following = clamped == last;
     });
+    _askEval();
     final now = _hapticClock.elapsedMilliseconds;
     if (now - _lastHapticMs >= 70) {
       WatchHaptics.click();
@@ -297,9 +356,10 @@ class _WatchGamePageState extends State<WatchGamePage>
   String get _caption {
     final result = watchResult(_game.status);
     final last = _positions.length - 1;
+    final eval = _eval;
     if (_positions.isEmpty) {
       final move = watchLastMoveLabel(_game.fen, _game.lastMove);
-      return [result, if (move != null) move].join(' · ');
+      return [result, if (move != null) move, ?eval?.label].join(' · ');
     }
     final at = _move == 0 ? 'Start' : _positions[_move].label;
     final live = watchGameIsLive(_game) && _move == last;
@@ -307,42 +367,9 @@ class _WatchGamePageState extends State<WatchGamePage>
       if (!watchGameIsLive(_game) && _move == last) result,
       at,
       if (!live) '$_move/$last' else 'Live',
+      ?eval?.label,
     ].join(' · ');
   }
-
-  Widget _arrow(String label, IconData icon, VoidCallback? action) => Expanded(
-    child: Semantics(
-      label: label,
-      button: true,
-      enabled: action != null,
-      excludeSemantics: true,
-      onTap: action,
-      child: WatchPressable(
-        onPressed: action == null
-            ? null
-            : () {
-                WatchHaptics.click();
-                action();
-              },
-        builder: (context, pressed) => Container(
-          height: 46,
-          decoration: BoxDecoration(
-            color: pressed ? WatchStyle.surfacePressed : WatchStyle.surface,
-            borderRadius: BorderRadius.circular(14),
-          ),
-          child: Icon(
-            icon,
-            size: 21,
-            color: action == null
-                ? WatchStyle.disabled
-                : pressed
-                ? WatchStyle.secondary
-                : WatchStyle.ink,
-          ),
-        ),
-      ),
-    ),
-  );
 
   Widget _playerRow(Player player, bool white) {
     final clock = white ? _game.lastClockWhite : _game.lastClockBlack;
@@ -380,15 +407,22 @@ class _WatchGamePageState extends State<WatchGamePage>
     final band = WatchStatusBar.heightOf(context);
     final width = media.size.width;
     final line = media.textScaler.scale(12) * 1.3;
-    // Edge to edge when the height allows: the band above, one name line
-    // below, nothing else between the board and the glass.
-    final board = math.min(width, media.size.height - band - line - 6);
+    const barSpace = WatchGamePage.evalBarWidth + WatchGamePage.evalBarGap;
+    // The board takes the width beside its bar and, best effort, stays
+    // square: it may stretch or squash by a tenth to use the height between
+    // the band and White's line, never more.
+    final boardWidth = width - barSpace - 2;
+    final room = media.size.height - band - line - 4;
+    final boardHeight = math
+        .min(room, boardWidth * 1.1)
+        .clamp(boardWidth * 0.9, boardWidth * 1.1);
     final (fen, lastMove) = _shown;
     final last = _positions.length - 1;
     final players = _game.players ?? const <Player>[];
     final top = players.length > 1 ? (_flipped ? 0 : 1) : null;
     final bottom = players.isNotEmpty ? (_flipped ? 1 : 0) : null;
     final many = _games.length > 1;
+    final sideInset = media.padding.left + 5;
     return CupertinoPageScaffold(
       backgroundColor: WatchStyle.background,
       child: Stack(
@@ -416,44 +450,97 @@ class _WatchGamePageState extends State<WatchGamePage>
                               _swipe(v < 0 ? 1 : -1);
                             },
                       child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Semantics(
-                            label: 'Board ${_game.boardNr ?? ''}',
-                            value: _caption,
-                            increasedValue: _move < last
-                                ? _positions[_move + 1].label
-                                : null,
-                            decreasedValue: _move > 0
-                                ? (_move == 1
-                                      ? 'Start'
-                                      : _positions[_move - 1].label)
-                                : null,
-                            onIncrease: _move < last
-                                ? () => _select(_move + 1)
-                                : null,
-                            onDecrease: _move > 0
-                                ? () => _select(_move - 1)
-                                : null,
-                            hint: many
-                                ? 'Swipe sideways for the next board'
-                                : null,
-                            child: Center(
-                              child: SizedBox(
-                                width: board,
-                                child: WatchBoard(
-                                  fen: fen,
-                                  lastMove: lastMove,
-                                  flipped: _flipped,
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              _EvalBar(
+                                eval: _eval,
+                                flipped: _flipped,
+                                height: boardHeight,
+                              ),
+                              const SizedBox(width: WatchGamePage.evalBarGap),
+                              Semantics(
+                                label: 'Board ${_game.boardNr ?? ''}',
+                                value: _caption,
+                                increasedValue: _move < last
+                                    ? _positions[_move + 1].label
+                                    : null,
+                                decreasedValue: _move > 0
+                                    ? (_move == 1
+                                          ? 'Start'
+                                          : _positions[_move - 1].label)
+                                    : null,
+                                onIncrease: _move < last
+                                    ? () => _select(_move + 1)
+                                    : null,
+                                onDecrease: _move > 0
+                                    ? () => _select(_move - 1)
+                                    : null,
+                                hint: many
+                                    ? 'Swipe sideways for the next board'
+                                    : null,
+                                child: SizedBox(
+                                  width: boardWidth,
+                                  height: boardHeight,
+                                  child: Stack(
+                                    children: [
+                                      Positioned.fill(
+                                        child: Hero(
+                                          tag: watchBoardHeroTag(_game.id),
+                                          child: WatchBoard(
+                                            fen: fen,
+                                            lastMove: lastMove,
+                                            flipped: _flipped,
+                                            fill: true,
+                                          ),
+                                        ),
+                                      ),
+                                      Positioned(
+                                        left: 4,
+                                        bottom: 4,
+                                        child: _BoardArrow(
+                                          label: 'Previous move',
+                                          icon: CupertinoIcons.chevron_left,
+                                          lit: _arrowsLit,
+                                          onTap: _move > 0
+                                              ? () => _select(_move - 1)
+                                              : null,
+                                          onLongPress: _move > 0
+                                              ? () => _select(0)
+                                              : null,
+                                          onTouch: _lightArrows,
+                                        ),
+                                      ),
+                                      Positioned(
+                                        right: 4,
+                                        bottom: 4,
+                                        child: _BoardArrow(
+                                          label: 'Next move',
+                                          icon: CupertinoIcons.chevron_right,
+                                          lit: _arrowsLit,
+                                          onTap: _move < last
+                                              ? () => _select(_move + 1)
+                                              : null,
+                                          onLongPress: _move < last
+                                              ? () => _select(last)
+                                              : null,
+                                          onTouch: _lightArrows,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
                                 ),
                               ),
-                            ),
+                            ],
                           ),
                           if (bottom != null)
                             Padding(
-                              padding: EdgeInsets.fromLTRB(
-                                (width - board) / 2 + 4,
+                              padding: const EdgeInsets.fromLTRB(
+                                barSpace + 2,
                                 2,
-                                (width - board) / 2 + 4,
+                                6,
                                 0,
                               ),
                               child: WatchPlayerLine(
@@ -482,37 +569,7 @@ class _WatchGamePageState extends State<WatchGamePage>
                       ),
                     ),
                     Padding(
-                      padding: EdgeInsets.fromLTRB(
-                        media.padding.left + 5,
-                        0,
-                        media.padding.right + 5,
-                        6,
-                      ),
-                      child: Row(
-                        spacing: 5,
-                        children: [
-                          _arrow(
-                            'Previous move',
-                            CupertinoIcons.arrowtriangle_left_fill,
-                            _move > 0 ? () => _select(_move - 1) : null,
-                          ),
-                          _arrow(
-                            'Next move',
-                            CupertinoIcons.arrowtriangle_right_fill,
-                            _move < last ? () => _select(_move + 1) : null,
-                          ),
-                          _arrow(
-                            'Last move',
-                            CupertinoIcons.forward_end_fill,
-                            _move < last ? () => _select(last) : null,
-                          ),
-                        ],
-                      ),
-                    ),
-                    Padding(
-                      padding: EdgeInsets.symmetric(
-                        horizontal: media.padding.left + 5,
-                      ),
+                      padding: EdgeInsets.symmetric(horizontal: sideInset),
                       child: Column(
                         children: [
                           if (_error != null) WatchNote.status(_error!),
@@ -544,7 +601,8 @@ class _WatchGamePageState extends State<WatchGamePage>
                               'Relay clocks · fetched '
                               '${_fetchedAt!.hour.toString().padLeft(2, '0')}:'
                               '${_fetchedAt!.minute.toString().padLeft(2, '0')}:'
-                              '${_fetchedAt!.second.toString().padLeft(2, '0')}',
+                              '${_fetchedAt!.second.toString().padLeft(2, '0')}'
+                              '${_eval == null ? '' : ' · engine depth ${_eval!.depth}'}',
                             ),
                           WatchRow(
                             label: 'Refresh',
@@ -584,7 +642,7 @@ class _WatchGamePageState extends State<WatchGamePage>
                     ? const SizedBox()
                     : Padding(
                         padding: EdgeInsets.fromLTRB(
-                          (width - board) / 2 + 4,
+                          barSpace + 2,
                           0,
                           width * 0.38,
                           2,
@@ -609,11 +667,127 @@ class _WatchGamePageState extends State<WatchGamePage>
   @override
   void dispose() {
     _timer?.cancel();
+    _evalDebounce?.cancel();
+    _arrowsTimer?.cancel();
     unawaited(_crown?.cancel());
     _scroll.dispose();
     WatchAlwaysOn.state.removeListener(_sync);
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
+  }
+}
+
+/// A move arrow resting on the board: a dark translucent disc, lit while
+/// the page is new or a hand is on it, then faded to a third so the
+/// position keeps the eye. Always a 44-point target.
+class _BoardArrow extends StatelessWidget {
+  const _BoardArrow({
+    required this.label,
+    required this.icon,
+    required this.lit,
+    required this.onTap,
+    required this.onLongPress,
+    required this.onTouch,
+  });
+  final String label;
+  final IconData icon;
+  final bool lit;
+  final VoidCallback? onTap;
+  final VoidCallback? onLongPress;
+  final VoidCallback onTouch;
+
+  @override
+  Widget build(BuildContext context) => Semantics(
+    label: label,
+    button: true,
+    enabled: onTap != null,
+    excludeSemantics: true,
+    onTap: onTap,
+    onLongPress: onLongPress,
+    child: GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTapDown: (_) => onTouch(),
+      onTap: onTap == null
+          ? null
+          : () {
+              WatchHaptics.click();
+              onTap!();
+            },
+      onLongPress: onLongPress == null
+          ? null
+          : () {
+              WatchHaptics.click();
+              onLongPress!();
+            },
+      child: AnimatedOpacity(
+        opacity: onTap == null ? 0.18 : (lit ? 0.82 : 0.34),
+        duration: const Duration(milliseconds: 450),
+        curve: Curves.easeOut,
+        child: Container(
+          width: 44,
+          height: 44,
+          alignment: Alignment.center,
+          decoration: const BoxDecoration(
+            color: Color(0x80000000),
+            shape: BoxShape.circle,
+          ),
+          child: Icon(icon, size: 22, color: WatchStyle.ink),
+        ),
+      ),
+    ),
+  );
+}
+
+/// The engine's bar down the board's left edge: White's share from the
+/// bottom (the top when the board is flipped), the move of the share eased.
+/// Unknown positions show a dim, even bar.
+class _EvalBar extends StatelessWidget {
+  const _EvalBar({
+    required this.eval,
+    required this.flipped,
+    required this.height,
+  });
+  final WatchEval? eval;
+  final bool flipped;
+  final double height;
+
+  @override
+  Widget build(BuildContext context) {
+    final share = eval?.whiteShare ?? 0.5;
+    final known = eval != null;
+    return Semantics(
+      label: 'Engine',
+      value: known ? eval!.label : 'Unknown',
+      child: ExcludeSemantics(
+        child: Opacity(
+          opacity: known ? 1 : 0.4,
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(2.5),
+            child: SizedBox(
+              width: WatchGamePage.evalBarWidth,
+              height: height,
+              child: Stack(
+                children: [
+                  const Positioned.fill(
+                    child: ColoredBox(color: Color(0xFF2A2F28)),
+                  ),
+                  AnimatedPositioned(
+                    duration: const Duration(milliseconds: 300),
+                    curve: Curves.easeOutCubic,
+                    left: 0,
+                    right: 0,
+                    top: flipped ? 0 : null,
+                    bottom: flipped ? null : 0,
+                    height: height * share,
+                    child: const ColoredBox(color: Color(0xFFDCE3D7)),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
   }
 }
 
