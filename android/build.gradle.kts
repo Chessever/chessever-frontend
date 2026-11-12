@@ -5,6 +5,21 @@ allprojects {
     }
 }
 
+// Gradle 9 removed RepositoryHandler.jcenter(). stockfish 1.8.1, the newest
+// release, still calls it in its android/build.gradle, and that one call fails
+// configuration for the whole build ("Could not find method jcenter()").
+// A closure stored as an extra property answers a method call of the same name
+// in that project's script, so this turns the call into a no-op. JCenter has
+// only redirected to Maven Central since 2024, so Maven Central is added to the
+// plugin's buildscript repositories in its place. Delete this block once
+// stockfish ships a build.gradle without jcenter().
+subprojects {
+    if (name == "stockfish") {
+        extra["jcenter"] = KotlinClosure0<Any>({ Unit })
+        buildscript.repositories.mavenCentral()
+    }
+}
+
 val newBuildDir: Directory = rootProject.layout.buildDirectory.dir("../../build").get()
 rootProject.layout.buildDirectory.value(newBuildDir)
 

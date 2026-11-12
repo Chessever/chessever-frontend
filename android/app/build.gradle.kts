@@ -117,8 +117,8 @@
     }
 
     dependencies {
-        // Latest stable Kotlin version compatible with Flutter 2025
-        implementation("org.jetbrains.kotlin:kotlin-stdlib-jdk8:2.2.20")
+        // Matches the Kotlin Gradle plugin version in settings.gradle.kts
+        implementation("org.jetbrains.kotlin:kotlin-stdlib-jdk8:2.4.20")
 
         // Ensure okhttp is present for Amplitude's Android core (R8 was missing HttpUrl)
         implementation("com.squareup.okhttp3:okhttp:4.12.0")
