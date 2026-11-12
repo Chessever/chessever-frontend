@@ -204,6 +204,18 @@ chessever_frontend_desktop_oss/scripts/which_repo_owns_function.sh <slug>
   It never follows, favorites or unfavorites the player; the heart does
   that. Unstarring a Prep card in My Space stops the pushes and takes the card
   out of My Space (one Undo restores both); the profile stays in Prep.
+- Prep profiles are stored on the device (`prep/profiles.json`); pins and
+  stars are on the account. A Prep pin therefore carries the profile's
+  sources (`params.profile`, `prepPinRecipe`), and `prepSpaceSyncProvider`
+  keeps the two in step: the device holding a profile fills in pins saved
+  before 38.5.10, a device without it rebuilds it under the same id (from the
+  pin, or from `prep_profile_watches` when it is starred) and downloads its
+  games. The reader has one own (`mine`) profile per device, so another
+  device's own profile joins it instead of adding a second. Never change a
+  profile's id or drop `params.profile`: other devices
+  and older pins depend on both. Deleting a profile in Prep removes its pin,
+  or the pin would rebuild it. Stars follow the server across devices
+  (`_reconcileWatches`).
 
 ## Broadcast clocks: the event's time control is only a guess for a game
 

@@ -2029,13 +2029,15 @@ void main() {
     /// onesignal-dispatch sends (FCM: every value a string).
     Future<_WatchRemote> tapPush(
       WidgetTester tester,
-      List<PrepProfile> profiles,
-    ) async {
+      List<PrepProfile> profiles, {
+      List<String> unstarsNotSent = const [],
+    }) async {
       File('${directory.path}/prep/profiles.json')
         ..createSync(recursive: true)
         ..writeAsStringSync(
           jsonEncode({
             'profiles': [for (final p in profiles) p.toJson()],
+            'unwatch': unstarsNotSent,
           }),
         );
       final remote = _WatchRemote();
@@ -2093,9 +2095,9 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
-    testWidgets('a player held here but no longer starred still opens on '
-        'their Games tab, and the pushes stop', (tester) async {
-      final remote = await tapPush(tester, [player]);
+    testWidgets('a player held here whose unstar never reached the server '
+        'still opens on their Games tab, and the pushes stop', (tester) async {
+      final remote = await tapPush(tester, [player], unstarsNotSent: ['vasif']);
       final screen = tester.widget<PrepProfileScreen>(
         find.byType(PrepProfileScreen),
       );

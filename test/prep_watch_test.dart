@@ -39,6 +39,12 @@ class _Remote extends PrepWatchRemote {
   final calls = <String>[];
   bool reachable = true;
 
+  /// The reader's stars as the server holds them; null when unreadable.
+  Map<String, PrepWatched>? onServer;
+
+  @override
+  Future<Map<String, PrepWatched>?> watched() async => onServer;
+
   @override
   Future<bool> watch(PrepProfile profile) async {
     calls.add('watch ${profile.id} ${profile.name}');
@@ -238,19 +244,86 @@ void main() {
     expect((jsonDecode(again.readAsStringSync()) as Map)['unwatch'], isNull);
   });
 
-  test(
-    'a push for a profile this device holds but does not star unstars it',
-    () async {
-      final remote = _Remote();
-      final (container, _) = await _container({
-        'profiles': [_profile.toJson()],
-      }, remote);
-      final profiles = container.read(prepProfilesProvider.notifier);
-      profiles.settleWatch(_profile.id);
-      await profiles.debugDrainWatches();
-      expect(remote.calls, ['unwatch opponent-1']);
-    },
-  );
+  test('a push for a profile unstarred here, whose unstar the server missed, '
+      'unstars it again', () async {
+    final remote = _Remote()..reachable = false;
+    final (container, _) = await _container({
+      'profiles': [_profile.toJson()],
+      'unwatch': [_profile.id],
+    }, remote);
+    final profiles = container.read(prepProfilesProvider.notifier);
+    await profiles.debugDrainWatches();
+    remote.calls.clear();
+    remote.reachable = true;
+    profiles.settleWatch(_profile.id);
+    await profiles.debugDrainWatches();
+    expect(remote.calls, ['unwatch opponent-1']);
+  });
+
+  test('an old push for a profile no longer starred changes nothing', () async {
+    final remote = _Remote()..onServer = {};
+    final (container, _) = await _container({
+      'profiles': [_profile.toJson()],
+    }, remote);
+    final profiles = container.read(prepProfilesProvider.notifier);
+    await profiles.debugDrainWatches();
+    profiles.settleWatch(_profile.id);
+    await profiles.debugDrainWatches();
+    expect(remote.calls, isEmpty);
+    expect(profiles.byId(_profile.id)!.watching, isFalse);
+  });
+
+  test('a push for a profile starred on another device shows its star '
+      'here', () async {
+    final remote = _Remote()..onServer = {};
+    final (container, _) = await _container({
+      'profiles': [_profile.toJson()],
+    }, remote);
+    final profiles = container.read(prepProfilesProvider.notifier);
+    await profiles.debugDrainWatches();
+    remote.onServer = {_profile.id: const PrepWatched(name: 'Hikaru Nakamura')};
+    profiles.settleWatch(_profile.id);
+    await profiles.debugDrainWatches();
+    expect(profiles.byId(_profile.id)!.watching, isTrue);
+  });
+
+  test('a star taken off on another device comes off here at launch, and '
+      'one put on there shows here', () async {
+    const other = PrepProfile(
+      id: 'opponent-2',
+      kind: PrepKind.opponent,
+      name: 'Fabiano Caruana',
+      createdAtMs: 2,
+      accounts: [PrepAccount(source: PrepSource.lichess, username: 'fabi')],
+    );
+    final remote = _Remote()
+      ..onServer = {other.id: const PrepWatched(name: 'Fabiano Caruana')};
+    final (container, file) = await _container({
+      'profiles': [_profile.copyWith(watching: true).toJson(), other.toJson()],
+      // The server took this device's star earlier.
+      'watched': [_profile.id],
+    }, remote);
+    final profiles = container.read(prepProfilesProvider.notifier);
+    await profiles.debugDrainWatches();
+    expect(profiles.byId(_profile.id)!.watching, isFalse);
+    expect(profiles.byId(other.id)!.watching, isTrue);
+    // Neither is written back: the server already says both.
+    expect(remote.calls, isEmpty);
+    final saved = jsonDecode(file.readAsStringSync()) as Map;
+    expect(saved['watched'], [other.id]);
+  });
+
+  test('a star the server never took is written, not dropped, when the '
+      'server does not hold it', () async {
+    final remote = _Remote()..onServer = {};
+    final (container, _) = await _container({
+      'profiles': [_profile.copyWith(watching: true).toJson()],
+    }, remote);
+    final profiles = container.read(prepProfilesProvider.notifier);
+    await profiles.debugDrainWatches();
+    expect(profiles.byId(_profile.id)!.watching, isTrue);
+    expect(remote.calls, ['watch opponent-1 Hikaru Nakamura']);
+  });
 
   test(
     'a push for a profile another device holds leaves its star alone',

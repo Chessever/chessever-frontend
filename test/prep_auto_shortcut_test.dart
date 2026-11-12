@@ -529,7 +529,13 @@ void main() {
         expect(pin.key, prepProfileSpaceDraft(profile).key);
         expect(pin.kind, SpaceShortcutKind.prepProfile);
         expect(pin.targetId, profile.id);
-        expect(pin.params, isEmpty); // No source-only navigation/accountKey.
+        // Only what rebuilds the profile on the reader's other devices: no
+        // source-only navigation/accountKey.
+        expect(pin.params.keys, [kPrepPinRecipe]);
+        final carried = prepProfileFromPin(pin)!;
+        expect(carried.id, profile.id);
+        expect(carried.kind, profile.kind);
+        expect(carried.accounts.single.key, account.key);
         expect(pin.subtitle, 'Prep');
         expect(profile.accounts.single.key, account.key);
         expect(repo.synced, [account.key]);

@@ -37,6 +37,7 @@ import 'package:chessever2/screens/my_space/actions/space_share.dart'
 import 'package:chessever2/screens/my_space/models/space_shortcut.dart';
 import 'package:chessever2/screens/my_prep/models/prep_models.dart';
 import 'package:chessever2/screens/my_prep/prep_profile_screen.dart';
+import 'package:chessever2/screens/my_prep/prep_space_shortcut.dart';
 import 'package:chessever2/screens/my_prep/providers/prep_providers.dart';
 import 'package:chessever2/screens/my_space/providers/space_shortcuts_provider.dart';
 import 'package:chessever2/screens/player_profile/player_profile_data_source.dart';
@@ -59,6 +60,10 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 const _deadShortcutMessage = 'This shortcut can no longer open';
+
+/// A Prep card whose profile is neither here nor rebuildable: made on
+/// another device that has not passed its sources on yet, or deleted.
+const _awayPrepMessage = 'This Prep profile is not on this device';
 
 /// Where a Premium gate opened from My Space resumes once entitled.
 const _kMySpaceReturnTo = 'for_you/my_space';
@@ -85,7 +90,13 @@ Future<void> openSpaceShortcut(
     debugPrint('[MySpace] open ${s.kind.name}:${s.targetId} failed: $e');
   }
   if (!opened && messenger != null && messenger.mounted) {
-    showAppSnackOn(messenger, _deadShortcutMessage, tone: AppSnackTone.danger);
+    showAppSnackOn(
+      messenger,
+      s.kind == SpaceShortcutKind.prepProfile
+          ? _awayPrepMessage
+          : _deadShortcutMessage,
+      tone: AppSnackTone.danger,
+    );
   }
   // Every tap still counts, but the write rebuilds every My Space tile, so it
   // waits until the page the open pushed has finished sliding in.
@@ -167,11 +178,11 @@ Future<bool> _openPrepProfile(BuildContext context, SpaceShortcut s) async {
   } finally {
     subscription.close();
   }
-  if (!context.mounted ||
-      !(profiles.valueOrNull?.any((p) => p.id == s.targetId) ?? false)) {
-    return false;
-  }
-  return _push(context, PrepProfileScreen(profileId: s.targetId));
+  // A pin made on another device opens the profile here that holds the
+  // same player.
+  final profile = prepProfileForPin(s, profiles.valueOrNull ?? const []);
+  if (!context.mounted || profile == null) return false;
+  return _push(context, PrepProfileScreen(profileId: profile.id));
 }
 
 /// A published collection, by id, from the team's list (usually warm: the

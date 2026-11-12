@@ -123,11 +123,21 @@ class PrepProfilesNotifier
   /// launch, so an unstarred player never keeps notifying.
   final Set<String> _unwatchPending = {};
 
+  /// Starred profiles the server has taken. Profiles are also rebuilt on
+  /// the reader's other devices, so a star the server took and no longer
+  /// holds was taken off on another device, and comes off here too. Saved
+  /// with the profiles.
+  final Set<String> _watchAcked = {};
+
   @visibleForTesting
   Future<void> debugDrainWrites() => _writing;
 
+  /// Reads of the server's stars under way (launch, a push).
+  Future<void> _watchReading = Future.value();
+
   @visibleForTesting
   Future<void> debugDrainWatches() async {
+    await _watchReading;
     await _watchWriting;
     await _writing;
   }
@@ -148,12 +158,15 @@ class PrepProfilesNotifier
       if (json is Map && json['unwatch'] is List) {
         _unwatchPending.addAll((json['unwatch'] as List).whereType<String>());
       }
+      if (json is Map && json['watched'] is List) {
+        _watchAcked.addAll((json['watched'] as List).whereType<String>());
+      }
       state = AsyncValue.data([
         if (json is Map && json['profiles'] is List)
           for (final raw in json['profiles'] as List)
             ?PrepProfile.fromJson(raw),
       ]);
-      _reconcileWatches();
+      _watchReading = _reconcileWatches();
     } catch (error, stack) {
       debugPrint('[MyPrep] profiles failed to load: $error');
       state = AsyncValue.error(error, stack);
@@ -169,6 +182,7 @@ class PrepProfilesNotifier
 
   void _persist(List<PrepProfile> profiles) {
     final unwatch = _unwatchPending.toList();
+    final watched = _watchAcked.toList();
     // Serialized so an older snapshot can never land after a newer one.
     _writing = _writing.then((_) async {
       try {
@@ -179,6 +193,7 @@ class PrepProfilesNotifier
             'version': 1,
             'profiles': [for (final p in profiles) p.toJson()],
             if (unwatch.isNotEmpty) 'unwatch': unwatch,
+            if (watched.isNotEmpty) 'watched': watched,
           }),
           flush: true,
         );
@@ -195,16 +210,30 @@ class PrepProfilesNotifier
   void setWatching(String profileId, bool watching) =>
       edit(profileId, (p) => p.copyWith(watching: watching));
 
-  /// A push arrived for [profileId]. If this device holds it but no longer
-  /// stars it, the server is told again, so the pushes stop. A profile this
-  /// device does not hold is starred on another of the reader's devices
-  /// (profiles live on the device) and is left alone: only the reader stops
-  /// it, with [stopWatch].
+  /// A push arrived for [profileId], which this device holds without its
+  /// star. An unstar the server has not heard is told again, so the pushes
+  /// stop. Otherwise the server decides: still starred there, another of
+  /// the reader's devices starred it and the star shows here too; not
+  /// starred there, the push was an old one. A profile this device does
+  /// not hold is left alone: only the reader stops it, with [stopWatch].
   void settleWatch(String profileId) {
     final profile = byId(profileId);
-    if (profile != null && prepWatchSignature(profile) == null) {
+    if (profile == null || prepWatchSignature(profile) != null) return;
+    if (_unwatchPending.contains(profileId) || !prepCanWatch(profile)) {
       _queueUnwatch(profileId);
+      return;
     }
+    _watchReading = () async {
+      final onServer = await _ref.read(prepWatchRemoteProvider).watched();
+      if (!mounted || onServer == null || !onServer.containsKey(profileId)) {
+        return;
+      }
+      final now = byId(profileId);
+      if (now == null || now.watching || _unwatchPending.contains(profileId)) {
+        return;
+      }
+      setWatching(profileId, true);
+    }();
   }
 
   /// The reader stopped the alerts of [profileId], a profile this device
@@ -231,14 +260,62 @@ class PrepProfilesNotifier
     }
   }
 
-  /// Once per launch: retries the unstars that did not reach the server and
-  /// writes every star again, which also carries today's UTC offset.
-  void _reconcileWatches() {
+  /// Once per launch: retries the unstars that did not reach the server,
+  /// takes the stars the reader changed on another device, and writes every
+  /// star again, which also carries today's UTC offset.
+  Future<void> _reconcileWatches() async {
     for (final id in _unwatchPending.toList()) {
       _queueUnwatch(id);
     }
+    // As they stood before the read: a star the reader touches while it is
+    // under way is theirs, and the read is already older than it.
+    final starred = {
+      for (final p in _profiles)
+        if (p.watching) p.id,
+    };
+    final acked = {..._watchAcked};
+    final onServer = await _ref.read(prepWatchRemoteProvider).watched();
+    if (!mounted) return;
+    if (onServer != null) {
+      var changed = false;
+      final next = [
+        for (final p in _profiles)
+          if (_unwatchPending.contains(p.id) || !prepCanWatch(p))
+            p
+          else if (p.watching &&
+              starred.contains(p.id) &&
+              acked.contains(p.id) &&
+              !onServer.containsKey(p.id))
+            // Unstarred on another device.
+            () {
+              changed = true;
+              _watchAcked.remove(p.id);
+              return p.copyWith(watching: false);
+            }()
+          else if (!p.watching &&
+              !starred.contains(p.id) &&
+              onServer.containsKey(p.id))
+            // Starred on another device.
+            () {
+              changed = true;
+              _watchAcked.add(p.id);
+              return p.copyWith(watching: true);
+            }()
+          else
+            p,
+      ];
+      if (changed) {
+        // The server already holds these: nothing is written for a star
+        // it has, nor cleared for one it dropped.
+        state = AsyncValue.data(List.unmodifiable(next));
+        _persist(next);
+      }
+    }
+    // A star set while the read was under way was written when it was set.
     for (final p in _profiles) {
-      if (prepWatchSignature(p) != null) _queueWatch(p.id);
+      if (starred.contains(p.id) && prepWatchSignature(p) != null) {
+        _queueWatch(p.id);
+      }
     }
   }
 
@@ -250,12 +327,14 @@ class PrepProfilesNotifier
       final profile = byId(profileId);
       if (profile == null || prepWatchSignature(profile) == null) return;
       // A failure is retried by the next launch's reconcile.
-      await _ref.read(prepWatchRemoteProvider).watch(profile);
+      final done = await _ref.read(prepWatchRemoteProvider).watch(profile);
+      if (done && mounted && _watchAcked.add(profileId)) _persist(_profiles);
     });
   }
 
   void _queueUnwatch(String profileId) {
-    if (_unwatchPending.add(profileId)) _persist(_profiles);
+    final pending = _unwatchPending.add(profileId);
+    if (_watchAcked.remove(profileId) || pending) _persist(_profiles);
     _watchWriting = _watchWriting.then((_) async {
       if (!mounted) return;
       final profile = byId(profileId);
@@ -320,6 +399,43 @@ class PrepProfilesNotifier
 
   void update(PrepProfile profile) {
     _set([for (final p in _profiles) p.id == profile.id ? profile : p]);
+  }
+
+  /// Puts [profile], made on another of the reader's devices, on this one,
+  /// without its games, and returns the profile now holding its sources.
+  ///
+  /// It keeps its id, so its My Space card and its star go on meaning the
+  /// same profile. The reader has one profile of their own, though: when
+  /// this device already has it, the sources it lacks join it instead.
+  /// Null when nothing was added: it is held already, has no sources, or
+  /// its sources belong to profiles here.
+  PrepProfile? restore(PrepProfile profile) {
+    if (!state.hasValue || byId(profile.id) != null) return null;
+    final free = [
+      for (final account in profile.accounts)
+        if (owning(account.source, account.externalId ?? account.username) ==
+            null)
+          account,
+    ];
+    if (free.isEmpty) return null;
+    final own = profile.kind == PrepKind.mine
+        ? _profiles.where((p) => p.kind == PrepKind.mine).firstOrNull
+        : null;
+    if (own != null) {
+      var joined = false;
+      for (final account in free) {
+        try {
+          attach(own.id, [account]);
+          joined = true;
+        } on PrepException {
+          // A second database player, or another person's: left out.
+        }
+      }
+      return joined ? byId(own.id) : null;
+    }
+    if (free.length != profile.accounts.length) return null;
+    _set([..._profiles, profile]);
+    return profile;
   }
 
   /// Attachment invariants live here as well as in the picker: async lookups

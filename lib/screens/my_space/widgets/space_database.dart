@@ -32,6 +32,7 @@ import 'package:chessever2/screens/my_space/actions/space_player_actions.dart';
 import 'package:chessever2/screens/my_space/library/space_library_bridge.dart';
 import 'package:chessever2/screens/my_space/models/space_shortcut.dart';
 import 'package:chessever2/screens/my_prep/models/prep_models.dart';
+import 'package:chessever2/screens/my_prep/prep_space_shortcut.dart';
 import 'package:chessever2/screens/my_prep/providers/prep_providers.dart';
 import 'package:chessever2/screens/my_prep/services/prep_watch.dart';
 import 'package:chessever2/screens/my_prep/widgets/prep_common.dart';
@@ -2412,14 +2413,25 @@ class SpaceSavedRow extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // A pin made on another device stands for the profile here that holds
+    // the same player.
     final prep = shortcut.kind == SpaceShortcutKind.prepProfile
-        ? ref.watch(prepProfileProvider(shortcut.targetId))
+        ? ref.watch(prepProfileProvider(shortcut.targetId)) ??
+              ref.watch(
+                prepProfilesProvider.select(
+                  (profiles) => prepProfileForPin(
+                    shortcut,
+                    profiles.valueOrNull ?? const [],
+                  ),
+                ),
+              )
         : null;
     // Every Prep card ends in its profile's star: it turns the profile's
     // new-game pushes on, and unstarring here also takes the card out of My
     // Space (the profile stays in Prep, favorites are never touched). A
-    // profile not on this device (profiles stay on the phone that made
-    // them) has no star to show and keeps the chevron.
+    // profile made on another device is rebuilt here from its pin
+    // (`prepSpaceSyncProvider`); until then, or when nothing can rebuild
+    // it, the card has no star to show and keeps the chevron.
     final starrable =
         disclosure &&
         shortcut.kind == SpaceShortcutKind.prepProfile &&
@@ -2485,7 +2497,7 @@ class SpaceSavedRow extends ConsumerWidget {
               child: shortcut.kind == SpaceShortcutKind.prepProfile
                   ? Center(
                       child: PrepAvatar(
-                        profileId: shortcut.targetId,
+                        profileId: prep?.id ?? shortcut.targetId,
                         name: prep?.name ?? shortcut.title,
                         size: plateHeight,
                         width: plateWidth,
@@ -2547,7 +2559,7 @@ class SpaceSavedRow extends ConsumerWidget {
           children: [
             SizedBox(width: 4.w),
             if (starrable)
-              PrepWatchStar(profileId: shortcut.targetId, onUnstar: unstar)
+              PrepWatchStar(profileId: prep.id, onUnstar: unstar)
             else if (disclosure) ...[
               Icon(
                 Icons.chevron_right_rounded,

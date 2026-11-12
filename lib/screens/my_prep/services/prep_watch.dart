@@ -44,10 +44,62 @@ String? prepWatchSignature(PrepProfile profile) =>
     ? jsonEncode([profile.name, profile.title, prepWatchAccounts(profile)])
     : null;
 
-/// Writes the server's copy of starred profiles. False when it could not
-/// be written now (signed out, offline); the caller keeps it to try again.
+/// A starred profile as the server holds it: enough to tell every device
+/// of the reader that it is starred, and to rebuild it on one that lacks it.
+@immutable
+class PrepWatched {
+  const PrepWatched({
+    required this.name,
+    this.title,
+    this.kind,
+    this.accounts = const [],
+  });
+
+  final String name;
+  final String? title;
+
+  /// Null on rows written before the server kept it.
+  final PrepKind? kind;
+  final List<PrepAccount> accounts;
+
+  /// The profile these rows describe, starred, under [id]. An older row
+  /// has no kind; the id still starts with it.
+  PrepProfile asProfile(String id) => PrepProfile(
+    id: id,
+    kind:
+        kind ??
+        PrepKind.values.where((k) => id.startsWith('${k.name}-')).firstOrNull ??
+        PrepKind.opponent,
+    name: name,
+    createdAtMs: DateTime.now().millisecondsSinceEpoch,
+    accounts: accounts,
+    watching: true,
+  );
+}
+
+/// Reads and writes the server's copy of starred profiles. A write is
+/// false when it could not be made now (signed out, offline); the caller
+/// keeps it to try again.
 class PrepWatchRemote {
   const PrepWatchRemote();
+
+  /// Every profile the reader stars, on any of their devices, by profile
+  /// id. Null when it could not be read (signed out, offline).
+  Future<Map<String, PrepWatched>?> watched() async {
+    final client = _client;
+    final user = client?.auth.currentUser?.id;
+    if (client == null || user == null) return null;
+    try {
+      final rows = await client
+          .from('prep_profile_watches')
+          .select()
+          .eq('user_id', user);
+      return prepWatchedFromRows(rows);
+    } catch (error) {
+      debugPrint('[MyPrep] stars not read: $error');
+      return null;
+    }
+  }
 
   SupabaseClient? get _client {
     try {
@@ -117,3 +169,42 @@ class PrepWatchRemote {
 final prepWatchRemoteProvider = Provider<PrepWatchRemote>(
   (ref) => const PrepWatchRemote(),
 );
+
+/// The server's rows (one per watched account) as starred profiles.
+Map<String, PrepWatched> prepWatchedFromRows(List<dynamic> rows) {
+  final watched = <String, PrepWatched>{};
+  for (final row in rows) {
+    if (row is! Map) continue;
+    final id = row['profile_id']?.toString() ?? '';
+    final name = row['profile_name']?.toString() ?? '';
+    final source = PrepSource.tryParse(row['source']);
+    final username = row['username']?.toString().trim() ?? '';
+    if (id.isEmpty || name.isEmpty || source == null || username.isEmpty) {
+      continue;
+    }
+    final title = row['profile_title']?.toString();
+    final clocks = row['time_controls'];
+    final kind = row['profile_kind'];
+    final before = watched[id];
+    watched[id] = PrepWatched(
+      name: name,
+      title: title,
+      kind: kind == null ? before?.kind : PrepKind.tryParse(kind),
+      accounts: [
+        ...?before?.accounts,
+        PrepAccount(
+          source: source,
+          username: username,
+          title: title,
+          preferences: PrepDownloadPreferences(
+            timeControls: {
+              for (final clock in PrepTimeControl.values)
+                if (clocks is List && clocks.contains(clock.name)) clock,
+            },
+          ),
+        ),
+      ],
+    );
+  }
+  return watched;
+}
