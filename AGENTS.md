@@ -217,6 +217,32 @@ chessever_frontend_desktop_oss/scripts/which_repo_owns_function.sh <slug>
   or the pin would rebuild it. Stars follow the server across devices
   (`_reconcileWatches`).
 
+## Prep profiles sync between devices and with the desktop app
+
+Prep profiles and their games are stored on the device
+(`prep/profiles.json`). What makes a profile (name, own or opponent, its
+Lichess / Chess.com / ChessEver database sources and their download options)
+is also kept in `public.prep_profiles`, one row per profile, so every phone
+and the desktop app's Players workspace hold the same profiles. Games are
+never sent; each device downloads them. Imported PGN files stay local.
+
+- **The rules live in one file shared byte for byte with the desktop app:**
+  `lib/screens/my_prep/services/prep_cloud_sync.dart` here,
+  `lib/desktop/services/prep_cloud_sync.dart` in `chessever_frontend_desktop`.
+  Change one, copy it to the other, and run `test/prep_cloud_sync_test.dart`
+  in both. The row's JSON shape is documented at the top of that file.
+- This app's side is `lib/screens/my_prep/prep_profiles_cloud.dart`
+  (`prepCloudSyncProvider`, watched from the home shell). What it remembers
+  is in `prep/cloud.json`, apart from `profiles.json`.
+- **Never drop a key you do not understand when writing a row**, and never
+  change a profile's id: the other app, older builds, My Space pins and
+  stars all depend on both.
+- A deleted profile keeps its row with `deleted_at` set. Never delete rows.
+- A profile holding imported PGN files is never removed by a deletion made
+  on another device.
+- `PrepKind.favorite` profiles (players opened from Players) have no row.
+- The table is additive: builds before 38.5.11 never read or write it.
+
 ## Broadcast clocks: the event's time control is only a guess for a game
 
 `lib/utils/time_control_bonus.dart` adds a classical event's second period
