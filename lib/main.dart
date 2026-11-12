@@ -17,6 +17,7 @@ import 'package:chessever2/e2e/e2e_ids.dart';
 import 'package:chessever2/config/app_environment.dart';
 import 'package:chessever2/config/test_network_isolation.dart';
 import 'package:chessever2/utils/logger/logger.dart';
+import 'package:chessever2/utils/release_console.dart';
 import 'package:chessever2/localization/locale_provider.dart';
 import 'package:chessever2/screens/authentication/auth_screen.dart';
 import 'package:chessever2/screens/calendar/calendar_detail_screen.dart';
@@ -283,6 +284,7 @@ Future<void> main() async {
 Future<void> runChessEver(AppFlavor flavor) async {
   AppEnvironment.configure(flavor);
   installTestNetworkIsolation();
+  ReleaseConsole.install();
   await runZonedGuarded(
     () async {
       _e2eStartupLog('runZonedGuarded entered');
@@ -374,6 +376,11 @@ Future<void> runChessEver(AppFlavor flavor) async {
             options.maxBreadcrumbs = 50;
             options.enableAutoNativeBreadcrumbs = false;
             options.enableUserInteractionBreadcrumbs = false;
+            // Store builds keep console lines in memory and attach them only
+            // when an error is reported (see ReleaseConsole), instead of
+            // turning every debugPrint into a breadcrumb pushed to the native
+            // SDK on the UI thread.
+            if (kReleaseMode) options.enablePrintBreadcrumbs = false;
 
             // Disable app lifecycle tracking overhead
             options.enableAutoSessionTracking = false;
@@ -398,6 +405,7 @@ Future<void> runChessEver(AppFlavor flavor) async {
               // sign-in, benign plugin platform exceptions) so the dashboard
               // only surfaces actionable crashes.
               if (_shouldDropSentryEvent(event)) return null;
+              ReleaseConsole.attachTo(event);
               return event;
             };
           },
@@ -442,6 +450,7 @@ Future<void> runChessEver(AppFlavor flavor) async {
         // Silently ignore Sentry errors - don't let monitoring break the app
       }
     },
+    zoneSpecification: ReleaseConsole.zoneSpecification,
   );
 }
 

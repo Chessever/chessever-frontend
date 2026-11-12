@@ -888,20 +888,16 @@ class _TitleSelectorState extends State<_TitleSelector>
   Widget build(BuildContext context) {
     return GestureDetector(
       onTap: () => _isOpen ? _close() : _open(),
-      child: AnimatedBuilder(
-        animation: _shimmerController,
-        builder: (context, child) {
-          return CustomPaint(
-            painter: _isOpen
-                ? null
-                : FluidShimmerPainter(
-                    progress: _shimmerController.value,
-                    shimmerColor: kPrimaryColor.withValues(alpha: 0.4),
-                    borderRadius: 14.br,
-                  ),
-            child: child,
-          );
-        },
+      // The shimmer never stops. The painter repaints itself from the
+      // controller and the boundary keeps the rest of the screen out of it.
+      child: RepaintBoundary(child: CustomPaint(
+        painter: _isOpen
+            ? null
+            : FluidShimmerPainter(
+                progress: _shimmerController,
+                shimmerColor: kPrimaryColor.withValues(alpha: 0.4),
+                borderRadius: 14.br,
+              ),
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 220),
           curve: Curves.easeOutCubic,
@@ -951,7 +947,7 @@ class _TitleSelectorState extends State<_TitleSelector>
             ],
           ),
         ),
-      ),
+      )),
     );
   }
 }

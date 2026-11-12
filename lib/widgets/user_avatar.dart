@@ -99,19 +99,21 @@ class UserAvatar extends HookConsumerWidget {
     if (isPremium && showPremiumBorder) {
       return GestureDetector(
         onTap: onTap,
-        child: AnimatedBuilder(
-          animation: animationController,
-          builder: (context, child) {
-            return CustomPaint(
-              painter: _PremiumBorderPainter(
-                progress: animationController.value,
-                borderWidth: 2.5,
-                light: context.isLightTheme,
-              ),
-              child: Padding(padding: EdgeInsets.all(7.sp), child: child),
-            );
-          },
-          child: avatarWidget,
+        // The ring turns forever. Driving the painter from the controller
+        // repaints only this layer each frame: no widget rebuild, and the
+        // boundary keeps the header around the avatar from repainting with it.
+        child: RepaintBoundary(
+          child: CustomPaint(
+            painter: _PremiumBorderPainter(
+              progress: animationController,
+              borderWidth: 2.5,
+              light: context.isLightTheme,
+            ),
+            child: Padding(
+              padding: EdgeInsets.all(7.sp),
+              child: avatarWidget,
+            ),
+          ),
         ),
       );
     }
@@ -182,7 +184,7 @@ class UserAvatar extends HookConsumerWidget {
 /// Custom painter for the animated premium gradient border.
 /// Creates a smooth rotating gradient using app brand colors.
 class _PremiumBorderPainter extends CustomPainter {
-  final double progress;
+  final Animation<double> progress;
   final double borderWidth;
 
   /// Paper draws the ring in the accent-text teal family (brand cyan sits
@@ -194,7 +196,7 @@ class _PremiumBorderPainter extends CustomPainter {
     required this.progress,
     this.borderWidth = 3.0,
     this.light = false,
-  });
+  }) : super(repaint: progress);
 
   static const _stageSweep = SweepGradient(
     colors: [
@@ -235,7 +237,7 @@ class _PremiumBorderPainter extends CustomPainter {
     // Save canvas state and rotate around center for smooth continuous animation
     canvas.save();
     canvas.translate(center.dx, center.dy);
-    canvas.rotate(progress * 2 * math.pi);
+    canvas.rotate(progress.value * 2 * math.pi);
     canvas.translate(-center.dx, -center.dy);
 
     // Fixed angles: the rotation is handled by the canvas transform.

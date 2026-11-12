@@ -38,13 +38,23 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 const String _kStartFen =
     'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
 
+/// Parsed positions by FEN string. A card re-parses its FEN on every build
+/// and lists rebuild their cards often; the parse result never changes for a
+/// given string (`Setup` is immutable), so it is kept. `null` records a FEN
+/// that does not parse.
+final Map<String, Setup?> _parsedFens = <String, Setup?>{};
+
 Setup? _tryParseFen(String fen) {
   if (fen.trim().isEmpty) return null;
+  if (_parsedFens.containsKey(fen)) return _parsedFens[fen];
+  Setup? setup;
   try {
-    return Setup.parseFen(fen);
+    setup = Setup.parseFen(fen);
   } catch (_) {
-    return null;
+    setup = null;
   }
+  if (_parsedFens.length >= 1024) _parsedFens.clear();
+  return _parsedFens[fen] = setup;
 }
 
 String _resolveFen(String? fen) {

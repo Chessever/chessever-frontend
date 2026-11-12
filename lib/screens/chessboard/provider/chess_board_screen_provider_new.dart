@@ -147,7 +147,9 @@ final lastSeenMoveCountProvider = StateProvider<Map<String, int>>((ref) {
 
 void _releaseLog(String message) {
   if (kReleaseMode) {
-    // Ensure logs show up when running release builds from IDE.
+    // Shows up when running a release build from the IDE with
+    // --dart-define=CHESSEVER_RELEASE_LOGS=true. Store builds keep these lines
+    // in memory for error reports instead (see ReleaseConsole).
     // ignore: avoid_print
     print(message);
   } else {

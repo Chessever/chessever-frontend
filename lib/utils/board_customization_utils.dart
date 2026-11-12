@@ -75,9 +75,16 @@ PieceSet getPieceSetByIndex(int index) {
 /// Get ChessboardColorScheme by index with our custom colors applied
 /// This preserves our app's custom colors while using chessground board themes
 ChessboardColorScheme getColorSchemeByIndex(int index) {
-  final theme = getBoardThemeByIndex(index);
-  return _applyCustomColors(theme.colorScheme);
+  // Every board on screen asks for this on every build. The result depends
+  // only on the index, so each theme's scheme is built once; handing boards
+  // the same instance also lets their settings comparison stop at identity.
+  return _colorSchemesByIndex[index] ??= _applyCustomColors(
+    getBoardThemeByIndex(index).colorScheme,
+  );
 }
+
+final Map<int, ChessboardColorScheme> _colorSchemesByIndex =
+    <int, ChessboardColorScheme>{};
 
 /// Apply our custom colors to a color scheme
 /// - lastMove: semi-transparent blue-grey (shows different hue on light/dark squares)

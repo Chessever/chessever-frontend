@@ -9,9 +9,11 @@ class FluidShimmerPainter extends CustomPainter {
     required this.progress,
     required this.shimmerColor,
     required this.borderRadius,
-  });
+  }) : super(repaint: progress);
 
-  final double progress;
+  /// Drives the sweep, 0 to 1. The painter listens to it and repaints itself,
+  /// so the widget that owns it does not rebuild per frame.
+  final Animation<double> progress;
   final Color shimmerColor;
   final double borderRadius;
 
@@ -20,7 +22,7 @@ class FluidShimmerPainter extends CustomPainter {
     final rect = Rect.fromLTWH(0, 0, size.width, size.height);
     final rrect = RRect.fromRectAndRadius(rect, Radius.circular(borderRadius));
 
-    final sweepAngle = progress * 2 * math.pi;
+    final sweepAngle = progress.value * 2 * math.pi;
 
     final gradient = SweepGradient(
       center: Alignment.center,

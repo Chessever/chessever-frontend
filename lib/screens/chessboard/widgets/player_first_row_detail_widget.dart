@@ -948,93 +948,21 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
                         ? ' ${effectivePlayerCard.rating}'
                         : '';
 
-                // Create text painter to measure text width
-                final textPainter = TextPainter(
-                  textDirection: TextDirection.ltr,
-                  maxLines: 1,
+                // Which name parts fit is measured once per distinct
+                // (name, width, style) and remembered: rows rebuild far more
+                // often than any of those change.
+                final fit = _fitPlayerName(
+                  surname: surname,
+                  firstName: firstName,
+                  title: effectivePlayerCard.title,
+                  rating: rating,
+                  compactName: compactName,
+                  availableWidth: availableWidth,
+                  nameStyle: nameStyle,
+                  rankStyle: rankStyle,
+                  ratingStyle: ratingStyle,
                   textScaler: context.textScaler,
                 );
-
-                // Smart truncation: ALWAYS prioritize showing full surname
-                // Only abbreviate/truncate other parts, never reduce surname to initials
-                String displaySurname = surname;
-                String displayFirstName =
-                    firstName.isNotEmpty ? ', $firstName' : '';
-
-                if (compactName && surname.isNotEmpty) {
-                  // Compact form: "Surname I." — last name + first initial.
-                  final trimmedFirst = firstName.trim();
-                  if (trimmedFirst.isNotEmpty) {
-                    displayFirstName = ' ${trimmedFirst[0].toUpperCase()}.';
-                  } else {
-                    // No "Surname, Given" comma: treat "Given ... Surname" by
-                    // taking the last token as the surname and the first token's
-                    // initial (e.g. "Magnus Carlsen" -> "Carlsen M.").
-                    final tokens =
-                        surname
-                            .split(RegExp(r'\s+'))
-                            .where((token) => token.isNotEmpty)
-                            .toList();
-                    if (tokens.length > 1) {
-                      displaySurname = tokens.last;
-                      displayFirstName = ' ${tokens.first[0].toUpperCase()}.';
-                    } else {
-                      displayFirstName = '';
-                    }
-                  }
-                } else if (surname.isNotEmpty) {
-                  // Strategy 1: Try full surname + full first name
-                  textPainter.text = TextSpan(
-                    children: [
-                      TextSpan(
-                        text: '${effectivePlayerCard.title} ',
-                        style: rankStyle,
-                      ),
-                      TextSpan(text: surname, style: nameStyle),
-                      if (firstName.isNotEmpty)
-                        TextSpan(text: ', $firstName', style: nameStyle),
-                      TextSpan(text: rating, style: ratingStyle),
-                    ],
-                  );
-                  textPainter.layout();
-
-                  // If doesn't fit, start trimming (but keep full surname!)
-                  if (textPainter.width > availableWidth &&
-                      firstName.isNotEmpty) {
-                    // Strategy 2: Keep full surname + abbreviate first name
-                    final firstNameParts = firstName.split(' ');
-                    final abbreviatedFirst = firstNameParts
-                        .where((part) => part.isNotEmpty)
-                        .map((part) => '${part[0]}.')
-                        .join(' ');
-                    displayFirstName = ', $abbreviatedFirst';
-
-                    textPainter.text = TextSpan(
-                      children: [
-                        TextSpan(
-                          text: '${effectivePlayerCard.title} ',
-                          style: rankStyle,
-                        ),
-                        TextSpan(text: surname, style: nameStyle),
-                        TextSpan(text: displayFirstName, style: nameStyle),
-                        TextSpan(text: rating, style: ratingStyle),
-                      ],
-                    );
-                    textPainter.layout();
-
-                    // Strategy 3: If still doesn't fit, drop first name entirely
-                    if (textPainter.width > availableWidth) {
-                      displayFirstName = '';
-
-                      // Strategy 4: If STILL doesn't fit, let ellipsis truncate
-                      // surname. RichText handles "..." — keep full surname.
-                    }
-                  }
-                }
-
-                // Always layout the FINAL display text before reading width.
-                // compactName / empty-surname paths never entered the measure
-                // loop above, and would crash on textPainter.width otherwise.
                 final finalNameSpan = TextSpan(
                   style: nameStyle,
                   children: [
@@ -1042,15 +970,13 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
                       text: '${effectivePlayerCard.title} ',
                       style: rankStyle,
                     ),
-                    if (displaySurname.isNotEmpty)
-                      TextSpan(text: displaySurname, style: nameStyle),
-                    if (displayFirstName.isNotEmpty)
-                      TextSpan(text: displayFirstName, style: nameStyle),
+                    if (fit.surname.isNotEmpty)
+                      TextSpan(text: fit.surname, style: nameStyle),
+                    if (fit.firstName.isNotEmpty)
+                      TextSpan(text: fit.firstName, style: nameStyle),
                     TextSpan(text: rating, style: ratingStyle),
                   ],
                 );
-                textPainter.text = finalNameSpan;
-                textPainter.layout();
 
                 final nameWidget = RichText(
                   overflow: TextOverflow.ellipsis,
@@ -1063,7 +989,7 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
                 final maxNameTapWidth =
                     availableWidth < 0 ? 0.0 : availableWidth;
                 final nameTapWidth =
-                    textPainter.width.clamp(0.0, maxNameTapWidth).toDouble();
+                    fit.width.clamp(0.0, maxNameTapWidth).toDouble();
                 // Board-editor and local-analysis names are typed labels
                 // ("White"), not people: nothing to open or pin.
                 final source = effectiveGameModel.source;
@@ -1464,3 +1390,148 @@ class _PlayerClock extends StatelessWidget {
     );
   }
 }
+
+typedef _PlayerNameFit = ({String surname, String firstName, double width});
+
+final Map<Object, _PlayerNameFit> _playerNameFits = <Object, _PlayerNameFit>{};
+bool _playerNameFitsWatchFonts = false;
+
+/// Decides how much of a player's name fits in [availableWidth] and how wide
+/// the result is. `firstName` in the result carries its own separator (", "
+/// or " ") so the caller only concatenates.
+///
+/// The answer depends only on the arguments, so it is cached. A font that
+/// finishes loading changes text widths, which clears the cache.
+_PlayerNameFit _fitPlayerName({
+  required String surname,
+  required String firstName,
+  required String title,
+  required String rating,
+  required bool compactName,
+  required double availableWidth,
+  required TextStyle nameStyle,
+  required TextStyle rankStyle,
+  required TextStyle ratingStyle,
+  required TextScaler textScaler,
+}) {
+  final key = (
+    surname,
+    firstName,
+    title,
+    rating,
+    compactName,
+    availableWidth,
+    nameStyle,
+    rankStyle,
+    ratingStyle,
+    textScaler,
+  );
+  final cached = _playerNameFits[key];
+  if (cached != null) return cached;
+  if (!_playerNameFitsWatchFonts) {
+    _playerNameFitsWatchFonts = true;
+    PaintingBinding.instance.systemFonts.addListener(_playerNameFits.clear);
+  }
+
+  final textPainter = TextPainter(
+    textDirection: TextDirection.ltr,
+    maxLines: 1,
+    textScaler: textScaler,
+  );
+
+  // Smart truncation: ALWAYS prioritize showing full surname
+  // Only abbreviate/truncate other parts, never reduce surname to initials
+  String displaySurname = surname;
+  String displayFirstName = firstName.isNotEmpty ? ', $firstName' : '';
+
+  if (compactName && surname.isNotEmpty) {
+    // Compact form: "Surname I." — last name + first initial.
+    final trimmedFirst = firstName.trim();
+    if (trimmedFirst.isNotEmpty) {
+      displayFirstName = ' ${trimmedFirst[0].toUpperCase()}.';
+    } else {
+      // No "Surname, Given" comma: treat "Given ... Surname" by
+      // taking the last token as the surname and the first token's
+      // initial (e.g. "Magnus Carlsen" -> "Carlsen M.").
+      final tokens =
+          surname
+              .split(_playerNameWhitespace)
+              .where((token) => token.isNotEmpty)
+              .toList();
+      if (tokens.length > 1) {
+        displaySurname = tokens.last;
+        displayFirstName = ' ${tokens.first[0].toUpperCase()}.';
+      } else {
+        displayFirstName = '';
+      }
+    }
+  } else if (surname.isNotEmpty) {
+    // Strategy 1: Try full surname + full first name
+    textPainter.text = TextSpan(
+      children: [
+        TextSpan(text: '$title ', style: rankStyle),
+        TextSpan(text: surname, style: nameStyle),
+        if (firstName.isNotEmpty)
+          TextSpan(text: ', $firstName', style: nameStyle),
+        TextSpan(text: rating, style: ratingStyle),
+      ],
+    );
+    textPainter.layout();
+
+    // If doesn't fit, start trimming (but keep full surname!)
+    if (textPainter.width > availableWidth && firstName.isNotEmpty) {
+      // Strategy 2: Keep full surname + abbreviate first name
+      final firstNameParts = firstName.split(' ');
+      final abbreviatedFirst = firstNameParts
+          .where((part) => part.isNotEmpty)
+          .map((part) => '${part[0]}.')
+          .join(' ');
+      displayFirstName = ', $abbreviatedFirst';
+
+      textPainter.text = TextSpan(
+        children: [
+          TextSpan(text: '$title ', style: rankStyle),
+          TextSpan(text: surname, style: nameStyle),
+          TextSpan(text: displayFirstName, style: nameStyle),
+          TextSpan(text: rating, style: ratingStyle),
+        ],
+      );
+      textPainter.layout();
+
+      // Strategy 3: If still doesn't fit, drop first name entirely
+      if (textPainter.width > availableWidth) {
+        displayFirstName = '';
+
+        // Strategy 4: If STILL doesn't fit, let ellipsis truncate
+        // surname. RichText handles "..." — keep full surname.
+      }
+    }
+  }
+
+  // Always layout the FINAL display text before reading width.
+  // compactName / empty-surname paths never entered the measure
+  // loop above.
+  textPainter.text = TextSpan(
+    style: nameStyle,
+    children: [
+      TextSpan(text: '$title ', style: rankStyle),
+      if (displaySurname.isNotEmpty)
+        TextSpan(text: displaySurname, style: nameStyle),
+      if (displayFirstName.isNotEmpty)
+        TextSpan(text: displayFirstName, style: nameStyle),
+      TextSpan(text: rating, style: ratingStyle),
+    ],
+  );
+  textPainter.layout();
+  final fit = (
+    surname: displaySurname,
+    firstName: displayFirstName,
+    width: textPainter.width,
+  );
+  textPainter.dispose();
+
+  if (_playerNameFits.length >= 2048) _playerNameFits.clear();
+  return _playerNameFits[key] = fit;
+}
+
+final RegExp _playerNameWhitespace = RegExp(r'\s+');
