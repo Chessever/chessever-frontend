@@ -349,8 +349,8 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.byType(WatchGamePage), findsOneWidget);
       expect(bindings.mode, 0);
-      await _show(tester, find.text('Back to games'));
-      await tester.tap(find.text('Back to games'));
+      await _show(tester, find.text('Back to boards'));
+      await tester.tap(find.text('Back to boards'));
       await tester.pumpAndSettle();
       expect(bindings.mode, 1);
 

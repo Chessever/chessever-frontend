@@ -2,10 +2,13 @@ import 'dart:convert';
 import 'package:chessever2/watch/core/watch_replay.dart';
 import 'package:chessever2/watch/core/watch_repository.dart';
 import 'package:chessever2/watch/ui/watch_board.dart';
-import 'package:chessever2/watch/ui/watch_replay_page.dart';
+import 'package:chessever2/repository/supabase/game/games.dart';
+import 'package:chessever2/watch/ui/watch_game_page.dart';
+import 'package:chessever2/watch/watch_controller.dart';
+import 'package:flutter_watchos/flutter_watchos.dart'
+    show WatchAlwaysOn, WatchCrown, WatchOSNativeBindings;
 import 'package:flutter/cupertino.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:flutter_watchos/flutter_watchos.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
@@ -109,6 +112,33 @@ void main() {
     await tester.pump(const Duration(milliseconds: 16));
   }
 
+  /// Two boards of one round, each with the same short game, served the
+  /// way the feed serves them; the moves can be withheld for a first try.
+  _GameRepository repo({bool withholdMoves = false}) =>
+      _GameRepository(pgn, withholdMoves: withholdMoves);
+
+  Games game(String id) => Games.fromJson({
+    'id': id,
+    'tour_id': 'tour1',
+    'tour_slug': 'open',
+    'round_id': 'r1',
+    'round_slug': 'r1',
+    'status': '*',
+    'board_nr': id == 'g1' ? 1 : 2,
+    'players': [
+      {'name': 'Player One', 'fideId': 1},
+      {'name': 'Player Two', 'fideId': 2},
+    ],
+    'fen': 'r1bqkbnr/pppp1ppp/2n5/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R w KQkq - 2 3',
+    'last_move': 'b8c6',
+  });
+
+  Widget page(_GameRepository repository, {bool many = false}) => WatchGamePage(
+    controller: WatchController(repository: repository),
+    game: game('g1'),
+    games: many ? [game('g1'), game('g2')] : const [],
+  );
+
   Future<void> show(WidgetTester tester, Finder target) async {
     final scroll = find.byType(Scrollable).last;
     tester.state<ScrollableState>(scroll).position.jumpTo(0);
@@ -124,6 +154,7 @@ void main() {
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.resetPhysicalSize);
       addTearDown(tester.view.resetDevicePixelRatio);
+      final repository = repo();
       await tester.pumpWidget(
         CupertinoApp(
           home: Builder(
@@ -132,7 +163,7 @@ void main() {
               onPressed: () {
                 Navigator.of(context).push(
                   CupertinoPageRoute<void>(
-                    builder: (_) => WatchReplayPage(loadPgn: () async => pgn),
+                    builder: (_) => page(repository, many: true),
                   ),
                 );
               },
@@ -157,15 +188,47 @@ void main() {
       await tester.pumpAndSettle();
       await show(tester, find.byType(WatchBoard));
       expect(tester.widget<WatchBoard>(find.byType(WatchBoard)).fen, lastFen);
-      await tester.tap(find.byType(WatchBoard));
+      // The board fills the width under the clock band, White's line under
+      // it, nothing else above the fold.
+      final board = tester.getRect(find.byType(WatchBoard));
+      expect(board.width, 162);
+      expect(board.left, 0);
+      expect(
+        find.text(
+          'Board 1 of 2 · swipe the board sideways',
+          skipOffstage: false,
+        ),
+        findsOneWidget,
+      );
+      // A swipe on the board moves to the next board of the list; the Crown
+      // then reviews that game.
+      await tester.fling(find.byType(WatchBoard), const Offset(-80, 0), 600);
       await tester.pumpAndSettle();
-      expect(bindings.mode, 0);
-      await show(tester, find.text('Crown scrolls'));
-      await tester.tap(find.text('Crown scrolls'));
-      await tester.pumpAndSettle();
+      expect(
+        find.text(
+          'Board 2 of 2 · swipe the board sideways',
+          skipOffstage: false,
+        ),
+        findsOneWidget,
+      );
+      expect(repository.fetched, ['g1', 'g2']);
       expect(bindings.mode, 1);
-      await show(tester, find.text('Done'));
-      await tester.tap(find.text('Done'));
+      await turn(tester, -0.25);
+      expect(
+        tester.widget<WatchBoard>(find.byType(WatchBoard)).fen,
+        isNot(lastFen),
+      );
+      await tester.fling(find.byType(WatchBoard), const Offset(80, 0), 600);
+      await tester.pumpAndSettle();
+      expect(
+        find.text(
+          'Board 1 of 2 · swipe the board sideways',
+          skipOffstage: false,
+        ),
+        findsOneWidget,
+      );
+      await show(tester, find.text(WatchGamePage.backLabel));
+      await tester.tap(find.text(WatchGamePage.backLabel));
       await tester.pumpAndSettle();
       expect(bindings.mode, 0);
       expect(tester.takeException(), isNull);
@@ -177,10 +240,7 @@ void main() {
   ) async {
     final nav = GlobalKey<NavigatorState>();
     await tester.pumpWidget(
-      CupertinoApp(
-        navigatorKey: nav,
-        home: WatchReplayPage(loadPgn: () async => pgn),
-      ),
+      CupertinoApp(navigatorKey: nav, home: page(repo())),
     );
     await tester.pumpAndSettle();
     expect(bindings.mode, 1);
@@ -210,28 +270,55 @@ void main() {
     expect(bindings.mode, 0);
   });
 
-  testWidgets('missing history keeps scrolling and an actionable retry', (
-    tester,
-  ) async {
-    var tries = 0;
-    await tester.pumpWidget(
-      CupertinoApp(
-        home: WatchReplayPage(
-          loadPgn: () async {
-            tries++;
-            return tries == 1 ? null : pgn;
-          },
-        ),
-      ),
-    );
+  testWidgets('without moves the relay position shows and the Crown waits; '
+      'the moves arrive with the next poll', (tester) async {
+    final repository = repo(withholdMoves: true);
+    await tester.pumpWidget(CupertinoApp(home: page(repository)));
     await tester.pumpAndSettle();
-    expect(bindings.mode, 0);
-    expect(find.text('Moves have not been published yet.'), findsOneWidget);
-    await show(tester, find.text('Try again'));
-    await tester.tap(find.text('Try again'));
+    expect(bindings.mode, 0, reason: 'nothing to review yet');
+    expect(find.byType(WatchBoard), findsOneWidget);
+    expect(find.text('Live · Nb8–c6'), findsOneWidget);
+    repository.withholdMoves = false;
+    repository.moved = true;
+    await show(tester, find.text('Refresh'));
+    await tester.tap(find.text('Refresh'));
     await tester.pumpAndSettle();
     expect(bindings.mode, 1);
-    expect(find.byType(WatchBoard), findsOneWidget);
+    expect(find.text('2… Nc6 · Live'), findsOneWidget);
     await tester.pumpWidget(const SizedBox());
   });
+}
+
+class _GameRepository extends WatchRepository {
+  _GameRepository(this.pgn, {this.withholdMoves = false})
+    : super(apiKey: 'key');
+  final String pgn;
+  bool withholdMoves;
+
+  /// True once the relay has a move the page has not seen.
+  bool moved = false;
+  final fetched = <String>[];
+
+  @override
+  Future<String?> gamePgn(String id) async => withholdMoves ? null : pgn;
+
+  @override
+  Future<Games?> game(String id) async {
+    fetched.add(id);
+    return Games.fromJson({
+      'id': id,
+      'tour_id': 'tour1',
+      'tour_slug': 'open',
+      'round_id': 'r1',
+      'round_slug': 'r1',
+      'status': '*',
+      'board_nr': id == 'g1' ? 1 : 2,
+      'players': [
+        {'name': 'Player One', 'fideId': 1},
+        {'name': 'Player Two', 'fideId': 2},
+      ],
+      'fen': 'r1bqkbnr/pppp1ppp/2n5/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R w KQkq - 2 3',
+      'last_move': moved ? 'b8c6!' : 'b8c6',
+    });
+  }
 }

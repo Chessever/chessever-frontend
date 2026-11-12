@@ -287,22 +287,15 @@ void main() {
         expect(boardBounds.top, greaterThanOrEqualTo(40));
         expect(boardBounds.bottom, lessThanOrEqualTo(screen.height - 9));
         await screenshot(tester, 'game-${screen.width.toInt()}');
-        await show(tester, find.text('Review moves'));
-        await tester.tap(find.text('Review moves'));
-        await tester.pumpAndSettle();
+        // The Crown reviews the moves from the start, no mode to enter.
         expect(WatchCrown.instance.isEnabled, isTrue);
-        await screenshot(tester, 'replay-${screen.width.toInt()}');
         await show(tester, find.bySemanticsLabel('Previous move'));
         await Scrollable.ensureVisible(
           tester.element(find.bySemanticsLabel('Previous move')),
           alignment: 0.5,
         );
         await tester.pumpAndSettle();
-        await screenshot(tester, 'replay-controls-${screen.width.toInt()}');
-        await show(tester, find.text('Done'));
-        await tester.tap(find.text('Done'));
-        await tester.pumpAndSettle();
-        expect(WatchCrown.instance.isEnabled, isFalse);
+        await screenshot(tester, 'game-controls-${screen.width.toInt()}');
         await show(tester, find.text('2750'));
         expect(find.text('2750'), findsOneWidget);
         expect(find.text('0:00'), findsWidgets);
@@ -318,8 +311,10 @@ void main() {
         await tester.tap(find.text('Open on iPhone'));
         await tester.pumpAndSettle();
         expect(find.text('Sent to iPhone.'), findsOneWidget);
-        await show(tester, find.text('Player One'));
-        await tester.tap(find.text('Player One'));
+        // The player's row (not the line under the board) opens the card.
+        final playerRow = find.widgetWithText(WatchRow, 'Player One');
+        await show(tester, playerRow);
+        await tester.tap(playerRow);
         await tester.pumpAndSettle();
         expect(find.text('4½ / 6'), findsOneWidget);
         await screenshot(tester, 'scorecard-${screen.width.toInt()}');
@@ -332,9 +327,11 @@ void main() {
         await show(tester, find.text('Back'));
         await tester.tap(find.text('Back'));
         await tester.pumpAndSettle();
-        await show(tester, find.text('Back to games'));
-        await tester.tap(find.text('Back to games'));
+        await show(tester, find.text('Back to boards'));
+        await tester.tap(find.text('Back to boards'));
         await tester.pumpAndSettle();
+        // The event list takes the Crown back for its own stepping.
+        expect(WatchCrown.instance.isEnabled, isTrue);
         expect(find.byType(WatchBoardTile), findsOneWidget);
         await show(tester, find.text('Back to Current'));
         await tester.tap(find.text('Back to Current'));

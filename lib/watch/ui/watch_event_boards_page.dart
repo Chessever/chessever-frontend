@@ -493,21 +493,36 @@ class _WatchEventBoardsPageState extends State<WatchEventBoardsPage>
     _goTo(i, haptic: true);
   }
 
+  /// Opens a board's game. Every board of the list rides along, so the
+  /// game page can swipe between them; the board left on is brought into
+  /// the resting slot on the way back.
   Future<void> _openGame(WatchSection section, Games game) async {
     setState(() => _covered = true);
     _syncInputs();
-    await Navigator.of(context).push(
-      CupertinoPageRoute<void>(
+    final boards = [
+      for (final item in _feed.items)
+        if (item is WatchBoardItem) _feed.gameOf(item.game),
+    ];
+    final left = await Navigator.of(context).push<String>(
+      CupertinoPageRoute<String>(
         builder: (_) => WatchGamePage(
           controller: widget.controller,
           game: _feed.gameOf(game),
           tour: section.tour,
+          games: boards,
+          tours: _feed.tours,
         ),
       ),
     );
     if (!mounted) return;
     setState(() => _covered = false);
     _syncInputs();
+    if (left != null && left != game.id) {
+      final index = _feed.items.indexWhere(
+        (item) => item is WatchBoardItem && item.game.id == left,
+      );
+      if (index >= 0) _goTo(index, haptic: false);
+    }
     if (_feed.loaded) unawaited(_feed.pollLive());
   }
 
