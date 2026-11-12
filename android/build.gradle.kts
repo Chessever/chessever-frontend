@@ -43,6 +43,19 @@ subprojects {
             androidExt.compileOptions.sourceCompatibility = JavaVersion.VERSION_17
             androidExt.compileOptions.targetCompatibility = JavaVersion.VERSION_17
 
+            // Plugins that still compile against an old SDK fail
+            // checkReleaseAarMetadata once AndroidX needs a newer one:
+            // amplitude_flutter 4.7.1 pins android-34 while androidx.core
+            // 1.16 and androidx.activity 1.10 need 35. Raising only the
+            // compile SDK changes no runtime behaviour (targetSdk and minSdk
+            // stay the plugin's), so lift every plugin to the app's level.
+            val pluginCompileSdk = androidExt.compileSdkVersion
+                ?.removePrefix("android-")
+                ?.toIntOrNull()
+            if (pluginCompileSdk != null && pluginCompileSdk < 36) {
+                androidExt.compileSdkVersion(36)
+            }
+
             if (project.name == "flutter_soloud") {
                 androidExt.defaultConfig.externalNativeBuild {
                     cmake {
