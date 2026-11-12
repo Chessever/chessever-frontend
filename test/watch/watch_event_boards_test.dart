@@ -495,7 +495,10 @@ void main() {
       find.byWidgetPredicate(
         (w) =>
             w is Text &&
-            (w.data == 'Wangzhang, A.' || w.data == 'Wangzhang') &&
+            const {
+              'Wangzhang, A.',
+              'Wangzhang',
+            }.contains(w.textSpan?.toPlainText()) &&
             w.semanticsLabel!.startsWith('Wangzhang, Alexander-Maximilian'),
       ),
       findsWidgets,

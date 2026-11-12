@@ -409,13 +409,13 @@ class _WatchGamePageState extends State<WatchGamePage>
     final line = media.textScaler.scale(12) * 1.3;
     const barSpace = WatchGamePage.evalBarWidth + WatchGamePage.evalBarGap;
     // The board takes the width beside its bar and, best effort, stays
-    // square: it may stretch or squash by a tenth to use the height between
-    // the band and White's line, never more.
+    // square: it may stretch a tenth or squash a fifth to fit between the
+    // two name lines, so both clocks stay on screen on the smallest watch.
     final boardWidth = width - barSpace - 2;
-    final room = media.size.height - band - line - 4;
+    final room = media.size.height - band - line * 2 - 6;
     final boardHeight = math
         .min(room, boardWidth * 1.1)
-        .clamp(boardWidth * 0.9, boardWidth * 1.1);
+        .clamp(boardWidth * 0.8, boardWidth * 1.1);
     final (fen, lastMove) = _shown;
     final last = _positions.length - 1;
     final players = _game.players ?? const <Player>[];
@@ -452,6 +452,20 @@ class _WatchGamePageState extends State<WatchGamePage>
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
+                          if (top != null)
+                            Padding(
+                              padding: const EdgeInsets.fromLTRB(
+                                barSpace + 2,
+                                0,
+                                4,
+                                2,
+                              ),
+                              child: WatchPlayerLine(
+                                game: _game,
+                                index: top,
+                                flagWidth: 16,
+                              ),
+                            ),
                           Row(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
@@ -498,8 +512,9 @@ class _WatchGamePageState extends State<WatchGamePage>
                                         ),
                                       ),
                                       Positioned(
-                                        left: 4,
-                                        bottom: 4,
+                                        left: 0,
+                                        top: 0,
+                                        bottom: 0,
                                         child: _BoardArrow(
                                           label: 'Previous move',
                                           icon: CupertinoIcons.chevron_left,
@@ -514,8 +529,9 @@ class _WatchGamePageState extends State<WatchGamePage>
                                         ),
                                       ),
                                       Positioned(
-                                        right: 4,
-                                        bottom: 4,
+                                        right: 0,
+                                        top: 0,
+                                        bottom: 0,
                                         child: _BoardArrow(
                                           label: 'Next move',
                                           icon: CupertinoIcons.chevron_right,
@@ -540,7 +556,7 @@ class _WatchGamePageState extends State<WatchGamePage>
                               padding: const EdgeInsets.fromLTRB(
                                 barSpace + 2,
                                 2,
-                                6,
+                                4,
                                 0,
                               ),
                               child: WatchPlayerLine(
@@ -627,36 +643,15 @@ class _WatchGamePageState extends State<WatchGamePage>
               ),
             ],
           ),
-          // The clock band: the top player's name and clock sit in it beside
-          // the system clock, and a veil keeps the board from running into
-          // the time as the page scrolls.
+          // The clock band: a veil keeps the names and board from running
+          // into the time as the page scrolls.
           Positioned(
             left: 0,
             right: 0,
             top: 0,
             height: band,
             child: IgnorePointer(
-              child: _Band(
-                scroll: _scroll,
-                child: top == null
-                    ? const SizedBox()
-                    : Padding(
-                        padding: EdgeInsets.fromLTRB(
-                          barSpace + 2,
-                          0,
-                          width * 0.38,
-                          2,
-                        ),
-                        child: Align(
-                          alignment: Alignment.bottomLeft,
-                          child: WatchPlayerLine(
-                            game: _game,
-                            index: top,
-                            flagWidth: 16,
-                          ),
-                        ),
-                      ),
-              ),
+              child: _Band(scroll: _scroll, child: const SizedBox()),
             ),
           ),
         ],
@@ -677,9 +672,10 @@ class _WatchGamePageState extends State<WatchGamePage>
   }
 }
 
-/// A move arrow resting on the board: a dark translucent disc, lit while
-/// the page is new or a hand is on it, then faded to a third so the
-/// position keeps the eye. Always a 44-point target.
+/// A move arrow on the board's edge: a bare chevron with a soft shadow,
+/// no disc, set mid-height over the a- or h-file where it covers the least.
+/// Lit while the page is new or a hand is on it, then faded to a third so
+/// the position keeps the eye. The target is the whole edge strip.
 class _BoardArrow extends StatelessWidget {
   const _BoardArrow({
     required this.label,
@@ -720,18 +716,26 @@ class _BoardArrow extends StatelessWidget {
               onLongPress!();
             },
       child: AnimatedOpacity(
-        opacity: onTap == null ? 0.18 : (lit ? 0.82 : 0.34),
+        opacity: onTap == null ? 0.15 : (lit ? 0.85 : 0.32),
         duration: const Duration(milliseconds: 450),
         curve: Curves.easeOut,
-        child: Container(
+        child: SizedBox(
           width: 44,
-          height: 44,
-          alignment: Alignment.center,
-          decoration: const BoxDecoration(
-            color: Color(0x80000000),
-            shape: BoxShape.circle,
+          height: double.infinity,
+          child: Align(
+            alignment: icon == CupertinoIcons.chevron_left
+                ? const Alignment(-0.55, 0)
+                : const Alignment(0.55, 0),
+            child: Icon(
+              icon,
+              size: 24,
+              color: WatchStyle.ink,
+              shadows: const [
+                Shadow(color: Color(0xCC000000), blurRadius: 5),
+                Shadow(color: Color(0x99000000), blurRadius: 1.5),
+              ],
+            ),
           ),
-          child: Icon(icon, size: 22, color: WatchStyle.ink),
         ),
       ),
     ),

@@ -6,6 +6,7 @@ import 'package:flutter/physics.dart';
 import 'package:flutter_watchos/flutter_watchos.dart';
 import 'package:sensors_plus/sensors_plus.dart';
 import '../../repository/supabase/game/games.dart';
+import '../../utils/chess_title_utils.dart';
 import '../core/watch_event_layout.dart';
 import '../core/watch_models.dart';
 import '../core/watch_replay.dart';
@@ -1320,6 +1321,7 @@ class WatchPlayerLine extends StatelessWidget {
         (watchIsLive(game.status) && watchWhiteToMove(game.fen) == white);
     final tone = lit ? WatchStyle.ink : WatchStyle.secondary;
     final name = player?.name.trim();
+    final title = ChessTitleUtils.normalize(player?.title);
     return Row(
       key: ValueKey('watch-player-strip-$index'),
       children: [
@@ -1330,6 +1332,12 @@ class WatchPlayerLine extends StatelessWidget {
         Expanded(
           child: WatchFittedName(
             name == null || name.isEmpty ? (white ? 'White' : 'Black') : name,
+            prefix: title,
+            prefixStyle: WatchStyle.caption.copyWith(
+              fontSize: fontSize,
+              color: WatchStyle.secondary,
+              fontWeight: FontWeight.w600,
+            ),
             style: WatchStyle.caption.copyWith(
               fontSize: fontSize,
               color: won == false ? WatchStyle.secondary : WatchStyle.ink,

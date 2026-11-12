@@ -471,9 +471,28 @@ class WatchNote extends StatelessWidget {
 /// keeps the surname readable instead of cutting it with an ellipsis.
 /// VoiceOver always reads the full name.
 class WatchFittedName extends StatelessWidget {
-  const WatchFittedName(this.name, {super.key, required this.style});
+  const WatchFittedName(
+    this.name, {
+    super.key,
+    required this.style,
+    this.prefix = '',
+    this.prefixStyle,
+  });
   final String name;
   final TextStyle style;
+
+  /// A short mark set before the name in [prefixStyle], the player's title
+  /// ("GM"). It counts toward the fit and is never shortened.
+  final String prefix;
+  final TextStyle? prefixStyle;
+
+  TextSpan _span(String shown) => TextSpan(
+    style: style,
+    children: [
+      if (prefix.isNotEmpty) TextSpan(text: '$prefix ', style: prefixStyle),
+      TextSpan(text: shown),
+    ],
+  );
 
   @override
   Widget build(BuildContext context) => LayoutBuilder(
@@ -482,7 +501,7 @@ class WatchFittedName extends StatelessWidget {
       final direction = Directionality.of(context);
       bool fits(String text) {
         final painter = TextPainter(
-          text: TextSpan(text: text, style: style),
+          text: _span(text),
           maxLines: 1,
           textScaler: scaler,
           textDirection: direction,
@@ -499,12 +518,11 @@ class WatchFittedName extends StatelessWidget {
         final surname = comma > 0 ? name.substring(0, comma).trim() : short;
         shown = fits(short) ? short : surname;
       }
-      return Text(
-        shown,
+      return Text.rich(
+        _span(shown),
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
-        semanticsLabel: name,
-        style: style,
+        semanticsLabel: prefix.isEmpty ? name : '$prefix $name',
       );
     },
   );
