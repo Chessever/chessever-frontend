@@ -194,6 +194,9 @@ class CombinedCategoryPrefsNotifier
   final TourSelectionStore _store;
   final Map<String, Future<void>> _loads = <String, Future<void>>{};
 
+  /// Whether [groupId] is shown in Combined. Call [ensureLoaded] first.
+  bool isSelected(String groupId) => state.isSelected(groupId);
+
   // A choice made while the stored value is still being read wins over it.
   final Set<String> _selectionTouched = <String>{};
 
@@ -334,6 +337,31 @@ final combinedCategorySelectedProvider = Provider<bool>((ref) {
     combinedCategoryPrefsProvider.select((prefs) => prefs.isSelected(groupId)),
   );
 });
+
+/// Events a board is paging through in Combined without their screen being
+/// open: a Total Chess game opened from For You, a pinned round, a link.
+///
+/// The event screen's own providers only describe the event that is open, so
+/// the board cannot ask them which tours are categories of this one. Whoever
+/// widens a board's list to Combined records the event here, and the board
+/// reads it to name each category's rounds and to keep one stream playing
+/// across them.
+final combinedBoardEventsProvider = StateProvider<List<CombinedCategories>>(
+  (ref) => const <CombinedCategories>[],
+);
+
+/// The recorded event [tourId] is a category of, if any.
+CombinedCategories? combinedEventForTour(
+  List<CombinedCategories> events,
+  String tourId,
+) {
+  for (final event in events) {
+    for (final item in event.items) {
+      if (item.tourId == tourId) return event;
+    }
+  }
+  return null;
+}
 
 /// Whether [tourId] is a category the Combined list shows other than the one
 /// selected underneath.

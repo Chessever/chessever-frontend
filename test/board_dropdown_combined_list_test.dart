@@ -267,6 +267,21 @@ void main() {
       isEmpty,
     );
     expect(eventTourIdsForVideo(game: game, openEventTourIds: null), isEmpty);
+
+    // Opened from outside the event's screen (For You): the event the board
+    // was widened to answers instead, even with another event open.
+    const widened = CombinedCategories([
+      CombinedCategory(tourId: 'group-b', label: 'B', avgElo: 2735, order: 0),
+      CombinedCategory(tourId: 'group-a', label: 'A', avgElo: 2718, order: 1),
+    ]);
+    expect(
+      eventTourIdsForVideo(
+        game: game,
+        openEventTourIds: 'x,y',
+        boardEvents: const [widened],
+      ),
+      {'group-a', 'group-b'},
+    );
   });
 
   testWidgets('switcher reaches another category from a Combined list', (

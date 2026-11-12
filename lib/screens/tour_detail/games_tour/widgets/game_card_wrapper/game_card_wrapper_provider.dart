@@ -6,13 +6,22 @@ import 'package:chessever2/providers/for_you_games_logic.dart';
 import 'package:chessever2/repository/local_storage/tournament/games/games_local_storage.dart';
 import 'package:chessever2/repository/supabase/game/game_repository.dart';
 import 'package:chessever2/repository/supabase/game/games.dart';
+import 'package:chessever2/repository/supabase/group_broadcast/group_tour_repository.dart';
+import 'package:chessever2/repository/supabase/round/round.dart';
+import 'package:chessever2/repository/supabase/round/round_repository.dart';
+import 'package:chessever2/repository/supabase/tour/tour.dart';
+import 'package:chessever2/repository/supabase/tour/tour_repository.dart';
 import 'package:chessever2/screens/chessboard/chess_board_screen_new.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
 import 'package:chessever2/screens/chessboard/provider/game_pgn_stream_provider.dart';
 import 'package:chessever2/screens/gamebase/event_view/gamebase_virtual_event.dart';
 import 'package:chessever2/screens/player_profile/player_profile_data_source.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_provider.dart';
+import 'package:chessever2/screens/tour_detail/combined/combined_category.dart';
+import 'package:chessever2/screens/tour_detail/combined/combined_round_sections.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/models/games_app_bar_view_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
+import 'package:chessever2/screens/tour_detail/provider/tour_category_ordering.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/games_tour_content_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/live_game_card_provider.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_screen_provider.dart';
@@ -54,6 +63,14 @@ bool _holdsEveryGame(List<Games> raw, List<GamesTourModel> shown) {
   final ids = {for (final game in raw) game.id};
   return shown.every((game) => ids.contains(game.gameId));
 }
+
+/// Tour id to its event (group broadcast) id, or '' for a tour that has none.
+/// Kept for the session so only the first board opened on a tour pays for the
+/// lookup.
+final Map<String, String> _eventIdByTourId = <String, String>{};
+
+@visibleForTesting
+void debugResetCombinedBoardNavigation() => _eventIdByTourId.clear();
 
 final gameCardWrapperProvider = AutoDisposeProvider<_GameCardWrapperProvider>((
   ref,
@@ -180,6 +197,25 @@ class _GameCardWrapperProvider {
       return _ResolvedNavigation(games: orderedGames, index: safeIndex);
     }
 
+    // Read before the first await: this controller is auto-disposed and may
+    // be gone by the time the Combined lookup below returns.
+    final GamesLocalStorage storage;
+    try {
+      storage = _ref.read(gamesLocalStorage);
+    } catch (_) {
+      return _ResolvedNavigation(games: orderedGames, index: safeIndex);
+    }
+
+    // Combined is the viewer's standing choice for an event. A board opened
+    // on one of its games from outside the Combined list (For You, a pinned
+    // round) pages through every category too, not only the tapped game's.
+    final combined = await _resolveCombinedNavigation(
+      orderedGames: orderedGames,
+      tappedGame: tappedGame,
+      storage: storage,
+    );
+    if (combined != null) return combined;
+
     final isSingleTourList = orderedGames.every((g) => g.tourId == tourId);
     final sameTourGames =
         isSingleTourList
@@ -196,7 +232,6 @@ class _GameCardWrapperProvider {
     }
 
     try {
-      final storage = _ref.read(gamesLocalStorage);
       // Cache-first: reuse the persisted full-event list when it exists (fast,
       // isolate decode, no network). BUT the For You feed only fetches the
       // top-N preview per event via a pure RPC (`getForYouTopGamesByEventIds`)
@@ -267,6 +302,116 @@ class _GameCardWrapperProvider {
       return _ResolvedNavigation(games: fullGames, index: resolvedIndex);
     } catch (_) {
       return _ResolvedNavigation(games: orderedGames, index: safeIndex);
+    }
+  }
+
+  /// The Combined list of the tapped game's event, when the viewer watches
+  /// that event in Combined; null to fall back to the game's own category.
+  ///
+  /// Same categories and same order as the event's Combined Games tab: it is
+  /// built by [buildCombinedRoundSections] from each category's games.
+  Future<_ResolvedNavigation?> _resolveCombinedNavigation({
+    required List<GamesTourModel> orderedGames,
+    required GamesTourModel tappedGame,
+    required GamesLocalStorage storage,
+  }) async {
+    try {
+      // Everything is read up front; nothing touches `_ref` after an await.
+      if (!_ref.read(combinedCategoryEntitledProvider)) return null;
+      final prefs = _ref.read(combinedCategoryPrefsProvider.notifier);
+      final boardEvents = _ref.read(combinedBoardEventsProvider.notifier);
+      final events = _ref.read(groupBroadcastRepositoryProvider);
+      final tours = _ref.read(tourRepositoryProvider);
+      final rounds = _ref.read(roundRepositoryProvider);
+
+      final tourId = tappedGame.tourId;
+      var eventId = _eventIdByTourId[tourId];
+      if (eventId == null) {
+        final mapping = await events.getTourToGroupBroadcastMapping([tourId]);
+        eventId = mapping[tourId] ?? '';
+        _eventIdByTourId[tourId] = eventId;
+      }
+      if (eventId.isEmpty) return null;
+      await prefs.ensureLoaded(eventId);
+      if (!prefs.isSelected(eventId)) return null;
+
+      final eventTours = await tours.getTourByGroupId(eventId);
+      final categories = CombinedCategories.fromTours(
+        sortTourCategoriesForDisplay([
+          for (final tour in eventTours)
+            TourModel(tour: tour, roundStatus: RoundStatus.ongoing),
+        ]),
+      );
+      final tourIds = categories.tourIds;
+      if (!categories.canCombine || !tourIds.contains(tourId)) return null;
+
+      final roundsFuture = rounds
+          .getRoundsByTourIds(tourIds)
+          .then<Map<String, List<Round>>?>((value) => value)
+          // Without the schedule the rounds still list, by their activity.
+          .catchError((Object _) => null);
+      final gamesByTourId = <String, List<GamesTourModel>>{};
+      await Future.wait([
+        for (final id in tourIds)
+          () async {
+            try {
+              final raw = await storage.fetchAndSaveGames(id);
+              if (raw.isEmpty) return;
+              gamesByTourId[id] = await compute(
+                sortEventGamesForBoardNavigation,
+                raw,
+              );
+            } catch (_) {
+              // A category that failed to load is left out, as in the tab.
+            }
+          }(),
+      ]);
+      final roundsByTourId =
+          await roundsFuture ?? const <String, List<Round>>{};
+
+      final games = <GamesTourModel>[
+        for (final section in buildCombinedRoundSections(
+          categories: categories.items,
+          gamesByTourId: gamesByTourId,
+          roundsByTourId: roundsByTourId,
+          liveRoundIds: const <String>[],
+        ))
+          ...section.games,
+      ];
+
+      // Never trade a game the caller already shows for a list without it:
+      // the viewer may be on it by the time this lands.
+      final gameIds = {for (final game in games) game.gameId};
+      final immediateById = <String, GamesTourModel>{};
+      for (final game in orderedGames) {
+        if (game.tourId != tourId) continue;
+        if (!gameIds.contains(game.gameId)) return null;
+        immediateById[game.gameId] = game;
+      }
+      // Rows the caller owns may be fresher than the fetch.
+      for (var i = 0; i < games.length; i++) {
+        final immediate = immediateById[games[i].gameId];
+        if (immediate != null) {
+          games[i] = selectFreshestNavigationGame(
+            current: games[i],
+            incoming: immediate,
+          );
+        }
+      }
+      final index = games.indexWhere(
+        (game) => game.gameId == tappedGame.gameId,
+      );
+      if (index < 0) return null;
+
+      // The board names the categories and shares one stream from this.
+      boardEvents.state = [
+        for (final event in boardEvents.state)
+          if (!event.tourIds.contains(tourId)) event,
+        categories,
+      ];
+      return _ResolvedNavigation(games: games, index: index);
+    } catch (_) {
+      return null;
     }
   }
 

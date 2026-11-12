@@ -186,19 +186,24 @@ const String _eventTourIdSeparator = ',';
 ///
 /// [openEventTourIds] is the open event's tour ids joined by a comma, or null
 /// when no event is open (a board reached from For You, a link, the library).
+///
+/// [boardEvents] are events a board pages through in Combined without their
+/// screen being open (see [combinedBoardEventsProvider]); they answer for a
+/// game the open event does not hold.
 @visibleForTesting
 Set<String> eventTourIdsForVideo({
   required GamesTourModel game,
   required String? openEventTourIds,
+  List<CombinedCategories> boardEvents = const <CombinedCategories>[],
 }) {
-  if (game.source != GameSource.supabase ||
-      openEventTourIds == null ||
-      openEventTourIds.isEmpty) {
-    return const <String>{};
+  if (game.source != GameSource.supabase) return const <String>{};
+  if (openEventTourIds != null && openEventTourIds.isNotEmpty) {
+    final ids = openEventTourIds.split(_eventTourIdSeparator).toSet();
+    if (ids.length > 1 && ids.contains(game.tourId)) return ids;
   }
-  final ids = openEventTourIds.split(_eventTourIdSeparator).toSet();
   // A game of some other event keeps to its own tour.
-  return ids.length > 1 && ids.contains(game.tourId) ? ids : const <String>{};
+  return combinedEventForTour(boardEvents, game.tourId)?.tourIds.toSet() ??
+      const <String>{};
 }
 
 /// Stable widget-test handle for the game-switcher content.
@@ -3524,6 +3529,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
     final eventTourIds = eventTourIdsForVideo(
       game: currentGame,
       openEventTourIds: openEventTourIds,
+      boardEvents: ref.watch(combinedBoardEventsProvider),
     );
     return EventVideoHost(
       completed: currentGame.gameStatus.isFinished,
@@ -6910,12 +6916,22 @@ class _GameDropdownContentState extends ConsumerState<_GameDropdownContent> {
 
     // Only an open event has categories; never create its provider from a
     // board reached some other way.
-    _categoryLabels = ref.exists(tourDetailScreenProvider)
-        ? _dropdownCategoryLabels(
-            widget.games,
-            ref.watch(combinedCategoriesProvider),
-          )
-        : null;
+    _categoryLabels =
+        (ref.exists(tourDetailScreenProvider)
+            ? _dropdownCategoryLabels(
+                widget.games,
+                ref.watch(combinedCategoriesProvider),
+              )
+            : null) ??
+        // A Combined list opened from outside its event's screen.
+        _dropdownCategoryLabels(
+          widget.games,
+          combinedEventForTour(
+                ref.watch(combinedBoardEventsProvider),
+                widget.games.first.tourId,
+              ) ??
+              CombinedCategories.none,
+        );
     final roundGroups = _buildRoundGroups(
       widget.games,
       categoryLabels: _categoryLabels,
