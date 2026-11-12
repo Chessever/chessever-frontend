@@ -8,6 +8,7 @@ import 'package:chessever2/screens/chessboard/analysis/chess_game.dart';
 import 'package:chessever2/screens/chessboard/game_review/game_analysis_report.dart';
 import 'package:chessever2/screens/chessboard/game_review/server_game_report.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/widgets/auth/auth_upgrade_sheet.dart';
 import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
 import 'package:flutter/material.dart';
@@ -497,8 +498,22 @@ final mobileGameReviewProvider = StateNotifierProvider.autoDispose
         claimQuota: (fingerprint) =>
             ref.read(gameAnalysisQuotaRepositoryProvider).claim(fingerprint),
         bookLookup: _gamebaseBookLookup(ref),
+        remoteRunner: serverGameReportRunner(
+          gameId: reportDatabaseGameId(params.game),
+        ),
       );
     });
+
+/// The Supabase `games.id` behind a board's game, or null when it has none.
+///
+/// The report request names this id so the Worker can keep the finished report
+/// on the stored game for every other viewer. Only a game opened from a
+/// broadcast is a `games` row. Every other source carries an id of its own
+/// making (a gamebase UUID, `saved_analysis_<id>`, `editor_<time>`), which
+/// names no row and is not sent.
+@visibleForTesting
+String? reportDatabaseGameId(GamesTourModel game) =>
+    game.source == GameSource.supabase ? game.gameId : null;
 
 /// Opening-tree lookup backed by the game database.
 ///
