@@ -65,7 +65,11 @@ class WatchEvalSource {
     if (_known.containsKey(k)) return Future.value(_known[k]);
     final paused = _pausedUntil;
     if (paused != null && _now().isBefore(paused)) return Future.value(null);
-    return _pending[k] ??= _fetch(k).whenComplete(() => _pending.remove(k));
+    return _pending[k] ??= _fetch(k).whenComplete(() {
+      // Returning remove's value would return this very future from its own
+      // completion callback, leaving every awaiting board stuck indefinitely.
+      _pending.remove(k);
+    });
   }
 
   Future<WatchEval?> _fetch(String k) async {

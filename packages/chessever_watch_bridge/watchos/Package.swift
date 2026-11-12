@@ -21,6 +21,8 @@ let package = Package(
             linkerSettings: [
                 .linkedFramework("Foundation"),
                 .linkedFramework("UserNotifications"),
+                .linkedFramework("AVFoundation"),
+                .linkedFramework("WatchKit"),
             ]
         ),
     ]

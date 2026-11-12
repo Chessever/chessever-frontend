@@ -28,6 +28,57 @@ class ChesseverWatchBridge {
     }
   }
 
+  static void Function(int, Pointer<Uint8>, int)? _soundLoad;
+  static void Function(int)? _soundPlay;
+  static void Function()? _soundStop;
+
+  /// Hands the host a sound file's bytes under [sound], ready for
+  /// [playSound]. False off the watch host (the symbol is absent).
+  static bool loadSound(int sound, List<int> bytes) {
+    if (bytes.isEmpty) return false;
+    try {
+      _soundLoad ??= DynamicLibrary.process()
+          .lookupFunction<
+            Void Function(Int32, Pointer<Uint8>, Int32),
+            void Function(int, Pointer<Uint8>, int)
+          >('chessever_watch_sound_load');
+    } on ArgumentError {
+      return false;
+    }
+    final buffer = malloc<Uint8>(bytes.length);
+    try {
+      buffer.asTypedList(bytes.length).setAll(0, bytes);
+      // The host copies the bytes before returning.
+      _soundLoad!(sound, buffer, bytes.length);
+    } finally {
+      malloc.free(buffer);
+    }
+    return true;
+  }
+
+  /// Plays a sound handed over by [loadSound]; nothing when it was not.
+  static void playSound(int sound) {
+    try {
+      (_soundPlay ??= DynamicLibrary.process()
+          .lookupFunction<Void Function(Int32), void Function(int)>(
+            'chessever_watch_sound_play',
+          ))(sound);
+    } on ArgumentError {
+      // Not the watch host.
+    }
+  }
+
+  static void stopSounds() {
+    try {
+      (_soundStop ??= DynamicLibrary.process()
+          .lookupFunction<Void Function(), void Function()>(
+            'chessever_watch_sound_stop',
+          ))();
+    } on ArgumentError {
+      // Not the watch host.
+    }
+  }
+
   final _events = StreamController<Map<String, dynamic>>.broadcast();
   NativeCallable<_Callback>? _callback;
   void Function()? _stop;

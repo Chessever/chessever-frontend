@@ -5,6 +5,7 @@ import 'package:chessever2/watch/core/watch_repository.dart';
 import 'package:chessever2/watch/ui/watch_event_boards_page.dart';
 import 'package:chessever2/watch/ui/watch_game_page.dart';
 import 'package:chessever2/watch/ui/watch_round_wheel.dart';
+import 'package:chessever2/watch/ui/watch_widgets.dart';
 import 'package:chessever2/watch/watch_app.dart';
 import 'package:chessever2/watch/watch_controller.dart';
 import 'package:flutter/cupertino.dart';
@@ -260,6 +261,40 @@ void main() {
     WatchCrown.instance.debugPoll(const Duration(milliseconds: 16));
     await tester.pumpAndSettle();
   }
+
+  testWidgets('only the winning result uses the phone brand teal', (
+    tester,
+  ) async {
+    for (final status in ['1-0', '0-1', '1/2-1/2', '*']) {
+      final game = Games.fromJson({...fixtureGame('result'), 'status': status});
+      await tester.pumpWidget(
+        CupertinoApp(
+          home: Column(
+            children: [
+              WatchPlayerLine(game: game, index: 0),
+              WatchPlayerLine(game: game, index: 1),
+            ],
+          ),
+        ),
+      );
+      final tealText = tester
+          .widgetList<Text>(find.byType(Text))
+          .where((text) => text.style?.color == WatchStyle.win);
+      if (status == '1-0' || status == '0-1') {
+        expect(
+          tester.widget<Text>(find.text('1')).style!.color,
+          WatchStyle.win,
+        );
+        expect(
+          tester.widget<Text>(find.text('0')).style!.color,
+          WatchStyle.secondary,
+        );
+        expect(tealText, hasLength(1));
+      } else {
+        expect(tealText, isEmpty);
+      }
+    }
+  });
 
   testWidgets(
     'an event is one list: latest round first with full boards, positions '

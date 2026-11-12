@@ -1,5 +1,7 @@
 #import <Foundation/Foundation.h>
 #import <UserNotifications/UserNotifications.h>
+#import <AVFoundation/AVFoundation.h>
+#import <WatchKit/WatchKit.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -61,4 +63,55 @@ EXPORT int32_t chessever_watch_power_state(void) {
   NSProcessInfo *info = NSProcessInfo.processInfo;
   int32_t state = info.isLowPowerModeEnabled ? 1 : 0;
   return state | ((int32_t)info.thermalState << 1);
+}
+
+// Board sounds: the phone's own sound files, handed over once as bytes and
+// kept ready to play. Ambient leaves mixing, routing and muting to watchOS;
+// clips only play while the game and app are active.
+static NSMutableDictionary<NSNumber *, AVAudioPlayer *> *soundPlayers;
+
+EXPORT void chessever_watch_sound_load(int32_t sound, const uint8_t *bytes, int32_t length) {
+  if (bytes == NULL || length <= 0) return;
+  // Copied now: the caller frees its buffer as soon as this returns.
+  NSData *data = [NSData dataWithBytes:bytes length:(NSUInteger)length];
+  dispatch_async(dispatch_get_main_queue(), ^{
+    if (!soundPlayers) {
+      NSError *error = nil;
+      if (![[AVAudioSession sharedInstance] setCategory:AVAudioSessionCategoryAmbient error:&error]) {
+        NSLog(@"ChessEver watch sound session: %@", error);
+        return;
+      }
+      soundPlayers = [NSMutableDictionary dictionary];
+    }
+    NSError *error = nil;
+    AVAudioPlayer *player = [[AVAudioPlayer alloc] initWithData:data error:&error];
+    if (!player) {
+      NSLog(@"ChessEver watch sound %d: %@", sound, error);
+      return;
+    }
+    [player prepareToPlay];
+    soundPlayers[@(sound)] = player;
+  });
+}
+
+EXPORT void chessever_watch_sound_play(int32_t sound) {
+  dispatch_async(dispatch_get_main_queue(), ^{
+    // Recheck on the main queue: the wrist may have lowered after Dart sent it.
+    if ([WKApplication sharedApplication].applicationState != WKApplicationStateActive) return;
+    AVAudioPlayer *player = soundPlayers[@(sound)];
+    if (!player) return;
+    // Fast review must not layer a capture over the previous move's clip.
+    for (AVAudioPlayer *other in soundPlayers.allValues) {
+      if (other != player && other.isPlaying) [other pause];
+    }
+    player.currentTime = 0;
+    [player play];
+  });
+}
+
+EXPORT void chessever_watch_sound_stop(void) {
+  dispatch_async(dispatch_get_main_queue(), ^{
+    for (AVAudioPlayer *player in soundPlayers.allValues) [player pause];
+    [[AVAudioSession sharedInstance] setActive:NO error:nil];
+  });
 }

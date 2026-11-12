@@ -5,6 +5,13 @@ class WatchReplayPosition {
   final String fen;
   final String label;
   final String? lastMove;
+
+  /// The move that reached this position, in SAN (`Nf3`, `exd5+`); empty
+  /// at the start.
+  String get san {
+    final space = label.indexOf(' ');
+    return lastMove == null || space < 0 ? '' : label.substring(space + 1);
+  }
 }
 
 /// A small, immutable snapshot. Live updates never move the position being

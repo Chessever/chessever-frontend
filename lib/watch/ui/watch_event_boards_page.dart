@@ -1351,7 +1351,8 @@ class WatchPlayerLine extends StatelessWidget {
             value,
             style: WatchStyle.figures.copyWith(
               fontSize: fontSize,
-              color: tone,
+              // Match the phone's brand teal for the winner's "1".
+              color: won == true ? WatchStyle.win : tone,
               fontWeight: lit ? FontWeight.w600 : FontWeight.w400,
             ),
           ),

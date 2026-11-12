@@ -17,6 +17,10 @@ abstract final class WatchStyle {
   static const secondary = Color(0xFFADB5A8);
   static const disabled = Color(0xFF4F584C);
   static const ink = Color(0xFFF5F5F5);
+
+  /// The phone's brand teal (kPrimaryColor), used where the phone uses it on
+  /// a result: the winner's "1".
+  static const win = Color(0xFF0FB4E5);
   static const lightSquare = Color(0xFFBDC4B8);
   static const darkSquare = Color(0xFF596653);
   static const lastMove = Color(0x667F9648);
@@ -346,6 +350,40 @@ class WatchRow extends StatelessWidget {
   /// VoiceOver still reads the whole name.
   final int maxLines;
 
+  Widget _details(BuildContext context) {
+    final mark = visual == null ? null : ExcludeSemantics(child: visual!);
+    final figure = value == null
+        ? null
+        : Text(
+            value!,
+            style: WatchStyle.figures.copyWith(
+              color: valueLit ? WatchStyle.ink : null,
+              fontWeight: valueLit ? FontWeight.w600 : null,
+            ),
+          );
+    if (MediaQuery.textScalerOf(context).scale(12) >= 18) {
+      // A large clock and the player's marks need separate lines on a watch.
+      // Preserve their reading size rather than squeezing or clipping them.
+      return Wrap(
+        spacing: 6,
+        runSpacing: 4,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          ?mark,
+          if (detail != null) Text(detail!, style: WatchStyle.figures),
+          ?figure,
+        ],
+      );
+    }
+    return Row(
+      children: [
+        if (mark != null) ...[mark, const SizedBox(width: 6)],
+        Expanded(child: Text(detail ?? '', style: WatchStyle.figures)),
+        if (figure != null) ...[const SizedBox(width: 6), figure],
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final accessory =
@@ -378,27 +416,7 @@ class WatchRow extends StatelessWidget {
                 _WatchRowLabel(label, maxLines: maxLines),
                 if (detail != null || value != null) ...[
                   const SizedBox(height: 3),
-                  Row(
-                    children: [
-                      if (visual != null) ...[
-                        ExcludeSemantics(child: visual!),
-                        const SizedBox(width: 6),
-                      ],
-                      Expanded(
-                        child: Text(detail ?? '', style: WatchStyle.figures),
-                      ),
-                      if (value != null) ...[
-                        const SizedBox(width: 6),
-                        Text(
-                          value!,
-                          style: WatchStyle.figures.copyWith(
-                            color: valueLit ? WatchStyle.ink : null,
-                            fontWeight: valueLit ? FontWeight.w600 : null,
-                          ),
-                        ),
-                      ],
-                    ],
-                  ),
+                  _details(context),
                 ],
               ],
             ),

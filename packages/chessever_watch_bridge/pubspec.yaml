@@ -1,5 +1,5 @@
 name: chessever_watch_bridge
-description: ChessEver watch notification tap bridge for the FlutterWatch host.
+description: ChessEver watch notification, power and board-sound bridge for the FlutterWatch host.
 version: 0.1.0
 publish_to: none
 environment:
@@ -19,3 +19,6 @@ flutter:
           - chessever_watch_stop
           - chessever_watch_free
           - chessever_watch_power_state
+          - chessever_watch_sound_load
+          - chessever_watch_sound_play
+          - chessever_watch_sound_stop
