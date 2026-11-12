@@ -3,12 +3,14 @@ import 'dart:math' as math;
 import 'package:chessever_watch_bridge/chessever_watch_bridge.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/physics.dart';
-import 'package:sensors_plus/sensors_plus.dart';
 import 'package:flutter_watchos/flutter_watchos.dart';
+import 'package:sensors_plus/sensors_plus.dart';
 import '../../repository/supabase/game/games.dart';
+import '../core/watch_event_layout.dart';
 import '../core/watch_models.dart';
-import '../core/watch_wrist_flick.dart';
+import '../core/watch_replay.dart';
 import '../core/watch_repository.dart';
+import '../core/watch_wrist_flick.dart';
 import '../watch_controller.dart';
 import 'watch_board.dart';
 import 'watch_event_pages.dart';
@@ -17,86 +19,96 @@ import 'watch_round_wheel.dart';
 import 'watch_visuals.dart';
 import 'watch_widgets.dart';
 
-/// The round an event page is showing, shared by the event page and the
-/// board feed opened from it so both read, refresh and page the same boards.
-class WatchRoundFeed extends ChangeNotifier {
-  WatchRoundFeed(this._repository, this.eventId);
+/// An empty board, drawn under the names of a board whose position has not
+/// arrived yet, so the list keeps its height while details load.
+const watchEmptyFen = '8/8/8/8/8/8/8/8 w - - 0 1';
+
+/// Everything an event page shows, loaded the way the wrist can afford it.
+///
+/// One round trip lays the whole event out: every section, every round and
+/// every board, without positions. The positions and clocks of a board come
+/// separately, by id, as the board nears the screen ([need]), and live ones
+/// are refreshed in place every poll. The layout itself only changes on
+/// [load] or [refresh], never under the reader's finger.
+class WatchEventFeed extends ChangeNotifier {
+  WatchEventFeed(this._repository, this.event, {DateTime Function()? now})
+    : _now = now ?? DateTime.now;
   final WatchRepository _repository;
-  final String eventId;
+  final WatchEvent event;
+  final DateTime Function() _now;
 
   List<WatchTour> tours = [];
-  WatchTour? tour;
-  List<WatchRound> rounds = [];
-  WatchRound? round;
-  List<Games> games = [];
+  List<WatchSection> sections = [];
+  List<WatchFeedItem> items = [];
+
+  /// Full rows by game id, for the boards that have been near the screen.
+  final details = <String, Games>{};
   bool busy = false;
-  bool more = false;
   bool loaded = false;
   String? error;
 
-  /// True while a board feed for this round is the visible screen; the
-  /// event page keeps polling for it.
-  bool feedVisible = false;
+  final _wanted = <String>[];
+  final _requested = <String>{};
+  Timer? _flush;
+  bool _fetching = false;
+  DateTime? _detailFailure;
   bool _disposed = false;
 
-  int get roundIndex =>
-      round == null ? -1 : rounds.indexWhere((r) => r.id == round!.id);
+  /// The sections' tours, strongest first, each once.
+  List<WatchTour> get rankedTours {
+    final seen = <String>{};
+    return [
+      for (final section in sections)
+        if (seen.add(section.tour.id)) section.tour,
+    ];
+  }
 
-  /// Team matches when this is a team round, else null.
-  List<WatchTeamMatch>? get matches => watchTeamMatches(games);
+  bool get multiSection => rankedTours.length > 1;
+
+  /// The board as the list should draw it: its full row when loaded, else
+  /// the layout row (names and status, no position).
+  Games gameOf(Games board) => details[board.id] ?? board;
+
+  bool get anyLive =>
+      sections.any((s) => s.playing > 0) || details.values.any(watchGameIsLive);
 
   void _changed() {
     if (!_disposed) notifyListeners();
   }
 
-  /// Opens [round] of [tour]. Without a round, opens the latest started
-  /// round that has boards (looking back up to five rounds), so an event
-  /// between rounds still lands on real games.
-  Future<void> select({WatchTour? tour, WatchRound? round}) async {
+  Future<void> load() async {
     if (busy) return;
     busy = true;
     error = null;
     _changed();
     try {
-      if (tours.isEmpty || tour == null) {
-        tours = await _repository.tours(eventId);
-      }
-      final selected = tour ?? tours.firstOrNull;
-      if (selected == null) {
-        this.tour = null;
-        rounds = [];
-        this.round = null;
-        games = [];
-        return;
-      }
-      final schedule = selected.id == this.tour?.id && rounds.isNotEmpty
-          ? rounds
-          : await _repository.rounds(selected.id);
-      final now = DateTime.now();
-      final started = schedule
-          .where((r) => r.startsAt == null || !r.startsAt!.isAfter(now))
-          .toList();
-      final candidates = round != null
-          ? [round]
-          : (started.isEmpty
-                ? schedule.take(1).toList()
-                : started.reversed.take(5).toList());
-      WatchRound? chosen = candidates.firstOrNull;
-      List<Games> found = [];
-      for (final candidate in candidates) {
-        found = await _repository.games(candidate.id);
-        if (found.isNotEmpty) {
-          chosen = candidate;
-          break;
-        }
-      }
-      this.tour = selected;
-      rounds = schedule;
-      this.round = chosen;
-      games = found;
-      more = found.length == WatchRepository.pageSize;
+      tours = await _repository.tours(event.id);
+      final ids = [for (final tour in tours) tour.id];
+      final (rounds, boards) = await (
+        _repository.eventRounds(ids),
+        _repository.eventBoards(ids),
+      ).wait;
+      sections = watchEventSections(
+        tours: tours,
+        rounds: rounds,
+        games: boards,
+        now: _now(),
+        eventName: event.name,
+      );
+      items = watchFeedItems(sections);
+      // Live boards already on screen refresh with the new layout; finished
+      // ones keep their position, which cannot change.
+      final live = [
+        for (final game in details.values)
+          if (watchGameIsLive(game)) game.id,
+      ];
+      _requested.removeAll(live);
+      _wanted.addAll(live);
+      _scheduleFlush();
     } catch (_) {
-      error = 'Could not load boards. Pull to try again.';
+      error = loaded && items.isNotEmpty
+          ? 'Offline · showing the last boards.'
+          : 'Could not load boards. Pull to try again.';
     } finally {
       busy = false;
       loaded = true;
@@ -104,59 +116,91 @@ class WatchRoundFeed extends ChangeNotifier {
     }
   }
 
-  /// Opens the round [step] places from the shown one.
-  Future<void> step(int step) async {
-    final i = roundIndex + step;
-    if (i < 0 || i >= rounds.length) return;
-    await select(tour: tour, round: rounds[i]);
+  Future<void> refresh() => load();
+
+  /// Asks for the full row of [gameId] (position, clocks). Called from the
+  /// list as a board is built, which the list does only near the screen.
+  void need(String gameId) {
+    if (details.containsKey(gameId) || _requested.contains(gameId)) return;
+    final failed = _detailFailure;
+    if (failed != null &&
+        _now().difference(failed) < const Duration(seconds: 8)) {
+      return;
+    }
+    _requested.add(gameId);
+    _wanted.add(gameId);
+    _scheduleFlush();
   }
 
-  /// Reloads the shown boards (keeping as many as are loaded), or loads the
-  /// next page with [more]. A failure keeps the last boards on screen.
-  Future<void> refresh({bool more = false}) async {
-    if (busy) return;
-    if (round == null) return select(tour: tour);
-    busy = true;
-    error = null;
-    _changed();
+  void _scheduleFlush() {
+    _flush ??= Timer(const Duration(milliseconds: 40), () {
+      _flush = null;
+      unawaited(_fetchWanted());
+    });
+  }
+
+  Future<void> _fetchWanted() async {
+    if (_fetching) return;
+    _fetching = true;
     try {
-      final loaded = <Games>[];
-      final start = more ? games.length : 0;
-      final end = more
-          ? start + WatchRepository.pageSize
-          : math.max(games.length, WatchRepository.pageSize);
-      List<Games> page = [];
-      for (
-        var offset = start;
-        offset < end;
-        offset += WatchRepository.pageSize
-      ) {
-        page = await _repository.games(round!.id, offset: offset);
-        loaded.addAll(page);
-        if (page.length < WatchRepository.pageSize) break;
+      while (_wanted.isNotEmpty && !_disposed) {
+        final chunk = _wanted.take(WatchRepository.pageSize).toSet().toList();
+        _wanted.removeRange(0, math.min(_wanted.length, chunk.length));
+        try {
+          for (final game in await _repository.gamesByIds(chunk)) {
+            details[game.id] = game;
+          }
+          _changed();
+        } catch (_) {
+          _requested.removeAll(chunk);
+          _detailFailure = _now();
+          _wanted.clear();
+        }
       }
-      games = more ? [...games, ...loaded] : loaded;
-      this.more = page.length == WatchRepository.pageSize;
-    } catch (_) {
-      error = 'Offline · showing the last boards.';
     } finally {
-      busy = false;
-      _changed();
+      _fetching = false;
     }
+  }
+
+  /// Refreshes the loaded boards that are still being played, in place.
+  Future<void> pollLive() async {
+    final live = [
+      for (final game in details.values)
+        if (watchGameIsLive(game)) game.id,
+    ];
+    for (var i = 0; i < live.length; i += WatchRepository.pageSize) {
+      final chunk = live.sublist(
+        i,
+        math.min(live.length, i + WatchRepository.pageSize),
+      );
+      try {
+        for (final game in await _repository.gamesByIds(chunk)) {
+          details[game.id] = game;
+        }
+      } catch (_) {
+        return;
+      }
+    }
+    _changed();
   }
 
   @override
   void dispose() {
     _disposed = true;
+    _flush?.cancel();
     super.dispose();
   }
 }
 
-/// An event on the wrist: the event's own photograph as the header, one
-/// round at a time under it, then the round's matches (team events) or
-/// pairings (individual events), each opening the full-board feed. Every
-/// part is a vertical list, so the Digital Crown reaches all of it, and the
-/// round itself is one Crown turn away on the round wheel.
+/// An event on the wrist as one list: every section, strongest first, every
+/// round inside it, latest first, every board as a full board, the way the
+/// phone's Combined view lays it out. The event's photograph heads the list.
+///
+/// The Digital Crown steps one item at a time (a heading, a team match, a
+/// board), a wrist flick steps board to board, and a finger scrolls freely.
+/// An index by the Crown shows the boards of the round being read and which
+/// one is in view; the band under the clock names it. A round heading opens
+/// the round wheel to jump anywhere in the event.
 class WatchEventBoardsPage extends StatefulWidget {
   const WatchEventBoardsPage({
     super.key,
@@ -166,207 +210,497 @@ class WatchEventBoardsPage extends StatefulWidget {
   final WatchController controller;
   final WatchEvent event;
 
+  /// Test seam: replaces the CoreMotion gyroscope so a recorded flick can be
+  /// replayed through the real list off-watch.
+  @visibleForTesting
+  static Stream<GyroscopeEvent> Function()? debugGyroscope;
+
   @override
   State<WatchEventBoardsPage> createState() => _WatchEventBoardsPageState();
 }
 
 class _WatchEventBoardsPageState extends State<WatchEventBoardsPage>
     with WidgetsBindingObserver {
-  late final WatchRoundFeed _feed = WatchRoundFeed(
+  late final WatchEventFeed _feed = WatchEventFeed(
     widget.controller.repository,
-    widget.event.id,
+    widget.event,
   );
-  bool _active = true;
+  final _scroll = ScrollController();
+  final _keys = <String, GlobalKey>{};
+  static const _heroKey = 'hero';
+
+  /// The item in the resting slot under the clock: -1 is the event header.
+  final _current = ValueNotifier<int>(-1);
+  final _dial = WatchReplayDial();
+  StreamSubscription<CrownRotationEvent>? _crown;
+  final _flick = WatchWristFlick();
+  final _flickClock = Stopwatch();
+  StreamSubscription<GyroscopeEvent>? _gyro;
+  final _hapticClock = Stopwatch()..start();
+  int _lastHapticMs = -100;
   Timer? _timer;
+  bool _polling = false;
+  bool _foreground = true;
+  bool _visible = false;
+  bool _covered = false;
 
   @override
   void initState() {
     super.initState();
+    _foreground =
+        WidgetsBinding.instance.lifecycleState == null ||
+        WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed;
     WidgetsBinding.instance.addObserver(this);
-    WatchAlwaysOn.state.addListener(_poll);
-    _feed.addListener(_poll);
-    unawaited(_feed.select());
+    WatchAlwaysOn.state.addListener(_syncInputs);
+    _feed.addListener(_syncInputs);
+    _feed.addListener(_queueMeasure);
+    _scroll.addListener(_queueMeasure);
+    unawaited(_feed.load());
   }
 
-  bool _polling = false;
-  void _poll() {
-    final want =
-        _active && !WatchAlwaysOn.isActive && _feed.games.any(watchGameIsLive);
-    if (want == _polling) return;
-    _polling = want;
-    _timer?.cancel();
-    if (!want) return;
-    _timer = Timer.periodic(const Duration(seconds: 15), (timer) {
-      if (!watchShouldPoll(
-        timer.tick,
-        constrained: ChesseverWatchBridge.powerConstrained,
-      )) {
-        return;
-      }
-      final visible = ModalRoute.of(context)?.isCurrent ?? false;
-      if (visible || _feed.feedVisible) unawaited(_feed.refresh());
-    });
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _visible =
+        TickerMode.valuesOf(context).enabled &&
+        (ModalRoute.isCurrentOf(context) ?? true);
+    _syncInputs();
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    _active = state == AppLifecycleState.resumed;
-    _poll();
-    if (_active) unawaited(_feed.refresh());
+    _foreground = state == AppLifecycleState.resumed;
+    _syncInputs();
+    if (_foreground && _feed.loaded) unawaited(_feed.pollLive());
   }
 
-  void _openFeed({WatchTeamMatch? match, String? gameId}) =>
-      Navigator.of(context).push(
-        CupertinoPageRoute<void>(
-          builder: (_) => WatchBoardsFeedPage(
-            controller: widget.controller,
-            feed: _feed,
-            matchKey: match?.key,
-            title: match == null
-                ? (_feed.round?.name ?? 'Boards')
-                : '${match.home} – ${match.away}',
-            initialGameId: gameId,
-          ),
-        ),
+  bool get _reading =>
+      mounted &&
+      _visible &&
+      _foreground &&
+      !_covered &&
+      !WatchAlwaysOn.isActive;
+
+  /// Starts and stops the Crown, the gyroscope and live polling together,
+  /// from one reading of the page's state.
+  void _syncInputs() {
+    final reading = _reading;
+    final items = _feed.items;
+
+    // Digital Crown: one detent, one item. Listening takes the Crown off
+    // page scrolling, so the finger still scrolls freely.
+    final crown = reading && items.isNotEmpty;
+    if (crown && _crown == null) {
+      _dial.reset();
+      _crown = WatchCrown.instance.rotations.listen((event) {
+        if (!_reading) return;
+        final next = _dial.turn(
+          event.delta,
+          index: _current.value + 1,
+          last: _feed.items.length,
+        );
+        if (next != _current.value + 1) _goTo(next - 1, haptic: true);
+      });
+    } else if (!crown && _crown != null) {
+      unawaited(_crown!.cancel());
+      _crown = null;
+      _dial.reset();
+    }
+
+    // Wrist flick: the next board, past whatever headings sit between.
+    final source = WatchEventBoardsPage.debugGyroscope;
+    final flick =
+        reading &&
+        (FlutterWatchosPlatform.isWatch || source != null) &&
+        items.whereType<WatchBoardItem>().length > 1;
+    if (flick && _gyro == null) {
+      _flick.reset();
+      _flickClock
+        ..reset()
+        ..start();
+      _gyro =
+          (source?.call() ??
+                  gyroscopeEventStream(
+                    samplingPeriod: SensorInterval.gameInterval,
+                  ))
+              .listen(
+                (e) {
+                  final step = _flick.add(e.x, e.y, e.z, _flickClock.elapsed);
+                  if (step != 0) _stepBoard(step);
+                },
+                onError: (_) => _stopFlick(),
+                cancelOnError: true,
+              );
+    } else if (!flick) {
+      _stopFlick();
+    }
+
+    // Live boards: refresh the loaded ones in place every 15 s, every 60 s
+    // when watchOS asks for restraint.
+    final poll = reading && _feed.anyLive;
+    if (poll != _polling) {
+      _polling = poll;
+      _timer?.cancel();
+      _timer = !poll
+          ? null
+          : Timer.periodic(const Duration(seconds: 15), (timer) {
+              if (!_reading) return;
+              if (!watchShouldPoll(
+                timer.tick,
+                constrained: ChesseverWatchBridge.powerConstrained,
+              )) {
+                return;
+              }
+              unawaited(_feed.pollLive());
+            });
+    }
+  }
+
+  void _stopFlick() {
+    unawaited(_gyro?.cancel());
+    _gyro = null;
+    _flickClock.stop();
+  }
+
+  double get _resting => WatchStatusBar.heightOf(context) + 4;
+
+  double? _topOf(String id) {
+    final viewport = context.findRenderObject();
+    final box = _keys[id]?.currentContext?.findRenderObject() as RenderBox?;
+    if (viewport == null || box == null || !box.attached) return null;
+    return box.localToGlobal(Offset.zero, ancestor: viewport).dy;
+  }
+
+  String _idAt(int index) => index < 0 ? _heroKey : _feed.items[index].id;
+
+  bool _measureQueued = false;
+
+  /// Measures once the frame has laid the list out: a scroll notification
+  /// arrives before layout, when the boxes still hold their old positions.
+  void _queueMeasure() {
+    if (_measureQueued) return;
+    _measureQueued = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _measureQueued = false;
+      if (mounted) _measure();
+    });
+  }
+
+  /// Which item sits in the resting slot. Only built items have a position;
+  /// the rest are far off screen and cannot be the one.
+  void _measure() {
+    final items = _feed.items;
+    var best = -1;
+    var distance = double.infinity;
+    for (var i = -1; i < items.length; i++) {
+      final top = _topOf(_idAt(i));
+      if (top == null) continue;
+      final d = (top - _resting).abs();
+      if (d < distance) {
+        distance = d;
+        best = i;
+      }
+    }
+    if (best != _current.value) _current.value = best;
+  }
+
+  void _haptic(WatchHapticType type) {
+    final now = _hapticClock.elapsedMilliseconds;
+    if (now - _lastHapticMs < 70) return;
+    _lastHapticMs = now;
+    WatchHaptics.play(type);
+  }
+
+  /// Rough height of an item that is not built yet, for a first jump that
+  /// the next frame corrects (see [_goTo]).
+  double _estimate(WatchFeedItem item) {
+    final scale = MediaQuery.textScalerOf(context);
+    return switch (item) {
+      WatchBoardItem() => _tileHeight(context) + 16,
+      WatchMatchItem() => scale.scale(96),
+      WatchRoundItem() => scale.scale(58),
+      WatchCategoryItem() => scale.scale(56),
+    };
+  }
+
+  /// Brings item [index] (-1: the header) into the resting slot.
+  ///
+  /// A built item is measured and reached with a short spring. An item far
+  /// off screen is reached in two moves: a jump to where it should be, then
+  /// a correction once it is built and measured.
+  void _goTo(int index, {required bool haptic, int passes = 3}) {
+    if (!_scroll.hasClients) return;
+    final items = _feed.items;
+    final target = index.clamp(-1, items.length - 1);
+    if (haptic) {
+      _haptic(
+        target == _current.value
+            ? WatchHapticType.failure
+            : target > _current.value
+            ? WatchHapticType.directionDown
+            : WatchHapticType.directionUp,
       );
+    }
+    final position = _scroll.position;
+    final top = _topOf(_idAt(target));
+    if (top != null) {
+      final to = (position.pixels + top - _resting).clamp(
+        position.minScrollExtent,
+        position.maxScrollExtent,
+      );
+      if (passes < 3 || MediaQuery.disableAnimationsOf(context)) {
+        position.jumpTo(to);
+      } else {
+        unawaited(
+          _scroll.animateTo(
+            to,
+            duration: const Duration(milliseconds: 300),
+            curve: const _SpringCurve(),
+          ),
+        );
+      }
+      _current.value = target;
+      return;
+    }
+    if (passes == 0 || target < 0) return;
+    var estimate = (_topOf(_heroKey) ?? 0) + position.pixels;
+    final heroBox =
+        _keys[_heroKey]?.currentContext?.findRenderObject() as RenderBox?;
+    estimate += heroBox?.size.height ?? 90;
+    for (var i = 0; i < target; i++) {
+      estimate += _estimate(items[i]);
+    }
+    position.jumpTo(
+      estimate.clamp(position.minScrollExtent, position.maxScrollExtent),
+    );
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _goTo(target, haptic: false, passes: passes - 1);
+    });
+  }
 
-  Future<void> _chooseRound() async {
-    if (_feed.rounds.isEmpty) return;
-    final round = await Navigator.of(context).push<WatchRound>(
-      CupertinoPageRoute(
-        builder: (_) => WatchRoundWheelPage(
-          rounds: _feed.rounds,
-          selectedId: _feed.round?.id,
+  /// The next board in [direction], past any headings or match cards.
+  void _stepBoard(int direction) {
+    final items = _feed.items;
+    var i = _current.value;
+    while (true) {
+      i += direction;
+      if (i < 0 || i >= items.length) {
+        _haptic(WatchHapticType.failure);
+        return;
+      }
+      if (items[i] is WatchBoardItem) break;
+    }
+    _goTo(i, haptic: true);
+  }
+
+  Future<void> _openGame(WatchSection section, Games game) async {
+    setState(() => _covered = true);
+    _syncInputs();
+    await Navigator.of(context).push(
+      CupertinoPageRoute<void>(
+        builder: (_) => WatchGamePage(
+          controller: widget.controller,
+          game: _feed.gameOf(game),
+          tour: section.tour,
         ),
       ),
     );
-    if (mounted && round != null && round.id != _feed.round?.id) {
-      await _feed.select(tour: _feed.tour, round: round);
-    }
+    if (!mounted) return;
+    setState(() => _covered = false);
+    _syncInputs();
+    if (_feed.loaded) unawaited(_feed.pollLive());
   }
 
-  Future<void> _chooseSection() async {
-    final tour = await Navigator.of(context).push<WatchTour>(
+  Future<void> _chooseRound(WatchSection shown) async {
+    final multi = _feed.multiSection;
+    final rounds = [
+      for (final section in _feed.sections)
+        WatchRound(
+          id: section.id,
+          name: multi
+              ? '${section.label} · ${section.round.name}'
+              : section.round.name,
+          startsAt: section.startsAt,
+          tourId: section.tour.id,
+        ),
+    ];
+    setState(() => _covered = true);
+    _syncInputs();
+    final chosen = await Navigator.of(context).push<WatchRound>(
       CupertinoPageRoute(
-        builder: (context) => WatchPage(
-          title: 'Sections',
-          children: [
-            for (final tour in _feed.tours)
-              WatchRow(
-                label: tour.name,
-                detail: tour.id == _feed.tour?.id ? 'Showing now' : null,
-                trailing: tour.id == _feed.tour?.id
-                    ? const Icon(
-                        CupertinoIcons.checkmark_alt,
-                        size: 16,
-                        color: WatchStyle.ink,
-                      )
-                    : null,
-                onTap: () => Navigator.of(context).pop(tour),
+        builder: (_) =>
+            WatchRoundWheelPage(rounds: rounds, selectedId: shown.id),
+      ),
+    );
+    if (!mounted) return;
+    setState(() => _covered = false);
+    _syncInputs();
+    if (chosen == null) return;
+    final index = _feed.items.indexWhere(
+      (item) => item is WatchRoundItem && item.section.id == chosen.id,
+    );
+    if (index >= 0) _goTo(index, haptic: false);
+  }
+
+  Future<void> _openStandings() async {
+    final tours = _feed.rankedTours;
+    if (tours.length == 1) {
+      return watchPush(
+        context,
+        watchStandingsPage(widget.controller, tours.single),
+      );
+    }
+    final labels = {
+      for (final section in _feed.sections) section.tour.id: section.label,
+    };
+    watchPush(
+      context,
+      WatchPage(
+        title: 'Standings',
+        children: [
+          for (final tour in tours)
+            WatchRow(
+              label: labels[tour.id] ?? tour.name,
+              icon: CupertinoIcons.person_2,
+              onTap: () => watchPush(
+                context,
+                watchStandingsPage(widget.controller, tour),
               ),
-          ],
-        ),
+            ),
+        ],
       ),
     );
-    if (mounted && tour != null && tour.id != _feed.tour?.id) {
-      await _feed.select(tour: tour);
-    }
   }
+
+  Widget _item(WatchFeedItem item, DateTime now, bool use24h) => switch (item) {
+    WatchCategoryItem(:final section, :final rounds) => _CategoryHeading(
+      key: ValueKey('watch-category-${section.tour.id}'),
+      section: section,
+      rounds: rounds,
+    ),
+    WatchRoundItem(:final section) => _RoundHeading(
+      key: ValueKey('watch-round-${section.id}'),
+      section: section,
+      now: now,
+      use24h: use24h,
+      onTap: () => _chooseRound(section),
+    ),
+    WatchMatchItem(:final section, :final match) => _MatchCard(
+      key: ValueKey('watch-match-${section.id}-${match.key}'),
+      match: match,
+      onTap: () {
+        final first = _feed.items.indexWhere(
+          (i) =>
+              i is WatchBoardItem &&
+              i.section.id == section.id &&
+              i.match?.key == match.key,
+        );
+        if (first >= 0) _goTo(first, haptic: false);
+      },
+    ),
+    WatchBoardItem(:final section, :final game) => _LazyBoard(
+      key: ValueKey('watch-board-${game.id}'),
+      feed: _feed,
+      game: game,
+      onTap: () => _openGame(section, game),
+    ),
+  };
 
   @override
   Widget build(BuildContext context) => AnimatedBuilder(
     animation: _feed,
     builder: (context, _) {
       final feed = _feed;
-      final matches = feed.matches;
-      final inMatches = {
-        for (final m in matches ?? const <WatchTeamMatch>[])
-          for (final g in m.games) g.id,
-      };
-      final loose = feed.games.where((g) => !inMatches.contains(g.id));
-      final state = watchRoundState(feed.round, feed.games, DateTime.now());
-      final leader = feed.tour?.standings.firstOrNull;
-      final multiSection = feed.tours.length > 1;
-      return WatchPage(
-        title: widget.event.name,
-        boardBackLabel: 'Back to Current',
-        header: _EventHero(
-          repository: widget.controller.repository,
-          event: widget.event,
-          section: multiSection ? feed.tour?.name : null,
-        ),
-        onRefresh: () => feed.loaded ? feed.refresh() : feed.select(),
-        refreshing: feed.busy,
+      final items = feed.items;
+      final now = DateTime.now();
+      final use24h = MediaQuery.alwaysUse24HourFormatOf(context);
+      final insets = MediaQuery.paddingOf(context);
+      final band = WatchStatusBar.heightOf(context);
+      final width = MediaQuery.sizeOf(context).width;
+      return Stack(
         children: [
-          if (feed.rounds.isNotEmpty)
-            _RoundBar(
-              round: feed.round,
-              state: state,
-              busy: feed.busy,
-              hasPrevious: feed.roundIndex > 0,
-              hasNext:
-                  feed.roundIndex >= 0 &&
-                  feed.roundIndex < feed.rounds.length - 1,
-              onPrevious: () => feed.step(-1),
-              onNext: () => feed.step(1),
-              onChoose: _chooseRound,
-            ),
-          if (feed.error != null) WatchNote.status(feed.error!),
-          if (feed.busy && feed.games.isEmpty)
-            const Padding(
-              padding: EdgeInsets.all(12),
-              child: Center(child: CupertinoActivityIndicator()),
-            ),
-          if (!feed.busy && feed.loaded && feed.error == null) ...[
-            if (feed.tour == null)
-              const WatchNote('This event has not published its sections yet.')
-            else if (feed.games.isEmpty)
-              WatchNote(
-                state.phase == WatchRoundPhase.upcoming
-                    ? 'Boards appear here when the round starts.'
-                    : 'Boards have not been published for this round.',
-              ),
-          ],
-          for (final match in matches ?? const <WatchTeamMatch>[])
-            _MatchCard(
-              match: match,
-              onTap: () => _openFeed(match: match),
-            ),
-          for (final game in loose)
-            WatchPairingRow(
-              key: ValueKey('watch-pairing-${game.id}'),
-              game: game,
-              onTap: () => _openFeed(gameId: game.id),
-            ),
-          if (feed.more)
-            WatchRow(
-              label: feed.busy
-                  ? 'Loading…'
-                  : (matches != null ? 'More matches' : 'More boards'),
-              showChevron: false,
-              icon: CupertinoIcons.chevron_down,
-              onTap: feed.busy ? null : () => feed.refresh(more: true),
-            ),
-          if (feed.tour != null)
-            WatchRow(
-              label: 'Standings',
-              icon: CupertinoIcons.person_2,
-              detail: leader?.score == null
-                  ? null
-                  : watchShortName(leader!.name),
-              value: leader?.score == null ? null : watchScore(leader!.score),
-              onTap: () => watchPush(
-                context,
-                watchStandingsPage(widget.controller, feed.tour!),
+          WatchPage(
+            title: widget.event.name,
+            boardBackLabel: 'Back to Current',
+            scrollController: _scroll,
+            header: KeyedSubtree(
+              key: _keys.putIfAbsent(_heroKey, GlobalKey.new),
+              child: _EventHero(
+                repository: widget.controller.repository,
+                event: widget.event,
+                detail: feed.multiSection
+                    ? '${feed.rankedTours.length} sections'
+                    : null,
               ),
             ),
-          if (multiSection)
-            WatchRow(
-              label: 'Sections',
-              icon: CupertinoIcons.square_grid_2x2,
-              detail: '${feed.tours.length} sections',
-              onTap: feed.busy ? null : _chooseSection,
+            onRefresh: feed.refresh,
+            refreshing: feed.busy,
+            children: [
+              if (feed.error != null) WatchNote.status(feed.error!),
+              if (feed.busy && items.isEmpty)
+                const Padding(
+                  padding: EdgeInsets.all(12),
+                  child: Center(child: CupertinoActivityIndicator()),
+                ),
+              if (!feed.busy && feed.loaded && feed.error == null) ...[
+                if (feed.tours.isEmpty)
+                  const WatchNote(
+                    'This event has not published its sections yet.',
+                  )
+                else if (items.isEmpty)
+                  const WatchNote('Boards have not been published yet.'),
+              ],
+              for (final item in items)
+                KeyedSubtree(
+                  key: _keys.putIfAbsent(item.id, GlobalKey.new),
+                  child: _item(item, now, use24h),
+                ),
+              if (feed.sections.isNotEmpty)
+                WatchRow(
+                  label: 'Standings',
+                  icon: CupertinoIcons.person_2,
+                  detail: feed.multiSection
+                      ? '${feed.rankedTours.length} sections'
+                      : null,
+                  onTap: _openStandings,
+                ),
+            ],
+          ),
+          Positioned(
+            right: insets.right + 1,
+            top: band + 4,
+            bottom: insets.bottom + 10,
+            width: 10,
+            // Overlays only: a tap on the edge or the band still reaches
+            // the list under them.
+            child: IgnorePointer(
+              child: ExcludeSemantics(
+                child: ValueListenableBuilder<int>(
+                  valueListenable: _current,
+                  builder: (context, current, _) =>
+                      _Spine(items: items, current: current),
+                ),
+              ),
             ),
+          ),
+          Positioned(
+            left: insets.left + 7,
+            top: 0,
+            height: band,
+            width: width * 0.56,
+            child: IgnorePointer(
+              child: ExcludeSemantics(
+                child: ValueListenableBuilder<int>(
+                  valueListenable: _current,
+                  builder: (context, current, _) => _Marker(
+                    text: current < 0 || current >= items.length
+                        ? ''
+                        : _markerText(items[current], feed.multiSection),
+                  ),
+                ),
+              ),
+            ),
+          ),
         ],
       );
     },
@@ -374,12 +708,170 @@ class _WatchEventBoardsPageState extends State<WatchEventBoardsPage>
 
   @override
   void dispose() {
+    unawaited(_crown?.cancel());
+    _stopFlick();
     _timer?.cancel();
-    _feed.dispose();
-    WatchAlwaysOn.state.removeListener(_poll);
+    _scroll
+      ..removeListener(_queueMeasure)
+      ..dispose();
+    _current.dispose();
+    _feed
+      ..removeListener(_syncInputs)
+      ..removeListener(_queueMeasure)
+      ..dispose();
+    WatchAlwaysOn.state.removeListener(_syncInputs);
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
+}
+
+/// "R3 · B2" or, with several sections, "Group A · R3 · B2": where the list
+/// is, set in the band under the clock as the list scrolls.
+String _markerText(WatchFeedItem item, bool multi) {
+  final section = item.section;
+  final round = _shortRound(section.round.name);
+  final parts = [if (multi) section.label, round];
+  switch (item) {
+    case WatchBoardItem(:final game):
+      if (game.boardNr != null) parts.add('B${game.boardNr}');
+    case WatchMatchItem(:final match):
+      parts.add('${_firstWord(match.home)}–${_firstWord(match.away)}');
+    case WatchRoundItem():
+    case WatchCategoryItem():
+      break;
+  }
+  return parts.join(' · ');
+}
+
+final RegExp _roundNumber = RegExp(r'^round\s+(\d+)\b', caseSensitive: false);
+String _shortRound(String name) {
+  final match = _roundNumber.firstMatch(name.trim());
+  return match == null ? name.trim() : 'R${match.group(1)}';
+}
+
+String _firstWord(String name) => name.trim().split(RegExp(r'\s+')).first;
+
+/// The height of a board tile, the same sum the tile lays out, so a jump to
+/// an unbuilt board lands close before it is measured.
+double _tileHeight(BuildContext context) {
+  final media = MediaQuery.of(context);
+  final height =
+      media.size.height -
+      WatchStatusBar.heightOf(context) -
+      media.padding.bottom -
+      6;
+  final line = media.textScaler.scale(12) * 1.3;
+  final width =
+      media.size.width - media.padding.left - media.padding.right - 10;
+  final board = math.min(width, math.max(72.0, height - line * 2 - 8));
+  return board + line * 2 + 8;
+}
+
+/// A board tile that asks the feed for its position as it is built: the
+/// list builds only what is near the screen, so that is the moment to load.
+class _LazyBoard extends StatelessWidget {
+  const _LazyBoard({
+    super.key,
+    required this.feed,
+    required this.game,
+    required this.onTap,
+  });
+  final WatchEventFeed feed;
+  final Games game;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    feed.need(game.id);
+    return WatchBoardTile(game: feed.gameOf(game), onTap: onTap);
+  }
+}
+
+/// The index by the Crown: one mark per board of the round being read, the
+/// live ones lit, the one in view drawn in ink and wider. Four hundred
+/// boards still fit: marks shrink to two points before they overlap.
+class _Spine extends StatelessWidget {
+  const _Spine({required this.items, required this.current});
+  final List<WatchFeedItem> items;
+  final int current;
+
+  @override
+  Widget build(BuildContext context) {
+    if (current < 0 || current >= items.length) return const SizedBox();
+    final section = items[current].section;
+    final boards = <(bool live, bool here)>[];
+    for (var i = 0; i < items.length; i++) {
+      final item = items[i];
+      if (item is WatchBoardItem && item.section.id == section.id) {
+        boards.add((watchGameIsPlaying(item.game), i == current));
+      }
+    }
+    if (boards.length < 2) return const SizedBox();
+    return CustomPaint(painter: _SpinePainter(boards));
+  }
+}
+
+class _SpinePainter extends CustomPainter {
+  const _SpinePainter(this.boards);
+  final List<(bool live, bool here)> boards;
+  static const _rest = Color(0xFF3A4237);
+  static const _live = Color(0xFF6F8A5B);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final n = boards.length;
+    final gap = n > 40 ? 1.0 : 2.0;
+    final tick = ((size.height - gap * (n - 1)) / n).clamp(2.0, 7.0);
+    final total = tick * n + gap * (n - 1);
+    var y = (size.height - total) / 2;
+    final paint = Paint();
+    for (final (live, here) in boards) {
+      final width = here ? 8.0 : 4.0;
+      paint.color = here
+          ? WatchStyle.ink
+          : live
+          ? _live
+          : _rest;
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(
+          Rect.fromLTWH(size.width - width, y, width, tick),
+          Radius.circular(tick / 2),
+        ),
+        paint,
+      );
+      y += tick + gap;
+    }
+  }
+
+  @override
+  bool shouldRepaint(_SpinePainter old) => old.boards != boards;
+}
+
+/// Where the list is, in the band beside the clock. It appears once the
+/// header has scrolled away and leaves when the list is back at its top.
+class _Marker extends StatelessWidget {
+  const _Marker({required this.text});
+  final String text;
+
+  @override
+  Widget build(BuildContext context) => AnimatedOpacity(
+    opacity: text.isEmpty ? 0 : 1,
+    duration: const Duration(milliseconds: 150),
+    curve: Curves.easeOut,
+    child: Align(
+      alignment: Alignment.centerLeft,
+      child: Text(
+        text,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: WatchStyle.figures.copyWith(
+          fontSize: 13,
+          fontWeight: FontWeight.w600,
+          color: WatchStyle.ink,
+        ),
+      ),
+    ),
+  );
 }
 
 /// The event's photograph with its name set on it, the same object the
@@ -388,16 +880,18 @@ class _EventHero extends StatelessWidget {
   const _EventHero({
     required this.repository,
     required this.event,
-    this.section,
+    this.detail,
   });
   final WatchRepository repository;
   final WatchEvent event;
-  final String? section;
+
+  /// Replaces the time control under the name.
+  final String? detail;
 
   @override
   Widget build(BuildContext context) {
     final scale = MediaQuery.textScalerOf(context);
-    final detail = section ?? watchTimeControl(event.timeControl);
+    final line = detail ?? watchTimeControl(event.timeControl);
     const shade = [Shadow(color: Color(0xB3000000), blurRadius: 4)];
     return Padding(
       padding: const EdgeInsets.only(bottom: 6),
@@ -455,10 +949,10 @@ class _EventHero extends StatelessWidget {
                         shadows: shade,
                       ),
                     ),
-                    if (detail != null && detail.isNotEmpty) ...[
+                    if (line != null && line.isNotEmpty) ...[
                       const SizedBox(height: 2),
                       Text(
-                        detail,
+                        line,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: WatchStyle.figures.copyWith(
@@ -478,176 +972,148 @@ class _EventHero extends StatelessWidget {
   }
 }
 
-/// `‹  Round 5  ›` with where the round stands under its name. The arrows
-/// step one round; the name opens the round wheel.
-class _RoundBar extends StatelessWidget {
-  const _RoundBar({
-    required this.round,
-    required this.state,
-    required this.busy,
-    required this.hasPrevious,
-    required this.hasNext,
-    required this.onPrevious,
-    required this.onNext,
-    required this.onChoose,
+/// A section's heading where the list moves into it: its label large, its
+/// strength and length under it. Only events with several sections have it.
+class _CategoryHeading extends StatelessWidget {
+  const _CategoryHeading({
+    super.key,
+    required this.section,
+    required this.rounds,
   });
-  final WatchRound? round;
-  final WatchRoundState state;
-  final bool busy;
-  final bool hasPrevious;
-  final bool hasNext;
-  final VoidCallback onPrevious;
-  final VoidCallback onNext;
-  final VoidCallback onChoose;
-
-  String _status(BuildContext context) => switch (state.phase) {
-    WatchRoundPhase.upcoming =>
-      'Starts ${watchWhen(round!.startsAt!.toLocal(), DateTime.now(), use24h: MediaQuery.alwaysUse24HourFormatOf(context))}',
-    WatchRoundPhase.live =>
-      state.live == state.total
-          ? '${state.live} live'
-          : '${state.live} of ${state.total} live',
-    WatchRoundPhase.finished => 'Finished',
-    WatchRoundPhase.empty => 'No boards yet',
-  };
-
-  Widget _arrow({
-    required IconData icon,
-    required String label,
-    required bool enabled,
-    required VoidCallback onTap,
-  }) => Semantics(
-    label: label,
-    excludeSemantics: true,
-    button: true,
-    enabled: enabled,
-    onTap: enabled ? onTap : null,
-    child: WatchPressable(
-      onPressed: enabled
-          ? () {
-              WatchHaptics.click();
-              onTap();
-            }
-          : null,
-      // A 44 pt target whose chevron sits toward the bar's edge, clear of
-      // the round name.
-      builder: (context, pressed) => SizedBox(
-        width: 44,
-        child: Align(
-          alignment: Alignment(
-            icon == CupertinoIcons.chevron_back ? -0.45 : 0.45,
-            0,
-          ),
-          child: Icon(
-            icon,
-            size: 17,
-            color: !enabled
-                ? WatchStyle.disabled
-                : pressed
-                ? WatchStyle.secondary
-                : WatchStyle.ink,
-          ),
-        ),
-      ),
-    ),
-  );
+  final WatchSection section;
+  final int rounds;
 
   @override
   Widget build(BuildContext context) {
-    final status = busy && round == null ? '…' : _status(context);
-    final live = state.phase == WatchRoundPhase.live;
+    final elo = section.tour.avgElo;
+    final caption = [
+      if (elo != null) 'Avg $elo',
+      '$rounds ${rounds == 1 ? 'round' : 'rounds'}',
+    ].join(' · ');
+    return Semantics(
+      header: true,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(
+          WatchStyle.contentInset,
+          10,
+          WatchStyle.contentInset,
+          8,
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              section.label,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: WatchStyle.heading.copyWith(fontSize: 19),
+            ),
+            Text(caption, maxLines: 1, style: WatchStyle.figures),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// A round's heading: its name, where it stands, and a wheel glyph, since
+/// tapping it opens the round wheel over every round of the event.
+class _RoundHeading extends StatelessWidget {
+  const _RoundHeading({
+    super.key,
+    required this.section,
+    required this.now,
+    required this.use24h,
+    required this.onTap,
+  });
+  final WatchSection section;
+  final DateTime now;
+  final bool use24h;
+  final VoidCallback onTap;
+
+  String get _status {
+    final playing = section.playing;
+    final total = section.games.length;
+    final start = section.startsAt?.toLocal();
+    if (!section.hasStarted) {
+      return start == null
+          ? 'Pairings'
+          : 'Starts ${watchWhen(start, now, use24h: use24h)}';
+    }
+    if (playing > 0) {
+      return playing == total ? '$playing live' : '$playing of $total live';
+    }
+    if (section.isFullyPlayed) return 'Finished';
+    final done = section.games.where(watchGameIsFinished).length;
+    return '$done of $total finished';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final status = _status;
+    final live = section.playing > 0;
     return Padding(
       padding: const EdgeInsets.only(bottom: 6),
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          color: WatchStyle.surface,
-          borderRadius: BorderRadius.circular(14),
-        ),
-        // The name takes the whole width and the arrows sit over its side
-        // margins, so a 40 mm watch still sets "Round 7" on one line while
-        // every arrow keeps a full-height tap target.
-        child: Stack(
-          children: [
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 4),
-              child: Semantics(
-                button: true,
-                label: '${round?.name ?? 'Round'}. $status',
-                hint: 'Choose a round',
-                excludeSemantics: true,
-                onTap: onChoose,
-                child: WatchPressable(
-                  onPressed: () {
-                    WatchHaptics.click();
-                    onChoose();
-                  },
-                  builder: (context, pressed) => Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.symmetric(
-                      vertical: 8,
-                      horizontal: 26,
-                    ),
-                    decoration: BoxDecoration(
-                      color: pressed
-                          ? WatchStyle.surfacePressed
-                          : const Color(0x00000000),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          round?.name ?? 'Rounds',
-                          key: const ValueKey('watch-round-name'),
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          textAlign: TextAlign.center,
-                          style: WatchStyle.body.copyWith(
-                            fontSize: 15,
-                            fontWeight: FontWeight.w700,
-                            height: 1.18,
-                          ),
+      child: Semantics(
+        button: true,
+        header: true,
+        label: '${section.round.name}. $status',
+        hint: 'Choose a round',
+        excludeSemantics: true,
+        onTap: onTap,
+        child: WatchPressable(
+          onPressed: () {
+            WatchHaptics.click();
+            onTap();
+          },
+          builder: (context, pressed) => Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(
+              horizontal: WatchStyle.contentInset,
+              vertical: 8,
+            ),
+            decoration: BoxDecoration(
+              color: pressed ? WatchStyle.surfacePressed : WatchStyle.surface,
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        section.round.name,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: WatchStyle.body.copyWith(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w700,
+                          height: 1.18,
                         ),
-                        const SizedBox(height: 2),
-                        Text(
-                          status,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          textAlign: TextAlign.center,
-                          style: WatchStyle.figures.copyWith(
-                            color: live ? WatchStyle.ink : null,
-                            fontWeight: live ? FontWeight.w600 : null,
-                          ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        status,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: WatchStyle.figures.copyWith(
+                          color: live ? WatchStyle.ink : null,
+                          fontWeight: live ? FontWeight.w600 : null,
                         ),
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
                 ),
-              ),
+                const SizedBox(width: 6),
+                const Icon(
+                  CupertinoIcons.chevron_up_chevron_down,
+                  size: 15,
+                  color: WatchStyle.secondary,
+                ),
+              ],
             ),
-            Positioned(
-              left: 0,
-              top: 0,
-              bottom: 0,
-              child: _arrow(
-                icon: CupertinoIcons.chevron_back,
-                label: 'Previous round',
-                enabled: hasPrevious && !busy,
-                onTap: onPrevious,
-              ),
-            ),
-            Positioned(
-              right: 0,
-              top: 0,
-              bottom: 0,
-              child: _arrow(
-                icon: CupertinoIcons.chevron_forward,
-                label: 'Next round',
-                enabled: hasNext && !busy,
-                onTap: onNext,
-              ),
-            ),
-          ],
+          ),
         ),
       ),
     );
@@ -657,9 +1123,9 @@ class _RoundBar extends StatelessWidget {
 /// One team match: both teams with their match score, and under them the
 /// match read board by board from the first-named team's side, like the
 /// result column of a team scoresheet (`1 ½ 0 •`, a dot for a game still
-/// being played).
+/// being played). Its boards follow it in the list; tapping it goes there.
 class _MatchCard extends StatelessWidget {
-  const _MatchCard({required this.match, required this.onTap});
+  const _MatchCard({super.key, required this.match, required this.onTap});
   final WatchTeamMatch match;
   final VoidCallback onTap;
 
@@ -707,12 +1173,14 @@ class _MatchCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final even = match.homeScore == match.awayScore;
-    final status = match.live
+    final playing = match.games.any(watchGameIsPlaying);
+    final status = playing
         ? 'Live'
         : match.finished
         ? 'Final'
         : '';
-    final boards = match.games.map(_board).join('  ');
+    // Thin spaces: the figures read as one line of a scoresheet.
+    final boards = match.games.map(_board).join('\u2009\u2009');
     return Padding(
       padding: const EdgeInsets.only(bottom: 6),
       child: Semantics(
@@ -721,7 +1189,7 @@ class _MatchCard extends StatelessWidget {
             '${match.home} ${watchScore(match.homeScore)}, '
             '${match.away} ${watchScore(match.awayScore)}. '
             '${match.games.length} boards. $status',
-        hint: 'Opens the boards',
+        hint: 'Goes to its boards',
         excludeSemantics: true,
         onTap: onTap,
         child: WatchPressable(
@@ -730,7 +1198,6 @@ class _MatchCard extends StatelessWidget {
             onTap();
           },
           builder: (context, pressed) => Container(
-            key: ValueKey('watch-match-${match.key}'),
             width: double.infinity,
             padding: const EdgeInsets.all(WatchStyle.contentInset),
             decoration: BoxDecoration(
@@ -767,14 +1234,14 @@ class _MatchCard extends StatelessWidget {
                       Text(
                         status,
                         style: WatchStyle.figures.copyWith(
-                          color: match.live ? WatchStyle.ink : null,
-                          fontWeight: match.live ? FontWeight.w600 : null,
+                          color: playing ? WatchStyle.ink : null,
+                          fontWeight: playing ? FontWeight.w600 : null,
                         ),
                       ),
                     ],
                     const SizedBox(width: 4),
                     const Icon(
-                      CupertinoIcons.chevron_forward,
+                      CupertinoIcons.chevron_down,
                       size: 13,
                       color: WatchStyle.secondary,
                     ),
@@ -871,309 +1338,10 @@ class WatchPlayerLine extends StatelessWidget {
   }
 }
 
-/// A game as a compact pairing: White over Black, each with flag, name and
-/// result or clock. Opens the full-board feed on this board.
-class WatchPairingRow extends StatelessWidget {
-  const WatchPairingRow({super.key, required this.game, required this.onTap});
-  final Games game;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.only(bottom: 6),
-    child: Semantics(
-      button: true,
-      label:
-          '${game.boardNr == null ? '' : 'Board ${game.boardNr}. '}'
-          '${game.players?.map((p) => p.name).join(' versus ') ?? 'Game'}. '
-          '${watchResult(game.status)}.',
-      hint: 'Opens the board',
-      excludeSemantics: true,
-      onTap: onTap,
-      child: WatchPressable(
-        onPressed: () {
-          WatchHaptics.click();
-          onTap();
-        },
-        builder: (context, pressed) => Container(
-          width: double.infinity,
-          padding: const EdgeInsets.symmetric(
-            horizontal: WatchStyle.contentInset,
-            vertical: 9,
-          ),
-          decoration: BoxDecoration(
-            color: pressed ? WatchStyle.surfacePressed : WatchStyle.surface,
-            borderRadius: BorderRadius.circular(14),
-          ),
-          child: LayoutBuilder(
-            builder: (context, constraints) {
-              final flags = constraints.maxWidth >= 120;
-              return Column(
-                children: [
-                  for (final side in [0, 1]) ...[
-                    if (side == 1) const SizedBox(height: 4),
-                    WatchPlayerLine(
-                      game: game,
-                      index: side,
-                      fontSize: 12.5,
-                      flagWidth: 16,
-                      showFlag: flags,
-                    ),
-                  ],
-                ],
-              );
-            },
-          ),
-        ),
-      ),
-    ),
-  );
-}
-
-/// The round's boards, one full board per watch screen, opened from the
-/// event page on the board that was tapped (or on a team match's boards).
-/// A wrist flick steps one board; the Crown scrolls freely; a board opens
-/// its game tools.
-class WatchBoardsFeedPage extends StatefulWidget {
-  const WatchBoardsFeedPage({
-    super.key,
-    required this.controller,
-    required this.feed,
-    required this.title,
-    this.matchKey,
-    this.initialGameId,
-  });
-  final WatchController controller;
-  final WatchRoundFeed feed;
-  final String title;
-
-  /// Shows only this team match's boards.
-  final String? matchKey;
-  final String? initialGameId;
-
-  /// Test seam: replaces the CoreMotion gyroscope so a recorded flick can be
-  /// replayed through the real feed off-watch.
-  @visibleForTesting
-  static Stream<GyroscopeEvent> Function()? debugGyroscope;
-
-  @override
-  State<WatchBoardsFeedPage> createState() => _WatchBoardsFeedPageState();
-}
-
-class _WatchBoardsFeedPageState extends State<WatchBoardsFeedPage>
-    with WidgetsBindingObserver {
-  final _scroll = ScrollController();
-  final _tileKeys = <String, GlobalKey>{};
-  final _flick = WatchWristFlick();
-  final _clock = Stopwatch();
-  StreamSubscription<GyroscopeEvent>? _gyro;
-  bool _covered = false;
-  bool _active = true;
-
-  List<Games> get _games {
-    final key = widget.matchKey;
-    if (key == null) return widget.feed.games;
-    return widget.feed.matches?.where((m) => m.key == key).firstOrNull?.games ??
-        const [];
-  }
-
-  @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addObserver(this);
-    WatchAlwaysOn.state.addListener(_updateFlick);
-    widget.feed.addListener(_updateFlick);
-    widget.feed.feedVisible = true;
-    _updateFlick();
-    if (widget.initialGameId != null) {
-      WidgetsBinding.instance.addPostFrameCallback((_) => _jumpTo());
-    }
-  }
-
-  void _jumpTo() {
-    if (!mounted) return;
-    final i = _games.indexWhere((g) => g.id == widget.initialGameId);
-    if (i <= 0) return;
-    final top = _topOf(i);
-    if (top == null || !_scroll.hasClients) return;
-    final position = _scroll.position;
-    position.jumpTo(
-      (position.pixels + top - _resting).clamp(
-        position.minScrollExtent,
-        position.maxScrollExtent,
-      ),
-    );
-  }
-
-  double get _resting => WatchStatusBar.heightOf(context) + 4;
-
-  double? _topOf(int i) {
-    final viewport = context.findRenderObject();
-    final games = _games;
-    if (viewport == null || i < 0 || i >= games.length) return null;
-    final box =
-        _tileKeys[games[i].id]?.currentContext?.findRenderObject()
-            as RenderBox?;
-    if (box == null || !box.attached) return null;
-    return box.localToGlobal(Offset.zero, ancestor: viewport).dy;
-  }
-
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    _active = state == AppLifecycleState.resumed;
-    _updateFlick();
-  }
-
-  void _updateFlick() {
-    final source = WatchBoardsFeedPage.debugGyroscope;
-    final want =
-        (FlutterWatchosPlatform.isWatch || source != null) &&
-        _active &&
-        !_covered &&
-        !WatchAlwaysOn.isActive &&
-        _games.length > 1;
-    if (want && _gyro == null) {
-      _flick.reset();
-      _clock
-        ..reset()
-        ..start();
-      final stream =
-          source?.call() ??
-          gyroscopeEventStream(samplingPeriod: SensorInterval.gameInterval);
-      _gyro = stream.listen(
-        (e) {
-          final step = _flick.add(e.x, e.y, e.z, _clock.elapsed);
-          if (step != 0) _stepBoard(step);
-        },
-        onError: (_) => _stopFlick(),
-        cancelOnError: true,
-      );
-    } else if (!want) {
-      _stopFlick();
-    }
-  }
-
-  void _stopFlick() {
-    unawaited(_gyro?.cancel());
-    _gyro = null;
-    _clock.stop();
-  }
-
-  /// Moves the feed one board forward or back, landing the next board in
-  /// the same resting slot under the clock that the first board occupies,
-  /// with a haptic so the move is felt.
-  void _stepBoard(int direction) {
-    final games = _games;
-    if (!_scroll.hasClients || games.isEmpty) return;
-    var current = 0;
-    var best = double.infinity;
-    for (var i = 0; i < games.length; i++) {
-      final top = _topOf(i);
-      if (top != null && (top - _resting).abs() < best) {
-        best = (top - _resting).abs();
-        current = i;
-      }
-    }
-    final target = (current + direction).clamp(0, games.length - 1);
-    final targetTop = _topOf(target);
-    if (target == current || targetTop == null) {
-      WatchHaptics.play(WatchHapticType.failure);
-      return;
-    }
-    WatchHaptics.play(
-      direction > 0
-          ? WatchHapticType.directionDown
-          : WatchHapticType.directionUp,
-    );
-    final position = _scroll.position;
-    final to = (position.pixels + targetTop - _resting).clamp(
-      position.minScrollExtent,
-      position.maxScrollExtent,
-    );
-    if (MediaQuery.disableAnimationsOf(context)) {
-      _scroll.jumpTo(to);
-    } else {
-      unawaited(
-        _scroll.animateTo(
-          to,
-          duration: const Duration(milliseconds: 420),
-          curve: const _SpringCurve(),
-        ),
-      );
-    }
-  }
-
-  Future<void> _openGame(Games game) async {
-    setState(() => _covered = true);
-    widget.feed.feedVisible = false;
-    _updateFlick();
-    await Navigator.of(context).push(
-      CupertinoPageRoute<void>(
-        builder: (_) => WatchGamePage(
-          controller: widget.controller,
-          game: game,
-          tour: widget.feed.tour,
-        ),
-      ),
-    );
-    if (!mounted) return;
-    setState(() => _covered = false);
-    widget.feed.feedVisible = true;
-    _updateFlick();
-  }
-
-  @override
-  Widget build(BuildContext context) => AnimatedBuilder(
-    animation: widget.feed,
-    builder: (context, _) {
-      final feed = widget.feed;
-      final games = _games;
-      return WatchPage(
-        title: widget.title,
-        boardFirst: games.isNotEmpty,
-        boardBackLabel: 'Back to event',
-        scrollController: _scroll,
-        onRefresh: () => feed.refresh(),
-        refreshing: feed.busy,
-        children: [
-          if (games.isEmpty)
-            const WatchNote('These boards are no longer in this round.'),
-          for (final game in games)
-            KeyedSubtree(
-              key: _tileKeys.putIfAbsent(game.id, GlobalKey.new),
-              child: WatchBoardTile(
-                key: ValueKey('watch-board-${game.id}'),
-                game: game,
-                onTap: () => _openGame(game),
-              ),
-            ),
-          if (feed.error != null) WatchNote.status(feed.error!),
-          if (feed.more && widget.matchKey == null)
-            WatchRow(
-              label: feed.busy ? 'Loading…' : 'More boards',
-              showChevron: false,
-              icon: CupertinoIcons.chevron_down,
-              onTap: feed.busy ? null : () => feed.refresh(more: true),
-            ),
-        ],
-      );
-    },
-  );
-
-  @override
-  void dispose() {
-    _stopFlick();
-    widget.feed.feedVisible = false;
-    widget.feed.removeListener(_updateFlick);
-    _scroll.dispose();
-    WatchAlwaysOn.state.removeListener(_updateFlick);
-    WidgetsBinding.instance.removeObserver(this);
-    super.dispose();
-  }
-}
-
 /// One position per watch viewport. Player strips use the same colors and
-/// federation marks as the phone; the board itself opens its full game tools.
+/// federation marks as the phone; the board itself opens its full game
+/// tools. A board whose position has not arrived shows its names over an
+/// empty board of the same size, so the list never shifts under a finger.
 class WatchBoardTile extends StatelessWidget {
   const WatchBoardTile({super.key, required this.game, required this.onTap});
   final Games game;
@@ -1215,7 +1383,10 @@ class WatchBoardTile extends StatelessWidget {
                   children: [
                     WatchPlayerLine(game: game, index: 1),
                     const SizedBox(height: 4),
-                    WatchBoard(fen: game.fen, lastMove: game.lastMove),
+                    WatchBoard(
+                      fen: game.fen ?? watchEmptyFen,
+                      lastMove: game.fen == null ? null : game.lastMove,
+                    ),
                     const SizedBox(height: 4),
                     WatchPlayerLine(game: game, index: 0),
                   ],
@@ -1229,8 +1400,8 @@ class WatchBoardTile extends StatelessWidget {
   );
 }
 
-/// A critically damped spring expressed as a curve, so the flick step moves
-/// like the rest of ChessEver's physics-based motion rather than an easing.
+/// A critically damped spring expressed as a curve, so a Crown or flick step
+/// moves like the rest of ChessEver's physics-based motion, not an easing.
 class _SpringCurve extends Curve {
   const _SpringCurve();
   static final _spring = SpringSimulation(

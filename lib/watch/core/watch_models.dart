@@ -33,19 +33,42 @@ class WatchTour {
     required this.eventId,
     required this.name,
     required this.players,
+    this.slug = '',
+    this.avgElo,
+    this.startsAt,
+    this.isMirror = false,
   });
-  factory WatchTour.fromJson(Map<String, dynamic> json) => WatchTour(
-    id: json['id'].toString(),
-    eventId: json['group_broadcast_id'].toString(),
-    name: json['name'] as String? ?? 'Section',
-    players: (json['players'] as List? ?? [])
-        .whereType<Map>()
-        .map((p) => WatchStanding.fromJson(Map<String, dynamic>.from(p)))
-        .toList(),
-  );
+  factory WatchTour.fromJson(Map<String, dynamic> json) {
+    final dates = json['dates'];
+    return WatchTour(
+      id: json['id'].toString(),
+      eventId: json['group_broadcast_id'].toString(),
+      name: json['name'] as String? ?? 'Section',
+      slug: json['slug'] as String? ?? '',
+      avgElo: watchInt(json['avg_elo']),
+      startsAt: dates is List && dates.isNotEmpty
+          ? DateTime.tryParse(dates.first?.toString() ?? '')
+          : null,
+      isMirror: json['is_mirror'] == true,
+      players: (json['players'] as List? ?? [])
+          .whereType<Map>()
+          .map((p) => WatchStanding.fromJson(Map<String, dynamic>.from(p)))
+          .toList(),
+    );
+  }
   final String id;
   final String eventId;
   final String name;
+  final String slug;
+
+  /// Average rating of the section; the strongest section reads first.
+  final int? avgElo;
+
+  /// The section's first day.
+  final DateTime? startsAt;
+
+  /// Flagged by the database as an organiser's copy of the other sections.
+  final bool isMirror;
   final List<WatchStanding> players;
 
   /// Respect published ranks and tiebreak order. Without ranks, only score
@@ -116,19 +139,83 @@ class WatchStanding {
 }
 
 class WatchRound {
-  const WatchRound({required this.id, required this.name, this.startsAt});
+  const WatchRound({
+    required this.id,
+    required this.name,
+    this.startsAt,
+    this.tourId = '',
+  });
   factory WatchRound.fromJson(Map<String, dynamic> json) => WatchRound(
     id: json['id'].toString(),
     name: json['name'] as String? ?? 'Round',
     startsAt: DateTime.tryParse(json['starts_at']?.toString() ?? ''),
+    tourId: json['tour_id']?.toString() ?? '',
   );
   final String id;
   final String name;
   final DateTime? startsAt;
+  final String tourId;
 }
 
+/// A board the feed lists as unfinished. This includes a published pairing
+/// nobody has moved on yet, so it says "may still change", not "is being
+/// played": see [watchGameIsPlaying] for that.
 bool watchGameIsLive(Games game) =>
     ['*', 'live', 'ongoing'].contains(game.status?.trim().toLowerCase());
+
+/// A board with at least one move, or a result.
+bool watchGameHasStarted(Games game) =>
+    watchGameIsFinished(game) ||
+    (game.lastMove?.trim().isNotEmpty ?? false) ||
+    game.lastMoveTime != null;
+
+/// A board being played right now: unfinished, with moves on it.
+bool watchGameIsPlaying(Games game) =>
+    watchGameIsLive(game) && watchGameHasStarted(game);
+
+final RegExp _combinedLabel = RegExp(r'(^|[^a-z0-9])combined([^a-z0-9]|$)');
+
+/// An organiser-published "Combined" section, which repeats the boards of
+/// the real sections beside it (Total Chess "Group Stage | Combined"). The
+/// same rule as the phone and the server's `tour_label_is_combined`.
+bool watchIsCombinedLabel({String? name, String? slug}) =>
+    _combinedLabel.hasMatch('${name ?? ''} ${slug ?? ''}'.toLowerCase());
+
+final RegExp _groupSeparator = RegExp(r'^\s*[|:\-–—―−/•]\s*(.+)$');
+final RegExp _trailingSeparator = RegExp(r'[\s|:\-–—―−/•]+$');
+final RegExp _boardsLabel = RegExp(
+  r'(Boards?\s+\d+[\-\+]?\d*\+?)$',
+  caseSensitive: false,
+);
+final RegExp _namedGroupLabel = RegExp(
+  r'((?:Group|Section|Division|Category)\s+\w+)$',
+  caseSensitive: false,
+);
+
+/// The part of a section's name that tells it from its siblings, as the
+/// phone's category picker shows it: "Total Chess … | Group Stage | B" → "B",
+/// "Tata Steel Masters" under the event "Tata Steel" → "Masters".
+String watchCategoryLabel(String fullName, {String? groupName}) {
+  var name = fullName.trim();
+  final parent = groupName?.trim().replaceFirst(_trailingSeparator, '');
+  if (parent != null &&
+      parent.isNotEmpty &&
+      name.length > parent.length &&
+      name.toLowerCase().startsWith(parent.toLowerCase())) {
+    final child = _groupSeparator
+        .firstMatch(name.substring(parent.length))
+        ?.group(1)
+        ?.trim();
+    if (child != null && child.isNotEmpty) name = child;
+  }
+  if (name.contains('|')) return name.split('|').last.trim();
+  if (name.contains(':')) return name.split(':').last.trim();
+  final boards = _boardsLabel.firstMatch(name);
+  if (boards != null) return boards.group(0)!.trim();
+  final group = _namedGroupLabel.firstMatch(name);
+  if (group != null) return group.group(0)!.trim();
+  return name;
+}
 
 /// Feed time controls arrive lowercase (`rapid`, `standard`); set them as a
 /// label: `Rapid`, `Classical`.

@@ -73,12 +73,18 @@ class WatchRepository {
         'limit': '$pageSize',
       })).map(WatchEvent.fromJson).toList();
 
+  /// PostgREST `in.(…)` filter. Every id is quoted, so an id with a comma or
+  /// a space still reads as one value.
+  static String inList(Iterable<String> ids) =>
+      'in.(${ids.map((id) => '"${id.replaceAll('"', '\\"')}"').join(',')})';
+
   Future<List<WatchTour>> tours(String eventId) async {
     // Sections are usually few, but do not silently drop large team events.
     final rows = <Map<String, dynamic>>[];
     for (var offset = 0; ; offset += pageSize) {
       final page = await _get('tours', {
-        'select': 'id,name,group_broadcast_id,players',
+        'select':
+            'id,name,slug,avg_elo,dates,is_mirror,group_broadcast_id,players',
         'group_broadcast_id': 'eq.$eventId',
         'order': 'avg_elo.desc.nullslast,id.asc',
         'offset': '$offset',
@@ -104,6 +110,62 @@ class WatchRepository {
       if (page.length < pageSize) break;
     }
     return rows.map(WatchRound.fromJson).toList();
+  }
+
+  /// Every round of [tourIds] in one request, schedule order within a tour.
+  Future<List<WatchRound>> eventRounds(Iterable<String> tourIds) async {
+    final ids = tourIds.toList();
+    if (ids.isEmpty) return const [];
+    final rows = <Map<String, dynamic>>[];
+    for (var offset = 0; ; offset += layoutPageSize) {
+      final page = await _get('rounds', {
+        'select': 'id,name,starts_at,tour_id',
+        'tour_id': inList(ids),
+        'order': 'tour_id.asc,created_at.asc,id.asc',
+        'offset': '$offset',
+        'limit': '$layoutPageSize',
+      });
+      rows.addAll(page);
+      if (page.length < layoutPageSize) break;
+    }
+    return rows.map(WatchRound.fromJson).toList();
+  }
+
+  /// The compact layout of every board of [tourIds]: who plays whom on which
+  /// board of which round, and whether it is being played, without the
+  /// position. It lays the whole event out in one round trip; positions and
+  /// clocks follow per board through [gamesByIds] as boards come on screen.
+  static const layoutPageSize = 1000;
+  static const layoutColumns =
+      'id,round_id,round_slug,tour_id,tour_slug,status,board_nr,'
+      'last_move,last_move_time,players';
+  Future<List<Games>> eventBoards(Iterable<String> tourIds) async {
+    final ids = tourIds.toList();
+    if (ids.isEmpty) return const [];
+    final rows = <Map<String, dynamic>>[];
+    for (var offset = 0; ; offset += layoutPageSize) {
+      final page = await _get('games', {
+        'select': layoutColumns,
+        'tour_id': inList(ids),
+        'order': 'board_nr.asc.nullslast,id.asc',
+        'offset': '$offset',
+        'limit': '$layoutPageSize',
+      });
+      rows.addAll(page);
+      if (page.length < layoutPageSize) break;
+    }
+    return rows.map(Games.fromJson).toList();
+  }
+
+  /// Full rows (position, clocks, last move) for up to [pageSize] boards.
+  Future<List<Games>> gamesByIds(Iterable<String> gameIds) async {
+    final ids = gameIds.toList();
+    if (ids.isEmpty) return const [];
+    return (await _get('games', {
+      'select': gameColumns,
+      'id': inList(ids),
+      'limit': '${ids.length}',
+    })).map(Games.fromJson).toList();
   }
 
   Future<List<Games>> games(String roundId, {int offset = 0}) async =>
