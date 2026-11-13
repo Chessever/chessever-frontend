@@ -1,7 +1,6 @@
 import 'package:chessever2/repository/supabase/round/round.dart';
 import 'package:chessever2/repository/supabase/tour/tour.dart';
 import 'package:chessever2/screens/tour_detail/combined/combined_category.dart';
-import 'package:chessever2/screens/tour_detail/combined/combined_category_prompt.dart';
 import 'package:chessever2/screens/tour_detail/combined/combined_games_provider.dart';
 import 'package:chessever2/screens/tour_detail/combined/combined_round_sections.dart';
 import 'package:chessever2/screens/tour_detail/combined/combined_round_buckets.dart';
@@ -1125,23 +1124,6 @@ void main() {
 
     test('an empty query keeps every game', () {
       expect(filterCombinedGames(games, '   '), hasLength(2));
-    });
-  });
-
-  group('combinedCategoryNames', () {
-    test('lists a few categories in full', () {
-      expect(combinedCategoryNames(['Open', 'Women']), 'Open and Women');
-      expect(
-        combinedCategoryNames(['Group A', 'Group B', 'Group C', 'Group D']),
-        'Group A, Group B, Group C and Group D',
-      );
-    });
-
-    test('counts the rest once the list gets long', () {
-      expect(
-        combinedCategoryNames(['U8', 'U10', 'U12', 'U14', 'U16', 'U18']),
-        'U8, U10, U12 and 3 more',
-      );
     });
   });
 }
