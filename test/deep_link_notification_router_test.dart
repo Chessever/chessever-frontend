@@ -19,6 +19,7 @@ import 'package:chessever2/screens/tour_detail/provider/tour_detail_mode_provide
 import 'package:chessever2/services/deep_link_service.dart';
 import 'package:chessever2/screens/webview/app_webview_screen.dart';
 import 'package:chessever2/screens/feed/news/news_link_screen.dart';
+import 'package:chessever2/screens/for_you/discovery/news_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -395,7 +396,9 @@ void main() {
           // WidgetTester's frame clock. Drain its session hand-off too.
           await tester.runAsync(() => Future<void>.delayed(Duration.zero));
           await tester.pumpAndSettle();
-          final page = pages.single as NewsLinkScreen;
+          expect(pages.first, isA<NewsScreen>());
+          final page = pages.last as NewsLinkScreen;
+          expect(pages, hasLength(2));
           expect(page.link.id, 7);
           expect(
             page.link.publisher.sourceId,

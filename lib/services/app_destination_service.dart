@@ -99,12 +99,12 @@ Future<bool> openAppDestination(
   // its caller opening a fallback above the newer destination.
   if (!canOpen()) return true;
   try {
-    void push(Widget page) {
+    void push(Widget page, {String? routeName}) {
       if (!canOpen()) return;
       ref.read(appDestinationPageNavigationProvider)(
         context,
         page,
-        destination.uri.path,
+        routeName ?? destination.uri.path,
       );
     }
 
@@ -148,6 +148,11 @@ Future<bool> openAppDestination(
       case AppDestinationKind.feed:
         push(const FeedScreen());
       case AppDestinationKind.news:
+        // Give externally opened articles the same Back destination as a
+        // reader opened from the news catalog.
+        if (destination.id != null) {
+          push(const NewsScreen(), routeName: '/app/news');
+        }
         push(
           destination.id == null
               ? const NewsScreen()

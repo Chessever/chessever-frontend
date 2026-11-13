@@ -7,6 +7,7 @@ import 'package:chessever2/screens/settings/widgets/notification_settings_body.d
 import 'package:chessever2/screens/feed/news/news_repository.dart';
 import 'package:chessever2/screens/feed/news/news_models.dart';
 import 'package:chessever2/screens/feed/news/news_reader_screen.dart';
+import 'package:chessever2/screens/for_you/discovery/news_screen.dart';
 import 'package:chessever2/services/deep_link_service.dart';
 import 'package:chessever2/services/favorite_player_news_destination.dart';
 import 'package:chessever2/services/rewarded_premium/rewarded_access_provider.dart';
@@ -211,6 +212,12 @@ void main() {
                 ),
               ),
               premiumAccessProvider.overrideWithValue(false),
+              newsCatalogFactoryProvider.overrideWithValue(
+                () => NewsCatalogRepository(
+                  fetchOwn: (_, __) async => [],
+                  fetchPartners: (_, __) async => [],
+                ),
+              ),
               newsArticleLoaderProvider.overrideWithValue((link) async {
                 loaded.add(link.id);
                 loadedPublishers.add(link.publisher);
@@ -255,6 +262,10 @@ void main() {
         expect(loadedPublishers, [publisher]);
         expect(find.byType(NewsReaderScreen), findsOneWidget);
         expect(find.text('LOCAL FIXTURE exact article 42'), findsOneWidget);
+        await tester.pageBack();
+        await tester.pumpAndSettle();
+        expect(find.byType(NewsScreen), findsOneWidget);
+        expect(find.byType(NewsReaderScreen), findsNothing);
         expect(tester.takeException(), isNull);
         await tester.pumpWidget(const SizedBox.shrink());
       },
