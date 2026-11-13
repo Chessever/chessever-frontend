@@ -44,17 +44,28 @@ class CombinedRoundSection {
 /// Lays every category's rounds out as one list.
 ///
 /// Combined only puts the same round of every category under one view; it
-/// does not invent its own round order. Rounds are ordered by
-/// [sortRoundsForDisplay], the rule a single category's Games tab uses, and
-/// inside one round each category gets its own block, strongest first:
+/// does not invent its own round order.
 ///
-///   Group B, Round 8
-///   Group C, Round 8
-///   Group A, Round 8
-///   Group B, Round 7
-///   ...
+/// 1. Each category's rounds are ordered as its own Games tab orders them
+///    ([selectGamesTourDisplayRounds]): the next round on top once the
+///    latest one is fully played, played rounds latest first, the other
+///    future rounds at the bottom.
+/// 2. Categories that play the same rounds are merged round by round, the
+///    strongest category first inside a round:
 ///
-/// "The same round" is the same round name ("Round 8") on the same day.
+///      Group B, Round 8
+///      Group C, Round 8
+///      Group A, Round 8
+///      Group B, Round 7
+///      ...
+///
+///    "The same round" is the same round name ("Round 8") on the same day.
+/// 3. Categories that share no round are separate blocks, and a block's
+///    rounds always stay together: the Group Stage's Rounds 1-10 are never
+///    split by the Blitz Tiebreak played the day before. Blocks still being
+///    played come first (latest started first), then the finished ones, see
+///    [_orderBlocks].
+///
 /// Categories are ranked by average rating; equally rated ones by the later
 /// start, then picker order.
 ///
@@ -148,10 +159,111 @@ List<CombinedRoundSection> buildCombinedRoundSections({
       _inRegularOrder(sections, effectiveNow),
   ];
 
-  // Merge those orders, strongest category first. A round another category
-  // already listed joins it; a new round goes right after the previous round
-  // of its own category, or, when nothing of its category is placed yet, by
-  // date among the rounds already there.
+  // Categories that play the same rounds form one block; a category that
+  // shares no round with the others is a block of its own.
+  final blocks = <_Block>[
+    for (final members in _blockMembers(orderedByCategory))
+      _Block(
+        _mergeByRound([for (final index in members) orderedByCategory[index]]),
+        isOpen: _hasMoreToPlay(
+          [for (final index in members) orderedByCategory[index]],
+          roundsByTourId,
+          effectiveNow,
+        ),
+      ),
+  ];
+
+  return <CombinedRoundSection>[
+    for (final block in _orderBlocks(blocks)) ...block.sections,
+  ];
+}
+
+/// Categories whose rounds are shown as one uninterrupted run of rounds.
+class _Block {
+  _Block(this.sections, {required this.isOpen});
+
+  /// Round by round, in display order.
+  final List<CombinedRoundSection> sections;
+
+  /// Something is still to be played here: an unfinished round, or one the
+  /// schedule has yet to start.
+  final bool isOpen;
+
+  late final bool hasStarted = sections.any(
+    (section) => !_isPairingOnly(section),
+  );
+
+  /// When its latest played round started.
+  late final DateTime? latestStart = _extremeStart(
+    sections.where((section) => !_isPairingOnly(section)),
+    latest: true,
+  );
+
+  late final DateTime? earliestStart = _extremeStart(sections, latest: false);
+}
+
+DateTime? _extremeStart(
+  Iterable<CombinedRoundSection> sections, {
+  required bool latest,
+}) {
+  DateTime? result;
+  for (final section in sections) {
+    final start = section.startsAt;
+    if (start == null) continue;
+    if (result == null ||
+        (latest ? start.isAfter(result) : start.isBefore(result))) {
+      result = start;
+    }
+  }
+  return result;
+}
+
+/// Which categories (by index, strongest first) belong together: those that
+/// share a round, directly or through another category. Blocks come out in
+/// the order of their strongest category.
+List<List<int>> _blockMembers(List<List<CombinedRoundSection>> byCategory) {
+  final members = <List<int>>[];
+  final keys = <Set<String>>[];
+  for (var index = 0; index < byCategory.length; index++) {
+    if (byCategory[index].isEmpty) continue;
+    final own = {
+      for (final section in byCategory[index]) combinedRoundKey(section),
+    };
+    int? target;
+    for (var block = 0; block < members.length; block++) {
+      if (!keys[block].any(own.contains)) continue;
+      if (target == null) {
+        target = block;
+        continue;
+      }
+      // This category links two blocks that were apart until now.
+      members[target].addAll(members[block]);
+      keys[target].addAll(keys[block]);
+      members.removeAt(block);
+      keys.removeAt(block);
+      block--;
+    }
+    if (target == null) {
+      members.add(<int>[index]);
+      keys.add(own);
+    } else {
+      members[target].add(index);
+      keys[target].addAll(own);
+    }
+  }
+  for (final block in members) {
+    block.sort();
+  }
+  return members;
+}
+
+/// Merges the display orders of one block's categories, strongest category
+/// first. A round another category already listed joins it; a new round goes
+/// right after the previous round of its own category, or, when nothing of
+/// its category is placed yet, by date among the rounds already there.
+List<CombinedRoundSection> _mergeByRound(
+  List<List<CombinedRoundSection>> orderedByCategory,
+) {
   final keys = <String>[];
   final sectionsByKey = <String, List<CombinedRoundSection>>{};
   final dateByKey = <String, DateTime?>{};
@@ -175,8 +287,72 @@ List<CombinedRoundSection> buildCombinedRoundSections({
       (sectionsByKey[key] ??= <CombinedRoundSection>[]).add(section);
     }
   }
-
   return <CombinedRoundSection>[for (final key in keys) ...sectionsByKey[key]!];
+}
+
+/// Whether these categories still have something to play: a round on the
+/// list that is not over, or a round the schedule starts later (its pairings
+/// may not be out yet).
+bool _hasMoreToPlay(
+  List<List<CombinedRoundSection>> byCategory,
+  Map<String, List<Round>> roundsByTourId,
+  DateTime now,
+) {
+  for (final sections in byCategory) {
+    for (final section in sections) {
+      final isOver =
+          section.round.roundStatus == RoundStatus.completed ||
+          section.isFullyPlayed;
+      if (!isOver) return true;
+    }
+    final schedule =
+        roundsByTourId[sections.first.category.tourId] ?? const <Round>[];
+    if (schedule.any((round) => round.startsAt?.isAfter(now) ?? false)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/// The order of the blocks, the single-category rule one level up:
+///
+/// 1. Blocks being played (started, with more to play), latest started first.
+/// 2. With none of those, the next block to start leads, as a category's
+///    next round does once its latest round is fully played.
+/// 3. Finished blocks, latest started first.
+/// 4. Blocks not started yet, soonest first.
+List<_Block> _orderBlocks(List<_Block> blocks) {
+  if (blocks.length < 2) return blocks;
+  final rank = <_Block, int>{
+    for (var i = 0; i < blocks.length; i++) blocks[i]: i,
+  };
+  int byRank(_Block a, _Block b) => rank[a]!.compareTo(rank[b]!);
+  int latestFirst(_Block a, _Block b) {
+    final byStart = _compareDates(
+      a.latestStart,
+      b.latestStart,
+      latestFirst: true,
+    );
+    return byStart != 0 ? byStart : byRank(a, b);
+  }
+
+  final inPlay = blocks.where((b) => b.hasStarted && b.isOpen).toList()
+    ..sort(latestFirst);
+  final finished = blocks.where((b) => b.hasStarted && !b.isOpen).toList()
+    ..sort(latestFirst);
+  final upcoming = blocks.where((b) => !b.hasStarted).toList()
+    ..sort((a, b) {
+      final byStart = _compareDates(
+        a.earliestStart,
+        b.earliestStart,
+        latestFirst: false,
+      );
+      return byStart != 0 ? byStart : byRank(a, b);
+    });
+  final promoted = inPlay.isEmpty && upcoming.isNotEmpty
+      ? upcoming.removeAt(0)
+      : null;
+  return <_Block>[...inPlay, ?promoted, ...finished, ...upcoming];
 }
 
 /// One category's [sections] in the order its Games tab shows its rounds,
