@@ -1,9 +1,9 @@
+import 'combined_section_labels.dart';
 import 'dart:async';
 
 import 'package:chessever2/repository/supabase/tour/tour.dart';
 import 'package:chessever2/screens/gamebase/event_view/gamebase_virtual_event_id.dart';
 import 'package:chessever2/screens/tour_detail/combined/combined_source_policy.dart';
-import 'package:chessever2/screens/tour_detail/provider/tour_category_ordering.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_mode_provider.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_repo_provider.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_screen_provider.dart';
@@ -93,13 +93,16 @@ class CombinedCategories {
     ];
     final seen = <String>{};
     final source = real.where((model) => seen.add(model.tour.id)).toList();
+    final labels = combinedSwitcherLabels([
+      for (final model in source) model.tour.name,
+    ], groupName: groupName);
     return CombinedCategories(
       List<CombinedCategory>.unmodifiable([
         for (var i = 0; i < source.length; i++)
           CombinedCategory(
             tourId: source[i].tour.id,
             sourceName: source[i].tour.name,
-            label: tourCategoryLabel(source[i].tour.name, groupName: groupName),
+            label: labels[i],
             avgElo: source[i].tour.avgElo,
             order: i,
             startsAt: source[i].tour.dates.isEmpty

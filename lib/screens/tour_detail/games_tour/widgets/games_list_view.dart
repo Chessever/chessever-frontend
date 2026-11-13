@@ -1,3 +1,5 @@
+import 'package:chessever2/theme/app_colors.dart';
+import 'package:chessever2/screens/tour_detail/combined/combined_group_expansion.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart'
     show BoardNavigationListPolicy;
 import 'package:chessever2/screens/chessboard/provider/game_pgn_stream_provider.dart';
@@ -16,8 +18,6 @@ import 'package:chessever2/screens/tour_detail/games_tour/widgets/round_header_w
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/match_header_widget.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_screen_provider.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_screen_provider.dart';
-import 'package:chessever2/theme/app_colors.dart';
-import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/scroll_cache.dart';
 import 'package:chessever2/widgets/positioned_list_scrollbar.dart';
@@ -44,8 +44,10 @@ class GamesListView extends ConsumerWidget {
     this.roundHeaderBuilder,
     this.onPinToggle,
     this.navigationListPolicy,
+    this.roundExpansionOverrides,
   });
 
+  final Map<String, bool>? roundExpansionOverrides;
   final Map<String, List<GamesTourModel>> gamesByRound;
   final GamesScreenModel gamesData;
   final GamesListViewMode gamesListViewMode;
@@ -172,20 +174,24 @@ class GamesListView extends ConsumerWidget {
               }
 
               if (lookup is GamesTourRoundHeaderEntry) {
-                final isRoundExpanded =
-                    isSearchMode
-                        ? true
-                        : ref.watch(
-                          roundExpansionStateProvider(lookup.round.id),
+                final bool isRoundExpanded = isSearchMode
+                    ? true
+                    : (roundExpansionOverrides?[lookup.round.id] ??
+                          ref.watch<bool>(
+                            roundExpansionStateProvider(lookup.round.id),
+                          ));
+                final VoidCallback? onToggleRound = isSearchMode
+                    ? null // Disable toggle in search mode
+                    : () {
+                        final notifier = ref.read(
+                          roundExpansionProvider.notifier,
                         );
-                final VoidCallback? onToggleRound =
-                    isSearchMode
-                        ? null // Disable toggle in search mode
-                        : () {
-                          ref
-                              .read(roundExpansionProvider.notifier)
-                              .toggleRound(lookup.round.id);
-                        };
+                        if (isRoundExpanded) {
+                          notifier.collapseRound(lookup.round.id);
+                        } else {
+                          notifier.expandAll([lookup.round.id]);
+                        }
+                      };
                 return Padding(
                   padding: EdgeInsets.only(bottom: 16.sp),
                   child:
@@ -206,13 +212,48 @@ class GamesListView extends ConsumerWidget {
 
               if (lookup is GamesTourSourceHeaderEntry) {
                 return Padding(
-                  padding: EdgeInsets.fromLTRB(4.sp, 0, 4.sp, 12.sp),
+                  padding: EdgeInsets.only(bottom: 8.sp),
                   child: Semantics(
                     header: true,
-                    child: Text(
-                      lookup.label,
-                      style: AppTypography.textSmMedium.copyWith(
-                        color: context.colors.textPrimary,
+                    expanded: lookup.isExpanded,
+                    child: InkWell(
+                      onTap: isSearchMode
+                          ? null
+                          : () => ref
+                                .read(combinedGroupExpansionProvider.notifier)
+                                .toggle(lookup.roundId!),
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(minHeight: 44),
+                        child: Padding(
+                          padding: EdgeInsets.symmetric(
+                            horizontal: 4.sp,
+                            vertical: 6.sp,
+                          ),
+                          child: Row(
+                            children: [
+                              if (!isSearchMode) ...[
+                                Icon(
+                                  lookup.isExpanded
+                                      ? Icons.expand_more
+                                      : Icons.chevron_right,
+                                  size: 16.sp,
+                                  color: context.colors.textPrimaryMuted,
+                                ),
+                                SizedBox(width: 6.sp),
+                              ],
+                              Expanded(
+                                child: Text(
+                                  lookup.label,
+                                  style: TextStyle(
+                                    fontSize: 12.sp,
+                                    fontWeight: FontWeight.w500,
+                                    color: context.colors.textPrimaryMuted,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
                       ),
                     ),
                   ),

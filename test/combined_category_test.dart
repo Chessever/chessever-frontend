@@ -1,7 +1,6 @@
 import 'package:chessever2/repository/supabase/round/round.dart';
 import 'package:chessever2/repository/supabase/tour/tour.dart';
 import 'package:chessever2/screens/tour_detail/combined/combined_category.dart';
-import 'package:chessever2/screens/tour_detail/combined/combined_category_prompt.dart';
 import 'package:chessever2/screens/tour_detail/combined/combined_games_provider.dart';
 import 'package:chessever2/screens/tour_detail/combined/combined_round_sections.dart';
 import 'package:chessever2/screens/tour_detail/combined/combined_round_buckets.dart';
@@ -772,11 +771,13 @@ void main() {
         GamesTourFlattenedLayout layout({
           bool folded = false,
           bool searching = false,
+          Map<String, bool> sourceExpansion = const {},
         }) => buildGamesTourFlattenedLayout(
           rounds: [for (final bucket in buckets) bucket.round],
           gamesByRound: {
             for (final bucket in buckets) bucket.round.id: bucket.games,
           },
+          sourceExpansionState: sourceExpansion,
           sourceSectionsByRound: {
             for (final bucket in buckets) bucket.round.id: bucket.sources,
           },
@@ -800,6 +801,42 @@ void main() {
         expect(
           expanded.entries.whereType<GamesTourSourceHeaderEntry>(),
           hasLength(4),
+        );
+        final foldedSource = buckets.first.sources.first.roundId;
+        final groupFolded = layout(sourceExpansion: {foldedSource: false});
+        expect(
+          groupFolded.entries.whereType<GamesTourSourceHeaderEntry>(),
+          hasLength(4),
+        );
+        expect(
+          groupFolded.entries
+              .whereType<GamesTourSourceHeaderEntry>()
+              .firstWhere((entry) => entry.roundId == foldedSource)
+              .isExpanded,
+          isFalse,
+        );
+        expect(
+          groupFolded.entries.whereType<GamesTourGameRowEntry>().where(
+            (entry) => entry.roundId == foldedSource,
+          ),
+          isEmpty,
+        );
+        expect(
+          groupFolded.entries.whereType<GamesTourGameRowEntry>().where(
+            (entry) => entry.roundId == buckets.first.sources.last.roundId,
+          ),
+          isNotEmpty,
+        );
+        expect(
+          groupFolded.orderedGames.map((game) => game.gameId),
+          expanded.orderedGames.map((game) => game.gameId),
+        );
+        expect(
+          layout(
+            searching: true,
+            sourceExpansion: {foldedSource: false},
+          ).entries.whereType<GamesTourGameRowEntry>(),
+          hasLength(8),
         );
         final rows = expanded.entries
             .whereType<GamesTourGameRowEntry>()
@@ -1087,23 +1124,6 @@ void main() {
 
     test('an empty query keeps every game', () {
       expect(filterCombinedGames(games, '   '), hasLength(2));
-    });
-  });
-
-  group('combinedCategoryNames', () {
-    test('lists a few categories in full', () {
-      expect(combinedCategoryNames(['Open', 'Women']), 'Open and Women');
-      expect(
-        combinedCategoryNames(['Group A', 'Group B', 'Group C', 'Group D']),
-        'Group A, Group B, Group C and Group D',
-      );
-    });
-
-    test('counts the rest once the list gets long', () {
-      expect(
-        combinedCategoryNames(['U8', 'U10', 'U12', 'U14', 'U16', 'U18']),
-        'U8, U10, U12 and 3 more',
-      );
     });
   });
 }

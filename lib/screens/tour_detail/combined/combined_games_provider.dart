@@ -1,6 +1,5 @@
-import 'package:chessever2/repository/supabase/game/games.dart';
-import 'package:chessever2/repository/supabase/round/round.dart';
-import 'package:chessever2/repository/supabase/round/round_repository.dart';
+import 'combined_group_expansion.dart';
+import 'combined_hall_provider.dart';
 import 'package:chessever2/screens/tour_detail/combined/combined_category.dart';
 import 'package:chessever2/screens/tour_detail/combined/combined_round_buckets.dart';
 import 'package:chessever2/screens/tour_detail/combined/combined_round_sections.dart';
@@ -8,118 +7,13 @@ import 'package:chessever2/screens/tour_detail/games_tour/models/games_app_bar_v
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_list_view_mode_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_pin_provider.dart';
-import 'package:chessever2/screens/tour_detail/games_tour/providers/games_priority_matching.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_flattened_layout.dart';
-import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/live_rounds_id_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/round_expansion_provider.dart';
 import 'package:chessever2/screens/tour_detail/player_tour/player_tour_screen_provider.dart'
     show standingsSearchQueryProvider;
 import 'package:flutter/foundation.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
-
-/// One category's games as list models, for the Combined list.
-///
-/// Reads the same [gamesTourProvider] the single-category view uses, so the
-/// games are fetched, cached and polled once however the event is viewed. A
-/// model is rebuilt only for a board whose list inputs changed; an identical
-/// poll publishes nothing, so the combined list does not regroup on every
-/// safety-net tick of every category.
-final combinedTourGamesProvider = StateNotifierProvider.autoDispose
-    .family<
-      CombinedTourGamesNotifier,
-      AsyncValue<List<GamesTourModel>>,
-      String
-    >((ref, tourId) => CombinedTourGamesNotifier(ref: ref, tourId: tourId));
-
-class CombinedTourGamesNotifier
-    extends StateNotifier<AsyncValue<List<GamesTourModel>>> {
-  CombinedTourGamesNotifier({required Ref ref, required String tourId})
-    : super(const AsyncValue.loading()) {
-    ref.listen<AsyncValue<List<Games>>>(
-      gamesTourProvider(tourId),
-      (_, next) => _apply(next),
-      fireImmediately: true,
-    );
-  }
-
-  final Map<String, (Games, GamesTourModel)> _modelsByGameId =
-      <String, (Games, GamesTourModel)>{};
-
-  void _apply(AsyncValue<List<Games>> next) {
-    if (!mounted) return;
-    final games = next.valueOrNull;
-    if (games == null) {
-      // A failed refresh keeps the boards already on screen.
-      if (next.hasError && !state.hasValue) {
-        state = AsyncValue.error(
-          next.error!,
-          next.stackTrace ?? StackTrace.current,
-        );
-      }
-      return;
-    }
-
-    final current = state.valueOrNull;
-    var changed = current == null;
-    final models = <GamesTourModel>[];
-    final nextModels = <String, (Games, GamesTourModel)>{};
-    for (final game in games) {
-      final cached = _modelsByGameId[game.id];
-      final GamesTourModel model;
-      if (cached != null && _hasSameListInputs(cached.$1, game)) {
-        model = cached.$2;
-      } else {
-        try {
-          model = GamesTourModel.fromGameIndex(game);
-        } catch (_) {
-          // A board without two named players cannot be drawn.
-          continue;
-        }
-        changed = true;
-      }
-      nextModels[game.id] = (game, model);
-      models.add(model);
-    }
-
-    if (!changed && current != null) {
-      changed = current.length != models.length;
-      for (var i = 0; !changed && i < models.length; i++) {
-        changed = !identical(current[i], models[i]);
-      }
-    }
-    _modelsByGameId
-      ..clear()
-      ..addAll(nextModels);
-    if (changed) {
-      state = AsyncValue.data(List<GamesTourModel>.unmodifiable(models));
-    }
-  }
-}
-
-/// The fields a list model is built from. Clock-only changes are left to the
-/// visible card's own live stream.
-bool _hasSameListInputs(Games a, Games b) {
-  if (identical(a, b)) return true;
-  return a.id == b.id &&
-      a.roundId == b.roundId &&
-      a.roundSlug == b.roundSlug &&
-      a.status == b.status &&
-      a.boardNr == b.boardNr &&
-      a.lastMove == b.lastMove &&
-      a.fen == b.fen &&
-      a.isPgnDeferred == b.isPgnDeferred &&
-      (identical(a.pgn, b.pgn) || a.pgn == b.pgn) &&
-      haveSameRawGamePriorityInputs(a, b);
-}
-
-/// Round names and start times for every combined category, in one request.
-/// Keyed by the joined tour ids so the same event reuses one result.
-final combinedRoundsProvider = FutureProvider.autoDispose
-    .family<Map<String, List<Round>>, String>((ref, tourIdsKey) {
-      final tourIds = tourIdsKey.split(',');
-      return ref.watch(roundRepositoryProvider).getRoundsByTourIds(tourIds);
-    });
 
 String combinedRoundsKey(List<String> tourIds) => tourIds.join(',');
 
@@ -175,38 +69,20 @@ final combinedRoundSectionsProvider =
       if (!categories.canCombine) return CombinedRoundSections.empty;
       final tourIds = categories.tourIds;
 
-      final gamesByTourId = <String, List<GamesTourModel>>{};
-      var pending = false;
-      Object? firstError;
-      for (final tourId in tourIds) {
-        final games = ref.watch(combinedTourGamesProvider(tourId));
-        final value = games.valueOrNull;
-        if (value != null) {
-          gamesByTourId[tourId] = value;
-        } else if (games.hasError) {
-          firstError ??= games.error;
-        } else {
-          pending = true;
-        }
-      }
-
-      final roundsAsync = ref.watch(
-        combinedRoundsProvider(combinedRoundsKey(tourIds)),
-      );
-      final roundsByTourId = roundsAsync.valueOrNull;
-
-      // First paint waits for every category and the schedule, so the list is
-      // laid out once instead of reshuffling as each category arrives. A
-      // category that failed is skipped rather than blocking the rest.
-      if (pending || (roundsByTourId == null && roundsAsync.isLoading)) {
-        return CombinedRoundSections.loading;
-      }
-      if (gamesByTourId.isEmpty && firstError != null) {
+      final key = combinedRoundsKey(tourIds);
+      ref.watch(combinedHallProvider(key));
+      final hall = ref.read(combinedHallProvider(key).notifier);
+      final gamesByTourId = hall.gamesByTour;
+      final roundsByTourId = hall.loader.catalogs;
+      if (hall.loader.isLoading) return CombinedRoundSections.loading;
+      if (roundsByTourId.isEmpty && hall.loader.failures.isNotEmpty) {
         return CombinedRoundSections(
           isLoading: false,
-          error: firstError,
-          sections: const <CombinedRoundSection>[],
-          pinnedGameIds: const <String>[],
+          error: StateError(
+            'Combined rounds could not be loaded. Pull to retry.',
+          ),
+          sections: const [],
+          pinnedGameIds: const [],
           searchQuery: '',
           hasUnscheduledRounds: false,
         );
@@ -235,16 +111,16 @@ final combinedRoundSectionsProvider =
       final sections = buildCombinedRoundSections(
         categories: categories.items,
         gamesByTourId: visibleGamesByTourId,
-        roundsByTourId: roundsByTourId ?? const <String, List<Round>>{},
+        roundsByTourId: roundsByTourId,
+        includeEmptyRounds: query.isEmpty,
         liveRoundIds:
             ref.watch(liveRoundsIdProvider).valueOrNull ?? const <String>[],
         pinnedGameIds: pinnedGameIds,
       );
 
       final scheduledRoundIds = <String>{
-        if (roundsByTourId != null)
-          for (final rounds in roundsByTourId.values)
-            for (final round in rounds) round.id,
+        for (final rounds in roundsByTourId.values)
+          for (final round in rounds) round.id,
       };
 
       return CombinedRoundSections(
@@ -297,10 +173,23 @@ final combinedGamesPresentationProvider =
         );
       }
 
+      final hall = ref.read(
+        combinedHallProvider(
+          combinedRoundsKey(ref.watch(combinedCategoriesProvider).tourIds),
+        ).notifier,
+      );
       final buckets = buildCombinedRoundBuckets(
         source.sections,
         eventId: ref.watch(combinedCategoryGroupIdProvider) ?? '',
+        loadedRoundIds: hall.loader.loaded,
+        failedRoundIds: {
+          for (final key in hall.loader.failures)
+            if (key.startsWith('round:')) key.substring(6),
+        },
       );
+      if (buckets.isNotEmpty && source.searchQuery.isEmpty) {
+        hall.initiallyExpandedRoundId ??= buckets.first.round.id;
+      }
       final gamesByRound = <String, List<GamesTourModel>>{
         for (final bucket in buckets) bucket.round.id: bucket.games,
         for (final section in source.sections) section.round.id: section.games,
@@ -317,12 +206,18 @@ final combinedGamesPresentationProvider =
           sourceSectionsByRound: {
             for (final bucket in buckets) bucket.round.id: bucket.sources,
           },
+          sourceExpansionState: ref.watch(combinedGroupExpansionProvider),
           mode: ref.watch(gamesListViewModeProvider),
           matchExpansionState: const <String, bool>{},
           // A search shows every hit, whatever was folded before it.
           roundExpansionState: isSearchMode
               ? const <String, bool>{}
-              : ref.watch(roundExpansionProvider),
+              : {
+                  for (final bucket in buckets)
+                    bucket.round.id:
+                        ref.watch(roundExpansionProvider)[bucket.round.id] ??
+                        (bucket.round.id == hall.initiallyExpandedRoundId),
+                },
           isKnockoutTournament: false,
           displayMode: GameDisplayMode.all,
           isSearchMode: isSearchMode,

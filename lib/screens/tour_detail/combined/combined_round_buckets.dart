@@ -18,6 +18,8 @@ class CombinedRoundBucket {
 List<CombinedRoundBucket> buildCombinedRoundBuckets(
   List<CombinedRoundSection> sections, {
   required String eventId,
+  Set<String>? loadedRoundIds,
+  Set<String> failedRoundIds = const {},
 }) {
   final buckets = <String, List<CombinedRoundSection>>{};
   for (final section in sections) {
@@ -45,7 +47,13 @@ List<CombinedRoundBucket> buildCombinedRoundBuckets(
           for (final source in entry.value)
             GamesTourSourceSection(
               roundId: source.round.id,
-              label: source.category.label,
+              label: source.games.isNotEmpty
+                  ? source.category.label
+                  : '${source.category.label} • ${failedRoundIds.contains(source.round.id)
+                        ? 'Unable to load games. Retry to continue.'
+                        : loadedRoundIds != null && !loadedRoundIds.contains(source.round.id)
+                        ? 'Loading games…'
+                        : 'No games yet'}',
               games: source.games,
             ),
         ],
