@@ -1,3 +1,4 @@
+import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/screens/tour_detail/combined/combined_group_expansion.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart'
     show BoardNavigationListPolicy;
@@ -215,15 +216,45 @@ class GamesListView extends ConsumerWidget {
                   child: Semantics(
                     header: true,
                     expanded: lookup.isExpanded,
-                    child: TournamentRoundHeader(
-                      title: lookup.label,
-                      dense: true,
-                      isExpanded: lookup.isExpanded,
-                      onToggle: isSearchMode
+                    child: InkWell(
+                      onTap: isSearchMode
                           ? null
                           : () => ref
                                 .read(combinedGroupExpansionProvider.notifier)
                                 .toggle(lookup.roundId!),
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(minHeight: 44),
+                        child: Padding(
+                          padding: EdgeInsets.symmetric(
+                            horizontal: 4.sp,
+                            vertical: 6.sp,
+                          ),
+                          child: Row(
+                            children: [
+                              if (!isSearchMode) ...[
+                                Icon(
+                                  lookup.isExpanded
+                                      ? Icons.expand_more
+                                      : Icons.chevron_right,
+                                  size: 16.sp,
+                                  color: context.colors.textPrimaryMuted,
+                                ),
+                                SizedBox(width: 6.sp),
+                              ],
+                              Expanded(
+                                child: Text(
+                                  lookup.label,
+                                  style: TextStyle(
+                                    fontSize: 12.sp,
+                                    fontWeight: FontWeight.w500,
+                                    color: context.colors.textPrimaryMuted,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
                     ),
                   ),
                 );
