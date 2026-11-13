@@ -157,7 +157,7 @@ These must be `false`, whichever repo owns them:
 stripe-webhook             revenuecat-webhook        revenuecat-sync
 onesignal-dispatch         github-webhook            fetch-fide-photo-webp
 fetch-lichess-annotations  stripe-checkout           stripe-portal
-entitlement                prep-games-check
+entitlement                prep-games-check          finish-live-saved-games
 ```
 
 ### How to deploy
@@ -185,6 +185,36 @@ chessever_frontend_desktop_oss/scripts/which_repo_owns_function.sh <slug>
 ```
 
 `onesignal-dispatch`, `fetch-fide-photo-webp` and `revenuecat-webhook` have stale copies in other repos. Deploying from the wrong one rolls production back — it happened on 2026-08-26 and reverted an auth check to a version that accepted any request with no token header. This repo is the source of truth for the notification, RevenueCat and photo functions.
+
+## Games liked or saved while live finish on the server
+
+A like, or a save to a database, copies the game into
+`user_saved_analyses.chess_game` as it stands, with `Result "*"` when it is
+still being played. Phone, desktop and chessever.com all do this, and none of
+them updates the row afterwards. The edge function `finish-live-saved-games`
+does (pg_cron, every two minutes while there is work): once `games.status`
+is a result, it adds the moves played after the save and the result.
+Trello #1387.
+
+- **One place, every app.** Every app reads the row from the server, so old
+  builds show the finished game too. Do not add client-side finishing in any
+  of the three repos.
+- **The reader's work is kept.** Moves, variations and marks stay; the rest
+  of the game is added after them. A saved line that left the game becomes a
+  variation beside the real move. A row with notes in `variation_comments` or
+  `move_nags` (keyed by move position) only ever gains moves on the end.
+- **Moves match by FEN, never by `u` or `t`.** Moves the board's navigator
+  wrote store `t` as the side to move next and castling as `e1g1`; parsed PGN
+  stores the mover and `e1h1`. Both sit in one line in real rows.
+- **Undo.** Each changed row's previous `chess_game` is in
+  `user_saved_analysis_live_finishes`. A row a client writes back with
+  `Result "*"` is finished again on the next run.
+- Rows link by `source_game_id`, or by `chess_game.id` (desktop board saves
+  leave `source_game_id` empty). `games.status` writes draws as `1/2-1/2` and
+  `½-½`.
+- The merge is `supabase/functions/finish-live-saved-games/finish.ts`, a port
+  of `ChessGame.fromPgn` on chessops. Its tests:
+  `deno test --allow-read --allow-env --allow-net=registry.npmjs.org supabase/functions/finish-live-saved-games/finish_test.ts`.
 
 ## My Space: removal preserves the source
 

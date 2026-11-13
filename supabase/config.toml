@@ -62,5 +62,12 @@ verify_jwt = false
 [functions.prep-games-check]
 verify_jwt = false
 
+# Started every two minutes by pg_cron (kick_finish_live_saved_games) with the
+# dispatcher's x-stream-token, never a user JWT. Gateway verification would
+# 401 every run and games liked while live would stay frozen at the like.
+# NEVER set this to true.
+[functions.finish-live-saved-games]
+verify_jwt = false
+
 # partner-news-sync is owned/deployed by chessever-web-frontend beside create-news.
 # Its existing live deployment and cron remain; do not deploy a mobile copy.
