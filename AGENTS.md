@@ -275,6 +275,29 @@ delay was not the cause.
   rewrite `tours.info.tc` into a form the parser declines, e.g.
   `Rounds 1-11: … | Playoff: 15+10 …`, since a `|` or `Round N-M` is rejected.
 
+## Combined categories: three copies, one rule
+
+Combined (every category of an event in one Games list) lives in three repos:
+here (`lib/screens/tour_detail/combined/combined_round_sections.dart`), in
+`chessever_frontend_desktop` (`lib/desktop/combined/combined_round_sections.dart`,
+which is also app.chessever.com) and in `chessever_web_frontend`
+(`src/broadcast/lib/combined-event.ts`). Change one, change all three, each
+with its tests.
+
+- **Combined never invents a round order.** Each category's rounds go through
+  that platform's own single-category order (here
+  `selectGamesTourDisplayRounds`): the next round on top once the latest one
+  is fully played, played rounds latest first, the other future rounds below.
+- **One round card** is the same round name on the same UTC day across
+  categories (`combinedRoundKey`), strongest category first inside it.
+- **Blocks never interleave.** Categories that share no round are separate
+  blocks: in play first, then finished, then not started.
+- **No dialog asks to combine** on entering an event. It was removed twice
+  (38.6.15, 38.10.1); do not bring it back.
+- Check any change against real data: Total Chess World Championship Tour
+  Pilot 2026 has Groups A-D, a Blitz Tiebreak that reuses "Round 1-9" the day
+  before, and an organizer "Combined" mirror section.
+
 ## Commits and delivery
 
 - Commit completed changes on `stable` after validation, including the required
