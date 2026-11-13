@@ -6,8 +6,6 @@ import 'package:chessever2/screens/tour_detail/provider/tour_category_ordering.d
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_mode_provider.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_repo_provider.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_screen_provider.dart';
-import 'package:chessever2/services/rewarded_premium/rewarded_access_provider.dart';
-import 'package:chessever2/services/rewarded_premium/rewarded_ads.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -20,13 +18,10 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 /// category's own games provider, so nothing is fetched twice. An organizer's
 /// own Combined section is never merged in, so no board is listed twice.
 ///
-/// Premium only. The choice is remembered per event.
+/// Available to everyone. The choice is remembered per event.
 
 /// Label shown for the synthetic category in the picker and on the chip.
 const String kCombinedCategoryLabel = 'Combined';
-
-/// Analytics/paywall identifier for the feature.
-const String kCombinedCategoryFeatureId = 'combined_category';
 
 final RegExp _combinedLabel = RegExp(r'(^|[^a-z0-9])combined([^a-z0-9]|$)');
 
@@ -316,23 +311,12 @@ final combinedCategoriesProvider = Provider<CombinedCategories>((ref) {
   return CombinedCategories.fromTours(tours, groupName: groupName);
 });
 
-/// Whether the viewer may use Combined. Debug builds without rewarded ads
-/// pass, matching `requirePremiumGuard`, so the feature is reachable while
-/// developing.
-final combinedCategoryEntitledProvider = Provider<bool>(
-  (ref) =>
-      (kDebugMode && !RewardedAdsConfig.available) ||
-      ref.watch(premiumAccessProvider),
-);
-
-/// True while the open event is shown in Combined: the user chose it, the
-/// event still has categories to merge, and Premium is active. A lapsed
-/// subscription quietly falls back to the real category underneath.
+/// True while the viewer chose Combined and the event still has categories
+/// to merge.
 final combinedCategorySelectedProvider = Provider<bool>((ref) {
   final groupId = ref.watch(combinedCategoryGroupIdProvider);
   if (groupId == null) return false;
   if (!ref.watch(combinedCategoriesProvider).canCombine) return false;
-  if (!ref.watch(combinedCategoryEntitledProvider)) return false;
   return ref.watch(
     combinedCategoryPrefsProvider.select((prefs) => prefs.isSelected(groupId)),
   );

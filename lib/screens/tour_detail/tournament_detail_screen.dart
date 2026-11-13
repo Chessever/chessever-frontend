@@ -122,7 +122,6 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
     final answer = await showCombineCategoriesPrompt(
       context,
       categories: categories,
-      isPremium: ref.read(combinedCategoryEntitledProvider),
     );
     // Any answer, a dismissal included, settles the question for this event.
     await prefs.markAnswered(groupId);
@@ -133,7 +132,6 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
         await openCombinedCategory(
           context,
           groupId: groupId,
-          returnTo: 'tournament_detail/games',
         );
       case CombinePromptAnswer.neverAsk:
         await prefs.setNeverAsk();

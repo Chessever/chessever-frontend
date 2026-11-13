@@ -87,8 +87,7 @@ class TournamentMenuButton extends ConsumerWidget {
     void open() => unawaited(
       CardContextMenu.open(
         context,
-        // The button's own context outlives the menu: Combined needs it for
-        // the Premium gate that may follow the tap.
+        // The button's own context outlives the menu for Combined selection.
         actions:
             (menuContext) =>
                 _menuActions(menuContext, ref, hostContext: context),
@@ -165,7 +164,6 @@ class TournamentMenuButton extends ConsumerWidget {
               openCombinedCategory(
                 hostContext,
                 groupId: groupId,
-                returnTo: 'tournament_detail/games',
               ),
             );
           }

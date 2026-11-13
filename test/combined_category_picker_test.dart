@@ -10,6 +10,7 @@ import 'package:chessever2/screens/tour_detail/games_tour/widgets/games_app_bar_
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_mode_provider.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_repo_provider.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_screen_provider.dart';
+import 'package:chessever2/services/rewarded_premium/rewarded_access_provider.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:flutter/material.dart';
@@ -69,7 +70,7 @@ Future<ProviderContainer> _pumpPicker(
       selectedTourModeProvider.overrideWith((ref) => mode),
       tourSelectionStoreProvider.overrideWithValue(_MemoryStore()),
       gamesAppBarTourIdProvider.overrideWith((ref) => null),
-      combinedCategoryEntitledProvider.overrideWithValue(entitled),
+      premiumAccessProvider.overrideWithValue(entitled),
       tourDetailScreenProviderOverride(
         TourDetailViewModel(
           aboutTourModel: AboutTourModel.fromTour(tours.first),
@@ -189,7 +190,7 @@ void main() {
     expect(_combinedRow(2), findsOneWidget);
     final combinedTop = tester.getTopLeft(_combinedRow(2)).dy;
     expect(combinedTop, lessThan(tester.getTopLeft(find.text('Group B')).dy));
-    // Premium is active: no lock on the row.
+    // Combined never shows a Premium lock.
     expect(find.byIcon(Icons.lock_outline_rounded), findsNothing);
 
     await tester.tap(_combinedRow(2));
@@ -228,7 +229,7 @@ void main() {
     await _drain(tester);
   });
 
-  testWidgets('without Premium the row is locked and Combined stays off', (
+  testWidgets('without Premium Combined opens without a lock', (
     tester,
   ) async {
     final container = await _pumpPicker(
@@ -239,13 +240,13 @@ void main() {
     await _openPicker(tester);
 
     expect(_combinedRow(2), findsOneWidget);
-    expect(find.byIcon(Icons.lock_outline_rounded), findsOneWidget);
+    expect(find.byIcon(Icons.lock_outline_rounded), findsNothing);
 
     await tester.tap(_combinedRow(2));
     await _settlePicker(tester);
 
-    expect(container.read(combinedCategorySelectedProvider), isFalse);
-    expect(find.text('Group A'), findsWidgets);
+    expect(container.read(combinedCategorySelectedProvider), isTrue);
+    expect(find.text(kCombinedCategoryLabel), findsOneWidget);
     await _drain(tester);
   });
 
