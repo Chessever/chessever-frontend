@@ -1,3 +1,4 @@
+import 'combined_group_expansion.dart';
 import 'combined_hall_provider.dart';
 import 'package:chessever2/screens/tour_detail/combined/combined_category.dart';
 import 'package:chessever2/screens/tour_detail/combined/combined_round_buckets.dart';
@@ -205,6 +206,7 @@ final combinedGamesPresentationProvider =
           sourceSectionsByRound: {
             for (final bucket in buckets) bucket.round.id: bucket.sources,
           },
+          sourceExpansionState: ref.watch(combinedGroupExpansionProvider),
           mode: ref.watch(gamesListViewModeProvider),
           matchExpansionState: const <String, bool>{},
           // A search shows every hit, whatever was folded before it.

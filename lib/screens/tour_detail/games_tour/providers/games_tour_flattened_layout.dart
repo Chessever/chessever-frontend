@@ -85,7 +85,10 @@ final class GamesTourSourceHeaderEntry extends GamesTourLayoutEntry {
   const GamesTourSourceHeaderEntry({
     required String roundId,
     required this.label,
+    this.isExpanded = true,
   }) : super(roundId: roundId);
+
+  final bool isExpanded;
 
   final String label;
 }
@@ -141,6 +144,7 @@ GamesTourFlattenedLayout buildGamesTourFlattenedLayout({
   required GameDisplayMode displayMode,
   bool isSearchMode = false,
   Map<String, List<GamesTourSourceSection>> sourceSectionsByRound = const {},
+  Map<String, bool> sourceExpansionState = const {},
   MatchHeaderModel? matchFormatHeader,
   Map<String, DateTime?> roundStartTimesById = const <String, DateTime?>{},
   Map<String, List<TournamentPlayer>> sourceStandingsByTourId = const {},
@@ -219,19 +223,24 @@ GamesTourFlattenedLayout buildGamesTourFlattenedLayout({
             GamesTourSourceHeaderEntry(
               roundId: source.roundId,
               label: source.label,
+              isExpanded:
+                  isSearchMode ||
+                  (sourceExpansionState[source.roundId] ?? true),
             ),
           );
-          _appendGameRows(
-            entries: entries,
-            gameItemIndices: gameItemIndices,
-            roundId: source.roundId,
-            games: source.games,
-            globalIndices: List.generate(
-              source.games.length,
-              (index) => roundStartIndex + offset + index,
-            ),
-            isGrid: isGrid,
-          );
+          if (isSearchMode || (sourceExpansionState[source.roundId] ?? true)) {
+            _appendGameRows(
+              entries: entries,
+              gameItemIndices: gameItemIndices,
+              roundId: source.roundId,
+              games: source.games,
+              globalIndices: List.generate(
+                source.games.length,
+                (index) => roundStartIndex + offset + index,
+              ),
+              isGrid: isGrid,
+            );
+          }
           offset += source.games.length;
         }
       } else {

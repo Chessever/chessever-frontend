@@ -1,3 +1,4 @@
+import 'combined_group_expansion.dart';
 import 'combined_hall_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/round_expansion_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_flattened_layout.dart';
@@ -75,7 +76,9 @@ class _CombinedGamesScreenState extends ConsumerState<CombinedGamesScreen>
         continue;
       }
       final entry = presentation.layout.entryAt(position.index);
-      if (entry is! GamesTourRoundHeaderEntry && entry?.roundId != null) {
+      if (entry is! GamesTourRoundHeaderEntry &&
+          entry?.roundId != null &&
+          (entry is! GamesTourSourceHeaderEntry || entry.isExpanded)) {
         visible.add(entry!.roundId!);
       }
     }
@@ -151,6 +154,7 @@ class _CombinedGamesScreenState extends ConsumerState<CombinedGamesScreen>
     final presentation = ref.watch(combinedGamesPresentationProvider);
     final viewMode = ref.watch(gamesListViewModeProvider);
     final expansion = ref.watch(roundExpansionProvider);
+    final groupsExpanded = ref.watch(combinedGroupExpansionProvider);
     final headers = [
       for (final entry in presentation.layout.entries)
         if (entry is GamesTourRoundHeaderEntry) entry,
@@ -185,7 +189,8 @@ class _CombinedGamesScreenState extends ConsumerState<CombinedGamesScreen>
       hall.loader.demand([
         for (final entry in headers)
           if (effectiveExpansion[entry.round.id]!)
-            ...entry.round.sourceRoundIds,
+            for (final id in entry.round.sourceRoundIds)
+              if (presentation.isSearchMode || (groupsExpanded[id] ?? true)) id,
       ]);
       _watchVisibleRounds();
     });

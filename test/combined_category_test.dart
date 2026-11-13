@@ -772,11 +772,13 @@ void main() {
         GamesTourFlattenedLayout layout({
           bool folded = false,
           bool searching = false,
+          Map<String, bool> sourceExpansion = const {},
         }) => buildGamesTourFlattenedLayout(
           rounds: [for (final bucket in buckets) bucket.round],
           gamesByRound: {
             for (final bucket in buckets) bucket.round.id: bucket.games,
           },
+          sourceExpansionState: sourceExpansion,
           sourceSectionsByRound: {
             for (final bucket in buckets) bucket.round.id: bucket.sources,
           },
@@ -800,6 +802,42 @@ void main() {
         expect(
           expanded.entries.whereType<GamesTourSourceHeaderEntry>(),
           hasLength(4),
+        );
+        final foldedSource = buckets.first.sources.first.roundId;
+        final groupFolded = layout(sourceExpansion: {foldedSource: false});
+        expect(
+          groupFolded.entries.whereType<GamesTourSourceHeaderEntry>(),
+          hasLength(4),
+        );
+        expect(
+          groupFolded.entries
+              .whereType<GamesTourSourceHeaderEntry>()
+              .firstWhere((entry) => entry.roundId == foldedSource)
+              .isExpanded,
+          isFalse,
+        );
+        expect(
+          groupFolded.entries.whereType<GamesTourGameRowEntry>().where(
+            (entry) => entry.roundId == foldedSource,
+          ),
+          isEmpty,
+        );
+        expect(
+          groupFolded.entries.whereType<GamesTourGameRowEntry>().where(
+            (entry) => entry.roundId == buckets.first.sources.last.roundId,
+          ),
+          isNotEmpty,
+        );
+        expect(
+          groupFolded.orderedGames.map((game) => game.gameId),
+          expanded.orderedGames.map((game) => game.gameId),
+        );
+        expect(
+          layout(
+            searching: true,
+            sourceExpansion: {foldedSource: false},
+          ).entries.whereType<GamesTourGameRowEntry>(),
+          hasLength(8),
         );
         final rows = expanded.entries
             .whereType<GamesTourGameRowEntry>()
