@@ -7,6 +7,9 @@ import 'package:chessever2/screens/settings/widgets/notification_settings_body.d
 import 'package:chessever2/screens/feed/news/news_repository.dart';
 import 'package:chessever2/screens/feed/news/news_models.dart';
 import 'package:chessever2/screens/feed/news/news_reader_screen.dart';
+import 'package:chessever2/screens/for_you/discovery/news_screen.dart';
+import 'package:chessever2/screens/for_you/providers/for_you_tab_provider.dart';
+import 'package:chessever2/screens/home/widget/bottom_nav_bar.dart';
 import 'package:chessever2/services/deep_link_service.dart';
 import 'package:chessever2/services/favorite_player_news_destination.dart';
 import 'package:chessever2/services/rewarded_premium/rewarded_access_provider.dart';
@@ -43,19 +46,28 @@ class _Permission extends StateNotifier<AsyncValue<bool>>
   dynamic noSuchMethod(Invocation invocation) => null;
 }
 
-Widget _theme(Widget child, {GlobalKey<NavigatorState>? navigatorKey}) =>
-    MaterialApp(
-      navigatorKey: navigatorKey,
-      theme: AppTheme.darkTheme,
-      builder: (context, child) {
-        ResponsiveHelper.init(context);
-        return child!;
-      },
-      routes: {
-        '/home_screen': (_) => const Scaffold(body: Text('LOCAL FIXTURE Home')),
-      },
-      home: child,
-    );
+Widget _theme(
+  Widget child, {
+  GlobalKey<NavigatorState>? navigatorKey,
+}) => MaterialApp(
+  navigatorKey: navigatorKey,
+  theme: AppTheme.darkTheme,
+  builder: (context, child) {
+    ResponsiveHelper.init(context);
+    return child!;
+  },
+  routes: {
+    '/home_screen': (_) => Consumer(
+      builder: (_, ref, __) => Scaffold(
+        body: Text(
+          'LOCAL FIXTURE ${ref.watch(selectedBottomNavBarItemProvider).name}'
+          ' ${ref.watch(selectedForYouTabProvider).label}',
+        ),
+      ),
+    ),
+  },
+  home: child,
+);
 void main() {
   setUp(() {
     SharedPreferences.setMockInitialValues({});
@@ -211,6 +223,12 @@ void main() {
                 ),
               ),
               premiumAccessProvider.overrideWithValue(false),
+              newsCatalogFactoryProvider.overrideWithValue(
+                () => NewsCatalogRepository(
+                  fetchOwn: (_, __) async => [],
+                  fetchPartners: (_, __) async => [],
+                ),
+              ),
               newsArticleLoaderProvider.overrideWithValue((link) async {
                 loaded.add(link.id);
                 loadedPublishers.add(link.publisher);
@@ -237,6 +255,11 @@ void main() {
           ),
         );
         await tester.pumpAndSettle();
+        captured.read(selectedBottomNavBarItemProvider.notifier).state =
+            BottomNavBarItem.tournaments;
+        captured
+            .read(selectedForYouTabProvider.notifier)
+            .select(ForYouTab.today);
         DeepLinkService.instance.attachNotificationRouter(nav, captured);
         if (!cold) DeepLinkService.notifyAppReady();
         DeepLinkService.instance.ingestNotificationData({
@@ -255,6 +278,14 @@ void main() {
         expect(loadedPublishers, [publisher]);
         expect(find.byType(NewsReaderScreen), findsOneWidget);
         expect(find.text('LOCAL FIXTURE exact article 42'), findsOneWidget);
+        await tester.pageBack();
+        await tester.pumpAndSettle();
+        expect(find.byType(NewsScreen), findsOneWidget);
+        expect(find.byType(NewsReaderScreen), findsNothing);
+        await tester.pageBack();
+        await tester.pumpAndSettle();
+        expect(find.byType(NewsScreen), findsNothing);
+        expect(find.text('LOCAL FIXTURE forYou Discovery'), findsOneWidget);
         expect(tester.takeException(), isNull);
         await tester.pumpWidget(const SizedBox.shrink());
       },
