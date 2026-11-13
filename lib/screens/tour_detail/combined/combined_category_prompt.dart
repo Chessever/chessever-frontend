@@ -43,7 +43,6 @@ String combinedCategoryNames(List<String> labels) {
 Future<CombinePromptAnswer?> showCombineCategoriesPrompt(
   BuildContext context, {
   required CombinedCategories categories,
-  required bool isPremium,
 }) {
   return showAlertModal<CombinePromptAnswer>(
     context: context,
@@ -51,7 +50,6 @@ Future<CombinePromptAnswer?> showCombineCategoriesPrompt(
     verticalPadding: 24,
     child: _CombineCategoriesPrompt(
       categories: categories,
-      isPremium: isPremium,
     ),
   );
 }
@@ -59,11 +57,9 @@ Future<CombinePromptAnswer?> showCombineCategoriesPrompt(
 class _CombineCategoriesPrompt extends StatelessWidget {
   const _CombineCategoriesPrompt({
     required this.categories,
-    required this.isPremium,
   });
 
   final CombinedCategories categories;
-  final bool isPremium;
 
   void _answer(BuildContext context, CombinePromptAnswer answer) {
     HapticFeedbackService.buttonPress();
@@ -106,15 +102,6 @@ class _CombineCategoriesPrompt extends StatelessWidget {
               height: 1.4,
             ),
           ),
-          if (!isPremium) ...[
-            SizedBox(height: 8.sp),
-            Text(
-              'Included with ChessEver Premium.',
-              style: AppTypography.textXsMedium.copyWith(
-                color: context.colors.accentText,
-              ),
-            ),
-          ],
           SizedBox(height: 20.sp),
           Row(
             children: [

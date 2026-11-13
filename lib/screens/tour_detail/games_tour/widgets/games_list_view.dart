@@ -16,6 +16,8 @@ import 'package:chessever2/screens/tour_detail/games_tour/widgets/round_header_w
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/match_header_widget.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_screen_provider.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_screen_provider.dart';
+import 'package:chessever2/theme/app_colors.dart';
+import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/scroll_cache.dart';
 import 'package:chessever2/widgets/positioned_list_scrollbar.dart';
@@ -199,6 +201,21 @@ class GamesListView extends ConsumerWidget {
                         isExpanded: isRoundExpanded,
                         onToggle: onToggleRound,
                       ),
+                );
+              }
+
+              if (lookup is GamesTourSourceHeaderEntry) {
+                return Padding(
+                  padding: EdgeInsets.fromLTRB(4.sp, 0, 4.sp, 12.sp),
+                  child: Semantics(
+                    header: true,
+                    child: Text(
+                      lookup.label,
+                      style: AppTypography.textSmMedium.copyWith(
+                        color: context.colors.textPrimary,
+                      ),
+                    ),
+                  ),
                 );
               }
 

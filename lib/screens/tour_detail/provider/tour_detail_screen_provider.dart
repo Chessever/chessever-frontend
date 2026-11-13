@@ -7,6 +7,7 @@ import 'package:chessever2/repository/supabase/group_broadcast/group_broadcast.d
 import 'package:chessever2/repository/supabase/round/round_repository.dart';
 import 'package:chessever2/repository/supabase/tour/tour.dart';
 import 'package:chessever2/screens/gamebase/event_view/gamebase_virtual_event.dart';
+import 'package:chessever2/screens/tour_detail/combined/combined_source_policy.dart';
 import 'package:chessever2/screens/group_event/model/about_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_app_bar_view_model.dart';
 import 'package:chessever2/screens/group_event/model/tour_detail_view_model.dart';
@@ -468,7 +469,10 @@ class _TourDetailScreenNotifier
     // chronology (Playoffs landing under its group stage). The dropdown reads
     // this list top to bottom, so settle the display order here — it covers the
     // Supabase, SQLite-cache and virtual-gamebase paths alike.
-    return sortTourCategoriesForDisplay(tourModels, now: now);
+    return sortTourCategoriesForDisplay(
+      visibleEventCategories(tourModels),
+      now: now,
+    );
   }
 
   @override

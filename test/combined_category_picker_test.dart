@@ -10,6 +10,7 @@ import 'package:chessever2/screens/tour_detail/games_tour/widgets/games_app_bar_
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_mode_provider.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_repo_provider.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_screen_provider.dart';
+import 'package:chessever2/services/rewarded_premium/rewarded_access_provider.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:flutter/material.dart';
@@ -48,8 +49,7 @@ final _broadcast = GroupBroadcast.fromJson({
   'search': const <String>[],
 });
 
-/// The synthetic row reads "Combined   all N"; an organizer's own Combined
-/// section is a plain category row without the count.
+/// Only the generated Combined row is offered, with its source count.
 Finder _combinedRow(int count) =>
     find.textContaining('all $count', findRichText: true);
 
@@ -69,7 +69,7 @@ Future<ProviderContainer> _pumpPicker(
       selectedTourModeProvider.overrideWith((ref) => mode),
       tourSelectionStoreProvider.overrideWithValue(_MemoryStore()),
       gamesAppBarTourIdProvider.overrideWith((ref) => null),
-      combinedCategoryEntitledProvider.overrideWithValue(entitled),
+      premiumAccessProvider.overrideWithValue(entitled),
       tourDetailScreenProviderOverride(
         TourDetailViewModel(
           aboutTourModel: AboutTourModel.fromTour(tours.first),
@@ -189,7 +189,7 @@ void main() {
     expect(_combinedRow(2), findsOneWidget);
     final combinedTop = tester.getTopLeft(_combinedRow(2)).dy;
     expect(combinedTop, lessThan(tester.getTopLeft(find.text('Group B')).dy));
-    // Premium is active: no lock on the row.
+    // Combined never shows a Premium lock.
     expect(find.byIcon(Icons.lock_outline_rounded), findsNothing);
 
     await tester.tap(_combinedRow(2));
@@ -228,9 +228,7 @@ void main() {
     await _drain(tester);
   });
 
-  testWidgets('without Premium the row is locked and Combined stays off', (
-    tester,
-  ) async {
+  testWidgets('without Premium Combined opens without a lock', (tester) async {
     final container = await _pumpPicker(
       tester,
       tours: [_groupA, _groupB],
@@ -239,13 +237,13 @@ void main() {
     await _openPicker(tester);
 
     expect(_combinedRow(2), findsOneWidget);
-    expect(find.byIcon(Icons.lock_outline_rounded), findsOneWidget);
+    expect(find.byIcon(Icons.lock_outline_rounded), findsNothing);
 
     await tester.tap(_combinedRow(2));
     await _settlePicker(tester);
 
-    expect(container.read(combinedCategorySelectedProvider), isFalse);
-    expect(find.text('Group A'), findsWidgets);
+    expect(container.read(combinedCategorySelectedProvider), isTrue);
+    expect(find.text(kCombinedCategoryLabel), findsOneWidget);
     await _drain(tester);
   });
 
@@ -253,13 +251,14 @@ void main() {
     tester,
   ) async {
     // One real group beside its mirror: nothing to combine, so the picker
-    // lists the two real rows and no synthetic one.
+    // hides the mirror and offers no synthetic one.
     final container = await _pumpPicker(tester, tours: [_groupA, _mirror]);
     await _openPicker(tester);
 
     expect(container.read(combinedCategoriesProvider).canCombine, isFalse);
     expect(_combinedRow(1), findsNothing);
     expect(_combinedRow(2), findsNothing);
+    expect(find.text('Combined'), findsNothing);
     await _closePicker(tester);
     await _drain(tester);
   });
@@ -275,6 +274,7 @@ void main() {
 
     // "all 2", not 3: the mirror would list every board twice.
     expect(_combinedRow(2), findsOneWidget);
+    expect(find.text('Combined'), findsNothing);
     expect(container.read(combinedCategoriesProvider).tourIds, [
       _groupA.id,
       _groupB.id,

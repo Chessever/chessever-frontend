@@ -2,14 +2,15 @@ import 'dart:async';
 
 import 'package:chessever2/repository/supabase/tour/tour.dart';
 import 'package:chessever2/screens/gamebase/event_view/gamebase_virtual_event_id.dart';
+import 'package:chessever2/screens/tour_detail/combined/combined_source_policy.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_category_ordering.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_mode_provider.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_repo_provider.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_screen_provider.dart';
-import 'package:chessever2/services/rewarded_premium/rewarded_access_provider.dart';
-import 'package:chessever2/services/rewarded_premium/rewarded_ads.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+
+export 'package:chessever2/screens/tour_detail/combined/combined_source_policy.dart';
 
 /// The synthetic "Combined" category of the tournament-detail picker.
 ///
@@ -20,21 +21,10 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 /// category's own games provider, so nothing is fetched twice. An organizer's
 /// own Combined section is never merged in, so no board is listed twice.
 ///
-/// Premium only. The choice is remembered per event.
+/// Available to everyone. The choice is remembered per event.
 
 /// Label shown for the synthetic category in the picker and on the chip.
 const String kCombinedCategoryLabel = 'Combined';
-
-/// Analytics/paywall identifier for the feature.
-const String kCombinedCategoryFeatureId = 'combined_category';
-
-final RegExp _combinedLabel = RegExp(r'(^|[^a-z0-9])combined([^a-z0-9]|$)');
-
-/// Whether a tour is an organizer-published "Combined" section, which repeats
-/// the boards of the real sections beside it (Total Chess "Group Stage
-/// Combined"). Same rule as the server's `tour_label_is_combined`.
-bool isCombinedSectionLabel({String? name, String? slug}) =>
-    _combinedLabel.hasMatch('${name ?? ''} ${slug ?? ''}'.toLowerCase());
 
 /// One real category merged into Combined.
 @immutable
@@ -45,12 +35,16 @@ class CombinedCategory {
     required this.avgElo,
     required this.order,
     this.startsAt,
+    this.sourceName,
   });
 
   final String tourId;
 
   /// The category as the picker names it ("Group A").
   final String label;
+
+  /// Full source title, retained for web-compatible knockout stage ranking.
+  final String? sourceName;
   final int? avgElo;
 
   /// Position in the picker, used as the last ordering tie-break.
@@ -66,12 +60,13 @@ class CombinedCategory {
       other is CombinedCategory &&
           other.tourId == tourId &&
           other.label == label &&
+          other.sourceName == sourceName &&
           other.avgElo == avgElo &&
           other.order == order &&
           other.startsAt == startsAt;
 
   @override
-  int get hashCode => Object.hash(tourId, label, avgElo, order, startsAt);
+  int get hashCode => Object.hash(tourId, label, sourceName, avgElo, order, startsAt);
 }
 
 /// The categories Combined merges for one event. Value-equal, so a metadata
@@ -86,29 +81,24 @@ class CombinedCategories {
   ///
   /// An organizer's own Combined section is left out: it mirrors the others,
   /// so merging it would list every board twice. It is recognised by the
-  /// database's mirror flag or by its name. With no real section beside it, a
-  /// tour that merely has "combined" in its name is an ordinary category and
-  /// stays. A mirror nobody flagged or named is still caught later, from its
-  /// boards (see `findMirrorTourIds`).
+  /// database's mirror flag or by its name. A mirror nobody flagged or named
+  /// is still caught later, from its boards (see `findMirrorTourIds`).
   factory CombinedCategories.fromTours(
     List<TourModel> tours, {
     String? groupName,
   }) {
     final real = [
       for (final model in tours)
-        if (!model.tour.isMirror &&
-            !isCombinedSectionLabel(
-              name: model.tour.name,
-              slug: model.tour.slug,
-            ))
-          model,
+        if (isCombinedSourceTour(model.tour)) model,
     ];
-    final source = real.isEmpty ? tours : real;
+    final seen = <String>{};
+    final source = real.where((model) => seen.add(model.tour.id)).toList();
     return CombinedCategories(
       List<CombinedCategory>.unmodifiable([
         for (var i = 0; i < source.length; i++)
           CombinedCategory(
             tourId: source[i].tour.id,
+            sourceName: source[i].tour.name,
             label: tourCategoryLabel(source[i].tour.name, groupName: groupName),
             avgElo: source[i].tour.avgElo,
             order: i,
@@ -316,23 +306,12 @@ final combinedCategoriesProvider = Provider<CombinedCategories>((ref) {
   return CombinedCategories.fromTours(tours, groupName: groupName);
 });
 
-/// Whether the viewer may use Combined. Debug builds without rewarded ads
-/// pass, matching `requirePremiumGuard`, so the feature is reachable while
-/// developing.
-final combinedCategoryEntitledProvider = Provider<bool>(
-  (ref) =>
-      (kDebugMode && !RewardedAdsConfig.available) ||
-      ref.watch(premiumAccessProvider),
-);
-
-/// True while the open event is shown in Combined: the user chose it, the
-/// event still has categories to merge, and Premium is active. A lapsed
-/// subscription quietly falls back to the real category underneath.
+/// True while the viewer chose Combined and the event still has categories
+/// to merge.
 final combinedCategorySelectedProvider = Provider<bool>((ref) {
   final groupId = ref.watch(combinedCategoryGroupIdProvider);
   if (groupId == null) return false;
   if (!ref.watch(combinedCategoriesProvider).canCombine) return false;
-  if (!ref.watch(combinedCategoryEntitledProvider)) return false;
   return ref.watch(
     combinedCategoryPrefsProvider.select((prefs) => prefs.isSelected(groupId)),
   );

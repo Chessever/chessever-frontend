@@ -80,6 +80,27 @@ final class GamesTourRoundHeaderEntry extends GamesTourLayoutEntry {
   final List<GamesTourModel> roundGames;
 }
 
+/// One real source block inside a generated Combined round.
+final class GamesTourSourceHeaderEntry extends GamesTourLayoutEntry {
+  const GamesTourSourceHeaderEntry({
+    required String roundId,
+    required this.label,
+  }) : super(roundId: roundId);
+
+  final String label;
+}
+
+class GamesTourSourceSection {
+  const GamesTourSourceSection({
+    required this.roundId,
+    required this.label,
+    required this.games,
+  });
+  final String roundId;
+  final String label;
+  final List<GamesTourModel> games;
+}
+
 final class GamesTourMatchHeaderEntry extends GamesTourLayoutEntry {
   const GamesTourMatchHeaderEntry({
     required String roundId,
@@ -119,6 +140,7 @@ GamesTourFlattenedLayout buildGamesTourFlattenedLayout({
   required bool isKnockoutTournament,
   required GameDisplayMode displayMode,
   bool isSearchMode = false,
+  Map<String, List<GamesTourSourceSection>> sourceSectionsByRound = const {},
   MatchHeaderModel? matchFormatHeader,
   Map<String, DateTime?> roundStartTimesById = const <String, DateTime?>{},
   Map<String, List<TournamentPlayer>> sourceStandingsByTourId = const {},
@@ -176,23 +198,54 @@ GamesTourFlattenedLayout buildGamesTourFlattenedLayout({
       GamesTourRoundHeaderEntry(round: round, roundGames: roundGames),
     );
 
+    final sources = sourceSectionsByRound[round.id];
+    if (sources != null) {
+      for (final source in sources) {
+        roundHeaderIndices[source.roundId] = roundHeaderIndices[round.id]!;
+      }
+    }
+
     final isRoundExpanded =
         isSearchMode ? true : (roundExpansionState[round.id] ?? true);
     if (!isRoundExpanded) continue;
 
     if (!isKnockoutRound) {
-      _appendGameRows(
-        entries: entries,
-        gameItemIndices: gameItemIndices,
-        roundId: round.id,
-        games: roundGames,
-        globalIndices: List<int>.generate(
-          roundGames.length,
-          (index) => roundStartIndex + index,
-          growable: false,
-        ),
-        isGrid: isGrid,
-      );
+      if (sources != null) {
+        var offset = 0;
+        for (final source in sources) {
+          entries.add(
+            GamesTourSourceHeaderEntry(
+              roundId: source.roundId,
+              label: source.label,
+            ),
+          );
+          _appendGameRows(
+            entries: entries,
+            gameItemIndices: gameItemIndices,
+            roundId: source.roundId,
+            games: source.games,
+            globalIndices: List.generate(
+              source.games.length,
+              (index) => roundStartIndex + offset + index,
+            ),
+            isGrid: isGrid,
+          );
+          offset += source.games.length;
+        }
+      } else {
+        _appendGameRows(
+          entries: entries,
+          gameItemIndices: gameItemIndices,
+          roundId: round.id,
+          games: roundGames,
+          globalIndices: List<int>.generate(
+            roundGames.length,
+            (index) => roundStartIndex + index,
+            growable: false,
+          ),
+          isGrid: isGrid,
+        );
+      }
       continue;
     }
 
