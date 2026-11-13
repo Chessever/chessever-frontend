@@ -222,8 +222,16 @@ class GamesListView extends ConsumerWidget {
                           : () => ref
                                 .read(combinedGroupExpansionProvider.notifier)
                                 .toggle(lookup.roundId!),
-                      child: ConstrainedBox(
+                      child: Container(
                         constraints: const BoxConstraints(minHeight: 44),
+                        decoration: BoxDecoration(
+                          border: Border(
+                            bottom: BorderSide(
+                              color: context.colors.divider,
+                              width: 0.5,
+                            ),
+                          ),
+                        ),
                         child: Padding(
                           padding: EdgeInsets.symmetric(
                             horizontal: 4.sp,
