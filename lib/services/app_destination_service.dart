@@ -148,6 +148,7 @@ Future<bool> openAppDestination(
       case AppDestinationKind.feed:
         push(const FeedScreen());
       case AppDestinationKind.news:
+        _openHome(context, ref, parseAppDestination('/app/home/discovery')!);
         // Give externally opened articles the same Back destination as a
         // reader opened from the news catalog.
         if (destination.id != null) {

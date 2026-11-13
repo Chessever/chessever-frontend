@@ -404,7 +404,7 @@ void main() {
             page.link.publisher.sourceId,
             source == 'chessever' ? null : source,
           );
-          expect(pushedRoutes, coldStart ? ['/home_screen'] : isEmpty);
+          expect(pushedRoutes, ['/home_screen']);
         },
       );
     }
