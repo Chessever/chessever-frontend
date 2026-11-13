@@ -49,8 +49,7 @@ final _broadcast = GroupBroadcast.fromJson({
   'search': const <String>[],
 });
 
-/// The synthetic row reads "Combined   all N"; an organizer's own Combined
-/// section is a plain category row without the count.
+/// Only the generated Combined row is offered, with its source count.
 Finder _combinedRow(int count) =>
     find.textContaining('all $count', findRichText: true);
 
@@ -229,9 +228,7 @@ void main() {
     await _drain(tester);
   });
 
-  testWidgets('without Premium Combined opens without a lock', (
-    tester,
-  ) async {
+  testWidgets('without Premium Combined opens without a lock', (tester) async {
     final container = await _pumpPicker(
       tester,
       tours: [_groupA, _groupB],
@@ -254,13 +251,14 @@ void main() {
     tester,
   ) async {
     // One real group beside its mirror: nothing to combine, so the picker
-    // lists the two real rows and no synthetic one.
+    // hides the mirror and offers no synthetic one.
     final container = await _pumpPicker(tester, tours: [_groupA, _mirror]);
     await _openPicker(tester);
 
     expect(container.read(combinedCategoriesProvider).canCombine, isFalse);
     expect(_combinedRow(1), findsNothing);
     expect(_combinedRow(2), findsNothing);
+    expect(find.text('Combined'), findsNothing);
     await _closePicker(tester);
     await _drain(tester);
   });
@@ -276,6 +274,7 @@ void main() {
 
     // "all 2", not 3: the mirror would list every board twice.
     expect(_combinedRow(2), findsOneWidget);
+    expect(find.text('Combined'), findsNothing);
     expect(container.read(combinedCategoriesProvider).tourIds, [
       _groupA.id,
       _groupB.id,

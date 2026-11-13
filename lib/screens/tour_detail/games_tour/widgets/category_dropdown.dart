@@ -138,10 +138,12 @@ class CategoryDropdown extends ConsumerWidget {
             return const SizedBox.shrink();
           }
 
+          final categories = visibleEventCategories(tourData.tours);
+
           // Find selected tour/category
-          final selectedTour = tourData.tours.firstWhere(
+          final selectedTour = categories.firstWhere(
             (t) => t.tour.id == tourData.aboutTourModel.id,
-            orElse: () => tourData.tours.first,
+            orElse: () => categories.first,
           );
 
           // Get rounds data
@@ -155,7 +157,7 @@ class CategoryDropdown extends ConsumerWidget {
               : null;
 
           return _CategoryDropdownContent(
-            categories: tourData.tours,
+            categories: categories,
             selectedCategory: selectedTour,
             rounds: rounds,
             selectedRound: selectedRound,

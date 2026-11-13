@@ -13,8 +13,6 @@ class CombinedRoundSection {
     required this.games,
     required this.startsAt,
     required this.hasStarted,
-    required this.isFullyPlayed,
-    required this.roundOrder,
   });
 
   final CombinedCategory category;
@@ -27,33 +25,17 @@ class CombinedRoundSection {
   /// Pinned boards first, then board order.
   final List<GamesTourModel> games;
 
-  /// When the round was played: its scheduled start, or the latest activity
-  /// of its boards when the schedule is missing.
+  /// Scheduled start, falling back to creation time like web, then board
+  /// activity for rounds not yet returned by the schedule.
   final DateTime? startsAt;
 
   /// Whether play is under way or over, as opposed to published pairings.
   final bool hasStarted;
-  final bool isFullyPlayed;
-
-  /// Position of the round inside its own category, oldest first.
-  final int roundOrder;
 }
 
-/// Lays every category's rounds out as one list.
-///
-/// Product order (Trello "Combined"), the first rule outranking the second:
-///
-/// 1. The strongest category is on top (highest average rating), then the
-///    others. A weaker category never reads above a stronger one. Equally
-///    rated categories: the one that starts later first, then picker order.
-/// 2. Inside a category, whatever started latest is on top. Rounds not
-///    started yet close the category, soonest first; while none of its boards
-///    is being played, its next round leads instead, because those pairings
-///    are the next thing to watch there.
-///
-/// No board is listed twice: a category whose boards are copies of the other
-/// categories' boards (an organizer's own combined section that nobody
-/// flagged) is left out, see [findMirrorTourIds].
+/// Orders real source rounds like the web Combined view: rounds already in
+/// play before future pairings, newest start first, then knockout stage and
+/// source rating. Source identities stay intact for headers and navigation.
 List<CombinedRoundSection> buildCombinedRoundSections({
   required List<CombinedCategory> categories,
   required Map<String, List<GamesTourModel>> gamesByTourId,
@@ -78,9 +60,6 @@ List<CombinedRoundSection> buildCombinedRoundSections({
     if (games == null || games.isEmpty) continue;
 
     final rounds = roundsByTourId[category.tourId] ?? const <Round>[];
-    final roundOrderById = <String, int>{
-      for (var i = 0; i < rounds.length; i++) rounds[i].id: i,
-    };
     final roundsById = <String, Round>{
       for (final round in rounds) round.id: round,
     };
@@ -90,8 +69,6 @@ List<CombinedRoundSection> buildCombinedRoundSections({
       (gamesByRoundId[game.roundId] ??= <GamesTourModel>[]).add(game);
     }
 
-    final started = <CombinedRoundSection>[];
-    final upcoming = <CombinedRoundSection>[];
     for (final entry in gamesByRoundId.entries) {
       final roundGames = _orderBoards(entry.value, pinnedGameIds);
       final known = roundsById[entry.key];
@@ -109,42 +86,24 @@ List<CombinedRoundSection> buildCombinedRoundSections({
         (game) => game.hasStarted || game.effectiveGameStatus.isFinished,
       );
       final scheduled = model.startsAt;
+      final startsAt =
+          scheduled ?? known?.createdAt ?? _latestActivity(roundGames);
       final hasStarted =
           hasActivity ||
           liveRoundIds.contains(entry.key) ||
-          (scheduled != null && !scheduled.isAfter(effectiveNow));
+          (startsAt != null && !startsAt.isAfter(effectiveNow));
 
       final section = CombinedRoundSection(
         category: category,
         round: model,
         games: roundGames,
-        startsAt: scheduled ?? _latestActivity(roundGames),
+        startsAt: startsAt,
         hasStarted: hasStarted,
-        isFullyPlayed: roundGames.every(
-          (game) => game.effectiveGameStatus.isFinished,
-        ),
-        // An unknown round is newer than the ones the schedule already has.
-        roundOrder: roundOrderById[entry.key] ?? rounds.length,
       );
-      (hasStarted ? started : upcoming).add(section);
-    }
-
-    started.sort(_compareStarted);
-    upcoming.sort(_compareUpcoming);
-
-    final isBeingPlayed = started.any((section) => !section.isFullyPlayed);
-    if (isBeingPlayed || upcoming.isEmpty) {
-      sections
-        ..addAll(started)
-        ..addAll(upcoming);
-    } else {
-      // Between rounds: this category's next round leads it.
-      sections
-        ..add(upcoming.first)
-        ..addAll(started)
-        ..addAll(upcoming.skip(1));
+      sections.add(section);
     }
   }
+  sections.sort(_compareSections);
   return sections;
 }
 
@@ -267,19 +226,42 @@ class _Board {
 /// the same; only case and stray spaces are evened out.
 String _playerKey(String name) => name.trim().toLowerCase();
 
-/// Rounds of one category: the one that started latest first.
-int _compareStarted(CombinedRoundSection a, CombinedRoundSection b) {
+/// Same precedence as web `combinedRounds`; future pairings never cover play.
+int _compareSections(CombinedRoundSection a, CombinedRoundSection b) {
+  final byFuture = (a.hasStarted ? 0 : 1).compareTo(b.hasStarted ? 0 : 1);
+  if (byFuture != 0) return byFuture;
   final byStart = _compareDates(a.startsAt, b.startsAt, latestFirst: true);
   if (byStart != 0) return byStart;
-  // Same start: the later round is the newer one.
-  return b.roundOrder.compareTo(a.roundOrder);
+  final byStage = _stageRank(a).compareTo(_stageRank(b));
+  if (byStage != 0) return byStage;
+  final byRating = (b.category.avgElo ?? -1).compareTo(a.category.avgElo ?? -1);
+  if (byRating != 0) return byRating;
+  final byTour = a.category.tourId.compareTo(b.category.tourId);
+  return byTour != 0 ? byTour : a.round.id.compareTo(b.round.id);
 }
 
-/// Rounds of one category still to come: the soonest first.
-int _compareUpcoming(CombinedRoundSection a, CombinedRoundSection b) {
-  final byStart = _compareDates(a.startsAt, b.startsAt, latestFirst: false);
-  if (byStart != 0) return byStart;
-  return a.roundOrder.compareTo(b.roundOrder);
+int _stageRank(CombinedRoundSection section) =>
+    _namedStageRank(section.round.name) ??
+    _namedStageRank(section.category.sourceName ?? section.category.label) ??
+    0x7fffffff;
+
+// Match the web stage precedence; generic "Round 2" is not a knockout stage.
+int? _namedStageRank(String name) {
+  bool matches(String pattern) =>
+      RegExp(pattern, caseSensitive: false).hasMatch(name);
+  if (matches(r'\bgrand[\s-]*finals?\b')) return 1;
+  if (matches(r'\b(?:3rd|third)[\s-]*place\b|\bbronze\b')) return 3;
+  if (matches(r'\bsemi[\s-]*finals?\b')) return 4;
+  if (matches(r'\bquarter[\s-]*finals?\b')) return 8;
+  final field = RegExp(
+    r'\b(?:round of|last)\s+(\d+)\b|\bro(\d+)\b',
+    caseSensitive: false,
+  ).firstMatch(name);
+  if (field != null) {
+    final size = int.tryParse(field.group(1) ?? field.group(2)!);
+    return size != null && size > 0 ? size : null;
+  }
+  return matches(r'\bfinals?\b') ? 2 : null;
 }
 
 /// Undated rounds sink below dated ones in either direction.

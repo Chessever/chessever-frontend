@@ -2,6 +2,7 @@ import 'package:chessever2/repository/supabase/game/games.dart';
 import 'package:chessever2/repository/supabase/round/round.dart';
 import 'package:chessever2/repository/supabase/round/round_repository.dart';
 import 'package:chessever2/screens/tour_detail/combined/combined_category.dart';
+import 'package:chessever2/screens/tour_detail/combined/combined_round_buckets.dart';
 import 'package:chessever2/screens/tour_detail/combined/combined_round_sections.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_app_bar_view_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
@@ -279,16 +280,9 @@ class CombinedGamesPresentation {
   String get searchQuery => source.searchQuery;
   bool get isSearchMode => source.searchQuery.isNotEmpty;
 
-  /// The category a round belongs to, as the picker names it.
-  String? categoryLabelFor(String roundId) => _categoryLabels[roundId];
-
-  late final Map<String, String> _categoryLabels = <String, String>{
-    for (final section in source.sections)
-      section.round.id: section.category.label,
-  };
-
   List<String> get roundIds => [
-    for (final section in source.sections) section.round.id,
+    for (final entry in layout.entries)
+      if (entry is GamesTourRoundHeaderEntry) entry.round.id,
   ];
 }
 
@@ -303,7 +297,12 @@ final combinedGamesPresentationProvider =
         );
       }
 
+      final buckets = buildCombinedRoundBuckets(
+        source.sections,
+        eventId: ref.watch(combinedCategoryGroupIdProvider) ?? '',
+      );
       final gamesByRound = <String, List<GamesTourModel>>{
+        for (final bucket in buckets) bucket.round.id: bucket.games,
         for (final section in source.sections) section.round.id: section.games,
       };
       final isSearchMode = source.searchQuery.isNotEmpty;
@@ -312,9 +311,12 @@ final combinedGamesPresentationProvider =
         gamesByRound: gamesByRound,
         layout: buildGamesTourFlattenedLayout(
           rounds: <GamesAppBarModel>[
-            for (final section in source.sections) section.round,
+            for (final bucket in buckets) bucket.round,
           ],
           gamesByRound: gamesByRound,
+          sourceSectionsByRound: {
+            for (final bucket in buckets) bucket.round.id: bucket.sources,
+          },
           mode: ref.watch(gamesListViewModeProvider),
           matchExpansionState: const <String, bool>{},
           // A search shows every hit, whatever was folded before it.

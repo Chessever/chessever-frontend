@@ -112,13 +112,13 @@ void main() {
         .debugResolveForYouNavigation(orderedGames: [tapped], gameIndex: 0);
 
     expect([for (final game in games) game.gameId], [
-      // The stronger group first; inside it the latest round first.
+      // Newest round first, then stronger source group at that start.
       'group-b-r2-b1',
       'group-b-r2-b2',
-      'group-b-r1-b1',
-      'group-b-r1-b2',
       'group-a-r2-b1',
       'group-a-r2-b2',
+      'group-b-r1-b1',
+      'group-b-r1-b2',
       'group-a-r1-b1',
       'group-a-r1-b2',
     ]);
