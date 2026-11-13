@@ -124,6 +124,162 @@ class _MemoryStore implements TourSelectionStore {
 }
 
 void main() {
+  group('Combined schedule blocks match web', () {
+    ({
+      CombinedCategory category,
+      List<Round> rounds,
+      List<GamesTourModel> games,
+    })
+    source(String id, DateTime first, int count, int played, {int elo = 2700}) {
+      final rounds = [
+        for (var i = 0; i < count; i++)
+          _round(
+            '$id-${i + 1}',
+            id,
+            'Round ${i + 1}',
+            first.add(Duration(days: i)),
+          ),
+      ];
+      return (
+        category: _category(id, avgElo: elo, order: 0),
+        rounds: rounds,
+        games: [
+          for (var i = 0; i < count; i++)
+            _game(
+              '$id-game-${i + 1}',
+              tourId: id,
+              roundId: rounds[i].id,
+              status: i < played ? GameStatus.draw : GameStatus.ongoing,
+              lastMove: i < played ? 'e2e4' : null,
+            ),
+        ],
+      );
+    }
+
+    test('future rounds ascend numerically through Round 10', () {
+      final upcoming = source(
+        'upcoming',
+        _now.add(const Duration(days: 1)),
+        10,
+        0,
+      );
+      final sections = buildCombinedRoundSections(
+        categories: [upcoming.category],
+        gamesByTourId: {'upcoming': upcoming.games},
+        roundsByTourId: {'upcoming': upcoming.rounds},
+        liveRoundIds: const [],
+        now: _now,
+      );
+      expect(sections.map((section) => section.round.name), [
+        for (var n = 1; n <= 10; n++) 'Round $n',
+      ]);
+    });
+
+    test(
+      'parallel groups stay complete before older Blitz, without mutating sources',
+      () {
+        final first = _now.subtract(const Duration(days: 3, hours: 12));
+        final a = source('a', first, 10, 4);
+        final b = source('b', first, 10, 4, elo: 2600);
+        final blitz = source(
+          'blitz',
+          _now.subtract(const Duration(days: 10)),
+          5,
+          5,
+          elo: 2800,
+        );
+        final roundsByTourId = {
+          'a': a.rounds,
+          'b': b.rounds,
+          'blitz': blitz.rounds,
+        };
+        final gamesByTourId = {
+          'a': a.games,
+          'b': b.games,
+          'blitz': blitz.games,
+        };
+        final beforeRounds = {
+          for (final entry in roundsByTourId.entries)
+            entry.key: List<Round>.of(entry.value),
+        };
+        final beforeGames = {
+          for (final entry in gamesByTourId.entries)
+            entry.key: List<GamesTourModel>.of(entry.value),
+        };
+        for (final categories in [
+          [blitz.category, b.category, a.category],
+          [a.category, blitz.category, b.category],
+        ]) {
+          final sections = buildCombinedRoundSections(
+            categories: categories,
+            gamesByTourId: gamesByTourId,
+            roundsByTourId: roundsByTourId,
+            liveRoundIds: const [],
+            now: _now,
+          );
+          expect(sections.map((section) => section.round.id), [
+            for (final n in [4, 3, 2, 1, 5, 6, 7, 8, 9, 10]) ...[
+              'a-$n',
+              'b-$n',
+            ],
+            for (final n in [5, 4, 3, 2, 1]) 'blitz-$n',
+          ]);
+          final buckets = buildCombinedRoundBuckets(
+            sections,
+            eventId: 'festival',
+          );
+          expect(buckets.take(10).map((bucket) => bucket.round.name), [
+            for (final n in [4, 3, 2, 1, 5, 6, 7, 8, 9, 10]) 'Round $n',
+          ]);
+          expect(buckets.first.sources.map((section) => section.roundId), [
+            'a-4',
+            'b-4',
+          ]);
+          expect(roundsByTourId, beforeRounds);
+          expect(gamesByTourId, beforeGames);
+        }
+      },
+    );
+
+    test(
+      'whole schedules merge transitively even before all pairings arrive',
+      () {
+        final a = source('a', _now.subtract(const Duration(days: 6)), 9, 5);
+        final b = source('b', _now.add(const Duration(days: 1)), 4, 0);
+        final c = source('c', _now.add(const Duration(days: 3)), 1, 0);
+        final blitz = source(
+          'blitz',
+          _now.subtract(const Duration(days: 8)),
+          1,
+          1,
+        );
+        final sections = buildCombinedRoundSections(
+          categories: [c.category, blitz.category, a.category, b.category],
+          gamesByTourId: {
+            'a': [a.games[4]],
+            'b': [b.games.first],
+            'c': c.games,
+            'blitz': blitz.games,
+          },
+          roundsByTourId: {
+            'a': a.rounds,
+            'b': b.rounds,
+            'c': c.rounds,
+            'blitz': blitz.rounds,
+          },
+          liveRoundIds: const [],
+          now: _now,
+        );
+        expect(sections.map((section) => section.round.id), [
+          'a-5',
+          'b-1',
+          'c-1',
+          'blitz-1',
+        ]);
+      },
+    );
+  });
+
   group('isCombinedSectionLabel', () {
     test('recognises an organizer Combined section by name or slug', () {
       expect(

@@ -33,9 +33,10 @@ class CombinedRoundSection {
   final bool hasStarted;
 }
 
-/// Orders real source rounds like the web Combined view: rounds already in
-/// play before future pairings, newest start first, then knockout stage and
-/// source rating. Source identities stay intact for headers and navigation.
+/// Orders real source rounds like the web Combined view: overlapping source
+/// schedules stay in one block, including their future pairings. Inside each
+/// block, played rounds come newest first, then future rounds soonest first,
+/// with knockout stage and source rating breaking ties.
 List<CombinedRoundSection> buildCombinedRoundSections({
   required List<CombinedCategory> categories,
   required Map<String, List<GamesTourModel>> gamesByTourId,
@@ -53,7 +54,7 @@ List<CombinedRoundSection> buildCombinedRoundSections({
     roundsByTourId: roundsByTourId,
   );
 
-  final sections = <CombinedRoundSection>[];
+  final schedules = <_CombinedSourceSchedule>[];
   for (final category in ranked) {
     if (mirrorTourIds.contains(category.tourId)) continue;
     final games = gamesByTourId[category.tourId];
@@ -69,6 +70,7 @@ List<CombinedRoundSection> buildCombinedRoundSections({
       (gamesByRoundId[game.roundId] ??= <GamesTourModel>[]).add(game);
     }
 
+    final sections = <CombinedRoundSection>[];
     for (final entry in gamesByRoundId.entries) {
       final roundGames = _orderBoards(entry.value, pinnedGameIds);
       final known = roundsById[entry.key];
@@ -102,9 +104,54 @@ List<CombinedRoundSection> buildCombinedRoundSections({
       );
       sections.add(section);
     }
+    // Read the whole source schedule, including rounds without games yet.
+    // Missing pairings must not split parallel groups into separate blocks.
+    final dates = [
+      for (final round in rounds) round.startsAt ?? round.createdAt,
+      for (final section in sections)
+        if (!roundsById.containsKey(section.round.id))
+          section.startsAt ??
+              DateTime.fromMillisecondsSinceEpoch(0, isUtc: true),
+    ]..sort();
+    schedules.add(
+      _CombinedSourceSchedule(
+        first: dates.first,
+        last: dates.last,
+        sections: sections,
+      ),
+    );
   }
-  sections.sort(_compareSections);
-  return sections;
+  schedules.sort((a, b) => a.first.compareTo(b.first));
+
+  // Like web combinedRounds, merge overlapping intervals transitively. Source
+  // ids own these schedules; matching labels or round numbers do not.
+  final blocks = <_CombinedSourceSchedule>[];
+  for (final schedule in schedules) {
+    if (blocks.isNotEmpty && !schedule.first.isAfter(blocks.last.last)) {
+      final previous = blocks.last;
+      if (schedule.last.isAfter(previous.last)) previous.last = schedule.last;
+      previous.sections.addAll(schedule.sections);
+    } else {
+      blocks.add(schedule);
+    }
+  }
+  for (final block in blocks) {
+    block.sections.sort(_compareSections);
+  }
+  blocks.sort((a, b) => _compareSections(a.sections.first, b.sections.first));
+  return [for (final block in blocks) ...block.sections];
+}
+
+class _CombinedSourceSchedule {
+  _CombinedSourceSchedule({
+    required this.first,
+    required this.last,
+    required this.sections,
+  });
+
+  final DateTime first;
+  DateTime last;
+  final List<CombinedRoundSection> sections;
 }
 
 /// How far apart two rounds may start and still be the same sitting. An
@@ -230,7 +277,11 @@ String _playerKey(String name) => name.trim().toLowerCase();
 int _compareSections(CombinedRoundSection a, CombinedRoundSection b) {
   final byFuture = (a.hasStarted ? 0 : 1).compareTo(b.hasStarted ? 0 : 1);
   if (byFuture != 0) return byFuture;
-  final byStart = _compareDates(a.startsAt, b.startsAt, latestFirst: true);
+  final byStart = _compareDates(
+    a.startsAt,
+    b.startsAt,
+    latestFirst: a.hasStarted,
+  );
   if (byStart != 0) return byStart;
   final byStage = _stageRank(a).compareTo(_stageRank(b));
   if (byStage != 0) return byStage;
