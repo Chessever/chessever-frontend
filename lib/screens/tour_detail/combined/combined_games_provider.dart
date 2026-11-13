@@ -6,11 +6,13 @@ import 'package:chessever2/screens/tour_detail/combined/combined_group_expansion
 import 'package:chessever2/screens/tour_detail/combined/combined_round_sections.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_app_bar_view_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/game_display_mode_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_list_view_mode_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_pin_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_priority_matching.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_flattened_layout.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_provider.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_stable_order_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/live_rounds_id_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/round_expansion_provider.dart';
 import 'package:chessever2/screens/tour_detail/player_tour/player_tour_screen_provider.dart'
@@ -259,6 +261,21 @@ final combinedRoundSectionsProvider =
       );
     });
 
+/// Whether "Live games first" is on for Combined: on for every one of
+/// [tourIds], read from the same per-category setting the regular tab uses.
+bool combinedLiveGamesFirst(
+  T Function<T>(ProviderListenable<T>) read,
+  Iterable<String> tourIds,
+) {
+  final ids = tourIds.toList();
+  return ids.isNotEmpty &&
+      ids.every(
+        (tourId) =>
+            read(gameDisplayModeProvider(tourId)) ==
+            GameDisplayMode.hideFinishedGames,
+      );
+}
+
 /// The id of a Combined round card.
 String combinedRoundCardId(String roundKey) => 'combined:$roundKey';
 
@@ -317,6 +334,15 @@ final combinedGamesPresentationProvider =
           section,
         );
       }
+      // "Live games first", set per category exactly like the single-category
+      // tab (gameDisplayModeProvider), applies when every merged category has
+      // it on, so one toggle in the menu reads the same for all of them.
+      final liveFirst = combinedLiveGamesFirst(ref.watch, {
+        for (final section in source.sections) section.category.tourId,
+      });
+      List<GamesTourModel> ordered(List<GamesTourModel> games) =>
+          liveFirst ? applyCurrentLiveFocusOrder(games: games) : games;
+
       final rounds = <GamesAppBarModel>[];
       final gamesByRound = <String, List<GamesTourModel>>{};
       final sourcesByRound = <String, List<GamesTourSourceSection>>{};
@@ -338,14 +364,14 @@ final combinedGamesPresentationProvider =
             ? round.name
             : '$shared · ${round.name}';
         gamesByRound[round.id] = [
-          for (final section in entry.value) ...section.games,
+          for (final section in entry.value) ...ordered(section.games),
         ];
         sourcesByRound[round.id] = [
           for (final section in entry.value)
             GamesTourSourceSection(
               roundId: section.round.id,
               label: section.category.label,
-              games: section.games,
+              games: ordered(section.games),
             ),
         ];
       }
@@ -368,7 +394,9 @@ final combinedGamesPresentationProvider =
               ? const <String, bool>{}
               : ref.watch(roundExpansionProvider),
           isKnockoutTournament: false,
-          displayMode: GameDisplayMode.all,
+          displayMode: liveFirst
+              ? GameDisplayMode.hideFinishedGames
+              : GameDisplayMode.all,
           isSearchMode: isSearchMode,
         ),
       );

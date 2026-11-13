@@ -13,6 +13,7 @@ import 'package:chessever2/screens/tour_detail/combined/combined_games_provider.
 import 'package:chessever2/screens/tour_detail/games_tour/providers/event_no_spoilers_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_app_bar_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_pin_provider.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/game_display_mode_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_screen_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_app_bar_view_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
@@ -89,9 +90,8 @@ class TournamentMenuButton extends ConsumerWidget {
         context,
         // The button's own context outlives the menu: Combined needs it for
         // the Premium gate that may follow the tap.
-        actions:
-            (menuContext) =>
-                _menuActions(menuContext, ref, hostContext: context),
+        actions: (menuContext) =>
+            _menuActions(menuContext, ref, hostContext: context),
       ),
     );
 
@@ -121,10 +121,9 @@ class TournamentMenuButton extends ConsumerWidget {
     final isGamesTab =
         ref.read(selectedTourModeProvider) == TournamentDetailScreenMode.games;
     final groupBroadcastId = tourData.aboutTourModel.groupBroadcastId;
-    final isMuted =
-        (groupBroadcastId != null && groupBroadcastId.isNotEmpty)
-            ? ref.read(eventMuteProvider(groupBroadcastId)).valueOrNull ?? false
-            : false;
+    final isMuted = (groupBroadcastId != null && groupBroadcastId.isNotEmpty)
+        ? ref.read(eventMuteProvider(groupBroadcastId)).valueOrNull ?? false
+        : false;
     final combinedSelected = ref.read(combinedCategorySelectedProvider);
 
     return [
@@ -152,10 +151,9 @@ class TournamentMenuButton extends ConsumerWidget {
     }
     return [
       LibraryMenuAction(
-        icon:
-            combinedSelected
-                ? Icons.call_split_rounded
-                : Icons.call_merge_rounded,
+        icon: combinedSelected
+            ? Icons.call_split_rounded
+            : Icons.call_merge_rounded,
         label: combinedSelected ? 'Show one category' : 'Combine categories',
         onSelected: () {
           if (combinedSelected) {
@@ -174,12 +172,13 @@ class TournamentMenuButton extends ConsumerWidget {
     ];
   }
 
-  /// The Games-tab rows while the list is Combined. Each one acts on every
-  /// merged category, where the single-category rows act on the selected one.
-  /// "Live games first" is left out: Combined has its own order.
+  /// The Games-tab rows while the list is Combined: the same four rows as a
+  /// single category, each acting on every merged category where the
+  /// single-category rows act on the selected one.
   List<LibraryMenuAction> _combinedGamesTabActions(WidgetRef ref) {
     final tourIds = ref.read(combinedCategoriesProvider).tourIds;
     final roundIds = ref.read(combinedGamesPresentationProvider).roundIds;
+    final isFocusingLiveGames = combinedLiveGamesFirst(ref.read, tourIds);
 
     final spoilerStates = [
       for (final tourId in tourIds) ref.read(eventNoSpoilersProvider(tourId)),
@@ -199,10 +198,25 @@ class TournamentMenuButton extends ConsumerWidget {
 
     return [
       LibraryMenuAction(
-        icon:
-            noSpoilersEnabled
-                ? Icons.visibility_off_outlined
-                : Icons.visibility_outlined,
+        icon: isFocusingLiveGames
+            ? Icons.format_list_bulleted_outlined
+            : Icons.center_focus_strong_outlined,
+        label: liveFocusOrderingMenuLabel(
+          isFocusingLiveGames: isFocusingLiveGames,
+        ),
+        onSelected: () {
+          final next = isFocusingLiveGames
+              ? GameDisplayMode.all
+              : GameDisplayMode.hideFinishedGames;
+          for (final tourId in tourIds) {
+            ref.read(gameDisplayModeProvider(tourId).notifier).state = next;
+          }
+        },
+      ),
+      LibraryMenuAction(
+        icon: noSpoilersEnabled
+            ? Icons.visibility_off_outlined
+            : Icons.visibility_outlined,
         label: noSpoilersEnabled ? "Disable No Spoilers" : "No Spoilers",
         onSelected: () {
           final enabled = eventNoSpoilersNextEnabled(spoilerStates);
@@ -269,10 +283,9 @@ class TournamentMenuButton extends ConsumerWidget {
     return [
       // 1. Live games first / Board order
       LibraryMenuAction(
-        icon:
-            isFocusingLiveGames
-                ? Icons.format_list_bulleted_outlined
-                : Icons.center_focus_strong_outlined,
+        icon: isFocusingLiveGames
+            ? Icons.format_list_bulleted_outlined
+            : Icons.center_focus_strong_outlined,
         label: liveFocusOrderingMenuLabel(
           isFocusingLiveGames: isFocusingLiveGames,
         ),
@@ -290,10 +303,9 @@ class TournamentMenuButton extends ConsumerWidget {
       ),
       // 2. No spoilers
       LibraryMenuAction(
-        icon:
-            noSpoilersEnabled
-                ? Icons.visibility_off_outlined
-                : Icons.visibility_outlined,
+        icon: noSpoilersEnabled
+            ? Icons.visibility_off_outlined
+            : Icons.visibility_outlined,
         label: noSpoilersEnabled ? "Disable No Spoilers" : "No Spoilers",
         onSelected: () {
           unawaited(
@@ -348,10 +360,9 @@ class TournamentMenuButton extends ConsumerWidget {
     if (groupBroadcastId != null && groupBroadcastId.isNotEmpty) {
       actions.add(
         LibraryMenuAction(
-          icon:
-              isMuted
-                  ? Icons.notifications_none
-                  : Icons.notifications_off_outlined,
+          icon: isMuted
+              ? Icons.notifications_none
+              : Icons.notifications_off_outlined,
           label: isMuted ? "Enable notifications" : "Disable notifications",
           onSelected: () {
             if (!context.mounted) return;
@@ -380,10 +391,9 @@ class TournamentMenuButton extends ConsumerWidget {
     // database round-trip. `groupBroadcastId` is passed only as the fallback
     // path id used when slug/tourId are missing (legacy events).
     final aboutModel = tourData.aboutTourModel;
-    final fallbackId =
-        aboutModel.groupBroadcastId?.isNotEmpty == true
-            ? aboutModel.groupBroadcastId!
-            : aboutModel.id;
+    final fallbackId = aboutModel.groupBroadcastId?.isNotEmpty == true
+        ? aboutModel.groupBroadcastId!
+        : aboutModel.id;
     if (fallbackId.isEmpty || aboutModel.name.isEmpty) return actions;
 
     // A gamebase-only virtual event (historical event opened from a player
@@ -392,16 +402,15 @@ class TournamentMenuButton extends ConsumerWidget {
     // event card and board menus: no "Share event" row, and the standings /
     // bracket images below go out without a link.
     final hasEventPage = !isVirtualGamebaseId(aboutModel.id);
-    String? eventLink({String? tab}) =>
-        hasEventPage
-            ? buildEventShareUrl(
-              id: fallbackId,
-              title: aboutModel.name,
-              tourId: aboutModel.id,
-              tourSlug: aboutModel.slug,
-              tab: tab,
-            )
-            : null;
+    String? eventLink({String? tab}) => hasEventPage
+        ? buildEventShareUrl(
+            id: fallbackId,
+            title: aboutModel.name,
+            tourId: aboutModel.id,
+            tourSlug: aboutModel.slug,
+            tab: tab,
+          )
+        : null;
 
     if (hasEventPage) {
       actions.add(
@@ -410,14 +419,12 @@ class TournamentMenuButton extends ConsumerWidget {
           label: "Share event",
           onSelected: () {
             final url = eventLink()!;
-            final box =
-                context.mounted
-                    ? context.findRenderObject() as RenderBox?
-                    : null;
-            final origin =
-                box != null && box.hasSize
-                    ? box.localToGlobal(Offset.zero) & box.size
-                    : const Rect.fromLTWH(0, 0, 1, 1);
+            final box = context.mounted
+                ? context.findRenderObject() as RenderBox?
+                : null;
+            final origin = box != null && box.hasSize
+                ? box.localToGlobal(Offset.zero) & box.size
+                : const Rect.fromLTWH(0, 0, 1, 1);
             Share.share(url, sharePositionOrigin: origin);
           },
         ),
@@ -463,8 +470,9 @@ class TournamentMenuButton extends ConsumerWidget {
 
     // Knockout events, only while the Bracket tab is on screen (so the live
     // canvas boundary exists to snapshot the framed area).
-    final isKnockout =
-        ref.read(knockoutTournamentStateProvider(aboutModel.id)).isKnockout;
+    final isKnockout = ref
+        .read(knockoutTournamentStateProvider(aboutModel.id))
+        .isKnockout;
     final onBracketTab = mode == TournamentDetailScreenMode.bracket;
     if (isKnockout && onBracketTab) {
       actions.add(
@@ -502,12 +510,12 @@ class TournamentMenuButton extends ConsumerWidget {
         }
       }
     }
-    final roundDraft =
-        currentRound == null
-            ? null
-            : currentEventRoundSpaceDraft(ref, currentRound);
-    final roundName =
-        currentRound == null ? '' : spaceRoundLabelName(currentRound.name);
+    final roundDraft = currentRound == null
+        ? null
+        : currentEventRoundSpaceDraft(ref, currentRound);
+    final roundName = currentRound == null
+        ? ''
+        : spaceRoundLabelName(currentRound.name);
 
     return [
       if (eventDraft != null)
@@ -567,21 +575,19 @@ class TournamentMenuButton extends ConsumerWidget {
       if (!context.mounted) return;
 
       final tempDir = await getTemporaryDirectory();
-      final safeName =
-          eventName
-              .replaceAll(RegExp(r'[^A-Za-z0-9]+'), '-')
-              .replaceAll(RegExp(r'^-+|-+$'), '')
-              .toLowerCase();
+      final safeName = eventName
+          .replaceAll(RegExp(r'[^A-Za-z0-9]+'), '-')
+          .replaceAll(RegExp(r'^-+|-+$'), '')
+          .toLowerCase();
       final file = File(
         '${tempDir.path}/${safeName.isEmpty ? 'chessever-event' : safeName}-standings.png',
       );
       await file.writeAsBytes(imageBytes);
       if (!context.mounted) return;
 
-      final subject =
-          eventName.trim().isNotEmpty
-              ? '$eventName standings'
-              : 'ChessEver standings';
+      final subject = eventName.trim().isNotEmpty
+          ? '$eventName standings'
+          : 'ChessEver standings';
       await showShareImagePreview(
         context,
         imageBytes: imageBytes,
@@ -593,16 +599,15 @@ class TournamentMenuButton extends ConsumerWidget {
             sharePositionOrigin: const Rect.fromLTWH(0, 0, 1, 1),
           );
         },
-        onShareLink:
-            shareUrl == null
-                ? null
-                : () async {
-                  await Share.share(
-                    shareUrl,
-                    subject: subject,
-                    sharePositionOrigin: const Rect.fromLTWH(0, 0, 1, 1),
-                  );
-                },
+        onShareLink: shareUrl == null
+            ? null
+            : () async {
+                await Share.share(
+                  shareUrl,
+                  subject: subject,
+                  sharePositionOrigin: const Rect.fromLTWH(0, 0, 1, 1),
+                );
+              },
       );
     } catch (e) {
       debugPrint('Failed to share standings: $e');
@@ -661,10 +666,9 @@ class TournamentMenuButton extends ConsumerWidget {
       await file.writeAsBytes(imageBytes);
       if (!context.mounted) return;
 
-      final subject =
-          eventName.trim().isNotEmpty
-              ? '$eventName team standings'
-              : 'ChessEver team standings';
+      final subject = eventName.trim().isNotEmpty
+          ? '$eventName team standings'
+          : 'ChessEver team standings';
       await showShareImagePreview(
         context,
         imageBytes: imageBytes,
@@ -676,16 +680,15 @@ class TournamentMenuButton extends ConsumerWidget {
             sharePositionOrigin: const Rect.fromLTWH(0, 0, 1, 1),
           );
         },
-        onShareLink:
-            shareUrl == null
-                ? null
-                : () async {
-                  await Share.share(
-                    shareUrl,
-                    subject: subject,
-                    sharePositionOrigin: const Rect.fromLTWH(0, 0, 1, 1),
-                  );
-                },
+        onShareLink: shareUrl == null
+            ? null
+            : () async {
+                await Share.share(
+                  shareUrl,
+                  subject: subject,
+                  sharePositionOrigin: const Rect.fromLTWH(0, 0, 1, 1),
+                );
+              },
       );
     } catch (e) {
       debugPrint('Failed to share team standings: $e');
@@ -725,8 +728,10 @@ class TournamentMenuButton extends ConsumerWidget {
       // recipient zooms into the shared PNG. 4x keeps a phone viewport well
       // under any decode limit while roughly doubling legible detail vs 3x.
       const bracketPixelRatio = 4.0;
-      final snapshot =
-          await captureBoundaryPng(key, pixelRatio: bracketPixelRatio);
+      final snapshot = await captureBoundaryPng(
+        key,
+        pixelRatio: bracketPixelRatio,
+      );
       if (snapshot == null) {
         throw StateError('Bracket snapshot produced no image');
       }
@@ -757,10 +762,9 @@ class TournamentMenuButton extends ConsumerWidget {
       await file.writeAsBytes(imageBytes);
       if (!context.mounted) return;
 
-      final subject =
-          eventName.trim().isNotEmpty
-              ? '$eventName bracket'
-              : 'ChessEver bracket';
+      final subject = eventName.trim().isNotEmpty
+          ? '$eventName bracket'
+          : 'ChessEver bracket';
       await showShareImagePreview(
         context,
         imageBytes: imageBytes,
@@ -772,16 +776,15 @@ class TournamentMenuButton extends ConsumerWidget {
             sharePositionOrigin: const Rect.fromLTWH(0, 0, 1, 1),
           );
         },
-        onShareLink:
-            shareUrl == null
-                ? null
-                : () async {
-                  await Share.share(
-                    shareUrl,
-                    subject: subject,
-                    sharePositionOrigin: const Rect.fromLTWH(0, 0, 1, 1),
-                  );
-                },
+        onShareLink: shareUrl == null
+            ? null
+            : () async {
+                await Share.share(
+                  shareUrl,
+                  subject: subject,
+                  sharePositionOrigin: const Rect.fromLTWH(0, 0, 1, 1),
+                );
+              },
       );
     } catch (e) {
       debugPrint('Failed to share bracket: $e');
@@ -825,10 +828,9 @@ List<TournamentMenuAction> standingsShareActionsFor({
   required TournamentDetailScreenMode mode,
   required bool isTeamEvent,
 }) {
-  final showIndividualStandingsShare =
-      isTeamEvent
-          ? mode == TournamentDetailScreenMode.players
-          : mode == TournamentDetailScreenMode.standings;
+  final showIndividualStandingsShare = isTeamEvent
+      ? mode == TournamentDetailScreenMode.players
+      : mode == TournamentDetailScreenMode.standings;
   final showTeamStandingsShare =
       isTeamEvent && mode == TournamentDetailScreenMode.standings;
 
