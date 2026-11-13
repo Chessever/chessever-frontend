@@ -1,3 +1,6 @@
+import 'combined_hall_provider.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/round_expansion_provider.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_flattened_layout.dart';
 import 'dart:async';
 
 import 'package:chessever2/providers/event_pin_refresh_provider.dart';
@@ -51,6 +54,40 @@ class _CombinedGamesScreenState extends ConsumerState<CombinedGamesScreen>
   /// yet. Re-read the schedule for it, but not on every rebuild.
   static const Duration _scheduleRefreshInterval = Duration(seconds: 20);
   DateTime? _scheduleRefreshedAt;
+  @override
+  void initState() {
+    super.initState();
+    _positionsListener.itemPositions.addListener(_watchVisibleRounds);
+  }
+
+  @override
+  void dispose() {
+    _positionsListener.itemPositions.removeListener(_watchVisibleRounds);
+    super.dispose();
+  }
+
+  void _watchVisibleRounds() {
+    if (!mounted) return;
+    final presentation = ref.read(combinedGamesPresentationProvider);
+    final visible = <String>{};
+    for (final position in _positionsListener.itemPositions.value) {
+      if (position.itemTrailingEdge <= 0 || position.itemLeadingEdge >= 1) {
+        continue;
+      }
+      final entry = presentation.layout.entryAt(position.index);
+      if (entry is! GamesTourRoundHeaderEntry && entry?.roundId != null) {
+        visible.add(entry!.roundId!);
+      }
+    }
+    ref
+        .read(
+          combinedHallProvider(
+            combinedRoundsKey(ref.read(combinedCategoriesProvider).tourIds),
+          ).notifier,
+        )
+        .loader
+        .watch(visible);
+  }
 
   @override
   bool get wantKeepAlive => true;
@@ -73,7 +110,10 @@ class _CombinedGamesScreenState extends ConsumerState<CombinedGamesScreen>
     }
     _scheduleRefreshedAt = now;
     final tourIds = ref.read(combinedCategoriesProvider).tourIds;
-    ref.invalidate(combinedRoundsProvider(combinedRoundsKey(tourIds)));
+    ref
+        .read(combinedHallProvider(combinedRoundsKey(tourIds)).notifier)
+        .loader
+        .refresh(retry: true);
   }
 
   Future<void> _handleRefresh() async {
@@ -81,13 +121,12 @@ class _CombinedGamesScreenState extends ConsumerState<CombinedGamesScreen>
     FocusScope.of(context).unfocus();
     final tourIds = ref.read(combinedCategoriesProvider).tourIds;
     _scheduleRefreshedAt = DateTime.now();
-    ref.invalidate(combinedRoundsProvider(combinedRoundsKey(tourIds)));
+    ref
+        .read(combinedHallProvider(combinedRoundsKey(tourIds)).notifier)
+        .loader
+        .refresh(retry: true);
     try {
-      await Future.wait<void>([
-        ref.read(tourDetailScreenProvider.notifier).refreshTourDetails(),
-        for (final tourId in tourIds)
-          ref.read(gamesTourProvider(tourId).notifier).refreshGames(),
-      ]);
+      await ref.read(tourDetailScreenProvider.notifier).refreshTourDetails();
     } catch (_) {
       // Boards already on screen stay; the next poll repairs the rest.
     }
@@ -111,6 +150,45 @@ class _CombinedGamesScreenState extends ConsumerState<CombinedGamesScreen>
     super.build(context);
     final presentation = ref.watch(combinedGamesPresentationProvider);
     final viewMode = ref.watch(gamesListViewModeProvider);
+    final expansion = ref.watch(roundExpansionProvider);
+    final headers = [
+      for (final entry in presentation.layout.entries)
+        if (entry is GamesTourRoundHeaderEntry) entry,
+    ];
+    final initialRoundId = ref
+        .read(
+          combinedHallProvider(
+            combinedRoundsKey(ref.watch(combinedCategoriesProvider).tourIds),
+          ).notifier,
+        )
+        .initiallyExpandedRoundId;
+    final effectiveExpansion = {
+      for (final entry in headers)
+        entry.round.id:
+            presentation.isSearchMode ||
+            (expansion[entry.round.id] ?? (entry.round.id == initialRoundId)),
+    };
+    final active =
+        ref.watch(tournamentDataActiveProvider) &&
+        TickerMode.valuesOf(context).enabled;
+    final hallKey = combinedRoundsKey(
+      ref.watch(combinedCategoriesProvider).tourIds,
+    );
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted ||
+          combinedRoundsKey(ref.read(combinedCategoriesProvider).tourIds) !=
+              hallKey) {
+        return;
+      }
+      final hall = ref.read(combinedHallProvider(hallKey).notifier);
+      hall.setVisible(active);
+      hall.loader.demand([
+        for (final entry in headers)
+          if (effectiveExpansion[entry.round.id]!)
+            ...entry.round.sourceRoundIds,
+      ]);
+      _watchVisibleRounds();
+    });
 
     ref.listen<bool>(
       combinedRoundSectionsProvider.select(
@@ -144,35 +222,58 @@ class _CombinedGamesScreenState extends ConsumerState<CombinedGamesScreen>
       backgroundColor: context.colors.surfaceRecessed,
       displacement: 60.h,
       strokeWidth: 3.w,
-      child: GamesListView(
-        key: ValueKey('combined_games_${viewMode.name}_search_$isSearchMode'),
-        gamesByRound: presentation.gamesByRound,
-        gamesData: GamesScreenModel(
-          gamesTourModels: presentation.layout.orderedGames,
-          pinnedGamedIs: presentation.pinnedGameIds,
-          isSearchMode: isSearchMode,
-          searchQuery: isSearchMode ? presentation.searchQuery : null,
-        ),
-        gamesListViewMode: viewMode,
-        itemScrollController: _scrollController,
-        itemPositionsListener: _positionsListener,
-        isSearchMode: isSearchMode,
-        layout: presentation.layout,
-        onPinToggle: _togglePin,
-        // The board screen pages through the combined list, in this order,
-        // instead of reloading one category's games.
-        navigationListPolicy: BoardNavigationListPolicy.preserve,
-        roundHeaderBuilder: (context, entry, isExpanded, onToggle) {
-          final when = TimeUtils.formatShortRoundDateTime(entry.round.startsAt);
-          // One time heading, with source labels beneath it.
-          return TournamentRoundHeader(
-            title: entry.round.name,
-            detail: when.isEmpty ? null : when,
-            isExpanded: isExpanded,
-            onToggle: onToggle,
-            dense: true,
-          );
-        },
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: EdgeInsets.fromLTRB(16.sp, 0, 16.sp, 8.sp),
+            child: Text(
+              '${presentation.layout.orderedGames.length} games loaded',
+              style: AppTypography.textSmMedium.copyWith(
+                color: context.colors.textPrimaryMuted,
+              ),
+            ),
+          ),
+          Expanded(
+            child: GamesListView(
+              key: ValueKey(
+                'combined_games_${viewMode.name}_search_$isSearchMode',
+              ),
+              gamesByRound: presentation.gamesByRound,
+              gamesData: GamesScreenModel(
+                gamesTourModels: presentation.layout.orderedGames,
+                pinnedGamedIs: presentation.pinnedGameIds,
+                isSearchMode: isSearchMode,
+                searchQuery: isSearchMode ? presentation.searchQuery : null,
+              ),
+              gamesListViewMode: viewMode,
+              itemScrollController: _scrollController,
+              itemPositionsListener: _positionsListener,
+              isSearchMode: isSearchMode,
+              layout: presentation.layout,
+              roundExpansionOverrides: effectiveExpansion,
+              onPinToggle: _togglePin,
+              // Focused boards expand the complete Combined catalog through
+              // the existing deferred navigation path; search keeps its hits.
+              navigationListPolicy: isSearchMode
+                  ? BoardNavigationListPolicy.preserve
+                  : BoardNavigationListPolicy.sourceDefault,
+              roundHeaderBuilder: (context, entry, isExpanded, onToggle) {
+                final when = TimeUtils.formatShortRoundDateTime(
+                  entry.round.startsAt,
+                );
+                // One time heading, with source labels beneath it.
+                return TournamentRoundHeader(
+                  title: entry.round.name,
+                  detail: when.isEmpty ? null : when,
+                  isExpanded: isExpanded,
+                  onToggle: onToggle,
+                  dense: true,
+                );
+              },
+            ),
+          ),
+        ],
       ),
     );
   }

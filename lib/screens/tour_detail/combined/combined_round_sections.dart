@@ -44,6 +44,7 @@ List<CombinedRoundSection> buildCombinedRoundSections({
   required List<String> liveRoundIds,
   Set<String> pinnedGameIds = const <String>{},
   DateTime? now,
+  bool includeEmptyRounds = false,
 }) {
   final effectiveNow = now ?? DateTime.now();
   final ranked = List<CombinedCategory>.of(categories)
@@ -57,8 +58,8 @@ List<CombinedRoundSection> buildCombinedRoundSections({
   final schedules = <_CombinedSourceSchedule>[];
   for (final category in ranked) {
     if (mirrorTourIds.contains(category.tourId)) continue;
-    final games = gamesByTourId[category.tourId];
-    if (games == null || games.isEmpty) continue;
+    final games = gamesByTourId[category.tourId] ?? const <GamesTourModel>[];
+    if (!includeEmptyRounds && games.isEmpty) continue;
 
     final rounds = roundsByTourId[category.tourId] ?? const <Round>[];
     final roundsById = <String, Round>{
@@ -70,6 +71,12 @@ List<CombinedRoundSection> buildCombinedRoundSections({
       (gamesByRoundId[game.roundId] ??= <GamesTourModel>[]).add(game);
     }
 
+    if (includeEmptyRounds) {
+      for (final round in rounds) {
+        gamesByRoundId.putIfAbsent(round.id, () => <GamesTourModel>[]);
+      }
+    }
+    if (gamesByRoundId.isEmpty) continue;
     final sections = <CombinedRoundSection>[];
     for (final entry in gamesByRoundId.entries) {
       final roundGames = _orderBoards(entry.value, pinnedGameIds);

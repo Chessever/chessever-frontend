@@ -44,8 +44,10 @@ class GamesListView extends ConsumerWidget {
     this.roundHeaderBuilder,
     this.onPinToggle,
     this.navigationListPolicy,
+    this.roundExpansionOverrides,
   });
 
+  final Map<String, bool>? roundExpansionOverrides;
   final Map<String, List<GamesTourModel>> gamesByRound;
   final GamesScreenModel gamesData;
   final GamesListViewMode gamesListViewMode;
@@ -172,20 +174,24 @@ class GamesListView extends ConsumerWidget {
               }
 
               if (lookup is GamesTourRoundHeaderEntry) {
-                final isRoundExpanded =
-                    isSearchMode
-                        ? true
-                        : ref.watch(
-                          roundExpansionStateProvider(lookup.round.id),
+                final bool isRoundExpanded = isSearchMode
+                    ? true
+                    : (roundExpansionOverrides?[lookup.round.id] ??
+                          ref.watch<bool>(
+                            roundExpansionStateProvider(lookup.round.id),
+                          ));
+                final VoidCallback? onToggleRound = isSearchMode
+                    ? null // Disable toggle in search mode
+                    : () {
+                        final notifier = ref.read(
+                          roundExpansionProvider.notifier,
                         );
-                final VoidCallback? onToggleRound =
-                    isSearchMode
-                        ? null // Disable toggle in search mode
-                        : () {
-                          ref
-                              .read(roundExpansionProvider.notifier)
-                              .toggleRound(lookup.round.id);
-                        };
+                        if (isRoundExpanded) {
+                          notifier.collapseRound(lookup.round.id);
+                        } else {
+                          notifier.expandAll([lookup.round.id]);
+                        }
+                      };
                 return Padding(
                   padding: EdgeInsets.only(bottom: 16.sp),
                   child:

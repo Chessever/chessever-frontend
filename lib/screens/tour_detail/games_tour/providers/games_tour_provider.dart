@@ -176,8 +176,9 @@ class GamesTourNotifier extends StateNotifier<AsyncValue<List<Games>>> {
       next,
     ) {
       final wasCombined = previous?.contains(tourId) ?? false;
-      if (wasCombined == next.contains(tourId) || !_shouldRunSafetyNet) return;
-      _startPeriodicRefresh();
+      if (wasCombined == next.contains(tourId)) return;
+      _stopPeriodicRefresh();
+      if (_shouldRunSafetyNet) _startPeriodicRefresh();
     });
   }
 
@@ -382,7 +383,10 @@ class GamesTourNotifier extends StateNotifier<AsyncValue<List<Games>>> {
   bool get _shouldRunSafetyNet =>
       _observed &&
       ref.read(tournamentDataActiveProvider) &&
-      _isEventDataTabVisible;
+      _isEventDataTabVisible &&
+      !(ref.read(combinedCategorySelectedProvider) &&
+          ref.read(selectedTourModeProvider) ==
+              TournamentDetailScreenMode.games);
 
   int get _stableTourJitterSeconds {
     var hash = 0;

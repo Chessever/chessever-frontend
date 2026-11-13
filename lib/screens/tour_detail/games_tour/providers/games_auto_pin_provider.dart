@@ -1,3 +1,4 @@
+import 'package:chessever2/screens/tour_detail/combined/combined_pin_sources.dart';
 import 'dart:async';
 
 import 'package:chessever2/providers/auth_state_provider.dart';
@@ -9,7 +10,6 @@ import 'package:chessever2/repository/local_storage/auto_pin_preferences/auto_pi
 import 'package:chessever2/repository/sqlite/app_database.dart';
 import 'package:chessever2/repository/supabase/game/games.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_priority_matching.dart';
-import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/knockout_tournament_state_provider.dart';
 import 'package:country_picker/country_picker.dart';
 import 'package:flutter/foundation.dart';
@@ -172,12 +172,10 @@ class _AutoPinLogController {
 
     // Get games from the main/selected tour using the raw games provider
     final mainGamesRaw =
-        ref.read(gamesTourProvider(tourId)).valueOrNull ?? const <Games>[];
+        ref.read(pinSourceGamesProvider(tourId)).valueOrNull ?? const <Games>[];
     addGames(gamePriorityIdentitiesFromRawGames(mainGamesRaw));
 
-    for (final stageTourId in ref.read(
-      relatedKnockoutStageIdsProvider(tourId),
-    )) {
+    for (final stageTourId in ref.read(pinRelatedStageIdsProvider(tourId))) {
       final stageState = ref.read(knockoutTournamentStateProvider(stageTourId));
       addGames(gamePriorityIdentitiesFromModels(stageState.allGames));
     }

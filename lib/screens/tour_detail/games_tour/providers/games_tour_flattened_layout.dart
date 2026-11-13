@@ -158,7 +158,9 @@ GamesTourFlattenedLayout buildGamesTourFlattenedLayout({
 
   for (final round in rounds) {
     final roundGames = gamesByRound[round.id] ?? const <GamesTourModel>[];
-    if (roundGames.isEmpty) continue;
+    if (roundGames.isEmpty && !sourceSectionsByRound.containsKey(round.id)) {
+      continue;
+    }
 
     final isKnockoutRound = _isKnockoutRound(isKnockoutTournament, round);
     final matches =

@@ -1,3 +1,4 @@
+import 'package:chessever2/screens/tour_detail/combined/combined_hall_provider.dart';
 import 'dart:async';
 
 import 'package:chessever2/chat/botvinnik_chat_button.dart';
@@ -264,6 +265,16 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
         ref.invalidate(gameUpdatesStreamProvider);
         ref.invalidate(liveGameUpdateStreamProvider);
         ref.invalidate(gameUpdatesBatchStreamProvider);
+
+        if (ref.read(combinedCategorySelectedProvider) &&
+            ref.read(selectedTourModeProvider) ==
+                TournamentDetailScreenMode.games) {
+          final key = ref.read(combinedCategoriesProvider).tourIds.join(',');
+          final hall = ref.read(combinedHallProvider(key).notifier);
+          hall.setVisible(true);
+          hall.loader.refresh();
+          return;
+        }
 
         // Refresh games data while preserving current UI state
         // This avoids showing "no games" during the refresh
