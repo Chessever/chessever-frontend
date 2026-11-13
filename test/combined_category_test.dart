@@ -1,7 +1,6 @@
 import 'package:chessever2/repository/supabase/round/round.dart';
 import 'package:chessever2/repository/supabase/tour/tour.dart';
 import 'package:chessever2/screens/tour_detail/combined/combined_category.dart';
-import 'package:chessever2/screens/tour_detail/combined/combined_category_prompt.dart';
 import 'package:chessever2/screens/tour_detail/combined/combined_games_provider.dart';
 import 'package:chessever2/screens/tour_detail/combined/combined_round_sections.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_app_bar_view_model.dart';
@@ -260,58 +259,25 @@ void main() {
   });
 
   group('CombinedCategoryPrefsNotifier', () {
-    test('asks once the stored answers are read, and only then', () async {
-      final notifier = CombinedCategoryPrefsNotifier(_MemoryStore());
-      expect(notifier.state.shouldAsk('event'), isFalse);
-
-      await notifier.ensureLoaded('event');
-      expect(notifier.state.shouldAsk('event'), isTrue);
-    });
-
-    test('an answered event is not asked again, across sessions', () async {
-      final store = _MemoryStore();
-      final first = CombinedCategoryPrefsNotifier(store);
-      await first.ensureLoaded('event');
-      await first.markAnswered('event');
-      expect(first.state.shouldAsk('event'), isFalse);
-
-      final second = CombinedCategoryPrefsNotifier(store);
-      await second.ensureLoaded('event');
-      expect(second.state.shouldAsk('event'), isFalse);
-      // Another event still gets its own question.
-      await second.ensureLoaded('other');
-      expect(second.state.shouldAsk('other'), isTrue);
-    });
-
-    test('"Never ask" silences every event', () async {
-      final store = _MemoryStore();
-      final first = CombinedCategoryPrefsNotifier(store);
-      await first.setNeverAsk();
-
-      final second = CombinedCategoryPrefsNotifier(store);
-      await second.ensureLoaded('event');
-      await second.ensureLoaded('other');
-      expect(second.state.shouldAsk('event'), isFalse);
-      expect(second.state.shouldAsk('other'), isFalse);
-    });
-
-    test('choosing Combined is remembered and answers the question', () async {
+    test('choosing Combined is remembered across sessions, and so is '
+        'leaving it', () async {
       final store = _MemoryStore();
       final first = CombinedCategoryPrefsNotifier(store);
       await first.setSelected('event', true);
       expect(first.state.isSelected('event'), isTrue);
 
       final second = CombinedCategoryPrefsNotifier(store);
+      expect(second.state.isSelected('event'), isFalse);
       await second.ensureLoaded('event');
       expect(second.state.isSelected('event'), isTrue);
-      expect(second.state.shouldAsk('event'), isFalse);
+      // The choice is per event.
+      await second.ensureLoaded('other');
+      expect(second.state.isSelected('other'), isFalse);
 
       await second.setSelected('event', false);
       final third = CombinedCategoryPrefsNotifier(store);
       await third.ensureLoaded('event');
       expect(third.state.isSelected('event'), isFalse);
-      // Leaving Combined is not a reason to ask again.
-      expect(third.state.shouldAsk('event'), isFalse);
     });
 
     test('a pick made while storage is still loading wins', () async {
@@ -1025,23 +991,6 @@ void main() {
 
     test('an empty query keeps every game', () {
       expect(filterCombinedGames(games, '   '), hasLength(2));
-    });
-  });
-
-  group('combinedCategoryNames', () {
-    test('lists a few categories in full', () {
-      expect(combinedCategoryNames(['Open', 'Women']), 'Open and Women');
-      expect(
-        combinedCategoryNames(['Group A', 'Group B', 'Group C', 'Group D']),
-        'Group A, Group B, Group C and Group D',
-      );
-    });
-
-    test('counts the rest once the list gets long', () {
-      expect(
-        combinedCategoryNames(['U8', 'U10', 'U12', 'U14', 'U16', 'U18']),
-        'U8, U10, U12 and 3 more',
-      );
     });
   });
 }

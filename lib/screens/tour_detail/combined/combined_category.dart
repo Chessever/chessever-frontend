@@ -196,49 +196,15 @@ class CombinedCategories {
   int get hashCode => Object.hashAll(items);
 }
 
-/// What the user decided about Combined, per event.
+/// Which events the user opened in Combined.
 @immutable
 class CombinedCategoryPrefs {
-  const CombinedCategoryPrefs({
-    this.selected = const <String>{},
-    this.answered = const <String>{},
-    this.loaded = const <String>{},
-    this.neverAsk = false,
-  });
+  const CombinedCategoryPrefs({this.selected = const <String>{}});
 
   /// Events (group broadcast ids) opened in Combined.
   final Set<String> selected;
 
-  /// Events whose "combine?" question was already answered.
-  final Set<String> answered;
-
-  /// Events whose stored answers have been read.
-  final Set<String> loaded;
-
-  /// "Never ask" from the question: no event asks again.
-  final bool neverAsk;
-
   bool isSelected(String groupId) => selected.contains(groupId);
-
-  /// Whether opening [groupId] should ask "combine?". False until the stored
-  /// answers are read, so the question never flashes before a saved "no".
-  bool shouldAsk(String groupId) =>
-      loaded.contains(groupId) &&
-      !neverAsk &&
-      !answered.contains(groupId) &&
-      !selected.contains(groupId);
-
-  CombinedCategoryPrefs copyWith({
-    Set<String>? selected,
-    Set<String>? answered,
-    Set<String>? loaded,
-    bool? neverAsk,
-  }) => CombinedCategoryPrefs(
-    selected: selected ?? this.selected,
-    answered: answered ?? this.answered,
-    loaded: loaded ?? this.loaded,
-    neverAsk: neverAsk ?? this.neverAsk,
-  );
 }
 
 class CombinedCategoryPrefsNotifier
@@ -246,10 +212,7 @@ class CombinedCategoryPrefsNotifier
   CombinedCategoryPrefsNotifier(this._store)
     : super(const CombinedCategoryPrefs());
 
-  static const neverAskKey = 'combined_category_never_ask';
   static String selectedKey(String groupId) => 'combined_category_$groupId';
-  static String answeredKey(String groupId) =>
-      'combined_category_asked_$groupId';
 
   final TourSelectionStore _store;
   final Map<String, Future<void>> _loads = <String, Future<void>>{};
@@ -260,7 +223,7 @@ class CombinedCategoryPrefsNotifier
   // A choice made while the stored value is still being read wins over it.
   final Set<String> _selectionTouched = <String>{};
 
-  /// Reads the stored answers for [groupId] once per app session.
+  /// Reads the stored choice for [groupId] once per app session.
   Future<void> ensureLoaded(String groupId) {
     if (groupId.isEmpty) return Future<void>.value();
     return _loads.putIfAbsent(groupId, () => _load(groupId));
@@ -268,53 +231,30 @@ class CombinedCategoryPrefsNotifier
 
   Future<void> _load(String groupId) async {
     String? selected;
-    String? answered;
-    String? never;
     try {
-      final values = await Future.wait<String?>([
-        _store.getString(selectedKey(groupId)),
-        _store.getString(answeredKey(groupId)),
-        _store.getString(neverAskKey),
-      ]);
-      selected = values[0];
-      answered = values[1];
-      never = values[2];
+      selected = await _store.getString(selectedKey(groupId));
     } catch (_) {
       // Unreadable storage means "nothing saved": the event opens normally.
     }
-    if (!mounted) return;
-    final touched = _selectionTouched.contains(groupId);
-    state = state.copyWith(
-      selected: !touched && selected == '1'
-          ? {...state.selected, groupId}
-          : state.selected,
-      answered: answered == '1' ? {...state.answered, groupId} : state.answered,
-      loaded: {...state.loaded, groupId},
-      neverAsk: state.neverAsk || never == '1',
-    );
+    if (!mounted || selected != '1' || _selectionTouched.contains(groupId)) {
+      return;
+    }
+    state = CombinedCategoryPrefs(selected: {...state.selected, groupId});
   }
 
-  /// Opens (or leaves) Combined for [groupId]. Choosing it also answers the
-  /// question for that event.
+  /// Opens (or leaves) Combined for [groupId], and remembers it.
   Future<void> setSelected(String groupId, bool selected) async {
     if (groupId.isEmpty) return;
     _selectionTouched.add(groupId);
-    if (selected == state.isSelected(groupId) &&
-        (!selected || state.answered.contains(groupId))) {
-      return;
-    }
-    state = state.copyWith(
+    if (selected == state.isSelected(groupId)) return;
+    state = CombinedCategoryPrefs(
       selected: selected
           ? {...state.selected, groupId}
           : ({...state.selected}..remove(groupId)),
-      answered: selected ? {...state.answered, groupId} : state.answered,
     );
     try {
       if (selected) {
-        await Future.wait([
-          _store.setString(selectedKey(groupId), '1'),
-          _store.setString(answeredKey(groupId), '1'),
-        ]);
+        await _store.setString(selectedKey(groupId), '1');
       } else {
         await _store.remove(selectedKey(groupId));
       }
@@ -322,27 +262,9 @@ class CombinedCategoryPrefsNotifier
       // The session keeps the choice; only persistence was lost.
     }
   }
-
-  /// The question was answered for [groupId]; it is not asked there again.
-  Future<void> markAnswered(String groupId) async {
-    if (groupId.isEmpty || state.answered.contains(groupId)) return;
-    state = state.copyWith(answered: {...state.answered, groupId});
-    try {
-      await _store.setString(answeredKey(groupId), '1');
-    } catch (_) {}
-  }
-
-  /// "Never ask": no event asks again. Combined stays in the picker.
-  Future<void> setNeverAsk() async {
-    if (state.neverAsk) return;
-    state = state.copyWith(neverAsk: true);
-    try {
-      await _store.setString(neverAskKey, '1');
-    } catch (_) {}
-  }
 }
 
-/// App-scoped, so an answer survives leaving and re-entering an event.
+/// App-scoped, so the choice survives leaving and re-entering an event.
 final combinedCategoryPrefsProvider =
     StateNotifierProvider<CombinedCategoryPrefsNotifier, CombinedCategoryPrefs>(
       (ref) =>
@@ -377,8 +299,8 @@ final combinedCategoriesProvider = Provider<CombinedCategories>((ref) {
 });
 
 /// Whether the viewer may use Combined. Combined is free for everyone, so
-/// this is always true: no lock in the picker, no paywall, no Premium line in
-/// the prompt. Kept as the one switch should Combined become Premium again.
+/// this is always true: no lock in the picker, no paywall. Kept as the one
+/// switch should Combined become Premium again.
 final combinedCategoryEntitledProvider = Provider<bool>((ref) => true);
 
 /// True while the open event is shown in Combined: the user chose it and the

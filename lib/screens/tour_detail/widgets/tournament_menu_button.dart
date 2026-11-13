@@ -139,7 +139,7 @@ class TournamentMenuButton extends ConsumerWidget {
   }
 
   /// Combined on/off, on every tab of an event with categories to merge.
-  /// It leads the menu: it is the answer the "combine?" question points to.
+  /// It leads the menu: with the picker, this is how Combined is turned on.
   List<LibraryMenuAction> _combinedActions(
     WidgetRef ref,
     BuildContext hostContext,
