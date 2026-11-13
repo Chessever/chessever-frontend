@@ -33,7 +33,8 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
 
 /// The Games tab while the event is shown in Combined: every category's
-/// rounds by start time, with each source category labeled inside its round.
+/// rounds in the single-category round order, every category inside each
+/// round (strongest first), each labeled inside its round.
 ///
 /// It paints with the same list, cards, view modes and live streams as the
 /// single-category tab; only the grouping differs.
@@ -227,58 +228,38 @@ class _CombinedGamesScreenState extends ConsumerState<CombinedGamesScreen>
       backgroundColor: context.colors.surfaceRecessed,
       displacement: 60.h,
       strokeWidth: 3.w,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Padding(
-            padding: EdgeInsets.fromLTRB(16.sp, 0, 16.sp, 8.sp),
-            child: Text(
-              '${presentation.layout.orderedGames.length} games loaded',
-              style: AppTypography.textSmMedium.copyWith(
-                color: context.colors.textPrimaryMuted,
-              ),
-            ),
-          ),
-          Expanded(
-            child: GamesListView(
-              key: ValueKey(
-                'combined_games_${viewMode.name}_search_$isSearchMode',
-              ),
-              gamesByRound: presentation.gamesByRound,
-              gamesData: GamesScreenModel(
-                gamesTourModels: presentation.layout.orderedGames,
-                pinnedGamedIs: presentation.pinnedGameIds,
-                isSearchMode: isSearchMode,
-                searchQuery: isSearchMode ? presentation.searchQuery : null,
-              ),
-              gamesListViewMode: viewMode,
-              itemScrollController: _scrollController,
-              itemPositionsListener: _positionsListener,
-              isSearchMode: isSearchMode,
-              layout: presentation.layout,
-              roundExpansionOverrides: effectiveExpansion,
-              onPinToggle: _togglePin,
-              // Focused boards expand the complete Combined catalog through
-              // the existing deferred navigation path; search keeps its hits.
-              navigationListPolicy: isSearchMode
-                  ? BoardNavigationListPolicy.preserve
-                  : BoardNavigationListPolicy.sourceDefault,
-              roundHeaderBuilder: (context, entry, isExpanded, onToggle) {
-                final when = TimeUtils.formatShortRoundDateTime(
-                  entry.round.startsAt,
-                );
-                // One time heading, with source labels beneath it.
-                return TournamentRoundHeader(
-                  title: entry.round.name,
-                  detail: when.isEmpty ? null : when,
-                  isExpanded: isExpanded,
-                  onToggle: onToggle,
-                  dense: true,
-                );
-              },
-            ),
-          ),
-        ],
+      child: GamesListView(
+        key: ValueKey('combined_games_${viewMode.name}_search_$isSearchMode'),
+        gamesByRound: presentation.gamesByRound,
+        gamesData: GamesScreenModel(
+          gamesTourModels: presentation.layout.orderedGames,
+          pinnedGamedIs: presentation.pinnedGameIds,
+          isSearchMode: isSearchMode,
+          searchQuery: isSearchMode ? presentation.searchQuery : null,
+        ),
+        gamesListViewMode: viewMode,
+        itemScrollController: _scrollController,
+        itemPositionsListener: _positionsListener,
+        isSearchMode: isSearchMode,
+        layout: presentation.layout,
+        roundExpansionOverrides: effectiveExpansion,
+        onPinToggle: _togglePin,
+        // Focused boards expand the complete Combined catalog through
+        // the existing deferred navigation path; search keeps its hits.
+        navigationListPolicy: isSearchMode
+            ? BoardNavigationListPolicy.preserve
+            : BoardNavigationListPolicy.sourceDefault,
+        roundHeaderBuilder: (context, entry, isExpanded, onToggle) {
+          final when = TimeUtils.formatShortRoundDateTime(entry.round.startsAt);
+          // One time heading, with source labels beneath it.
+          return TournamentRoundHeader(
+            title: entry.round.name,
+            detail: when.isEmpty ? null : when,
+            isExpanded: isExpanded,
+            onToggle: onToggle,
+            dense: true,
+          );
+        },
       ),
     );
   }

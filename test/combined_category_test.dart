@@ -123,7 +123,7 @@ class _MemoryStore implements TourSelectionStore {
 }
 
 void main() {
-  group('Combined schedule blocks match web', () {
+  group('Combined round order', () {
     ({
       CombinedCategory category,
       List<Round> rounds,
@@ -173,110 +173,6 @@ void main() {
         for (var n = 1; n <= 10; n++) 'Round $n',
       ]);
     });
-
-    test(
-      'parallel groups stay complete before older Blitz, without mutating sources',
-      () {
-        final first = _now.subtract(const Duration(days: 3, hours: 12));
-        final a = source('a', first, 10, 4);
-        final b = source('b', first, 10, 4, elo: 2600);
-        final blitz = source(
-          'blitz',
-          _now.subtract(const Duration(days: 10)),
-          5,
-          5,
-          elo: 2800,
-        );
-        final roundsByTourId = {
-          'a': a.rounds,
-          'b': b.rounds,
-          'blitz': blitz.rounds,
-        };
-        final gamesByTourId = {
-          'a': a.games,
-          'b': b.games,
-          'blitz': blitz.games,
-        };
-        final beforeRounds = {
-          for (final entry in roundsByTourId.entries)
-            entry.key: List<Round>.of(entry.value),
-        };
-        final beforeGames = {
-          for (final entry in gamesByTourId.entries)
-            entry.key: List<GamesTourModel>.of(entry.value),
-        };
-        for (final categories in [
-          [blitz.category, b.category, a.category],
-          [a.category, blitz.category, b.category],
-        ]) {
-          final sections = buildCombinedRoundSections(
-            categories: categories,
-            gamesByTourId: gamesByTourId,
-            roundsByTourId: roundsByTourId,
-            liveRoundIds: const [],
-            now: _now,
-          );
-          expect(sections.map((section) => section.round.id), [
-            for (final n in [4, 3, 2, 1, 5, 6, 7, 8, 9, 10]) ...[
-              'a-$n',
-              'b-$n',
-            ],
-            for (final n in [5, 4, 3, 2, 1]) 'blitz-$n',
-          ]);
-          final buckets = buildCombinedRoundBuckets(
-            sections,
-            eventId: 'festival',
-          );
-          expect(buckets.take(10).map((bucket) => bucket.round.name), [
-            for (final n in [4, 3, 2, 1, 5, 6, 7, 8, 9, 10]) 'Round $n',
-          ]);
-          expect(buckets.first.sources.map((section) => section.roundId), [
-            'a-4',
-            'b-4',
-          ]);
-          expect(roundsByTourId, beforeRounds);
-          expect(gamesByTourId, beforeGames);
-        }
-      },
-    );
-
-    test(
-      'whole schedules merge transitively even before all pairings arrive',
-      () {
-        final a = source('a', _now.subtract(const Duration(days: 6)), 9, 5);
-        final b = source('b', _now.add(const Duration(days: 1)), 4, 0);
-        final c = source('c', _now.add(const Duration(days: 3)), 1, 0);
-        final blitz = source(
-          'blitz',
-          _now.subtract(const Duration(days: 8)),
-          1,
-          1,
-        );
-        final sections = buildCombinedRoundSections(
-          categories: [c.category, blitz.category, a.category, b.category],
-          gamesByTourId: {
-            'a': [a.games[4]],
-            'b': [b.games.first],
-            'c': c.games,
-            'blitz': blitz.games,
-          },
-          roundsByTourId: {
-            'a': a.rounds,
-            'b': b.rounds,
-            'c': c.rounds,
-            'blitz': blitz.rounds,
-          },
-          liveRoundIds: const [],
-          now: _now,
-        );
-        expect(sections.map((section) => section.round.id), [
-          'a-5',
-          'b-1',
-          'c-1',
-          'blitz-1',
-        ]);
-      },
-    );
   });
 
   group('isCombinedSectionLabel', () {
@@ -316,13 +212,15 @@ void main() {
       expect(categories.tourIds, hasLength(2));
     });
 
-    test('skips a section the database flags as a mirror, whatever its name', () {
-      final categories = CombinedCategories.fromTours([
-        _tour('Open', avgElo: 2500),
-        _tour('Women', avgElo: 2300),
-        _tour('All boards', avgElo: 2400, isMirror: true),
-      ]);
-      expect(categories.tourIds, ['Open', 'Women']);
+    test(
+      'skips a section the database flags as a mirror, whatever its name',
+      () {
+        final categories = CombinedCategories.fromTours([
+          _tour('Open', avgElo: 2500),
+          _tour('Women', avgElo: 2300),
+          _tour('All boards', avgElo: 2400, isMirror: true),
+        ]);
+        expect(categories.tourIds, ['Open', 'Women']);
       },
     );
 
@@ -456,93 +354,41 @@ void main() {
     test(
       'round starts first, then category strength within the same start',
       () {
-      final sections = buildCombinedRoundSections(
-        categories: categories,
-        gamesByTourId: {
-          for (final category in categories)
-            category.tourId: [
-              _game(
-                '${category.tourId}-1',
-                tourId: category.tourId,
-                roundId: '${category.tourId}-r1',
-              ),
-              _game(
-                '${category.tourId}-2',
-                tourId: category.tourId,
-                roundId: '${category.tourId}-r2',
-                status: GameStatus.ongoing,
-              ),
-            ],
-        },
-        roundsByTourId: rounds(),
-        liveRoundIds: const <String>[],
-        now: _now,
-      );
+        final sections = buildCombinedRoundSections(
+          categories: categories,
+          gamesByTourId: {
+            for (final category in categories)
+              category.tourId: [
+                _game(
+                  '${category.tourId}-1',
+                  tourId: category.tourId,
+                  roundId: '${category.tourId}-r1',
+                ),
+                _game(
+                  '${category.tourId}-2',
+                  tourId: category.tourId,
+                  roundId: '${category.tourId}-r2',
+                  status: GameStatus.ongoing,
+                ),
+              ],
+          },
+          roundsByTourId: rounds(),
+          liveRoundIds: const <String>[],
+          now: _now,
+        );
 
-      expect(_order(sections), [
-        'Group B Round 2',
+        expect(_order(sections), [
+          'Group B Round 2',
           'Group A Round 2',
           'Group C Round 2',
           'Group B Round 1',
           'Group A Round 1',
           'Group C Round 1',
-      ]);
+        ]);
       },
     );
 
-    test('a newer round outranks an older round from a stronger category', () {
-      final staggered = rounds();
-      staggered['Group C'] = [
-        _round(
-          'Group C-r1',
-          'Group C',
-          'Round 1',
-          r2.add(const Duration(minutes: 30)),
-        ),
-      ];
-      final sections = buildCombinedRoundSections(
-        categories: categories,
-        gamesByTourId: {
-          'Group A': [
-            _game(
-              'a',
-              tourId: 'Group A',
-              roundId: 'Group A-r2',
-              status: GameStatus.ongoing,
-            ),
-          ],
-          'Group B': [
-            _game(
-              'b',
-              tourId: 'Group B',
-              roundId: 'Group B-r2',
-              status: GameStatus.ongoing,
-            ),
-          ],
-          'Group C': [
-            _game(
-              'c',
-              tourId: 'Group C',
-              roundId: 'Group C-r1',
-              status: GameStatus.ongoing,
-            ),
-          ],
-        },
-        roundsByTourId: staggered,
-        liveRoundIds: const <String>[],
-        now: _now,
-      );
-
-      expect(_order(sections), [
-        'Group C Round 1',
-        'Group B Round 2',
-        'Group A Round 2',
-      ]);
-    });
-
-    test(
-      'equal round starts and ratings use source identity; unrated last',
-      () {
+    test('equal ratings: the later-starting category first; unrated last', () {
       final tied = [
         _category('Unrated', order: 0, startsAt: r3),
         _category('Early', avgElo: 2700, order: 1, startsAt: r1),
@@ -574,12 +420,11 @@ void main() {
 
       expect(
         [for (final section in sections) section.category.label],
-          ['Top', 'Early', 'Late', 'Late too', 'Unrated'],
-        );
-      },
-    );
+        ['Top', 'Late', 'Late too', 'Early', 'Unrated'],
+      );
+    });
 
-    test('a category\'s published pairings wait below its round in play', () {
+    test('published pairings read under their round number', () {
       final sections = buildCombinedRoundSections(
         categories: categories.take(2).toList(),
         gamesByTourId: {
@@ -614,16 +459,15 @@ void main() {
         now: _now,
       );
 
-      // Both sources' future pairings follow the rounds already played.
       expect(_order(sections), [
-        'Group B Round 2',
-        'Group A Round 2',
         'Group B Round 3',
         'Group A Round 3',
+        'Group B Round 2',
+        'Group A Round 2',
       ]);
     });
 
-    test('future pairings stay below played rounds between rounds', () {
+    test('between rounds the next round leads, every category in it', () {
       final sections = buildCombinedRoundSections(
         categories: categories.take(2).toList(),
         gamesByTourId: {
@@ -646,95 +490,13 @@ void main() {
       );
 
       expect(_order(sections), [
+        'Group B Round 3',
+        'Group A Round 3',
         'Group B Round 2',
         'Group A Round 2',
         'Group B Round 1',
         'Group A Round 1',
-        'Group B Round 3',
-        'Group A Round 3',
       ]);
-    });
-
-    test('same-start knockout stages precede source rating, like web', () {
-      final labels = [
-        'Open',
-        'Round of 16',
-        'Quarter-Final',
-        'Semi Final',
-        'Bronze',
-        'Final',
-        'Grand Final',
-      ];
-      final sources = [
-        for (var i = 0; i < labels.length; i++)
-          _category(labels[i], avgElo: 2900 - i * 100, order: i),
-      ];
-      final sections = buildCombinedRoundSections(
-        categories: sources,
-        gamesByTourId: {
-          for (final source in sources)
-            source.tourId: [
-              _game(
-                source.tourId,
-                tourId: source.tourId,
-                roundId: '${source.tourId}-r',
-              ),
-            ],
-        },
-        roundsByTourId: {
-          for (final source in sources)
-            source.tourId: [
-              _round('${source.tourId}-r', source.tourId, source.label, r1),
-            ],
-        },
-        liveRoundIds: const [],
-        now: _now,
-      );
-      expect(
-        sections.map((section) => section.category.label),
-        labels.reversed,
-      );
-    });
-
-    test('generic round and short labels retain the source title stage', () {
-      final sources = [
-        const CombinedCategory(
-          tourId: 'high',
-          label: 'A',
-          sourceName: 'Festival | Semi Final | A',
-          avgElo: 2800,
-          order: 0,
-        ),
-        const CombinedCategory(
-          tourId: 'low',
-          label: 'B',
-          sourceName: 'Festival | Final | B',
-          avgElo: 2400,
-          order: 1,
-        ),
-      ];
-      final sections = buildCombinedRoundSections(
-        categories: sources,
-        gamesByTourId: {
-          for (final source in sources)
-            source.tourId: [
-              _game(
-                source.tourId,
-                tourId: source.tourId,
-                roundId: '${source.tourId}-r',
-              ),
-            ],
-        },
-        roundsByTourId: {
-          for (final source in sources)
-            source.tourId: [
-              _round('${source.tourId}-r', source.tourId, 'Round 1', r1),
-            ],
-        },
-        liveRoundIds: const [],
-        now: _now,
-      );
-      expect(sections.map((section) => section.category.tourId), ['low', 'high']);
     });
 
     test(
@@ -759,7 +521,10 @@ void main() {
           liveRoundIds: const [],
           now: _now,
         );
-        final buckets = buildCombinedRoundBuckets(sections, eventId: 'festival');
+        final buckets = buildCombinedRoundBuckets(
+          sections,
+          eventId: 'festival',
+        );
         expect(buckets.map((bucket) => bucket.round.name), [
           'Round 2',
           'Round 1',
@@ -919,6 +684,61 @@ void main() {
       expect(_order(sections), ['Group A Round 1', 'Group A Round 1']);
       expect(sections.first.round.id, 'Group A-r9');
       expect(sections.first.games.single.gameId, 'new');
+    });
+
+    test('rounds follow the single-category order: a later tiebreak leads', () {
+      final withTiebreak = rounds();
+      withTiebreak['Group A'] = [
+        ...withTiebreak['Group A']!.take(2),
+        _round('Group A-tb', 'Group A', 'Tiebreaks', r3),
+      ];
+      final sections = buildCombinedRoundSections(
+        categories: categories.take(2).toList(),
+        gamesByTourId: {
+          'Group A': [
+            _game('a2', tourId: 'Group A', roundId: 'Group A-r2'),
+            _game('atb', tourId: 'Group A', roundId: 'Group A-tb'),
+          ],
+          'Group B': [_game('b2', tourId: 'Group B', roundId: 'Group B-r2')],
+        },
+        roundsByTourId: withTiebreak,
+        liveRoundIds: const <String>[],
+        now: _now,
+      );
+
+      expect(_order(sections), [
+        'Group A Tiebreaks',
+        'Group B Round 2',
+        'Group A Round 2',
+      ]);
+    });
+
+    test('same round name on another day is a round of its own', () {
+      final day0 = DateTime.utc(2026, 11, 10, 18);
+      final withSideEvent = <String, List<Round>>{
+        'Group A': [_round('Group A-r1', 'Group A', 'Round 1', r1)],
+        'Group B': [_round('Group B-r1', 'Group B', 'Round 1', r1)],
+        'Blitz': [_round('Blitz-r1', 'Blitz', 'Round 1', day0)],
+      };
+      final sections = buildCombinedRoundSections(
+        categories: [
+          ...categories.take(2),
+          _category('Blitz', avgElo: 2800, order: 3),
+        ],
+        gamesByTourId: {
+          for (final tourId in ['Group A', 'Group B', 'Blitz'])
+            tourId: [_game(tourId, tourId: tourId, roundId: '$tourId-r1')],
+        },
+        roundsByTourId: withSideEvent,
+        liveRoundIds: const <String>[],
+        now: _now,
+      );
+
+      expect(_order(sections), [
+        'Group B Round 1',
+        'Group A Round 1',
+        'Blitz Round 1',
+      ]);
     });
 
     test('a category with no games contributes nothing', () {

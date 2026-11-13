@@ -2,6 +2,7 @@ import 'package:chessever2/repository/supabase/round/round.dart';
 import 'package:chessever2/screens/tour_detail/combined/combined_category.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_app_bar_view_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/round_ordering.dart';
 import 'package:flutter/foundation.dart';
 
 /// One block of the Combined list: a single round of a single category.
@@ -13,6 +14,8 @@ class CombinedRoundSection {
     required this.games,
     required this.startsAt,
     required this.hasStarted,
+    required this.isFullyPlayed,
+    required this.roundOrder,
   });
 
   final CombinedCategory category;
@@ -31,12 +34,34 @@ class CombinedRoundSection {
 
   /// Whether play is under way or over, as opposed to published pairings.
   final bool hasStarted;
+
+  /// Every board has a result. False for a round with no boards yet.
+  final bool isFullyPlayed;
+
+  /// Position of the round inside its own category, oldest first.
+  final int roundOrder;
 }
 
-/// Orders real source rounds like the web Combined view: overlapping source
-/// schedules stay in one block, including their future pairings. Inside each
-/// block, played rounds come newest first, then future rounds soonest first,
-/// with knockout stage and source rating breaking ties.
+/// Lays every category's rounds out as one list.
+///
+/// Combined only puts the same round of every category under one view; it
+/// does not invent its own round order. Rounds are ordered by
+/// [sortRoundsForDisplay], the rule a single category's Games tab uses, and
+/// inside one round each category gets its own block, strongest first:
+///
+///   Group B, Round 8
+///   Group C, Round 8
+///   Group A, Round 8
+///   Group B, Round 7
+///   ...
+///
+/// "The same round" is the same round name ("Round 8") on the same day.
+/// Categories are ranked by average rating; equally rated ones by the later
+/// start, then picker order.
+///
+/// No board is listed twice: a category whose boards are copies of the other
+/// categories' boards (an organizer's own combined section that nobody
+/// flagged) is left out, see [findMirrorTourIds].
 List<CombinedRoundSection> buildCombinedRoundSections({
   required List<CombinedCategory> categories,
   required Map<String, List<GamesTourModel>> gamesByTourId,
@@ -55,7 +80,9 @@ List<CombinedRoundSection> buildCombinedRoundSections({
     roundsByTourId: roundsByTourId,
   );
 
-  final schedules = <_CombinedSourceSchedule>[];
+  // Every category's rounds, gathered by round. Categories are visited
+  // strongest first, so each group already lists them in rank order.
+  final sectionsByKey = <String, List<CombinedRoundSection>>{};
   for (final category in ranked) {
     if (mirrorTourIds.contains(category.tourId)) continue;
     final games = gamesByTourId[category.tourId] ?? const <GamesTourModel>[];
@@ -64,6 +91,9 @@ List<CombinedRoundSection> buildCombinedRoundSections({
     final rounds = roundsByTourId[category.tourId] ?? const <Round>[];
     final roundsById = <String, Round>{
       for (final round in rounds) round.id: round,
+    };
+    final roundOrderById = <String, int>{
+      for (var i = 0; i < rounds.length; i++) rounds[i].id: i,
     };
 
     final gamesByRoundId = <String, List<GamesTourModel>>{};
@@ -108,57 +138,92 @@ List<CombinedRoundSection> buildCombinedRoundSections({
         games: roundGames,
         startsAt: startsAt,
         hasStarted: hasStarted,
+        isFullyPlayed:
+            roundGames.isNotEmpty &&
+            roundGames.every((game) => game.effectiveGameStatus.isFinished),
+        // An unknown round is newer than the ones the schedule already has.
+        roundOrder: roundOrderById[entry.key] ?? rounds.length,
       );
       sections.add(section);
     }
-    // Read the whole source schedule, including rounds without games yet.
-    // Missing pairings must not split parallel groups into separate blocks.
-    final dates = [
-      for (final round in rounds) round.startsAt ?? round.createdAt,
-      for (final section in sections)
-        if (!roundsById.containsKey(section.round.id))
-          section.startsAt ??
-              DateTime.fromMillisecondsSinceEpoch(0, isUtc: true),
-    ]..sort();
-    schedules.add(
-      _CombinedSourceSchedule(
-        first: dates.first,
-        last: dates.last,
-        sections: sections,
-      ),
-    );
-  }
-  schedules.sort((a, b) => a.first.compareTo(b.first));
-
-  // Like web combinedRounds, merge overlapping intervals transitively. Source
-  // ids own these schedules; matching labels or round numbers do not.
-  final blocks = <_CombinedSourceSchedule>[];
-  for (final schedule in schedules) {
-    if (blocks.isNotEmpty && !schedule.first.isAfter(blocks.last.last)) {
-      final previous = blocks.last;
-      if (schedule.last.isAfter(previous.last)) previous.last = schedule.last;
-      previous.sections.addAll(schedule.sections);
-    } else {
-      blocks.add(schedule);
+    // Two rounds of one category under one name: the later first.
+    sections.sort((a, b) => b.roundOrder.compareTo(a.roundOrder));
+    for (final section in sections) {
+      (sectionsByKey[_roundKey(section)] ??= <CombinedRoundSection>[]).add(
+        section,
+      );
     }
   }
-  for (final block in blocks) {
-    block.sections.sort(_compareSections);
-  }
-  blocks.sort((a, b) => _compareSections(a.sections.first, b.sections.first));
-  return [for (final block in blocks) ...block.sections];
+
+  // One stand-in per round, carrying what its categories say together, so
+  // the regular round order decides where the round goes.
+  final standIns = <GamesAppBarModel>[
+    for (final entry in sectionsByKey.entries)
+      _standInRound(entry.key, entry.value),
+  ];
+  final ordered = sortRoundsForDisplay(
+    standIns,
+    resolveDate: (round) => round.startsAt,
+    hasGames: (round) =>
+        sectionsByKey[round.id]!.any((section) => section.games.isNotEmpty),
+    hasStartedActivity: (round) =>
+        sectionsByKey[round.id]!.any((section) => section.hasStarted),
+    isRoundFullyPlayed: (round) => sectionsByKey[round.id]!.every(
+      (section) =>
+          section.round.roundStatus == RoundStatus.completed ||
+          section.isFullyPlayed,
+    ),
+    now: effectiveNow,
+  );
+
+  return <CombinedRoundSection>[
+    for (final round in ordered) ...sectionsByKey[round.id]!,
+  ];
 }
 
-class _CombinedSourceSchedule {
-  _CombinedSourceSchedule({
-    required this.first,
-    required this.last,
-    required this.sections,
-  });
+/// Same round across categories: the same name ("Round 8", "round 8" and
+/// "Round  8" agree) played on the same day. A side event that reuses the
+/// names on another day (Total Chess's Blitz Tiebreak ran its Rounds 1-9
+/// the day before the groups' Rounds 1-10) keeps rounds of its own.
+String _roundKey(CombinedRoundSection section) {
+  final name = section.round.name.trim().toLowerCase().replaceAll(
+    RegExp(r'\s+'),
+    ' ',
+  );
+  final start = (section.round.startsAt ?? section.startsAt)?.toUtc();
+  if (start == null) return name;
+  return '$name@${start.year}-${start.month}-${start.day}';
+}
 
-  final DateTime first;
-  DateTime last;
-  final List<CombinedRoundSection> sections;
+/// The round as the regular order sees it, from all its categories: the
+/// earliest start, and the most active status any of them has.
+GamesAppBarModel _standInRound(
+  String key,
+  List<CombinedRoundSection> sections,
+) {
+  DateTime? startsAt;
+  for (final section in sections) {
+    final start = section.round.startsAt;
+    if (start != null && (startsAt == null || start.isBefore(startsAt))) {
+      startsAt = start;
+    }
+  }
+  bool any(RoundStatus status) =>
+      sections.any((section) => section.round.roundStatus == status);
+  final status = any(RoundStatus.live)
+      ? RoundStatus.live
+      : any(RoundStatus.ongoing)
+      ? RoundStatus.ongoing
+      : any(RoundStatus.upcoming)
+      ? RoundStatus.upcoming
+      : RoundStatus.completed;
+  return GamesAppBarModel(
+    id: key,
+    name: sections.first.round.name,
+    startsAt: startsAt,
+    roundStatus: status,
+    sourceRoundIds: [for (final section in sections) section.round.id],
+  );
 }
 
 /// How far apart two rounds may start and still be the same sitting. An
@@ -279,48 +344,6 @@ class _Board {
 /// A copy comes from the same feed as its original, so the name is spelled
 /// the same; only case and stray spaces are evened out.
 String _playerKey(String name) => name.trim().toLowerCase();
-
-/// Same precedence as web `combinedRounds`; future pairings never cover play.
-int _compareSections(CombinedRoundSection a, CombinedRoundSection b) {
-  final byFuture = (a.hasStarted ? 0 : 1).compareTo(b.hasStarted ? 0 : 1);
-  if (byFuture != 0) return byFuture;
-  final byStart = _compareDates(
-    a.startsAt,
-    b.startsAt,
-    latestFirst: a.hasStarted,
-  );
-  if (byStart != 0) return byStart;
-  final byStage = _stageRank(a).compareTo(_stageRank(b));
-  if (byStage != 0) return byStage;
-  final byRating = (b.category.avgElo ?? -1).compareTo(a.category.avgElo ?? -1);
-  if (byRating != 0) return byRating;
-  final byTour = a.category.tourId.compareTo(b.category.tourId);
-  return byTour != 0 ? byTour : a.round.id.compareTo(b.round.id);
-}
-
-int _stageRank(CombinedRoundSection section) =>
-    _namedStageRank(section.round.name) ??
-    _namedStageRank(section.category.sourceName ?? section.category.label) ??
-    0x7fffffff;
-
-// Match the web stage precedence; generic "Round 2" is not a knockout stage.
-int? _namedStageRank(String name) {
-  bool matches(String pattern) =>
-      RegExp(pattern, caseSensitive: false).hasMatch(name);
-  if (matches(r'\bgrand[\s-]*finals?\b')) return 1;
-  if (matches(r'\b(?:3rd|third)[\s-]*place\b|\bbronze\b')) return 3;
-  if (matches(r'\bsemi[\s-]*finals?\b')) return 4;
-  if (matches(r'\bquarter[\s-]*finals?\b')) return 8;
-  final field = RegExp(
-    r'\b(?:round of|last)\s+(\d+)\b|\bro(\d+)\b',
-    caseSensitive: false,
-  ).firstMatch(name);
-  if (field != null) {
-    final size = int.tryParse(field.group(1) ?? field.group(2)!);
-    return size != null && size > 0 ? size : null;
-  }
-  return matches(r'\bfinals?\b') ? 2 : null;
-}
 
 /// Undated rounds sink below dated ones in either direction.
 int _compareDates(DateTime? a, DateTime? b, {required bool latestFirst}) {

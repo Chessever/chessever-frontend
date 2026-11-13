@@ -109,14 +109,13 @@ class GamesListView extends ConsumerWidget {
     );
     // Hide while the stored value is still loading too, so a score can never
     // flash before the setting resolves.
-    final hideMatchScores =
-        eventTourId == null || eventTourId.isEmpty
-            ? false
-            : ref.watch(
-              eventNoSpoilersProvider(
-                eventTourId,
-              ).select((state) => state.isLoading || state.enabled),
-            );
+    final hideMatchScores = eventTourId == null || eventTourId.isEmpty
+        ? false
+        : ref.watch(
+            eventNoSpoilersProvider(
+              eventTourId,
+            ).select((state) => state.isLoading || state.enabled),
+          );
 
     final itemCount = layout.itemCount;
 
@@ -146,8 +145,9 @@ class GamesListView extends ConsumerWidget {
           // and pass it to items to ensure they have bounded width.
           // ScrollablePositionedList can give unbounded width to items,
           // which breaks nested Expanded widgets.
-          final itemWidth =
-              ResponsiveHelper.isTablet ? outerConstraints.maxWidth : null;
+          final itemWidth = ResponsiveHelper.isTablet
+              ? outerConstraints.maxWidth
+              : null;
 
           return ScrollablePositionedList.builder(
             itemScrollController: itemScrollController,
@@ -193,7 +193,11 @@ class GamesListView extends ConsumerWidget {
                         }
                       };
                 return Padding(
-                  padding: EdgeInsets.only(bottom: 16.sp),
+                  // Combined (the only roundHeaderBuilder) puts its source
+                  // labels right under the round, so keep them tight.
+                  padding: EdgeInsets.only(
+                    bottom: roundHeaderBuilder != null ? 2.sp : 16.sp,
+                  ),
                   child:
                       roundHeaderBuilder?.call(
                         context,
@@ -223,7 +227,7 @@ class GamesListView extends ConsumerWidget {
                                 .read(combinedGroupExpansionProvider.notifier)
                                 .toggle(lookup.roundId!),
                       child: Container(
-                        constraints: const BoxConstraints(minHeight: 44),
+                        constraints: const BoxConstraints(minHeight: 36),
                         decoration: BoxDecoration(
                           border: Border(
                             bottom: BorderSide(
@@ -235,7 +239,7 @@ class GamesListView extends ConsumerWidget {
                         child: Padding(
                           padding: EdgeInsets.symmetric(
                             horizontal: 4.sp,
-                            vertical: 6.sp,
+                            vertical: 4.sp,
                           ),
                           child: Row(
                             children: [
@@ -270,10 +274,9 @@ class GamesListView extends ConsumerWidget {
 
               if (lookup is GamesTourMatchHeaderEntry) {
                 final matchKey = lookup.matchHeader.matchKey;
-                final isExpanded =
-                    isSearchMode
-                        ? true
-                        : ref.watch(matchExpansionStateProvider(matchKey));
+                final isExpanded = isSearchMode
+                    ? true
+                    : ref.watch(matchExpansionStateProvider(matchKey));
 
                 return Padding(
                   padding: EdgeInsets.only(bottom: 12.sp),
@@ -281,14 +284,13 @@ class GamesListView extends ConsumerWidget {
                     match: lookup.matchHeader,
                     hideScores: hideMatchScores,
                     isExpanded: isExpanded,
-                    onToggle:
-                        isSearchMode
-                            ? null // Disable toggle in search mode
-                            : () {
-                              ref
-                                  .read(matchExpansionProvider.notifier)
-                                  .toggleMatch(matchKey);
-                            },
+                    onToggle: isSearchMode
+                        ? null // Disable toggle in search mode
+                        : () {
+                            ref
+                                .read(matchExpansionProvider.notifier)
+                                .toggleMatch(matchKey);
+                          },
                   ),
                 );
               }
@@ -298,26 +300,25 @@ class GamesListView extends ConsumerWidget {
                   padding: EdgeInsets.only(
                     bottom: lookup.isLastInSection ? 20.sp : 12.sp,
                   ),
-                  child:
-                      gamesListViewMode == GamesListViewMode.chessBoardGrid
-                          ? _buildGridRow(
-                            context,
-                            ref,
-                            lookup,
-                            orderedGamesList,
-                            liveBatchKeyByGameId,
-                            allowStockfishFallback,
-                            streamEnabled,
-                          )
-                          : _buildCardRow(
-                            context,
-                            ref,
-                            lookup,
-                            orderedGamesList,
-                            liveBatchKeyByGameId,
-                            allowStockfishFallback,
-                            streamEnabled,
-                          ),
+                  child: gamesListViewMode == GamesListViewMode.chessBoardGrid
+                      ? _buildGridRow(
+                          context,
+                          ref,
+                          lookup,
+                          orderedGamesList,
+                          liveBatchKeyByGameId,
+                          allowStockfishFallback,
+                          streamEnabled,
+                        )
+                      : _buildCardRow(
+                          context,
+                          ref,
+                          lookup,
+                          orderedGamesList,
+                          liveBatchKeyByGameId,
+                          allowStockfishFallback,
+                          streamEnabled,
+                        ),
                 );
                 // TABLET: Wrap with SizedBox to provide bounded width
                 if (itemWidth != null) {
@@ -383,20 +384,19 @@ class GamesListView extends ConsumerWidget {
       streamEnabled,
     );
 
-    final game2Widget =
-        item.game2 != null
-            ? _buildGridGame(
-              context,
-              ref,
-              item.game2!,
-              item.globalIndex2!,
-              orderedGamesList,
-              item.fixedBottomSide2,
-              liveBatchKeyByGameId,
-              allowStockfishFallback,
-              streamEnabled,
-            )
-            : null;
+    final game2Widget = item.game2 != null
+        ? _buildGridGame(
+            context,
+            ref,
+            item.game2!,
+            item.globalIndex2!,
+            orderedGamesList,
+            item.fixedBottomSide2,
+            liveBatchKeyByGameId,
+            allowStockfishFallback,
+            streamEnabled,
+          )
+        : null;
 
     // On tablet, use Expanded to give children bounded width constraints.
     // Without this, Row with spaceBetween gives children unbounded width,
@@ -461,13 +461,11 @@ class GamesListView extends ConsumerWidget {
       fixedBottomSide: fixedBottomSide,
       allowStockfishFallback: allowStockfishFallback,
       streamEnabled: streamEnabled,
-      onPinToggle:
-          (_) async =>
-              onPinToggle != null
-                  ? await onPinToggle!(game)
-                  : await ref
-                      .read(gamesTourScreenProvider.notifier)
-                      .togglePinGame(game.gameId, sourceTourId: game.tourId),
+      onPinToggle: (_) async => onPinToggle != null
+          ? await onPinToggle!(game)
+          : await ref
+                .read(gamesTourScreenProvider.notifier)
+                .togglePinGame(game.gameId, sourceTourId: game.tourId),
     );
   }
 

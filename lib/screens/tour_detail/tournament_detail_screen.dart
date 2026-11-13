@@ -1,4 +1,3 @@
-import 'package:chessever2/screens/tour_detail/combined/combined_hall_provider.dart';
 import 'dart:async';
 
 import 'package:chessever2/chat/botvinnik_chat_button.dart';
@@ -20,6 +19,8 @@ import 'package:chessever2/screens/tour_detail/player_tour/player_tour_screen.da
 import 'package:chessever2/screens/tour_detail/team_tour/team_tour_screen.dart';
 import 'package:chessever2/screens/tour_detail/about_tour_screen.dart';
 import 'package:chessever2/screens/tour_detail/combined/combined_category.dart';
+import 'package:chessever2/screens/tour_detail/combined/combined_category_actions.dart';
+import 'package:chessever2/screens/tour_detail/combined/combined_category_prompt.dart';
 import 'package:chessever2/screens/tour_detail/combined/combined_games_screen.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/views/games_tour_screen.dart';
 import 'package:chessever2/screens/group_event/model/tour_detail_view_model.dart';
@@ -38,6 +39,7 @@ import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/foreground_task_scheduler.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/user_error_message.dart';
+import 'package:chessever2/widgets/app_snack.dart';
 import 'package:chessever2/widgets/screen_wrapper.dart';
 import 'package:chessever2/widgets/scroll_to_top_bus.dart';
 import 'package:chessever2/widgets/segmented_switcher.dart';
@@ -73,17 +75,76 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
   late List<TournamentDetailScreenMode> _renderedModes;
   String? _scheduledReferencedRoundId;
 
-  /// Restore the viewer's saved category choice without an opening prompt.
-  void _restoreCombinedSelection(WidgetRef scopedRef) {
+  /// The "combine?" question is raised at most once per visit to this screen.
+  bool _combineQuestionRaised = false;
+  Timer? _combineQuestionTimer;
+
+  /// Asks whether to open a multi-category event in Combined (Trello
+  /// "Combined"): once per event, never after "Never ask", and not when the
+  /// event was opened onto a specific round.
+  void _maybeAskToCombine(WidgetRef scopedRef) {
+    if (_combineQuestionRaised) return;
     final groupId = scopedRef.watch(combinedCategoryGroupIdProvider);
-    if (groupId == null ||
-        !scopedRef.watch(combinedCategoriesProvider).canCombine) {
-      return;
-    }
+    if (groupId == null) return;
+    // An event with one category never reads storage for this.
+    final categories = scopedRef.watch(combinedCategoriesProvider);
+    if (!categories.canCombine) return;
+    // Reading the stored answers is what makes the question askable, and
+    // what restores Combined for an event that was left in it.
     unawaited(
       scopedRef
           .read(combinedCategoryPrefsProvider.notifier)
           .ensureLoaded(groupId),
+    );
+    final shouldAsk = scopedRef.watch(
+      combinedCategoryPrefsProvider.select((prefs) => prefs.shouldAsk(groupId)),
+    );
+    if (!shouldAsk) return;
+    if (scopedRef.read(pendingRoundNavigationProvider) != null) return;
+
+    _combineQuestionRaised = true;
+    // Let the push transition finish so the question lands on a settled
+    // screen. Cancelled with the screen, so leaving early asks nothing.
+    _combineQuestionTimer = Timer(
+      const Duration(milliseconds: 500),
+      () => unawaited(_askToCombine(groupId, categories)),
+    );
+  }
+
+  Future<void> _askToCombine(
+    String groupId,
+    CombinedCategories categories,
+  ) async {
+    // Skip it if the viewer has already moved on to a board.
+    if (!mounted || ModalRoute.of(context)?.isCurrent != true) return;
+
+    final prefs = ref.read(combinedCategoryPrefsProvider.notifier);
+    final answer = await showCombineCategoriesPrompt(
+      context,
+      categories: categories,
+      // Combined is free for everyone, so no Premium line.
+      isPremium: true,
+    );
+    // Any answer, a dismissal included, settles the question for this event.
+    await prefs.markAnswered(groupId);
+    if (!mounted) return;
+
+    switch (answer) {
+      case CombinePromptAnswer.combine:
+        await openCombinedCategory(context, groupId: groupId);
+      case CombinePromptAnswer.neverAsk:
+        await prefs.setNeverAsk();
+        if (mounted) _showCombineLaterHint();
+      case CombinePromptAnswer.notNow:
+      case null:
+        _showCombineLaterHint();
+    }
+  }
+
+  void _showCombineLaterHint() {
+    showAppSnack(
+      context,
+      'You can combine categories anytime from the menu at the top right.',
     );
   }
 
@@ -203,16 +264,6 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
         ref.invalidate(liveGameUpdateStreamProvider);
         ref.invalidate(gameUpdatesBatchStreamProvider);
 
-        if (ref.read(combinedCategorySelectedProvider) &&
-            ref.read(selectedTourModeProvider) ==
-                TournamentDetailScreenMode.games) {
-          final key = ref.read(combinedCategoriesProvider).tourIds.join(',');
-          final hall = ref.read(combinedHallProvider(key).notifier);
-          hall.setVisible(true);
-          hall.loader.refresh();
-          return;
-        }
-
         // Refresh games data while preserving current UI state
         // This avoids showing "no games" during the refresh
         final tourDetailAsync = ref.read(tourDetailScreenProvider);
@@ -309,6 +360,7 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
     WidgetsBinding.instance.removeObserver(this);
     clearGamesTourScrollScopeActive(_scrollScopeId);
     ForegroundTaskScheduler.cancel('tournament_detail_resume_$hashCode');
+    _combineQuestionTimer?.cancel();
     pageController.dispose();
     _scrollToTopBus.dispose();
     super.dispose();
@@ -335,10 +387,9 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
           );
           final tourId = tourDetailAsync.valueOrNull?.aboutTourModel.id;
           final previousTourId = _layoutTracker.activeTourId;
-          final knockoutState =
-              tourId == null || tourId.isEmpty
-                  ? null
-                  : scopedRef.watch(knockoutTournamentStateProvider(tourId));
+          final knockoutState = tourId == null || tourId.isEmpty
+              ? null
+              : scopedRef.watch(knockoutTournamentStateProvider(tourId));
           final resolvedLayout = _layoutTracker.resolve(
             tourId: tourId,
             isTeam: knockoutState?.isTeamEvent ?? false,
@@ -349,10 +400,9 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
             ),
           );
           final hasResolvedTour = _layoutTracker.activeTourId != null;
-          final layout =
-              hasResolvedTour
-                  ? resolvedLayout
-                  : provisionalTournamentDetailLayoutForMode(selectedTourMode);
+          final layout = hasResolvedTour
+              ? resolvedLayout
+              : provisionalTournamentDetailLayoutForMode(selectedTourMode);
           final visibleModes = tournamentDetailModesFor(layout);
           final activeTourChanged =
               tourId != null &&
@@ -379,7 +429,7 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
             combinedGamesTabRequestProvider,
             (_, __) => _showGamesTab(),
           );
-          _restoreCombinedSelection(scopedRef);
+          _maybeAskToCombine(scopedRef);
 
           return ScreenWrapper(
             child: Scaffold(
@@ -398,10 +448,9 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
               body: Center(
                 child: ConstrainedBox(
                   constraints: BoxConstraints(
-                    maxWidth:
-                        ResponsiveHelper.isTablet
-                            ? ResponsiveHelper.contentMaxWidth
-                            : double.infinity,
+                    maxWidth: ResponsiveHelper.isTablet
+                        ? ResponsiveHelper.contentMaxWidth
+                        : double.infinity,
                   ),
                   child: Column(
                     children: [
@@ -409,22 +458,18 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
                         height: MediaQuery.viewPaddingOf(context).top + 4.h,
                       ),
                       tourDetailAsync.when(
-                        data:
-                            (data) => _buildSuccessAppBar(
-                              data,
-                              effectiveMode,
-                              visibleModes,
-                            ),
-                        error:
-                            (error, stackTrace) => _buildErrorAppBar(
-                              error,
-                              effectiveMode,
-                              visibleModes,
-                            ),
-                        loading:
-                            () => const _LoadingAppBarWithTitle(
-                              title: "ChessEver",
-                            ),
+                        data: (data) => _buildSuccessAppBar(
+                          data,
+                          effectiveMode,
+                          visibleModes,
+                        ),
+                        error: (error, stackTrace) => _buildErrorAppBar(
+                          error,
+                          effectiveMode,
+                          visibleModes,
+                        ),
+                        loading: () =>
+                            const _LoadingAppBarWithTitle(title: "ChessEver"),
                       ),
                       Expanded(
                         child: ScrollToTopScope(
@@ -433,13 +478,12 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
                             controller: pageController,
                             physics:
                                 effectiveMode ==
-                                        TournamentDetailScreenMode.bracket
-                                    ? const NeverScrollableScrollPhysics()
-                                    : null,
+                                    TournamentDetailScreenMode.bracket
+                                ? const NeverScrollableScrollPhysics()
+                                : null,
                             itemCount: visibleModes.length,
-                            onPageChanged:
-                                (index) =>
-                                    _handlePageChanged(index, visibleModes),
+                            onPageChanged: (index) =>
+                                _handlePageChanged(index, visibleModes),
                             itemBuilder: (context, index) {
                               if (index >= visibleModes.length) {
                                 return const SizedBox.shrink();
@@ -458,10 +502,9 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
                                         TournamentDetailScreenMode.games,
                                     // Combined swaps the list, not the tab:
                                     // every category's rounds in one place.
-                                    child:
-                                        combinedSelected
-                                            ? const CombinedGamesScreen()
-                                            : const GamesTourScreen(),
+                                    child: combinedSelected
+                                        ? const CombinedGamesScreen()
+                                        : const GamesTourScreen(),
                                   );
                                 case TournamentDetailScreenMode.bracket:
                                   return const KnockoutBracketScreen();
@@ -476,11 +519,10 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
                                     enabled:
                                         effectiveMode ==
                                         TournamentDetailScreenMode.standings,
-                                    onShare:
-                                        () => shareTournamentStandings(
-                                          context,
-                                          scopedRef,
-                                        ),
+                                    onShare: () => shareTournamentStandings(
+                                      context,
+                                      scopedRef,
+                                    ),
                                     child: PlayerTourScreen(),
                                   );
                                 case TournamentDetailScreenMode.players:
@@ -490,11 +532,10 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
                                     enabled:
                                         effectiveMode ==
                                         TournamentDetailScreenMode.players,
-                                    onShare:
-                                        () => shareTournamentStandings(
-                                          context,
-                                          scopedRef,
-                                        ),
+                                    onShare: () => shareTournamentStandings(
+                                      context,
+                                      scopedRef,
+                                    ),
                                     child: PlayerTourScreen(),
                                   );
                               }
@@ -528,11 +569,10 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
         _PinnedEventSearchBar(
           pageController: pageController,
           visibleModes: visibleModes,
-          fallbackPage:
-              tournamentDetailPageForMode(
-                visibleModes,
-                selectedTourMode,
-              ).toDouble(),
+          fallbackPage: tournamentDetailPageForMode(
+            visibleModes,
+            selectedTourMode,
+          ).toDouble(),
         ),
         _buildSegmentedSwitcher(
           selectedTourMode,
@@ -550,10 +590,7 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
   ) {
     return Column(
       children: [
-        _LoadingAppBarWithTitle(
-          title: userFacingError(error),
-          loading: false,
-        ),
+        _LoadingAppBarWithTitle(title: userFacingError(error), loading: false),
         SizedBox(height: 8.h),
         _buildSegmentedSwitcher(
           selectedTourMode,
@@ -813,10 +850,9 @@ class _PinnedEventSearchBar extends StatelessWidget {
     return AnimatedBuilder(
       animation: pageController,
       builder: (context, child) {
-        final page =
-            pageController.hasClients
-                ? (pageController.page ?? fallbackPage)
-                : fallbackPage;
+        final page = pageController.hasClients
+            ? (pageController.page ?? fallbackPage)
+            : fallbackPage;
         final t = tournamentDetailSearchVisibility(visibleModes, page);
         if (t <= 0.0) {
           return const SizedBox.shrink();
