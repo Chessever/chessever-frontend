@@ -1,4 +1,3 @@
-import 'package:chessever2/screens/tour_detail/combined/combined_pin_sources.dart';
 import 'package:chessever2/providers/auto_pin_preferences_provider.dart';
 import 'package:chessever2/providers/country_dropdown_provider.dart';
 import 'package:chessever2/providers/favorite_players_provider.dart';
@@ -9,6 +8,7 @@ import 'package:chessever2/repository/supabase/game/games.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_auto_pin_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_priority_matching.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/knockout_tournament_state_provider.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -234,7 +234,7 @@ class _GamesPinController extends StateNotifier<GamesPinState> {
   }
 
   void _listenToKnockoutStages() {
-    ref.listen(pinRelatedStageIdsProvider(tourId), (previous, next) {
+    ref.listen(relatedKnockoutStageIdsProvider(tourId), (previous, next) {
       final relatedStageIds = next.toSet();
       var changed = false;
       for (final stageId in _stageListeners.keys.toList()) {
@@ -264,7 +264,7 @@ class _GamesPinController extends StateNotifier<GamesPinState> {
   }
 
   void _listenToPrimaryGames() {
-    ref.listen<AsyncValue<List<Games>>>(pinSourceGamesProvider(tourId), (
+    ref.listen<AsyncValue<List<Games>>>(gamesTourProvider(tourId), (
       previous,
       next,
     ) {
@@ -519,7 +519,7 @@ class _GamesPinController extends StateNotifier<GamesPinState> {
   // actual knockout stages share pins; Unpin all must not clear another section.
   List<String> _getRelatedTourIds() => [
     tourId,
-    ...ref.read(pinRelatedStageIdsProvider(tourId)),
+    ...ref.read(relatedKnockoutStageIdsProvider(tourId)),
   ];
 }
 

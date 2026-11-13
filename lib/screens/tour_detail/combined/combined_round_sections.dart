@@ -2,7 +2,8 @@ import 'package:chessever2/repository/supabase/round/round.dart';
 import 'package:chessever2/screens/tour_detail/combined/combined_category.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_app_bar_view_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
-import 'package:chessever2/screens/tour_detail/games_tour/providers/round_ordering.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_display_rounds.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_grouped_provider.dart';
 import 'package:flutter/foundation.dart';
 
 /// One block of the Combined list: a single round of a single category.
@@ -28,14 +29,12 @@ class CombinedRoundSection {
   /// Pinned boards first, then board order.
   final List<GamesTourModel> games;
 
-  /// Scheduled start, falling back to creation time like web, then board
-  /// activity for rounds not yet returned by the schedule.
+  /// When the round was played: its scheduled start, or the latest activity
+  /// of its boards when the schedule is missing.
   final DateTime? startsAt;
 
   /// Whether play is under way or over, as opposed to published pairings.
   final bool hasStarted;
-
-  /// Every board has a result. False for a round with no boards yet.
   final bool isFullyPlayed;
 
   /// Position of the round inside its own category, oldest first.
@@ -69,7 +68,6 @@ List<CombinedRoundSection> buildCombinedRoundSections({
   required List<String> liveRoundIds,
   Set<String> pinnedGameIds = const <String>{},
   DateTime? now,
-  bool includeEmptyRounds = false,
 }) {
   final effectiveNow = now ?? DateTime.now();
   final ranked = List<CombinedCategory>.of(categories)
@@ -80,20 +78,20 @@ List<CombinedRoundSection> buildCombinedRoundSections({
     roundsByTourId: roundsByTourId,
   );
 
-  // Every category's rounds, gathered by round. Categories are visited
+  // Every category's rounds, gathered by round name. Categories are visited
   // strongest first, so each group already lists them in rank order.
-  final sectionsByKey = <String, List<CombinedRoundSection>>{};
+  final sectionsByCategory = <List<CombinedRoundSection>>[];
   for (final category in ranked) {
     if (mirrorTourIds.contains(category.tourId)) continue;
-    final games = gamesByTourId[category.tourId] ?? const <GamesTourModel>[];
-    if (!includeEmptyRounds && games.isEmpty) continue;
+    final games = gamesByTourId[category.tourId];
+    if (games == null || games.isEmpty) continue;
 
     final rounds = roundsByTourId[category.tourId] ?? const <Round>[];
-    final roundsById = <String, Round>{
-      for (final round in rounds) round.id: round,
-    };
     final roundOrderById = <String, int>{
       for (var i = 0; i < rounds.length; i++) rounds[i].id: i,
+    };
+    final roundsById = <String, Round>{
+      for (final round in rounds) round.id: round,
     };
 
     final gamesByRoundId = <String, List<GamesTourModel>>{};
@@ -101,13 +99,7 @@ List<CombinedRoundSection> buildCombinedRoundSections({
       (gamesByRoundId[game.roundId] ??= <GamesTourModel>[]).add(game);
     }
 
-    if (includeEmptyRounds) {
-      for (final round in rounds) {
-        gamesByRoundId.putIfAbsent(round.id, () => <GamesTourModel>[]);
-      }
-    }
-    if (gamesByRoundId.isEmpty) continue;
-    final sections = <CombinedRoundSection>[];
+    final categorySections = <CombinedRoundSection>[];
     for (final entry in gamesByRoundId.entries) {
       final roundGames = _orderBoards(entry.value, pinnedGameIds);
       final known = roundsById[entry.key];
@@ -125,79 +117,144 @@ List<CombinedRoundSection> buildCombinedRoundSections({
         (game) => game.hasStarted || game.effectiveGameStatus.isFinished,
       );
       final scheduled = model.startsAt;
-      final startsAt =
-          scheduled ?? known?.createdAt ?? _latestActivity(roundGames);
-      final hasStarted =
-          hasActivity ||
-          liveRoundIds.contains(entry.key) ||
-          (startsAt != null && !startsAt.isAfter(effectiveNow));
-
-      final section = CombinedRoundSection(
-        category: category,
-        round: model,
-        games: roundGames,
-        startsAt: startsAt,
-        hasStarted: hasStarted,
-        isFullyPlayed:
-            roundGames.isNotEmpty &&
-            roundGames.every((game) => game.effectiveGameStatus.isFinished),
-        // An unknown round is newer than the ones the schedule already has.
-        roundOrder: roundOrderById[entry.key] ?? rounds.length,
+      categorySections.add(
+        CombinedRoundSection(
+          category: category,
+          round: model,
+          games: roundGames,
+          startsAt: scheduled ?? _latestActivity(roundGames),
+          hasStarted:
+              hasActivity ||
+              liveRoundIds.contains(entry.key) ||
+              (scheduled != null && !scheduled.isAfter(effectiveNow)),
+          isFullyPlayed: roundGames.every(
+            (game) => game.effectiveGameStatus.isFinished,
+          ),
+          // An unknown round is newer than the ones the schedule already has.
+          roundOrder: roundOrderById[entry.key] ?? rounds.length,
+        ),
       );
-      sections.add(section);
     }
-    // Two rounds of one category under one name: the later first.
-    sections.sort((a, b) => b.roundOrder.compareTo(a.roundOrder));
+    sectionsByCategory.add(categorySections);
+  }
+
+  // Each category's rounds in the order its own Games tab shows them: the
+  // same selectGamesTourDisplayRounds call, category by category. Pooling
+  // every category into one call breaks: that order sorts "Round N" by its
+  // number alone, so a side event's Round 4 (Total Chess's Blitz Tiebreak,
+  // Nov 10) lands beside the groups' Round 4 (Nov 12).
+  final orderedByCategory = <List<CombinedRoundSection>>[
+    for (final sections in sectionsByCategory)
+      _inRegularOrder(sections, effectiveNow),
+  ];
+
+  // Merge those orders, strongest category first. A round another category
+  // already listed joins it; a new round goes right after the previous round
+  // of its own category, or, when nothing of its category is placed yet, by
+  // date among the rounds already there.
+  final keys = <String>[];
+  final sectionsByKey = <String, List<CombinedRoundSection>>{};
+  final dateByKey = <String, DateTime?>{};
+  final futureKeys = <String>{};
+  for (final sections in orderedByCategory) {
+    int? previous;
     for (final section in sections) {
-      (sectionsByKey[_roundKey(section)] ??= <CombinedRoundSection>[]).add(
-        section,
-      );
+      final key = combinedRoundKey(section);
+      final existing = keys.indexOf(key);
+      if (existing >= 0) {
+        previous = existing;
+      } else {
+        final at = previous != null
+            ? previous + 1
+            : _positionByDate(keys, dateByKey, futureKeys, section.startsAt);
+        keys.insert(at, key);
+        dateByKey[key] = section.startsAt;
+        if (_isPairingOnly(section)) futureKeys.add(key);
+        previous = at;
+      }
+      (sectionsByKey[key] ??= <CombinedRoundSection>[]).add(section);
     }
   }
 
-  // One stand-in per round, carrying what its categories say together, so
-  // the regular round order decides where the round goes.
-  final standIns = <GamesAppBarModel>[
-    for (final entry in sectionsByKey.entries)
-      _standInRound(entry.key, entry.value),
-  ];
-  final ordered = sortRoundsForDisplay(
-    standIns,
-    resolveDate: (round) => round.startsAt,
-    hasGames: (round) =>
-        sectionsByKey[round.id]!.any((section) => section.games.isNotEmpty),
-    hasStartedActivity: (round) =>
-        sectionsByKey[round.id]!.any((section) => section.hasStarted),
-    isRoundFullyPlayed: (round) => sectionsByKey[round.id]!.every(
-      (section) =>
-          section.round.roundStatus == RoundStatus.completed ||
-          section.isFullyPlayed,
-    ),
-    now: effectiveNow,
-  );
+  return <CombinedRoundSection>[for (final key in keys) ...sectionsByKey[key]!];
+}
 
-  return <CombinedRoundSection>[
-    for (final round in ordered) ...sectionsByKey[round.id]!,
-  ];
+/// One category's [sections] in the order its Games tab shows its rounds,
+/// with the same inputs the regular grouping builds
+/// (gamesTourGroupedProvider): only boards with a move or a result count as
+/// played, and an open round whose boards are all unplayed pairings is a
+/// pairing-only round. So at most the next round is promoted to the top
+/// (when the latest round is fully played) and the other future rounds sit
+/// at the bottom.
+List<CombinedRoundSection> _inRegularOrder(
+  List<CombinedRoundSection> sections,
+  DateTime now,
+) {
+  final byRoundId = <String, CombinedRoundSection>{
+    for (final section in sections) section.round.id: section,
+  };
+  final rounds = [for (final section in sections) section.round];
+  final ordered = selectGamesTourDisplayRounds(
+    rounds: rounds,
+    effectiveRounds: rounds,
+    gamesByRound: {
+      for (final section in sections) section.round.id: section.games,
+    },
+    upcomingPairingRoundIds: {
+      for (final section in sections)
+        if (_isPairingOnly(section)) section.round.id,
+    },
+    isSearchMode: false,
+    isMultiStageKnockout: false,
+    now: now,
+  );
+  return [for (final round in ordered) byRoundId[round.id]!];
+}
+
+/// An open round with no board the regular list would show as played.
+bool _isPairingOnly(CombinedRoundSection section) =>
+    section.round.roundStatus != RoundStatus.completed &&
+    !section.games.any(isEventBoardGameVisible);
+
+/// Where a round with nothing of its own category placed yet goes: above the
+/// first played round that started before it. Future rounds at the bottom
+/// stay the bottom, so a side event played earlier lands above them.
+int _positionByDate(
+  List<String> keys,
+  Map<String, DateTime?> dateByKey,
+  Set<String> futureKeys,
+  DateTime? date,
+) {
+  var tail = keys.length;
+  while (tail > 0 && futureKeys.contains(keys[tail - 1])) {
+    tail--;
+  }
+  if (date == null) return tail;
+  for (var i = 0; i < tail; i++) {
+    if (futureKeys.contains(keys[i])) continue;
+    final other = dateByKey[keys[i]];
+    if (other == null || other.isBefore(date)) return i;
+  }
+  return tail;
 }
 
 /// Same round across categories: the same name ("Round 8", "round 8" and
 /// "Round  8" agree) played on the same day. A side event that reuses the
 /// names on another day (Total Chess's Blitz Tiebreak ran its Rounds 1-9
 /// the day before the groups' Rounds 1-10) keeps rounds of its own.
-String _roundKey(CombinedRoundSection section) {
+String combinedRoundKey(CombinedRoundSection section) {
   final name = section.round.name.trim().toLowerCase().replaceAll(
     RegExp(r'\s+'),
     ' ',
   );
-  final start = (section.round.startsAt ?? section.startsAt)?.toUtc();
+  final start = section.startsAt?.toUtc();
   if (start == null) return name;
   return '$name@${start.year}-${start.month}-${start.day}';
 }
 
 /// The round as the regular order sees it, from all its categories: the
 /// earliest start, and the most active status any of them has.
-GamesAppBarModel _standInRound(
+GamesAppBarModel combinedStandInRound(
   String key,
   List<CombinedRoundSection> sections,
 ) {

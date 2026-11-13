@@ -9,7 +9,6 @@ import 'package:chessever2/screens/tour_detail/combined/combined_category.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/game_card_wrapper_provider.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_repo_provider.dart';
-import 'package:chessever2/services/rewarded_premium/rewarded_access_provider.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -95,7 +94,7 @@ void main() {
           }),
         ),
         tourSelectionStoreProvider.overrideWithValue(store),
-        premiumAccessProvider.overrideWithValue(entitled),
+        combinedCategoryEntitledProvider.overrideWithValue(entitled),
       ],
     );
     addTearDown(container.dispose);
@@ -112,7 +111,7 @@ void main() {
         .debugResolveForYouNavigation(orderedGames: [tapped], gameIndex: 0);
 
     expect([for (final game in games) game.gameId], [
-      // Newest round first, then stronger source group at that start.
+      // The stronger group first; inside it the latest round first.
       'group-b-r2-b1',
       'group-b-r2-b2',
       'group-a-r2-b1',
@@ -145,15 +144,15 @@ void main() {
     expect(games[index].gameId, tapped.gameId);
   });
 
-  test('without Premium the list spans the combined categories', () async {
+  test('without Premium the list keeps to the game\'s category', () async {
     final scope = container(entitled: false);
     final (games, _) = await scope
         .read(gameCardWrapperProvider)
         .debugResolveForYouNavigation(orderedGames: [tapped], gameIndex: 0);
 
-    expect(games, hasLength(8));
-    expect(games.map((game) => game.tourId).toSet(), {'group-a', 'group-b'});
-    expect(scope.read(combinedBoardEventsProvider), isNotEmpty);
+    expect(games, hasLength(4));
+    expect(games.every((game) => game.tourId == 'group-a'), isTrue);
+    expect(scope.read(combinedBoardEventsProvider), isEmpty);
   });
 }
 

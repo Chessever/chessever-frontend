@@ -138,6 +138,7 @@ class CategoryDropdown extends ConsumerWidget {
             return const SizedBox.shrink();
           }
 
+          // An organizer's own Combined section stays out of the picker.
           final categories = visibleEventCategories(tourData.tours);
 
           // Find selected tour/category
@@ -171,11 +172,13 @@ class CategoryDropdown extends ConsumerWidget {
             onCombinedSelected: () {
               final groupId = ref.read(combinedCategoryGroupIdProvider);
               if (groupId == null) return;
-              // The chip outlives the dropdown and provides its context.
+              // The chip outlives the dropdown, so the Premium gate and the
+              // switch that follows it have a live context to land on.
               unawaited(
                 openCombinedCategory(
                   context,
                   groupId: groupId,
+                  returnTo: 'tournament_detail/games',
                 ),
               );
             },
@@ -474,7 +477,8 @@ class _CategoryDropdownContent extends HookConsumerWidget {
               if (ResponsiveHelper.isTablet) {
                 TabletPopupState.markClosed();
               }
-              // Close the dropdown before switching to Combined.
+              // Close first: a viewer without Premium gets the paywall next,
+              // and it must not open underneath the dropdown.
               animationController.reverse().then((_) {
                 isOpen.value = false;
               });
@@ -994,12 +998,14 @@ class _DropdownOverlay extends ConsumerWidget {
           )
         : null;
 
-    // Keep the Combined row in step with the saved selection.
+    // Combined, read live like the rest: it turns on after a purchase made
+    // from this very dropdown.
     final combinedCategories = ref.watch(combinedCategoriesProvider);
     final combinedSelected =
         ref.watch(selectedTourModeProvider) ==
             TournamentDetailScreenMode.games &&
         ref.watch(combinedCategorySelectedProvider);
+    final combinedLocked = !ref.watch(combinedCategoryEntitledProvider);
 
     // Wider dropdown for better readability - use available horizontal space
     final minWidth = ResponsiveHelper.isTablet ? 400.0 : 300.w;
@@ -1070,6 +1076,7 @@ class _DropdownOverlay extends ConsumerWidget {
                                 ? combinedCategories.items.length
                                 : 0,
                         combinedSelected: combinedSelected,
+                        combinedLocked: combinedLocked,
                         onCategorySelect: onCategorySelect,
                         onCategoryChange: onCategoryChange,
                         onCombinedSelect: onCombinedSelect,
@@ -1101,6 +1108,8 @@ class _DropdownContent extends StatefulWidget {
   final int combinedCount;
   final bool combinedSelected;
 
+  /// Combined is Premium: a viewer without it sees the row with a lock.
+  final bool combinedLocked;
   final ValueChanged<TourModel> onCategorySelect;
   final ValueChanged<TourModel>
   onCategoryChange; // Select without closing dropdown
@@ -1117,6 +1126,7 @@ class _DropdownContent extends StatefulWidget {
     required this.selectedRound,
     required this.combinedCount,
     required this.combinedSelected,
+    required this.combinedLocked,
     required this.onCategorySelect,
     required this.onCategoryChange,
     required this.onCombinedSelect,
@@ -1629,11 +1639,14 @@ class _DropdownContentState extends State<_DropdownContent> {
                       animation: widget.animation,
                       categoryCount: widget.combinedCount,
                       isSelected: isSelected,
+                      isLocked: widget.combinedLocked,
                       // Keeps the row exactly as tall as the category rows
                       // under it, which the droplet's arithmetic assumes.
                       reserveArrowSlot: widget.rounds.isNotEmpty,
                       onTap: () {
-                        _animateToIndex(index);
+                        // A locked row opens the paywall; the droplet stays
+                        // on what is actually shown until Premium is active.
+                        if (!widget.combinedLocked) _animateToIndex(index);
                         widget.onCombinedSelect();
                       },
                     ),
@@ -1793,6 +1806,7 @@ class _CombinedRow extends StatelessWidget {
   final Animation<double> animation;
   final int categoryCount;
   final bool isSelected;
+  final bool isLocked;
   final bool reserveArrowSlot;
   final VoidCallback onTap;
 
@@ -1801,6 +1815,7 @@ class _CombinedRow extends StatelessWidget {
     required this.animation,
     required this.categoryCount,
     required this.isSelected,
+    required this.isLocked,
     required this.reserveArrowSlot,
     required this.onTap,
   });
@@ -1824,7 +1839,11 @@ class _CombinedRow extends StatelessWidget {
     return Semantics(
       button: true,
       selected: isSelected,
-      label: '$kCombinedCategoryLabel, all $categoryCount categories',
+      label:
+          isLocked
+              ? '$kCombinedCategoryLabel, all $categoryCount categories, '
+                  'Premium'
+              : '$kCombinedCategoryLabel, all $categoryCount categories',
       // One node for the whole row; it still has to be activatable.
       excludeSemantics: true,
       onTap: onTap,
@@ -1877,6 +1896,21 @@ class _CombinedRow extends StatelessWidget {
                   SizedBox(
                     width: arrowSlot,
                     height: arrowSlot,
+                    child:
+                        isLocked
+                            ? Icon(
+                              Icons.lock_outline_rounded,
+                              size: 16.ic,
+                              color: context.textInk(0.55),
+                            )
+                            : null,
+                  ),
+                ] else if (isLocked) ...[
+                  SizedBox(width: 8.sp),
+                  Icon(
+                    Icons.lock_outline_rounded,
+                    size: 16.ic,
+                    color: context.textInk(0.55),
                   ),
                 ],
               ],

@@ -1,5 +1,5 @@
-import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/screens/tour_detail/combined/combined_group_expansion.dart';
+import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart'
     show BoardNavigationListPolicy;
 import 'package:chessever2/screens/chessboard/provider/game_pgn_stream_provider.dart';
@@ -44,10 +44,8 @@ class GamesListView extends ConsumerWidget {
     this.roundHeaderBuilder,
     this.onPinToggle,
     this.navigationListPolicy,
-    this.roundExpansionOverrides,
   });
 
-  final Map<String, bool>? roundExpansionOverrides;
   final Map<String, List<GamesTourModel>> gamesByRound;
   final GamesScreenModel gamesData;
   final GamesListViewMode gamesListViewMode;
@@ -109,13 +107,14 @@ class GamesListView extends ConsumerWidget {
     );
     // Hide while the stored value is still loading too, so a score can never
     // flash before the setting resolves.
-    final hideMatchScores = eventTourId == null || eventTourId.isEmpty
-        ? false
-        : ref.watch(
-            eventNoSpoilersProvider(
-              eventTourId,
-            ).select((state) => state.isLoading || state.enabled),
-          );
+    final hideMatchScores =
+        eventTourId == null || eventTourId.isEmpty
+            ? false
+            : ref.watch(
+              eventNoSpoilersProvider(
+                eventTourId,
+              ).select((state) => state.isLoading || state.enabled),
+            );
 
     final itemCount = layout.itemCount;
 
@@ -145,9 +144,8 @@ class GamesListView extends ConsumerWidget {
           // and pass it to items to ensure they have bounded width.
           // ScrollablePositionedList can give unbounded width to items,
           // which breaks nested Expanded widgets.
-          final itemWidth = ResponsiveHelper.isTablet
-              ? outerConstraints.maxWidth
-              : null;
+          final itemWidth =
+              ResponsiveHelper.isTablet ? outerConstraints.maxWidth : null;
 
           return ScrollablePositionedList.builder(
             itemScrollController: itemScrollController,
@@ -174,29 +172,28 @@ class GamesListView extends ConsumerWidget {
               }
 
               if (lookup is GamesTourRoundHeaderEntry) {
-                final bool isRoundExpanded = isSearchMode
-                    ? true
-                    : (roundExpansionOverrides?[lookup.round.id] ??
-                          ref.watch<bool>(
-                            roundExpansionStateProvider(lookup.round.id),
-                          ));
-                final VoidCallback? onToggleRound = isSearchMode
-                    ? null // Disable toggle in search mode
-                    : () {
-                        final notifier = ref.read(
-                          roundExpansionProvider.notifier,
+                final isRoundExpanded =
+                    isSearchMode
+                        ? true
+                        : ref.watch(
+                          roundExpansionStateProvider(lookup.round.id),
                         );
-                        if (isRoundExpanded) {
-                          notifier.collapseRound(lookup.round.id);
-                        } else {
-                          notifier.expandAll([lookup.round.id]);
-                        }
-                      };
+                final VoidCallback? onToggleRound =
+                    isSearchMode
+                        ? null // Disable toggle in search mode
+                        : () {
+                          ref
+                              .read(roundExpansionProvider.notifier)
+                              .toggleRound(lookup.round.id);
+                        };
                 return Padding(
-                  // Combined (the only roundHeaderBuilder) puts its source
-                  // labels right under the round, so keep them tight.
+                  // Combined (the only roundHeaderBuilder) puts its group
+                  // labels right under an open round, so keep those tight.
                   padding: EdgeInsets.only(
-                    bottom: roundHeaderBuilder != null ? 2.sp : 16.sp,
+                    bottom:
+                        roundHeaderBuilder != null && isRoundExpanded
+                            ? 2.sp
+                            : 16.sp,
                   ),
                   child:
                       roundHeaderBuilder?.call(
@@ -215,17 +212,19 @@ class GamesListView extends ConsumerWidget {
               }
 
               if (lookup is GamesTourSourceHeaderEntry) {
+                // One category's boards inside a Combined round.
                 return Padding(
                   padding: EdgeInsets.only(bottom: 8.sp),
                   child: Semantics(
                     header: true,
                     expanded: lookup.isExpanded,
                     child: InkWell(
-                      onTap: isSearchMode
-                          ? null
-                          : () => ref
-                                .read(combinedGroupExpansionProvider.notifier)
-                                .toggle(lookup.roundId!),
+                      onTap:
+                          isSearchMode
+                              ? null
+                              : () => ref
+                                  .read(combinedGroupExpansionProvider.notifier)
+                                  .toggle(lookup.roundId!),
                       child: Container(
                         constraints: const BoxConstraints(minHeight: 36),
                         decoration: BoxDecoration(
@@ -274,9 +273,10 @@ class GamesListView extends ConsumerWidget {
 
               if (lookup is GamesTourMatchHeaderEntry) {
                 final matchKey = lookup.matchHeader.matchKey;
-                final isExpanded = isSearchMode
-                    ? true
-                    : ref.watch(matchExpansionStateProvider(matchKey));
+                final isExpanded =
+                    isSearchMode
+                        ? true
+                        : ref.watch(matchExpansionStateProvider(matchKey));
 
                 return Padding(
                   padding: EdgeInsets.only(bottom: 12.sp),
@@ -284,13 +284,14 @@ class GamesListView extends ConsumerWidget {
                     match: lookup.matchHeader,
                     hideScores: hideMatchScores,
                     isExpanded: isExpanded,
-                    onToggle: isSearchMode
-                        ? null // Disable toggle in search mode
-                        : () {
-                            ref
-                                .read(matchExpansionProvider.notifier)
-                                .toggleMatch(matchKey);
-                          },
+                    onToggle:
+                        isSearchMode
+                            ? null // Disable toggle in search mode
+                            : () {
+                              ref
+                                  .read(matchExpansionProvider.notifier)
+                                  .toggleMatch(matchKey);
+                            },
                   ),
                 );
               }
@@ -300,25 +301,26 @@ class GamesListView extends ConsumerWidget {
                   padding: EdgeInsets.only(
                     bottom: lookup.isLastInSection ? 20.sp : 12.sp,
                   ),
-                  child: gamesListViewMode == GamesListViewMode.chessBoardGrid
-                      ? _buildGridRow(
-                          context,
-                          ref,
-                          lookup,
-                          orderedGamesList,
-                          liveBatchKeyByGameId,
-                          allowStockfishFallback,
-                          streamEnabled,
-                        )
-                      : _buildCardRow(
-                          context,
-                          ref,
-                          lookup,
-                          orderedGamesList,
-                          liveBatchKeyByGameId,
-                          allowStockfishFallback,
-                          streamEnabled,
-                        ),
+                  child:
+                      gamesListViewMode == GamesListViewMode.chessBoardGrid
+                          ? _buildGridRow(
+                            context,
+                            ref,
+                            lookup,
+                            orderedGamesList,
+                            liveBatchKeyByGameId,
+                            allowStockfishFallback,
+                            streamEnabled,
+                          )
+                          : _buildCardRow(
+                            context,
+                            ref,
+                            lookup,
+                            orderedGamesList,
+                            liveBatchKeyByGameId,
+                            allowStockfishFallback,
+                            streamEnabled,
+                          ),
                 );
                 // TABLET: Wrap with SizedBox to provide bounded width
                 if (itemWidth != null) {
@@ -384,19 +386,20 @@ class GamesListView extends ConsumerWidget {
       streamEnabled,
     );
 
-    final game2Widget = item.game2 != null
-        ? _buildGridGame(
-            context,
-            ref,
-            item.game2!,
-            item.globalIndex2!,
-            orderedGamesList,
-            item.fixedBottomSide2,
-            liveBatchKeyByGameId,
-            allowStockfishFallback,
-            streamEnabled,
-          )
-        : null;
+    final game2Widget =
+        item.game2 != null
+            ? _buildGridGame(
+              context,
+              ref,
+              item.game2!,
+              item.globalIndex2!,
+              orderedGamesList,
+              item.fixedBottomSide2,
+              liveBatchKeyByGameId,
+              allowStockfishFallback,
+              streamEnabled,
+            )
+            : null;
 
     // On tablet, use Expanded to give children bounded width constraints.
     // Without this, Row with spaceBetween gives children unbounded width,
@@ -461,11 +464,13 @@ class GamesListView extends ConsumerWidget {
       fixedBottomSide: fixedBottomSide,
       allowStockfishFallback: allowStockfishFallback,
       streamEnabled: streamEnabled,
-      onPinToggle: (_) async => onPinToggle != null
-          ? await onPinToggle!(game)
-          : await ref
-                .read(gamesTourScreenProvider.notifier)
-                .togglePinGame(game.gameId, sourceTourId: game.tourId),
+      onPinToggle:
+          (_) async =>
+              onPinToggle != null
+                  ? await onPinToggle!(game)
+                  : await ref
+                      .read(gamesTourScreenProvider.notifier)
+                      .togglePinGame(game.gameId, sourceTourId: game.tourId),
     );
   }
 

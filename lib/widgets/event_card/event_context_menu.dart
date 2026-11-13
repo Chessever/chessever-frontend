@@ -274,7 +274,7 @@ List<LibraryMenuAction> eventMenuActions({
         onSelected: onOpen,
       ),
     // Several tours behind one card are its categories: open them as one
-    // Games list. The choice is remembered for this event, exactly
+    // Games list (Premium). The choice is remembered for this event, exactly
     // as picking Combined inside it would be.
     if (onOpen != null && broadcastActions && tourIds.length > 1)
       LibraryMenuAction(
@@ -284,6 +284,7 @@ List<LibraryMenuAction> eventMenuActions({
           final opened = await openCombinedCategory(
             context,
             groupId: model.id,
+            returnTo: 'event_card/combined',
           );
           if (opened) onOpen();
         },

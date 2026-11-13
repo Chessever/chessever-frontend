@@ -727,30 +727,6 @@ class GameRepository extends BaseRepository {
   }
 
   // Fetch games by round ID
-  /// Combined hall pages omit PGN; opening a board hydrates it on demand.
-  Future<List<Games>> getCombinedRoundGamesPage(
-    String tourId,
-    String roundId, {
-    required int offset,
-    required int limit,
-  }) async {
-    if (offset < 0 || limit < 1 || limit > 1000) {
-      throw ArgumentError('Invalid Combined page');
-    }
-    final rows = await supabase
-        .from('games')
-        .select(_gameListPreviewSelectColumns)
-        .eq('tour_id', tourId)
-        .eq('round_id', roundId)
-        .eq('is_mirror', false)
-        .order('board_nr', ascending: true, nullsFirst: false)
-        .order('id', ascending: true)
-        .range(offset, offset + limit - 1);
-    return [
-      for (final row in rows) Games.fromJson(row).copyWith(isPgnDeferred: true),
-    ];
-  }
-
   Future<List<Games>> getGamesByRoundId(String roundId) async {
     return handleApiCall(() async {
       final response = await supabase

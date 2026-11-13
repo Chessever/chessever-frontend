@@ -317,6 +317,7 @@ class _GameCardWrapperProvider {
   }) async {
     try {
       // Everything is read up front; nothing touches `_ref` after an await.
+      if (!_ref.read(combinedCategoryEntitledProvider)) return null;
       final prefs = _ref.read(combinedCategoryPrefsProvider.notifier);
       final boardEvents = _ref.read(combinedBoardEventsProvider.notifier);
       final events = _ref.read(groupBroadcastRepositoryProvider);
