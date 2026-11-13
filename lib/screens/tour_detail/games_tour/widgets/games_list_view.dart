@@ -107,14 +107,13 @@ class GamesListView extends ConsumerWidget {
     );
     // Hide while the stored value is still loading too, so a score can never
     // flash before the setting resolves.
-    final hideMatchScores =
-        eventTourId == null || eventTourId.isEmpty
-            ? false
-            : ref.watch(
-              eventNoSpoilersProvider(
-                eventTourId,
-              ).select((state) => state.isLoading || state.enabled),
-            );
+    final hideMatchScores = eventTourId == null || eventTourId.isEmpty
+        ? false
+        : ref.watch(
+            eventNoSpoilersProvider(
+              eventTourId,
+            ).select((state) => state.isLoading || state.enabled),
+          );
 
     final itemCount = layout.itemCount;
 
@@ -144,8 +143,9 @@ class GamesListView extends ConsumerWidget {
           // and pass it to items to ensure they have bounded width.
           // ScrollablePositionedList can give unbounded width to items,
           // which breaks nested Expanded widgets.
-          final itemWidth =
-              ResponsiveHelper.isTablet ? outerConstraints.maxWidth : null;
+          final itemWidth = ResponsiveHelper.isTablet
+              ? outerConstraints.maxWidth
+              : null;
 
           return ScrollablePositionedList.builder(
             itemScrollController: itemScrollController,
@@ -172,28 +172,23 @@ class GamesListView extends ConsumerWidget {
               }
 
               if (lookup is GamesTourRoundHeaderEntry) {
-                final isRoundExpanded =
-                    isSearchMode
-                        ? true
-                        : ref.watch(
-                          roundExpansionStateProvider(lookup.round.id),
-                        );
-                final VoidCallback? onToggleRound =
-                    isSearchMode
-                        ? null // Disable toggle in search mode
-                        : () {
-                          ref
-                              .read(roundExpansionProvider.notifier)
-                              .toggleRound(lookup.round.id);
-                        };
+                final isRoundExpanded = isSearchMode
+                    ? true
+                    : ref.watch(roundExpansionStateProvider(lookup.round.id));
+                final VoidCallback? onToggleRound = isSearchMode
+                    ? null // Disable toggle in search mode
+                    : () {
+                        ref
+                            .read(roundExpansionProvider.notifier)
+                            .toggleRound(lookup.round.id);
+                      };
                 return Padding(
                   // Combined (the only roundHeaderBuilder) puts its group
                   // labels right under an open round, so keep those tight.
                   padding: EdgeInsets.only(
-                    bottom:
-                        roundHeaderBuilder != null && isRoundExpanded
-                            ? 2.sp
-                            : 16.sp,
+                    bottom: roundHeaderBuilder != null && isRoundExpanded
+                        ? 2.sp
+                        : 16.sp,
                   ),
                   child:
                       roundHeaderBuilder?.call(
@@ -219,12 +214,11 @@ class GamesListView extends ConsumerWidget {
                     header: true,
                     expanded: lookup.isExpanded,
                     child: InkWell(
-                      onTap:
-                          isSearchMode
-                              ? null
-                              : () => ref
-                                  .read(combinedGroupExpansionProvider.notifier)
-                                  .toggle(lookup.roundId!),
+                      onTap: isSearchMode
+                          ? null
+                          : () => ref
+                                .read(combinedGroupExpansionProvider.notifier)
+                                .toggle(lookup.roundId!),
                       child: Container(
                         constraints: const BoxConstraints(minHeight: 36),
                         decoration: BoxDecoration(
@@ -236,25 +230,24 @@ class GamesListView extends ConsumerWidget {
                           ),
                         ),
                         child: Padding(
-                          padding: EdgeInsets.symmetric(
-                            horizontal: 4.sp,
-                            vertical: 4.sp,
+                          // Same columns as the dense round card above it
+                          // (TournamentRoundHeader): the label starts where
+                          // the round title starts (12sp + accent bar + gap)
+                          // and the chevron sits in the card's chevron column.
+                          padding: EdgeInsets.fromLTRB(
+                            12.sp,
+                            10.sp,
+                            12.sp,
+                            8.sp,
                           ),
                           child: Row(
                             children: [
-                              if (!isSearchMode) ...[
-                                Icon(
-                                  lookup.isExpanded
-                                      ? Icons.expand_more
-                                      : Icons.chevron_right,
-                                  size: 16.sp,
-                                  color: context.colors.textPrimaryMuted,
-                                ),
-                                SizedBox(width: 6.sp),
-                              ],
+                              SizedBox(width: 4.w + 10.w),
                               Expanded(
                                 child: Text(
                                   lookup.label,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
                                   style: TextStyle(
                                     fontSize: 12.sp,
                                     fontWeight: FontWeight.w500,
@@ -262,6 +255,16 @@ class GamesListView extends ConsumerWidget {
                                   ),
                                 ),
                               ),
+                              if (!isSearchMode) ...[
+                                SizedBox(width: 8.w),
+                                Icon(
+                                  lookup.isExpanded
+                                      ? Icons.keyboard_arrow_up_rounded
+                                      : Icons.keyboard_arrow_down_rounded,
+                                  size: 18.sp,
+                                  color: context.textInk(0.5),
+                                ),
+                              ],
                             ],
                           ),
                         ),
@@ -273,10 +276,9 @@ class GamesListView extends ConsumerWidget {
 
               if (lookup is GamesTourMatchHeaderEntry) {
                 final matchKey = lookup.matchHeader.matchKey;
-                final isExpanded =
-                    isSearchMode
-                        ? true
-                        : ref.watch(matchExpansionStateProvider(matchKey));
+                final isExpanded = isSearchMode
+                    ? true
+                    : ref.watch(matchExpansionStateProvider(matchKey));
 
                 return Padding(
                   padding: EdgeInsets.only(bottom: 12.sp),
@@ -284,14 +286,13 @@ class GamesListView extends ConsumerWidget {
                     match: lookup.matchHeader,
                     hideScores: hideMatchScores,
                     isExpanded: isExpanded,
-                    onToggle:
-                        isSearchMode
-                            ? null // Disable toggle in search mode
-                            : () {
-                              ref
-                                  .read(matchExpansionProvider.notifier)
-                                  .toggleMatch(matchKey);
-                            },
+                    onToggle: isSearchMode
+                        ? null // Disable toggle in search mode
+                        : () {
+                            ref
+                                .read(matchExpansionProvider.notifier)
+                                .toggleMatch(matchKey);
+                          },
                   ),
                 );
               }
@@ -301,26 +302,25 @@ class GamesListView extends ConsumerWidget {
                   padding: EdgeInsets.only(
                     bottom: lookup.isLastInSection ? 20.sp : 12.sp,
                   ),
-                  child:
-                      gamesListViewMode == GamesListViewMode.chessBoardGrid
-                          ? _buildGridRow(
-                            context,
-                            ref,
-                            lookup,
-                            orderedGamesList,
-                            liveBatchKeyByGameId,
-                            allowStockfishFallback,
-                            streamEnabled,
-                          )
-                          : _buildCardRow(
-                            context,
-                            ref,
-                            lookup,
-                            orderedGamesList,
-                            liveBatchKeyByGameId,
-                            allowStockfishFallback,
-                            streamEnabled,
-                          ),
+                  child: gamesListViewMode == GamesListViewMode.chessBoardGrid
+                      ? _buildGridRow(
+                          context,
+                          ref,
+                          lookup,
+                          orderedGamesList,
+                          liveBatchKeyByGameId,
+                          allowStockfishFallback,
+                          streamEnabled,
+                        )
+                      : _buildCardRow(
+                          context,
+                          ref,
+                          lookup,
+                          orderedGamesList,
+                          liveBatchKeyByGameId,
+                          allowStockfishFallback,
+                          streamEnabled,
+                        ),
                 );
                 // TABLET: Wrap with SizedBox to provide bounded width
                 if (itemWidth != null) {
@@ -386,20 +386,19 @@ class GamesListView extends ConsumerWidget {
       streamEnabled,
     );
 
-    final game2Widget =
-        item.game2 != null
-            ? _buildGridGame(
-              context,
-              ref,
-              item.game2!,
-              item.globalIndex2!,
-              orderedGamesList,
-              item.fixedBottomSide2,
-              liveBatchKeyByGameId,
-              allowStockfishFallback,
-              streamEnabled,
-            )
-            : null;
+    final game2Widget = item.game2 != null
+        ? _buildGridGame(
+            context,
+            ref,
+            item.game2!,
+            item.globalIndex2!,
+            orderedGamesList,
+            item.fixedBottomSide2,
+            liveBatchKeyByGameId,
+            allowStockfishFallback,
+            streamEnabled,
+          )
+        : null;
 
     // On tablet, use Expanded to give children bounded width constraints.
     // Without this, Row with spaceBetween gives children unbounded width,
@@ -464,13 +463,11 @@ class GamesListView extends ConsumerWidget {
       fixedBottomSide: fixedBottomSide,
       allowStockfishFallback: allowStockfishFallback,
       streamEnabled: streamEnabled,
-      onPinToggle:
-          (_) async =>
-              onPinToggle != null
-                  ? await onPinToggle!(game)
-                  : await ref
-                      .read(gamesTourScreenProvider.notifier)
-                      .togglePinGame(game.gameId, sourceTourId: game.tourId),
+      onPinToggle: (_) async => onPinToggle != null
+          ? await onPinToggle!(game)
+          : await ref
+                .read(gamesTourScreenProvider.notifier)
+                .togglePinGame(game.gameId, sourceTourId: game.tourId),
     );
   }
 
