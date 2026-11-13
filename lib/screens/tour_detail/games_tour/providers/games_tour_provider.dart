@@ -81,11 +81,12 @@ List<Games> retainGamesAcrossTransientEmptyRefresh(
   return incomingGames;
 }
 
-final gamesTourProvider = AutoDisposeStateNotifierProvider.family<
-  GamesTourNotifier,
-  AsyncValue<List<Games>>,
-  String
->((ref, tourId) => GamesTourNotifier(ref: ref, tourId: tourId));
+final gamesTourProvider =
+    AutoDisposeStateNotifierProvider.family<
+      GamesTourNotifier,
+      AsyncValue<List<Games>>,
+      String
+    >((ref, tourId) => GamesTourNotifier(ref: ref, tourId: tourId));
 
 /// Consumers calculating event totals must never use the early round preview.
 /// Errors in the background catalog surface here without blanking visible games.
@@ -176,8 +177,15 @@ class GamesTourNotifier extends StateNotifier<AsyncValue<List<Games>>> {
       next,
     ) {
       final wasCombined = previous?.contains(tourId) ?? false;
-      if (wasCombined == next.contains(tourId) || !_shouldRunSafetyNet) return;
-      _startPeriodicRefresh();
+      if (wasCombined == next.contains(tourId)) return;
+      // Riverpod calls this while it is still flushing the providers that
+      // turned Combined on or off. Reading them from here (the safety-net
+      // checks do) re-enters that flush: "Concurrent modification during
+      // iteration" on leaving Combined. Act once the flush is done.
+      Future.microtask(() {
+        if (!mounted || !_shouldRunSafetyNet) return;
+        _startPeriodicRefresh();
+      });
     });
   }
 
@@ -215,18 +223,17 @@ class GamesTourNotifier extends StateNotifier<AsyncValue<List<Games>>> {
       // skip the Supabase fetch/cache and the periodic refresh entirely.
       if (isVirtualGamebaseId(tourId)) {
         final virtualKey = virtualEventKeyFromId(tourId);
-        final view =
-            virtualKey == null
-                ? null
-                : await ref.read(
-                  gamebaseEventViewProvider(
-                    GamebaseEventViewRequest(
-                      eventName: virtualKey.eventName,
-                      site: virtualKey.site,
-                      slug: virtualKey.slug,
-                    ),
-                  ).future,
-                );
+        final view = virtualKey == null
+            ? null
+            : await ref.read(
+                gamebaseEventViewProvider(
+                  GamebaseEventViewRequest(
+                    eventName: virtualKey.eventName,
+                    site: virtualKey.site,
+                    slug: virtualKey.slug,
+                  ),
+                ).future,
+              );
         if (isCurrent()) {
           isCatalogComplete = true;
           state = AsyncValue.data(
@@ -267,10 +274,9 @@ class GamesTourNotifier extends StateNotifier<AsyncValue<List<Games>>> {
           requestedRoundId:
               ref.read(pendingRoundNavigationProvider) ??
               (selection?.userSelected == true ? selection!.id : null),
-          liveRoundIds:
-              ref.exists(liveRoundsIdProvider)
-                  ? ref.read(liveRoundsIdProvider).valueOrNull ?? const []
-                  : const [],
+          liveRoundIds: ref.exists(liveRoundsIdProvider)
+              ? ref.read(liveRoundsIdProvider).valueOrNull ?? const []
+              : const [],
         );
         // Fetch metadata while the roster loads, with the opening round first.
         ref.read(eventVideoMetadataProvider.notifier).prefetch([
@@ -281,8 +287,9 @@ class GamesTourNotifier extends StateNotifier<AsyncValue<List<Games>>> {
         ]);
         priorityRoundId ??=
             (await ref
-                .read(roundRepositoryProvider)
-                .getLatestRoundByLastMove(tourId))?.id;
+                    .read(roundRepositoryProvider)
+                    .getLatestRoundByLastMove(tourId))
+                ?.id;
       } catch (_) {
         // Round metadata is an optimization, not a prerequisite for the catalog.
       }
@@ -369,8 +376,11 @@ class GamesTourNotifier extends StateNotifier<AsyncValue<List<Games>>> {
   static const Duration _siblingFirstSafetyNetDelayBase = Duration(seconds: 24);
 
   bool get _isPrimaryTour {
-    final primaryTourId =
-        ref.read(tourDetailScreenProvider).valueOrNull?.aboutTourModel.id;
+    final primaryTourId = ref
+        .read(tourDetailScreenProvider)
+        .valueOrNull
+        ?.aboutTourModel
+        .id;
     return primaryTourId != null &&
         primaryTourId.isNotEmpty &&
         primaryTourId == tourId;
