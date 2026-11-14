@@ -16,8 +16,11 @@
  * Authenticates with the dispatcher's stream token, so it stays behind
  * `verify_jwt = false` like every function here.
  *
- * Body (all optional): `{ "limit": 200, "dryRun": false }`. A dry run reads
- * and merges but writes nothing, and answers with what it would have done.
+ * Body (all optional): `{ "limit": 50, "dryRun": false, "reprocess": false }`.
+ * A dry run reads and merges but writes nothing, and answers with what it
+ * would have done. `reprocess` reads every row the job finished and nobody
+ * has changed since, from the copy saved before the job's write, and finishes
+ * it again: run it by hand once after the merge rules change.
  */
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
@@ -39,8 +42,11 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
   auth: { persistSession: false },
 });
 
-const DEFAULT_LIMIT = 200;
-const MAX_LIMIT = 1000;
+// An edge worker has little CPU: 555 full games in one call ran out of it
+// (WORKER_RESOURCE_LIMIT, 2026-11-14). The cron runs every two minutes, so
+// 50 a run is still 1,500 an hour.
+const DEFAULT_LIMIT = 50;
+const MAX_LIMIT = 100;
 /** Rows not reached inside the budget wait for the next run. */
 const WRITE_BUDGET_MS = 100_000;
 const jsonHeaders = { "Content-Type": "application/json" };
@@ -80,7 +86,7 @@ function json(body: unknown, status = 200): Response {
 
 async function readBody(
   req: Request,
-): Promise<{ limit: number; dryRun: boolean }> {
+): Promise<{ limit: number; dryRun: boolean; reprocess: boolean }> {
   let body: Record<string, unknown> = {};
   try {
     const parsed = await req.json();
@@ -94,7 +100,11 @@ async function readBody(
   const limit = Number.isFinite(asked) && asked > 0
     ? Math.min(Math.floor(asked), MAX_LIMIT)
     : DEFAULT_LIMIT;
-  return { limit, dryRun: body.dryRun === true };
+  return {
+    limit,
+    dryRun: body.dryRun === true,
+    reprocess: body.reprocess === true,
+  };
 }
 
 Deno.serve(async (req) => {
@@ -106,10 +116,11 @@ Deno.serve(async (req) => {
     return new Response("Unauthorized", { status: 401 });
   }
 
-  const { limit, dryRun } = await readBody(req);
-  const { data, error } = await supabase.rpc("live_saved_games_to_finish", {
-    p_limit: limit,
-  });
+  const { limit, dryRun, reprocess } = await readBody(req);
+  const { data, error } = await supabase.rpc(
+    reprocess ? "live_saved_games_to_reprocess" : "live_saved_games_to_finish",
+    { p_limit: limit },
+  );
   if (error) {
     console.error(`[finish-live-saved-games] read failed: ${error.message}`);
     return json({ error: "read_failed" }, 500);
@@ -117,6 +128,7 @@ Deno.serve(async (req) => {
   const rows = (data ?? []) as CandidateRow[];
 
   const outcomes: Partial<Record<FinishOutcome | "skipped", number>> = {};
+  let restored = 0;
   let written = 0;
   let changedMeanwhile = 0;
   let failed = 0;
@@ -141,7 +153,19 @@ Deno.serve(async (req) => {
     }
     const outcome = finished?.outcome ?? "skipped";
     outcomes[outcome] = (outcomes[outcome] ?? 0) + 1;
-    if (finished) {
+    // What is written. A row that cannot be shown as the game keeps its
+    // saved moves: a fresh one is left alone, and one the job finished
+    // before (`row.chess_game` is then the copy saved before that write) is
+    // put back.
+    let write: { outcome: string; chessGame: SavedChessGame | null };
+    if (!finished) {
+      write = { outcome: "skipped", chessGame: null };
+    } else if (finished.outcome === "unjoinable") {
+      write = row.refinish
+        ? { outcome: "restored", chessGame: row.chess_game }
+        : { outcome: "skipped", chessGame: null };
+    } else {
+      write = { outcome: finished.outcome, chessGame: finished.chessGame };
       addedMoves += finished.chessGame.m.length -
         (row.chess_game?.m?.length ?? 0);
     }
@@ -153,8 +177,8 @@ Deno.serve(async (req) => {
         p_id: row.id,
         p_expected_updated_at: row.updated_at,
         p_game_id: row.game_id,
-        p_outcome: outcome,
-        p_chess_game: finished?.chessGame ?? null,
+        p_outcome: write.outcome,
+        p_chess_game: write.chessGame,
         p_game_plies: row.game_plies ?? 0,
       },
     );
@@ -166,6 +190,7 @@ Deno.serve(async (req) => {
     } else if (wrote === true) {
       written++;
       if (row.refinish) refinished++;
+      if (write.outcome === "restored") restored++;
     } else {
       changedMeanwhile++;
     }
@@ -173,12 +198,14 @@ Deno.serve(async (req) => {
 
   const summary = {
     dryRun,
+    reprocess,
     rows: rows.length,
     outcomes,
     addedMoves,
     written,
     changedMeanwhile,
     refinished,
+    restored,
     failed,
   };
   if (rows.length > 0) {

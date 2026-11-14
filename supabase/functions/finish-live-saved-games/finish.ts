@@ -85,10 +85,16 @@ export type FinishOutcome =
   | "extended"
   /** The saved line left the game; the real line now leads, theirs is a variation. */
   | "regrafted"
-  /** Nothing of the reader's was in the row, so it is the broadcast game now. */
+  /** The relay corrected moves the save caught; they give way to the game. */
   | "replaced"
   /** Moves could not be joined without moving the reader's notes: result only. */
-  | "result_only";
+  | "result_only"
+  /**
+   * The row cannot be shown as this game: not one move in common that may
+   * give way, or another start position. Nothing is written; the row stays
+   * as the reader saved it (`chessGame` is that row).
+   */
+  | "unjoinable";
 
 export interface FinishResult {
   outcome: FinishOutcome;
@@ -109,8 +115,23 @@ const LIVE_ONLY_METADATA = [
   "BlackTimeDisplay",
 ];
 
-/** Headers the finished broadcast is the authority on. */
-const FINISHED_HEADERS = ["Result", "Termination", "PlyCount"];
+/**
+ * Headers the finished broadcast is the authority on once the moves are the
+ * game's: how it ended, the clocks at the end (DGT boards write them as
+ * headers), and the report stamp. The stamp covers each mainline move's
+ * position, ChessEver code and eval, so it verifies only when the row's
+ * mainline carries exactly the report's; otherwise every app ignores it.
+ */
+const FINISHED_HEADERS = [
+  "Termination",
+  "PlyCount",
+  "WhiteClock",
+  "BlackClock",
+  "WhiteClockMs",
+  "BlackClockMs",
+  "ReferenceTime",
+  "ChessEverReport",
+];
 
 const CLOCK = /\[%clk (\d+:)?(\d+:\d+)(?:\.\d+)?\]/;
 const EVAL = /\[%eval ([^\]]+)\]/;
@@ -209,6 +230,12 @@ const KNOWN_MOVE_KEYS = new Set([
 /** A PGN command such as `[%clk 1:30:00]`, which the relay writes. */
 const PGN_COMMAND = /\[%[^\]]*\]/g;
 
+function hasCommentText(move: SavedMove): boolean {
+  return (move.c ?? []).some((c) =>
+    `${c}`.replace(PGN_COMMAND, "").trim() !== ""
+  );
+}
+
 /**
  * Whether [line] holds anything the reader added, rather than what the relay
  * sent: a variation, a move mark, comment text (desktop and chessever.com keep
@@ -219,16 +246,26 @@ function holdsReadersWork(line: SavedMove[]): boolean {
   return line.some((move) => {
     if (Array.isArray(move.v) && move.v.length > 0) return true;
     if (Array.isArray(move.g) && move.g.length > 0) return true;
-    if (
-      (move.c ?? []).some((c) => `${c}`.replace(PGN_COMMAND, "").trim() !== "")
-    ) {
-      return true;
-    }
+    if (hasCommentText(move)) return true;
     return Object.keys(move).some((key) =>
       !KNOWN_MOVE_KEYS.has(key) && move[key] !== null &&
       move[key] !== undefined
     );
   });
+}
+
+/**
+ * Whether every move of [line] came from the relay: each carries a clock. A
+ * move the reader played on the board has none (desktop puts a reader's
+ * moves at the end of a saved game on its main line), so a line without
+ * clocks is never let go.
+ */
+function cameFromRelay(line: SavedMove[]): boolean {
+  return line.length > 0 &&
+    line.every((move) =>
+      (typeof move.ct === "string" && move.ct !== "") ||
+      (move.c ?? []).some((c) => CLOCK.test(`${c}`))
+    );
 }
 
 function isEmptyMap(value: unknown): boolean {
@@ -248,6 +285,79 @@ function bare(move: SavedMove): SavedMove {
     ct: null,
     e: null,
   };
+}
+
+/**
+ * How a writer numbered a move. Parsed PGN (`ChessGame.fromPgn`, this
+ * module, chessever.com) stores `t` as the side that moved and `n` as the
+ * move number before it; the board's navigator stores the side to move next
+ * and the move number after it. Read from the move's own FEN (the position
+ * after it), which both writers fill the same way.
+ */
+type Numbering = "mover" | "next";
+
+function sideAfter(move: SavedMove): "white" | "black" {
+  return move.f.split(" ")[1] === "b" ? "black" : "white";
+}
+
+function numberingOf(move: SavedMove): Numbering {
+  return move.t === sideAfter(move) ? "next" : "mover";
+}
+
+/**
+ * [line], and every variation in it, numbered the [numbering] way. Clients
+ * tell a variation that replaces a move from one that follows it by
+ * comparing `t` (chessever.com, desktop since 20.28.24), so moves joined
+ * into one line must share one numbering.
+ */
+function renumber(line: SavedMove[], numbering: Numbering): SavedMove[] {
+  return line.map((move) => {
+    const after = sideAfter(move);
+    const fullmoveAfter = Number(move.f.split(" ")[5]) || move.n;
+    const mover = after === "white" ? "black" : "white";
+    const renumbered: SavedMove = numbering === "next"
+      ? { ...move, t: after, n: fullmoveAfter }
+      : {
+        ...move,
+        t: mover,
+        n: mover === "black" ? fullmoveAfter - 1 : fullmoveAfter,
+      };
+    if (Array.isArray(move.v)) {
+      renumbered.v = move.v.map((variation) => renumber(variation, numbering));
+    }
+    return renumbered;
+  });
+}
+
+/** The numbering of moves joined after [line]'s move [at]: the line's own. */
+function numberingAt(line: SavedMove[], at: number): Numbering {
+  return at >= 0 && at < line.length ? numberingOf(line[at]) : "mover";
+}
+
+/**
+ * A saved move that reaches the same position as the game's [played] move,
+ * given what the broadcast knows about it: its clock, its eval, its marks
+ * and comments when the save caught none (the analysis service adds
+ * ChessEver codes and evals once the game is over). The reader's own marks
+ * and comment text always win.
+ */
+function withBroadcastAnnotations(
+  move: SavedMove,
+  played: SavedMove,
+): SavedMove {
+  const next: SavedMove = { ...move };
+  if ((move.ct === null || move.ct === undefined) && played.ct) {
+    next.ct = played.ct;
+  }
+  if (played.e !== null && played.e !== undefined) next.e = played.e;
+  if (
+    (!Array.isArray(move.g) || move.g.length === 0) &&
+    Array.isArray(played.g) && played.g.length > 0
+  ) {
+    next.g = played.g;
+  }
+  if (!hasCommentText(move) && Array.isArray(played.c)) next.c = played.c;
+  return next;
 }
 
 /**
@@ -283,11 +393,10 @@ export function finishSavedGame(
   for (const key of LIVE_ONLY_METADATA) delete settled[key];
   settled.Result = result;
 
-  // When the moves are the game's: what the live PGN said about its end is
-  // stale whether or not the final one repeats it.
+  // When the mainline is the game's: what the live PGN said about its end
+  // is stale whether or not the final one repeats it.
   const finishedMetadata: Record<string, unknown> = { ...settled };
   for (const key of FINISHED_HEADERS) {
-    if (key === "Result") continue;
     const value = parsed.headers.get(key);
     if (value !== undefined && value !== "") {
       finishedMetadata[key] = value;
@@ -301,20 +410,44 @@ export function finishSavedGame(
   const cleared = saved.analysisCleared === true;
   const finalLine = cleared ? parsed.mainline.map(bare) : parsed.mainline;
 
+  const unjoinable = (): FinishResult => ({
+    outcome: "unjoinable",
+    chessGame: saved,
+  });
+  // Another start position, or a game with no moves: not this save's game.
+  if (!sameStart || finalLine.length === 0) return unjoinable();
+
   // Moves are the same move when they reach the same position. `u` and `t`
   // cannot say it: a move the board's navigator wrote (live updates, the
   // reader's own moves) stores `t` as the side to move next and castling as
   // `e1g1`, where PGN parsing stores the mover and `e1h1`. The apps read both
   // in one line and so does this; only the FEN is the same in both.
   let common = 0;
-  if (sameStart) {
-    while (
-      common < savedLine.length &&
-      common < finalLine.length &&
-      savedLine[common].f === finalLine[common].f
-    ) {
-      common++;
-    }
+  while (
+    common < savedLine.length &&
+    common < finalLine.length &&
+    savedLine[common].f === finalLine[common].f
+  ) {
+    common++;
+  }
+
+  const shared = savedLine
+    .slice(0, common)
+    .map((move, i) => withBroadcastAnnotations(move, finalLine[i]));
+  // The game's moves after the shared ones, numbered like the line they join.
+  const gameAfter = (from: number) =>
+    renumber(finalLine.slice(from), numberingAt(savedLine, from - 1));
+
+  if (common === savedLine.length) {
+    // Saved line is the start of the game: add what came after it.
+    return {
+      outcome: "extended",
+      chessGame: {
+        ...saved,
+        md: finishedMetadata,
+        m: [...shared, ...gameAfter(common)],
+      },
+    };
   }
 
   const resultOnly = (): FinishResult => ({
@@ -322,69 +455,36 @@ export function finishSavedGame(
     chessGame: { ...saved, md: settled },
   });
 
-  // The broadcast game is not a continuation of what was saved: another
-  // start position, or no moves at all.
-  if (!sameStart || finalLine.length === 0) return resultOnly();
-
-  if (common === savedLine.length) {
-    // Saved line is the start of the game: add what came after it. A move
-    // the save caught without its clock gains it, nothing else is touched.
-    const kept = savedLine.map((move, i) => {
-      const played = finalLine[i];
-      if ((move.ct === null || move.ct === undefined) && played.ct) {
-        return { ...move, ct: played.ct };
-      }
-      return move;
-    });
-    return {
-      outcome: "extended",
-      chessGame: {
-        ...saved,
-        md: finishedMetadata,
-        m: [...kept, ...finalLine.slice(savedLine.length)],
-      },
-    };
-  }
-
   // The saved line runs past the end of the game: the reader played on, or
   // the PGN lost its last moves. Their moves stay as they are.
   if (common === finalLine.length) return resultOnly();
 
   const notesByPosition = !isEmptyMap(row.variation_comments) ||
     !isEmptyMap(row.move_nags);
-  const readersOwn = notesByPosition || holdsReadersWork(savedLine);
-  // A row matched on `chess_game.id` alone may not be a save of that game at
-  // all: its moves are only ever added to, never swapped.
+  const theirs = savedLine.slice(common);
+  // Saved moves the relay later took back may give way to the game: only in
+  // a row linked to it by `source_game_id` (a row matched on `chess_game.id`
+  // alone may not be a save of that game), with nothing of the reader's in
+  // the row, and every move that goes carrying the relay's clock.
   const linked = typeof row.source_game_id === "string" &&
     row.source_game_id.length > 0;
+  const relayNoise = linked && !notesByPosition &&
+    !holdsReadersWork(savedLine) && cameFromRelay(theirs);
 
-  // Not one move in common. With `source_game_id` and nothing of the
-  // reader's this is the relay's noise before the game began (a board sends
-  // `1. h3`, then resets): the row takes the real game. Otherwise there is no
-  // move before the first one to hang the reader's own line on.
-  if (common === 0) {
-    if (linked && !readersOwn) {
-      return {
-        outcome: "replaced",
-        chessGame: { ...saved, md: finishedMetadata, m: finalLine },
-      };
-    }
-    return resultOnly();
-  }
-
-  if (linked && !readersOwn) {
-    // Nothing of the reader's after the fork: the relay corrected its moves
-    // (or the save caught a move it later took back). The moves both share
-    // stay as saved, the game as played follows.
+  if (relayNoise) {
     return {
       outcome: "replaced",
       chessGame: {
         ...saved,
         md: finishedMetadata,
-        m: [...savedLine.slice(0, common), ...finalLine.slice(common)],
+        m: [...shared, ...gameAfter(common)],
       },
     };
   }
+
+  // Not one move in common, and the saved moves may be the reader's or
+  // another game's: there is no move before the first to hang them on.
+  if (common === 0) return unjoinable();
 
   // The reader's notes sit at fixed move positions: moving their line into a
   // variation would point those notes at other moves.
@@ -392,16 +492,19 @@ export function finishSavedGame(
 
   // Real game from the fork on, the reader's line kept as a variation on the
   // move before the fork (in this model a move's variations are the
-  // alternatives to the move after it).
-  const fork = savedLine[common - 1];
-  const theirs = savedLine.slice(common);
-  const merged = [
-    ...savedLine.slice(0, common - 1),
-    { ...fork, v: [...(fork.v ?? []), theirs] },
-    ...finalLine.slice(common),
-  ];
+  // alternatives to the move after it), numbered like that move.
+  const fork = shared[common - 1];
+  const numbering = numberingOf(fork);
   return {
     outcome: "regrafted",
-    chessGame: { ...saved, md: finishedMetadata, m: merged },
+    chessGame: {
+      ...saved,
+      md: finishedMetadata,
+      m: [
+        ...shared.slice(0, common - 1),
+        { ...fork, v: [...(fork.v ?? []), renumber(theirs, numbering)] },
+        ...gameAfter(common),
+      ],
+    },
   };
 }

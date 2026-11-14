@@ -185,11 +185,17 @@ Deno.test("moves the board's navigator wrote join the game like parsed ones", ()
   assertEquals(finished.outcome, "extended");
   assertEquals(finished.chessGame.m.slice(0, 7), row.chess_game.m);
   assertEquals(finished.chessGame.m.map((m) => m.s).slice(7), ["Nf6", "d3"]);
+  // Appended moves are numbered the navigator's way too: one line, one way.
+  // 4... Nf6 leaves White to move after Black's 4th move: t white, n 5.
+  assertEquals(finished.chessGame.m[7].t, "white");
+  assertEquals(finished.chessGame.m[7].n, 5);
+  assertEquals(finished.chessGame.m[8].t, "black");
+  assertEquals(finished.chessGame.m[8].n, 5);
 });
 
 Deno.test("a corrected broadcast replaces a like that holds nothing of the reader's", () => {
   // The like caught 2... e5, which the relay later corrected to 2... e6.
-  const row = likedAt(pgn("*", "1. d4 Nf6 2. c4 e5"));
+  const row = likedAt(pgn("*", "1. d4 Nf6 2. c4 e5 {[%clk 0:45:02]}"));
   const done = finishSavedGame(row, FINISHED, "1/2-1/2")!;
   assertEquals(done.outcome, "replaced");
   assertEquals(done.chessGame.m.map((m) => m.s), [
@@ -233,10 +239,26 @@ Deno.test("notes keyed by position keep the moves where they are", () => {
 
 Deno.test("relay noise before the game began gives way to the game", () => {
   // The board sent 1. h3 e5, then reset and the game began 1. d4.
-  const row = likedAt(pgn("*", "1. h3 e5"));
+  const row = likedAt(
+    pgn("*", "1. h3 {[%clk 0:45:40]} e5 {[%clk 0:45:39]}"),
+  );
   const done = finishSavedGame(row, FINISHED, "1/2-1/2")!;
   assertEquals(done.outcome, "replaced");
   assertEquals(done.chessGame.m[0].s, "d4");
+});
+
+Deno.test("moves without the relay's clock are never let go", () => {
+  // Desktop puts a reader's moves at the end of a saved game on its main
+  // line, with no clock: they stay, as a variation beside the real move.
+  const row = likedAt(pgn("*", "1. d4 Nf6 2. c4 e5 3. dxe5"));
+  const done = finishSavedGame(row, FINISHED, "1/2-1/2")!;
+  assertEquals(done.outcome, "regrafted");
+  assertEquals(done.chessGame.m[2].v, [row.chess_game.m.slice(3)]);
+  // From the first move, there is nothing to hang them on: left as saved.
+  const fromMoveOne = likedAt(pgn("*", "1. h3 e5"));
+  const kept = finishSavedGame(fromMoveOne, FINISHED, "1/2-1/2")!;
+  assertEquals(kept.outcome, "unjoinable");
+  assertEquals(kept.chessGame, fromMoveOne.chess_game);
 });
 
 Deno.test("a row that shares no move with the game keeps the reader's own", () => {
@@ -244,21 +266,24 @@ Deno.test("a row that shares no move with the game keeps the reader's own", () =
   const unlinked = likedAt(pgn("*", "1. e4 e5"));
   unlinked.source_game_id = null;
   const kept = finishSavedGame(unlinked, FINISHED, "1/2-1/2")!;
-  assertEquals(kept.outcome, "result_only");
-  assertEquals(kept.chessGame.m, unlinked.chess_game.m);
-  // The reader analysed it: nowhere to hang their line before move one.
-  const analysed = likedAt(pgn("*", "1. e4 e5 (1... c5)"));
+  assertEquals(kept.outcome, "unjoinable");
+  assertEquals(kept.chessGame, unlinked.chess_game);
+  // The reader analysed it: nowhere to hang their line before move one, and
+  // another game's result must not be pinned on their moves.
+  const analysed = likedAt(
+    pgn("*", "1. e4 {[%clk 0:45:40]} e5 (1... c5)"),
+  );
   const done = finishSavedGame(analysed, FINISHED, "1/2-1/2")!;
-  assertEquals(done.outcome, "result_only");
-  assertEquals(done.chessGame.m, analysed.chess_game.m);
+  assertEquals(done.outcome, "unjoinable");
+  assertEquals(done.chessGame, analysed.chess_game);
 });
 
 Deno.test("another start position is never joined", () => {
   const row = likedAt(LIVE);
   row.chess_game = { ...row.chess_game, sf: "8/8/8/8/8/8/8/K6k w - - 0 1" };
   const done = finishSavedGame(row, FINISHED, "1/2-1/2")!;
-  assertEquals(done.outcome, "result_only");
-  assertEquals(done.chessGame.m, row.chess_game.m);
+  assertEquals(done.outcome, "unjoinable");
+  assertEquals(done.chessGame, row.chess_game);
 });
 
 Deno.test("a cleared analysis gains bare moves", () => {
@@ -305,11 +330,17 @@ Deno.test("a comment before a move counts as theirs", () => {
 });
 
 Deno.test("a replaced line keeps the moves both share as saved", () => {
-  const row = likedAt(pgn("*", "1. d4 {[%clk 0:45:37]} Nf6 2. c4 e5"));
+  const row = likedAt(
+    pgn("*", "1. d4 {[%clk 0:45:37]} Nf6 2. c4 e5 {[%clk 0:45:02]}"),
+  );
   row.chess_game.m[0] = { ...row.chess_game.m[0], extraFlag: null };
   const done = finishSavedGame(row, FINISHED, "1/2-1/2")!;
   assertEquals(done.outcome, "replaced");
-  assertEquals(done.chessGame.m.slice(0, 3), row.chess_game.m.slice(0, 3));
+  assertEquals(done.chessGame.m[0].extraFlag, null);
+  assertEquals(
+    done.chessGame.m.slice(0, 3).map((m) => [m.f, m.s, m.u, m.t, m.n]),
+    row.chess_game.m.slice(0, 3).map((m) => [m.f, m.s, m.u, m.t, m.n]),
+  );
   assertEquals(done.chessGame.m[3].s, "e6");
 });
 
@@ -355,4 +386,63 @@ Deno.test("result only never claims the moves are complete", () => {
   const extended = finishSavedGame(likedAt(LIVE), final, "1/2-1/2")!;
   assertEquals(extended.chessGame.md.Termination, "Normal");
   assertEquals(extended.chessGame.md.PlyCount, "6");
+});
+
+// Second review (2026-11-14): finished rows must read like a game liked after
+// it ended, in every app.
+
+const ANALYSED = [
+  '[Event "Test Open"]',
+  '[White "Carlsen, Magnus"]',
+  '[Black "Martirosyan, Haik M."]',
+  '[Result "1/2-1/2"]',
+  '[WhiteClock "0:44:00"]',
+  '[ChessEverReport "v1 abc"]',
+  "",
+  "1. d4 {[%eval 0.20] [%clk 0:45:37]} $241 Nf6 {[%eval 0.25] [%clk 0:45:34]} " +
+  "2. c4 {[%eval 0.22] [%clk 0:45:30]} $242 e6 {[%eval 0.30] [%clk 0:45:01]} " +
+  "3. Nc3 {[%eval 0.31] [%clk 0:44:50]} Bb4 {[%eval 0.28] [%clk 0:44:40]} 1/2-1/2",
+].join("\n");
+
+Deno.test("shared moves take the broadcast's evals, codes and report stamp", () => {
+  const row = likedAt(LIVE, { WhiteClock: "0:45:30" });
+  const done = finishSavedGame(row, ANALYSED, "1/2-1/2")!;
+  assertEquals(done.outcome, "extended");
+  assertEquals(done.chessGame.m[0].e, "0.20");
+  assertEquals(done.chessGame.m[0].g, [241]);
+  assertEquals(done.chessGame.m[2].g, [242]);
+  assertEquals(done.chessGame.m[1].c, ["[%eval 0.25] [%clk 0:45:34]"]);
+  assertEquals(done.chessGame.md.ChessEverReport, "v1 abc");
+  assertEquals(done.chessGame.md.WhiteClock, "0:44:00");
+});
+
+Deno.test("the reader's own marks and comment text beat the broadcast's", () => {
+  const row = likedAt(pgn("*", "1. d4 {[%clk 0:45:37] solid} Nf6 2. c4"));
+  row.chess_game.m[2] = { ...row.chess_game.m[2], g: [5] };
+  const done = finishSavedGame(row, ANALYSED, "1/2-1/2")!;
+  assertEquals(done.chessGame.m[0].c, ["[%clk 0:45:37] solid"]);
+  assertEquals(done.chessGame.m[2].g, [5]);
+  // An eval is never the reader's: the broadcast's is taken.
+  assertEquals(done.chessGame.m[0].e, "0.20");
+});
+
+Deno.test("a regrafted line is numbered like the move it hangs on", () => {
+  // Saved through PGN parsing (t = mover); the reader's moves were written by
+  // the navigator (t = side to move next). Clients that tell a replacement
+  // from a continuation by comparing t must see a continuation.
+  const row = likedAt(pgn("*", "1. d4 Nf6 2. c4 g6 3. Nc3"));
+  row.chess_game.m[0] = { ...row.chess_game.m[0], g: [1] };
+  row.chess_game.m = row.chess_game.m.map((m, i) =>
+    i < 3 ? m : { ...m, t: m.t === "white" ? "black" : "white", n: m.n + 1 }
+  );
+  const done = finishSavedGame(row, FINISHED, "1/2-1/2")!;
+  assertEquals(done.outcome, "regrafted");
+  const fork = done.chessGame.m[2];
+  const head = fork.v![0][0];
+  assertEquals(head.s, "g6");
+  assertEquals(fork.t, "white");
+  assertEquals(head.t, "black");
+  assertEquals(head.n, 2);
+  assertEquals(fork.v![0][1].t, "white");
+  assertEquals(fork.v![0][1].n, 3);
 });

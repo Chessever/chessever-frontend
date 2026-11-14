@@ -20,15 +20,15 @@
 -- since, is finished again from the copy saved before the job's write
 -- whenever its game changes after that write: new moves or another result.
 --
--- Additive: one index built without blocking writes, one table, three
--- functions, one cron job. Every row changed keeps its saved `chess_game` in
+-- Additive: one index, one table, three functions; the cron job is the next
+-- migration. Every row changed keeps its saved `chess_game` in
 -- `user_saved_analysis_live_finishes` until the reader deletes the row.
 
--- Rows still marked unfinished. Few (about 700 before the first run, the
--- games being played afterwards), so the cron's check reads almost nothing.
--- Built concurrently: likes and saves keep writing while it builds. Run this
--- statement on its own, outside a transaction.
-create index concurrently if not exists user_saved_analyses_unfinished_game_idx
+-- Rows still marked unfinished. (Superseded for the cron's check by
+-- user_saved_analyses_unfinished_broadcast_idx in the v2 migration.) On
+-- production it was built `concurrently`, on its own, before this file ran,
+-- so likes and saves kept writing; here it is a no-op there.
+create index if not exists user_saved_analyses_unfinished_game_idx
   on public.user_saved_analyses ((coalesce(source_game_id, chess_game->>'id')))
   where result is null and (chess_game->'md'->>'Result') = '*';
 
@@ -261,13 +261,5 @@ revoke execute on function public.kick_finish_live_saved_games() from public, an
 grant execute on function public.live_saved_games_to_finish(integer) to service_role;
 grant execute on function public.finish_live_saved_game(uuid, timestamptz, text, text, jsonb, integer) to service_role;
 grant execute on function public.kick_finish_live_saved_games() to service_role;
-
--- Every two minutes, off the minute the dispatch jobs share. A run with
--- nothing to finish stops at the `exists` above.
-select cron.schedule(
-  'finish-live-saved-games',
-  '1-59/2 * * * *',
-  $$select public.kick_finish_live_saved_games()$$
-);
 
 commit;

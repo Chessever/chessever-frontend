@@ -199,19 +199,35 @@ Trello #1387.
 - **One place, every app.** Every app reads the row from the server, so old
   builds show the finished game too. Do not add client-side finishing in any
   of the three repos.
-- **The reader's work is kept.** Moves, variations and marks stay; the rest
-  of the game is added after them. A saved line that left the game becomes a
-  variation beside the real move. A row with notes in `variation_comments` or
-  `move_nags` (keyed by move position) only ever gains moves on the end.
+- **The reader's work is kept.** Moves, variations, marks and comment text
+  stay; the rest of the game is added after them. A saved line that left the
+  game becomes a variation beside the real move. Saved moves give way only
+  when every one of them carries the relay's clock, nothing of the reader's
+  is in the row and it is linked by `source_game_id` (desktop puts a reader's
+  own moves on the main line, with no clock). A row with notes in
+  `variation_comments` or `move_nags` (keyed by move position) only ever gains
+  moves on the end. A row that shares no move with the game is left as saved.
+- **Finished rows read like a like made after the game.** Shared moves take
+  the broadcast's evals, ChessEver codes and command comments (never over the
+  reader's marks or comment text), and `[ChessEverReport]` is copied, so the
+  Game Report is adopted when the stamp verifies.
 - **Moves match by FEN, never by `u` or `t`.** Moves the board's navigator
   wrote store `t` as the side to move next and castling as `e1g1`; parsed PGN
-  stores the mover and `e1h1`. Both sit in one line in real rows.
-- **Undo.** Each changed row's previous `chess_game` is in
-  `user_saved_analysis_live_finishes`. A row a client writes back with
-  `Result "*"` is finished again on the next run.
+  stores the mover and `e1h1`. Every move the job places is renumbered (`t`,
+  `n`) like the line it joins: chessever.com and desktop 20.28.24+ tell a
+  replacing variation from a following one by comparing `t`.
+- **Undo, and later changes.** Each changed row's saved `chess_game` is in
+  `user_saved_analysis_live_finishes`, with a hash of the job's write. A row
+  still exactly the job's write is finished again (from the saved copy) when
+  its game changes afterwards; one the reader changed is theirs. A row a
+  client writes back with `Result "*"` is finished again on the next run.
+  After changing the merge rules, rerun every untouched row with body
+  `{"reprocess":true,"limit":100}` (dry run first with `"dryRun":true`).
 - Rows link by `source_game_id`, or by `chess_game.id` (desktop board saves
-  leave `source_game_id` empty). `games.status` writes draws as `1/2-1/2` and
-  `½-½`.
+  leave `source_game_id` empty; `local_`, `imported_` and `desktop-` ids never
+  link). A game is still once its own last move is five minutes old.
+  `games.status` writes draws as `1/2-1/2` and `½-½`. At most 100 rows per
+  call: 555 in one call ran out of edge-worker CPU.
 - The merge is `supabase/functions/finish-live-saved-games/finish.ts`, a port
   of `ChessGame.fromPgn` on chessops. Its tests:
   `deno test --allow-read --allow-env --allow-net=registry.npmjs.org supabase/functions/finish-live-saved-games/finish_test.ts`.
