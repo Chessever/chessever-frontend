@@ -108,4 +108,63 @@ void main() {
       expect(store.calls, 0);
     },
   );
+
+  group('PhoneAppStore', () {
+    Map<String, Object?> lookup({String? minimumOs}) => {
+      'resultCount': 1,
+      'results': [
+        {
+          'version': '39.0.0',
+          'trackViewUrl': 'https://apps.apple.com/app/id1',
+          'minimumOsVersion': ?minimumOs,
+        },
+      ],
+    };
+
+    Future<UpgraderVersionInfo> check({
+      required String device,
+      String? minimumOs,
+    }) =>
+        PhoneAppStore(
+          lookup: (state, country, language) async =>
+              lookup(minimumOs: minimumOs),
+          deviceOsVersion: () => device,
+        ).getVersionInfo(
+          state: upgrader.state,
+          installedVersion: Upgrader.parseVersion('38.11.3', 'test', false),
+          country: 'US',
+          language: 'en',
+        );
+
+    test('reports the store build when this iOS can install it', () async {
+      final info = await check(
+        device: 'Version 17.4 (Build 21E213)',
+        minimumOs: '17.0',
+      );
+      expect(info.appStoreVersion.toString(), '39.0.0');
+      expect(info.appStoreListingURL, 'https://apps.apple.com/app/id1');
+    });
+
+    test('hides a build this iOS cannot install', () async {
+      final info = await check(
+        device: 'Version 16.7.10 (Build 20H350)',
+        minimumOs: '17.0',
+      );
+      expect(info.appStoreVersion, isNull);
+      expect(info.appStoreListingURL, isNull);
+    });
+
+    test('a missing minimum OS never hides the update', () async {
+      final info = await check(device: 'Version 16.1 (Build 20B82)');
+      expect(info.appStoreVersion.toString(), '39.0.0');
+    });
+
+    test('canInstallOn compares numerically and tolerates gaps', () {
+      expect(canInstallOn(deviceOs: 'Version 17.0', minimumOs: '17.0'), isTrue);
+      expect(canInstallOn(deviceOs: '16.10', minimumOs: '16.9'), isTrue);
+      expect(canInstallOn(deviceOs: '16.4.1', minimumOs: '16.5'), isFalse);
+      expect(canInstallOn(deviceOs: '', minimumOs: '17.0'), isTrue);
+      expect(canInstallOn(deviceOs: '17.4', minimumOs: null), isTrue);
+    });
+  });
 }

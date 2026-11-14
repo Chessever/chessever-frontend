@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:chessever2/services/forced_update_policy.dart';
 import 'package:chessever2/services/phone_store_upgrader.dart';
 import 'package:chessever2/services/phone_update_reminder.dart';
 import 'package:chessever2/theme/app_theme.dart';
@@ -79,6 +80,27 @@ class _FakeUpgrader extends PhoneStoreUpgrader {
   }
 }
 
+class _FakePolicySource implements ForcedUpdatePolicySource {
+  ForcedUpdatePolicy policy = ForcedUpdatePolicy.fallback;
+  final _changes = StreamController<void>.broadcast();
+  int loads = 0;
+
+  @override
+  Future<ForcedUpdatePolicy> load() async {
+    loads++;
+    return policy;
+  }
+
+  @override
+  Stream<void> get changes => _changes.stream;
+
+  /// Publishes [next] the way a Remote Config real-time update would.
+  void publish(ForcedUpdatePolicy next) {
+    policy = next;
+    _changes.add(null);
+  }
+}
+
 void main() {
   late SharedPreferences prefs;
   late DateTime now;
@@ -87,6 +109,7 @@ void main() {
   late PhoneUpdateRouteObserver observer;
   late GlobalKey<NavigatorState> navigator;
   late GlobalKey<CustomUpgradeAlertState> alert;
+  late _FakePolicySource policy;
 
   setUp(() async {
     SharedPreferences.setMockInitialValues({});
@@ -100,6 +123,7 @@ void main() {
     observer = PhoneUpdateRouteObserver();
     navigator = GlobalKey<NavigatorState>();
     alert = GlobalKey<CustomUpgradeAlertState>();
+    policy = _FakePolicySource();
   });
 
   Future<void> pumpShell(
@@ -129,6 +153,7 @@ void main() {
             routeObserver: observer,
             reminder: reminder,
             enabled: enabled,
+            policySource: policy,
             child: child!,
           );
         },
@@ -303,7 +328,7 @@ void main() {
     tester,
   ) async {
     await reminder.snooze('35.25.4');
-    updater.offered = '36.0.0';
+    updater.offered = '35.26.0';
     await pumpShell(tester);
     expect(find.byType(AlertDialog), findsNothing);
     now = now.add(const Duration(hours: 72));
@@ -313,7 +338,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(
       prefs.getString(PhoneUpdateReminder.preferencesKey),
-      contains('36.0.0'),
+      contains('35.26.0'),
     );
   });
 
@@ -499,4 +524,236 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byType(AlertDialog), findsOneWidget);
   });
+
+  group('remote forced update', () {
+    Future<void> expectLocked(WidgetTester tester) async {
+      expect(find.byType(AlertDialog), findsOneWidget);
+      expect(find.text(CustomUpgraderMessages.requiredTitle), findsOneWidget);
+      expect(find.text('Remind me in 3 days'), findsNothing);
+      await navigator.currentState!.maybePop();
+      await tester.pumpAndSettle();
+      expect(find.byType(AlertDialog), findsOneWidget);
+    }
+
+    testWidgets('a new major version is mandatory and ignores the snooze', (
+      tester,
+    ) async {
+      await reminder.snooze('36.0.0');
+      updater.offered = '36.0.0';
+      await pumpShell(tester);
+      await expectLocked(tester);
+      await tester.tap(find.text('Update Now'));
+      await tester.pumpAndSettle();
+      expect(updater.storeLaunches, 1);
+      expect(find.byType(AlertDialog), findsOneWidget);
+    });
+
+    testWidgets('outside tap cannot dismiss a mandatory dialog', (
+      tester,
+    ) async {
+      updater.offered = '36.0.0';
+      await pumpShell(tester);
+      await tester.tapAt(const Offset(4, 4));
+      await tester.pumpAndSettle();
+      await expectLocked(tester);
+    });
+
+    testWidgets('major rule switched off remotely keeps the offer optional', (
+      tester,
+    ) async {
+      policy.policy = const ForcedUpdatePolicy(forceOnMajor: false);
+      await reminder.snooze('36.0.0');
+      updater.offered = '36.0.0';
+      await pumpShell(tester);
+      expect(find.byType(AlertDialog), findsNothing);
+      now = now.add(const Duration(hours: 72));
+      await resume(tester);
+      expect(find.text('Remind me in 3 days'), findsOneWidget);
+      expect(find.text(CustomUpgraderMessages.requiredTitle), findsNothing);
+    });
+
+    testWidgets('remote minimum forces a patch release', (tester) async {
+      policy.policy = const ForcedUpdatePolicy(minimumVersion: '35.25.4');
+      await reminder.snooze('35.25.4');
+      await pumpShell(tester);
+      await expectLocked(tester);
+    });
+
+    testWidgets('minimum ahead of the store never locks the app', (
+      tester,
+    ) async {
+      policy.policy = const ForcedUpdatePolicy(minimumVersion: '40.0.0');
+      updater.offered = '35.25.3';
+      await pumpShell(tester);
+      expect(find.byType(AlertDialog), findsNothing);
+    });
+
+    testWidgets('a live minimum reaches someone already in the app', (
+      tester,
+    ) async {
+      await reminder.snooze('35.25.4');
+      await pumpShell(tester);
+      expect(find.byType(AlertDialog), findsNothing);
+      policy.publish(const ForcedUpdatePolicy(minimumVersion: '35.25.4'));
+      await tester.pumpAndSettle();
+      await expectLocked(tester);
+    });
+
+    testWidgets('a live minimum locks an optional dialog that is open', (
+      tester,
+    ) async {
+      await pumpShell(tester);
+      expect(find.text('Remind me in 3 days'), findsOneWidget);
+      policy.publish(const ForcedUpdatePolicy(minimumVersion: '35.25.4'));
+      await tester.pumpAndSettle();
+      await expectLocked(tester);
+    });
+
+    testWidgets('switching the rule off releases an open dialog on resume', (
+      tester,
+    ) async {
+      updater.offered = '36.0.0';
+      await pumpShell(tester);
+      await expectLocked(tester);
+      policy.policy = const ForcedUpdatePolicy(forceOnMajor: false);
+      await resume(tester);
+      expect(find.text('Remind me in 3 days'), findsOneWidget);
+      expect(find.text(CustomUpgraderMessages.requiredTitle), findsNothing);
+      await tester.tap(find.text('Remind me in 3 days'));
+      await tester.pumpAndSettle();
+      expect(find.byType(AlertDialog), findsNothing);
+      expect(
+        prefs.getString(PhoneUpdateReminder.preferencesKey),
+        contains('36.0.0'),
+      );
+    });
+
+    testWidgets('released by a live update, back dismisses with a snooze', (
+      tester,
+    ) async {
+      updater.offered = '36.0.0';
+      await pumpShell(tester);
+      await expectLocked(tester);
+      policy.publish(const ForcedUpdatePolicy(forceOnMajor: false));
+      await tester.pumpAndSettle();
+      await navigator.currentState!.maybePop();
+      await tester.pumpAndSettle();
+      expect(find.byType(AlertDialog), findsNothing);
+      expect(prefs.containsKey(PhoneUpdateReminder.preferencesKey), isTrue);
+    });
+
+    testWidgets('a failing policy source falls back to the major rule', (
+      tester,
+    ) async {
+      final failing = _ThrowingPolicySource();
+      updater.offered = '36.0.0';
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await tester.pumpWidget(
+        MaterialApp(
+          navigatorKey: navigator,
+          navigatorObservers: [observer],
+          theme: AppTheme.darkTheme,
+          initialRoute: '/home_screen',
+          routes: {'/home_screen': (_) => const Scaffold(body: Text('Home'))},
+          builder: (context, child) {
+            ResponsiveHelper.init(context);
+            return CustomUpgradeAlert(
+              upgrader: updater,
+              navigatorKey: navigator,
+              routeObserver: observer,
+              reminder: reminder,
+              enabled: true,
+              policySource: failing,
+              child: child!,
+            );
+          },
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(failing.loads, 1);
+      await expectLocked(tester);
+    });
+
+    testWidgets('stack-clearing navigation cannot remove a mandatory dialog', (
+      tester,
+    ) async {
+      updater.offered = '36.0.0';
+      await pumpShell(tester);
+      await expectLocked(tester);
+      // A push deep link or sign-out resets the stack under the dialog.
+      navigator.currentState!.pushNamedAndRemoveUntil(
+        '/home_screen',
+        (_) => false,
+      );
+      await tester.pumpAndSettle();
+      await expectLocked(tester);
+      expect(updater.checks, 1);
+    });
+
+    testWidgets('a mandatory dialog removed onto a game returns at home', (
+      tester,
+    ) async {
+      updater.offered = '36.0.0';
+      await pumpShell(tester);
+      await expectLocked(tester);
+      navigator.currentState!.pushNamedAndRemoveUntil('/board', (_) => false);
+      await tester.pumpAndSettle();
+      expect(find.byType(AlertDialog), findsNothing);
+      navigator.currentState!.pushReplacementNamed('/home_screen');
+      await tester.pumpAndSettle();
+      await expectLocked(tester);
+    });
+
+    testWidgets('a minimum published during a store check still locks', (
+      tester,
+    ) async {
+      await reminder.snooze('35.25.4');
+      updater.pending = Completer<void>();
+      await pumpShell(tester);
+      expect(policy.loads, 1);
+      policy.publish(const ForcedUpdatePolicy(minimumVersion: '35.25.4'));
+      await tester.pumpAndSettle();
+      updater.pending!.complete();
+      await tester.pumpAndSettle();
+      await expectLocked(tester);
+      expect(updater.checks, 1);
+    });
+
+    testWidgets('a release published during a store check is honoured', (
+      tester,
+    ) async {
+      updater.offered = '36.0.0';
+      updater.pending = Completer<void>();
+      await pumpShell(tester);
+      policy.publish(const ForcedUpdatePolicy(forceOnMajor: false));
+      await tester.pumpAndSettle();
+      updater.pending!.complete();
+      await tester.pumpAndSettle();
+      expect(find.text('Remind me in 3 days'), findsOneWidget);
+      expect(find.text(CustomUpgraderMessages.requiredTitle), findsNothing);
+    });
+
+    testWidgets('disabled host never subscribes to policy updates', (
+      tester,
+    ) async {
+      await pumpShell(tester, enabled: false);
+      policy.publish(const ForcedUpdatePolicy(minimumVersion: '99.0.0'));
+      await tester.pumpAndSettle();
+      expect(updater.checks, 0);
+      expect(policy.loads, 0);
+    });
+  });
+}
+
+class _ThrowingPolicySource implements ForcedUpdatePolicySource {
+  int loads = 0;
+
+  @override
+  Future<ForcedUpdatePolicy> load() async {
+    loads++;
+    throw StateError('Remote Config down');
+  }
+
+  @override
+  Stream<void> get changes => Stream<void>.error(StateError('no realtime'));
 }

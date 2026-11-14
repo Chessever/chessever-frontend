@@ -72,6 +72,7 @@ import 'package:terminate_restart/terminate_restart.dart';
 import 'package:clarity_flutter/clarity_flutter.dart';
 import 'package:chessever2/services/clarity_identity.dart';
 import 'package:heroine/heroine.dart';
+import 'package:chessever2/services/forced_update_policy.dart';
 import 'package:chessever2/services/phone_store_upgrader.dart';
 import 'package:chessever2/widgets/phone_update_route_observer.dart';
 import 'package:purchases_flutter/purchases_flutter.dart';
@@ -1240,6 +1241,12 @@ class MyApp extends HookConsumerWidget {
       PhoneUpdateRouteObserver.new,
       const [],
     );
+    // Firebase Remote Config `min_app_version` (Upgrader's minAppVersion) and
+    // `force_update_on_major` decide when a store update is mandatory.
+    final forcedUpdatePolicy = useMemoized(
+      FirebaseForcedUpdatePolicySource.new,
+      const [],
+    );
 
     useEffect(() {
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -1380,6 +1387,7 @@ class MyApp extends HookConsumerWidget {
                       upgrader: upgrader,
                       navigatorKey: navigatorKey,
                       routeObserver: updateRouteObserver,
+                      policySource: forcedUpdatePolicy,
                       child: RewardedAccessHost(
                         navigatorKey: navigatorKey,
                         upgrade: (context) => showPremiumPaywallSheet(
