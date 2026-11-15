@@ -102,7 +102,7 @@ final RegExp _leadingStageName = RegExp(
   r'|round\s+\d+(?:[._]\d+)?'
   r'|quarter[ -]?finals?'
   r'|semi[ -]?finals?'
-  r'|(?:third[ -]?place|bronze)(?:[ -]?match)?'
+  r'|(?:third[ -]?place|bronze|consolation)(?:[ -]?match)?'
   r'|finals?)\b',
   caseSensitive: false,
 );
@@ -115,7 +115,7 @@ final RegExp _leadingStageSlug = RegExp(
   r'|round-\d+(?:[-._]\d+)?'
   r'|quarter-?finals?'
   r'|semi-?finals?'
-  r'|(?:third-place|bronze)(?:-match)?'
+  r'|(?:third-place|bronze|consolation)(?:-match)?'
   r'|finals?)(?=-)',
   caseSensitive: false,
 );
@@ -344,7 +344,7 @@ LogicalKnockoutStage? _recognizedStage(String value) {
     );
   }
   if (RegExp(
-    r'^(?:third[ -]?place|bronze)(?:[ -]?match)?$',
+    r'^(?:third[ -]?place|bronze|consolation)(?:[ -]?match)?$',
     caseSensitive: false,
   ).hasMatch(cleanValue)) {
     return const LogicalKnockoutStage(

@@ -187,6 +187,65 @@ void main() {
   });
 
   group('knockout bracket builder', () {
+    test(
+      'opens on the published round, not the empty final, before play starts',
+      () {
+        // Speed Chess Championship XI: every stage round created up front,
+        // only the Round of 16 carries pairings, nothing has been played.
+        final tour = _tour('scc', 'Speed Chess Championship XI', day: 1);
+        final bracket = buildKnockoutBracket(
+          selectedTour: tour,
+          siblingTours: const [],
+          roundsByTourId: {
+            'scc': [
+              _round('r16', 'scc', 'Round of 16', 'round-of-16', day: 1),
+              _round('qf', 'scc', 'Quarterfinals', 'quarterfinals', day: 2),
+              _round('sf', 'scc', 'Semifinals', 'semifinals', day: 3),
+              _round('cons', 'scc', 'Consolation', 'consolation', day: 4),
+              _round('final', 'scc', 'Final', 'final', day: 4),
+            ],
+          },
+          gamesByTourId: {
+            'scc': [
+              _game('g1', 'r16', 'scc', 'Alpha', 'Beta', '*', board: 1),
+              _game('g2', 'r16', 'scc', 'Gamma', 'Delta', '*', board: 2),
+            ],
+          },
+          now: DateTime.utc(2025, 12, 30),
+        );
+
+        final labels = bracket.stages.map((stage) => stage.label).toList();
+        expect(labels, isNot(contains('Other pairings')));
+        expect(labels, contains('Third place'));
+        expect(bracket.currentStageKey, bracket.stages.first.key);
+        expect(bracket.stages.first.label, 'Round of 16');
+      },
+    );
+
+    test('moves to the next round once its pairings are published', () {
+      final tour = _tour('cup', 'Cup', day: 1);
+      final bracket = buildKnockoutBracket(
+        selectedTour: tour,
+        siblingTours: const [],
+        roundsByTourId: {
+          'cup': [
+            _round('sf', 'cup', 'Semifinals', 'semifinals', day: 1),
+            _round('final', 'cup', 'Final', 'final', day: 2),
+          ],
+        },
+        gamesByTourId: {
+          'cup': [
+            _game('s1', 'sf', 'cup', 'Alpha', 'Beta', '1-0', board: 1),
+            _game('s2', 'sf', 'cup', 'Gamma', 'Delta', '0-1', board: 2),
+            _game('f1', 'final', 'cup', 'Alpha', 'Delta', '*', board: 1),
+          ],
+        },
+        now: DateTime.utc(2026, 1, 1, 12),
+      );
+
+      expect(bracket.currentStageKey, bracket.stages.last.key);
+    });
+
     test('orders FIDE World Cup sibling stage tours chronologically', () {
       final finalTour = _tour('final', 'FIDE World Cup 2025 | Finals', day: 20);
       final round3 = _tour('r3', 'FIDE World Cup 2025 | Round 3', day: 3);

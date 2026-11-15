@@ -161,15 +161,19 @@ KnockoutBracket buildKnockoutBracket({
       break;
     }
   }
+  // Nothing live: the furthest stage whose pairings are published. That is
+  // the round just played, or the next one once its pairings are out. Never
+  // an empty future column: a deep link into an event that has not started
+  // used to open on the empty Finals because it is the last incomplete stage.
   if (currentStageKey == null) {
     for (final stage in stages.reversed) {
-      if (!stage.isComplete) {
+      if (stage.matches.isNotEmpty) {
         currentStageKey = stage.key;
         break;
       }
     }
   }
-  currentStageKey ??= stages.isEmpty ? null : stages.last.key;
+  currentStageKey ??= stages.isEmpty ? null : stages.first.key;
 
   String? selectedStageKey;
   for (final stage in stages) {
