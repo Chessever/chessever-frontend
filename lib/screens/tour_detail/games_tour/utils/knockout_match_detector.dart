@@ -383,6 +383,7 @@ class KnockoutMatchDetector {
   static Map<String, List<GamesTourModel>> orderMatchPlayMatches(
     Map<String, List<GamesTourModel>> chronologicalMatches, {
     Map<String, DateTime?> ownRoundStartsById = const <String, DateTime?>{},
+    Map<String, DateTime?> scheduledStartsByMatchKey = const {},
     Set<String>? matchPlayKeys,
     DateTime? Function(List<GamesTourModel> games)? legacyRecency,
   }) {
@@ -446,6 +447,18 @@ class KnockoutMatchDetector {
       final aTier = tierByKey[a]!;
       final bTier = tierByKey[b]!;
       if (aTier != bTier) return aTier.compareTo(bTier);
+      if (aTier == 2) {
+        final aStart = scheduledStartsByMatchKey[a];
+        final bStart = scheduledStartsByMatchKey[b];
+        if (aStart != null && bStart != null) {
+          final order = aStart.compareTo(bStart);
+          if (order != 0) return order;
+        } else if (aStart != null) {
+          return -1;
+        } else if (bStart != null) {
+          return 1;
+        }
+      }
       if (aTier == 1) {
         final aTime = recency[a];
         final bTime = recency[b];

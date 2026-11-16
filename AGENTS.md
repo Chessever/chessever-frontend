@@ -425,15 +425,22 @@ also app.chessever.com) and notifications. Change one, change all.
   filtered or paged subset: in search mode `gamesTourGroupedProvider` also
   groups the whole tour (`fullGamesByRound`) and the hits only pick the rows.
 - **Live** means a game with a move that is not finished. A match of 0-move
-  shells is not started: no live accent, no time. A played match's time is
+  shells is not started: no live accent. A played match's activity time is
   the later of its latest move and the `starts_at` of a source round that
   holds that match alone (Women's SCC games carry only their game day); a
   round shared by several matches is never a match's time.
 - **Order.** Live matches first in bracket order (they must not swap on every
-  move), then played matches by latest activity, then unstarted matches in
-  bracket order (game-1 board, then a round of its own's start). Inside a
+  move), then played matches by latest activity, then unstarted matches by
+  published kickoff with unknown dates last, breaking ties in bracket order
+  (game-1 board, then a round of its own's start). Inside a
   match: the game in play, finished games newest first, shells last in game
   order.
+- **Match header dates are kickoffs, not recency.** Read the exact round and
+  unordered FIDE pair from `tours.info.matchSchedule`, otherwise a source
+  round that holds that match alone. Shared stage dates and last-move stamps
+  never become kickoff labels. Unknown dates stay unset. Future match cards
+  follow all played matches, dated kickoffs first in ascending order; bracket
+  order breaks ties. Activity still orders matches that have been played.
 - **A completed stage row** (24 hours after the round file's start) stays
   open only while a match-play match in it is unplayed or being played, and
   then merges only those matches' boards; a stale shell beside a decided match

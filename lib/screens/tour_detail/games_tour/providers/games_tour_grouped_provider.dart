@@ -385,10 +385,9 @@ final gamesTourGroupedProvider = Provider.autoDispose<GroupedGamesData>((ref) {
     seenGameIdsPerRound.putIfAbsent(roundId, () => <String>{});
   }
 
-  // A search hands over only its hits. Knockout rounds also get their full
-  // membership, grouped exactly as the unfiltered list groups it, so a
-  // match-play match keeps its side A, score and place while searching.
-  final fullGamesByRound = isSearchMode && isKnockoutTournament
+  // Every knockout presentation reads full membership for its gate, score
+  // and order, even when the screen holds a filtered or paged slice.
+  final fullGamesByRound = isKnockoutTournament
       ? groupRounds(knockoutState.allGames, searchMode: false).gamesByRound
       : const <String, List<GamesTourModel>>{};
 

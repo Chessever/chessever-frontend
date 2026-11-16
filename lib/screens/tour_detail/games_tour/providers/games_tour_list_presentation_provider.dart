@@ -90,6 +90,10 @@ final gamesTourListPresentationProvider =
         matchFormatHeader: grouped.matchFormatHeader,
         roundStartTimesById: roundStartTimesById,
         fullGamesByRound: grouped.fullGamesByRound,
+        matchSchedulesByTourId: {
+          for (final tourModel in tourDetail?.tours ?? const [])
+            tourModel.tour.id: tourModel.tour.info.matchSchedule,
+        },
         sourceStandingsByTourId: {
           for (final tourModel in tourDetail?.tours ?? const [])
             tourModel.tour.id: tourModel.tour.players,

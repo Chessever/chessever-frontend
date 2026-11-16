@@ -4,6 +4,7 @@ import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_mode
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_list_view_mode_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/match_expansion_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/utils/knockout_match_detector.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/utils/match_play_schedule.dart';
 import 'package:dartchess/dartchess.dart';
 import 'package:flutter/foundation.dart';
 
@@ -160,6 +161,7 @@ GamesTourFlattenedLayout buildGamesTourFlattenedLayout({
   // search). Match-play matches read their gate, side A, score and order
   // from here; [gamesByRound] then only decides which rows show.
   Map<String, List<GamesTourModel>> fullGamesByRound = const {},
+  Map<String, List<Map<String, dynamic>>> matchSchedulesByTourId = const {},
 }) {
   final entries = <GamesTourLayoutEntry>[];
   final orderedGames = <GamesTourModel>[];
@@ -214,6 +216,16 @@ GamesTourFlattenedLayout buildGamesTourFlattenedLayout({
             : <String>{for (final game in roundGames) game.gameId};
     bool isVisible(GamesTourModel game) =>
         visibleGameIds == null || visibleGameIds.contains(game.gameId);
+    final matchStarts = <String, DateTime?>{
+      if (matchPlayKeys.isNotEmpty)
+        for (final entry in KnockoutMatchDetector.groupByMatches(fullRoundGames).entries)
+          if (matchPlayKeys.contains(entry.key))
+            entry.key: matchPlayStartsAt(
+              entry.value,
+              schedulesByTourId: matchSchedulesByTourId,
+              ownRoundStartsById: ownRoundStartsById,
+            ),
+    };
     final matches =
         !isKnockoutRound
             ? const <String, List<GamesTourModel>>{}
@@ -237,6 +249,7 @@ GamesTourFlattenedLayout buildGamesTourFlattenedLayout({
                             : entry.value.where(isVisible).toList(),
               },
               ownRoundStartsById: ownRoundStartsById,
+              scheduledStartsByMatchKey: matchStarts,
               matchPlayKeys: matchPlayKeys,
               legacyRecency:
                   (games) => matchupRecency(games, roundStartTimesById),
@@ -344,15 +357,12 @@ GamesTourFlattenedLayout buildGamesTourFlattenedLayout({
           matchHeader: KnockoutMatchDetector.createMatchHeader(
             matchKey,
             chronologicalGames,
-            // A match-play match shows when it was actually played (or the
-            // start of a round of its own); one that has not started has no
-            // time (a shared round's start is every match's).
+            // Display the matchup's kickoff. Activity still orders played
+            // matches, but neither its last move nor the shared stage start
+            // is a matchup's start time.
             playedAt:
                 isMatchPlay
-                    ? KnockoutMatchDetector.matchPlayRecency(
-                      chronologicalGames,
-                      ownRoundStartsById: ownRoundStartsById,
-                    )
+                    ? matchStarts[matchKey]
                     : matchupRecency(chronologicalGames, roundStartTimesById),
             sourceStandingsByTourId: sourceStandingsByTourId,
             isMatchPlay: isMatchPlay,

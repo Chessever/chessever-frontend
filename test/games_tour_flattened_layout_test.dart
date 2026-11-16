@@ -6,6 +6,7 @@ import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_f
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_grouped_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_scroll_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/utils/knockout_match_detector.dart';
+import 'package:chessever2/repository/supabase/tour/tour.dart';
 import 'package:dartchess/dartchess.dart' show Side;
 import 'package:flutter_test/flutter_test.dart';
 
@@ -496,6 +497,99 @@ void main() {
       expect(layout.orderedGames, hasLength(16));
     });
 
+    for (final mode in GamesListViewMode.values) {
+      test('finished Nakamura-Erdogmus stays above future matches ($mode)', () {
+        final layout = _sccLayout(
+          _sccRoundOf16(nakamuraGame2: GameStatus.blackWins).reversed.toList(),
+          mode: mode,
+          matchSchedule: _sccSchedule,
+          roundStartTimesById: {'60IswAYI': DateTime.utc(2026, 11, 16, 17)},
+        );
+        final headers = headersOf(layout);
+        expect(headers.map((header) => header.player1), [
+          'Nakamura, Hikaru',
+          'Lazavik, Denis',
+          'Firouzja, Alireza',
+          'So, Wesley',
+          'Carlsen, Magnus',
+          'Caruana, Fabiano',
+          'Abdusattorov, Nodirbek',
+          'Nihal Sarin',
+        ]);
+        expect(headers.map((header) => header.playedAt), [
+          DateTime.utc(2026, 11, 16, 17),
+          DateTime.utc(2026, 11, 20, 17),
+          DateTime.utc(2026, 11, 27, 17, 30),
+          DateTime.utc(2026, 12, 9, 15),
+          DateTime.utc(2026, 12, 16, 14),
+          DateTime.utc(2026, 12, 16, 17, 30),
+          null,
+          null,
+        ]);
+        expect(headers.every((header) => !header.hasLiveGame), isTrue);
+        expect(
+          headers.first.playedAt,
+          isNot(DateTime.utc(2026, 11, 16, 17, 31)),
+          reason: 'the final move is not the match kickoff',
+        );
+      });
+    }
+
+    test(
+      'the event model preserves the published schedule across cache reads',
+      () {
+        final info = TourInfo.fromJson({
+          'matchSchedule': [..._sccSchedule, null, 7],
+        });
+        expect(info.matchSchedule, _sccSchedule);
+        expect(TourInfo.fromJson(info.toJson()).matchSchedule, _sccSchedule);
+        expect(
+          TourInfo.fromJson({'matchSchedule': 'bad'}).matchSchedule,
+          isEmpty,
+        );
+      },
+    );
+
+    test(
+      'a wrong-stage, malformed or conflicting schedule invents no time',
+      () {
+        for (final schedule in [
+          [
+            {
+              'roundId': 'other-stage',
+              'fideIds': ['2016192', '44599790'],
+              'startsAt': '2026-11-16T17:00:00Z',
+            },
+          ],
+          [
+            {
+              'roundId': '60IswAYI',
+              'fideIds': ['2016192', '44599790'],
+              'startsAt': '2026-02-31T17:00:00Z',
+            },
+          ],
+          [
+            {
+              'roundId': '60IswAYI',
+              'fideIds': ['2016192', '44599790'],
+              'startsAt': '2026-11-16T17:00:00',
+            },
+          ],
+          [
+            _sccSchedule.first,
+            {..._sccSchedule.first, 'startsAt': '2026-11-16T18:00:00Z'},
+          ],
+        ]) {
+          expect(
+            headersOf(
+              _sccLayout(_sccRoundOf16(), matchSchedule: schedule),
+            ).first.playedAt,
+            isNull,
+          );
+        }
+      },
+    );
+
     test('Nakamura keeps one side in both games of his match', () {
       final layout = _sccLayout(_sccRoundOf16().reversed.toList());
 
@@ -526,7 +620,8 @@ void main() {
 
       final headers = headersOf(layout);
       expect(headers.first.hasLiveGame, isTrue);
-      expect(headers.first.playedAt, DateTime.utc(2026, 11, 16, 17, 20));
+      expect(headers.first.playedAt, isNull,
+          reason: 'a latest-move stamp is not a known match kickoff');
       for (final header in headers.skip(1)) {
         expect(header.hasLiveGame, isFalse, reason: header.player1);
         expect(header.playedAt, isNull, reason: header.player1);
@@ -1099,6 +1194,7 @@ GamesTourFlattenedLayout _layout({
   Map<String, DateTime?> roundStartTimesById = const {},
   bool isSearchMode = false,
   Map<String, List<GamesTourModel>> fullGamesByRound = const {},
+  List<Map<String, dynamic>> matchSchedule = const [],
 }) => buildGamesTourFlattenedLayout(
   rounds: rounds,
   gamesByRound: gamesByRound,
@@ -1110,6 +1206,7 @@ GamesTourFlattenedLayout _layout({
   roundStartTimesById: roundStartTimesById,
   isSearchMode: isSearchMode,
   fullGamesByRound: fullGamesByRound,
+  matchSchedulesByTourId: {'fqCjSUpE': matchSchedule},
 );
 
 GamesAppBarModel _round(String id, RoundStatus status, {DateTime? startsAt}) =>
@@ -1283,6 +1380,7 @@ GamesTourFlattenedLayout _sccLayout(
   List<GamesTourModel> games, {
   GamesListViewMode mode = GamesListViewMode.gamesCard,
   Map<String, DateTime?> roundStartTimesById = const {},
+  List<Map<String, dynamic>> matchSchedule = const [],
 }) {
   final stage = _round('knockout-stage-fqCjSUpE-round-of-16', RoundStatus.live);
   return _layout(
@@ -1290,8 +1388,42 @@ GamesTourFlattenedLayout _sccLayout(
     gamesByRound: {stage.id: games},
     mode: mode,
     roundStartTimesById: roundStartTimesById,
+    matchSchedule: matchSchedule,
   );
 }
+
+const _sccSchedule = <Map<String, dynamic>>[
+  {
+    'roundId': '60IswAYI',
+    'fideIds': ['2016192', '44599790'],
+    'startsAt': '2026-11-16T17:00:00Z',
+  },
+  {
+    'roundId': '60IswAYI',
+    'fideIds': ['13515110', '4158814'],
+    'startsAt': '2026-11-20T17:00:00Z',
+  },
+  {
+    'roundId': '60IswAYI',
+    'fideIds': ['12573981', '24101605'],
+    'startsAt': '2026-11-27T17:30:00Z',
+  },
+  {
+    'roundId': '60IswAYI',
+    'fideIds': ['5202213', '25059530'],
+    'startsAt': '2026-12-09T15:00:00Z',
+  },
+  {
+    'roundId': '60IswAYI',
+    'fideIds': ['1503014', '42520835'],
+    'startsAt': '2026-12-16T14:00:00Z',
+  },
+  {
+    'roundId': '60IswAYI',
+    'fideIds': ['2020009', '14205483'],
+    'startsAt': '2026-12-16T17:30:00Z',
+  },
+];
 
 String _matchPlaySnapshot(GamesTourFlattenedLayout layout) => [
   for (final entry in layout.entries)
