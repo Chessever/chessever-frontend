@@ -4,6 +4,21 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   group('For You feed RPC SQL', () {
+    test('home previews rank active played boards before board number', () {
+      final sql = _latestMigrationDefining(
+        'create or replace function public.get_for_you_top_games',
+      ).readAsStringSync();
+      final ranking = sql.substring(sql.indexOf('partition by srs.event_id'));
+      expect(
+        ranking.indexOf("in ('*', 'ongoing')"),
+        lessThan(ranking.indexOf('g.board_nr asc nulls last')),
+      );
+      expect(ranking, contains("nullif(btrim(g.last_move), '') is not null"));
+      expect(ranking, contains("now() - interval '120 minutes'"));
+      expect(ranking, contains("now() + interval '2 minutes'"));
+      expect(sql, contains('where not g.is_mirror'));
+    });
+
     test('latest get_for_you_group_broadcasts omits future round starts', () {
       final migration = _latestMigrationDefining(
         'create or replace function public.get_for_you_group_broadcasts',

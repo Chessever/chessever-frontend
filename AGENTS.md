@@ -383,6 +383,14 @@ not have this yet; when they get it, the rules below are the rule.
 
 ## Match-play knockouts: three copies, one rule
 
+Home previews in mobile Today and desktop/app.chessever.com For You share
+`public.get_for_you_top_games`, maintained by this repository's migrations.
+It locks one category and round, then ranks actively played games before
+board number and applies the preview limit. A stage can accumulate dozens of
+finished games before its next live game; never take the first board numbers
+and try to sort them in the client. Regression fixtures are in
+`supabase/tests/for_you_live_board_preview.sql` (temporary tables, rolled back).
+
 Speed Chess Championship (tour `fqCjSUpE`) puts every match of a stage in one
 round file. Game 1 of each match exists from the start as a 0-move `*` shell,
 games are appended for a month, one match a day. The same rule holds on phone
