@@ -393,17 +393,22 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
           return ScreenWrapper(
             child: Scaffold(
               key: e2eKey(E2eIds.tournamentDetailRoot),
-              floatingActionButton: BotvinnikChatButton(
-                heroTag: 'botvinnik-tournament',
-                screenContext: ChatScreenContext(
-                  screen: 'tournament',
-                  eventId: selectedBroadcast?.id,
-                  eventName: selectedBroadcast?.name,
-                  tournamentId: selectedTour?.id,
-                  tournamentName: selectedTour?.name,
-                ),
-                iconOnly: true,
-              ),
+              // The Bracket tab is a pannable canvas with its own zoom
+              // controls in that corner; the chat button would cover them.
+              floatingActionButton:
+                  effectiveMode == TournamentDetailScreenMode.bracket
+                      ? null
+                      : BotvinnikChatButton(
+                        heroTag: 'botvinnik-tournament',
+                        screenContext: ChatScreenContext(
+                          screen: 'tournament',
+                          eventId: selectedBroadcast?.id,
+                          eventName: selectedBroadcast?.name,
+                          tournamentId: selectedTour?.id,
+                          tournamentName: selectedTour?.name,
+                        ),
+                        iconOnly: true,
+                      ),
               body: Center(
                 child: ConstrainedBox(
                   constraints: BoxConstraints(
