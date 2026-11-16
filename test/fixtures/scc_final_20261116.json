@@ -1,0 +1,956 @@
+{
+  "tourId": "fqCjSUpE",
+  "matchPlayBracket": {"seeds":[{"roundId":"60IswAYI","fideIds":[["1503014","42520835"],["14204118","12940690"],["2016192","44599790"],["25092340","2093596"],["12573981","24101605"],["2020009","14205483"],["13515110","4158814"],["5202213","25059530"]]}],"results":[{"roundId":"60IswAYI","fideIds":["2016192","44599790"],"scores":[12,8],"gameCount":20,"winnerFideId":"2016192","finishedAt":"2026-11-16T20:15:03Z","sourceUrl":"https://www.chess.com/events/2026-speed-chess-championship/results"}]},
+  "rounds": [
+    {
+      "id": "60IswAYI",
+      "name": "Round of 16",
+      "slug": "round-of-16",
+      "starts_at": "2026-11-16T17:00:00+00:00"
+    },
+    {
+      "id": "qhktidXj",
+      "name": "Quarterfinals",
+      "slug": "quarterfinals",
+      "starts_at": null
+    },
+    {
+      "id": "thbREnFa",
+      "name": "Semifinals",
+      "slug": "semifinals",
+      "starts_at": null
+    },
+    {
+      "id": "9CtXnTQu",
+      "name": "Consolation",
+      "slug": "consolation",
+      "starts_at": null
+    },
+    {
+      "id": "BljVh3AO",
+      "name": "Final",
+      "slug": "final",
+      "starts_at": null
+    }
+  ],
+  "games": [
+    {
+      "id": "60IswAYI-pq36vc",
+      "status": "1/2-1/2",
+      "players": [
+        {
+          "fed": "USA",
+          "name": "Nakamura, Hikaru",
+          "clock": 650,
+          "title": "GM",
+          "fideId": 2016192,
+          "rating": 2800
+        },
+        {
+          "fed": "TUR",
+          "name": "Erdogmus, Yagiz Kaan",
+          "clock": 650,
+          "title": "GM",
+          "fideId": 44599790,
+          "rating": 2579
+        }
+      ],
+      "tour_id": "fqCjSUpE",
+      "board_nr": 1,
+      "round_id": "60IswAYI",
+      "last_move": "g6h4",
+      "last_move_time": "2026-11-16T17:14:54.535+00:00"
+    },
+    {
+      "id": "60IswAYI-src7cv",
+      "status": "*",
+      "players": [
+        {
+          "fed": "NOR",
+          "name": "Carlsen, Magnus",
+          "clock": 30100,
+          "title": "GM",
+          "fideId": 1503014,
+          "rating": 2860
+        },
+        {
+          "fed": "IRI",
+          "name": "Movahed, Sina",
+          "clock": 30100,
+          "title": "GM",
+          "fideId": 42520835,
+          "rating": 2524
+        }
+      ],
+      "tour_id": "fqCjSUpE",
+      "board_nr": 2,
+      "round_id": "60IswAYI",
+      "last_move": null,
+      "last_move_time": null
+    },
+    {
+      "id": "60IswAYI-1iw36s7",
+      "status": "*",
+      "players": [
+        {
+          "fed": "UZB",
+          "name": "Abdusattorov, Nodirbek",
+          "clock": 30100,
+          "title": "GM",
+          "fideId": 14204118,
+          "rating": 2819
+        },
+        {
+          "fed": "GER",
+          "name": "Keymer, Vincent",
+          "clock": 30100,
+          "title": "GM",
+          "fideId": 12940690,
+          "rating": 2628
+        }
+      ],
+      "tour_id": "fqCjSUpE",
+      "board_nr": 3,
+      "round_id": "60IswAYI",
+      "last_move": null,
+      "last_move_time": null
+    },
+    {
+      "id": "60IswAYI-ck9pdy",
+      "status": "*",
+      "players": [
+        {
+          "fed": "IND",
+          "name": "Nihal Sarin",
+          "clock": 30100,
+          "title": "GM",
+          "fideId": 25092340,
+          "rating": 2721
+        },
+        {
+          "fed": "USA",
+          "name": "Niemann, Hans Moke",
+          "clock": 30100,
+          "title": "GM",
+          "fideId": 2093596,
+          "rating": 2711
+        }
+      ],
+      "tour_id": "fqCjSUpE",
+      "board_nr": 4,
+      "round_id": "60IswAYI",
+      "last_move": null,
+      "last_move_time": null
+    },
+    {
+      "id": "60IswAYI-78pcxs",
+      "status": "*",
+      "players": [
+        {
+          "fed": "FRA",
+          "name": "Firouzja, Alireza",
+          "clock": 30100,
+          "title": "GM",
+          "fideId": 12573981,
+          "rating": 2797
+        },
+        {
+          "fed": "RUS",
+          "name": "Artemiev, Vladislav",
+          "clock": 30100,
+          "title": "GM",
+          "fideId": 24101605,
+          "rating": 2712
+        }
+      ],
+      "tour_id": "fqCjSUpE",
+      "board_nr": 5,
+      "round_id": "60IswAYI",
+      "last_move": null,
+      "last_move_time": null
+    },
+    {
+      "id": "60IswAYI-um9vyy",
+      "status": "*",
+      "players": [
+        {
+          "fed": "USA",
+          "name": "Caruana, Fabiano",
+          "clock": 30100,
+          "title": "GM",
+          "fideId": 2020009,
+          "rating": 2738
+        },
+        {
+          "fed": "UZB",
+          "name": "Sindarov, Javokhir",
+          "clock": 30100,
+          "title": "GM",
+          "fideId": 14205483,
+          "rating": 2725
+        }
+      ],
+      "tour_id": "fqCjSUpE",
+      "board_nr": 6,
+      "round_id": "60IswAYI",
+      "last_move": null,
+      "last_move_time": null
+    },
+    {
+      "id": "60IswAYI-1lcthoy",
+      "status": "*",
+      "players": [
+        {
+          "fed": "BLR",
+          "name": "Lazavik, Denis",
+          "clock": 30100,
+          "title": "GM",
+          "fideId": 13515110,
+          "rating": 2644
+        },
+        {
+          "fed": "FID",
+          "name": "Andreikin, Dmitry",
+          "clock": 30100,
+          "title": "GM",
+          "fideId": 4158814,
+          "rating": 2686
+        }
+      ],
+      "tour_id": "fqCjSUpE",
+      "board_nr": 7,
+      "round_id": "60IswAYI",
+      "last_move": null,
+      "last_move_time": null
+    },
+    {
+      "id": "60IswAYI-1siueax",
+      "status": "*",
+      "players": [
+        {
+          "fed": "USA",
+          "name": "So, Wesley",
+          "clock": 30100,
+          "title": "GM",
+          "fideId": 5202213,
+          "rating": 2745
+        },
+        {
+          "fed": "IND",
+          "name": "Praggnanandhaa R",
+          "clock": 30100,
+          "title": "GM",
+          "fideId": 25059530,
+          "rating": 2712
+        }
+      ],
+      "tour_id": "fqCjSUpE",
+      "board_nr": 8,
+      "round_id": "60IswAYI",
+      "last_move": null,
+      "last_move_time": null
+    },
+    {
+      "id": "60IswAYI-67v3yr",
+      "status": "*",
+      "players": [
+        {
+          "fed": "USA",
+          "name": "Niemann, Hans Moke",
+          "clock": 30100,
+          "title": "GM",
+          "fideId": 2093596,
+          "rating": 2711
+        },
+        {
+          "fed": "IND",
+          "name": "Nihal Sarin",
+          "clock": 30100,
+          "title": "GM",
+          "fideId": 25092340,
+          "rating": 2721
+        }
+      ],
+      "tour_id": "fqCjSUpE",
+      "board_nr": 9,
+      "round_id": "60IswAYI",
+      "last_move": null,
+      "last_move_time": null
+    },
+    {
+      "id": "60IswAYI-1fw7jih",
+      "status": "*",
+      "players": [
+        {
+          "fed": "FID",
+          "name": "Andreikin, Dmitry",
+          "clock": 30100,
+          "title": "GM",
+          "fideId": 4158814,
+          "rating": 2686
+        },
+        {
+          "fed": "BLR",
+          "name": "Lazavik, Denis",
+          "clock": 30100,
+          "title": "GM",
+          "fideId": 13515110,
+          "rating": 2644
+        }
+      ],
+      "tour_id": "fqCjSUpE",
+      "board_nr": 10,
+      "round_id": "60IswAYI",
+      "last_move": null,
+      "last_move_time": null
+    },
+    {
+      "id": "60IswAYI-1a45jh4",
+      "status": "*",
+      "players": [
+        {
+          "fed": "IRI",
+          "name": "Movahed, Sina",
+          "clock": 30100,
+          "title": "GM",
+          "fideId": 42520835,
+          "rating": 2524
+        },
+        {
+          "fed": "NOR",
+          "name": "Carlsen, Magnus",
+          "clock": 30100,
+          "title": "GM",
+          "fideId": 1503014,
+          "rating": 2860
+        }
+      ],
+      "tour_id": "fqCjSUpE",
+      "board_nr": 11,
+      "round_id": "60IswAYI",
+      "last_move": null,
+      "last_move_time": null
+    },
+    {
+      "id": "60IswAYI-1md2dlh",
+      "status": "0-1",
+      "players": [
+        {
+          "fed": "TUR",
+          "name": "Erdogmus, Yagiz Kaan",
+          "clock": 200,
+          "title": "GM",
+          "fideId": 44599790,
+          "rating": 2579
+        },
+        {
+          "fed": "USA",
+          "name": "Nakamura, Hikaru",
+          "clock": 3550,
+          "title": "GM",
+          "fideId": 2016192,
+          "rating": 2800
+        }
+      ],
+      "tour_id": "fqCjSUpE",
+      "board_nr": 12,
+      "round_id": "60IswAYI",
+      "last_move": "b8g8",
+      "last_move_time": "2026-11-16T17:25:59.147+00:00"
+    },
+    {
+      "id": "60IswAYI-1i7jwd7",
+      "status": "*",
+      "players": [
+        {
+          "fed": "RUS",
+          "name": "Artemiev, Vladislav",
+          "clock": 30100,
+          "title": "GM",
+          "fideId": 24101605,
+          "rating": 2712
+        },
+        {
+          "fed": "FRA",
+          "name": "Firouzja, Alireza",
+          "clock": 30100,
+          "title": "GM",
+          "fideId": 12573981,
+          "rating": 2797
+        }
+      ],
+      "tour_id": "fqCjSUpE",
+      "board_nr": 13,
+      "round_id": "60IswAYI",
+      "last_move": null,
+      "last_move_time": null
+    },
+    {
+      "id": "60IswAYI-1igry3e",
+      "status": "*",
+      "players": [
+        {
+          "fed": "IND",
+          "name": "Praggnanandhaa R",
+          "clock": 30100,
+          "title": "GM",
+          "fideId": 25059530,
+          "rating": 2712
+        },
+        {
+          "fed": "USA",
+          "name": "So, Wesley",
+          "clock": 30100,
+          "title": "GM",
+          "fideId": 5202213,
+          "rating": 2745
+        }
+      ],
+      "tour_id": "fqCjSUpE",
+      "board_nr": 14,
+      "round_id": "60IswAYI",
+      "last_move": null,
+      "last_move_time": null
+    },
+    {
+      "id": "60IswAYI-w84g18",
+      "status": "*",
+      "players": [
+        {
+          "fed": "GER",
+          "name": "Keymer, Vincent",
+          "clock": 30100,
+          "title": "GM",
+          "fideId": 12940690,
+          "rating": 2628
+        },
+        {
+          "fed": "UZB",
+          "name": "Abdusattorov, Nodirbek",
+          "clock": 30100,
+          "title": "GM",
+          "fideId": 14204118,
+          "rating": 2819
+        }
+      ],
+      "tour_id": "fqCjSUpE",
+      "board_nr": 15,
+      "round_id": "60IswAYI",
+      "last_move": null,
+      "last_move_time": null
+    },
+    {
+      "id": "60IswAYI-166s5u7",
+      "status": "*",
+      "players": [
+        {
+          "fed": "UZB",
+          "name": "Sindarov, Javokhir",
+          "clock": 30100,
+          "title": "GM",
+          "fideId": 14205483,
+          "rating": 2725
+        },
+        {
+          "fed": "USA",
+          "name": "Caruana, Fabiano",
+          "clock": 30100,
+          "title": "GM",
+          "fideId": 2020009,
+          "rating": 2738
+        }
+      ],
+      "tour_id": "fqCjSUpE",
+      "board_nr": 16,
+      "round_id": "60IswAYI",
+      "last_move": null,
+      "last_move_time": null
+    },
+    {
+      "id": "chess.com:187347521148",
+      "status": "1-0",
+      "players": [
+        {
+          "fed": "USA",
+          "name": "Nakamura, Hikaru",
+          "clock": 2140,
+          "title": "GM",
+          "fideId": 2016192,
+          "rating": 2800
+        },
+        {
+          "fed": "TUR",
+          "name": "Erdogmus, Yagiz Kaan",
+          "clock": 90,
+          "title": "GM",
+          "fideId": 44599790,
+          "rating": 2579
+        }
+      ],
+      "tour_id": "fqCjSUpE",
+      "board_nr": 17,
+      "round_id": "60IswAYI",
+      "last_move": "c4b3",
+      "last_move_time": "2026-11-16T17:36:52.534+00:00"
+    },
+    {
+      "id": "chess.com:187348254664",
+      "status": "1-0",
+      "players": [
+        {
+          "fed": "TUR",
+          "name": "Erdogmus, Yagiz Kaan",
+          "clock": 430,
+          "title": "GM",
+          "fideId": 44599790,
+          "rating": 2579
+        },
+        {
+          "fed": "USA",
+          "name": "Nakamura, Hikaru",
+          "clock": 460,
+          "title": "GM",
+          "fideId": 2016192,
+          "rating": 2800
+        }
+      ],
+      "tour_id": "fqCjSUpE",
+      "board_nr": 18,
+      "round_id": "60IswAYI",
+      "last_move": "h5f6",
+      "last_move_time": "2026-11-16T17:48:59.138+00:00"
+    },
+    {
+      "id": "chess.com:187349780598",
+      "status": "1-0",
+      "players": [
+        {
+          "fed": "USA",
+          "name": "Nakamura, Hikaru",
+          "clock": 1940,
+          "title": "GM",
+          "fideId": 2016192,
+          "rating": 2800
+        },
+        {
+          "fed": "TUR",
+          "name": "Erdogmus, Yagiz Kaan",
+          "clock": 160,
+          "title": "GM",
+          "fideId": 44599790,
+          "rating": 2579
+        }
+      ],
+      "tour_id": "fqCjSUpE",
+      "board_nr": 19,
+      "round_id": "60IswAYI",
+      "last_move": "f5f6",
+      "last_move_time": "2026-11-16T18:12:15.199+00:00"
+    },
+    {
+      "id": "chess.com:187350624662",
+      "status": "0-1",
+      "players": [
+        {
+          "fed": "TUR",
+          "name": "Erdogmus, Yagiz Kaan",
+          "clock": 20,
+          "title": "GM",
+          "fideId": 44599790,
+          "rating": 2579
+        },
+        {
+          "fed": "USA",
+          "name": "Nakamura, Hikaru",
+          "clock": 6270,
+          "title": "GM",
+          "fideId": 2016192,
+          "rating": 2800
+        }
+      ],
+      "tour_id": "fqCjSUpE",
+      "board_nr": 20,
+      "round_id": "60IswAYI",
+      "last_move": "f3f4",
+      "last_move_time": "2026-11-16T18:23:05.906+00:00"
+    },
+    {
+      "id": "chess.com:187351342434",
+      "status": "0-1",
+      "players": [
+        {
+          "fed": "USA",
+          "name": "Nakamura, Hikaru",
+          "clock": 1240,
+          "title": "GM",
+          "fideId": 2016192,
+          "rating": 2800
+        },
+        {
+          "fed": "TUR",
+          "name": "Erdogmus, Yagiz Kaan",
+          "clock": 350,
+          "title": "GM",
+          "fideId": 44599790,
+          "rating": 2579
+        }
+      ],
+      "tour_id": "fqCjSUpE",
+      "board_nr": 21,
+      "round_id": "60IswAYI",
+      "last_move": "h5g5",
+      "last_move_time": "2026-11-16T18:35:20.767+00:00"
+    },
+    {
+      "id": "chess.com:187352716120",
+      "status": "1/2-1/2",
+      "players": [
+        {
+          "fed": "TUR",
+          "name": "Erdogmus, Yagiz Kaan",
+          "clock": 300,
+          "title": "GM",
+          "fideId": 44599790,
+          "rating": 2579
+        },
+        {
+          "fed": "USA",
+          "name": "Nakamura, Hikaru",
+          "clock": 1480,
+          "title": "GM",
+          "fideId": 2016192,
+          "rating": 2800
+        }
+      ],
+      "tour_id": "fqCjSUpE",
+      "board_nr": 22,
+      "round_id": "60IswAYI",
+      "last_move": "a1a2",
+      "last_move_time": "2026-11-16T18:51:36.267+00:00"
+    },
+    {
+      "id": "chess.com:187353213420",
+      "status": "1-0",
+      "players": [
+        {
+          "fed": "USA",
+          "name": "Nakamura, Hikaru",
+          "clock": 840,
+          "title": "GM",
+          "fideId": 2016192,
+          "rating": 2800
+        },
+        {
+          "fed": "TUR",
+          "name": "Erdogmus, Yagiz Kaan",
+          "clock": 120,
+          "title": "GM",
+          "fideId": 44599790,
+          "rating": 2579
+        }
+      ],
+      "tour_id": "fqCjSUpE",
+      "board_nr": 23,
+      "round_id": "60IswAYI",
+      "last_move": "b5b6",
+      "last_move_time": "2026-11-16T19:00:01.305+00:00"
+    },
+    {
+      "id": "chess.com:187353762634",
+      "status": "0-1",
+      "players": [
+        {
+          "fed": "TUR",
+          "name": "Erdogmus, Yagiz Kaan",
+          "clock": 100,
+          "title": "GM",
+          "fideId": 44599790,
+          "rating": 2579
+        },
+        {
+          "fed": "USA",
+          "name": "Nakamura, Hikaru",
+          "clock": 1330,
+          "title": "GM",
+          "fideId": 2016192,
+          "rating": 2800
+        }
+      ],
+      "tour_id": "fqCjSUpE",
+      "board_nr": 24,
+      "round_id": "60IswAYI",
+      "last_move": "e4d6",
+      "last_move_time": "2026-11-16T19:07:38.608+00:00"
+    },
+    {
+      "id": "chess.com:187354255272",
+      "status": "0-1",
+      "players": [
+        {
+          "fed": "USA",
+          "name": "Nakamura, Hikaru",
+          "clock": 3280,
+          "title": "GM",
+          "fideId": 2016192,
+          "rating": 2800
+        },
+        {
+          "fed": "TUR",
+          "name": "Erdogmus, Yagiz Kaan",
+          "clock": 900,
+          "title": "GM",
+          "fideId": 44599790,
+          "rating": 2579
+        }
+      ],
+      "tour_id": "fqCjSUpE",
+      "board_nr": 25,
+      "round_id": "60IswAYI",
+      "last_move": "c1f1",
+      "last_move_time": "2026-11-16T19:15:00.41+00:00"
+    },
+    {
+      "id": "chess.com:187355231102",
+      "status": "0-1",
+      "players": [
+        {
+          "fed": "TUR",
+          "name": "Erdogmus, Yagiz Kaan",
+          "clock": 240,
+          "title": "GM",
+          "fideId": 44599790,
+          "rating": 2579
+        },
+        {
+          "fed": "USA",
+          "name": "Nakamura, Hikaru",
+          "clock": 5580,
+          "title": "GM",
+          "fideId": 2016192,
+          "rating": 2800
+        }
+      ],
+      "tour_id": "fqCjSUpE",
+      "board_nr": 26,
+      "round_id": "60IswAYI",
+      "last_move": "f3g1",
+      "last_move_time": "2026-11-16T19:29:19.775+00:00"
+    },
+    {
+      "id": "chess.com:187355666946",
+      "status": "1-0",
+      "players": [
+        {
+          "fed": "USA",
+          "name": "Nakamura, Hikaru",
+          "clock": 5380,
+          "title": "GM",
+          "fideId": 2016192,
+          "rating": 2800
+        },
+        {
+          "fed": "TUR",
+          "name": "Erdogmus, Yagiz Kaan",
+          "clock": 160,
+          "title": "GM",
+          "fideId": 44599790,
+          "rating": 2579
+        }
+      ],
+      "tour_id": "fqCjSUpE",
+      "board_nr": 27,
+      "round_id": "60IswAYI",
+      "last_move": "c5e6",
+      "last_move_time": "2026-11-16T19:36:02.832+00:00"
+    },
+    {
+      "id": "chess.com:187356104916",
+      "status": "0-1",
+      "players": [
+        {
+          "fed": "TUR",
+          "name": "Erdogmus, Yagiz Kaan",
+          "clock": 770,
+          "title": "GM",
+          "fideId": 44599790,
+          "rating": 2579
+        },
+        {
+          "fed": "USA",
+          "name": "Nakamura, Hikaru",
+          "clock": 7170,
+          "title": "GM",
+          "fideId": 2016192,
+          "rating": 2800
+        }
+      ],
+      "tour_id": "fqCjSUpE",
+      "board_nr": 28,
+      "round_id": "60IswAYI",
+      "last_move": "d4f3",
+      "last_move_time": "2026-11-16T19:41:47.767+00:00"
+    },
+    {
+      "id": "chess.com:187356943800",
+      "status": "1/2-1/2",
+      "players": [
+        {
+          "fed": "USA",
+          "name": "Nakamura, Hikaru",
+          "clock": 170,
+          "title": "GM",
+          "fideId": 2016192,
+          "rating": 2800
+        },
+        {
+          "fed": "TUR",
+          "name": "Erdogmus, Yagiz Kaan",
+          "clock": 3120,
+          "title": "GM",
+          "fideId": 44599790,
+          "rating": 2579
+        }
+      ],
+      "tour_id": "fqCjSUpE",
+      "board_nr": 29,
+      "round_id": "60IswAYI",
+      "last_move": "f4g4",
+      "last_move_time": "2026-11-16T19:54:43.975+00:00"
+    },
+    {
+      "id": "chess.com:187357287556",
+      "status": "1/2-1/2",
+      "players": [
+        {
+          "fed": "TUR",
+          "name": "Erdogmus, Yagiz Kaan",
+          "clock": 300,
+          "title": "GM",
+          "fideId": 44599790,
+          "rating": 2579
+        },
+        {
+          "fed": "USA",
+          "name": "Nakamura, Hikaru",
+          "clock": 490,
+          "title": "GM",
+          "fideId": 2016192,
+          "rating": 2800
+        }
+      ],
+      "tour_id": "fqCjSUpE",
+      "board_nr": 30,
+      "round_id": "60IswAYI",
+      "last_move": "f2g2",
+      "last_move_time": "2026-11-16T20:01:11.588+00:00"
+    },
+    {
+      "id": "chess.com:187357687362",
+      "status": "0-1",
+      "players": [
+        {
+          "fed": "USA",
+          "name": "Nakamura, Hikaru",
+          "clock": 730,
+          "title": "GM",
+          "fideId": 2016192,
+          "rating": 2800
+        },
+        {
+          "fed": "TUR",
+          "name": "Erdogmus, Yagiz Kaan",
+          "clock": 2250,
+          "title": "GM",
+          "fideId": 44599790,
+          "rating": 2579
+        }
+      ],
+      "tour_id": "fqCjSUpE",
+      "board_nr": 31,
+      "round_id": "60IswAYI",
+      "last_move": "g8f8",
+      "last_move_time": "2026-11-16T20:03:41.773+00:00"
+    },
+    {
+      "id": "chess.com:187357845178",
+      "status": "1-0",
+      "players": [
+        {
+          "fed": "TUR",
+          "name": "Erdogmus, Yagiz Kaan",
+          "clock": 1610,
+          "title": "GM",
+          "fideId": 44599790,
+          "rating": 2579
+        },
+        {
+          "fed": "USA",
+          "name": "Nakamura, Hikaru",
+          "clock": 100,
+          "title": "GM",
+          "fideId": 2016192,
+          "rating": 2800
+        }
+      ],
+      "tour_id": "fqCjSUpE",
+      "board_nr": 32,
+      "round_id": "60IswAYI",
+      "last_move": "c3a3",
+      "last_move_time": "2026-11-16T20:07:59.146+00:00"
+    },
+    {
+      "id": "chess.com:187358104000",
+      "status": "1-0",
+      "players": [
+        {
+          "fed": "USA",
+          "name": "Nakamura, Hikaru",
+          "clock": 1380,
+          "title": "GM",
+          "fideId": 2016192,
+          "rating": 2800
+        },
+        {
+          "fed": "TUR",
+          "name": "Erdogmus, Yagiz Kaan",
+          "clock": 400,
+          "title": "GM",
+          "fideId": 44599790,
+          "rating": 2579
+        }
+      ],
+      "tour_id": "fqCjSUpE",
+      "board_nr": 33,
+      "round_id": "60IswAYI",
+      "last_move": "e6f8",
+      "last_move_time": "2026-11-16T20:10:58.535+00:00"
+    },
+    {
+      "id": "chess.com:187358287768",
+      "status": "1-0",
+      "players": [
+        {
+          "fed": "TUR",
+          "name": "Erdogmus, Yagiz Kaan",
+          "clock": 690,
+          "title": "GM",
+          "fideId": 44599790,
+          "rating": 2579
+        },
+        {
+          "fed": "USA",
+          "name": "Nakamura, Hikaru",
+          "clock": 1400,
+          "title": "GM",
+          "fideId": 2016192,
+          "rating": 2800
+        }
+      ],
+      "tour_id": "fqCjSUpE",
+      "board_nr": 34,
+      "round_id": "60IswAYI",
+      "last_move": "b6b7",
+      "last_move_time": "2026-11-16T20:15:02.816+00:00"
+    }
+  ]
+}

@@ -8,6 +8,7 @@ import 'package:chessever2/screens/tour_detail/bracket/utils/bracket_game_result
 import 'package:chessever2/screens/tour_detail/bracket/utils/knockout_stage_parser.dart';
 import 'package:chessever2/utils/broadcast_custom_scoring.dart';
 import 'package:flutter/foundation.dart';
+import 'match_play_advancement.dart';
 
 KnockoutBracket buildKnockoutBracket({
   required Tour selectedTour,
@@ -136,13 +137,16 @@ KnockoutBracket buildKnockoutBracket({
     );
   }
 
-  final edgeResult = _inferEdges(baseStages);
+  final progressedStages = applyMatchPlayAdvancement(baseStages, {
+    for (final tour in [...siblingTours, selectedTour]) tour.id: tour.info.matchPlayBracket,
+  });
+  final edgeResult = _inferEdges(progressedStages);
   final stages = <KnockoutStage>[];
-  for (var stageIndex = 0; stageIndex < baseStages.length; stageIndex++) {
-    final stage = baseStages[stageIndex];
+  for (var stageIndex = 0; stageIndex < progressedStages.length; stageIndex++) {
+    final stage = progressedStages[stageIndex];
     final matches =
         stage.matches.map((match) {
-          BracketParticipant? winner;
+          BracketParticipant? winner = match.winner;
           final advanced = edgeResult.advancedBySourceMatch[match.key];
           if (advanced != null && advanced.length == 1) {
             winner = match.participantById(advanced.single);
@@ -168,7 +172,7 @@ KnockoutBracket buildKnockoutBracket({
   // used to open on the empty Finals because it is the last incomplete stage.
   if (currentStageKey == null) {
     for (final stage in stages.reversed) {
-      if (stage.matches.isNotEmpty) {
+      if (stage.matches.any((match) => match.games.isNotEmpty)) {
         currentStageKey = stage.key;
         break;
       }

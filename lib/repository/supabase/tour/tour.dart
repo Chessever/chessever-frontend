@@ -514,6 +514,9 @@ class TourInfo {
   /// Organizer-authored kickoffs for individual matches in a shared round.
   final List<Map<String, dynamic>> matchSchedule;
 
+  /// Confirmed match finals and organizer seed order for shared-round knockouts.
+  final Map<String, dynamic>? matchPlayBracket;
+
   List<OfficialPlayerSection> get playerStandingSections =>
       OfficialPlayerSection.parse(officialPlayerStandingsSections, standings);
 
@@ -534,6 +537,7 @@ class TourInfo {
     this.officialTeamStandings,
     this.officialPlayerStandingsSections,
     this.matchSchedule = const [],
+    this.matchPlayBracket,
   });
 
   /// Every field is read leniently: `tours.info` is free-form JSON written by
@@ -555,6 +559,7 @@ class TourInfo {
       teamTable: json['teamTable'] is bool ? json['teamTable'] as bool : null,
       customScoring: _asStringKeyMap(json['customScoring']),
       teamScoring: _asStringKeyMap(json['teamScoring']),
+      matchPlayBracket: _asStringKeyMap(json['matchPlayBracket']),
       officialTeamStandings: _asStringKeyMap(json['officialTeamStandings']),
       officialPlayerStandingsSections: _asStringKeyMap(
         json['officialPlayerStandingsSections'],
@@ -614,6 +619,7 @@ class TourInfo {
       if (officialPlayerStandingsSections != null)
         'officialPlayerStandingsSections': officialPlayerStandingsSections,
       if (matchSchedule.isNotEmpty) 'matchSchedule': matchSchedule,
+      if (matchPlayBracket != null) 'matchPlayBracket': matchPlayBracket,
     };
   }
 

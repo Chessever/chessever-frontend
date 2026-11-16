@@ -50,6 +50,7 @@ class KnockoutMatch {
     required this.minimumBoardOrder,
     required this.isComplete,
     required this.isLive,
+    this.isProjected = false,
   }) : games = UnmodifiableListView(games);
 
   final String key;
@@ -64,6 +65,9 @@ class KnockoutMatch {
   final int? minimumBoardOrder;
   final bool isComplete;
   final bool isLive;
+
+  /// A future bracket slot with no published games yet.
+  final bool isProjected;
 
   bool get isTied => participant1Score == participant2Score;
   bool get hasUnfinishedGames => !isComplete;
@@ -99,6 +103,7 @@ class KnockoutMatch {
     minimumBoardOrder: minimumBoardOrder,
     isComplete: isComplete,
     isLive: isLive,
+    isProjected: isProjected,
   );
 }
 

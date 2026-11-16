@@ -456,3 +456,21 @@ also app.chessever.com) and notifications. Change one, change all.
 - Push `stable` when the user asks to push, merge, or ship. Open a PR only when
   the user deliberately asks for one; it must target `stable`.
 - Exclude credentials and local environment configuration, and preserve unrelated working-tree changes.
+
+
+### Confirmed match finals before the next pairing exists
+
+`tours.info.matchPlayBracket` carries `seeds` (one `roundId` plus `fideIds`,
+an ordered array of player pairs) and `results` (one `roundId`, `fideIds`,
+`scores` in that identity order, `gameCount`, `winnerFideId`, and source audit
+fields `sourceUrl`/`finishedAt`). A confirmed final must match the entire
+loaded match's identities, terminal game count and aggregate score. Duplicate
+records, partial reads, new games or corrected results invalidate it. A pause
+between games is never a finalization signal. This metadata is written only
+from a confirmed organizer result, not inferred from a score lead.
+
+A validated complete seed order puts qualified players into the next empty
+stage's correct slots with TBD opponents. These are view-only cards: no fake
+game rows, scores, live status or board navigation. Published next-round
+pairings take precedence. Match finals are independent of the rest of a shared
+stage. Keep this contract and its SCC 12–8 regression fixture in all three apps.
