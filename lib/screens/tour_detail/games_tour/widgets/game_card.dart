@@ -34,8 +34,14 @@ class GameCard extends ConsumerWidget {
     this.footerDetail,
     this.showPin = true,
     this.menuActions,
+    this.showPieceColorMarks = false,
     super.key,
   });
+
+  /// Draws a small White/Black square before each player's name. Only
+  /// match-play knockout rows turn it on: their players keep one side in
+  /// every game, so position no longer tells the colour.
+  final bool showPieceColorMarks;
 
   /// Replaces the long-press menu's rows (Pin, Share, My Space) for a host
   /// whose game is its own thing (a saved like: open the copy, edit, remove).
@@ -92,6 +98,7 @@ class GameCard extends ConsumerWidget {
             matchComparison: matchComparison,
             allowStockfishFallback: allowStockfishFallback,
             footerDetail: footerDetail,
+            showPieceColorMarks: showPieceColorMarks,
           ),
           if (isPinned) PinIconOverlay(right: 8.sp, top: 2.sp),
         ],
@@ -312,12 +319,14 @@ class _GameCardContent extends ConsumerWidget {
     this.showClock = true,
     this.allowStockfishFallback = true,
     this.footerDetail,
+    this.showPieceColorMarks = false,
   });
 
   final MatchWithComparison matchComparison;
   final bool showClock;
   final bool allowStockfishFallback;
   final String? footerDetail;
+  final bool showPieceColorMarks;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -326,6 +335,7 @@ class _GameCardContent extends ConsumerWidget {
         _TopSection(
           matchComparison: matchComparison,
           allowStockfishFallback: allowStockfishFallback,
+          showPieceColorMarks: showPieceColorMarks,
         ),
         _BottomSection(
           matchComparison: matchComparison,
@@ -405,16 +415,21 @@ class _TopSection extends ConsumerWidget {
   const _TopSection({
     required this.matchComparison,
     required this.allowStockfishFallback,
+    this.showPieceColorMarks = false,
   });
 
   final MatchWithComparison matchComparison;
   final bool allowStockfishFallback;
+  final bool showPieceColorMarks;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final orderedPlayers = teamOrderedPlayers(matchComparison);
     final player1 = orderedPlayers.teamOne;
     final player2 = orderedPlayers.teamTwo;
+    // The left player is White unless the card is flipped.
+    final player1IsWhite =
+        matchComparison.comparison != MatchComparison.oppositeOrder;
     // Light theme: use a flat white surface card for the chip strip and let
     // the divider separate it from the bottom row. Dark theme keeps the
     // historical translucent-text-as-bg trick that the user signed off on.
@@ -422,14 +437,30 @@ class _TopSection extends ConsumerWidget {
       context,
       child: Row(
         children: [
-          Expanded(child: _GamesRound(player: player1)),
+          Expanded(
+            child: _GamesRound(
+              player: player1,
+              pieceColor:
+                  showPieceColorMarks
+                      ? (player1IsWhite ? Side.white : Side.black)
+                      : null,
+            ),
+          ),
           Expanded(
             child: _CenterContent(
               matchWithComparison: matchComparison,
               allowStockfishFallback: allowStockfishFallback,
             ),
           ),
-          Expanded(child: _GamesRound(player: player2)),
+          Expanded(
+            child: _GamesRound(
+              player: player2,
+              pieceColor:
+                  showPieceColorMarks
+                      ? (player1IsWhite ? Side.black : Side.white)
+                      : null,
+            ),
+          ),
         ],
       ),
     );
@@ -653,9 +684,13 @@ class _BottomSection extends ConsumerWidget {
 }
 
 class _GamesRound extends ConsumerWidget {
-  const _GamesRound({required this.player});
+  const _GamesRound({required this.player, this.pieceColor});
 
   final PlayerCard player;
+
+  /// The colour this player has in this game, drawn as a small square before
+  /// the name. Null (every list but match play) draws nothing.
+  final Side? pieceColor;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -671,16 +706,27 @@ class _GamesRound extends ConsumerWidget {
     final nameColor = isLight ? context.colors.textPrimary : kBlackColor;
     final ratingColor =
         isLight ? context.colors.textSecondary : context.colors.surface;
+    final name = Text(
+      ref.read(stringUtilsProvider).getTrimmedString(player.name),
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+      style: AppTypography.textXsMedium.copyWith(color: nameColor),
+    );
+    final color = pieceColor;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        Text(
-          ref.read(stringUtilsProvider).getTrimmedString(player.name),
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: AppTypography.textXsMedium.copyWith(color: nameColor),
-        ),
+        if (color == null)
+          name
+        else
+          Row(
+            children: [
+              PieceColorMark(side: color, edgeColor: nameColor),
+              SizedBox(width: 4.w),
+              Flexible(child: name),
+            ],
+          ),
         Row(
           children: [
             BackfilledFederationFlag(
@@ -704,6 +750,37 @@ class _GamesRound extends ConsumerWidget {
           ],
         ),
       ],
+    );
+  }
+}
+
+/// A player's colour in one game: a small solid White or Black square. Data,
+/// not ornament: in match play a player's side of the card stays fixed, so
+/// this is where the colour is read.
+class PieceColorMark extends StatelessWidget {
+  const PieceColorMark({required this.side, required this.edgeColor, super.key});
+
+  final Side side;
+
+  /// Edges the White square (the name's ink) so it holds on a light strip.
+  final Color edgeColor;
+
+  @override
+  Widget build(BuildContext context) {
+    final isWhite = side == Side.white;
+    return Semantics(
+      label: isWhite ? 'White' : 'Black',
+      child: Container(
+        width: 9.sp,
+        height: 9.sp,
+        decoration: BoxDecoration(
+          color: isWhite ? Colors.white : Colors.black,
+          borderRadius: BorderRadius.circular(2.sp),
+          border: isWhite
+              ? Border.all(color: edgeColor.withValues(alpha: 0.55))
+              : null,
+        ),
+      ),
     );
   }
 }

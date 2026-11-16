@@ -220,12 +220,9 @@ class MatchHeader extends ConsumerWidget {
       );
     }
 
-    // Check if there are any ongoing games
-    final hasOngoingGames = match.games.any(
-      (g) => !g.effectiveGameStatus.isFinished,
-    );
-
-    if (hasOngoingGames) {
+    // Check if there are any ongoing games. In match play a 0-move shell is
+    // not being played, so a match that has not started stays unlit.
+    if (match.hasLiveGame) {
       return context.colors.accentText;
     }
 

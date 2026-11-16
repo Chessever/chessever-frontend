@@ -29,6 +29,449 @@ class KnockoutMatchDetector {
     return matches.values.any((match) => match.length > 1);
   }
 
+  /// The MATCH-PLAY ROUND gate: a knockout round in which at least one
+  /// unordered player pair has two or more games inside the same source round.
+  ///
+  /// Speed Chess Championship publishes every match of a stage in one round
+  /// file and keeps appending games (game 1 of every match is created up
+  /// front as a 0-move shell, then game 2, ...). Only rounds of that shape get
+  /// the match-play presentation (a fixed side per player, chronological
+  /// anchoring, shells that are not live). Legs published as separate source
+  /// rounds (World Cup game-1 / game-2 rounds) and every non-knockout event
+  /// are never match-play, so they keep their existing behaviour.
+  static bool isMatchPlayRound({
+    required bool isKnockoutTournament,
+    required Iterable<GamesTourModel> games,
+  }) {
+    if (!isKnockoutTournament) return false;
+    final list = games.toList(growable: false);
+    return _repeatingSourceRoundIds(
+      list,
+      _ParticipantIdentityRegistry(list),
+    ).isNotEmpty;
+  }
+
+  /// The matches of a knockout display round that get the match-play
+  /// presentation, keyed like [groupByMatches] over the same [games].
+  ///
+  /// A match is match play when every one of its games sits in a source
+  /// round where some pairing repeats ([isMatchPlayRound] for that round).
+  /// Speed Chess Championship keeps every match of a stage in one such round,
+  /// so all of them qualify, including matches that still have one shell;
+  /// Women's Speed Chess Championship gives each match a round of its own.
+  /// A match with legs in rounds of their own stays on the legacy path even
+  /// when its tiebreak games share a round (Lichess `Round N.Tiebreaks`), and
+  /// so do the other matches of that stage.
+  static Set<String> matchPlayMatchKeys({
+    required bool isKnockoutTournament,
+    required Iterable<GamesTourModel> games,
+  }) {
+    if (!isKnockoutTournament) return const <String>{};
+    final list = games.toList(growable: false);
+    final identities = _ParticipantIdentityRegistry(list);
+    final repeating = _repeatingSourceRoundIds(list, identities);
+    if (repeating.isEmpty) return const <String>{};
+    final allInRepeating = <String, bool>{};
+    for (final game in list) {
+      final key = _getMatchupKey(
+        game.whitePlayer,
+        game.blackPlayer,
+        identities,
+      );
+      if (key == null) continue;
+      allInRepeating[key] =
+          (allInRepeating[key] ?? true) && repeating.contains(game.roundId);
+    }
+    return <String>{
+      for (final entry in allInRepeating.entries)
+        if (entry.value) entry.key,
+    };
+  }
+
+  /// Source rounds in which one pairing has two or more games.
+  static Set<String> _repeatingSourceRoundIds(
+    List<GamesTourModel> games,
+    _ParticipantIdentityRegistry identities,
+  ) {
+    final keysBySourceRound = <String, Set<String>>{};
+    final repeating = <String>{};
+    for (final game in games) {
+      final key = _getMatchupKey(
+        game.whitePlayer,
+        game.blackPlayer,
+        identities,
+      );
+      if (key == null) continue;
+      final keys = keysBySourceRound.putIfAbsent(
+        game.roundId,
+        () => <String>{},
+      );
+      if (!keys.add(key)) repeating.add(game.roundId);
+    }
+    return repeating;
+  }
+
+  /// Source rounds that hold the games of one match and no other: a round
+  /// per match (Women's Speed Chess Championship). Such a round's `starts_at`
+  /// is that match's own scheduled start. A round shared by several matches
+  /// (Speed Chess Championship) is every match's, so it is not in this set.
+  static Set<String> singleMatchSourceRoundIds(Iterable<GamesTourModel> games) {
+    final list = games.toList(growable: false);
+    final identities = _ParticipantIdentityRegistry(list);
+    final keysBySourceRound = <String, Set<String>>{};
+    final unpaired = <String>{};
+    for (final game in list) {
+      final key = _getMatchupKey(
+        game.whitePlayer,
+        game.blackPlayer,
+        identities,
+      );
+      if (key == null) {
+        unpaired.add(game.roundId);
+        continue;
+      }
+      keysBySourceRound.putIfAbsent(game.roundId, () => <String>{}).add(key);
+    }
+    return <String>{
+      for (final entry in keysBySourceRound.entries)
+        if (entry.value.length == 1 && !unpaired.contains(entry.key))
+          entry.key,
+    };
+  }
+
+  /// A match game's position inside its match, read from the PGN `[Round]`
+  /// tag: `S.NN` gives game NN of stage S, `S.SET.G` gives game G of set SET.
+  /// Null when the PGN is absent (deferred) or the tag is not of that shape.
+  ///
+  /// Board numbers cannot identify a game: the broadcast ingest renumbers
+  /// `board_nr` every cycle to follow the source file's order, and the source
+  /// inserts new games mid-file. `[Board]` tags are ignored on purpose.
+  ///
+  /// Lichess and organizer feeds write `round.board` in the same shape ('5.3'
+  /// is round 5, board 3), so an index is only trusted for a whole match
+  /// whose indexed games share one stage (see
+  /// [orderMatchPlayGamesChronologically]).
+  static ({int stage, int set, int game})? matchPlayGameIndexFromPgn(
+    String? pgn,
+  ) {
+    if (pgn == null || pgn.isEmpty) return null;
+    // Tags sit at the top; never scan a long movetext for a missing tag.
+    final head = pgn.length > 4096 ? pgn.substring(0, 4096) : pgn;
+    final value = _pgnRoundTagPattern.firstMatch(head)?.group(1)?.trim();
+    if (value == null || value.isEmpty) return null;
+    final parts = value.split('.');
+    if (parts.length != 2 && parts.length != 3) return null;
+    final numbers = <int>[];
+    for (final part in parts) {
+      final number = int.tryParse(part.trim());
+      if (number == null || number < 0) return null;
+      numbers.add(number);
+    }
+    return parts.length == 2
+        ? (stage: numbers[0], set: 0, game: numbers[1])
+        : (stage: numbers[0], set: numbers[1], game: numbers[2]);
+  }
+
+  /// Game indexes of one match, or every index null when they cannot be
+  /// trusted: the indexed games must share one stage and no two may claim the
+  /// same game. Decided from the indexed games alone, so a game whose PGN is
+  /// deferred once it finishes never turns a rejected index into an accepted
+  /// one (or the reverse) for the rest of the match.
+  static Map<String, _GameIndex?> _trustedGameIndexes(
+    List<GamesTourModel> games,
+  ) {
+    final indexById = <String, _GameIndex?>{
+      for (final game in games)
+        game.gameId: matchPlayGameIndexFromPgn(game.pgn),
+    };
+    final indexed = indexById.values.whereType<_GameIndex>().toList(
+      growable: false,
+    );
+    final stages = indexed.map((index) => index.stage).toSet();
+    final claimed = indexed.map((index) => (index.set, index.game)).toSet();
+    if (stages.length > 1 || claimed.length != indexed.length) {
+      return <String, _GameIndex?>{for (final game in games) game.gameId: null};
+    }
+    return indexById;
+  }
+
+  static final RegExp _pgnRoundTagPattern = RegExp(
+    r'^\s*\[Round\s+"([^"]*)"\s*\]',
+    multiLine: true,
+  );
+
+  /// Whether a match-play game has been started: a move exists. A 0-move
+  /// shell is not started, whatever its `*` status says.
+  static bool matchPlayGameHasMoves(GamesTourModel game) {
+    if (game.hasStarted) return true;
+    final board = game.fen?.trim().split(RegExp(r'\s+')).first;
+    return board != null &&
+        board.isNotEmpty &&
+        board != 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR';
+  }
+
+  /// A match-play game is live only once it has a move and is not finished.
+  static bool isMatchPlayGameLive(GamesTourModel game) =>
+      !game.effectiveGameStatus.isFinished && matchPlayGameHasMoves(game);
+
+  /// Total chronological order of one match's games (game 1 first).
+  ///
+  /// When every game carries a trusted PGN game index, that index decides,
+  /// then `board_nr` ascending, then game id. Lean rows defer the PGN of
+  /// finished games, so with any index missing the order falls back to what
+  /// a match guarantees: games are played one after another, so finished
+  /// games come first (by index when all of them have one, else by last move
+  /// time), then the game in play, then the unplayed shells (by index, else
+  /// `board_nr`). Every tier ends on `board_nr` then game id, so the order is
+  /// total and never depends on the input order. Indexes that disagree on
+  /// the stage, or claim one game twice, are round.board tags and are not
+  /// used at all.
+  static List<GamesTourModel> orderMatchPlayGamesChronologically(
+    List<GamesTourModel> games,
+  ) {
+    if (games.length < 2) return games.toList();
+    final indexById = _trustedGameIndexes(games);
+    int byIndex(GamesTourModel a, GamesTourModel b) {
+      final aIndex = indexById[a.gameId]!;
+      final bIndex = indexById[b.gameId]!;
+      final bySet = aIndex.set.compareTo(bIndex.set);
+      return bySet != 0 ? bySet : aIndex.game.compareTo(bIndex.game);
+    }
+
+    bool allIndexed(Iterable<GamesTourModel> list) =>
+        list.every((game) => indexById[game.gameId] != null);
+
+    if (allIndexed(games)) {
+      return games.toList()..sort((a, b) {
+        final index = byIndex(a, b);
+        return index != 0 ? index : _compareBoardThenId(a, b);
+      });
+    }
+
+    final finished = <GamesTourModel>[];
+    final live = <GamesTourModel>[];
+    final unstarted = <GamesTourModel>[];
+    for (final game in games) {
+      if (game.effectiveGameStatus.isFinished) {
+        finished.add(game);
+      } else if (matchPlayGameHasMoves(game)) {
+        live.add(game);
+      } else {
+        unstarted.add(game);
+      }
+    }
+
+    void sortTier(
+      List<GamesTourModel> tier, {
+      bool byLastMoveTime = false,
+    }) {
+      final indexed = allIndexed(tier);
+      tier.sort((a, b) {
+        if (indexed) {
+          final index = byIndex(a, b);
+          if (index != 0) return index;
+        } else if (byLastMoveTime) {
+          final aTime = a.lastMoveTime;
+          final bTime = b.lastMoveTime;
+          if (aTime != null && bTime != null) {
+            final byTime = aTime.compareTo(bTime);
+            if (byTime != 0) return byTime;
+          } else if (aTime != null) {
+            return -1;
+          } else if (bTime != null) {
+            return 1;
+          }
+        }
+        return _compareBoardThenId(a, b);
+      });
+    }
+
+    sortTier(finished, byLastMoveTime: true);
+    sortTier(live);
+    sortTier(unstarted);
+    return [...finished, ...live, ...unstarted];
+  }
+
+  /// Display order inside one match-play match: the game in play first, then
+  /// finished games newest first, then unplayed shells in game order.
+  /// [chronologicalGames] must come from [orderMatchPlayGamesChronologically].
+  static List<GamesTourModel> orderMatchPlayGamesForDisplay(
+    List<GamesTourModel> chronologicalGames,
+  ) {
+    final live = <GamesTourModel>[];
+    final finished = <GamesTourModel>[];
+    final unstarted = <GamesTourModel>[];
+    for (final game in chronologicalGames) {
+      if (game.effectiveGameStatus.isFinished) {
+        finished.add(game);
+      } else if (matchPlayGameHasMoves(game)) {
+        live.add(game);
+      } else {
+        unstarted.add(game);
+      }
+    }
+    return [...live.reversed, ...finished.reversed, ...unstarted];
+  }
+
+  /// Per game id, whether the match's side A plays White in that game.
+  ///
+  /// Side A is White of the match's first game ([chronologicalGames] must
+  /// come from [orderMatchPlayGamesChronologically]): game 1 belongs to the
+  /// higher seed. Players are matched by FIDE id first, then by name. A stays
+  /// on the left of every card, the top of the header and the bottom of every
+  /// board, whatever the score.
+  static Map<String, bool> matchPlayAnchorIsWhiteByGameId(
+    List<GamesTourModel> chronologicalGames,
+  ) {
+    if (chronologicalGames.isEmpty) return const <String, bool>{};
+    final identities = _ParticipantIdentityRegistry(chronologicalGames);
+    final anchorId = identities.idFor(chronologicalGames.first.whitePlayer);
+    return <String, bool>{
+      for (final game in chronologicalGames)
+        game.gameId:
+            anchorId == null || identities.idFor(game.blackPlayer) != anchorId,
+    };
+  }
+
+  /// When a match-play match was last played: the latest last-move time of
+  /// its started or finished games, and the `starts_at` of any source round
+  /// that holds this match alone ([ownRoundStartsById], keyed by source round
+  /// id). Bulk-imported finished games carry only their game day (midnight),
+  /// so a round of its own is the one precise time two matches of one day
+  /// can be told apart by (Women's Speed Chess Championship). Null for a
+  /// match whose games are all unplayed shells, which never borrow a
+  /// scheduled start.
+  static DateTime? matchPlayRecency(
+    Iterable<GamesTourModel> games, {
+    Map<String, DateTime?> ownRoundStartsById = const <String, DateTime?>{},
+  }) {
+    DateTime? latest;
+    void consider(DateTime? candidate) {
+      if (candidate == null) return;
+      final current = latest;
+      if (current == null || candidate.isAfter(current)) latest = candidate;
+    }
+
+    var played = false;
+    for (final game in games) {
+      if (!game.effectiveGameStatus.isFinished &&
+          !matchPlayGameHasMoves(game)) {
+        continue;
+      }
+      played = true;
+      consider(game.lastMoveTime);
+    }
+    if (!played) return null;
+    for (final game in games) {
+      consider(ownRoundStartsById[game.roundId]);
+    }
+    return latest;
+  }
+
+  /// Match order for a match-play stage: matches with a game in play first,
+  /// in bracket order (two matches played at once must not swap places on
+  /// every move); then matches that have been played, most recent activity
+  /// first; then matches not started yet in bracket order. Bracket order is
+  /// the board of the match's first game, then the scheduled start of a
+  /// round of its own, then the match key. Values must be chronological
+  /// match game lists.
+  ///
+  /// [matchPlayKeys] names the match-play matches when a stage mixes them
+  /// with legacy ones (null: every match). A legacy match keeps its legacy
+  /// reading: any unfinished board makes it live, and [legacyRecency] dates
+  /// it.
+  static Map<String, List<GamesTourModel>> orderMatchPlayMatches(
+    Map<String, List<GamesTourModel>> chronologicalMatches, {
+    Map<String, DateTime?> ownRoundStartsById = const <String, DateTime?>{},
+    Set<String>? matchPlayKeys,
+    DateTime? Function(List<GamesTourModel> games)? legacyRecency,
+  }) {
+    if (chronologicalMatches.length <= 1) return chronologicalMatches;
+    final keys = chronologicalMatches.keys.toList();
+    final tierByKey = <String, int>{};
+    final recency = <String, DateTime?>{};
+    final bracketBoard = <String, int>{};
+    final scheduledAt = <String, DateTime?>{};
+    for (final key in keys) {
+      final games = chronologicalMatches[key]!;
+      final isMatchPlay = matchPlayKeys?.contains(key) ?? true;
+      if (isMatchPlay) {
+        tierByKey[key] =
+            games.any(isMatchPlayGameLive)
+                ? 0
+                : games.any(
+                  (game) =>
+                      game.effectiveGameStatus.isFinished ||
+                      matchPlayGameHasMoves(game),
+                )
+                ? 1
+                : 2;
+        recency[key] = matchPlayRecency(
+          games,
+          ownRoundStartsById: ownRoundStartsById,
+        );
+      } else {
+        tierByKey[key] =
+            games.any((game) => !game.effectiveGameStatus.isFinished) ? 0 : 1;
+        recency[key] = legacyRecency?.call(games);
+      }
+      bracketBoard[key] =
+          games.isEmpty ? _noBoard : (games.first.boardNr ?? _noBoard);
+      DateTime? scheduled;
+      for (final game in games) {
+        final start = ownRoundStartsById[game.roundId];
+        if (start != null && (scheduled == null || start.isBefore(scheduled))) {
+          scheduled = start;
+        }
+      }
+      scheduledAt[key] = scheduled;
+    }
+    int byBracket(String a, String b) {
+      final byBoard = bracketBoard[a]!.compareTo(bracketBoard[b]!);
+      if (byBoard != 0) return byBoard;
+      final aScheduled = scheduledAt[a];
+      final bScheduled = scheduledAt[b];
+      if (aScheduled != null && bScheduled != null) {
+        final byScheduled = aScheduled.compareTo(bScheduled);
+        if (byScheduled != 0) return byScheduled;
+      } else if (aScheduled != null) {
+        return -1;
+      } else if (bScheduled != null) {
+        return 1;
+      }
+      return a.compareTo(b);
+    }
+
+    keys.sort((a, b) {
+      final aTier = tierByKey[a]!;
+      final bTier = tierByKey[b]!;
+      if (aTier != bTier) return aTier.compareTo(bTier);
+      if (aTier == 1) {
+        final aTime = recency[a];
+        final bTime = recency[b];
+        if (aTime != null && bTime != null) {
+          final byTime = bTime.compareTo(aTime);
+          if (byTime != 0) return byTime;
+        } else if (aTime != null) {
+          return -1;
+        } else if (bTime != null) {
+          return 1;
+        }
+      }
+      return byBracket(a, b);
+    });
+    return <String, List<GamesTourModel>>{
+      for (final key in keys) key: chronologicalMatches[key]!,
+    };
+  }
+
+  static const int _noBoard = 0x7fffffff;
+
+  static int _compareBoardThenId(GamesTourModel a, GamesTourModel b) {
+    final byBoard = (a.boardNr ?? _noBoard).compareTo(b.boardNr ?? _noBoard);
+    return byBoard != 0 ? byBoard : a.gameId.compareTo(b.gameId);
+  }
+
   /// Whether one source round holds two or more games that are all the same
   /// pairing, i.e. an open-ended head-to-head that keeps appending games.
   ///
@@ -309,6 +752,7 @@ class KnockoutMatchDetector {
     List<GamesTourModel> matchGames, {
     DateTime? playedAt,
     Map<String, List<TournamentPlayer>> sourceStandingsByTourId = const {},
+    bool isMatchPlay = false,
   }) {
     if (matchGames.isEmpty) {
       throw ArgumentError('Match must have at least one game');
@@ -358,6 +802,7 @@ class KnockoutMatchDetector {
       roundName: roundName,
       isComplete: _isMatchComplete(matchGames),
       playedAt: playedAt,
+      isMatchPlay: isMatchPlay,
     );
   }
 
@@ -581,6 +1026,8 @@ class KnockoutMatchDetector {
   }
 }
 
+typedef _GameIndex = ({int stage, int set, int game});
+
 class _ParticipantIdentityRegistry {
   _ParticipantIdentityRegistry(Iterable<GamesTourModel> games) {
     final fideIdsByName = <String, Set<int>>{};
@@ -670,6 +1117,10 @@ class MatchHeaderModel {
   /// the latest-first order verifiable at a glance.
   final DateTime? playedAt;
 
+  /// Built for a match-play round ([KnockoutMatchDetector.isMatchPlayRound]):
+  /// [player1] is side A and a 0-move shell never makes the match live.
+  final bool isMatchPlay;
+
   const MatchHeaderModel({
     required this.matchKey,
     required this.player1,
@@ -680,7 +1131,15 @@ class MatchHeaderModel {
     required this.roundName,
     required this.isComplete,
     this.playedAt,
+    this.isMatchPlay = false,
   });
+
+  /// Whether the match is being played now. Outside match play any unfinished
+  /// board counts, as before; in match play only a game that has a move.
+  bool get hasLiveGame =>
+      isMatchPlay
+          ? games.any(KnockoutMatchDetector.isMatchPlayGameLive)
+          : games.any((game) => !game.effectiveGameStatus.isFinished);
 
   String get matchTitle => '$player1 vs $player2';
 

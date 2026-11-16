@@ -372,6 +372,65 @@ not have this yet; when they get it, the rules below are the rule.
   (`selectedTeamCategoryProvider` holds the exact team it was set for). Open
   and Women both field "India"; never match that scope by team name.
 
+## Match-play knockouts: three copies, one rule
+
+Speed Chess Championship (tour `fqCjSUpE`) puts every match of a stage in one
+round file. Game 1 of each match exists from the start as a 0-move `*` shell,
+games are appended for a month, one match a day. The same rule holds on phone
+(here), web (`src/broadcast/components/knockout.ts` in chessever_web_frontend),
+desktop (`lib/desktop/knockout/match_play.dart` in chessever_frontend_desktop,
+also app.chessever.com) and notifications. Change one, change all.
+
+- **The gate is per match.** A source round is match play when it belongs to a
+  knockout event and one unordered player pair has 2+ games in it
+  (`KnockoutMatchDetector.isMatchPlayRound`). A match gets the match-play
+  presentation when every one of its games sits in such a round
+  (`matchPlayMatchKeys`): every match of an SCC round file, every match of
+  Women's SCC (`QfveGZSJ`, a round per match). A match with legs in rounds of
+  their own stays legacy even when its tiebreak games share one Lichess
+  `Round N.Tiebreaks` round, and so does the rest of that stage (Dutch
+  Championship `weYdpnGl`). A stage with no match-play match, and Swiss, team,
+  Combined and player views, render byte for byte as before.
+- **Identity.** A match is the unordered pair of FIDE ids, else the
+  order-independent name key. A game's place in its match comes from the PGN
+  `[Round]` tag (`S.NN` → NN, `S.SET.G` → (SET, G)), then `board_nr`
+  ascending, then game id. The tag is trusted only when every indexed game of
+  the match shares one stage S and no two claim one game: Lichess writes
+  round.board in the same shape (`5.3`, `9.1`). `board_nr` alone never
+  identifies a game: the ingest renumbers it every cycle and chess.com inserts
+  games mid-file. Ignore `[Board]`. Lean rows defer finished games' PGN; then
+  finished games come first (by last move time), the game in play, then
+  shells.
+- **Side A** is White of the match's first game (the higher seed). A stays
+  left on every card, on top in the header and at the bottom of every board,
+  whatever the score. Cards therefore mark each player's colour.
+- **Full round.** Gate, side A, score and order read the whole round, never a
+  filtered or paged subset: in search mode `gamesTourGroupedProvider` also
+  groups the whole tour (`fullGamesByRound`) and the hits only pick the rows.
+- **Live** means a game with a move that is not finished. A match of 0-move
+  shells is not started: no live accent, no time. A played match's time is
+  the later of its latest move and the `starts_at` of a source round that
+  holds that match alone (Women's SCC games carry only their game day); a
+  round shared by several matches is never a match's time.
+- **Order.** Live matches first in bracket order (they must not swap on every
+  move), then played matches by latest activity, then unstarted matches in
+  bracket order (game-1 board, then a round of its own's start). Inside a
+  match: the game in play, finished games newest first, shells last in game
+  order.
+- **A completed stage row** (24 hours after the round file's start) stays
+  open only while a match-play match in it is unplayed or being played, and
+  then merges only those matches' boards; a stale shell beside a decided match
+  stays hidden (`namedPairingPolicyForKnockoutStage`).
+- **Notifications** (`onesignal-dispatch`, `match_play_round.ts`; the event is
+  a knockout when `tours.info->>format` says knockout/knock-out/elimination).
+  In a match-play round a 0-move board is not live: `round_started` words only
+  boards with a move or a result, and a user whose favourites sit only at
+  0-move boards gets nothing until that board's own `game_started`.
+  `round_heads_up` sends the event copy with no player names. TODO: not
+  deployed as of 2026-11-16; production follows only once `onesignal-dispatch`
+  is deployed from a commit with `match_play_round.ts` (`--no-verify-jwt`,
+  then `check_edge_function_auth.sh`).
+
 ## Commits and delivery
 
 - Commit completed changes on `stable` after validation, including the required

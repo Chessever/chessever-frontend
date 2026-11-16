@@ -122,6 +122,8 @@ final class GamesTourGameRowEntry extends GamesTourLayoutEntry {
     this.globalIndex2,
     this.fixedBottomSide1,
     this.fixedBottomSide2,
+    this.anchorIsWhite1,
+    this.anchorIsWhite2,
     required this.isLastInSection,
   }) : super(roundId: roundId);
 
@@ -131,6 +133,12 @@ final class GamesTourGameRowEntry extends GamesTourLayoutEntry {
   final int? globalIndex2;
   final Side? fixedBottomSide1;
   final Side? fixedBottomSide2;
+
+  /// Set only for boards of a match-play match: whether the match's side A
+  /// has White on that board. Compact cards keep A on the left and mark each
+  /// player's colour; null leaves the card exactly as every other event.
+  final bool? anchorIsWhite1;
+  final bool? anchorIsWhite2;
   final bool isLastInSection;
 }
 
@@ -148,6 +156,10 @@ GamesTourFlattenedLayout buildGamesTourFlattenedLayout({
   MatchHeaderModel? matchFormatHeader,
   Map<String, DateTime?> roundStartTimesById = const <String, DateTime?>{},
   Map<String, List<TournamentPlayer>> sourceStandingsByTourId = const {},
+  // Knockout rounds' full membership when [gamesByRound] holds a subset (a
+  // search). Match-play matches read their gate, side A, score and order
+  // from here; [gamesByRound] then only decides which rows show.
+  Map<String, List<GamesTourModel>> fullGamesByRound = const {},
 }) {
   final entries = <GamesTourLayoutEntry>[];
   final orderedGames = <GamesTourModel>[];
@@ -167,13 +179,68 @@ GamesTourFlattenedLayout buildGamesTourFlattenedLayout({
     }
 
     final isKnockoutRound = _isKnockoutRound(isKnockoutTournament, round);
-    final matches =
+    // Match play (a source round holding several games of one pairing, e.g.
+    // Speed Chess Championship) is decided per match from the round's FULL
+    // membership: a search hands over only its hits, and side A, the score
+    // and the match order must not move with them. A match-play match orders
+    // its games by their place in the match and anchors on game 1's White.
+    // Every other match keeps the recency order and the highest-rated bottom
+    // player, and a stage with no match-play match takes the legacy path
+    // untouched.
+    final fullRoundGames =
         isKnockoutRound
+            ? (fullGamesByRound[round.id] ?? roundGames)
+            : roundGames;
+    final matchPlayKeys =
+        isKnockoutRound
+            ? KnockoutMatchDetector.matchPlayMatchKeys(
+              isKnockoutTournament: isKnockoutTournament,
+              games: fullRoundGames,
+            )
+            : const <String>{};
+    final ownRoundStartsById =
+        matchPlayKeys.isEmpty
+            ? const <String, DateTime?>{}
+            : <String, DateTime?>{
+              for (final roundId
+                  in KnockoutMatchDetector.singleMatchSourceRoundIds(
+                    fullRoundGames,
+                  ))
+                roundId: roundStartTimesById[roundId],
+            };
+    final visibleGameIds =
+        identical(fullRoundGames, roundGames)
+            ? null
+            : <String>{for (final game in roundGames) game.gameId};
+    bool isVisible(GamesTourModel game) =>
+        visibleGameIds == null || visibleGameIds.contains(game.gameId);
+    final matches =
+        !isKnockoutRound
+            ? const <String, List<GamesTourModel>>{}
+            : matchPlayKeys.isEmpty
             ? _orderMatchesByRecencyDesc(
               KnockoutMatchDetector.groupByMatches(roundGames),
               roundStartTimesById,
             )
-            : const <String, List<GamesTourModel>>{};
+            : KnockoutMatchDetector.orderMatchPlayMatches(
+              <String, List<GamesTourModel>>{
+                for (final entry
+                    in KnockoutMatchDetector.groupByMatches(
+                      fullRoundGames,
+                    ).entries)
+                  if (entry.value.any(isVisible))
+                    entry.key:
+                        matchPlayKeys.contains(entry.key)
+                            ? KnockoutMatchDetector.orderMatchPlayGamesChronologically(
+                              entry.value,
+                            )
+                            : entry.value.where(isVisible).toList(),
+              },
+              ownRoundStartsById: ownRoundStartsById,
+              matchPlayKeys: matchPlayKeys,
+              legacyRecency:
+                  (games) => matchupRecency(games, roundStartTimesById),
+            );
     // Boards inside a matchup render latest-first (live on top). The
     // chronological grouping in `matches` is kept for the match headers,
     // whose player naming and score orientation key off game 1.
@@ -181,9 +248,14 @@ GamesTourFlattenedLayout buildGamesTourFlattenedLayout({
         isKnockoutRound
             ? <String, List<GamesTourModel>>{
               for (final entry in matches.entries)
-                entry.key: KnockoutMatchDetector.orderMatchGamesLatestFirst(
-                  entry.value,
-                ),
+                entry.key:
+                    matchPlayKeys.contains(entry.key)
+                        ? KnockoutMatchDetector.orderMatchPlayGamesForDisplay(
+                          entry.value,
+                        ).where(isVisible).toList()
+                        : KnockoutMatchDetector.orderMatchGamesLatestFirst(
+                          entry.value,
+                        ),
             }
             : const <String, List<GamesTourModel>>{};
     if (isKnockoutRound) {
@@ -265,14 +337,25 @@ GamesTourFlattenedLayout buildGamesTourFlattenedLayout({
       final matchKey = matchEntry.key;
       final chronologicalGames = matchEntry.value;
       final matchGames = displayMatches[matchKey]!;
+      final isMatchPlay = matchPlayKeys.contains(matchKey);
       entries.add(
         GamesTourMatchHeaderEntry(
           roundId: round.id,
           matchHeader: KnockoutMatchDetector.createMatchHeader(
             matchKey,
             chronologicalGames,
-            playedAt: matchupRecency(chronologicalGames, roundStartTimesById),
+            // A match-play match shows when it was actually played (or the
+            // start of a round of its own); one that has not started has no
+            // time (a shared round's start is every match's).
+            playedAt:
+                isMatchPlay
+                    ? KnockoutMatchDetector.matchPlayRecency(
+                      chronologicalGames,
+                      ownRoundStartsById: ownRoundStartsById,
+                    )
+                    : matchupRecency(chronologicalGames, roundStartTimesById),
             sourceStandingsByTourId: sourceStandingsByTourId,
+            isMatchPlay: isMatchPlay,
           ),
         ),
       );
@@ -298,7 +381,14 @@ GamesTourFlattenedLayout buildGamesTourFlattenedLayout({
           games: visibleGames,
           globalIndices: globalIndices,
           isGrid: isGrid,
-          fixedBottomPlayerName: _highestRatedPlayerName(matchGames),
+          fixedBottomPlayerName:
+              isMatchPlay ? null : _highestRatedPlayerName(matchGames),
+          anchorIsWhiteByGameId:
+              isMatchPlay
+                  ? KnockoutMatchDetector.matchPlayAnchorIsWhiteByGameId(
+                    chronologicalGames,
+                  )
+                  : null,
         );
       }
 
@@ -402,9 +492,21 @@ void _appendGameRows({
   required List<int> globalIndices,
   required bool isGrid,
   String? fixedBottomPlayerName,
+  Map<String, bool>? anchorIsWhiteByGameId,
 }) {
   assert(games.length == globalIndices.length);
   final step = isGrid ? 2 : 1;
+  // Match play puts side A at the bottom of every board, matching the left
+  // of the compact card and the top of the match header.
+  Side? bottomSide(GamesTourModel game) {
+    if (anchorIsWhiteByGameId == null) {
+      return _sideForPlayer(game, fixedBottomPlayerName);
+    }
+    final anchorIsWhite = anchorIsWhiteByGameId[game.gameId];
+    if (anchorIsWhite == null) return null;
+    return anchorIsWhite ? Side.white : Side.black;
+  }
+
   for (var index = 0; index < games.length; index += step) {
     final secondIndex = index + 1;
     final itemIndex = entries.length;
@@ -416,11 +518,13 @@ void _appendGameRows({
         roundId: roundId,
         game1: game1,
         globalIndex1: globalIndices[index],
-        fixedBottomSide1: _sideForPlayer(game1, fixedBottomPlayerName),
+        fixedBottomSide1: bottomSide(game1),
         game2: game2,
         globalIndex2: game2 == null ? null : globalIndices[secondIndex],
-        fixedBottomSide2:
-            game2 == null ? null : _sideForPlayer(game2, fixedBottomPlayerName),
+        fixedBottomSide2: game2 == null ? null : bottomSide(game2),
+        anchorIsWhite1: anchorIsWhiteByGameId?[game1.gameId],
+        anchorIsWhite2:
+            game2 == null ? null : anchorIsWhiteByGameId?[game2.gameId],
         isLastInSection: index + step >= games.length,
       ),
     );

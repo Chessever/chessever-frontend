@@ -33,6 +33,11 @@ class GroupedGamesData {
   /// BOTTOM of the Games tab, below every played round.
   final Set<String> upcomingPairingRoundIds;
 
+  /// Search mode only: each knockout round's full membership, grouped as the
+  /// unfiltered list groups it, while [gamesByRound] holds the hits. Empty
+  /// otherwise ([gamesByRound] is then the full membership).
+  final Map<String, List<GamesTourModel>> fullGamesByRound;
+
   GroupedGamesData({
     required this.filteredRounds,
     required this.gamesByRound,
@@ -44,6 +49,7 @@ class GroupedGamesData {
     required this.allGames,
     required this.providerGameCount,
     this.upcomingPairingRoundIds = const {},
+    this.fullGamesByRound = const {},
   });
 }
 
@@ -153,31 +159,6 @@ final gamesTourGroupedProvider = Provider.autoDispose<GroupedGamesData>((ref) {
     }
   }
 
-  final gamesByRound = <String, List<GamesTourModel>>{};
-  final seenGameIdsPerRound = <String, Set<String>>{};
-  var hasSupplementalPriorityGames = false;
-
-  void ensureRoundEntry(String roundId) {
-    gamesByRound.putIfAbsent(roundId, () => <GamesTourModel>[]);
-    seenGameIdsPerRound.putIfAbsent(roundId, () => <String>{});
-  }
-
-  bool addGameToRound(String roundId, GamesTourModel game) {
-    if (!isEventBoardGameVisible(game)) {
-      return false;
-    }
-    ensureRoundEntry(roundId);
-    if (seenGameIdsPerRound[roundId]!.add(game.gameId)) {
-      gamesByRound[roundId]!.add(game);
-      return true;
-    }
-    return false;
-  }
-
-  for (final round in rounds) {
-    ensureRoundEntry(round.id);
-  }
-
   final isMultiStageKnockout =
       isKnockoutTournament &&
       rounds.any((r) => r.id.startsWith('knockout-stage-'));
@@ -214,101 +195,164 @@ final gamesTourGroupedProvider = Provider.autoDispose<GroupedGamesData>((ref) {
   final hasSiblingStageTours = stageReferences.values.any(
     (reference) => reference.isSiblingTour,
   );
-  var representedSiblingIsLoading = false;
 
-  if (isMultiStageKnockout && hasSiblingStageTours) {
-    if (!isSearchMode) {
-      final stageTourGames = <String, List<GamesTourModel>>{};
-      for (final stageTourId
-          in stageReferences.values
-              .map((reference) => reference.siblingTourId)
-              .whereType<String>()
-              .toSet()) {
-        final stageAsync = ref.watch(gamesTourProvider(stageTourId));
-        representedSiblingIsLoading =
-            representedSiblingIsLoading || stageAsync.isLoading;
-        final rawStageGames = stageAsync.valueOrNull ?? [];
-        final stageModels = <GamesTourModel>[];
-        for (final game in rawStageGames) {
-          try {
-            final model = GamesTourModel.fromGameIndex(game);
-            if (isEventBoardGameVisible(model)) stageModels.add(model);
-          } catch (_) {
-            // One malformed row must not hide every sibling stage game.
-          }
-        }
-        stageTourGames[stageTourId] = stageModels;
+  // Groups [models] into the rounds and merges their named pairings. Run once
+  // on the list the screen shows (a search's hits in search mode) and, for a
+  // knockout search, once more on the whole tour: match-play matches read
+  // side A, the score and their order from the full round.
+  _RoundGrouping groupRounds(
+    List<GamesTourModel> models, {
+    required bool searchMode,
+  }) {
+    final gamesByRound = <String, List<GamesTourModel>>{};
+    final seenGameIdsPerRound = <String, Set<String>>{};
+
+    void ensureRoundEntry(String roundId) {
+      gamesByRound.putIfAbsent(roundId, () => <GamesTourModel>[]);
+      seenGameIdsPerRound.putIfAbsent(roundId, () => <String>{});
+    }
+
+    bool addGameToRound(String roundId, GamesTourModel game) {
+      if (!isEventBoardGameVisible(game)) {
+        return false;
       }
+      ensureRoundEntry(roundId);
+      if (seenGameIdsPerRound[roundId]!.add(game.gameId)) {
+        gamesByRound[roundId]!.add(game);
+        return true;
+      }
+      return false;
+    }
 
-      for (final round in rounds) {
-        final reference = stageReferences[round.id];
-        if (reference == null) continue;
-        final stageTourId = reference.siblingTourId;
-        gamesByRound[round.id] =
-            stageTourId == null
-                ? allGamesScreenModel
+    for (final round in rounds) {
+      ensureRoundEntry(round.id);
+    }
+
+    var representedSiblingIsLoading = false;
+
+    if (isMultiStageKnockout && hasSiblingStageTours) {
+      if (!searchMode) {
+        final stageTourGames = <String, List<GamesTourModel>>{};
+        for (final stageTourId
+            in stageReferences.values
+                .map((reference) => reference.siblingTourId)
+                .whereType<String>()
+                .toSet()) {
+          final stageAsync = ref.watch(gamesTourProvider(stageTourId));
+          representedSiblingIsLoading =
+              representedSiblingIsLoading || stageAsync.isLoading;
+          final rawStageGames = stageAsync.valueOrNull ?? [];
+          final stageModels = <GamesTourModel>[];
+          for (final game in rawStageGames) {
+            try {
+              final model = GamesTourModel.fromGameIndex(game);
+              if (isEventBoardGameVisible(model)) stageModels.add(model);
+            } catch (_) {
+              // One malformed row must not hide every sibling stage game.
+            }
+          }
+          stageTourGames[stageTourId] = stageModels;
+        }
+
+        for (final round in rounds) {
+          final reference = stageReferences[round.id];
+          if (reference == null) continue;
+          final stageTourId = reference.siblingTourId;
+          gamesByRound[round.id] = stageTourId == null
+              ? models
                     .where((game) => game.tourId == tourId)
                     .toList(growable: false)
-                : stageTourGames[stageTourId] ?? [];
+              : stageTourGames[stageTourId] ?? [];
+        }
+      } else {
+        for (final game in models) {
+          for (final entry in stageReferences.entries) {
+            final representedTourId = entry.value.siblingTourId ?? tourId;
+            if (game.tourId == representedTourId) {
+              addGameToRound(entry.key, game);
+              break;
+            }
+          }
+        }
+      }
+    } else if (isMultiStageKnockout) {
+      for (final game in models) {
+        final roundId = stageRoundIdFor(game);
+        if (roundId != null && gamesByRound.containsKey(roundId)) {
+          addGameToRound(roundId, game);
+        }
       }
     } else {
-      for (final game in allGamesScreenModel) {
-        for (final entry in stageReferences.entries) {
-          final representedTourId = entry.value.siblingTourId ?? tourId;
-          if (game.tourId == representedTourId) {
-            addGameToRound(entry.key, game);
-            break;
+      for (final game in models) {
+        if (!isKnockoutTournament && !_shouldIncludeGame(displayMode, game)) {
+          continue;
+        }
+        final isGameInAnyRound = rounds.any((r) => r.id == game.roundId);
+        if (isGameInAnyRound) {
+          addGameToRound(game.roundId, game);
+        } else {
+          final defaultRound = rounds.firstOrNull;
+          if (defaultRound != null) {
+            addGameToRound(defaultRound.id, game);
           }
         }
       }
     }
-  } else if (isMultiStageKnockout) {
-    for (final game in allGamesScreenModel) {
-      final roundId = stageRoundIdFor(game);
-      if (roundId != null && gamesByRound.containsKey(roundId)) {
-        addGameToRound(roundId, game);
-      }
-    }
-  } else {
-    for (final game in allGamesScreenModel) {
-      if (!isKnockoutTournament && !_shouldIncludeGame(displayMode, game)) {
-        continue;
-      }
-      final isGameInAnyRound = rounds.any((r) => r.id == game.roundId);
-      if (isGameInAnyRound) {
-        addGameToRound(game.roundId, game);
-      } else {
-        final defaultRound = rounds.firstOrNull;
-        if (defaultRound != null) {
-          addGameToRound(defaultRound.id, game);
+
+    // Named pairings never pass isEventBoardGameVisible until a move exists,
+    // so a live round would otherwise keep only the boards that have already
+    // started — and a round with no moves yet would vanish entirely. Merge
+    // resolved names into every open round, and mark the round pairing-only
+    // only while it still has no played boards. Completed rounds are left
+    // alone, "?" placeholders stay hidden, and multi-stage knockouts match
+    // pairings to their synthetic stage row through its source rounds. Same
+    // contract as the desktop Games view.
+    final upcomingPairingRoundIds = <String>{};
+    if (isMultiStageKnockout) {
+      // Sibling-tour stages already list every selected-tour game unfiltered.
+      if (!hasSiblingStageTours) {
+        for (final round in rounds) {
+          ensureRoundEntry(round.id);
+          final policy = namedPairingPolicyForKnockoutStage(
+            round: round,
+            isKnockoutTournament: isKnockoutTournament,
+            stageGames: () =>
+                models.where((game) => stageRoundIdFor(game) == round.id),
+          );
+          final merge = resolveNamedPairingsForRound(
+            roundStatus: policy.status,
+            allGames: models,
+            roundId: round.id,
+            knownRoundIds: const <String>{},
+            defaultRoundId: null,
+            alreadyVisibleGameIds: seenGameIdsPerRound[round.id]!,
+            includeGame: policy.includeGame,
+            belongsToRound: (game) => stageRoundIdFor(game) == round.id,
+          );
+          for (final game in merge.gamesToAdd) {
+            if (seenGameIdsPerRound[round.id]!.add(game.gameId)) {
+              gamesByRound[round.id]!.add(game);
+            }
+          }
+          if (merge.markAsPairingOnly) {
+            upcomingPairingRoundIds.add(round.id);
+          }
         }
       }
-    }
-  }
-
-  // Named pairings never pass isEventBoardGameVisible until a move exists, so
-  // a live round would otherwise keep only the boards that have already
-  // started — and a round with no moves yet would vanish entirely. Merge
-  // resolved names into every open round, and mark the round pairing-only
-  // only while it still has no played boards. Completed rounds are left
-  // alone, "?" placeholders stay hidden, and multi-stage knockouts match
-  // pairings to their synthetic stage row through its source rounds. Same
-  // contract as the desktop Games view.
-  final upcomingPairingRoundIds = <String>{};
-  if (isMultiStageKnockout) {
-    // Sibling-tour stages already list every selected-tour game unfiltered.
-    if (!hasSiblingStageTours) {
+    } else {
+      final roundIds = {for (final round in rounds) round.id};
+      final defaultRoundId = rounds.firstOrNull?.id;
       for (final round in rounds) {
         ensureRoundEntry(round.id);
         final merge = resolveNamedPairingsForRound(
           roundStatus: round.roundStatus,
-          allGames: allGamesScreenModel,
+          allGames: models,
           roundId: round.id,
-          knownRoundIds: const <String>{},
-          defaultRoundId: null,
+          knownRoundIds: roundIds,
+          defaultRoundId: defaultRoundId,
           alreadyVisibleGameIds: seenGameIdsPerRound[round.id]!,
-          includeGame: (_) => true,
-          belongsToRound: (game) => stageRoundIdFor(game) == round.id,
+          includeGame: (game) =>
+              isKnockoutTournament || _shouldIncludeGame(displayMode, game),
         );
         for (final game in merge.gamesToAdd) {
           if (seenGameIdsPerRound[round.id]!.add(game.gameId)) {
@@ -320,32 +364,33 @@ final gamesTourGroupedProvider = Provider.autoDispose<GroupedGamesData>((ref) {
         }
       }
     }
-  } else {
-    final roundIds = {for (final round in rounds) round.id};
-    final defaultRoundId = rounds.firstOrNull?.id;
-    for (final round in rounds) {
-      ensureRoundEntry(round.id);
-      final merge = resolveNamedPairingsForRound(
-        roundStatus: round.roundStatus,
-        allGames: allGamesScreenModel,
-        roundId: round.id,
-        knownRoundIds: roundIds,
-        defaultRoundId: defaultRoundId,
-        alreadyVisibleGameIds: seenGameIdsPerRound[round.id]!,
-        includeGame:
-            (game) =>
-                isKnockoutTournament || _shouldIncludeGame(displayMode, game),
-      );
-      for (final game in merge.gamesToAdd) {
-        if (seenGameIdsPerRound[round.id]!.add(game.gameId)) {
-          gamesByRound[round.id]!.add(game);
-        }
-      }
-      if (merge.markAsPairingOnly) {
-        upcomingPairingRoundIds.add(round.id);
-      }
-    }
+
+    return _RoundGrouping(
+      gamesByRound: gamesByRound,
+      seenGameIdsPerRound: seenGameIdsPerRound,
+      upcomingPairingRoundIds: upcomingPairingRoundIds,
+      representedSiblingIsLoading: representedSiblingIsLoading,
+    );
   }
+
+  final grouping = groupRounds(allGamesScreenModel, searchMode: isSearchMode);
+  final gamesByRound = grouping.gamesByRound;
+  final seenGameIdsPerRound = grouping.seenGameIdsPerRound;
+  final upcomingPairingRoundIds = grouping.upcomingPairingRoundIds;
+  final representedSiblingIsLoading = grouping.representedSiblingIsLoading;
+  var hasSupplementalPriorityGames = false;
+
+  void ensureRoundEntry(String roundId) {
+    gamesByRound.putIfAbsent(roundId, () => <GamesTourModel>[]);
+    seenGameIdsPerRound.putIfAbsent(roundId, () => <String>{});
+  }
+
+  // A search hands over only its hits. Knockout rounds also get their full
+  // membership, grouped exactly as the unfiltered list groups it, so a
+  // match-play match keeps its side A, score and place while searching.
+  final fullGamesByRound = isSearchMode && isKnockoutTournament
+      ? groupRounds(knockoutState.allGames, searchMode: false).gamesByRound
+      : const <String, List<GamesTourModel>>{};
 
   // FALLBACK: during a round break the DB may not have the next round's
   // pairings yet (backend pairing sync disabled or lagging) even though
@@ -519,8 +564,23 @@ final gamesTourGroupedProvider = Provider.autoDispose<GroupedGamesData>((ref) {
     allGames: allGamesScreenModel,
     providerGameCount: providerGameCount,
     upcomingPairingRoundIds: upcomingPairingRoundIds,
+    fullGamesByRound: fullGamesByRound,
   );
 });
+
+class _RoundGrouping {
+  const _RoundGrouping({
+    required this.gamesByRound,
+    required this.seenGameIdsPerRound,
+    required this.upcomingPairingRoundIds,
+    required this.representedSiblingIsLoading,
+  });
+
+  final Map<String, List<GamesTourModel>> gamesByRound;
+  final Map<String, Set<String>> seenGameIdsPerRound;
+  final Set<String> upcomingPairingRoundIds;
+  final bool representedSiblingIsLoading;
+}
 
 typedef GamesTourRoundResolution =
     ({List<GamesAppBarModel> rounds, bool isLoading});
@@ -686,6 +746,84 @@ NamedPairingMerge resolveNamedPairingsForRound({
     markAsPairingOnly: !hadVisiblePlayedGames && gamesToAdd.isNotEmpty,
   );
 }
+
+/// How a multi-stage knockout's stage row merges named pairings: the status
+/// it merges with, and which named boards it may add.
+typedef KnockoutStagePairingPolicy = ({
+  RoundStatus status,
+  bool Function(GamesTourModel game) includeGame,
+});
+
+bool _includeEveryPairing(GamesTourModel game) => true;
+
+/// The named-pairing policy of a multi-stage knockout's stage row.
+///
+/// A match-play stage (Speed Chess Championship: one round file, one match a
+/// day for a month) drops out of the live round list between match days and
+/// turns `completed` 24 hours after its scheduled start. A completed row
+/// merges no pairings, which would hide every match still to be played. Such
+/// a row stays open while one of its match-play matches has not been played
+/// at all (no result, no move) or is being played, and then merges only the
+/// boards of those matches. A stale 0-move board beside a match that is
+/// already decided (Women's Speed Chess Championship quarterfinals) stays
+/// hidden. Every other row, and every completed stage without such a match,
+/// keeps its own status and merges as before.
+@visibleForTesting
+KnockoutStagePairingPolicy namedPairingPolicyForKnockoutStage({
+  required GamesAppBarModel round,
+  required bool isKnockoutTournament,
+  required Iterable<GamesTourModel> Function() stageGames,
+}) {
+  final asIs = (status: round.roundStatus, includeGame: _includeEveryPairing);
+  if (round.roundStatus != RoundStatus.completed) return asIs;
+  if (!isKnockoutTournament || !round.id.startsWith('$kKnockoutStagePrefix-')) {
+    return asIs;
+  }
+  final named = stageGames()
+      .where(
+        (game) =>
+            _hasResolvedPlayer(game.whitePlayer) &&
+            _hasResolvedPlayer(game.blackPlayer),
+      )
+      .toList(growable: false);
+  if (!named.any((game) => !game.effectiveGameStatus.isFinished)) return asIs;
+  final matchPlayKeys = KnockoutMatchDetector.matchPlayMatchKeys(
+    isKnockoutTournament: true,
+    games: named,
+  );
+  if (matchPlayKeys.isEmpty) return asIs;
+
+  final openGameIds = <String>{};
+  for (final entry in KnockoutMatchDetector.groupByMatches(named).entries) {
+    if (!matchPlayKeys.contains(entry.key)) continue;
+    final games = entry.value;
+    final notStarted = games.every(
+      (game) =>
+          !game.effectiveGameStatus.isFinished &&
+          !KnockoutMatchDetector.matchPlayGameHasMoves(game),
+    );
+    if (notStarted || games.any(KnockoutMatchDetector.isMatchPlayGameLive)) {
+      openGameIds.addAll(games.map((game) => game.gameId));
+    }
+  }
+  if (openGameIds.isEmpty) return asIs;
+  return (
+    status: RoundStatus.ongoing,
+    includeGame: (game) => openGameIds.contains(game.gameId),
+  );
+}
+
+/// The status [namedPairingPolicyForKnockoutStage] merges a stage row with.
+@visibleForTesting
+RoundStatus namedPairingStatusForKnockoutStage({
+  required GamesAppBarModel round,
+  required bool isKnockoutTournament,
+  required Iterable<GamesTourModel> Function() stageGames,
+}) => namedPairingPolicyForKnockoutStage(
+  round: round,
+  isKnockoutTournament: isKnockoutTournament,
+  stageGames: stageGames,
+).status;
 
 /// Mirrors the main grouping loop: a game whose round id matches no known
 /// round is shown under the first round.

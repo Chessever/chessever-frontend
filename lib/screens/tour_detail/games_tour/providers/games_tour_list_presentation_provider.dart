@@ -89,6 +89,7 @@ final gamesTourListPresentationProvider =
         isSearchMode: isSearchMode,
         matchFormatHeader: grouped.matchFormatHeader,
         roundStartTimesById: roundStartTimesById,
+        fullGamesByRound: grouped.fullGamesByRound,
         sourceStandingsByTourId: {
           for (final tourModel in tourDetail?.tours ?? const [])
             tourModel.tour.id: tourModel.tour.players,

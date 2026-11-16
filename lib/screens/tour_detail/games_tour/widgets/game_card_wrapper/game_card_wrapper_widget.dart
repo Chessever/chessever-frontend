@@ -37,6 +37,11 @@ class GameCardWrapperWidget extends ConsumerWidget {
   /// anchored team is Black so that team stays on one visual side.
   final MatchComparison comparison;
 
+  /// Shows a small White/Black mark beside each player's name. Match-play
+  /// knockouts keep one player on the left in every game, so the side no
+  /// longer tells the colour; every other list leaves this off.
+  final bool showPieceColorMarks;
+
   /// Metadata line for the card footer, used by archive lists whose games have
   /// no clock and no last move so the footer strip would otherwise be blank.
   final String? footerDetail;
@@ -66,6 +71,7 @@ class GameCardWrapperWidget extends ConsumerWidget {
     this.liveBatchKey,
     this.onBeforeOpen,
     this.comparison = MatchComparison.sameOrder,
+    this.showPieceColorMarks = false,
     this.footerDetail,
     this.showPin = true,
     this.menuActions,
@@ -179,6 +185,7 @@ class GameCardWrapperWidget extends ConsumerWidget {
                 ),
                 pinnedIds: gamesData.pinnedGamedIs,
                 onPinToggle: handlePinToggle,
+                showPieceColorMarks: showPieceColorMarks,
                 onShare: (game) => showGameShareOverlay(context, ref, game),
                 allowStockfishFallback: effectiveAllowStockfishFallback,
                 footerDetail: footerDetail,

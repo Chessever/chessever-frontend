@@ -205,6 +205,236 @@ void main() {
       },
     );
   });
+
+  // Speed Chess Championship plays one match a day for a month in a single
+  // round file. Between match days the round leaves the live list and, 24
+  // hours after its start, its stage row reads `completed`.
+  group('a completed knockout stage keeps its unplayed matches', () {
+    const stageId = 'knockout-stage-fqCjSUpE-round-of-16';
+    GamesAppBarModel stage(RoundStatus status, {String id = stageId}) =>
+        GamesAppBarModel(
+          id: id,
+          name: 'Round of 16',
+          startsAt: DateTime.utc(2026, 11, 16, 17),
+          roundStatus: status,
+        );
+    // Nakamura-Erdogmus played both games; Carlsen-Movahed has not started.
+    final matchPlayStage = [
+      _game(
+        id: 'g1',
+        whiteName: 'Nakamura, Hikaru',
+        blackName: 'Erdogmus, Yagiz Kaan',
+        lastMove: 'e2e4',
+        gameStatus: GameStatus.draw,
+      ),
+      _game(
+        id: 'g2',
+        whiteName: 'Erdogmus, Yagiz Kaan',
+        blackName: 'Nakamura, Hikaru',
+        lastMove: 'e2e4',
+        gameStatus: GameStatus.blackWins,
+      ),
+      _game(
+        id: 'c1',
+        whiteName: 'Carlsen, Magnus',
+        blackName: 'Movahed, Sina',
+        fen: _initialFen,
+      ),
+    ];
+
+    test('a match-play stage with an unplayed named board stays open', () {
+      final status = namedPairingStatusForKnockoutStage(
+        round: stage(RoundStatus.completed),
+        isKnockoutTournament: true,
+        stageGames: () => matchPlayStage,
+      );
+      expect(status, RoundStatus.ongoing);
+
+      final merge = resolveNamedPairingsForRound(
+        roundStatus: status,
+        allGames: matchPlayStage,
+        roundId: stageId,
+        knownRoundIds: const <String>{},
+        defaultRoundId: null,
+        alreadyVisibleGameIds: {'g1', 'g2'},
+        includeGame: (_) => true,
+        belongsToRound: (game) => game.roundId == 'round-8',
+      );
+      expect(merge.gamesToAdd.map((game) => game.gameId), ['c1']);
+      expect(merge.markAsPairingOnly, isFalse);
+    });
+
+    test('a stale shell beside a decided match stays hidden', () {
+      // Nakamura-Erdogmus is decided, yet a 0-move game-5 board remains.
+      final games = [
+        ...matchPlayStage,
+        _game(
+          id: 'g5',
+          whiteName: 'Nakamura, Hikaru',
+          blackName: 'Erdogmus, Yagiz Kaan',
+          fen: _initialFen,
+        ),
+      ];
+      final policy = namedPairingPolicyForKnockoutStage(
+        round: stage(RoundStatus.completed),
+        isKnockoutTournament: true,
+        stageGames: () => games,
+      );
+      expect(policy.status, RoundStatus.ongoing);
+
+      final merge = resolveNamedPairingsForRound(
+        roundStatus: policy.status,
+        allGames: games,
+        roundId: stageId,
+        knownRoundIds: const <String>{},
+        defaultRoundId: null,
+        alreadyVisibleGameIds: {'g1', 'g2'},
+        includeGame: policy.includeGame,
+        belongsToRound: (game) => game.roundId == 'round-8',
+      );
+      expect(merge.gamesToAdd.map((game) => game.gameId), ['c1']);
+    });
+
+    test('a match being played keeps its next board', () {
+      // Match day with the row already `completed`: Lazavik-Andreikin plays
+      // game 1, game 2 waits as a shell; every other match is decided.
+      final games = [
+        ...matchPlayStage.take(2),
+        _game(
+          id: 'l1',
+          whiteName: 'Lazavik, Denis',
+          blackName: 'Andreikin, Dmitry',
+          lastMove: 'e2e4',
+        ),
+        _game(
+          id: 'l2',
+          whiteName: 'Andreikin, Dmitry',
+          blackName: 'Lazavik, Denis',
+          fen: _initialFen,
+        ),
+      ];
+      final policy = namedPairingPolicyForKnockoutStage(
+        round: stage(RoundStatus.completed),
+        isKnockoutTournament: true,
+        stageGames: () => games,
+      );
+      expect(policy.status, RoundStatus.ongoing);
+      expect(games.where(policy.includeGame).map((game) => game.gameId), [
+        'l1',
+        'l2',
+      ]);
+    });
+
+    // Women's Speed Chess Championship 2026 (QfveGZSJ) quarterfinals,
+    // finished in July: round mxUBhpuf holds Assaubayeva-Divya's games and
+    // two stale 0-move boards of matches decided in rounds of their own.
+    test('stale shells never reopen a finished stage', () {
+      GamesTourModel played(String id, String white, String black, String r) =>
+          _game(
+            id: id,
+            whiteName: white,
+            blackName: black,
+            lastMove: 'e2e4',
+            gameStatus: GameStatus.draw,
+            roundId: r,
+          );
+      final games = [
+        played('hm-1', 'Hou, Yifan', 'Muzychuk, Anna', 'qf-hm'),
+        played('hm-2', 'Muzychuk, Anna', 'Hou, Yifan', 'qf-hm'),
+        played('jl-1', 'Ju, Wenjun', 'Lee, Alice', 'qf-jl'),
+        played('jl-2', 'Lee, Alice', 'Ju, Wenjun', 'qf-jl'),
+        played('ad-1', 'Assaubayeva, Bibisara', 'Divya Deshmukh', 'mxUBhpuf'),
+        played('ad-2', 'Divya Deshmukh', 'Assaubayeva, Bibisara', 'mxUBhpuf'),
+        _game(
+          id: 'ATOiBzAp',
+          whiteName: 'Hou, Yifan',
+          blackName: 'Muzychuk, Anna',
+          fen: _initialFen,
+          roundId: 'mxUBhpuf',
+        ),
+        _game(
+          id: 'c15eBGgb',
+          whiteName: 'Ju, Wenjun',
+          blackName: 'Lee, Alice',
+          fen: _initialFen,
+          roundId: 'mxUBhpuf',
+        ),
+      ];
+      final policy = namedPairingPolicyForKnockoutStage(
+        round: stage(RoundStatus.completed),
+        isKnockoutTournament: true,
+        stageGames: () => games,
+      );
+      expect(policy.status, RoundStatus.completed);
+      final merge = resolveNamedPairingsForRound(
+        roundStatus: policy.status,
+        allGames: games,
+        roundId: stageId,
+        knownRoundIds: const <String>{},
+        defaultRoundId: null,
+        alreadyVisibleGameIds: {
+          for (final game in games)
+            if (game.lastMove != null) game.gameId,
+        },
+        includeGame: policy.includeGame,
+        belongsToRound: (_) => true,
+      );
+      expect(merge.gamesToAdd, isEmpty);
+    });
+
+    test('every other row keeps its own status', () {
+      // A stage whose every board is decided.
+      expect(
+        namedPairingStatusForKnockoutStage(
+          round: stage(RoundStatus.completed),
+          isKnockoutTournament: true,
+          stageGames: () => matchPlayStage.take(2),
+        ),
+        RoundStatus.completed,
+      );
+      // One game per pairing (legs in rounds of their own): not match play.
+      expect(
+        namedPairingStatusForKnockoutStage(
+          round: stage(RoundStatus.completed),
+          isKnockoutTournament: true,
+          stageGames: () => [matchPlayStage.first, matchPlayStage.last],
+        ),
+        RoundStatus.completed,
+      );
+      // A plain round row, and a non-knockout event.
+      expect(
+        namedPairingStatusForKnockoutStage(
+          round: stage(RoundStatus.completed, id: 'round-8'),
+          isKnockoutTournament: true,
+          stageGames: () => matchPlayStage,
+        ),
+        RoundStatus.completed,
+      );
+      expect(
+        namedPairingStatusForKnockoutStage(
+          round: stage(RoundStatus.completed),
+          isKnockoutTournament: false,
+          stageGames: () => matchPlayStage,
+        ),
+        RoundStatus.completed,
+      );
+      // Open rows are never touched.
+      for (final status in [
+        RoundStatus.live,
+        RoundStatus.ongoing,
+        RoundStatus.upcoming,
+      ]) {
+        expect(
+          namedPairingStatusForKnockoutStage(
+            round: stage(status),
+            isKnockoutTournament: true,
+            stageGames: () => matchPlayStage,
+          ),
+          status,
+        );
+      }
+    });
+  });
 }
 
 NamedPairingMerge _merge({
@@ -234,6 +464,7 @@ GamesTourModel _game({
   String? pgn,
   int? boardNr,
   GameStatus gameStatus = GameStatus.ongoing,
+  String roundId = 'round-8',
 }) {
   return GamesTourModel(
     gameId: id,
@@ -244,7 +475,7 @@ GamesTourModel _game({
     whiteClockCentiseconds: 0,
     blackClockCentiseconds: 0,
     gameStatus: gameStatus,
-    roundId: 'round-8',
+    roundId: roundId,
     tourId: 'tour-1',
     lastMove: lastMove,
     fen: fen,
