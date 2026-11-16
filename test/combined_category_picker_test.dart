@@ -283,7 +283,50 @@ void main() {
     await _drain(tester);
   });
 
-  testWidgets('About and Standings keep naming the real category', (
+  testWidgets('About keeps naming the real category', (tester) async {
+    final container = await _pumpPicker(
+      tester,
+      tours: [_groupA, _groupB],
+      mode: TournamentDetailScreenMode.about,
+    );
+    await container
+        .read(combinedCategoryPrefsProvider.notifier)
+        .setSelected(_groupId, true);
+    await tester.pump();
+
+    expect(container.read(combinedCategorySelectedProvider), isTrue);
+    // Games and Standings are combined, but About describes one category.
+    expect(container.read(combinedTabActiveProvider), isFalse);
+    expect(find.text('Group A'), findsOneWidget);
+    expect(find.text(kCombinedCategoryLabel), findsNothing);
+    // On a tab Combined leaves alone the merged tours fall back to the slow
+    // cadence.
+    expect(container.read(combinedLiveTourIdsProvider), isEmpty);
+    await _drain(tester);
+  });
+
+  testWidgets('Standings reads Combined, like Games', (tester) async {
+    final container = await _pumpPicker(
+      tester,
+      tours: [_groupA, _groupB],
+      mode: TournamentDetailScreenMode.standings,
+    );
+    await container
+        .read(combinedCategoryPrefsProvider.notifier)
+        .setSelected(_groupId, true);
+    await tester.pump();
+
+    expect(container.read(combinedTabActiveProvider), isTrue);
+    expect(find.text(kCombinedCategoryLabel), findsOneWidget);
+    // Every category's table is on screen, so every category stays fresh.
+    expect(container.read(combinedLiveTourIdsProvider), {
+      _groupA.id,
+      _groupB.id,
+    });
+    await _drain(tester);
+  });
+
+  testWidgets('picking a real category on Standings leaves Combined', (
     tester,
   ) async {
     final container = await _pumpPicker(
@@ -296,12 +339,19 @@ void main() {
         .setSelected(_groupId, true);
     await tester.pump();
 
-    expect(container.read(combinedCategorySelectedProvider), isTrue);
-    // Games is combined, but this chip belongs to another tab.
-    expect(find.text('Group A'), findsOneWidget);
-    expect(find.text(kCombinedCategoryLabel), findsNothing);
-    // Off the Games tab the merged tours fall back to the slow cadence.
-    expect(container.read(combinedLiveTourIdsProvider), isEmpty);
+    await _openPicker(tester);
+    await tester.tap(find.text('Group B').last);
+    await _settlePicker(tester);
+
+    expect(container.read(combinedCategorySelectedProvider), isFalse);
     await _drain(tester);
+  });
+
+  test('Combined changes Games, Standings and Players only', () {
+    expect(combinedAppliesToMode(TournamentDetailScreenMode.games), isTrue);
+    expect(combinedAppliesToMode(TournamentDetailScreenMode.standings), isTrue);
+    expect(combinedAppliesToMode(TournamentDetailScreenMode.players), isTrue);
+    expect(combinedAppliesToMode(TournamentDetailScreenMode.about), isFalse);
+    expect(combinedAppliesToMode(TournamentDetailScreenMode.bracket), isFalse);
   });
 }

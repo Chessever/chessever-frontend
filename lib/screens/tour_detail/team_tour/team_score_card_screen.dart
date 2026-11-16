@@ -1,10 +1,12 @@
 import 'dart:io' as io;
 import 'dart:math' as math;
 
+import 'package:chessever2/screens/group_event/model/about_tour_model.dart';
 import 'package:chessever2/screens/standings/team_avg_elo.dart';
 import 'package:chessever2/screens/standings/team_standing_model.dart';
 import 'package:chessever2/screens/standings/team_standings_builder.dart';
 import 'package:chessever2/screens/standings/utils/player_event_share_utils.dart';
+import 'package:chessever2/screens/tour_detail/combined/standings_category_scope.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_screen_provider.dart';
 import 'package:chessever2/screens/tour_detail/team_tour/team_tour_screen_provider.dart';
 import 'package:chessever2/screens/tour_detail/team_tour/widgets/team_event_share_image_card.dart';
@@ -42,10 +44,21 @@ class TeamScoreCardScreen extends ConsumerWidget {
       phone: 20.sp,
       tablet: 24.sp,
     );
-    final about = ref
-        .watch(tourDetailScreenProvider)
-        .valueOrNull
-        ?.aboutTourModel;
+    final detail = ref.watch(tourDetailScreenProvider).valueOrNull;
+    // A team opened from another category's Combined standings: the card
+    // names and links that category, not the one selected underneath.
+    final categoryTourId = ref.watch(selectedTeamTourIdProvider);
+    final category =
+        categoryTourId == null
+            ? null
+            : detail?.tours
+                .where((model) => model.tour.id == categoryTourId)
+                .firstOrNull
+                ?.tour;
+    final about =
+        category == null
+            ? detail?.aboutTourModel
+            : AboutTourModel.fromTour(category);
     final eventName = about?.name;
     final eventShareId = about?.groupBroadcastId?.isNotEmpty == true
         ? about!.groupBroadcastId!
@@ -58,6 +71,31 @@ class TeamScoreCardScreen extends ConsumerWidget {
       tourSlug: about?.slug,
     );
 
+    // The player chips below open score cards; under this scope they load
+    // the team's own category.
+    return StandingsCategoryScope(
+      tourId: category == null ? null : categoryTourId,
+      child: _buildCard(
+        context,
+        ref,
+        team: team,
+        matches: matches,
+        eventName: eventName,
+        shareUrl: shareUrl,
+        horizontalPadding: horizontalPadding,
+      ),
+    );
+  }
+
+  Widget _buildCard(
+    BuildContext context,
+    WidgetRef ref, {
+    required TeamStandingModel team,
+    required List<TeamMatch> matches,
+    required String? eventName,
+    required String? shareUrl,
+    required double horizontalPadding,
+  }) {
     return Scaffold(
       backgroundColor: context.colors.background,
       body: SafeArea(

@@ -1,15 +1,13 @@
 import 'package:chessever2/screens/standings/player_standing_section_select.dart';
 import 'package:chessever2/providers/favorite_players_provider.dart';
 import 'package:chessever2/repository/favorites/models/favorite_player.dart';
-import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
 import 'package:chessever2/e2e/e2e_ids.dart';
 import 'package:chessever2/screens/library/widgets/library_context_menu.dart';
-import 'package:chessever2/screens/player_profile/player_profile_data_source.dart';
 import 'package:chessever2/screens/standings/player_standing_model.dart';
 import 'package:chessever2/screens/standings/providers/player_utils_provider.dart';
-import 'package:chessever2/screens/standings/score_card_screen.dart';
 import 'package:chessever2/screens/tour_detail/player_tour/player_tour_screen_provider.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_screen_provider.dart';
+import 'package:chessever2/screens/tour_detail/team_tour/team_player_nav.dart';
 import 'package:chessever2/screens/group_event/widget/empty_widget.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/figma_player_card.dart';
@@ -181,7 +179,7 @@ class _StandingsList extends ConsumerWidget {
                 !tourDetailAsync.hasError &&
                 !tourDetailReady;
             if (standingsHaventResolvedYet) {
-              return const _StandingScreenLoading();
+              return const StandingsLoadingList();
             }
             return ListView.builder(
               key: const PageStorageKey<String>('standings_list'),
@@ -205,50 +203,9 @@ class _StandingsList extends ConsumerWidget {
                   );
                 }
 
-                final player = data[index];
-                final isFav =
-                    storedFavoriteFor(
-                      favorites,
-                      fideId: player.fideId?.toString(),
-                      name: player.name,
-                      countryCode: player.countryCode,
-                    ) !=
-                    null;
-                void openScorecard() {
-                  ref.read(selectedPlayerProvider.notifier).state = player;
-                  // Clear games context - tournament games come
-                  // from gamesTourScreenProvider.
-                  ref.read(scoreCardGamesContextProvider.notifier).state = null;
-                  ref
-                      .read(scoreCardPlayerProfileDataSourceProvider.notifier)
-                      .state = PlayerProfileDataSource.supabase;
-                  ref.read(chessboardViewFromProviderNew.notifier).state =
-                      ChessboardView.tour;
-                  Navigator.of(context).pushNamed('/scorecard_screen');
-                }
-
-                // Builder so the long-press menu anchors to this row's own
-                // box rather than the list's sliver.
-                return Builder(
-                  key: ValueKey(
-                    'standing_${player.fideId ?? player.gamebasePlayerId ?? player.name}',
-                  ),
-                  builder:
-                      (rowContext) => FigmaPlayerCard(
-                        player: player,
-                        rank: player.overallRank,
-                        isFavorite: isFav,
-                        showFavoriteButton: false,
-                        onTap: openScorecard,
-                        onLongPress:
-                            (_) => _showStandingMenu(
-                              rowContext,
-                              ref,
-                              player: player,
-                              isFavorite: isFav,
-                              onOpen: openScorecard,
-                            ),
-                      ),
+                return StandingsPlayerRow(
+                  player: data[index],
+                  favorites: favorites,
                 );
               },
             );
@@ -262,8 +219,64 @@ class _StandingsList extends ConsumerWidget {
                   title: "Couldn't load standings. Pull away and try again.",
                 ),
               ),
-          loading: () => const _StandingScreenLoading(),
+          loading: () => const StandingsLoadingList(),
         );
+  }
+}
+
+/// One player of a standings table: the row and its long-press menu.
+///
+/// Shared by the selected category's table and by every section of the
+/// Combined Standings tab, where the row's own category decides which games
+/// its score card loads (see [openPlayerScoreCard]).
+class StandingsPlayerRow extends ConsumerWidget {
+  const StandingsPlayerRow({
+    super.key,
+    required this.player,
+    required this.favorites,
+  });
+
+  final PlayerStandingModel player;
+
+  /// The reader's followed players, read once by the list.
+  final List<FavoritePlayer> favorites;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final isFav =
+        storedFavoriteFor(
+          favorites,
+          fideId: player.fideId?.toString(),
+          name: player.name,
+          countryCode: player.countryCode,
+        ) !=
+        null;
+
+    // Builder so the long-press menu anchors to this row's own box rather
+    // than the list's sliver.
+    return Builder(
+      key: ValueKey(
+        'standing_${player.fideId ?? player.gamebasePlayerId ?? player.name}',
+      ),
+      builder: (rowContext) {
+        void openScorecard() => openPlayerScoreCard(rowContext, ref, player);
+        return FigmaPlayerCard(
+          player: player,
+          rank: player.overallRank,
+          isFavorite: isFav,
+          showFavoriteButton: false,
+          onTap: openScorecard,
+          onLongPress:
+              (_) => _showStandingMenu(
+                rowContext,
+                ref,
+                player: player,
+                isFavorite: isFav,
+                onOpen: openScorecard,
+              ),
+        );
+      },
+    );
   }
 }
 
@@ -331,8 +344,9 @@ void _showStandingMenu(
   );
 }
 
-class _StandingScreenLoading extends StatelessWidget {
-  const _StandingScreenLoading();
+/// Placeholder rows while a standings table loads.
+class StandingsLoadingList extends StatelessWidget {
+  const StandingsLoadingList({super.key});
 
   @override
   Widget build(BuildContext context) {

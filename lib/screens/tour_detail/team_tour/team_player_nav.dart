@@ -3,20 +3,30 @@ import 'package:chessever2/screens/player_profile/player_profile_data_source.dar
 import 'package:chessever2/screens/standings/player_standing_model.dart';
 import 'package:chessever2/screens/standings/score_card_screen.dart';
 import 'package:chessever2/screens/standings/team_standing_model.dart';
+import 'package:chessever2/screens/tour_detail/combined/standings_category_scope.dart';
 import 'package:chessever2/screens/tour_detail/team_tour/team_tour_screen_provider.dart';
 import 'package:flutter/widgets.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
-/// Opens a team player's individual score card within the current event
-/// (same flow the individual standings row uses).
+/// Opens a player's individual score card within the current event: the flow
+/// every standings row and team player chip uses.
+///
+/// [context] is the row's own. Under the Combined Standings tab it sits in a
+/// [StandingsCategoryScope], and the card then loads that category instead of
+/// the selected one.
 void openPlayerScoreCard(
   BuildContext context,
   WidgetRef ref,
   PlayerStandingModel player,
 ) {
   ref.read(selectedPlayerProvider.notifier).state = player;
-  // Tournament games come from gamesTourScreenProvider — clear any prior context.
-  ref.read(scoreCardGamesContextProvider.notifier).state = null;
+  // Tournament games come from gamesTourScreenProvider, so any prior context
+  // is cleared. A row of another Combined category hands over its own games.
+  ref.read(scoreCardGamesContextProvider.notifier).state =
+      scoreCardGamesContextForCategory(
+        ref,
+        StandingsCategoryScope.tourIdOf(context),
+      );
   ref.read(scoreCardPlayerProfileDataSourceProvider.notifier).state =
       PlayerProfileDataSource.supabase;
   ref.read(chessboardViewFromProviderNew.notifier).state = ChessboardView.tour;

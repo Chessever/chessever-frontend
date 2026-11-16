@@ -480,7 +480,9 @@ const Duration _sameSittingWindow = Duration(minutes: 30);
 /// goes first: it is the one that gathers several sections. Removing it
 /// clears the sections it repeated, and the check runs again until nothing
 /// accuses anything.
-@visibleForTesting
+///
+/// The Combined standings leave the same tours out, so a section never shows
+/// a table the Games list has no boards for.
 Set<String> findMirrorTourIds({
   required List<String> tourIds,
   required Map<String, List<GamesTourModel>> gamesByTourId,

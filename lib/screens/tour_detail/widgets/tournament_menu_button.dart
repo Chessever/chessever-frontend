@@ -34,6 +34,7 @@ import 'package:chessever2/widgets/app_snack.dart';
 import 'package:flutter/rendering.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/share_card.dart';
+import 'package:chessever2/utils/share_standings.dart';
 import 'package:chessever2/utils/svg_asset.dart';
 import 'package:chessever2/widgets/card_context_menu.dart';
 import 'package:chessever2/widgets/event_card/event_context_menu.dart';
@@ -440,7 +441,31 @@ class TournamentMenuButton extends ConsumerWidget {
       mode: mode,
       isTeamEvent: isTeamEvent,
     );
-    if (standingsShares.contains(TournamentMenuAction.shareStandings)) {
+    // Combined lists every category's table, so the share names the one it
+    // captures: the table at the top of the reader's list.
+    final combinedShare = combinedStandingsShareTarget(ref);
+    if (combinedShare != null) {
+      actions.add(
+        LibraryMenuAction(
+          icon: combinedShare.teams
+              ? Icons.groups_outlined
+              : Icons.leaderboard_outlined,
+          label: 'Share ${combinedShare.label} standings',
+          onSelected: () {
+            unawaited(
+              shareCombinedStandingsSection(
+                context,
+                ref,
+                tourId: combinedShare.tourId,
+                teams: combinedShare.teams,
+              ),
+            );
+          },
+        ),
+      );
+    }
+    if (combinedShare == null &&
+        standingsShares.contains(TournamentMenuAction.shareStandings)) {
       actions.add(
         LibraryMenuAction(
           icon: Icons.leaderboard_outlined,
@@ -455,7 +480,8 @@ class TournamentMenuButton extends ConsumerWidget {
         ),
       );
     }
-    if (standingsShares.contains(TournamentMenuAction.shareTeamStandings)) {
+    if (combinedShare == null &&
+        standingsShares.contains(TournamentMenuAction.shareTeamStandings)) {
       actions.add(
         LibraryMenuAction(
           icon: Icons.groups_outlined,

@@ -13,9 +13,11 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 /// An event with several categories (Group A-D, Open/Women, Masters/
 /// Challengers) makes a viewer switch back and forth to follow all of them.
 /// Combined is a client-side category that lists every real category's games
-/// in one Games tab. It never exists in the database: it reuses each
-/// category's own games provider, so nothing is fetched twice. An organizer's
-/// own Combined section is never merged in, so no board is listed twice.
+/// in one Games tab, and every category's own table in one Standings tab
+/// (see `combined_standings.dart`). It never exists in the database: it
+/// reuses each category's own games provider, so nothing is fetched twice. An
+/// organizer's own Combined section is never merged in, so no board is listed
+/// twice.
 ///
 /// Free for everyone. The choice is remembered per event.
 
@@ -340,13 +342,14 @@ CombinedCategories? combinedEventForTour(
   return null;
 }
 
-/// Whether [tourId] is a category the Combined list shows other than the one
+/// Whether [tourId] is a category the Combined lists show other than the one
 /// selected underneath.
 ///
-/// Everything outside the Games list still describes the selected category:
-/// its games provider, its standings. A surface opened from a Combined game
-/// (a player's score card above all) must ask for that game's own category
-/// instead, or it comes up empty for every category but one.
+/// Everything outside the Combined lists still describes the selected
+/// category: its games provider, its standings. A surface opened from a
+/// Combined game or standings row (a player's score card above all) must ask
+/// for that row's own category instead, or it comes up empty for every
+/// category but one.
 final combinedOtherCategoryProvider = Provider.autoDispose.family<bool, String>(
   (ref, tourId) {
     if (tourId.isEmpty || !ref.watch(combinedCategorySelectedProvider)) {
@@ -362,18 +365,35 @@ final combinedOtherCategoryProvider = Provider.autoDispose.family<bool, String>(
   },
 );
 
-/// Tours whose games the Combined list is showing right now. Their games
+/// The tabs Combined changes: Games lists every category's boards, Standings
+/// and Players every category's table. About and Bracket keep describing the
+/// category selected underneath.
+bool combinedAppliesToMode(TournamentDetailScreenMode mode) => switch (mode) {
+  TournamentDetailScreenMode.games ||
+  TournamentDetailScreenMode.standings ||
+  TournamentDetailScreenMode.players => true,
+  TournamentDetailScreenMode.about ||
+  TournamentDetailScreenMode.bracket => false,
+};
+
+/// True while the tab on screen is one Combined is changing: the event is in
+/// Combined and the tab is Games, Standings or Players. The category chip
+/// reads "Combined" exactly then.
+final combinedTabActiveProvider = Provider<bool>((ref) {
+  return combinedAppliesToMode(ref.watch(selectedTourModeProvider)) &&
+      ref.watch(combinedCategorySelectedProvider);
+});
+
+/// Tours whose games a Combined list is showing right now. Their games
 /// providers poll at the combined cadence instead of the slow sibling one, so
-/// a new round in any category appears promptly. Empty off the Games tab.
+/// a new round or result in any category appears promptly. Empty on the tabs
+/// Combined leaves alone.
 final combinedLiveTourIdsProvider = Provider<Set<String>>((ref) {
-  if (!ref.watch(combinedCategorySelectedProvider)) return const <String>{};
-  if (ref.watch(selectedTourModeProvider) != TournamentDetailScreenMode.games) {
-    return const <String>{};
-  }
+  if (!ref.watch(combinedTabActiveProvider)) return const <String>{};
   return ref.watch(combinedCategoriesProvider).tourIds.toSet();
 });
 
 /// Bumped whenever Combined is opened. The event screen answers by showing
-/// the Games tab, the only tab Combined changes; a request made while Games
-/// is already showing is a no-op.
+/// the Games tab, unless the tab on screen is one Combined changes too
+/// (Standings, Players): that one turns Combined where it is.
 final combinedGamesTabRequestProvider = StateProvider<int>((ref) => 0);

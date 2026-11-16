@@ -22,6 +22,9 @@ import 'package:chessever2/screens/tour_detail/combined/combined_category.dart';
 import 'package:chessever2/screens/tour_detail/combined/combined_games_provider.dart'
     show combinedRoundsProvider, combinedRoundsKey;
 import 'package:chessever2/screens/tour_detail/combined/combined_games_screen.dart';
+import 'package:chessever2/screens/tour_detail/combined/combined_standings.dart'
+    show CombinedStandingsView;
+import 'package:chessever2/screens/tour_detail/combined/combined_standings_screen.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/views/games_tour_screen.dart';
 import 'package:chessever2/screens/group_event/model/tour_detail_view_model.dart';
 import 'package:chessever2/screens/tour_detail/player_tour/player_tour_screen_provider.dart';
@@ -91,14 +94,14 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
     );
   }
 
-  /// Combined only changes the Games tab, so opening it from About or
-  /// Standings brings Games forward.
+  /// Combined changes the Games, Standings and Players tabs. Opened from one
+  /// of them it turns that tab Combined in place; opened from About or
+  /// Bracket, which it leaves alone, it brings Games forward.
   void _showGamesTab() {
     if (!mounted) return;
     final index = _renderedModes.indexOf(TournamentDetailScreenMode.games);
     if (index < 0 ||
-        ref.read(selectedTourModeProvider) ==
-            TournamentDetailScreenMode.games) {
+        combinedAppliesToMode(ref.read(selectedTourModeProvider))) {
       return;
     }
     _handleTabSelection(index, _renderedModes);
@@ -472,6 +475,22 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
                                 case TournamentDetailScreenMode.bracket:
                                   return const KnockoutBracketScreen();
                                 case TournamentDetailScreenMode.standings:
+                                  // Combined swaps the table, not the tab:
+                                  // every category's own standings in one
+                                  // list, team tables for team categories.
+                                  if (combinedSelected) {
+                                    return ScreenshotShareNudge(
+                                      enabled:
+                                          effectiveMode ==
+                                          TournamentDetailScreenMode.standings,
+                                      onShare:
+                                          () => shareTournamentStandings(
+                                            context,
+                                            scopedRef,
+                                          ),
+                                      child: const CombinedStandingsScreen(),
+                                    );
+                                  }
                                   // Team events: team table (no standings-image
                                   // share nudge — the individual standings the
                                   // nudge shares now live on the Players tab).
@@ -501,7 +520,13 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
                                           context,
                                           scopedRef,
                                         ),
-                                    child: PlayerTourScreen(),
+                                    child:
+                                        combinedSelected
+                                            ? const CombinedStandingsScreen(
+                                              view:
+                                                  CombinedStandingsView.players,
+                                            )
+                                            : PlayerTourScreen(),
                                   );
                               }
                             },

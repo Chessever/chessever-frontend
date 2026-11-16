@@ -99,6 +99,26 @@ final scoreCardPlayerProfileDataSourceProvider =
       (ref) => PlayerProfileDataSource.supabase,
     );
 
+/// The standings the open score card pages through and looks opponents up in:
+/// the selected category's, or, for a card opened from another category of a
+/// Combined event (a Combined standings row or game), that category's own.
+/// Without this a player of Group B could not be swiped from, and their
+/// opponents would open as bare names, whenever Group A was the one selected.
+final scoreCardStandingsProvider =
+    Provider.autoDispose<AsyncValue<List<PlayerStandingModel>>>((ref) {
+      final gamesContext = ref.watch(scoreCardGamesContextProvider);
+      final tourId =
+          gamesContext == null || gamesContext.isEmpty
+              ? ''
+              : gamesContext.first.tourId.trim();
+      if (tourId.isNotEmpty &&
+          ref.watch(selectedBroadcastModelProvider) != null &&
+          ref.watch(combinedOtherCategoryProvider(tourId))) {
+        return ref.watch(categoryStandingsProvider(tourId));
+      }
+      return ref.watch(playerTourScreenProvider);
+    });
+
 enum ScoreCardSwipeDirection { previous, next }
 
 /// The score card always hands the board an already-filtered player-game list.
@@ -274,7 +294,7 @@ class _ScoreCardScreenState extends ConsumerState<ScoreCardScreen> {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
 
-    final players = ref.watch(playerTourScreenProvider).valueOrNull;
+    final players = ref.watch(scoreCardStandingsProvider).valueOrNull;
 
     // No pageable list (e.g. favorites/countrymen single-player context) or a
     // player that isn't part of the current standings → static single card.
@@ -577,6 +597,19 @@ class _ScoreCardPage extends ConsumerWidget {
           return [];
         },
         error: (_, __) => [],
+      );
+    } else if (isOtherCombinedCategory) {
+      // The game's own category, with the other pages of a board-paginated
+      // tournament merged in, the way the merged provider above does it for
+      // the selected one.
+      final categoryGamesAsync = ref.watch(categoryGamesProvider(contextEvent));
+      allGames = categoryGamesAsync.when(
+        data: (games) => games.isNotEmpty ? games : (gamesContext ?? []),
+        loading: () {
+          isLoadingGames = true;
+          return gamesContext ?? [];
+        },
+        error: (_, __) => gamesContext ?? [],
       );
     } else if (shouldFetchFullEventGames) {
       // Non-broadcast event context (e.g. For You, Countryman) — these flows
@@ -1284,7 +1317,7 @@ class _ScoreCardPage extends ConsumerWidget {
     required PlayerCard opponent,
   }) {
     final standings =
-        ref.read(playerTourScreenProvider).valueOrNull ??
+        ref.read(scoreCardStandingsProvider).valueOrNull ??
         const <PlayerStandingModel>[];
     final target = scoreCardOpponentTarget(
       players: standings,

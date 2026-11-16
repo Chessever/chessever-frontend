@@ -3,6 +3,7 @@ import 'package:chessever2/screens/standings/player_standing_section_select.dart
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_screen_provider.dart';
 import 'package:chessever2/screens/standings/team_standing_model.dart';
 import 'package:chessever2/screens/standings/standings_search_text.dart';
+import 'package:chessever2/screens/tour_detail/combined/standings_category_scope.dart';
 import 'package:chessever2/screens/tour_detail/player_tour/player_tour_screen_provider.dart';
 import 'package:chessever2/screens/tour_detail/team_tour/team_space_shortcut.dart';
 import 'package:chessever2/screens/tour_detail/team_tour/team_tour_screen_provider.dart';
@@ -153,47 +154,9 @@ class _TeamList extends ConsumerWidget {
             }
 
             final team = data[index - (officialRound == null ? 0 : 1)];
-            // Per-row selector: toggling one team only rebuilds that row, not
-            // the whole (crest-heavy) list.
-            return Consumer(
-              builder: (context, ref, _) {
-                final isExpanded = ref.watch(
-                  expandedTeamsProvider.select(
-                    (s) => s.contains(team.teamName),
-                  ),
-                );
-                void openScorecard() {
-                  ref.read(selectedTeamProvider.notifier).state = team;
-                  Navigator.of(context).pushNamed('/team_scorecard_screen');
-                }
-
-                return FigmaTeamCard(
-                  key: ValueKey('team_standing_${team.teamName}'),
-                  team: team,
-                  rank: team.rank,
-                  isExpanded: isExpanded,
-                  onTeamTap: openScorecard,
-                  onToggle: () {
-                    final next = Set<String>.from(
-                      ref.read(expandedTeamsProvider),
-                    );
-                    if (!next.remove(team.teamName)) {
-                      next.add(team.teamName);
-                    }
-                    ref.read(expandedTeamsProvider.notifier).state = next;
-                  },
-                  // Header only: the menu measures and lifts the same box,
-                  // and the players and matchups below keep their gestures.
-                  wrapHeader: (header) => _TeamRowMenu(
-                    team: team,
-                    onOpen: openScorecard,
-                    child: header,
-                  ),
-                  expandedChildren: isExpanded
-                      ? [_TeamExpansion(team: team)]
-                      : const [],
-                );
-              },
+            return TeamStandingRow(
+              key: ValueKey('team_standing_${team.teamName}'),
+              team: team,
             );
           },
         );
@@ -204,7 +167,67 @@ class _TeamList extends ConsumerWidget {
           title: "Couldn't load team standings. Pull away and try again.",
         ),
       ),
-      loading: () => const _TeamStandingsLoading(),
+      loading: () => const TeamStandingsLoadingList(),
+    );
+  }
+}
+
+/// One team of a team standings table: the row, its long-press menu, and
+/// the players and matches it expands to.
+///
+/// Shared by the selected category's table and by the team sections of the
+/// Combined Standings tab. A section of another category sits under a
+/// [StandingsCategoryScope], which this row reads so the score card, the
+/// matches and the share link are that category's, not the selected one's.
+class TeamStandingRow extends ConsumerWidget {
+  const TeamStandingRow({super.key, required this.team});
+
+  final TeamStandingModel team;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final tourId = StandingsCategoryScope.tourIdOf(context);
+    // Two categories can field a team of the same name (Open and Women both
+    // have "India"); each folds on its own.
+    final expansionKey = tourId == null
+        ? team.teamName
+        : '$tourId\n${team.teamName}';
+    // Per-row selector: toggling one team only rebuilds that row, not the
+    // whole (crest-heavy) list.
+    final isExpanded = ref.watch(
+      expandedTeamsProvider.select((s) => s.contains(expansionKey)),
+    );
+    void openScorecard() {
+      ref.read(selectedTeamProvider.notifier).state = team;
+      ref.read(selectedTeamCategoryProvider.notifier).state = tourId == null
+          ? null
+          : (team: team, tourId: tourId);
+      Navigator.of(context).pushNamed('/team_scorecard_screen');
+    }
+
+    return FigmaTeamCard(
+      team: team,
+      rank: team.rank,
+      isExpanded: isExpanded,
+      onTeamTap: openScorecard,
+      onToggle: () {
+        final next = Set<String>.from(ref.read(expandedTeamsProvider));
+        if (!next.remove(expansionKey)) {
+          next.add(expansionKey);
+        }
+        ref.read(expandedTeamsProvider.notifier).state = next;
+      },
+      // Header only: the menu measures and lifts the same box, and the
+      // players and matchups below keep their gestures.
+      wrapHeader: (header) => _TeamRowMenu(
+        team: team,
+        tourId: tourId,
+        onOpen: openScorecard,
+        child: header,
+      ),
+      expandedChildren: isExpanded
+          ? [_TeamExpansion(team: team, tourId: tourId)]
+          : const [],
     );
   }
 }
@@ -220,11 +243,13 @@ class _TeamList extends ConsumerWidget {
 class _TeamRowMenu extends ConsumerWidget {
   const _TeamRowMenu({
     required this.team,
+    required this.tourId,
     required this.onOpen,
     required this.child,
   });
 
   final TeamStandingModel team;
+  final String? tourId;
   final VoidCallback onOpen;
   final Widget child;
 
@@ -235,6 +260,7 @@ class _TeamRowMenu extends ConsumerWidget {
         context: menuContext,
         ref: ref,
         teamName: team.teamName,
+        tourId: tourId,
         onOpen: onOpen,
       ),
       onPreviewTap: onOpen,
@@ -247,13 +273,22 @@ class _TeamRowMenu extends ConsumerWidget {
 /// then its round-by-round matchups (each round collapsible, collapsed by
 /// default).
 class _TeamExpansion extends ConsumerWidget {
-  const _TeamExpansion({required this.team});
+  const _TeamExpansion({required this.team, required this.tourId});
 
   final TeamStandingModel team;
+  final String? tourId;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final matches = ref.watch(teamMatchesFamilyProvider(team.teamName));
+    final categoryTourId = tourId;
+    final matches = categoryTourId == null
+        ? ref.watch(teamMatchesFamilyProvider(team.teamName))
+        : ref.watch(
+            categoryTeamMatchesProvider((
+              tourId: categoryTourId,
+              teamName: team.teamName,
+            )),
+          );
     return Padding(
       padding: EdgeInsets.fromLTRB(12.w, 6.h, 12.w, 12.h),
       child: Column(
@@ -287,8 +322,9 @@ class _TeamExpansion extends ConsumerWidget {
   }
 }
 
-class _TeamStandingsLoading extends StatelessWidget {
-  const _TeamStandingsLoading();
+/// Placeholder rows while a team table loads.
+class TeamStandingsLoadingList extends StatelessWidget {
+  const TeamStandingsLoadingList({super.key});
 
   @override
   Widget build(BuildContext context) {

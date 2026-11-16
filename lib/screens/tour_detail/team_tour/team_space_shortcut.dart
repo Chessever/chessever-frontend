@@ -40,16 +40,33 @@ String teamMenuLabelName(String teamName) {
 ///
 /// [nameInLabels] spells the team out in each label, for menus that carry
 /// two teams at once (a matchup header).
+///
+/// [tourId] names the team's category when it is not the selected one (a
+/// Combined standings row), so the shared link opens that category.
 List<LibraryMenuAction> teamMenuActions({
   required BuildContext context,
   required WidgetRef ref,
   required String teamName,
+  String? tourId,
   VoidCallback? onOpen,
   bool includeShare = true,
   bool nameInLabels = false,
 }) {
-  final about = ref.read(tourDetailScreenProvider).valueOrNull?.aboutTourModel;
-  final url = teamPageShareUrl(about: about, teamName: teamName);
+  final detail = ref.read(tourDetailScreenProvider).valueOrNull;
+  final category =
+      tourId == null
+          ? null
+          : detail?.tours
+              .where((model) => model.tour.id == tourId)
+              .firstOrNull
+              ?.tour;
+  final url =
+      category == null
+          ? teamPageShareUrl(about: detail?.aboutTourModel, teamName: teamName)
+          : teamPageShareUrl(
+            about: AboutTourModel.fromTour(category),
+            teamName: teamName,
+          );
   final label = teamMenuLabelName(teamName);
   return [
     if (onOpen != null)

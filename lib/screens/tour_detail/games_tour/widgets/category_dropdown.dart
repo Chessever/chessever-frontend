@@ -123,12 +123,9 @@ class CategoryDropdown extends ConsumerWidget {
     final groupName = ref.watch(
       selectedBroadcastModelProvider.select((broadcast) => broadcast?.name),
     );
-    // Combined is a Games-tab view: About and Standings keep naming the real
-    // category they describe, even while Games is combined.
-    final combinedSelected =
-        ref.watch(selectedTourModeProvider) ==
-            TournamentDetailScreenMode.games &&
-        ref.watch(combinedCategorySelectedProvider);
+    // Combined changes Games, Standings and Players. About and Bracket keep
+    // naming the real category they describe, even while those are combined.
+    final combinedSelected = ref.watch(combinedTabActiveProvider);
 
     return SizedBox(
       height: context.textExtent(38.h),
@@ -183,13 +180,13 @@ class CategoryDropdown extends ConsumerWidget {
               );
             },
             onCategoryChanged: (category) {
-              _leaveCombinedOnGamesTab(ref);
+              _leaveCombinedOnItsTabs(ref);
               ref
                   .read(tourDetailScreenProvider.notifier)
                   .updateSelection(category.tour.id);
             },
             onRoundChanged: (round) {
-              _leaveCombinedOnGamesTab(ref);
+              _leaveCombinedOnItsTabs(ref);
               // Select the round in the provider
               ref.read(gamesAppBarProvider.notifier).select(round);
               // Also trigger scroll directly from widget context (has correct scope)
@@ -218,16 +215,14 @@ class CategoryDropdown extends ConsumerWidget {
     );
   }
 
-  /// Picking a real category or one of its rounds on the Games tab leaves
-  /// Combined. On the other tabs the pick only changes which category they
-  /// describe, and Games stays combined.
-  void _leaveCombinedOnGamesTab(WidgetRef ref) {
-    if (ref.read(selectedTourModeProvider) !=
-        TournamentDetailScreenMode.games) {
-      return;
-    }
+  /// Picking a real category or one of its rounds on a tab Combined changes
+  /// (Games, Standings, Players) leaves Combined: the reader asked that tab
+  /// for one category. On About and Bracket the pick only changes which
+  /// category they describe, and the other tabs stay combined.
+  void _leaveCombinedOnItsTabs(WidgetRef ref) {
+    if (!ref.read(combinedTabActiveProvider)) return;
     final groupId = ref.read(combinedCategoryGroupIdProvider);
-    if (groupId == null || !ref.read(combinedCategorySelectedProvider)) return;
+    if (groupId == null) return;
     unawaited(closeCombinedCategory(ref, groupId));
   }
 }
@@ -1001,10 +996,7 @@ class _DropdownOverlay extends ConsumerWidget {
     // Combined, read live like the rest: it turns on after a purchase made
     // from this very dropdown.
     final combinedCategories = ref.watch(combinedCategoriesProvider);
-    final combinedSelected =
-        ref.watch(selectedTourModeProvider) ==
-            TournamentDetailScreenMode.games &&
-        ref.watch(combinedCategorySelectedProvider);
+    final combinedSelected = ref.watch(combinedTabActiveProvider);
     final combinedLocked = !ref.watch(combinedCategoryEntitledProvider);
 
     // Wider dropdown for better readability - use available horizontal space

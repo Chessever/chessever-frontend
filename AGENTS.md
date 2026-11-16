@@ -344,6 +344,34 @@ with its tests.
   Pilot 2026 has Groups A-D, a Blitz Tiebreak that reuses "Round 1-9" the day
   before, and an organizer "Combined" mirror section.
 
+### Combined standings (phone only so far)
+
+Combined also changes the Standings tab, and a team event's Players tab
+(38.11.7, `combined/combined_standings.dart`). Desktop and chessever.com do
+not have this yet; when they get it, the rules below are the rule.
+
+- **Tables are never added up across categories.** Groups, Open/Women and
+  knockout stages are separate competitions, and a rapid plus blitz total
+  needs weights the feed does not carry. Each category keeps its own table,
+  ranked on its own, under a pinned header that folds it.
+- **Sections follow the picker's order** (`CombinedCategory.order`), not the
+  Games list's strongest-first order: Group A reads before Group B.
+- **Pages of one board-paginated tournament are one table** ("Boards 1-100",
+  "Boards 101-200"), as in the single-category tab. A team category shows its
+  team table on Standings and its players on Players. An organizer's mirror
+  section and a category with nothing to rank are left out.
+- **A row of a category other than the selected one must name its own.**
+  Most standings providers describe the selected tour. The Combined list
+  reads the `category*` families (`categoryStandingsProvider`,
+  `categoryTeamStandingsProvider`, `categoryTeamMatchesProvider`,
+  `categoryGamesProvider`) and wraps each section in `StandingsCategoryScope`,
+  which `openPlayerScoreCard` and `TeamStandingRow` look up. Anything new
+  opened from a standings row goes through them, or it comes up empty for
+  every category but one.
+- **A team opened from another category is scoped by identity**
+  (`selectedTeamCategoryProvider` holds the exact team it was set for). Open
+  and Women both field "India"; never match that scope by team name.
+
 ## Commits and delivery
 
 - Commit completed changes on `stable` after validation, including the required

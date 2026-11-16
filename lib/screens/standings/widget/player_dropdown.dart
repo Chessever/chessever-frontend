@@ -1,4 +1,3 @@
-import 'package:chessever2/screens/tour_detail/player_tour/player_tour_screen_provider.dart';
 import 'package:chessever2/screens/standings/player_standing_model.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_mode_provider.dart';
 import 'package:chessever2/theme/app_colors.dart';
@@ -42,7 +41,7 @@ class PlayerDropDown extends ConsumerWidget {
     return Container(
       constraints: BoxConstraints(minWidth: 200.w, maxWidth: double.infinity),
       child: ref
-          .watch(playerTourScreenProvider)
+          .watch(scoreCardStandingsProvider)
           .when(
             data: (players) => _PlayerDropdown(players: players),
             error:
