@@ -24,11 +24,28 @@ import {
 import { timezoneFromOneSignalUser } from "./user_timezone.ts";
 import { collectFavoriteMatches } from "./favorite_match.ts";
 import {
+  boardsForFavorite,
   coveredBoardsByUser,
   filterGameStartedPlayerRecipients,
   gameStartWindowFamily,
+  indexRoundBoards,
+  planRoundStartBoards,
+  type RoundBoard,
+  type RoundBoardRow,
+  splitRoundRecipients,
   usersCoveredForBoard,
 } from "./player_game_recipients.ts";
+import {
+  hasRepeatedPair,
+  headsUpBoardScope,
+  headsUpReaders,
+  isMatchPlayRound,
+  type KnockoutFacts,
+  knockoutFactsFromTour,
+  liveBoardIds,
+  readersWithLiveFavorite,
+  roundStartBoardScope,
+} from "./match_play.ts";
 import { chunk, packForUrlBudget } from "./postgrest_in.ts";
 import { pushImageUrl } from "./push_image.ts";
 import {
@@ -68,16 +85,7 @@ type GameRow = {
   last_clock_black: number | null;
 };
 
-type RoundGameRow = {
-  id: string;
-  player_white: string | null;
-  player_black: string | null;
-  player_fide_ids: number[] | null;
-  players: Record<string, unknown>[] | null;
-};
-
-/** One board of a round, used to word a per-game notification. */
-type RoundBoard = { white: string; black: string };
+type RoundGameRow = RoundBoardRow;
 
 type RoundRow = {
   id: string;
@@ -463,9 +471,37 @@ async function processItem(item: OutboxItem) {
       const rsTimeControl = await resolveGameTimeControl(
         buildTimeControlLookup(item, context),
       );
+      const roundId = item.round_id ?? context.round?.id ?? "";
+      // Match-play knockout round: only boards with a move that are not
+      // finished may be called live (plus the boards this row announced
+      // before a timeout), and a favorite counts only through such a board
+      // or one whose start push already reached the reader. A reader whose
+      // players' boards have no move yet is then an event star (event-level
+      // copy) or nobody; their player's board raises its own game_started at
+      // its first move. Null everywhere else.
+      const liveBoardScope = roundStartBoardScope(
+        context.matchPlay,
+        context.matchPlayLiveBoards,
+        readRoundStartProgress(item).boards_sent ?? [],
+      );
+      // Match-play reads the windows of every favorite reader first, so a
+      // reader already told about their player's board stays off the event
+      // path. Elsewhere they are read after the split, as before.
+      const matchPlayCovered = liveBoardScope
+        ? await fetchGameStartWindows(roundId, [...context.playerUserIds])
+        : null;
+      const roundStartPlayerUserIds = liveBoardScope
+        ? readersWithLiveFavorite(
+          context.playerUserIds,
+          context.playerFavoriteMap,
+          boardsForFavorite(context.playerGameIds),
+          liveBoardScope,
+          matchPlayCovered ?? new Map(),
+        )
+        : context.playerUserIds;
       const { playerRecipients, eventRecipients } = await filterRoundRecipients(
         context.eventUserIds,
-        context.playerUserIds,
+        roundStartPlayerUserIds,
         rsTimeControl,
       );
 
@@ -474,7 +510,6 @@ async function processItem(item: OutboxItem) {
         return { id: item.id, status: "skipped", reason: "no_recipients" };
       }
 
-      const roundId = item.round_id ?? context.round?.id ?? "";
       const eventName = context.displayEventName ?? context.eventName ??
         "Live chess";
       const roundName = context.round?.name ?? "";
@@ -483,10 +518,8 @@ async function processItem(item: OutboxItem) {
       // Boards a game_started row (or an earlier pass of this row) already
       // announced to each user. Only those boards are skipped for them: their
       // other favorites' boards in this round still go out.
-      const coveredBoards = await fetchGameStartWindows(
-        roundId,
-        playerRecipients,
-      );
+      const coveredBoards = matchPlayCovered ??
+        await fetchGameStartWindows(roundId, playerRecipients);
       const reachedPlayerRecipients = new Set<string>();
 
       // One notification PER BOARD for player-favorite users.
@@ -502,38 +535,15 @@ async function processItem(item: OutboxItem) {
       // Wording and payload match game_started exactly, so the same board reads
       // the same whichever row wins the race to dispatch it.
       if (playerRecipients.length > 0) {
-        const boardBatches = new Map<string, string[]>();
-        const unresolved: string[] = []; // no favorite board → event fallback
-
-        for (const userId of playerRecipients) {
-          const favNames = context.playerFavoriteMap.get(userId) ?? [];
-          const gameIds = new Set<string>();
-          for (const name of favNames) {
-            const boards = context.playerGameIds.get(playerBoardKey(name));
-            for (const gameId of boards ?? []) {
-              if (context.roundBoards.has(gameId)) gameIds.add(gameId);
-            }
-          }
-          const covered = coveredBoards.get(userId);
-
-          if (gameIds.size === 0) {
-            // A board alert already reached them this round (their favorite
-            // matched a board this index missed): the generic round
-            // template would only repeat it.
-            if (covered) continue;
-            unresolved.push(userId);
-            reachedPlayerRecipients.add(userId);
-            continue;
-          }
-
-          for (const gameId of gameIds) {
-            if (covered?.has(gameId)) continue;
-            reachedPlayerRecipients.add(userId);
-            const batch = boardBatches.get(gameId);
-            if (batch) batch.push(userId);
-            else boardBatches.set(gameId, [userId]);
-          }
-        }
+        const { boardBatches, unresolved, reached } = planRoundStartBoards({
+          playerRecipients,
+          favoriteNames: context.playerFavoriteMap,
+          playerGameIds: context.playerGameIds,
+          roundBoards: context.roundBoards,
+          liveBoardScope,
+          coveredBoards,
+        });
+        for (const userId of reached) reachedPlayerRecipients.add(userId);
 
         const progress = readRoundStartProgress(item);
         const sentBoards = new Set(progress.boards_sent ?? []);
@@ -637,6 +647,7 @@ async function processItem(item: OutboxItem) {
         id: item.id,
         status: "sent",
         recipients: reachedPlayerRecipients.size + eventRecipients.length,
+        ...(liveBoardScope ? { match_play: true } : {}),
       };
     }
 
@@ -651,10 +662,22 @@ async function processItem(item: OutboxItem) {
       const huTimeControl = await resolveGameTimeControl(
         buildTimeControlLookup(item, context),
       );
+      // Match-play knockout round of several matches: name only players of
+      // the matches starting now (match_play.ts headsUpBoardScope). SCC XI
+      // R16 named eight matches; one was played. A reader with no such
+      // favorite takes the event path when they star the event, and gets
+      // nothing otherwise. The very same set and names everywhere else,
+      // including a round of one match (EWC Grand Final).
+      const headsUp = headsUpReaders(
+        context.matchPlayHeadsUpBoards,
+        context.playerUserIds,
+        context.playerFavoriteMap,
+        boardsForFavorite(context.playerGameIds),
+      );
       const { playerRecipients, eventRecipients: headsUpEventRecipients } =
         await filterHeadsUpRecipients(
           context.eventUserIds,
-          context.playerUserIds,
+          headsUp.playerUserIds,
           leadMinutes,
           huTimeControl,
         );
@@ -690,7 +713,7 @@ async function processItem(item: OutboxItem) {
         const ungrouped: string[] = [];
 
         for (const uid of playerRecipients) {
-          const favs = context.playerFavoriteMap.get(uid) ?? [];
+          const favs = headsUp.favoriteNames.get(uid) ?? [];
           if (favs.length === 0) {
             ungrouped.push(uid);
             continue;
@@ -776,6 +799,7 @@ async function processItem(item: OutboxItem) {
         id: item.id,
         status: "sent",
         recipients: playerRecipients.length + eventRecipients.length,
+        ...(context.matchPlay ? { match_play: true } : {}),
       };
     }
 
@@ -1509,6 +1533,13 @@ async function buildContext(item: OutboxItem) {
 
   let playerGameIds = new Map<string, Set<string>>();
   let roundBoards = new Map<string, RoundBoard>();
+  // Match-play knockout round (match_play.ts). False everywhere else, and
+  // every branch that reads it keeps today's behaviour when it is false.
+  let matchPlay = false;
+  let matchPlayLiveBoards = new Set<string>();
+  // round_heads_up only: the boards whose players it may name; null names
+  // every favorite (today's behaviour).
+  let matchPlayHeadsUpBoards: Set<string> | null = null;
 
   if (
     (item.event_type === "round_started" ||
@@ -1524,6 +1555,37 @@ async function buildContext(item: OutboxItem) {
     }
     playerGameIds = roundPlayers.playerGameIds;
     roundBoards = roundPlayers.roundBoards;
+
+    // No extra query unless a pair repeats in the round.
+    if (roundPlayers.repeatedPair) {
+      const facts = await fetchKnockoutFacts(round?.tour_id ?? tourId);
+      matchPlay = isMatchPlayRound(
+        { ...facts, roundName: round?.name ?? null },
+        roundPlayers.rows,
+      );
+      if (matchPlay) {
+        matchPlayLiveBoards = liveBoardIds(roundPlayers.rows);
+        if (item.event_type === "round_heads_up") {
+          const startsAt = item.payload?.starts_at;
+          matchPlayHeadsUpBoards = headsUpBoardScope({
+            matchPlay,
+            boards: roundPlayers.rows,
+            roundId: item.round_id,
+            startsAt: typeof startsAt === "string"
+              ? startsAt
+              : round?.starts_at ?? null,
+            matchSchedule: facts.matchSchedule,
+          });
+        }
+        console.log(
+          `[onesignal-dispatch] match-play round ${item.round_id} (${item.event_type}): ${matchPlayLiveBoards.size} of ${roundBoards.size} paired boards live${
+            matchPlayHeadsUpBoards
+              ? `, heads-up names ${matchPlayHeadsUpBoards.size} boards`
+              : ""
+          }`,
+        );
+      }
+    }
   }
 
   const { eventUserIds, playerUserIds, playerFavoriteRows } =
@@ -1583,6 +1645,9 @@ async function buildContext(item: OutboxItem) {
     playerFavoriteMap,
     playerGameIds,
     roundBoards,
+    matchPlay,
+    matchPlayLiveBoards,
+    matchPlayHeadsUpBoards,
   };
 }
 
@@ -1689,73 +1754,51 @@ function sameInstant(a: unknown, b: string): boolean {
   return aTime === bTime;
 }
 
-/**
- * Key a player name for board lookup.
- *
- * The same player reaches us under two spellings: `games.player_white` /
- * `player_black` and the `name` inside the `players` JSONB. A favorite resolved
- * through fide_id carries the JSONB spelling, one resolved by name carries the
- * column spelling, so the board index must accept either.
- */
-function playerBoardKey(name: string): string {
-  return name.trim().toLowerCase();
-}
-
 async function fetchRoundPlayers(roundId: string) {
   const data = await fetchAllPages<RoundGameRow>(
     "Round players lookup",
     (from, to) =>
       supabase
         .from("games")
-        .select("id,player_white,player_black,player_fide_ids,players")
+        .select(
+          "id,player_white,player_black,player_fide_ids,players,status,last_move,last_move_time,date_start",
+        )
         .eq("round_id", roundId)
         .order("id")
         .range(from, to),
   );
 
-  const playerNames = new Set<string>();
-  const fideIds = new Set<string>();
-  // name → the boards that player sits at this round. A Set of game ids (not a
-  // single id) because a knockout round can pair the same player twice.
-  const playerGameIds = new Map<string, Set<string>>();
-  const roundBoards = new Map<string, RoundBoard>();
-
-  for (const row of (data ?? []) as RoundGameRow[]) {
-    if (row.player_white) playerNames.add(row.player_white);
-    if (row.player_black) playerNames.add(row.player_black);
-    for (const id of row.player_fide_ids ?? []) {
-      fideIds.add(id.toString());
-    }
-
-    // Only a fully-paired board can be worded as "White vs Black is live."
-    if (!row.id || !row.player_white || !row.player_black) continue;
-    roundBoards.set(row.id, {
-      white: row.player_white,
-      black: row.player_black,
-    });
-
-    const boardNames = [row.player_white, row.player_black];
-    if (Array.isArray(row.players)) {
-      for (const p of row.players) {
-        const name = (p?.name as string | undefined) ?? null;
-        if (name) boardNames.push(name);
-      }
-    }
-    for (const name of boardNames) {
-      const key = playerBoardKey(name);
-      if (!key) continue;
-      const existing = playerGameIds.get(key);
-      if (existing) existing.add(row.id);
-      else playerGameIds.set(key, new Set([row.id]));
-    }
-  }
-
+  const rows = (data ?? []) as RoundGameRow[];
   return {
-    playerNames: Array.from(playerNames),
-    fideIds: Array.from(fideIds),
-    playerGameIds,
-    roundBoards,
+    ...indexRoundBoards(rows),
+    // Read by the match-play gate only (match_play.ts).
+    rows,
+    repeatedPair: hasRepeatedPair(rows),
   };
+}
+
+/**
+ * The tour facts the match-play gate reads (format, team signals, names,
+ * `info.matchSchedule`), read only for a round where a pair repeats.
+ */
+async function fetchKnockoutFacts(
+  tourId: string | null,
+): Promise<KnockoutFacts & { matchSchedule: unknown }> {
+  if (!tourId) return knockoutFactsFromTour(null);
+  // Fails loud like every context lookup: answering "not match-play" on a
+  // dropped stream would send the very pushes this gate exists to stop.
+  const tour = await runQuery<
+    { name: unknown; info: unknown; players: unknown }
+  >(
+    "Tour format lookup",
+    () =>
+      supabase
+        .from("tours")
+        .select("name,info,players")
+        .eq("id", tourId)
+        .maybeSingle(),
+  );
+  return knockoutFactsFromTour(tour);
 }
 
 /** Calendar-card favorite id: cal_event_<sanitized name> (matches Flutter). */
@@ -2241,53 +2284,12 @@ async function filterRoundRecipients(
       "se_classical,se_rapid,se_blitz",
   );
 
-  const playerRecipients = new Set<string>();
-  const eventRecipients = new Set<string>();
-
-  for (const userId of ids) {
-    const prefs = prefsMap.get(userId);
-    if (prefs && prefs.push_enabled === false) continue;
-
-    const isPlayerFav = playerUserIds.has(userId);
-    const isEventFav = eventUserIds.has(userId);
-    const playerAllowed = !prefs || prefs.favorite_player_alerts !== false;
-    const eventAllowed = !prefs || prefs.favorite_event_alerts !== false;
-
-    // Category-specific time-control gate.
-    if (gameTimeControl && prefs) {
-      const tc = gameTimeControl;
-      if (isPlayerFav && playerAllowed && prefs[`fp_${tc}`] === false) {
-        // This player-fav user has blocked this time control — demote to event
-        // recipient only if they also star the event, otherwise skip entirely.
-        if (!isEventFav || !eventAllowed || prefs[`se_${tc}`] === false) {
-          continue;
-        }
-        // Falls through to event-recipient branch below.
-        eventRecipients.add(userId);
-        continue;
-      }
-      if (
-        isEventFav && !isPlayerFav && eventAllowed &&
-        prefs[`se_${tc}`] === false
-      ) {
-        continue;
-      }
-    }
-
-    if (isPlayerFav && playerAllowed) {
-      playerRecipients.add(userId);
-      continue;
-    }
-
-    if (isEventFav && eventAllowed && !playerRecipients.has(userId)) {
-      eventRecipients.add(userId);
-    }
-  }
-
-  return {
-    playerRecipients: Array.from(playerRecipients),
-    eventRecipients: Array.from(eventRecipients),
-  };
+  return splitRoundRecipients(
+    eventUserIds,
+    playerUserIds,
+    prefsMap,
+    gameTimeControl,
+  );
 }
 
 async function fetchMutedUserIds(

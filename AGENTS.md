@@ -186,6 +186,15 @@ chessever_frontend_desktop_oss/scripts/which_repo_owns_function.sh <slug>
 
 `onesignal-dispatch`, `fetch-fide-photo-webp` and `revenuecat-webhook` have stale copies in other repos. Deploying from the wrong one rolls production back — it happened on 2026-08-26 and reverted an auth check to a version that accepted any request with no token header. This repo is the source of truth for the notification, RevenueCat and photo functions.
 
+## Notifications in match-play knockout rounds
+
+A match-play round is a round of a player knockout in which one unordered pair (FIDE ids, else names with titles stripped; "TBD" and "Winner of ..." never pair) has 2+ games. Speed Chess Championship puts every match of a stage in one round and plays one match a day, with 0-move `*` shells for games not played yet. The gate is `supabase/functions/onesignal-dispatch/match_play.ts`, tests in `match_play_test.ts`; every other round behaves as before.
+
+- **Knockout, as the app decides it.** Never a team event (`resolveIsTeamEvent` precedence: `teamTable`, an official team table, a `team` token, or with no `player` token a teamed roster or team matches; boards that only pair teammates are never team). Never a Swiss, round-robin or league format. Then a format that says knockout or elimination, or, unless the format names a match, a round or tour name with an elimination stage (EWC Play-in, China Chess King: format null).
+- **`round_started`** announces only boards with a move that are not finished. A favorite counts only through such a board, or one whose start push already reached the reader (they stay on the board path, which skips it); the rest are event stars (event-level copy) or nobody, never the event-template fallback. Each later board gets its own `game_started` at its first move.
+- **`round_heads_up`** names every favorite when the round holds one match (EWC Grand Final, Dutch final tiebreak). With several matches it names only the matches `tours.info.matchSchedule` lists at this start, nobody when the shells were published two or more days ahead (2+ matches), and every favorite otherwise (same-day stages).
+- **Known limit, by the rule:** a stage published with game 1 of each match only is not match-play until a game 2 is in the round, so `round_started` keeps the old fan-out for it. Pinned in `match_play_test.ts`.
+
 ## Games liked or saved while live finish on the server
 
 A like, or a save to a database, copies the game into
@@ -421,15 +430,9 @@ also app.chessever.com) and notifications. Change one, change all.
   open only while a match-play match in it is unplayed or being played, and
   then merges only those matches' boards; a stale shell beside a decided match
   stays hidden (`namedPairingPolicyForKnockoutStage`).
-- **Notifications** (`onesignal-dispatch`, `match_play_round.ts`; the event is
-  a knockout when `tours.info->>format` says knockout/knock-out/elimination).
-  In a match-play round a 0-move board is not live: `round_started` words only
-  boards with a move or a result, and a user whose favourites sit only at
-  0-move boards gets nothing until that board's own `game_started`.
-  `round_heads_up` sends the event copy with no player names. TODO: not
-  deployed as of 2026-11-16; production follows only once `onesignal-dispatch`
-  is deployed from a commit with `match_play_round.ts` (`--no-verify-jwt`,
-  then `check_edge_function_auth.sh`).
+- **Notifications** follow the same rule in `onesignal-dispatch`: see
+  "Notifications in match-play knockout rounds" below (`match_play.ts`). A
+  0-move board is never announced as live.
 
 ## Commits and delivery
 
