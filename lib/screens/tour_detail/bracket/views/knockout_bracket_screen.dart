@@ -263,7 +263,14 @@ class _KnockoutBracketScreenState extends ConsumerState<KnockoutBracketScreen>
             .clamp(0.78, 1.0)
             .toDouble();
     final target = _matrixForSceneCenter(
-      focusRect.center,
+      readableStageCameraCenter(
+        focusRect: focusRect,
+        headerRect: layout.stageHeaderRects[stage.key],
+        viewport: _viewportSize,
+        scale: readableScale,
+        // Keep the header clear of the partial-bracket note pinned on top.
+        topInset: (_bracket?.isPartial ?? false) ? 60 : 12,
+      ),
       scale: readableScale,
     );
     if (mounted) {

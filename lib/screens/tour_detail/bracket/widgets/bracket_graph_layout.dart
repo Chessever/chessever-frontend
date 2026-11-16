@@ -58,6 +58,29 @@ class BracketGraphLayout {
   }
 }
 
+/// Scene point to put at the viewport center when opening on [focusRect].
+///
+/// Centering on a card near the top of its column used to leave a band of
+/// empty canvas above the stage header (the live first-round match sat in
+/// the middle of the screen). When centering would push the header below
+/// [topInset], the camera moves down until the header sits at [topInset];
+/// targets deeper in a column already put the header above the screen and
+/// keep their center.
+Offset readableStageCameraCenter({
+  required Rect focusRect,
+  required Rect? headerRect,
+  required Size viewport,
+  required double scale,
+  double topInset = 12,
+}) {
+  final center = focusRect.center;
+  if (headerRect == null || scale <= 0 || viewport.isEmpty) return center;
+  final minimumCenterY =
+      headerRect.top + (viewport.height / 2 - topInset) / scale;
+  if (center.dy >= minimumCenterY) return center;
+  return Offset(center.dx, minimumCenterY);
+}
+
 /// Places stage columns and match cards without inferring any missing edges.
 ///
 /// The first column is distributed evenly. A later card is aligned to the

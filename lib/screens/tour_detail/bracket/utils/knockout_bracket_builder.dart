@@ -7,6 +7,7 @@ import 'package:chessever2/screens/tour_detail/bracket/models/knockout_bracket.d
 import 'package:chessever2/screens/tour_detail/bracket/utils/bracket_game_result.dart';
 import 'package:chessever2/screens/tour_detail/bracket/utils/knockout_stage_parser.dart';
 import 'package:chessever2/utils/broadcast_custom_scoring.dart';
+import 'package:flutter/foundation.dart';
 
 KnockoutBracket buildKnockoutBracket({
   required Tour selectedTour,
@@ -431,15 +432,32 @@ _MatchBuildResult _buildMatches(
     grouped.putIfAbsent(matchup, () => []).add(game);
   }
 
+  // Match-play (Speed Chess Championship): every match of the stage is one
+  // round of many games, played on different days. Unplayed games carry a
+  // placeholder date until their first move, and a 0-move game in a live
+  // round is not being played. Such a match is ordered by game, and is live
+  // only while one of its games is in play. A pairing qualifies when it has
+  // two games in one round; the whole stage does when most of its pairings
+  // do, so one duplicated row elsewhere never changes an ordinary stage.
+  final matchPlayPairs = grouped.values.where(_hasRepeatedGamesInOneRound);
+  final stageIsMatchPlay =
+      grouped.length > 1 && matchPlayPairs.length * 2 > grouped.length;
+
   final matches = <KnockoutMatch>[];
   final firstFeedOrderByMatchKey = <String, int>{};
   for (final matchGames in grouped.values) {
+    final isMatchPlay =
+        stageIsMatchPlay || _hasRepeatedGamesInOneRound(matchGames);
     matchGames.sort((a, b) {
       final round = (roundOrder[a.roundId] ?? 1 << 30).compareTo(
         roundOrder[b.roundId] ?? 1 << 30,
       );
       if (round != 0) return round;
-      final date = _gameDate(a).compareTo(_gameDate(b));
+      if (isMatchPlay) {
+        final order = compareMatchPlayGames(a, b);
+        if (order != 0) return order;
+      }
+      final date = isMatchPlay ? 0 : _gameDate(a).compareTo(_gameDate(b));
       if (date != 0) return date;
       final board = (a.boardNr ?? 1 << 30).compareTo(b.boardNr ?? 1 << 30);
       if (board != 0) return board;
@@ -460,9 +478,11 @@ _MatchBuildResult _buildMatches(
       // Stale tour/round live markers must never paint a decided game as live.
       isLive |=
           result == BracketGameResult.undecided &&
-          ((allowTourLevelLive && liveTourIds.contains(game.tourId)) ||
-              liveRoundIds.contains(game.roundId) ||
-              (game.lastMove != null && game.lastMove!.isNotEmpty));
+          (isMatchPlay
+              ? _hasPlayedMove(game)
+              : ((allowTourLevelLive && liveTourIds.contains(game.tourId)) ||
+                  liveRoundIds.contains(game.roundId) ||
+                  (game.lastMove != null && game.lastMove!.isNotEmpty)));
       if (result == BracketGameResult.undecided) continue;
 
       final whiteId = registry.idFor(game.players![0]);
@@ -651,6 +671,86 @@ _EdgeInferenceResult _inferEdges(List<KnockoutStage> stages) {
 bool _isAmbiguousStage(KnockoutStage stage) =>
     stage.key.endsWith(':other-pairings') ||
     stage.label.toLowerCase() == 'other pairings';
+
+bool _hasRepeatedGamesInOneRound(List<Games> matchGames) {
+  final seenRounds = <String>{};
+  for (final game in matchGames) {
+    if (!seenRounds.add(game.roundId)) return true;
+  }
+  return false;
+}
+
+// The feed stamps last_move / last_move_time on the first move; a start
+// position is not evidence (Chess960 and set-up games start elsewhere).
+bool _hasPlayedMove(Games game) =>
+    game.lastMove?.trim().isNotEmpty == true || game.lastMoveTime != null;
+
+/// Order of two games of one match-play match.
+///
+/// The PGN `[Round]` game index decides when both games carry it. Rated
+/// finished rows arrive without their PGN (the index preview omits it), so
+/// otherwise a game that was played or decided comes before an unplayed
+/// shell, played games go by their last move, and the caller's board order
+/// settles the rest. Dates are never used: shells carry a placeholder day.
+@visibleForTesting
+int compareMatchPlayGames(Games a, Games b) {
+  final aIndex = _gameIndexParts(a.pgn);
+  final bIndex = _gameIndexParts(b.pgn);
+  if (aIndex != null && bIndex != null) {
+    final index = _compareIndexParts(aIndex, bIndex);
+    if (index != 0) return index;
+  }
+  final aPlayed =
+      _hasPlayedMove(a) || bracketGameResult(a) != BracketGameResult.undecided;
+  final bPlayed =
+      _hasPlayedMove(b) || bracketGameResult(b) != BracketGameResult.undecided;
+  if (aPlayed != bPlayed) return aPlayed ? -1 : 1;
+  final aTime = a.lastMoveTime;
+  final bTime = b.lastMoveTime;
+  if (aPlayed && aTime != null && bTime != null) return aTime.compareTo(bTime);
+  return 0;
+}
+
+final _pgnRoundTag = RegExp(r'\[Round\s+"([^"]*)"\]');
+
+/// Game order from two PGN `[Round]` tags: "01.02" is game 2 of stage 1,
+/// "1.2.3" game 3 of set 2. A row without a numeric tag sorts after one with
+/// it. Board numbers are not used: the feed renumbers them.
+@visibleForTesting
+int compareMatchPlayGameIndex(String? leftPgn, String? rightPgn) {
+  final left = _gameIndexParts(leftPgn);
+  final right = _gameIndexParts(rightPgn);
+  if (left == null || right == null) {
+    if (left == null && right == null) return 0;
+    return left == null ? 1 : -1;
+  }
+  return _compareIndexParts(left, right);
+}
+
+int _compareIndexParts(List<int> left, List<int> right) {
+  for (var i = 0; i < math.max(left.length, right.length); i++) {
+    final a = i < left.length ? left[i] : -1;
+    final b = i < right.length ? right[i] : -1;
+    if (a != b) return a.compareTo(b);
+  }
+  return 0;
+}
+
+List<int>? _gameIndexParts(String? pgn) {
+  if (pgn == null) return null;
+  final tag = _pgnRoundTag.firstMatch(pgn)?.group(1)?.trim();
+  if (tag == null || tag.isEmpty) return null;
+  final parts = tag.split('.');
+  if (parts.length < 2) return null;
+  final numbers = <int>[];
+  // The first part is the stage, shared by every game of the round.
+  for (final part in parts.skip(1)) {
+    final value = int.tryParse(part.trim());
+    if (value == null) return null;
+    numbers.add(value);
+  }
+  return numbers;
+}
 
 KnockoutStageState _stageState(
   List<KnockoutMatch> matches, {
