@@ -199,6 +199,18 @@ final gamesTourGroupedProvider = Provider.autoDispose<GroupedGamesData>((ref) {
             case final reference?)
           round.id: reference,
   };
+  // The synthetic stage row a selected-tour game belongs to.
+  String? stageRoundIdFor(GamesTourModel game) {
+    for (final stage in rounds) {
+      if (stage.sourceRoundIds.contains(game.roundId)) return stage.id;
+    }
+    // Compatibility fallback for cached/legacy synthetic models that do not
+    // yet carry their source round ids.
+    return tourId == null
+        ? null
+        : roundSlugStageRoundId(tourId, game.roundSlug);
+  }
+
   final hasSiblingStageTours = stageReferences.values.any(
     (reference) => reference.isSiblingTour,
   );
@@ -252,18 +264,7 @@ final gamesTourGroupedProvider = Provider.autoDispose<GroupedGamesData>((ref) {
     }
   } else if (isMultiStageKnockout) {
     for (final game in allGamesScreenModel) {
-      String? roundId;
-      for (final stage in rounds) {
-        if (stage.sourceRoundIds.contains(game.roundId)) {
-          roundId = stage.id;
-          break;
-        }
-      }
-      // Compatibility fallback for cached/legacy synthetic models that do not
-      // yet carry their source round ids.
-      if (roundId == null && tourId != null) {
-        roundId = roundSlugStageRoundId(tourId, game.roundSlug);
-      }
+      final roundId = stageRoundIdFor(game);
       if (roundId != null && gamesByRound.containsKey(roundId)) {
         addGameToRound(roundId, game);
       }
@@ -290,10 +291,36 @@ final gamesTourGroupedProvider = Provider.autoDispose<GroupedGamesData>((ref) {
   // started — and a round with no moves yet would vanish entirely. Merge
   // resolved names into every open round, and mark the round pairing-only
   // only while it still has no played boards. Completed rounds are left
-  // alone, "?" placeholders stay hidden, and multi-stage knockouts keep their
-  // synthetic stage ids. Same contract as the desktop Games view.
+  // alone, "?" placeholders stay hidden, and multi-stage knockouts match
+  // pairings to their synthetic stage row through its source rounds. Same
+  // contract as the desktop Games view.
   final upcomingPairingRoundIds = <String>{};
-  if (!isMultiStageKnockout) {
+  if (isMultiStageKnockout) {
+    // Sibling-tour stages already list every selected-tour game unfiltered.
+    if (!hasSiblingStageTours) {
+      for (final round in rounds) {
+        ensureRoundEntry(round.id);
+        final merge = resolveNamedPairingsForRound(
+          roundStatus: round.roundStatus,
+          allGames: allGamesScreenModel,
+          roundId: round.id,
+          knownRoundIds: const <String>{},
+          defaultRoundId: null,
+          alreadyVisibleGameIds: seenGameIdsPerRound[round.id]!,
+          includeGame: (_) => true,
+          belongsToRound: (game) => stageRoundIdFor(game) == round.id,
+        );
+        for (final game in merge.gamesToAdd) {
+          if (seenGameIdsPerRound[round.id]!.add(game.gameId)) {
+            gamesByRound[round.id]!.add(game);
+          }
+        }
+        if (merge.markAsPairingOnly) {
+          upcomingPairingRoundIds.add(round.id);
+        }
+      }
+    }
+  } else {
     final roundIds = {for (final round in rounds) round.id};
     final defaultRoundId = rounds.firstOrNull?.id;
     for (final round in rounds) {
@@ -624,6 +651,7 @@ NamedPairingMerge resolveNamedPairingsForRound({
   required String? defaultRoundId,
   required Set<String> alreadyVisibleGameIds,
   required bool Function(GamesTourModel game) includeGame,
+  bool Function(GamesTourModel game)? belongsToRound,
 }) {
   if (roundStatus == RoundStatus.completed) {
     return const NamedPairingMerge(gamesToAdd: [], markAsPairingOnly: false);
@@ -634,12 +662,13 @@ NamedPairingMerge resolveNamedPairingsForRound({
       allGames
           .where(
             (game) =>
-                pairingBelongsToRound(
-                  game: game,
-                  roundId: roundId,
-                  knownRoundIds: knownRoundIds,
-                  defaultRoundId: defaultRoundId,
-                ) &&
+                (belongsToRound?.call(game) ??
+                    pairingBelongsToRound(
+                      game: game,
+                      roundId: roundId,
+                      knownRoundIds: knownRoundIds,
+                      defaultRoundId: defaultRoundId,
+                    )) &&
                 includeGame(game) &&
                 _hasResolvedPlayer(game.whitePlayer) &&
                 _hasResolvedPlayer(game.blackPlayer),

@@ -176,6 +176,34 @@ void main() {
       expect(merge.gamesToAdd, isEmpty);
       expect(merge.markAsPairingOnly, isFalse);
     });
+
+    test(
+      'a knockout stage row keeps the named boards of its source rounds',
+      () {
+        // Speed Chess Championship: the stage row is synthetic, so the boards'
+        // own round id never equals it; membership comes from the stage.
+        final merge = resolveNamedPairingsForRound(
+          roundStatus: RoundStatus.upcoming,
+          allGames: [
+            _game(
+              id: 'r16-1',
+              whiteName: 'Nakamura, Hikaru',
+              blackName: 'Erdogmus, Yagiz Kaan',
+              fen: _initialFen,
+            ),
+          ],
+          roundId: 'knockout-stage-tour-1-r16',
+          knownRoundIds: const <String>{},
+          defaultRoundId: null,
+          alreadyVisibleGameIds: <String>{},
+          includeGame: (_) => true,
+          belongsToRound: (game) => game.roundId == 'round-8',
+        );
+
+        expect(merge.markAsPairingOnly, isTrue);
+        expect(merge.gamesToAdd.map((game) => game.gameId), ['r16-1']);
+      },
+    );
   });
 }
 
