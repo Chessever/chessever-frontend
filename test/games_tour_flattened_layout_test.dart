@@ -454,6 +454,40 @@ void main() {
               .toList();
       expect(matchupOrder, ['live', 'finished']);
     });
+
+    // Total Chess semifinals between Game 5 and Game 6: every match plays one
+    // board in each "Game N" round. The match that finished last
+    // (Mishra-Vaishali, a lower board) jumped to the top.
+    test('matches played side by side keep board order between games', () {
+      final stage = _round('knockout-stage-semifinals', RoundStatus.live);
+      final day = DateTime.utc(2026, 11, 17, 14);
+      final games = [
+        for (final (offset, board, finishedAt) in [
+          (0, 1, day.add(const Duration(minutes: 30))),
+          (100, 2, day.add(const Duration(minutes: 50))),
+        ])
+          for (final n in [1, 2])
+            _game(
+              'b$board-g$n',
+              slug: 'game-$n',
+              roundId: 'r-game-$n',
+              identityOffset: offset,
+              boardNr: board,
+              reverseColors: n.isEven,
+              status: GameStatus.draw,
+              lastMove: 'e2e4',
+              lastMoveTime: finishedAt.add(Duration(hours: n)),
+            ),
+      ];
+
+      final layout = _layout(rounds: [stage], gamesByRound: {stage.id: games});
+      final headers = [
+        for (final entry
+            in layout.entries.whereType<GamesTourMatchHeaderEntry>())
+          entry.matchHeader.player1,
+      ];
+      expect(headers, ['GM Alpha Player 0', 'GM Alpha Player 100']);
+    });
   });
 
   // Production fixture: Speed Chess Championship XI, Round of 16, round
@@ -1240,6 +1274,7 @@ GamesTourModel _game(
   String? roundId,
   DateTime? lastMoveTime,
   String? lastMove,
+  int? boardNr,
 }) {
   final alpha = _player(
     'GM Alpha Player $identityOffset',
@@ -1265,6 +1300,7 @@ GamesTourModel _game(
     roundId: roundId ?? slug,
     roundSlug: slug,
     tourId: 'tour',
+    boardNr: boardNr,
     lastMoveTime: lastMoveTime,
     lastMove: lastMove,
   );

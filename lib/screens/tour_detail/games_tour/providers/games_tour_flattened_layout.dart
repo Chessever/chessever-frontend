@@ -460,12 +460,28 @@ Map<String, List<GamesTourModel>> _orderMatchesByRecencyDesc(
     return lowest;
   }
 
+  // Matches played side by side share source rounds (Total Chess: every
+  // "Game N" round holds one board of each match). They keep bracket order
+  // whatever their state; ordering them by latest finish put whichever match
+  // ended last on top between games.
+  final matchKeysByRound = <String, Set<String>>{};
+  for (final entry in matches.entries) {
+    for (final game in entry.value) {
+      matchKeysByRound.putIfAbsent(game.roundId, () => <String>{}).add(
+        entry.key,
+      );
+    }
+  }
+  final playedSideBySide = matchKeysByRound.values.any(
+    (keys) => keys.length > 1,
+  );
+
   final entries =
       matches.entries.toList()..sort((a, b) {
         final aLive = hasLiveBoardByKey[a.key]!;
         final bLive = hasLiveBoardByKey[b.key]!;
         if (aLive != bLive) return aLive ? -1 : 1;
-        if (aLive) {
+        if (aLive || playedSideBySide) {
           // Matches played at once keep bracket order; ordering them by
           // their last move would swap them on every move.
           final byBoard = firstBoard(a.value).compareTo(firstBoard(b.value));
