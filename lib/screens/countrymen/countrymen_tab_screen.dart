@@ -4,7 +4,6 @@ import 'package:chessever2/screens/countrymen/tabs/countrymen_events_tab.dart';
 import 'package:chessever2/screens/countrymen/tabs/countrymen_games_tab.dart';
 import 'package:chessever2/screens/countrymen/tabs/countrymen_players_tab.dart';
 import 'package:chessever2/theme/app_colors.dart';
-import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/favorite_player_identity.dart'
@@ -178,14 +177,8 @@ class _CountrymenTabScreenState extends ConsumerState<CountrymenTabScreen> {
   @override
   Widget build(BuildContext context) {
     final selectedMode = ref.watch(selectedCountrymenModeProvider);
-    final persistedCountryAsync = ref.watch(countryDropdownProvider);
-    final tempCountry = ref.watch(temporaryCountryProvider);
-
-    // Effective country: temporary selection takes precedence
-    final effectiveCountryAsync =
-        tempCountry != null
-            ? AsyncValue.data(tempCountry)
-            : persistedCountryAsync;
+    // Effective country: a temporary selection takes precedence.
+    final effectiveCountryAsync = ref.watch(effectiveCountryProvider);
 
     return Scaffold(
       backgroundColor: context.colors.background,
@@ -236,124 +229,165 @@ class _CountrymenTabScreenState extends ConsumerState<CountrymenTabScreen> {
     );
   }
 
+  /// Below this row width the Games controls take the Pin out of the row: it
+  /// leads the country menu instead, so the country name keeps the room.
+  static const double _inlinePinMinRowWidth = 480;
+
   Widget _buildAppBar(
     BuildContext context,
     AsyncValue<Country> countryAsync,
     CountrymenScreenMode selectedMode,
   ) {
     final isTemporary = _isTemporarySelection();
+    final country = countryAsync.valueOrNull;
+    final showGamesControls = selectedMode == CountrymenScreenMode.games;
 
     return Padding(
       padding: EdgeInsets.symmetric(horizontal: 12.w),
-      child: Row(
-        children: [
-          // Back button
-          GestureDetector(
-            onTap: _handleBackPressed,
-            child: Container(
-              width: 36.w,
-              height: 36.h,
-              decoration: BoxDecoration(
-                color: context.colors.surface,
-                borderRadius: BorderRadius.circular(8.br),
-              ),
-              child: Icon(
-                Icons.arrow_back_ios_new_outlined,
-                size: 18.ic,
-                color: context.colors.textPrimary,
-              ),
-            ),
-          ),
-          SizedBox(width: 10.w),
-          // Country dropdown - flexible but not full width
-          Expanded(
-            child: countryAsync.when(
-              data: (country) => _buildCountrySelector(country),
-              loading:
-                  () => Container(
-                    height: 36.h,
-                    padding: EdgeInsets.symmetric(horizontal: 12.w),
-                    decoration: BoxDecoration(
-                      color: context.colors.surface,
-                      borderRadius: BorderRadius.circular(8.br),
-                    ),
-                    child: Center(
-                      child: Text(
-                        'Loading...',
-                        style: AppTypography.textSmMedium.copyWith(
-                          color: context.colors.textPrimaryMuted,
-                        ),
-                      ),
-                    ),
-                  ),
-              error:
-                  (_, __) => Container(
-                    height: 36.h,
-                    padding: EdgeInsets.symmetric(horizontal: 12.w),
-                    decoration: BoxDecoration(
-                      color: context.colors.surface,
-                      borderRadius: BorderRadius.circular(8.br),
-                    ),
-                    child: Center(
-                      child: Text(
-                        'Error',
-                        style: AppTypography.textSmMedium.copyWith(
-                          color: context.colors.danger,
-                        ),
-                      ),
-                    ),
-                  ),
-            ),
-          ),
-          SizedBox(width: 10.w),
-          // Pin button - only show when there's a temporary selection
-          countryAsync.maybeWhen(
-            data:
-                (_) =>
-                    isTemporary
-                        ? GestureDetector(
-                          onTap: _pinCurrentCountry,
-                          child: Container(
-                            height: 36.h,
-                            padding: EdgeInsets.symmetric(horizontal: 10.w),
-                            decoration: BoxDecoration(
-                              color: kPrimaryColor.withValues(alpha: 0.15),
-                              borderRadius: BorderRadius.circular(8.br),
-                              border: Border.all(
-                                color: context.colors.accentText.withValues(
-                                  alpha: 0.3,
-                                ),
-                                width: 1,
-                              ),
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(
-                                  Icons.push_pin_rounded,
-                                  size: 14.ic,
-                                  color: context.colors.accentText,
-                                ),
-                                SizedBox(width: 4.w),
-                                Text(
-                                  'Pin',
-                                  style: AppTypography.textXsMedium.copyWith(
-                                    color: context.colors.accentText,
-                                  ),
-                                ),
-                              ],
-                            ),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final pinInMenu =
+              showGamesControls && constraints.maxWidth < _inlinePinMinRowWidth;
+          return ConstrainedBox(
+            // The Games controls are 44 tall; holding that height in every
+            // mode keeps the page from jumping when the mode changes.
+            constraints: const BoxConstraints(minHeight: 44),
+            child: Row(
+              children: [
+                _buildBackButton(context),
+                SizedBox(width: 4.w),
+                // The picker hugs its flag and name, with the Pin beside it
+                // when the row has room; short of room the name ellipsizes.
+                Expanded(
+                  child: Row(
+                    children: [
+                      Flexible(
+                        child: countryAsync.when(
+                          data: (country) => _buildCountrySelector(
+                            country,
+                            offerPin: isTemporary && pinInMenu,
                           ),
-                        )
-                        : const SizedBox.shrink(), // Hide when already pinned
-            orElse: () => const SizedBox.shrink(),
-          ),
-        ],
+                          loading: () => _buildCountryPlaceholder(
+                            context,
+                            'Loading...',
+                            context.colors.textPrimaryMuted,
+                          ),
+                          error: (_, __) => _buildCountryPlaceholder(
+                            context,
+                            'Error',
+                            context.colors.danger,
+                          ),
+                        ),
+                      ),
+                      if (isTemporary && country != null && !pinInMenu)
+                        _buildPinButton(context, country),
+                    ],
+                  ),
+                ),
+                if (showGamesControls) ...[
+                  SizedBox(width: 4.w),
+                  const CountrymenGamesQuickControls(),
+                ],
+              ],
+            ),
+          );
+        },
       ),
     );
   }
 
-  Widget _buildCountrySelector(Country country) {
+  Widget _buildBackButton(BuildContext context) {
+    return Semantics(
+      button: true,
+      label: 'Back',
+      onTap: _handleBackPressed,
+      excludeSemantics: true,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: _handleBackPressed,
+        child: SizedBox(
+          width: 36.w,
+          height: 44,
+          child: Center(
+            child: Icon(
+              Icons.arrow_back_ios_new_outlined,
+              size: 18.ic,
+              color: context.colors.textPrimary,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCountryPlaceholder(
+    BuildContext context,
+    String label,
+    Color color,
+  ) {
+    return Container(
+      height: 36.h,
+      padding: EdgeInsets.symmetric(horizontal: 12.w),
+      decoration: BoxDecoration(
+        color: context.colors.surface,
+        borderRadius: BorderRadius.circular(8.br),
+      ),
+      alignment: Alignment.center,
+      child: Text(
+        label,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: AppTypography.textSmMedium.copyWith(color: color),
+      ),
+    );
+  }
+
+  /// Pins the country on screen as the default. A bare glyph and its word,
+  /// never a tinted box.
+  Widget _buildPinButton(BuildContext context, Country country) {
+    final ink = context.colors.accentText;
+    final label = 'Pin ${country.name} as default';
+    return Semantics(
+      button: true,
+      label: label,
+      onTap: _pinCurrentCountry,
+      excludeSemantics: true,
+      child: Tooltip(
+        message: label,
+        excludeFromSemantics: true,
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: _pinCurrentCountry,
+          child: ConstrainedBox(
+            constraints: BoxConstraints(minWidth: 36.w, minHeight: 44),
+            child: Padding(
+              padding: EdgeInsets.symmetric(horizontal: 8.w),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.push_pin_rounded, size: 16.ic, color: ink),
+                  SizedBox(width: 4.w),
+                  Text(
+                    'Pin',
+                    maxLines: 1,
+                    style: AppTypography.textXsMedium.copyWith(
+                      color: ink,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// With [offerPin] the open menu leads with the Pin action, for rows too
+  /// narrow to carry it beside the name.
+  Widget _buildCountrySelector(Country country, {bool offerPin = false}) {
     return CountryDropdown(
       selectedCountryCode: country.countryCode,
       onChanged: (newCountry) {
@@ -363,6 +397,8 @@ class _CountrymenTabScreenState extends ConsumerState<CountrymenTabScreen> {
       },
       requireAuthToChange: false,
       compact: true,
+      hugContent: true,
+      onPinAsDefault: offerPin ? _pinCurrentCountry : null,
     );
   }
 

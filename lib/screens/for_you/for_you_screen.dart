@@ -8,6 +8,7 @@ import 'package:chessever2/screens/for_you/open_for_you_event.dart';
 import 'package:chessever2/screens/for_you/providers/for_you_tab_provider.dart';
 import 'package:chessever2/screens/group_event/group_event_screen.dart';
 import 'package:chessever2/screens/group_event/providers/group_event_screen_provider.dart';
+import 'package:chessever2/screens/group_event/providers/home_live_first_provider.dart';
 import 'package:chessever2/screens/group_event/smart_event/smart_aggregate_event_provider.dart';
 import 'package:chessever2/screens/group_event/smart_event/smart_event_screen.dart';
 import 'package:chessever2/screens/group_event/widget/filter_popup/filter_popup.dart';
@@ -25,6 +26,7 @@ import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/text_scale.dart';
 import 'package:chessever2/widgets/alert_dialog/alert_modal.dart';
 import 'package:chessever2/widgets/home_top_bar.dart';
+import 'package:chessever2/widgets/quick_list_toggles.dart';
 import 'package:chessever2/widgets/search/enhanced_rounded_search_bar.dart';
 import 'package:chessever2/widgets/segmented_switcher.dart';
 import 'package:flutter/material.dart';
@@ -296,6 +298,30 @@ class ForYouScreen extends HookConsumerWidget {
       selectTab(ForYouTab.today);
     }
 
+    // Live first just came on: show the top of Today, where the live events
+    // now stand. From another page Today opens first; its list attaches a
+    // frame or two after the switch, so the scroll waits for it.
+    void showTodayTop() {
+      if (!context.mounted) return;
+      final onToday =
+          ref.read(forYouSearchQueryProvider).isEmpty &&
+          ref.read(selectedForYouTabProvider) == ForYouTab.today;
+      if (!onToday) selectTab(ForYouTab.today);
+      void scrollOnceShown(int framesLeft) {
+        if (!context.mounted) return;
+        if (todayScrollController.hasClients) {
+          scrollToTop(todayScrollController);
+        } else if (framesLeft > 0) {
+          WidgetsBinding.instance.addPostFrameCallback(
+            (_) => scrollOnceShown(framesLeft - 1),
+          );
+          WidgetsBinding.instance.scheduleFrame();
+        }
+      }
+
+      scrollOnceShown(onToday ? 0 : 6);
+    }
+
     ref.listen<BottomNavBarReTapRequest>(bottomNavBarReTapRequestProvider, (
       previous,
       next,
@@ -327,6 +353,14 @@ class ForYouScreen extends HookConsumerWidget {
                 child: SizedBox(
                   width: double.infinity,
                   child: EnhancedRoundedSearchBar(
+                    // Live first rides inside the field, beside the filter
+                    // glyph, as on the Events bar.
+                    fieldActions: [
+                      ForYouLiveFirstToggle(
+                        key: const ValueKey(kForYouLiveFirstButtonKey),
+                        onTurnedOn: showTodayTop,
+                      ),
+                    ],
                     focusNode: focusNode,
                     controller: searchController,
                     textFieldKey: e2eKey(E2eIds.forYouSearchField),
@@ -503,6 +537,42 @@ class ForYouScreen extends HookConsumerWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// The key of the For You (Home) bar's Live first control.
+const String kForYouLiveFirstButtonKey = 'for_you_live_first_button';
+
+/// Live first on the For You bar (Trello #1420), wearing the web's Live mark:
+/// the Events bar's control, on the same flag, over the Today feed
+/// ([pressForYouLiveFirst]). [onTurnedOn] runs once it has come on.
+class ForYouLiveFirstToggle extends HookConsumerWidget {
+  const ForYouLiveFirstToggle({super.key, this.onTurnedOn});
+
+  final VoidCallback? onTurnedOn;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    // A press can wait on the feed for live events below its pages; taps
+    // until it is answered are ignored.
+    final pressing = useRef(false);
+    return LiveFirstToggleButton(
+      subject: 'events',
+      // Rests in the field's quiet ink, like the magnifier and the filter.
+      restingColor: context.colors.iconSecondary,
+      pressed: ref.watch(homeEventsLiveFirstProvider),
+      onTap: () async {
+        if (pressing.value) return;
+        pressing.value = true;
+        try {
+          if (await pressForYouLiveFirst(context: context, ref: ref)) {
+            onTurnedOn?.call();
+          }
+        } finally {
+          pressing.value = false;
+        }
+      },
     );
   }
 }

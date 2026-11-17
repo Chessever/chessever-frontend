@@ -17,9 +17,12 @@ import 'package:chessever2/repository/supabase/game/games.dart';
 import 'package:chessever2/repository/supabase/group_broadcast/group_broadcast.dart';
 import 'package:chessever2/repository/supabase/group_broadcast/group_tour_repository.dart';
 import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart';
+import 'package:chessever2/screens/group_event/providers/group_event_screen_provider.dart';
+import 'package:chessever2/screens/group_event/providers/home_live_first_provider.dart';
 import 'package:chessever2/screens/group_event/providers/live_group_broadcast_id_provider.dart';
 import 'package:chessever2/screens/group_event/providers/sorting_all_event_provider.dart';
 import 'package:chessever2/screens/group_event/widget/filter_popup/filter_popup_provider.dart';
+import 'package:chessever2/screens/group_event/widget/filter_popup/filter_popup_state.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_pin_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_provider.dart';
@@ -191,14 +194,38 @@ class ForYouNotifier extends StateNotifier<ForYouState> {
   bool _resumeRefreshPending = false;
   final Set<String> _handledFinishedTopGameRefreshes = <String>{};
 
+  // Live first (Trello #1420), the flag the home tabs share
+  // ([homeEventsLiveFirstProvider]). [state]'s events are [_sessionEvents],
+  // the feed in its session order, with the live events laid on top while it
+  // is on; the session order itself never changes for it, so turning it off
+  // shows that order again exactly.
+  bool _liveFirst = false;
+  List<GroupEventCardModel> _sessionEvents = const <GroupEventCardModel>[];
+  // Events in play that the loaded pages do not hold: the feed pages
+  // [_kPageSize] events at a time by rating, and a live event can rank well
+  // below them. Fetched by id while Live first is on and shown only then, in
+  // the live block; a page that later brings one in takes it over.
+  List<GroupEventCardModel> _liveExtras = const <GroupEventCardModel>[];
+  // Live ids fetched once and not shown in this feed (its filters keep them
+  // out, or no event answers to them): never fetched again.
+  final Set<String> _unlistedLiveIds = <String>{};
+  Future<void>? _liveExtrasLoad;
+  bool _liveExtrasAgain = false;
+  // Bumped when Live first goes off, so a fetch begun before cannot bring
+  // its events back.
+  int _liveExtrasGeneration = 0;
+
   ForYouNotifier(this.ref, {DateTime Function()? now})
     : _now = now ?? DateTime.now,
       super(const ForYouState(isLoading: true)) {
+    _liveFirst = ref.read(homeEventsLiveFirstProvider);
     _setupListeners();
     _loadInitial();
   }
 
   void _setupListeners() {
+    ref.listen<bool>(homeEventsLiveFirstProvider, (_, on) => _setLiveFirst(on));
+
     ref.listen<bool>(forYouSurfaceVisibleProvider, (_, isVisible) {
       if (!isVisible) return;
       if (_liveFeedRefreshPending) {
@@ -227,6 +254,9 @@ class ForYouNotifier extends StateNotifier<ForYouState> {
         if (liveCategoryChanged || hasUnknownLiveEvent) {
           _refreshFeedForLiveChange();
         }
+        // Live first lists an event that just went live wherever the feed
+        // ranks it, loaded or not.
+        if (_liveFirst) unawaited(_loadLiveExtras());
       });
     });
 
@@ -312,8 +342,12 @@ class ForYouNotifier extends StateNotifier<ForYouState> {
   }
 
   bool _refreshLiveCategories(List<String> liveIds) {
-    final current = state.events;
-    if (current.isEmpty) return false;
+    _liveExtras = [for (final event in _liveExtras) event.withLiveIds(liveIds)];
+    final current = _sessionEvents;
+    if (current.isEmpty) {
+      _republish();
+      return false;
+    }
 
     final updated = current.map((e) => e.withLiveIds(liveIds)).toList();
 
@@ -324,9 +358,13 @@ class ForYouNotifier extends StateNotifier<ForYouState> {
         break;
       }
     }
-    if (!changed) return false;
+    if (!changed) {
+      // Live first follows the live set even when no card changed state.
+      _republish();
+      return false;
+    }
 
-    if (mounted) state = state.copyWith(events: updated);
+    if (mounted) state = state.copyWith(events: _present(updated));
     return true;
   }
 
@@ -378,7 +416,7 @@ class ForYouNotifier extends StateNotifier<ForYouState> {
         // Do not freeze session order from provisional cached data. The fresh
         // page still receives the usual personalized ranking.
         state = state.copyWith(
-          events: _sortLikeCurrentTab(models),
+          events: _present(_sortLikeCurrentTab(models)),
           hasMore: cached.hasMore,
         );
       }
@@ -667,8 +705,14 @@ class ForYouNotifier extends StateNotifier<ForYouState> {
           .map((b) => GroupEventCardModel.fromGroupBroadcast(b, liveIds))
           .toList();
 
+      // A first page replaces the loaded ones, and with them the boards of
+      // every event it does not hold. Live first still lists the live ones
+      // among those, so their boards are fetched along with the page's.
+      final keptLive = isInitial && _liveFirst
+          ? _liveRowsOutside(models)
+          : const <GroupEventCardModel>[];
       final gamesByEventId = await _prefetchTopGames(
-        models,
+        [...models, ...keptLive],
         replace: isInitial,
         isCurrent: isCurrent,
       );
@@ -698,12 +742,16 @@ class ForYouNotifier extends StateNotifier<ForYouState> {
           _sessionEventOrder.clear();
           _nextSessionEventOrder = 0;
         }
+        if (_liveFirst) _liveExtras = _liveRowsOutside(models);
         state = ForYouState(
-          events: _sortPageOnceForSession(models),
+          events: _present(_sortPageOnceForSession(models)),
           isLoading: false,
           hasMore: dbHasMore,
         );
         _lastRefreshAt = _now();
+        // Events that went live below the first page since, and boards for
+        // live rows kept while this page was in flight.
+        if (_liveFirst) unawaited(_loadLiveExtras());
         _maybeFinalizePendingFavoritePlayerOrder();
         unawaited(
           ref
@@ -719,12 +767,12 @@ class ForYouNotifier extends StateNotifier<ForYouState> {
               ),
         );
       } else {
-        final existingIds = state.events.map((event) => event.id).toSet();
+        final existingIds = _sessionEvents.map((event) => event.id).toSet();
         final newModels =
             models.where((event) => !existingIds.contains(event.id)).toList();
         final sortedNewModels = _sortPageOnceForSession(newModels);
         state = state.copyWith(
-          events: [...state.events, ...sortedNewModels],
+          events: _present([..._sessionEvents, ...sortedNewModels]),
           hasMore: dbHasMore,
         );
         _maybeFinalizePendingFavoritePlayerOrder();
@@ -801,6 +849,183 @@ class ForYouNotifier extends StateNotifier<ForYouState> {
     }
 
     return [...knownEvents, ...sortedNewEvents];
+  }
+
+  /// The ids of the events in play, read as the home tabs read them
+  /// ([homeLiveEventIds]).
+  Set<String> _liveIds() => homeLiveEventIds(
+    strict: ref.read(liveGroupBroadcastIdsProvider).valueOrNull,
+    mirror: ref.read(liveBroadcastIdsProvider),
+  );
+
+  /// Records [session] as the feed in its session order and returns the list
+  /// to show: [session] itself, or while Live first is on, its live events
+  /// and [_liveExtras] above the rest ([liveEventsFirst]).
+  List<GroupEventCardModel> _present(List<GroupEventCardModel> session) {
+    _sessionEvents = session;
+    if (!_liveFirst) return session;
+    final liveIds = _liveIds();
+    final loaded = {for (final event in session) event.id};
+    final extras = [
+      for (final event in _liveExtras)
+        if (!loaded.contains(event.id) && isLiveEvent(event, liveIds)) event,
+    ];
+    return liveEventsFirst(
+      extras.isEmpty ? session : [...session, ...extras],
+      liveIds,
+    );
+  }
+
+  /// Shows the session order again, laid out for Live first as it stands.
+  void _republish() {
+    if (!mounted) return;
+    final next = _present(_sessionEvents);
+    if (listEquals(next, state.events)) return;
+    state = state.copyWith(events: next, error: state.error);
+  }
+
+  /// The live events, loaded or kept for Live first, that [page] does not
+  /// hold: what a first page would otherwise drop from the live block.
+  List<GroupEventCardModel> _liveRowsOutside(List<GroupEventCardModel> page) {
+    final liveIds = _liveIds();
+    final seen = {for (final event in page) event.id};
+    return [
+      for (final event in [..._sessionEvents, ..._liveExtras])
+        if (isLiveEvent(event, liveIds) && seen.add(event.id)) event,
+    ];
+  }
+
+  void _setLiveFirst(bool on) {
+    if (on == _liveFirst) return;
+    _liveFirst = on;
+    if (!on) {
+      _liveExtrasGeneration++;
+      _liveExtras = const <GroupEventCardModel>[];
+    }
+    _republish();
+    if (on) unawaited(_loadLiveExtras());
+  }
+
+  /// Whether the feed has an event in play ([isLiveEvent]), loaded or not.
+  ///
+  /// Answered from the loaded events when one of them is live, or when no
+  /// event is live anywhere. Otherwise the live events below the loaded pages
+  /// are fetched first ([_loadLiveExtras]), so Live first, turned on after a
+  /// yes, lists them at once. Before the first page, the live set alone
+  /// answers, as it does for the Events bar before its list loads.
+  Future<bool> hasLiveEvent() async {
+    final liveIds = _liveIds();
+    if (anyLiveEvent(
+      liveIds: liveIds,
+      currentEvents: [..._sessionEvents, ..._liveExtras],
+    )) {
+      return true;
+    }
+    if (liveIds.isEmpty) return false;
+    if (_sessionEvents.isEmpty && state.isLoading) return true;
+    await _loadLiveExtras();
+    if (!mounted) return false;
+    final now = _liveIds();
+    return _liveExtras.any((event) => isLiveEvent(event, now));
+  }
+
+  /// Fetches, by id, the events in play that no loaded page holds, keeps the
+  /// ones this feed's filters let through ([liveEventPassesForYouFilters]) in
+  /// [_liveExtras] with their boards, and shows them.
+  ///
+  /// One run at a time. A call during a run gets another run once it ends,
+  /// against the live set and the flag as they are then, and its future
+  /// completes after that run.
+  Future<void> _loadLiveExtras() {
+    final running = _liveExtrasLoad;
+    if (running != null) {
+      _liveExtrasAgain = true;
+      return running;
+    }
+    return _liveExtrasLoad = () async {
+      try {
+        do {
+          _liveExtrasAgain = false;
+          await _fetchLiveExtras();
+        } while (_liveExtrasAgain && mounted);
+      } finally {
+        _liveExtrasLoad = null;
+      }
+    }();
+  }
+
+  Future<void> _fetchLiveExtras() async {
+    final generation = _liveExtrasGeneration;
+    bool isCurrent() => mounted && generation == _liveExtrasGeneration;
+    final liveIds = _liveIds();
+    // Without a page there is nothing to be below; the first page asks again.
+    if (liveIds.isEmpty || _sessionEvents.isEmpty) return;
+
+    // A live id names an event by id, or by name for a few configured ones.
+    final held = <String>{
+      for (final event in [..._sessionEvents, ..._liveExtras]) ...[
+        event.id,
+        event.title,
+      ],
+    };
+    final missing = [
+      for (final id in liveIds)
+        if (!held.contains(id) && !_unlistedLiveIds.contains(id)) id,
+    ];
+    var found = <GroupEventCardModel>[];
+    if (missing.isNotEmpty) {
+      try {
+        final broadcasts = await ref
+            .read(groupBroadcastRepositoryProvider)
+            .getGroupBroadcastsByIdsOrNames(missing)
+            .timeout(_kForYouRequestTimeout);
+        if (!isCurrent()) return;
+        final filters = ref.read(forYouAppliedFilterProvider);
+        final liveIdList = liveIds.toList(growable: false);
+        found = [
+          for (final broadcast in broadcasts)
+            if (liveEventPassesForYouFilters(broadcast, filters))
+              GroupEventCardModel.fromGroupBroadcast(broadcast, liveIdList),
+        ];
+        final answered = {
+          for (final event in found) ...[event.id, event.title],
+        };
+        _unlistedLiveIds.addAll(missing.where((id) => !answered.contains(id)));
+      } catch (error) {
+        // Asked again on the next live change or press.
+        debugPrint('[ForYou] Live events below the loaded pages: $error');
+        if (!isCurrent()) return;
+      }
+    }
+
+    final boards = ref.read(forYouTopGamesSnapshotCacheProvider);
+    final boardless = [
+      for (final event in [..._liveExtras, ...found])
+        if (!boards.containsKey(event.id)) event,
+    ];
+    if (boardless.isNotEmpty) {
+      try {
+        await _prefetchTopGames(boardless, replace: false);
+      } catch (error) {
+        debugPrint('[ForYou] Boards of live events below the pages: $error');
+        // A section without its boards would load forever: the new ones
+        // wait for the next run instead.
+        found = const <GroupEventCardModel>[];
+      }
+      if (!isCurrent()) return;
+    }
+
+    if (found.isNotEmpty) {
+      final kept = {for (final event in _liveExtras) event.id};
+      _liveExtras = [
+        ..._liveExtras,
+        ..._sortLikeCurrentTab([
+          for (final event in found)
+            if (kept.add(event.id)) event,
+        ]),
+      ];
+    }
+    _republish();
   }
 
   void _logErrorToSentry(dynamic error, StackTrace stackTrace) {
@@ -984,7 +1209,7 @@ class ForYouNotifier extends StateNotifier<ForYouState> {
   void _finalizeSessionOrderAfterFavoriteHydration() {
     if (!_pendingFavoritePlayerOrderHydration || state.events.isEmpty) return;
 
-    final sortedEvents = _sortLikeCurrentTab(state.events);
+    final sortedEvents = _sortLikeCurrentTab(_sessionEvents);
     _sessionEventOrder
       ..clear()
       ..addEntries(
@@ -994,7 +1219,7 @@ class ForYouNotifier extends StateNotifier<ForYouState> {
     _pendingFavoritePlayerOrderHydration = false;
 
     if (mounted) {
-      state = state.copyWith(events: sortedEvents);
+      state = state.copyWith(events: _present(sortedEvents));
     }
   }
 
@@ -1003,8 +1228,8 @@ class ForYouNotifier extends StateNotifier<ForYouState> {
   void _reapplySessionOrderForFavoriteChange() {
     if (!mounted || state.events.isEmpty) return;
 
-    final sortedEvents = _sortLikeCurrentTab(state.events);
-    final previous = state.events;
+    final sortedEvents = _sortLikeCurrentTab(_sessionEvents);
+    final previous = _sessionEvents;
     var orderChanged = previous.length != sortedEvents.length;
     if (!orderChanged) {
       for (var i = 0; i < previous.length; i++) {
@@ -1022,7 +1247,7 @@ class ForYouNotifier extends StateNotifier<ForYouState> {
         sortedEvents.indexed.map((entry) => MapEntry(entry.$2.id, entry.$1)),
       );
     _nextSessionEventOrder = sortedEvents.length;
-    state = state.copyWith(events: sortedEvents);
+    state = state.copyWith(events: _present(sortedEvents));
   }
 
   void _maybeFinalizePendingFavoritePlayerOrder() {
@@ -1062,6 +1287,35 @@ bool _sameFavoriteEventIdSet(
     {for (final f in previous) if (f.eventId.isNotEmpty) f.eventId},
     {for (final f in next) if (f.eventId.isNotEmpty) f.eventId},
   );
+}
+
+/// Whether the For You feed's own query would list [broadcast], an event in
+/// play, under [filters]: the time-control, Elo and status clauses of
+/// `get_for_you_group_broadcasts`, which a page fetch sends as parameters.
+/// Live first fetches events below the loaded pages by id, so it applies
+/// them itself.
+@visibleForTesting
+bool liveEventPassesForYouFilters(
+  GroupBroadcast broadcast,
+  FilterPopupState filters,
+) {
+  final picked = {
+    for (final value in filters.formatsAndStates) value.toLowerCase(),
+  };
+  final formats = picked.intersection(const {'blitz', 'rapid', 'standard'});
+  if (formats.isNotEmpty &&
+      !formats.contains(broadcast.timeControl?.toLowerCase())) {
+    return false;
+  }
+  final statuses = picked.intersection(const {'live', 'completed'});
+  if (statuses.isNotEmpty && !statuses.contains('live')) return false;
+  final minElo = filters.minElo;
+  final maxElo = filters.maxElo;
+  final elo = broadcast.maxAvgElo;
+  if ((minElo != null || maxElo != null) && elo == null) return false;
+  if (minElo != null && elo! < minElo) return false;
+  if (maxElo != null && elo! > maxElo) return false;
+  return true;
 }
 
 bool _sameStringSet(List<String>? previous, List<String> next) {

@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:chessever2/main.dart' show routeObserver;
+import 'package:chessever2/providers/game_list_live_first_provider.dart';
 import 'package:chessever2/providers/country_dropdown_provider.dart';
 import 'package:chessever2/screens/countrymen/provider/countrymen_mode_provider.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
@@ -23,13 +24,12 @@ import 'package:chessever2/utils/scroll_cache.dart';
 import 'package:chessever2/utils/foreground_task_scheduler.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
-import 'package:chessever2/utils/svg_asset.dart';
 import 'package:chessever2/utils/text_scale.dart';
 import 'package:chessever2/widgets/game_filter/game_filter.dart';
+import 'package:chessever2/widgets/quick_list_toggles.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
-import 'package:flutter_svg/flutter_svg.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:chessever2/widgets/scroll_to_top_bus.dart';
 import 'package:chessever2/widgets/scroll_to_top_button.dart';
@@ -37,6 +37,144 @@ import 'package:intl/intl.dart';
 
 /// Track animated game IDs for Countrymen to prevent re-animation
 final Set<String> _countrymenAnimatedGameIds = {};
+
+/// Day key for games with no timestamp; that bucket sorts last.
+const String _unknownDayKey = '0000-00-00';
+
+/// Groups Countrymen games into days, newest day first.
+///
+/// Games are bucketed by their **device-local** calendar day. `lastMoveTime`
+/// is a UTC instant from Postgres; formatting it directly (without
+/// `.toLocal()`) keyed games by their UTC date while the Today / Yesterday
+/// headers are derived from local `DateTime.now()`. For anyone east of UTC
+/// (e.g. Türkiye, UTC+3) a game finished in the local small hours (01:00
+/// local is still 22:00 UTC the previous day) was filed one day off, so today
+/// and yesterday intermixed and the per-day counts were wrong. Converting to
+/// local before extracting the day makes the buckets agree with the header.
+/// Games with no timestamp go to an explicit unknown bucket rather than
+/// silently defaulting to today.
+///
+/// With [liveFirst] (Trello #1420) each day lists its games in play first,
+/// keeping the provider's order on both sides of the split
+/// ([liveGamesFirst]). [now] pins "live" for tests.
+@visibleForTesting
+Map<String, List<GamesTourModel>> groupCountrymenGamesByDay(
+  List<GamesTourModel> games, {
+  bool liveFirst = false,
+  DateTime? now,
+}) {
+  final grouped = <String, List<GamesTourModel>>{};
+
+  for (final game in games) {
+    final raw = game.lastMoveTime;
+    final dateKey = raw == null
+        ? _unknownDayKey
+        : DateFormat('yyyy-MM-dd').format(raw.toLocal());
+    grouped.putIfAbsent(dateKey, () => []).add(game);
+  }
+
+  // Sort keys by date descending (most recent first); unknown sinks to the end.
+  final sortedKeys = grouped.keys.toList()
+    ..sort((a, b) {
+      if (a == _unknownDayKey) return 1;
+      if (b == _unknownDayKey) return -1;
+      return b.compareTo(a);
+    });
+
+  return Map.fromEntries(
+    sortedKeys.map((key) {
+      final dayGames = grouped[key]!;
+      return MapEntry(
+        key,
+        liveFirst ? liveGamesFirst(dayGames, now: now) : dayGames,
+      );
+    }),
+  );
+}
+
+/// Opens the Countrymen games filter and applies the result.
+///
+/// Every filter is applied server-side, so a changed filter refetches the
+/// list ([CountrymenCombinedGamesNotifier.applyFilter]).
+Future<void> showCountrymenGameFilterDialog(
+  BuildContext context,
+  WidgetRef ref,
+) async {
+  HapticFeedbackService.buttonPress();
+  final result = await showGameFilterDialog(
+    context: context,
+    currentFilter: ref.read(countrymenCombinedGamesProvider).filter,
+    showFormatFilter: false,
+  );
+  if (result == null || !context.mounted) return;
+  await ref.read(countrymenCombinedGamesProvider.notifier).applyFilter(result);
+}
+
+/// The Games page's one-tap controls, carried at the right end of the
+/// Countrymen app bar row (Trello #1420): Live first, Classical only, Filters
+/// and the board view. Bare glyphs, no tiles behind them.
+class CountrymenGamesQuickControls extends ConsumerWidget {
+  const CountrymenGamesQuickControls({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final filter = ref.watch(
+      countrymenCombinedGamesProvider.select((state) => state.filter),
+    );
+    final liveFirst = ref.watch(
+      gameListLiveFirstProvider(GameListLiveFirstSurface.countrymen),
+    );
+    final classicalOnly = filter.timeControl == GameTimeControlFilter.classical;
+
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        LiveFirstToggleButton(
+          pressed: liveFirst,
+          onTap: () {
+            HapticFeedbackService.toggle();
+            pressGameListLiveFirst(
+              context: context,
+              ref: ref,
+              surface: GameListLiveFirstSurface.countrymen,
+              games: ref.read(countrymenCombinedGamesProvider).filteredGames,
+            );
+          },
+        ),
+        ClassicalToggleButton(
+          pressed: classicalOnly,
+          onTap: () {
+            HapticFeedbackService.toggle();
+            final current = ref.read(countrymenCombinedGamesProvider).filter;
+            final isClassical =
+                current.timeControl == GameTimeControlFilter.classical;
+            unawaited(
+              ref
+                  .read(countrymenCombinedGamesProvider.notifier)
+                  .applyFilter(
+                    current.copyWith(
+                      timeControl: isClassical
+                          ? GameTimeControlFilter.all
+                          : GameTimeControlFilter.classical,
+                    ),
+                  ),
+            );
+          },
+        ),
+        QuickToggleIconButton(
+          label: 'Filters',
+          selected: filter.hasActiveFilters,
+          badgeCount: filter.activeFilterCount,
+          onTap: () => showCountrymenGameFilterDialog(context, ref),
+          child: const Icon(Icons.tune_rounded),
+        ),
+        BoardViewToggleButton(
+          onTap: () => ref.read(gamesListViewModeSwitcher).toggleViewMode(),
+        ),
+      ],
+    );
+  }
+}
 
 class CountrymenGamesTab extends ConsumerStatefulWidget {
   const CountrymenGamesTab({super.key});
@@ -259,48 +397,8 @@ class _CountrymenGamesTabState extends ConsumerState<CountrymenGamesTab>
     ref.read(countrymenCombinedGamesProvider.notifier).clearSearch();
   }
 
-  static const String _unknownDateKey = '0000-00-00';
-
-  /// Group games by date.
-  ///
-  /// Games are bucketed by their **device-local** calendar day. `lastMoveTime`
-  /// is a UTC instant from Postgres; formatting it directly (without
-  /// `.toLocal()`) keyed games by their UTC date while the Today / Yesterday
-  /// headers below are derived from local `DateTime.now()`. For anyone east of
-  /// UTC (e.g. Türkiye, UTC+3) a game finished in the local small hours —
-  /// 01:00 local is still 22:00 UTC the previous day — was filed one day off,
-  /// so today and yesterday intermixed and the per-day counts were wrong.
-  /// Converting to local before extracting the day makes the buckets agree with
-  /// the header. Games with no timestamp go to an explicit unknown bucket
-  /// rather than silently defaulting to today.
-  Map<String, List<GamesTourModel>> _groupGamesByDate(
-    List<GamesTourModel> games,
-  ) {
-    final grouped = <String, List<GamesTourModel>>{};
-
-    for (final game in games) {
-      final raw = game.lastMoveTime;
-      final dateKey = raw == null
-          ? _unknownDateKey
-          : DateFormat('yyyy-MM-dd').format(raw.toLocal());
-      grouped.putIfAbsent(dateKey, () => []).add(game);
-    }
-
-    // Sort keys by date descending (most recent first); unknown sinks to the end.
-    final sortedKeys = grouped.keys.toList()
-      ..sort((a, b) {
-        if (a == _unknownDateKey) return 1;
-        if (b == _unknownDateKey) return -1;
-        return b.compareTo(a);
-      });
-
-    return Map.fromEntries(
-      sortedKeys.map((key) => MapEntry(key, grouped[key]!)),
-    );
-  }
-
   String _formatDateHeader(String dateKey) {
-    if (dateKey == _unknownDateKey) return 'Unknown date';
+    if (dateKey == _unknownDayKey) return 'Unknown date';
     final date = DateTime.parse(dateKey);
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
@@ -375,6 +473,9 @@ class _CountrymenGamesTabState extends ConsumerState<CountrymenGamesTab>
 
     final state = ref.watch(countrymenCombinedGamesProvider);
     final viewMode = ref.watch(gamesListViewModeProvider);
+    final liveFirst = ref.watch(
+      gameListLiveFirstProvider(GameListLiveFirstSurface.countrymen),
+    );
     final streamEnabled = _isActiveOnScreen && _appIsResumed;
     final horizontalPadding = ResponsiveHelper.adaptive(
       phone: 16.w,
@@ -416,6 +517,7 @@ class _CountrymenGamesTabState extends ConsumerState<CountrymenGamesTab>
               viewMode,
               streamEnabled,
               constraints.crossAxisExtent,
+              liveFirst: liveFirst,
             ),
           ),
 
@@ -431,9 +533,7 @@ class _CountrymenGamesTabState extends ConsumerState<CountrymenGamesTab>
     // scroll position instead of remounting at the top.
     content = Center(
       child: ConstrainedBox(
-        constraints: BoxConstraints(
-          maxWidth: ResponsiveHelper.contentMaxWidth,
-        ),
+        constraints: BoxConstraints(maxWidth: ResponsiveHelper.contentMaxWidth),
         child: SizedBox.expand(child: content),
       ),
     );
@@ -451,174 +551,64 @@ class _CountrymenGamesTabState extends ConsumerState<CountrymenGamesTab>
     );
   }
 
+  /// The search field alone: Live first, Classical, Filters and the board
+  /// view sit in the screen's app bar row ([CountrymenGamesQuickControls]).
   Widget _buildSearchBar(CountrymenCombinedGamesState state) {
-    final hasActiveFilters = state.filter.hasActiveFilters;
-    final activeFilterCount = state.filter.activeFilterCount;
-    final searchBarHeight = 48.h;
-
-    return SizedBox(
-      height: searchBarHeight * context.textGrowth,
+    return Container(
+      height: 48.h * context.textGrowth,
+      decoration: BoxDecoration(
+        color: context.colors.background,
+        borderRadius: BorderRadius.circular(12.br),
+        border: Border.all(color: context.colors.surfaceRecessed),
+      ),
       child: Row(
         children: [
-          // Search field
+          SizedBox(width: 12.w),
+          Icon(Icons.search, size: 20.sp, color: context.colors.textSecondary),
+          SizedBox(width: 8.w),
           Expanded(
-            child: Container(
-              decoration: BoxDecoration(
-                color: context.colors.background,
-                borderRadius: BorderRadius.circular(12.br),
-                border: Border.all(color: context.colors.surfaceRecessed),
+            child: TextField(
+              controller: _searchController,
+              focusNode: _searchFocusNode,
+              style: AppTypography.textSmRegular.copyWith(
+                color: context.colors.textPrimary,
               ),
-              child: Row(
-                children: [
-                  SizedBox(width: 12.w),
-                  Icon(
-                    Icons.search,
-                    size: 20.sp,
-                    color: context.colors.textSecondary,
-                  ),
-                  SizedBox(width: 8.w),
-                  Expanded(
-                    child: TextField(
-                      controller: _searchController,
-                      focusNode: _searchFocusNode,
-                      style: AppTypography.textSmRegular.copyWith(
-                        color: context.colors.textPrimary,
-                      ),
-                      onChanged: _onSearchChanged,
-                      decoration: InputDecoration(
-                        isDense: true,
-                        hintText: 'Search',
-                        hintStyle: AppTypography.textSmRegular.copyWith(
-                          color: context.colors.textSecondary,
-                        ),
-                        border: InputBorder.none,
-                        contentPadding: EdgeInsets.symmetric(vertical: 14.h),
-                      ),
-                    ),
-                  ),
-                  if (_searchController.text.isNotEmpty ||
-                      state.isSearching) ...[
-                    GestureDetector(
-                      onTap: _clearSearch,
-                      child: Icon(
-                        Icons.close,
-                        size: 20.sp,
-                        color: context.colors.textSecondary,
-                      ),
-                    ),
-                    SizedBox(width: 8.w),
-                  ],
-                  SizedBox(width: 8.w),
-                ],
-              ),
-            ),
-          ),
-          // Filter button
-          SizedBox(width: 8.w),
-          GestureDetector(
-            onTap: () => _showFilterDialog(state),
-            child: Container(
-              width: searchBarHeight,
-              height: searchBarHeight,
-              decoration: BoxDecoration(
-                color: hasActiveFilters
-                    ? context.collectionAlertInk.withValues(alpha: 0.15)
-                    : context.colors.background,
-                borderRadius: BorderRadius.circular(12.br),
-                border: Border.all(
-                  color: hasActiveFilters
-                      ? context.collectionAlertInk.withValues(alpha: 0.5)
-                      : context.colors.surfaceRecessed,
+              onChanged: _onSearchChanged,
+              decoration: InputDecoration(
+                isDense: true,
+                hintText: 'Search',
+                hintStyle: AppTypography.textSmRegular.copyWith(
+                  color: context.colors.textSecondary,
                 ),
-              ),
-              child: Stack(
-                alignment: Alignment.center,
-                children: [
-                  Icon(
-                    Icons.tune_rounded,
-                    size: 20.sp,
-                    color: hasActiveFilters
-                        ? context.collectionAlertInk
-                        : context.colors.textSecondary,
-                  ),
-                  // Badge showing active filter count
-                  if (hasActiveFilters)
-                    Positioned(
-                      right: 6.w,
-                      top: 6.h,
-                      child: Container(
-                        width: 14.w,
-                        height: 14.h,
-                        decoration: const BoxDecoration(
-                          color: Color(0xFFEF4444),
-                          shape: BoxShape.circle,
-                        ),
-                        child: Center(
-                          child: Text(
-                            '$activeFilterCount',
-                            style: AppTypography.textXsBold.copyWith(
-                              color: context.colors.textPrimary,
-                              fontSize: 9.sp,
-                              height: 1,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                ],
+                border: InputBorder.none,
+                contentPadding: EdgeInsets.symmetric(vertical: 14.h),
               ),
             ),
           ),
-          // Layout toggle button
+          if (_searchController.text.isNotEmpty || state.isSearching) ...[
+            GestureDetector(
+              onTap: _clearSearch,
+              child: Icon(
+                Icons.close,
+                size: 20.sp,
+                color: context.colors.textSecondary,
+              ),
+            ),
+            SizedBox(width: 8.w),
+          ],
           SizedBox(width: 8.w),
-          GestureDetector(
-            onTap: () => ref.read(gamesListViewModeSwitcher).toggleViewMode(),
-            child: Container(
-              width: searchBarHeight,
-              height: searchBarHeight,
-              decoration: BoxDecoration(
-                color: context.colors.background,
-                borderRadius: BorderRadius.circular(12.br),
-                border: Border.all(color: context.colors.surfaceRecessed),
-              ),
-              child: Center(
-                child: SvgPicture.asset(
-                  SvgAsset.chase_grid,
-                  width: 20.sp,
-                  height: 20.sp,
-                  colorFilter: ColorFilter.mode(
-                    context.colors.textSecondary,
-                    BlendMode.srcIn,
-                  ),
-                ),
-              ),
-            ),
-          ),
         ],
       ),
     );
-  }
-
-  Future<void> _showFilterDialog(CountrymenCombinedGamesState state) async {
-    HapticFeedbackService.buttonPress();
-    final result = await showGameFilterDialog(
-      context: context,
-      currentFilter: state.filter,
-      showFormatFilter: false,
-    );
-    if (result != null && mounted) {
-      await ref
-          .read(countrymenCombinedGamesProvider.notifier)
-          .applyFilter(result);
-    }
   }
 
   Widget _buildContentSliver(
     CountrymenCombinedGamesState state,
     GamesListViewMode viewMode,
     bool streamEnabled,
-    double availableWidth,
-  ) {
+    double availableWidth, {
+    required bool liveFirst,
+  }) {
     if (state.isLoading && state.games.isEmpty) {
       return SliverFillRemaining(
         hasScrollBody: false,
@@ -653,24 +643,34 @@ class _CountrymenGamesTabState extends ConsumerState<CountrymenGamesTab>
     }
 
     // Use filtered games based on filter settings
-    final games = state.filteredGames;
-
-    // Build a mapping of game IDs to their indices for reliable lookup
-    final gameIdToIndex = <String, int>{};
-    for (int i = 0; i < games.length; i++) {
-      gameIdToIndex[games[i].gameId] = i;
-    }
+    final filteredGames = state.filteredGames;
 
     // Show empty state if filter excludes all games
-    if (games.isEmpty && state.filter.hasActiveFilters) {
+    if (filteredGames.isEmpty && state.filter.hasActiveFilters) {
       return SliverFillRemaining(
         hasScrollBody: false,
         child: _buildNoFilterResultsState(),
       );
     }
 
-    // Group games by date
-    final gamesByDate = _groupGamesByDate(games);
+    // Group games by date; with Live first, each day lists its live games
+    // first.
+    final gamesByDate = groupCountrymenGamesByDay(
+      filteredGames,
+      liveFirst: liveFirst,
+    );
+
+    // The order a board opened from this list swipes through. With Live
+    // first it follows the list as shown; otherwise it stays the provider's.
+    final games = liveFirst
+        ? [for (final dayGames in gamesByDate.values) ...dayGames]
+        : filteredGames;
+
+    // Build a mapping of game IDs to their indices for reliable lookup
+    final gameIdToIndex = <String, int>{};
+    for (int i = 0; i < games.length; i++) {
+      gameIdToIndex[games[i].gameId] = i;
+    }
 
     // Build cheap row descriptors only. The actual cards are created lazily
     // for visible rows by SliverChildBuilderDelegate.
@@ -989,18 +989,10 @@ class _CountrymenGamesTabState extends ConsumerState<CountrymenGamesTab>
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Container(
-            width: 64.w,
-            height: 64.h,
-            decoration: BoxDecoration(
-              color: context.collectionAlertInk.withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(16.br),
-            ),
-            child: Icon(
-              Icons.error_outline_rounded,
-              color: context.collectionAlertInk,
-              size: 32.ic,
-            ),
+          Icon(
+            Icons.error_outline_rounded,
+            color: context.collectionAlertInk,
+            size: 56.sp,
           ),
           SizedBox(height: 16.h),
           Text(
@@ -1054,27 +1046,8 @@ class _CountrymenGamesTabState extends ConsumerState<CountrymenGamesTab>
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Container(
-            width: 80.w,
-            height: 80.h,
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [
-                  context.colors.textPrimary.withValues(alpha: 0.15),
-                  context.colors.textPrimary.withValues(alpha: 0.05),
-                ],
-              ),
-              borderRadius: BorderRadius.circular(20.br),
-            ),
-            child: Icon(
-              Icons.public_outlined,
-              color: context.colors.textPrimary.withValues(alpha: 0.7),
-              size: 40.ic,
-            ),
-          ),
-          SizedBox(height: 20.h),
+          Icon(Icons.public_outlined, color: context.textInk(0.4), size: 56.sp),
+          SizedBox(height: 12.h),
           Text(
             'No games found',
             style: AppTypography.textMdMedium.copyWith(

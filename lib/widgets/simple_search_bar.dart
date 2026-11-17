@@ -26,6 +26,7 @@ class SimpleSearchBar extends StatefulWidget {
     this.compactFilter = false,
     this.rotatingHints,
     this.rotationInterval = const Duration(seconds: 2),
+    this.actions,
   });
 
   final TextEditingController controller;
@@ -48,6 +49,15 @@ class SimpleSearchBar extends StatefulWidget {
   /// the field has text.
   final List<String>? rotatingHints;
   final Duration rotationInterval;
+
+  /// Bare glyph controls drawn inside the field, just before the filter glyph
+  /// (the home Events bar's Live first, passed through
+  /// `EnhancedRoundedSearchBar.fieldActions`).
+  ///
+  /// Each one is drawn in the filter glyph's box, so the field never changes
+  /// height, and takes a 44pt tap in a home top bar. They give way to the
+  /// text while the field has focus, the way the bar's avatar does.
+  final List<Widget>? actions;
 
   @override
   State<SimpleSearchBar> createState() => _SimpleSearchBarState();
@@ -181,9 +191,44 @@ class _SimpleSearchBarState extends State<SimpleSearchBar> {
     );
   }
 
+  /// The filter glyph's box: its 20pt glyph and this padding, all of it the
+  /// tap. [_buildActions] draws each action in the same box.
+  EdgeInsets get _filterPadding => widget.compactFilter
+      ? EdgeInsets.symmetric(horizontal: 8.sp)
+      : EdgeInsets.all(8.sp);
+
+  /// [actions] in the filter glyph's box each, squeezed out while the field
+  /// has focus. Listening to the focus node here keeps the squeeze off this
+  /// widget's build, so it never rebuilds the [TextField].
+  Widget _buildActions(List<Widget> actions) {
+    final box = _filterPadding;
+    final slot = Size(box.horizontal + 20.w, box.vertical + 20.h);
+    return ListenableBuilder(
+      listenable: widget.focusNode,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          for (final action in actions) ...[
+            SizedBox(width: 8.w),
+            // A 44pt reach in the home top bar without growing the row.
+            HomeTopBarTapTarget(
+              child: SizedBox.fromSize(size: slot, child: action),
+            ),
+          ],
+        ],
+      ),
+      builder: (context, child) => SqueezeSlot(
+        open: !widget.focusNode.hasFocus,
+        motion: SearchMotion.morph,
+        child: child!,
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final rotatingHint = _buildRotatingHint();
+    final actions = widget.actions ?? const <Widget>[];
     return Padding(
       padding: EdgeInsets.symmetric(horizontal: 8.sp, vertical: 4.sp),
       child: Row(
@@ -260,74 +305,82 @@ class _SimpleSearchBarState extends State<SimpleSearchBar> {
             },
           ),
 
+          if (actions.isNotEmpty) _buildActions(actions),
+
           if (widget.onOpenFilter != null) ...[
             SizedBox(width: 8.w),
             // A 44pt reach in the home top bar without growing the row.
             HomeTopBarTapTarget(
-              child: GestureDetector(
-                key: widget.filterButtonKey,
+              child: Semantics(
+                container: true,
+                button: true,
+                label: widget.filterBadgeCount > 0
+                    ? 'Filters, ${widget.filterBadgeCount} active'
+                    : 'Filters',
                 onTap: widget.onOpenFilter,
-                child: Container(
-                  padding: widget.compactFilter
-                      ? EdgeInsets.symmetric(horizontal: 8.sp)
-                      : EdgeInsets.all(8.sp),
-                  decoration: BoxDecoration(
-                    color: context.colors.surfaceRecessed,
-                    borderRadius: BorderRadius.circular(8.br),
-                  ),
-                  child: Stack(
-                    clipBehavior: Clip.none,
-                    children: [
-                      if (widget.filterBadgeCount > 0)
-                        SvgWidget(
-                          SvgAsset.listFilterIcon,
-                          height: 20.h,
-                          width: 20.w,
-                          colorFilter: ColorFilter.mode(
-                            context.colors.textPrimary,
-                            BlendMode.srcIn,
+                excludeSemantics: true,
+                child: GestureDetector(
+                  key: widget.filterButtonKey,
+                  // The bare glyph sits in its old tile's box, and the whole
+                  // box still takes the tap: without a fill nothing else in it
+                  // would answer the pointer.
+                  behavior: HitTestBehavior.opaque,
+                  onTap: widget.onOpenFilter,
+                  child: Padding(
+                    padding: _filterPadding,
+                    child: Stack(
+                      clipBehavior: Clip.none,
+                      children: [
+                        if (widget.filterBadgeCount > 0)
+                          SvgWidget(
+                            SvgAsset.listFilterIcon,
+                            height: 20.h,
+                            width: 20.w,
+                            colorFilter: ColorFilter.mode(
+                              context.colors.textPrimary,
+                              BlendMode.srcIn,
+                            ),
+                          )
+                        else
+                          _FocusTint(
+                            focusNode: widget.focusNode,
+                            builder: (context, color) => SvgWidget(
+                              SvgAsset.listFilterIcon,
+                              height: 20.h,
+                              width: 20.w,
+                              colorFilter: ColorFilter.mode(
+                                color,
+                                BlendMode.srcIn,
+                              ),
+                            ),
                           ),
-                        )
-                      else
-                        _FocusTint(
-                          focusNode: widget.focusNode,
-                          builder:
-                              (context, color) => SvgWidget(
-                                SvgAsset.listFilterIcon,
-                                height: 20.h,
-                                width: 20.w,
-                                colorFilter: ColorFilter.mode(
-                                  color,
-                                  BlendMode.srcIn,
+                        if (widget.filterBadgeCount > 0)
+                          Positioned(
+                            right: -4.w,
+                            top: -4.h,
+                            child: Container(
+                              padding: EdgeInsets.all(4.w),
+                              decoration: const BoxDecoration(
+                                color: Color(0xFFEF4444),
+                                shape: BoxShape.circle,
+                              ),
+                              constraints: BoxConstraints(
+                                minWidth: 16.w,
+                                minHeight: 16.h,
+                              ),
+                              child: Text(
+                                '${widget.filterBadgeCount}',
+                                style: AppTypography.textXsBold.copyWith(
+                                  color: context.colors.textPrimary,
+                                  fontSize: 10.sp,
+                                  height: 1,
                                 ),
+                                textAlign: TextAlign.center,
                               ),
-                        ),
-                      if (widget.filterBadgeCount > 0)
-                        Positioned(
-                          right: -4.w,
-                          top: -4.h,
-                          child: Container(
-                            padding: EdgeInsets.all(4.w),
-                            decoration: const BoxDecoration(
-                              color: Color(0xFFEF4444),
-                              shape: BoxShape.circle,
-                            ),
-                            constraints: BoxConstraints(
-                              minWidth: 16.w,
-                              minHeight: 16.h,
-                            ),
-                            child: Text(
-                              '${widget.filterBadgeCount}',
-                              style: AppTypography.textXsBold.copyWith(
-                                color: context.colors.textPrimary,
-                                fontSize: 10.sp,
-                                height: 1,
-                              ),
-                              textAlign: TextAlign.center,
                             ),
                           ),
-                        ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
               ),

@@ -25,15 +25,22 @@ class _FavoritesTabScreenState extends ConsumerState<FavoritesTabScreen> {
   late PageController _pageController;
   final ScrollToTopBus _scrollToTopBus = ScrollToTopBus();
 
+  /// [FavoritesTabScreen.initialMode] until it reaches the mode provider after
+  /// the first frame. The title row reads it so a screen opened on another
+  /// page never mounts the Games controls, which would start a games fetch.
+  FavoritesScreenMode? _pendingInitialMode;
+
   @override
   void initState() {
     super.initState();
     final initialMode = widget.initialMode;
     final FavoritesScreenMode mode =
         initialMode ?? ref.read(selectedFavoritesModeProvider);
+    _pendingInitialMode = initialMode;
     if (initialMode != null) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
+        _pendingInitialMode = null;
         ref
             .read(selectedFavoritesModeProvider.notifier)
             .update((_) => initialMode);
@@ -103,7 +110,7 @@ class _FavoritesTabScreenState extends ConsumerState<FavoritesTabScreen> {
           child: Column(
             children: [
               SizedBox(height: MediaQuery.viewPaddingOf(context).top + 4.h),
-              _buildAppBar(context, selectedMode),
+              _buildAppBar(context, _pendingInitialMode ?? selectedMode),
               SizedBox(height: 8.h),
               _buildSegmentedSwitcher(selectedMode),
               Expanded(
@@ -142,7 +149,11 @@ class _FavoritesTabScreenState extends ConsumerState<FavoritesTabScreen> {
     );
   }
 
+  /// Back, the title, and on the Games page that page's one-tap controls
+  /// (Trello #1420): the title moves left beside back to make room for them.
+  /// Every other page keeps the title centred.
   Widget _buildAppBar(BuildContext context, FavoritesScreenMode selectedMode) {
+    final isGames = selectedMode == FavoritesScreenMode.games;
     return Padding(
       padding: EdgeInsets.symmetric(horizontal: 16.w),
       child: Row(
@@ -150,6 +161,7 @@ class _FavoritesTabScreenState extends ConsumerState<FavoritesTabScreen> {
           IconButton(
             iconSize: 24.ic,
             padding: EdgeInsets.zero,
+            tooltip: 'Back',
             onPressed: () => Navigator.of(context).pop(),
             icon: Icon(
               Icons.arrow_back_ios_new_outlined,
@@ -157,28 +169,13 @@ class _FavoritesTabScreenState extends ConsumerState<FavoritesTabScreen> {
               color: context.colors.textPrimary,
             ),
           ),
-          Expanded(
-            child: Center(
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(
-                    Icons.favorite,
-                    color: context.collectionAlertInk,
-                    size: 20.ic,
-                  ),
-                  SizedBox(width: 8.w),
-                  Text(
-                    'Favorites',
-                    style: AppTypography.textLgBold.copyWith(
-                      color: context.colors.textPrimary,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          SizedBox(width: 48.w), // Placeholder for symmetry
+          if (isGames) ...[
+            const Expanded(child: _FavoritesTitle(dropHeartWhenTight: true)),
+            const FavoritesGamesTitleControls(),
+          ] else ...[
+            const Expanded(child: Center(child: _FavoritesTitle())),
+            SizedBox(width: 48.w), // Placeholder for symmetry
+          ],
         ],
       ),
     );
@@ -203,6 +200,64 @@ class _FavoritesTabScreenState extends ConsumerState<FavoritesTabScreen> {
         onSelectionChanged: _handleTabSelection,
         notifyOnReselect: true,
       ),
+    );
+  }
+}
+
+/// The heart and "Favorites". The title ellipsizes rather than overflow, and
+/// with [dropHeartWhenTight] the heart (the least important piece) goes first
+/// when the row cannot hold both at the reader's text size.
+class _FavoritesTitle extends StatelessWidget {
+  const _FavoritesTitle({this.dropHeartWhenTight = false});
+
+  final bool dropHeartWhenTight;
+
+  static const String _title = 'Favorites';
+
+  @override
+  Widget build(BuildContext context) {
+    final style = AppTypography.textLgBold.copyWith(
+      color: context.colors.textPrimary,
+    );
+    final heartSize = 20.ic;
+    final gap = 8.w;
+
+    Widget row({required bool showHeart}) => Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (showHeart) ...[
+          Icon(
+            Icons.favorite,
+            color: context.collectionAlertInk,
+            size: heartSize,
+          ),
+          SizedBox(width: gap),
+        ],
+        Flexible(
+          child: Text(
+            _title,
+            style: style,
+            maxLines: 1,
+            softWrap: false,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+      ],
+    );
+
+    if (!dropHeartWhenTight) return row(showHeart: true);
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final painter = TextPainter(
+          text: TextSpan(text: _title, style: style),
+          textDirection: Directionality.of(context),
+          textScaler: MediaQuery.textScalerOf(context),
+          maxLines: 1,
+        )..layout();
+        final fits = heartSize + gap + painter.width <= constraints.maxWidth;
+        painter.dispose();
+        return row(showHeart: fits);
+      },
     );
   }
 }

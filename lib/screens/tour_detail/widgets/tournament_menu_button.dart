@@ -8,17 +8,12 @@ import 'package:chessever2/screens/group_event/widget/appbar_icons_widget.dart';
 import 'package:chessever2/screens/gamebase/event_view/gamebase_virtual_event_id.dart';
 import 'package:chessever2/screens/library/widgets/library_context_menu.dart';
 import 'package:chessever2/screens/tour_detail/combined/combined_category.dart';
-import 'package:chessever2/screens/tour_detail/combined/combined_games_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/event_no_spoilers_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_app_bar_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_pin_provider.dart';
-import 'package:chessever2/screens/tour_detail/games_tour/providers/game_display_mode_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_screen_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_app_bar_view_model.dart';
-import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/utils/round_space_shortcut.dart';
-import 'package:chessever2/screens/tour_detail/games_tour/providers/match_expansion_provider.dart';
-import 'package:chessever2/screens/tour_detail/games_tour/providers/round_expansion_provider.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_mode_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/knockout_tournament_state_provider.dart';
 import 'package:chessever2/screens/tour_detail/team_tour/team_tour_screen_provider.dart'
@@ -44,13 +39,9 @@ import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 
 enum TournamentMenuAction {
-  focusLiveGames,
-  showAllGames,
   noSpoilers,
   unpinAll,
   pinAll,
-  collapseAllRounds,
-  expandAllRounds,
   disableNotifications,
   enableNotifications,
   shareEvent,
@@ -60,9 +51,16 @@ enum TournamentMenuAction {
 }
 
 class TournamentMenuButton extends ConsumerWidget {
-  const TournamentMenuButton({super.key, required this.tourData});
+  const TournamentMenuButton({
+    super.key,
+    required this.tourData,
+    this.boxed = true,
+  });
 
   final TourDetailViewModel tourData;
+
+  /// False draws the bare glyph on a 44pt target, no tile behind it.
+  final bool boxed;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -92,11 +90,11 @@ class TournamentMenuButton extends ConsumerWidget {
       ),
     );
 
-    // The glyph is the shipped app-bar tile, laid out exactly as before: its
-    // own 32x32 box is the whole footprint, so the dropdown and the sibling
-    // grid toggle never move. Do not wrap it in a larger box to grow the tap
-    // target; that widens the Row's trailing slot and shifts the header.
-    // Semantics adds a name for screen readers without touching layout.
+    // The glyph keeps the geometry it had inside the app-bar tile. Boxed,
+    // the 32x32 tile is the whole footprint; bare, the same glyph sits in a
+    // 44pt tap target and the header gives the extra width back from its
+    // gaps, so nothing beside it moves. Semantics adds a name for screen
+    // readers without touching layout.
     return Semantics(
       button: true,
       label: 'Event actions',
@@ -106,6 +104,7 @@ class TournamentMenuButton extends ConsumerWidget {
         padding: EdgeInsets.symmetric(horizontal: 2.sp, vertical: 1.sp),
         image: SvgAsset.threeDots,
         onTap: open,
+        boxed: boxed,
       ),
     );
   }
@@ -130,13 +129,12 @@ class TournamentMenuButton extends ConsumerWidget {
     ];
   }
 
-  /// The Games-tab rows while the list is Combined: the same four rows as a
+  /// The Games-tab rows while the list is Combined: the same rows as a
   /// single category, each acting on every merged category where the
-  /// single-category rows act on the selected one.
+  /// single-category rows act on the selected one. Live first and Collapse
+  /// all live beside the search field (event_games_quick_actions.dart).
   List<LibraryMenuAction> _combinedGamesTabActions(WidgetRef ref) {
     final tourIds = ref.read(combinedCategoriesProvider).tourIds;
-    final roundIds = ref.read(combinedGamesPresentationProvider).roundIds;
-    final isFocusingLiveGames = combinedLiveGamesFirst(ref.read, tourIds);
 
     final spoilerStates = [
       for (final tourId in tourIds) ref.read(eventNoSpoilersProvider(tourId)),
@@ -147,30 +145,8 @@ class TournamentMenuButton extends ConsumerWidget {
     final isAnyPinned = tourIds.any(
       (tourId) => ref.read(gamesPinprovider(tourId)).allPins.isNotEmpty,
     );
-    final isAllCollapsed = areAllVisibleSectionsCollapsed(
-      visibleRoundIds: roundIds,
-      visibleMatchKeys: const <String>[],
-      roundExpansionState: ref.read(roundExpansionProvider),
-      matchExpansionState: const <String, bool>{},
-    );
 
     return [
-      LibraryMenuAction(
-        icon: isFocusingLiveGames
-            ? Icons.format_list_bulleted_outlined
-            : Icons.center_focus_strong_outlined,
-        label: liveFocusOrderingMenuLabel(
-          isFocusingLiveGames: isFocusingLiveGames,
-        ),
-        onSelected: () {
-          final next = isFocusingLiveGames
-              ? GameDisplayMode.all
-              : GameDisplayMode.hideFinishedGames;
-          for (final tourId in tourIds) {
-            ref.read(gameDisplayModeProvider(tourId).notifier).state = next;
-          }
-        },
-      ),
       LibraryMenuAction(
         icon: noSpoilersEnabled
             ? Icons.visibility_off_outlined
@@ -203,63 +179,17 @@ class TournamentMenuButton extends ConsumerWidget {
           }
         },
       ),
-      LibraryMenuAction(
-        icon: isAllCollapsed ? Icons.unfold_more : Icons.unfold_less,
-        label: isAllCollapsed ? "Expand all" : "Collapse all",
-        onSelected: () {
-          final rounds = ref.read(roundExpansionProvider.notifier);
-          if (isAllCollapsed) {
-            rounds.expandAll(roundIds);
-          } else {
-            rounds.collapseAll(roundIds);
-          }
-        },
-      ),
     ];
   }
 
+  /// The Games-tab rows for one category. Live first and Collapse all live
+  /// beside the search field (event_games_quick_actions.dart).
   List<LibraryMenuAction> _gamesTabActions(WidgetRef ref) {
-    final appBar = ref.read(gamesAppBarProvider.notifier);
-    final visibleRoundIds = appBar.getVisibleRoundIds();
-    final allRoundIds = appBar.getAllRoundIdsWithGames();
-    final visibleMatchKeys = appBar.getVisibleMatchKeys(visibleRoundIds);
-    final allMatchKeys = appBar.getVisibleMatchKeys(allRoundIds);
     final tourId = tourData.aboutTourModel.id;
-
-    final gamesScreenState = ref.read(gamesTourScreenProvider).valueOrNull;
-    final isFocusingLiveGames =
-        gamesScreenState?.gameDisplayMode == GameDisplayMode.hideFinishedGames;
     final noSpoilersEnabled = ref.read(eventNoSpoilersProvider(tourId)).enabled;
     final isAnyPinned = ref.read(gamesPinprovider(tourId)).allPins.isNotEmpty;
-    final isAllCollapsed = areAllVisibleSectionsCollapsed(
-      visibleRoundIds: visibleRoundIds,
-      visibleMatchKeys: visibleMatchKeys,
-      roundExpansionState: ref.read(roundExpansionProvider),
-      matchExpansionState: ref.read(matchExpansionProvider),
-    );
 
     return [
-      // 1. Live games first / Board order
-      LibraryMenuAction(
-        icon: isFocusingLiveGames
-            ? Icons.format_list_bulleted_outlined
-            : Icons.center_focus_strong_outlined,
-        label: liveFocusOrderingMenuLabel(
-          isFocusingLiveGames: isFocusingLiveGames,
-        ),
-        onSelected: () {
-          if (isFocusingLiveGames) {
-            unawaited(
-              ref.read(gamesTourScreenProvider.notifier).showAllGames(),
-            );
-          } else {
-            unawaited(
-              ref.read(gamesTourScreenProvider.notifier).hideFinishedGames(),
-            );
-          }
-        },
-      ),
-      // 2. No spoilers
       LibraryMenuAction(
         icon: noSpoilersEnabled
             ? Icons.visibility_off_outlined
@@ -271,7 +201,6 @@ class TournamentMenuButton extends ConsumerWidget {
           );
         },
       ),
-      // 3. Pin/Unpin All
       LibraryMenuAction(
         icon: isAnyPinned ? Icons.push_pin : Icons.push_pin_outlined,
         label: isAnyPinned ? "Unpin all" : "Pin all",
@@ -280,26 +209,6 @@ class TournamentMenuButton extends ConsumerWidget {
             ref.read(gamesTourScreenProvider.notifier).unpinAllGames();
           } else {
             ref.read(gamesTourScreenProvider.notifier).enableAutoPin();
-          }
-        },
-      ),
-      // 4. Expand/Collapse All
-      LibraryMenuAction(
-        icon: isAllCollapsed ? Icons.unfold_more : Icons.unfold_less,
-        label: isAllCollapsed ? "Expand all" : "Collapse all",
-        onSelected: () {
-          if (isAllCollapsed) {
-            ref.read(roundExpansionProvider.notifier).expandAll(allRoundIds);
-            if (allMatchKeys.isNotEmpty) {
-              ref.read(matchExpansionProvider.notifier).expandAll();
-            }
-          } else {
-            ref.read(roundExpansionProvider.notifier).collapseAll(allRoundIds);
-            if (allMatchKeys.isNotEmpty) {
-              ref
-                  .read(matchExpansionProvider.notifier)
-                  .collapseAll(allMatchKeys);
-            }
           }
         },
       ),
@@ -313,7 +222,7 @@ class TournamentMenuButton extends ConsumerWidget {
   ) {
     final actions = <LibraryMenuAction>[];
 
-    // 5. Notifications
+    // Notifications
     final groupBroadcastId = tourData.aboutTourModel.groupBroadcastId;
     if (groupBroadcastId != null && groupBroadcastId.isNotEmpty) {
       actions.add(
@@ -343,7 +252,7 @@ class TournamentMenuButton extends ConsumerWidget {
       );
     }
 
-    // 6. Share event
+    // Share event
     // We have the active tour (id + slug) in hand here, so we can build the
     // Lichess-mirror URL `<tour.slug>/<tour.id>` directly without an extra
     // database round-trip. `groupBroadcastId` is passed only as the fallback
@@ -786,19 +695,6 @@ class TournamentMenuButton extends ConsumerWidget {
       .toLowerCase();
 }
 
-/// Off-state label for the games-tab live-focus toggle in the ⋮ menu.
-const String kLiveGamesFirstMenuLabel = 'Live games first';
-
-/// On-state label for the games-tab live-focus toggle in the ⋮ menu
-/// (shown while live-focus mode is active; restores board order).
-const String kBoardOrderMenuLabel = 'Board order';
-
-/// Label for the games-tab ordering toggle. Behavior is unchanged: only
-/// the wording differs between live-focus and board-order modes.
-String liveFocusOrderingMenuLabel({required bool isFocusingLiveGames}) {
-  return isFocusingLiveGames ? kBoardOrderMenuLabel : kLiveGamesFirstMenuLabel;
-}
-
 /// Which standings-related share actions belong on the tournament detail ⋮ menu
 /// for the current tab and event type.
 ///
@@ -821,27 +717,4 @@ List<TournamentMenuAction> standingsShareActionsFor({
     if (showIndividualStandingsShare) TournamentMenuAction.shareStandings,
     if (showTeamStandingsShare) TournamentMenuAction.shareTeamStandings,
   ];
-}
-
-bool areAllVisibleSectionsCollapsed({
-  required Iterable<String> visibleRoundIds,
-  required Iterable<String> visibleMatchKeys,
-  required Map<String, bool> roundExpansionState,
-  required Map<String, bool> matchExpansionState,
-}) {
-  final rounds = visibleRoundIds.toList(growable: false);
-  final matches = visibleMatchKeys.toList(growable: false);
-
-  if (rounds.isEmpty && matches.isEmpty) {
-    return false;
-  }
-
-  final areRoundsCollapsed = rounds.every(
-    (id) => !(roundExpansionState[id] ?? true),
-  );
-  final areMatchesCollapsed = matches.every(
-    (key) => !resolveMatchExpansionState(matchExpansionState, key),
-  );
-
-  return areRoundsCollapsed && areMatchesCollapsed;
 }

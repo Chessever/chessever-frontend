@@ -82,8 +82,10 @@ class _EventSearchBarState extends ConsumerState<EventSearchBar> {
 
   @override
   Widget build(BuildContext context) {
-    final countryCode =
-        ref.watch(countryDropdownProvider).valueOrNull?.countryCode;
+    final countryCode = ref
+        .watch(countryDropdownProvider)
+        .valueOrNull
+        ?.countryCode;
     final hintText = eventSearchPlaceholderForIndex(
       _placeholderIndex,
       countryCode: countryCode,
@@ -93,10 +95,12 @@ class _EventSearchBarState extends ConsumerState<EventSearchBar> {
       _syncControllerText(next);
     });
 
-    // Sits between the app-bar row and the tab switcher. Tight vertical
-    // padding keeps the strip compact so the tab chips remain near the top
+    // Sits between the app-bar row and the tab switcher, in a row the
+    // event screen spaces itself (with the Games tab's list controls beside
+    // it). Compact keeps the field slim so the tab chips stay near the top
     // of the viewport.
     return EventSearchBarFrame(
+      compact: true,
       child: SimpleSearchBar(
         controller: _controller,
         focusNode: _focusNode,
@@ -115,19 +119,23 @@ class EventSearchBarFrame extends StatelessWidget {
     super.key,
     required this.child,
     this.horizontalPadding = 0,
+    this.compact = false,
   });
   final Widget child;
   final double horizontalPadding;
+
+  /// A slimmer field for the event screen's search row: no padding inside
+  /// the field above and below the bar, and no strip around it, so the row
+  /// it sits in sets the spacing. Off everywhere else.
+  final bool compact;
+
   @override
   Widget build(BuildContext context) => Padding(
-    padding: EdgeInsets.fromLTRB(
-      horizontalPadding,
-      4.h,
-      horizontalPadding,
-      8.h,
-    ),
+    padding: compact
+        ? EdgeInsets.symmetric(horizontal: horizontalPadding)
+        : EdgeInsets.fromLTRB(horizontalPadding, 4.h, horizontalPadding, 8.h),
     child: Container(
-      padding: EdgeInsets.symmetric(vertical: 4.h),
+      padding: compact ? EdgeInsets.zero : EdgeInsets.symmetric(vertical: 4.h),
       decoration: BoxDecoration(
         color: context.colors.surfaceRecessed,
         borderRadius: BorderRadius.circular(12.br),

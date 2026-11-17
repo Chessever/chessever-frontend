@@ -18,6 +18,19 @@ class CountryDropdown extends ConsumerStatefulWidget {
   final bool requireAuthToChange;
   final bool compact;
 
+  /// Sizes the button to its flag, name and chevron instead of filling the
+  /// width it is given, as a smaller plate (tighter padding, smaller flag,
+  /// name and chevron) so the name keeps its letters in a busy row; it
+  /// ellipsizes only when that width runs short. The open menu keeps its own
+  /// usable width. Off by default, so every existing caller renders exactly
+  /// as before.
+  final bool hugContent;
+
+  /// When set, the open menu leads with "Pin `country` as default": a tap
+  /// closes the menu and calls this. For rows with no room for a Pin of
+  /// their own. Null (the default) leaves the menu as it was.
+  final VoidCallback? onPinAsDefault;
+
   const CountryDropdown({
     super.key,
     required this.selectedCountryCode,
@@ -26,6 +39,8 @@ class CountryDropdown extends ConsumerStatefulWidget {
     this.isLoading = false,
     this.requireAuthToChange = true,
     this.compact = false,
+    this.hugContent = false,
+    this.onPinAsDefault,
   });
 
   @override
@@ -68,12 +83,53 @@ class _CountryDropdownState extends ConsumerState<CountryDropdown> {
     }
   }
 
+  /// Puts the Pin entry ([CountryDropdown.onPinAsDefault]) above [search].
+  /// It is the menu's fixed header, so it shows even though the list opens
+  /// scrolled to the selected country.
+  Widget _withPinEntry(VoidCallback? onPin, double height, Widget search) {
+    if (onPin == null) return search;
+    final name = ref
+        .read(countryDropdownProvider.notifier)
+        .getCountryName(selectedCountryCode);
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Builder(
+          builder: (menuContext) => _PinMenuEntry(
+            label: 'Pin $name as default',
+            height: height,
+            onTap: () {
+              // Closed on purpose: the tablet quick-close guard below must
+              // not reopen it.
+              _selectedSinceOpen = true;
+              Navigator.of(menuContext).pop();
+              onPin();
+            },
+          ),
+        ),
+        search,
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final isCompact = widget.compact;
+    final hug = widget.hugContent;
     final buttonHeight = isCompact ? 36.h : 40.h;
-    final horizontalPadding = isCompact ? 12.sp : 20.sp;
+    final horizontalPadding = hug ? 6.sp : (isCompact ? 12.sp : 20.sp);
     final verticalPadding = isCompact ? 0.sp : 7.sp;
+    final flagWidth = hug ? 16.w : (isCompact ? 20.w : 16.w);
+    final flagHeight = hug ? 11.h : (isCompact ? 14.h : 12.h);
+    final nameGap = hug ? 6.w : (isCompact ? 8.w : 12.w);
+    final chevronGap = hug ? 2.w : 4.w;
+    final chevronSize = hug ? 14.ic : (isCompact ? 18.ic : 20.ic);
+    final nameStyle = hug
+        ? AppTypography.textXsMedium.copyWith(fontSize: 11.f)
+        : (isCompact ? AppTypography.textXsMedium : AppTypography.textSmMedium);
+    final onPin = widget.onPinAsDefault;
+    final searchHeight = context.textExtent(56.h);
+    final pinHeight = onPin == null ? 0.0 : context.textExtent(44.h);
 
     final borderRadius =
         isDropDownOpen
@@ -113,15 +169,17 @@ class _CountryDropdownState extends ConsumerState<CountryDropdown> {
               height: buttonHeight,
               padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
               child: Row(
+                mainAxisSize: hug ? MainAxisSize.min : MainAxisSize.max,
                 children: [
                   if (!widget.isLoading && selectedCountryCode.isNotEmpty)
                     CountryFlag.fromCountryCode(
 selectedCountryCode,
-  theme: ImageTheme(width: isCompact ? 20.w : 16.w,
-                      height: isCompact ? 14.h : 12.h,),
+  theme: ImageTheme(width: flagWidth,
+                      height: flagHeight,),
 ),
-                  SizedBox(width: isCompact ? 8.w : 12.w),
-                  Expanded(
+                  SizedBox(width: nameGap),
+                  Flexible(
+                    fit: hug ? FlexFit.loose : FlexFit.tight,
                     child:
                         widget.isLoading
                             ? Text(
@@ -135,25 +193,27 @@ selectedCountryCode,
                               ref
                                   .read(countryDropdownProvider.notifier)
                                   .getCountryName(selectedCountryCode),
-                              style: (isCompact
-                                      ? AppTypography.textXsMedium
-                                      : AppTypography.textSmMedium)
-                                  .copyWith(color: context.colors.textPrimary),
+                              style: nameStyle.copyWith(
+                                color: context.colors.textPrimary,
+                              ),
                               overflow: TextOverflow.ellipsis,
                             ),
                   ),
-                  SizedBox(width: 4.w),
+                  SizedBox(width: chevronGap),
                   Icon(
                     isDropDownOpen
                         ? Icons.keyboard_arrow_up
                         : Icons.keyboard_arrow_down,
                     color: context.colors.textPrimaryMuted,
-                    size: isCompact ? 18.ic : 20.ic,
+                    size: chevronSize,
                   ),
                 ],
               ),
             ),
             dropdownStyleData: DropdownStyleData(
+              // A hugging button can be a flag and a few letters wide; the
+              // menu (search field, full country names) keeps a usable width.
+              width: hug ? 300.w : null,
               padding: EdgeInsets.zero,
               offset: const Offset(0, -4),
               decoration: BoxDecoration(
@@ -165,59 +225,63 @@ selectedCountryCode,
             ),
             dropdownSearchData: DropdownSearchData(
               searchController: _searchController,
-              searchInnerWidgetHeight: context.textExtent(56.h),
-              searchInnerWidget: Container(
-                height: context.textExtent(56.h),
-                padding: EdgeInsets.only(
-                  top: 8.h,
-                  bottom: 4.h,
-                  left: 12.w,
-                  right: 12.w,
-                ),
-                child: TextFormField(
-                  expands: true,
-                  maxLines: null,
-                  controller: _searchController,
-                  style: AppTypography.textSmRegular.copyWith(
-                    color: context.colors.textPrimary,
+              searchInnerWidgetHeight: pinHeight + searchHeight,
+              searchInnerWidget: _withPinEntry(
+                onPin,
+                pinHeight,
+                Container(
+                  height: searchHeight,
+                  padding: EdgeInsets.only(
+                    top: 8.h,
+                    bottom: 4.h,
+                    left: 12.w,
+                    right: 12.w,
                   ),
-                  decoration: InputDecoration(
-                    isDense: true,
-                    contentPadding: EdgeInsets.symmetric(
-                      horizontal: 12.w,
-                      vertical: 10.h,
+                  child: TextFormField(
+                    expands: true,
+                    maxLines: null,
+                    controller: _searchController,
+                    style: AppTypography.textSmRegular.copyWith(
+                      color: context.colors.textPrimary,
                     ),
-                    hintText: 'Search',
-                    hintStyle: AppTypography.textSmRegular.copyWith(
-                      color: context.textInk(0.5),
-                    ),
-                    prefixIcon: Icon(
-                      Icons.search,
-                      size: 20.ic,
-                      color: context.colors.textPrimary.withValues(alpha: 0.5),
-                    ),
-                    filled: true,
-                    fillColor: context.colors.background,
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(8.br),
-                      borderSide: BorderSide(color: context.colors.surfaceRecessed, width: 1),
-                    ),
-                    enabledBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(8.br),
-                      borderSide: BorderSide(color: context.colors.surfaceRecessed, width: 1),
-                    ),
-                    focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(8.br),
-                      // The focus ring must clear 3:1; ink at 0.3 is ~2:1
-                      // on paper, so light rings in accent-text teal.
-                      borderSide: BorderSide(
-                        color:
-                            context.isLightTheme
-                                ? context.colors.accentText
-                                : context.colors.textPrimary.withValues(
-                                  alpha: 0.3,
-                                ),
-                        width: 1,
+                    decoration: InputDecoration(
+                      isDense: true,
+                      contentPadding: EdgeInsets.symmetric(
+                        horizontal: 12.w,
+                        vertical: 10.h,
+                      ),
+                      hintText: 'Search',
+                      hintStyle: AppTypography.textSmRegular.copyWith(
+                        color: context.textInk(0.5),
+                      ),
+                      prefixIcon: Icon(
+                        Icons.search,
+                        size: 20.ic,
+                        color: context.colors.textPrimary.withValues(alpha: 0.5),
+                      ),
+                      filled: true,
+                      fillColor: context.colors.background,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8.br),
+                        borderSide: BorderSide(color: context.colors.surfaceRecessed, width: 1),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8.br),
+                        borderSide: BorderSide(color: context.colors.surfaceRecessed, width: 1),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8.br),
+                        // The focus ring must clear 3:1; ink at 0.3 is ~2:1
+                        // on paper, so light rings in accent-text teal.
+                        borderSide: BorderSide(
+                          color:
+                              context.isLightTheme
+                                  ? context.colors.accentText
+                                  : context.colors.textPrimary.withValues(
+                                    alpha: 0.3,
+                                  ),
+                          width: 1,
+                        ),
                       ),
                     ),
                   ),
@@ -343,6 +407,62 @@ country.countryCode,
                         ),
                       );
                     }),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// The country menu's Pin entry: a bare pin and its words, in the accent
+/// text ink, with the label on the country names' left edge.
+class _PinMenuEntry extends StatelessWidget {
+  const _PinMenuEntry({
+    required this.label,
+    required this.height,
+    required this.onTap,
+  });
+
+  final String label;
+  final double height;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final ink = context.colors.accentText;
+    return Semantics(
+      button: true,
+      child: InkWell(
+        onTap: onTap,
+        child: Container(
+          height: height,
+          decoration: BoxDecoration(
+            border: Border(
+              bottom: BorderSide(
+                color: context.colors.surfaceRecessed,
+                width: 1.w,
+              ),
+            ),
+          ),
+          padding: EdgeInsets.symmetric(horizontal: 16.w),
+          child: Row(
+            children: [
+              // As wide as a country row's flag, so the words line up with
+              // the names below.
+              SizedBox(
+                width: 16.w,
+                child: Icon(Icons.push_pin_rounded, size: 16.ic, color: ink),
+              ),
+              SizedBox(width: 8.w),
+              Expanded(
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppTypography.textMdMedium.copyWith(color: ink),
+                ),
+              ),
+            ],
           ),
         ),
       ),

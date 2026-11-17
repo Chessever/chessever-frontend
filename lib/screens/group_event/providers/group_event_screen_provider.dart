@@ -6,6 +6,7 @@ import 'package:chessever2/repository/supabase/group_broadcast/group_broadcast.d
 import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_app_bar_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_screen_provider.dart';
+import 'package:chessever2/screens/group_event/providers/home_live_first_provider.dart';
 import 'package:chessever2/screens/group_event/providers/interfaces/igroup_event_screen_controller.dart';
 import 'package:chessever2/screens/group_event/providers/live_group_broadcast_id_provider.dart';
 import 'package:chessever2/screens/group_event/providers/sorting_all_event_provider.dart';
@@ -219,6 +220,7 @@ class _GroupEventScreenController
     _listenToLiveIds();
     _listenToFavorites();
     _listenToAppResume();
+    _listenToLiveFirst();
   }
 
   @override
@@ -286,6 +288,28 @@ class _GroupEventScreenController
       });
     });
   }
+
+  /// Re-publishes Current in its new order when the home bar's Live first is
+  /// pressed. Re-sorting from the ranking itself, not from the list as
+  /// shown, is what puts every event back in its place when it is released.
+  void _listenToLiveFirst() {
+    if (tourEventCategory != GroupEventCategory.current) return;
+    ref.listen<bool>(homeEventsLiveFirstProvider, (_, __) {
+      final models = state.valueOrNull;
+      if (models == null || models.isEmpty) return;
+      state = AsyncValue.data(
+        _sortForCategory(
+          models,
+          eventFavoritePlayersMap: ref.read(eventFavoritePlayersCacheProvider),
+        ),
+      );
+    });
+  }
+
+  /// Whether Current is listing its live events first right now.
+  bool get _liveFirst =>
+      tourEventCategory == GroupEventCategory.current &&
+      ref.read(homeEventsLiveFirstProvider);
 
   void _listenToAppResume() {
     if (tourEventCategory != GroupEventCategory.current) return;
@@ -386,7 +410,8 @@ class _GroupEventScreenController
 
   /// The list order for this controller's category: Past by date, Upcoming
   /// soonest first with starred events on top, Current by Elo with favourites
-  /// and hearts on top.
+  /// and hearts on top, and its live events above all while the home bar's
+  /// Live first is on.
   List<GroupEventCardModel> _sortForCategory(
     List<GroupEventCardModel> models, {
     Map<String, EventFavoritePlayers>? eventFavoritePlayersMap,
@@ -409,9 +434,17 @@ class _GroupEventScreenController
         );
       case GroupEventCategory.current:
       case GroupEventCategory.search:
-        return sortingService.sortAllTours(
+        final ranked = sortingService.sortAllTours(
           models,
           eventFavoritePlayersMap: eventFavoritePlayersMap,
+        );
+        if (!_liveFirst) return ranked;
+        return liveEventsFirst(
+          ranked,
+          homeLiveEventIds(
+            strict: ref.read(liveGroupBroadcastIdsProvider).valueOrNull,
+            mirror: ref.read(liveBroadcastIdsProvider),
+          ),
         );
     }
   }
@@ -465,7 +498,19 @@ class _GroupEventScreenController
     }
 
     if (hasChanges) {
-      state = AsyncValue.data(updatedModels);
+      // Live first puts an event that just went live (or stopped) where it
+      // now belongs; otherwise the list keeps its order and only the cards'
+      // live state changes.
+      state = AsyncValue.data(
+        _liveFirst
+            ? _sortForCategory(
+                updatedModels,
+                eventFavoritePlayersMap: ref.read(
+                  eventFavoritePlayersCacheProvider,
+                ),
+              )
+            : updatedModels,
+      );
     }
   }
 

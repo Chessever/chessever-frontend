@@ -36,6 +36,7 @@ class EnhancedRoundedSearchBar extends ConsumerStatefulWidget {
     this.textFieldKey,
     this.filterButtonKey,
     this.rotatingHints,
+    this.fieldActions,
   });
 
   final TextEditingController controller;
@@ -58,6 +59,10 @@ class EnhancedRoundedSearchBar extends ConsumerStatefulWidget {
   final FocusNode? focusNode;
   final VoidCallback? onClearSearchField;
   final int filterBadgeCount;
+
+  /// Bare glyph controls drawn inside the field, before the filter glyph
+  /// (the home Events bar's Live first). See [SimpleSearchBar.actions].
+  final List<Widget>? fieldActions;
   final Key? textFieldKey;
   final Key? filterButtonKey;
   final List<String>? rotatingHints;
@@ -316,6 +321,7 @@ class _EnhancedRoundedSearchBarState
           onCloseTap: _clearSearchAndHide,
           onOpenFilter: widget.onFilterTap,
           filterBadgeCount: widget.filterBadgeCount,
+          actions: widget.fieldActions,
         ),
         builder:
             (context, child) => HomeSearchFieldSurface(

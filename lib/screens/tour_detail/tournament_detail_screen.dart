@@ -1,10 +1,12 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:chessever2/chat/botvinnik_chat_button.dart';
 import 'package:chessever2/chat/chat_api.dart';
 import 'package:chessever2/e2e/e2e_ids.dart';
 import 'package:chessever2/main.dart';
 import 'package:chessever2/screens/group_event/providers/group_event_screen_provider.dart';
+import 'package:chessever2/screens/group_event/widget/appbar_icons_widget.dart';
 import 'package:chessever2/screens/chessboard/provider/game_pgn_stream_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/game_display_mode_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_app_bar_provider.dart';
@@ -35,6 +37,7 @@ import 'package:chessever2/widgets/screenshot_share_nudge.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_screen_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/games_app_bar_widget.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/category_dropdown.dart';
+import 'package:chessever2/screens/tour_detail/widgets/event_games_quick_actions.dart';
 import 'package:chessever2/screens/tour_detail/widgets/event_search_bar.dart';
 import 'package:chessever2/screens/tour_detail/widgets/tournament_menu_button.dart';
 import 'package:chessever2/theme/app_colors.dart';
@@ -731,7 +734,12 @@ class _TourDetailDropDownAppBar extends ConsumerWidget {
     );
 
     return Padding(
-      padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
+      // The bare ⋮ (Trello #1420) has a 44pt target that reaches past its old
+      // tile; the end inset gives that back so the glyph stays put.
+      padding: EdgeInsetsDirectional.only(
+        start: horizontalPadding,
+        end: math.max(0, horizontalPadding - AppBarIconSurface.bareReach),
+      ),
       child: Row(
         children: [
           IconButton(
@@ -743,7 +751,7 @@ class _TourDetailDropDownAppBar extends ConsumerWidget {
           Expanded(
             child: Center(child: CategoryDropdown(constrainWidth: false)),
           ),
-          TournamentMenuButton(tourData: data),
+          TournamentMenuButton(tourData: data, boxed: false),
         ],
       ),
     );
@@ -829,6 +837,10 @@ const _mappedName = {
 /// reveal/collapse tracks the swipe finger in real time and smoothly chases
 /// `animateToPage` when a tab is tapped — no two-stage "page settles, then
 /// search bar pops" feel.
+///
+/// On Games the row also carries the list's one-tap controls, Live first and
+/// Collapse all ([EventGamesQuickActions]). They ride the same swipe: whole on
+/// Games, folded away one page off it.
 class _PinnedEventSearchBar extends StatelessWidget {
   const _PinnedEventSearchBar({
     required this.pageController,
@@ -840,12 +852,26 @@ class _PinnedEventSearchBar extends StatelessWidget {
   final List<TournamentDetailScreenMode> visibleModes;
   final double fallbackPage;
 
+  /// Tall enough for the controls' 44pt targets on every tab, so the strip
+  /// keeps one height as they fold in and out.
+  static const double _rowHeight = 44;
+
   @override
   Widget build(BuildContext context) {
     final horizontalPadding = ResponsiveHelper.adaptive(
       phone: 20.sp,
       tablet: 32.sp,
     );
+    // The controls' glyphs sit in the two columns of the Games header's
+    // glyphs: the fold under the ⋮ (centred 20.w + 16.w from the end edge)
+    // and Live first under the view toggle, 50.w further in
+    // (games_app_bar_widget.dart).
+    const halfTarget = _rowHeight / 2;
+    final controlsEnd = math.max(0.0, 36.w - halfTarget);
+    final controls = EventGamesQuickActions(
+      gap: math.max(0.0, 50.w - 2 * halfTarget),
+    );
+    final gamesPage = visibleModes.indexOf(TournamentDetailScreenMode.games);
     return AnimatedBuilder(
       animation: pageController,
       builder: (context, child) {
@@ -857,18 +883,45 @@ class _PinnedEventSearchBar extends StatelessWidget {
         if (t <= 0.0) {
           return const SizedBox.shrink();
         }
+        final onGames = gamesPage < 0
+            ? 0.0
+            : (1 - (page - gamesPage).abs()).clamp(0.0, 1.0).toDouble();
         return ClipRect(
           child: Align(
             alignment: Alignment.topCenter,
             heightFactor: t,
-            child: Opacity(opacity: t, child: child),
+            child: Opacity(
+              opacity: t,
+              child: Padding(
+                padding: EdgeInsetsDirectional.only(
+                  start: horizontalPadding,
+                  end:
+                      horizontalPadding +
+                      (controlsEnd - horizontalPadding) * onGames,
+                  bottom: 2.h,
+                ),
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(minHeight: _rowHeight),
+                  child: Row(
+                    children: [
+                      Expanded(child: child!),
+                      if (onGames > 0)
+                        ClipRect(
+                          child: Align(
+                            alignment: AlignmentDirectional.centerStart,
+                            widthFactor: onGames,
+                            child: Opacity(opacity: onGames, child: controls),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
           ),
         );
       },
-      child: Padding(
-        padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
-        child: const EventSearchBar(),
-      ),
+      child: const EventSearchBar(),
     );
   }
 }

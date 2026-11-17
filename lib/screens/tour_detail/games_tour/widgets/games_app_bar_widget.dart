@@ -1,9 +1,10 @@
+import 'dart:math' as math;
+
 import 'package:chessever2/screens/group_event/widget/appbar_icons_widget.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_list_view_mode_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/category_dropdown.dart';
 import 'package:chessever2/screens/tour_detail/widgets/tournament_menu_button.dart';
 import 'package:chessever2/theme/app_colors.dart';
-import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/svg_asset.dart';
@@ -17,6 +18,7 @@ class GamesAppBarWidget extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final tourDetailAsync = ref.watch(tourDetailScreenProvider);
+    final reach = AppBarIconSurface.bareReach;
     return tourDetailAsync.when(
       data: (tourData) {
         final hasTours = tourData.tours.isNotEmpty;
@@ -36,25 +38,34 @@ class GamesAppBarWidget extends ConsumerWidget {
             if (hasTours) ...[
               Expanded(
                 child: Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 12.w),
+                  // The view toggle's tap target reaches past where its tile
+                  // ended, so the dropdown's slot gives that back and keeps
+                  // its width.
+                  padding: EdgeInsetsDirectional.only(
+                    start: 12.w,
+                    end: math.max(0, 12.w - reach),
+                  ),
                   child: const Center(child: CategoryDropdown()),
                 ),
               ),
+              // Bare glyphs (Trello #1420): no tile behind the view toggle
+              // or the ⋮. Each sits where its tile used to, on a 44pt target.
               Semantics(
                 label: 'Toggle chessboard view',
                 child: AppBarIcons(
                   image: SvgAsset.chase_grid,
+                  boxed: false,
                   onTap: () {
                     ref.read(gamesListViewModeSwitcher).toggleViewMode();
                   },
                 ),
               ),
-              SizedBox(width: 18.w),
+              SizedBox(width: math.max(0, 18.w - 2 * reach)),
               Semantics(
                 label: 'More options',
-                child: TournamentMenuButton(tourData: tourData),
+                child: TournamentMenuButton(tourData: tourData, boxed: false),
               ),
-              SizedBox(width: 20.w),
+              SizedBox(width: math.max(0, 20.w - reach)),
             ],
           ],
         );

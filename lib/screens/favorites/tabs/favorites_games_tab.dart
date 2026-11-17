@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:chessever2/e2e/e2e_ids.dart';
 import 'package:chessever2/main.dart' show routeObserver;
+import 'package:chessever2/providers/game_list_live_first_provider.dart';
 import 'package:chessever2/providers/favorite_players_provider.dart';
 import 'package:chessever2/repository/favorites/models/favorite_player.dart';
 import 'package:chessever2/screens/favorites/favorite_players_provider.dart';
@@ -30,7 +31,6 @@ import 'package:chessever2/utils/favorite_constants.dart';
 import 'package:chessever2/utils/user_error_message.dart';
 import 'package:chessever2/utils/favorite_limit_guard.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
-import 'package:chessever2/utils/svg_asset.dart';
 import 'package:chessever2/utils/text_scale.dart';
 import 'package:chessever2/widgets/federation_flag.dart';
 import 'package:chessever2/widgets/game_filter/game_filter.dart';
@@ -38,10 +38,10 @@ import 'package:chessever2/widgets/app_snack.dart';
 import 'package:chessever2/widgets/auth/auth_upgrade_sheet.dart';
 import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
 import 'package:chessever2/widgets/paywall/premium_game_access.dart';
+import 'package:chessever2/widgets/quick_list_toggles.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
-import 'package:flutter_svg/flutter_svg.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:chessever2/widgets/scroll_to_top_bus.dart';
 import 'package:chessever2/widgets/scroll_to_top_button.dart';
@@ -49,6 +49,118 @@ import 'package:intl/intl.dart';
 
 /// Track animated game IDs for Favorites to prevent re-animation
 final Set<String> _favoritesAnimatedGameIds = {};
+
+/// Day key for games with no usable date; sorts after every real day.
+const String _unknownFavoriteDayKey = '0000-00-00';
+
+/// [games] bucketed into days (`yyyy-MM-dd`), newest day first, games with no
+/// date last. Inside a day the given order is kept, except that with
+/// [liveFirst] the games in play lead their day (Trello #1420).
+@visibleForTesting
+Map<String, List<GamesTourModel>> groupFavoriteGamesByDay(
+  List<GamesTourModel> games, {
+  bool liveFirst = false,
+  DateTime? now,
+}) {
+  final grouped = <String, List<GamesTourModel>>{};
+  for (final game in games) {
+    // Bucket by the stable scheduled day when available: last_move_time can be
+    // clobbered by sync refreshes and misreport old games as "today".
+    final date = game.bucketDate;
+    final dateKey = date != null
+        ? DateFormat('yyyy-MM-dd').format(date)
+        : _unknownFavoriteDayKey;
+    grouped.putIfAbsent(dateKey, () => []).add(game);
+  }
+
+  final sortedKeys = grouped.keys.toList()..sort((a, b) => b.compareTo(a));
+  return {
+    for (final key in sortedKeys)
+      key: liveFirst ? liveGamesFirst(grouped[key]!, now: now) : grouped[key]!,
+  };
+}
+
+/// The Games page's one-tap controls, carried in the Favorites title row
+/// (Trello #1420): Live first, Classical only, Filters and the board view.
+///
+/// It watches the same auto-dispose games provider as [FavoritesGamesTab], so
+/// the filter dialog's route cannot drop the notifier it applies to.
+class FavoritesGamesTitleControls extends ConsumerWidget {
+  const FavoritesGamesTitleControls({super.key});
+
+  static const _surface = GameListLiveFirstSurface.favorites;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final filter = ref.watch(
+      favoritesCombinedGamesProvider.select((state) => state.filter),
+    );
+    final liveFirst = ref.watch(gameListLiveFirstProvider(_surface));
+    final classicalOnly = filter.timeControl == GameTimeControlFilter.classical;
+
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        LiveFirstToggleButton(
+          pressed: liveFirst,
+          onTap: () {
+            HapticFeedbackService.toggle();
+            pressGameListLiveFirst(
+              context: context,
+              ref: ref,
+              surface: _surface,
+              games: ref.read(favoritesCombinedGamesProvider).filteredGames,
+            );
+          },
+        ),
+        ClassicalToggleButton(
+          pressed: classicalOnly,
+          onTap: () {
+            HapticFeedbackService.toggle();
+            final current = ref.read(favoritesCombinedGamesProvider).filter;
+            unawaited(
+              ref
+                  .read(favoritesCombinedGamesProvider.notifier)
+                  .applyFilter(
+                    current.copyWith(
+                      timeControl:
+                          current.timeControl == GameTimeControlFilter.classical
+                          ? GameTimeControlFilter.all
+                          : GameTimeControlFilter.classical,
+                    ),
+                  ),
+            );
+          },
+        ),
+        QuickToggleIconButton(
+          key: e2eKey(E2eIds.favoritesGamesFilterButton),
+          label: 'Filters',
+          selected: filter.hasActiveFilters,
+          badgeCount: filter.activeFilterCount,
+          onTap: () => _showFilterDialog(context, ref),
+          child: const Icon(Icons.tune_rounded),
+        ),
+        BoardViewToggleButton(
+          onTap: () => ref.read(gamesListViewModeSwitcher).toggleViewMode(),
+        ),
+      ],
+    );
+  }
+
+  Future<void> _showFilterDialog(BuildContext context, WidgetRef ref) async {
+    HapticFeedbackService.buttonPress();
+    final result = await showGameFilterDialog(
+      context: context,
+      currentFilter: ref.read(favoritesCombinedGamesProvider).filter,
+      showFormatFilter: false,
+    );
+    if (result != null && context.mounted) {
+      await ref
+          .read(favoritesCombinedGamesProvider.notifier)
+          .applyFilter(result);
+    }
+  }
+}
 
 class FavoritesGamesTab extends ConsumerStatefulWidget {
   const FavoritesGamesTab({super.key});
@@ -270,35 +382,9 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
     ref.read(favoritesCombinedGamesProvider.notifier).clearSearch();
   }
 
-  /// Group games by date
-  Map<String, List<GamesTourModel>> _groupGamesByDate(
-    List<GamesTourModel> games,
-  ) {
-    final grouped = <String, List<GamesTourModel>>{};
-    const unknownDateKey = '0000-00-00'; // Sort to end
-
-    for (final game in games) {
-      // Bucket by dateStart (stable scheduled day) when available — last_move_time
-      // can be clobbered by sync refreshes and misreport old games as "today".
-      final date = game.bucketDate;
-      final dateKey = date != null
-          ? DateFormat('yyyy-MM-dd').format(date)
-          : unknownDateKey;
-      grouped.putIfAbsent(dateKey, () => []).add(game);
-    }
-
-    // Sort keys by date descending (most recent first)
-    // Unknown dates (0000-00-00) will sort to the end
-    final sortedKeys = grouped.keys.toList()..sort((a, b) => b.compareTo(a));
-
-    return Map.fromEntries(
-      sortedKeys.map((key) => MapEntry(key, grouped[key]!)),
-    );
-  }
-
   String _formatDateHeader(String dateKey) {
     // Handle unknown date case
-    if (dateKey == '0000-00-00') {
+    if (dateKey == _unknownFavoriteDayKey) {
       return 'Unknown date';
     }
 
@@ -430,6 +516,9 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
     }
 
     final viewMode = ref.watch(gamesListViewModeProvider);
+    final liveFirst = ref.watch(
+      gameListLiveFirstProvider(GameListLiveFirstSurface.favorites),
+    );
     // Watch the notifier provider for optimistic updates when favorites change
     final playerModels = favoritesState.valueOrNull?.players ?? [];
 
@@ -501,6 +590,7 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
               favorites,
               viewMode,
               constraints.crossAxisExtent,
+              liveFirst: liveFirst,
             ),
           ),
 
@@ -516,9 +606,7 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
     // scroll position instead of remounting at the top.
     content = Center(
       child: ConstrainedBox(
-        constraints: BoxConstraints(
-          maxWidth: ResponsiveHelper.contentMaxWidth,
-        ),
+        constraints: BoxConstraints(maxWidth: ResponsiveHelper.contentMaxWidth),
         child: SizedBox.expand(child: content),
       ),
     );
@@ -536,168 +624,56 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
     );
   }
 
+  /// The search field alone. Live first, Classical, Filters and the board view
+  /// ride in the Favorites title row ([FavoritesGamesTitleControls]).
   Widget _buildSearchBar(FavoritesCombinedGamesState state) {
-    final hasActiveFilters = state.filter.hasActiveFilters;
-    final activeFilterCount = state.filter.activeFilterCount;
-    final searchBarHeight = 48.h;
-
-    return SizedBox(
-      height: searchBarHeight * context.textGrowth,
+    return Container(
+      height: 48.h * context.textGrowth,
+      decoration: BoxDecoration(
+        color: context.colors.background,
+        borderRadius: BorderRadius.circular(12.br),
+        border: Border.all(color: context.colors.surfaceRecessed),
+      ),
       child: Row(
         children: [
-          // Search field
+          SizedBox(width: 12.w),
+          Icon(Icons.search, size: 20.sp, color: context.colors.textSecondary),
+          SizedBox(width: 8.w),
           Expanded(
-            child: Container(
-              decoration: BoxDecoration(
-                color: context.colors.background,
-                borderRadius: BorderRadius.circular(12.br),
-                border: Border.all(color: context.colors.surfaceRecessed),
+            child: TextField(
+              key: e2eKey(E2eIds.favoritesGamesSearchField),
+              controller: _searchController,
+              focusNode: _searchFocusNode,
+              style: AppTypography.textSmRegular.copyWith(
+                color: context.colors.textPrimary,
               ),
-              child: Row(
-                children: [
-                  SizedBox(width: 12.w),
-                  Icon(
-                    Icons.search,
-                    size: 20.sp,
-                    color: context.colors.textSecondary,
-                  ),
-                  SizedBox(width: 8.w),
-                  Expanded(
-                    child: TextField(
-                      key: e2eKey(E2eIds.favoritesGamesSearchField),
-                      controller: _searchController,
-                      focusNode: _searchFocusNode,
-                      style: AppTypography.textSmRegular.copyWith(
-                        color: context.colors.textPrimary,
-                      ),
-                      onChanged: _onSearchChanged,
-                      decoration: InputDecoration(
-                        isDense: true,
-                        hintText: 'Search',
-                        hintStyle: AppTypography.textSmRegular.copyWith(
-                          color: context.colors.textSecondary,
-                        ),
-                        border: InputBorder.none,
-                        contentPadding: EdgeInsets.symmetric(vertical: 14.h),
-                      ),
-                    ),
-                  ),
-                  if (_searchController.text.isNotEmpty ||
-                      state.isSearching) ...[
-                    GestureDetector(
-                      onTap: _clearSearch,
-                      child: Icon(
-                        Icons.close,
-                        size: 20.sp,
-                        color: context.colors.textSecondary,
-                      ),
-                    ),
-                    SizedBox(width: 8.w),
-                  ],
-                  SizedBox(width: 8.w),
-                ],
-              ),
-            ),
-          ),
-          // Filter button
-          SizedBox(width: 8.w),
-          GestureDetector(
-            onTap: () => _showFilterDialog(state),
-            child: Container(
-              key: e2eKey(E2eIds.favoritesGamesFilterButton),
-              width: searchBarHeight,
-              height: searchBarHeight,
-              decoration: BoxDecoration(
-                color: hasActiveFilters
-                    ? context.collectionAlertInk.withValues(alpha: 0.15)
-                    : context.colors.background,
-                borderRadius: BorderRadius.circular(12.br),
-                border: Border.all(
-                  color: hasActiveFilters
-                      ? context.collectionAlertInk.withValues(alpha: 0.5)
-                      : context.colors.surfaceRecessed,
+              onChanged: _onSearchChanged,
+              decoration: InputDecoration(
+                isDense: true,
+                hintText: 'Search',
+                hintStyle: AppTypography.textSmRegular.copyWith(
+                  color: context.colors.textSecondary,
                 ),
-              ),
-              child: Stack(
-                alignment: Alignment.center,
-                children: [
-                  Icon(
-                    Icons.tune_rounded,
-                    size: 20.sp,
-                    color: hasActiveFilters
-                        ? context.collectionAlertInk
-                        : context.colors.textSecondary,
-                  ),
-                  // Badge showing active filter count
-                  if (hasActiveFilters)
-                    Positioned(
-                      right: 6.w,
-                      top: 6.h,
-                      child: Container(
-                        width: 14.w,
-                        height: 14.h,
-                        decoration: const BoxDecoration(
-                          color: Color(0xFFEF4444),
-                          shape: BoxShape.circle,
-                        ),
-                        child: Center(
-                          child: Text(
-                            '$activeFilterCount',
-                            style: AppTypography.textXsBold.copyWith(
-                              color: context.colors.textPrimary,
-                              fontSize: 9.sp,
-                              height: 1,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                ],
+                border: InputBorder.none,
+                contentPadding: EdgeInsets.symmetric(vertical: 14.h),
               ),
             ),
           ),
-          // Layout toggle button
+          if (_searchController.text.isNotEmpty || state.isSearching) ...[
+            GestureDetector(
+              onTap: _clearSearch,
+              child: Icon(
+                Icons.close,
+                size: 20.sp,
+                color: context.colors.textSecondary,
+              ),
+            ),
+            SizedBox(width: 8.w),
+          ],
           SizedBox(width: 8.w),
-          GestureDetector(
-            onTap: () => ref.read(gamesListViewModeSwitcher).toggleViewMode(),
-            child: Container(
-              width: searchBarHeight,
-              height: searchBarHeight,
-              decoration: BoxDecoration(
-                color: context.colors.background,
-                borderRadius: BorderRadius.circular(12.br),
-                border: Border.all(color: context.colors.surfaceRecessed),
-              ),
-              child: Center(
-                child: SvgPicture.asset(
-                  SvgAsset.chase_grid,
-                  width: 20.sp,
-                  height: 20.sp,
-                  colorFilter: ColorFilter.mode(
-                    context.colors.textSecondary,
-                    BlendMode.srcIn,
-                  ),
-                ),
-              ),
-            ),
-          ),
         ],
       ),
     );
-  }
-
-  Future<void> _showFilterDialog(FavoritesCombinedGamesState state) async {
-    HapticFeedbackService.buttonPress();
-    final result = await showGameFilterDialog(
-      context: context,
-      currentFilter: state.filter,
-      showFormatFilter: false,
-    );
-    if (result != null && mounted) {
-      await ref
-          .read(favoritesCombinedGamesProvider.notifier)
-          .applyFilter(result);
-    }
   }
 
   Widget _buildFilterChips(
@@ -839,8 +815,9 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
     FavoritesCombinedGamesState state,
     List<FavoritePlayer> favorites,
     GamesListViewMode viewMode,
-    double availableWidth,
-  ) {
+    double availableWidth, {
+    required bool liveFirst,
+  }) {
     if (state.isLoading && state.games.isEmpty) {
       return SliverFillRemaining(
         hasScrollBody: false,
@@ -882,18 +859,25 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
     }
 
     // Use filtered games based on filter settings
-    final games = state.filteredGames;
+    final listedGames = state.filteredGames;
 
     // Show empty state if filter excludes all games
-    if (games.isEmpty && state.filter.hasActiveFilters) {
+    if (listedGames.isEmpty && state.filter.hasActiveFilters) {
       return SliverFillRemaining(
         hasScrollBody: false,
         child: _buildNoFilterResultsState(),
       );
     }
 
-    // Group games by date
-    final gamesByDate = _groupGamesByDate(games);
+    final gamesByDate = groupFavoriteGamesByDay(
+      listedGames,
+      liveFirst: liveFirst,
+    );
+    // With Live first on, the board swipes through the games in the order the
+    // list shows them, live ones leading each day.
+    final games = liveFirst
+        ? [for (final dayGames in gamesByDate.values) ...dayGames]
+        : listedGames;
 
     // Build cheap row descriptors only. The actual cards are created lazily
     // for visible rows by SliverChildBuilderDelegate.
@@ -1198,18 +1182,10 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Container(
-            width: 64.w,
-            height: 64.h,
-            decoration: BoxDecoration(
-              color: context.collectionAlertInk.withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(16.br),
-            ),
-            child: Icon(
-              Icons.error_outline_rounded,
-              color: context.collectionAlertInk,
-              size: 32.ic,
-            ),
+          Icon(
+            Icons.error_outline_rounded,
+            color: context.collectionAlertInk,
+            size: 48.ic,
           ),
           SizedBox(height: 16.h),
           Text(
@@ -1260,25 +1236,10 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Container(
-            width: 80.w,
-            height: 80.h,
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [
-                  context.colors.textPrimary.withValues(alpha: 0.15),
-                  context.colors.textPrimary.withValues(alpha: 0.05),
-                ],
-              ),
-              borderRadius: BorderRadius.circular(20.br),
-            ),
-            child: Icon(
-              Icons.sports_esports_outlined,
-              color: context.colors.textPrimary.withValues(alpha: 0.7),
-              size: 40.ic,
-            ),
+          Icon(
+            Icons.sports_esports_outlined,
+            color: context.textInk(0.4),
+            size: 56.sp,
           ),
           SizedBox(height: 20.h),
           Text(

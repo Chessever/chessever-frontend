@@ -15,6 +15,8 @@ import 'package:chessever2/screens/home/home_screen_provider.dart';
 import 'package:chessever2/screens/home/start_screen.dart';
 import 'package:chessever2/screens/home/widget/bottom_nav_bar.dart';
 import 'package:chessever2/screens/group_event/providers/group_event_screen_provider.dart';
+import 'package:chessever2/screens/group_event/providers/home_live_first_provider.dart';
+import 'package:chessever2/screens/group_event/providers/live_group_broadcast_id_provider.dart';
 import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart';
 import 'package:chessever2/screens/group_event/providers/sorting_all_event_provider.dart';
 import 'package:chessever2/screens/player_profile/player_profile_screen.dart';
@@ -27,6 +29,7 @@ import 'package:chessever2/providers/for_you_games_provider.dart';
 import 'package:chessever2/screens/group_event/widget/filter_popup/filter_popup_state.dart';
 import 'package:chessever2/widgets/alert_dialog/alert_modal.dart';
 import 'package:chessever2/widgets/home_top_bar.dart';
+import 'package:chessever2/widgets/quick_list_toggles.dart';
 import 'package:chessever2/widgets/search/enhanced_rounded_search_bar.dart';
 import 'package:chessever2/widgets/skeleton_widget.dart';
 import 'package:chessever2/widgets/stable_height_slot.dart';
@@ -265,6 +268,20 @@ class GroupEventScreen extends HookConsumerWidget {
       );
     }
 
+    // Live first just came on over Current: bring its top, now the live
+    // events, into view. From another segment Current opens fresh.
+    void showCurrentTop() {
+      if (activeCategory != GroupEventCategory.current ||
+          !currentScrollController.hasClients) {
+        return;
+      }
+      currentScrollController.animateTo(
+        0,
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeOutCubic,
+      );
+    }
+
     ref.listen<BottomNavBarReTapRequest>(bottomNavBarReTapRequestProvider, (
       previous,
       next,
@@ -315,7 +332,16 @@ class GroupEventScreen extends HookConsumerWidget {
                 // every frame.
                 child: SizedBox(
                   width: double.infinity,
+                  // Live first rides inside the field, beside the filter
+                  // glyph, on every segment. Inside, not beside: the bar's
+                  // geometry is the reference every home tab matches.
                   child: EnhancedRoundedSearchBar(
+                    fieldActions: [
+                      HomeLiveFirstToggle(
+                        key: const ValueKey(kHomeLiveFirstButtonKey),
+                        onTurnedOn: showCurrentTop,
+                      ),
+                    ],
                     focusNode: focusNode,
                     controller: searchController,
                     textFieldKey: e2eKey(E2eIds.eventsSearchField),
@@ -589,15 +615,35 @@ class GroupEventScreen extends HookConsumerWidget {
                                   starredIds: allFavorites.toSet(),
                                 );
                               } else {
-                                finalEvents = ref
-                                    .read(tournamentSortingServiceProvider)
-                                    .sortBasedOnFavorite(
-                                      tours: filteredEvents,
-                                      favorites: allFavorites,
-                                      eventFavoritePlayersMap:
-                                          cachedEventFavoritePlayers,
-                                      favoriteTimestamps: favoriteTimestamps,
-                                    );
+                                // Live first is laid over the ranking here
+                                // too: re-ranking the favourites would undo
+                                // the order the list arrives in.
+                                final liveFirst = ref.watch(
+                                  homeEventsLiveFirstProvider,
+                                );
+                                finalEvents = currentEventsDisplayOrder(
+                                  events: filteredEvents,
+                                  sorter: ref.read(
+                                    tournamentSortingServiceProvider,
+                                  ),
+                                  favorites: allFavorites,
+                                  eventFavoritePlayersMap:
+                                      cachedEventFavoritePlayers,
+                                  favoriteTimestamps: favoriteTimestamps,
+                                  liveFirst: liveFirst,
+                                  liveIds: liveFirst
+                                      ? homeLiveEventIds(
+                                          strict: ref
+                                              .watch(
+                                                liveGroupBroadcastIdsProvider,
+                                              )
+                                              .valueOrNull,
+                                          mirror: ref.watch(
+                                            liveBroadcastIdsProvider,
+                                          ),
+                                        )
+                                      : const <String>{},
+                                );
                               }
                               return RefreshIndicator(
                                 onRefresh:
@@ -839,6 +885,33 @@ class _SegmentedSwitcher extends ConsumerWidget {
         BottomNavBarItem.tournaments,
         eventsStartPage(visibleCategories[index]),
       ),
+    );
+  }
+}
+
+/// The key of the home Events bar's Live first control.
+const String kHomeLiveFirstButtonKey = 'events_live_first_button';
+
+/// Live first on the home Events bar (Trello #1420), wearing the web's Live
+/// mark: one tap lists the live events first, from any segment
+/// ([pressHomeEventsLiveFirst]). [onTurnedOn] runs once it has come on.
+class HomeLiveFirstToggle extends ConsumerWidget {
+  const HomeLiveFirstToggle({super.key, this.onTurnedOn});
+
+  final VoidCallback? onTurnedOn;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return LiveFirstToggleButton(
+      subject: 'events',
+      // Rests in the field's quiet ink, like the magnifier and the filter.
+      restingColor: context.colors.iconSecondary,
+      pressed: ref.watch(homeEventsLiveFirstProvider),
+      onTap: () {
+        if (pressHomeEventsLiveFirst(context: context, ref: ref)) {
+          onTurnedOn?.call();
+        }
+      },
     );
   }
 }
