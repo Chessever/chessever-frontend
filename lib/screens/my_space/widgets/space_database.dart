@@ -1718,8 +1718,11 @@ class _SavedSmartEvent extends ConsumerWidget {
       live: watchSmartEventLive(ref, request),
       spaceDraft: smartEventSpaceDraft(request),
       disclosure: disclosure,
-      // No star here: it is the smart event's favorite, and nothing in My
-      // Space adds or removes a favorite. The source screens own it.
+      // The smart event's star is its push subscription (Trello #1411):
+      // starring turns on its pushes (`queue_smart_event_digests`),
+      // unstarring stops them. The card stays in My Space either way. Edit
+      // mode (no disclosure) hides it, where a tap selects.
+      starRequest: disclosure ? request : null,
       onTap: () => openSpaceShortcut(context, ref, shortcut),
     );
   }

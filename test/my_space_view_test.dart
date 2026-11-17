@@ -2977,8 +2977,8 @@ void main() {
     await _drain(tester);
   });
 
-  testWidgets('a My Space smart event ends in its own star, not the chevron, '
-      'on the home and its See all; Edit hides it (Trello #1225)', (
+  testWidgets('a My Space smart event ends in its push star, not the chevron, '
+      'on the home and its See all; Edit hides it (Trello #1411)', (
     tester,
   ) async {
     final smart = _pin(_smartDraft(2700), 'se1', 1);
@@ -3017,7 +3017,8 @@ void main() {
       findsOneWidget,
     );
     expect(chevrons(card), findsNothing);
-    // A collection already wore its own star in My Space; it still does.
+    // A collection's star is its favorite, which My Space never changes: its
+    // card ends in a chevron (38.4.0).
     expect(
       find.descendant(
         of: find.byType(CollectionCard),
@@ -3025,8 +3026,9 @@ void main() {
           (w) => w.runtimeType.toString() == '_CollectionStar',
         ),
       ),
-      findsOneWidget,
+      findsNothing,
     );
+    expect(chevrons(find.byType(CollectionCard)), findsOneWidget);
     await _drain(tester);
 
     await _openSeeAll(

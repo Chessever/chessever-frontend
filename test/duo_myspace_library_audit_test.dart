@@ -565,15 +565,17 @@ void main() {
         expect(find.byType(SpaceAddFab).hitTestable(), findsOneWidget);
 
         final list = _verticalScroll(find.byType(MySpaceView));
-        // The smart event's card (a chevron, never its favorite star: My
-        // Space adds or removes no favorite) and the Prep profile's star.
+        // The smart event's push star (Trello #1411) and the Prep
+        // profile's star are both reachable.
         final smart = find.byKey(
           ValueKey<String>('space_smart_${_homeSmart.key}'),
         );
         await _reach(tester, smart, list);
         expect(
-          find.descendant(of: smart, matching: find.byType(SmartEventStar)),
-          findsNothing,
+          find
+              .descendant(of: smart, matching: find.byType(SmartEventStar))
+              .hitTestable(),
+          findsOneWidget,
         );
         await _reach(tester, find.byType(PrepWatchStar), list);
         // The last-card scroll fix: the final database clears the bottom.

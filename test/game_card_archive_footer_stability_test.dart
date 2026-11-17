@@ -16,6 +16,7 @@ import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card.dart
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/games_tour_content_provider.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/widgets/atomic_countdown_text.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -113,6 +114,30 @@ Future<void> _settle(WidgetTester tester) async {
 }
 
 void main() {
+  testWidgets('unstarted match shells hide clocks despite a fallback date', (
+    tester,
+  ) async {
+    await _pumpCard(
+      tester,
+      showEngineGauge: false,
+      game: _archiveGame().copyWith(
+        source: GameSource.supabase,
+        // No persisted spoiler preference is needed for the clock policy.
+        tourId: '',
+        gameStatus: GameStatus.ongoing,
+        fen: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
+        whiteClockSeconds: 301,
+        blackClockSeconds: 301,
+        whiteTimeDisplay: '5:01',
+        blackTimeDisplay: '5:01',
+        lastMoveTime: DateTime.utc(2026, 11, 16),
+      ),
+    );
+    await _settle(tester);
+    expect(find.byType(AtomicCountdownText), findsNothing);
+    expect(find.text('VS'), findsOneWidget);
+    expect(find.text('0:00'), findsNothing);
+  });
   final savedGame = _archiveGame().copyWith(
     source: GameSource.savedAnalysis,
     fen: 'rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq e6 0 2',
