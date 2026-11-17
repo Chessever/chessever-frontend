@@ -8,7 +8,6 @@ import 'package:chessever2/screens/group_event/widget/appbar_icons_widget.dart';
 import 'package:chessever2/screens/gamebase/event_view/gamebase_virtual_event_id.dart';
 import 'package:chessever2/screens/library/widgets/library_context_menu.dart';
 import 'package:chessever2/screens/tour_detail/combined/combined_category.dart';
-import 'package:chessever2/screens/tour_detail/combined/combined_category_actions.dart';
 import 'package:chessever2/screens/tour_detail/combined/combined_games_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/event_no_spoilers_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_app_bar_provider.dart';
@@ -89,10 +88,7 @@ class TournamentMenuButton extends ConsumerWidget {
     void open() => unawaited(
       CardContextMenu.open(
         context,
-        // The button's own context outlives the menu: Combined needs it for
-        // the Premium gate that may follow the tap.
-        actions: (menuContext) =>
-            _menuActions(menuContext, ref, hostContext: context),
+        actions: (menuContext) => _menuActions(menuContext, ref),
       ),
     );
 
@@ -114,11 +110,7 @@ class TournamentMenuButton extends ConsumerWidget {
     );
   }
 
-  List<LibraryMenuAction> _menuActions(
-    BuildContext context,
-    WidgetRef ref, {
-    required BuildContext hostContext,
-  }) {
+  List<LibraryMenuAction> _menuActions(BuildContext context, WidgetRef ref) {
     final isGamesTab =
         ref.read(selectedTourModeProvider) == TournamentDetailScreenMode.games;
     final groupBroadcastId = tourData.aboutTourModel.groupBroadcastId;
@@ -128,7 +120,6 @@ class TournamentMenuButton extends ConsumerWidget {
     final combinedSelected = ref.read(combinedCategorySelectedProvider);
 
     return [
-      ..._combinedActions(ref, hostContext, combinedSelected),
       if (isGamesTab)
         ...(combinedSelected
             ? _combinedGamesTabActions(ref)
@@ -136,40 +127,6 @@ class TournamentMenuButton extends ConsumerWidget {
       // Notifications + share are shared across tabs.
       ..._sharedActions(ref, context, isMuted),
       ..._spaceActions(ref, context, isGamesTab),
-    ];
-  }
-
-  /// Combined on/off, on every tab of an event with categories to merge.
-  /// It leads the menu: with the picker, this is how Combined is turned on.
-  List<LibraryMenuAction> _combinedActions(
-    WidgetRef ref,
-    BuildContext hostContext,
-    bool combinedSelected,
-  ) {
-    final groupId = ref.read(combinedCategoryGroupIdProvider);
-    if (groupId == null || !ref.read(combinedCategoriesProvider).canCombine) {
-      return const <LibraryMenuAction>[];
-    }
-    return [
-      LibraryMenuAction(
-        icon: combinedSelected
-            ? Icons.call_split_rounded
-            : Icons.call_merge_rounded,
-        label: combinedSelected ? 'Show one category' : 'Combine categories',
-        onSelected: () {
-          if (combinedSelected) {
-            unawaited(closeCombinedCategory(ref, groupId));
-          } else if (hostContext.mounted) {
-            unawaited(
-              openCombinedCategory(
-                hostContext,
-                groupId: groupId,
-                returnTo: 'tournament_detail/games',
-              ),
-            );
-          }
-        },
-      ),
     ];
   }
 
