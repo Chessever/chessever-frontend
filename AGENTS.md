@@ -469,8 +469,12 @@ records, partial reads, new games or corrected results invalidate it. A pause
 between games is never a finalization signal. This metadata is written only
 from a confirmed organizer result, not inferred from a score lead.
 
-A validated complete seed order puts qualified players into the next empty
-stage's correct slots with TBD opponents. These are view-only cards: no fake
-game rows, scores, live status or board navigation. Published next-round
-pairings take precedence. Match finals are independent of the rest of a shared
-stage. Keep this contract and its SCC 12–8 regression fixture in all three apps.
+A validated complete seed order reserves the entire future tree immediately,
+with TBD opponents and pale arrows. Published pairings fill their reserved
+slots without shifting the tree; conflicting pairings are never guessed into
+a slot. Planned routes are separate from winner evidence. Semifinals feed the
+final directly; third place sits below the final and takes semifinal losers
+through dashed arrows. Projected cards are view-only: no fake game rows,
+scores, live status or board navigation. Match finals are independent of the
+rest of a shared stage. Keep this contract and its SCC 12–8 regression fixture
+in all three apps.

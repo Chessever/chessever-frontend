@@ -3,6 +3,7 @@ import 'package:chessever2/screens/tour_detail/bracket/widgets/bracket_graph_lay
 import 'package:chessever2/screens/tour_detail/bracket/widgets/knockout_match_card.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:flutter/material.dart';
+import 'bracket_connector_painter.dart';
 
 class KnockoutBracketCanvas extends StatelessWidget {
   const KnockoutBracketCanvas({
@@ -23,6 +24,23 @@ class KnockoutBracketCanvas extends StatelessWidget {
     final stages = List<KnockoutStage>.of(bracket.stages)
       ..sort((a, b) => a.order.compareTo(b.order));
 
+    final hasSeededRoutes = stages.any(
+      (s) => s.matches.any((m) => m.feederMatchKeys.isNotEmpty),
+    );
+    final connections = layout.connections.isNotEmpty
+        ? layout.connections
+        : [
+            for (final edge in bracket.edges)
+              BracketConnection(
+                sourceMatchKey: edge.sourceMatchKey,
+                destinationMatchKey: edge.destinationMatchKey,
+                isConfirmed: true,
+              ),
+          ];
+    final plannedSources = connections
+        .where((c) => !c.isConfirmed)
+        .map((c) => c.sourceMatchKey)
+        .toSet();
     return RepaintBoundary(
       child: SizedBox.fromSize(
         key: const ValueKey('knockout-bracket-canvas'),
@@ -32,18 +50,20 @@ class KnockoutBracketCanvas extends StatelessWidget {
           children: [
             Positioned.fill(
               child: CustomPaint(
-                painter: _BracketConnectorPainter(
-                  edges: bracket.edges,
+                painter: BracketConnectorPainter(
+                  connections: connections,
+                  arrowheads: hasSeededRoutes,
                   matchRects: layout.matchRects,
                   focusedMatchKey: focusedMatchKey,
-                  // The divider token fades to 1.2:1 on paper; light draws
-                  // the connectors in secondary ink so the tree reads (3.7:1).
-                  lineColor:
-                      context.isLightTheme
-                          ? context.colors.textSecondary
-                          : context.colors.dividerStrong,
-                  lineAlpha: context.isLightTheme ? 0.8 : 0.62,
-                  focusedColor: context.colors.accentText,
+                  futureColor: context.colors.textSecondary.withValues(
+                    alpha: context.isLightTheme ? 0.72 : 0.65,
+                  ),
+                  confirmedColor: hasSeededRoutes || context.isLightTheme
+                      ? context.colors.textSecondary.withValues(alpha: 0.8)
+                      : context.colors.dividerStrong.withValues(alpha: 0.62),
+                  focusedColor: context.colors.accentText.withValues(
+                    alpha: hasSeededRoutes ? 0.9 : 0.82,
+                  ),
                 ),
               ),
             ),
@@ -54,6 +74,7 @@ class KnockoutBracketCanvas extends StatelessWidget {
                   child: _StageHeader(
                     stage: stage,
                     isCurrent: bracket.currentStageKey == stage.key,
+                    isPlacement: rect.top > BracketGraphMetrics.headerTop,
                   ),
                 ),
             for (final stage in stages)
@@ -64,6 +85,11 @@ class KnockoutBracketCanvas extends StatelessWidget {
                     child: KnockoutMatchCard(
                       match: match,
                       isFocused: focusedMatchKey == match.key,
+                      isUpcoming:
+                          match.isUpcoming &&
+                          (match.isProjected ||
+                              match.feederMatchKeys.isNotEmpty ||
+                              plannedSources.contains(match.key)),
                       onTap: () => onMatchTap(match),
                     ),
                   ),
@@ -75,10 +101,15 @@ class KnockoutBracketCanvas extends StatelessWidget {
 }
 
 class _StageHeader extends StatelessWidget {
-  const _StageHeader({required this.stage, required this.isCurrent});
+  const _StageHeader({
+    required this.stage,
+    required this.isCurrent,
+    this.isPlacement = false,
+  });
 
   final KnockoutStage stage;
   final bool isCurrent;
+  final bool isPlacement;
 
   @override
   Widget build(BuildContext context) {
@@ -88,24 +119,23 @@ class _StageHeader extends StatelessWidget {
     return Semantics(
       header: true,
       label:
-          '${stage.label}, ${stage.matches.length} ${stage.matches.length == 1 ? 'match' : 'matches'}',
+          '${stage.label}${isPlacement ? ', semifinal losers' : ''}, ${stage.matches.length} ${stage.matches.length == 1 ? 'match' : 'matches'}',
       child: Row(
         children: [
           Container(
             width: 3,
             height: 18,
             decoration: BoxDecoration(
-              color:
-                  isCurrent
-                      ? colors.accentText
-                      : colors.dividerStrong.withValues(alpha: 0.75),
+              color: isCurrent
+                  ? colors.accentText
+                  : colors.dividerStrong.withValues(alpha: 0.75),
               borderRadius: BorderRadius.circular(2),
             ),
           ),
           const SizedBox(width: 8),
           Expanded(
             child: Text(
-              stage.label,
+              isPlacement ? '${stage.label} (losers)' : stage.label,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
@@ -125,15 +155,14 @@ class _StageHeader extends StatelessWidget {
               decoration: BoxDecoration(
                 color: colors.accentText,
                 shape: BoxShape.circle,
-                boxShadow:
-                    context.isLightTheme
-                        ? null
-                        : [
-                          BoxShadow(
-                            color: colors.brand.withValues(alpha: 0.4),
-                            blurRadius: 5,
-                          ),
-                        ],
+                boxShadow: context.isLightTheme
+                    ? null
+                    : [
+                        BoxShadow(
+                          color: colors.brand.withValues(alpha: 0.4),
+                          blurRadius: 5,
+                        ),
+                      ],
               ),
             ),
             const SizedBox(width: 4),
@@ -153,81 +182,4 @@ class _StageHeader extends StatelessWidget {
       ),
     );
   }
-}
-
-class _BracketConnectorPainter extends CustomPainter {
-  const _BracketConnectorPainter({
-    required this.edges,
-    required this.matchRects,
-    required this.focusedMatchKey,
-    required this.lineColor,
-    required this.focusedColor,
-    this.lineAlpha = 0.62,
-  });
-
-  final List<KnockoutEdge> edges;
-  final Map<String, Rect> matchRects;
-  final String? focusedMatchKey;
-  final Color lineColor;
-  final Color focusedColor;
-
-  /// Opacity of the resting connectors. Paper needs more than the 0.62 the
-  /// dark canvas uses before the lines clear 3:1.
-  final double lineAlpha;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final basePaint =
-        Paint()
-          ..color = lineColor.withValues(alpha: lineAlpha)
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = 1.2
-          ..strokeCap = StrokeCap.round
-          ..strokeJoin = StrokeJoin.round;
-    final focusPaint =
-        Paint()
-          ..color = focusedColor.withValues(alpha: 0.82)
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = 2.1
-          ..strokeCap = StrokeCap.round
-          ..strokeJoin = StrokeJoin.round;
-
-    for (final edge in edges) {
-      if (_isFocused(edge)) continue;
-      _paintEdge(canvas, edge, basePaint);
-    }
-    for (final edge in edges) {
-      if (!_isFocused(edge)) continue;
-      _paintEdge(canvas, edge, focusPaint);
-    }
-  }
-
-  bool _isFocused(KnockoutEdge edge) =>
-      focusedMatchKey != null &&
-      (edge.sourceMatchKey == focusedMatchKey ||
-          edge.destinationMatchKey == focusedMatchKey);
-
-  void _paintEdge(Canvas canvas, KnockoutEdge edge, Paint paint) {
-    final source = matchRects[edge.sourceMatchKey];
-    final destination = matchRects[edge.destinationMatchKey];
-    if (source == null || destination == null) return;
-
-    final start = source.centerRight;
-    final end = destination.centerLeft;
-    final middleX = (start.dx + end.dx) / 2;
-    final path =
-        Path()
-          ..moveTo(start.dx, start.dy)
-          ..cubicTo(middleX, start.dy, middleX, end.dy, end.dx, end.dy);
-    canvas.drawPath(path, paint);
-  }
-
-  @override
-  bool shouldRepaint(covariant _BracketConnectorPainter oldDelegate) =>
-      oldDelegate.edges != edges ||
-      oldDelegate.matchRects != matchRects ||
-      oldDelegate.focusedMatchKey != focusedMatchKey ||
-      oldDelegate.lineColor != lineColor ||
-      oldDelegate.lineAlpha != lineAlpha ||
-      oldDelegate.focusedColor != focusedColor;
 }

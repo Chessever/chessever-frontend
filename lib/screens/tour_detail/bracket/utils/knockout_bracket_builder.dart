@@ -24,12 +24,11 @@ KnockoutBracket buildKnockoutBracket({
     selectedTour: selectedTour,
     siblingTours: siblingTours,
   );
-  final stageTours =
-      relevantTours
-          .where(
-            (tour) => parseKnockoutTourStageDescriptor(tour.name).stage != null,
-          )
-          .toList();
+  final stageTours = relevantTours
+      .where(
+        (tour) => parseKnockoutTourStageDescriptor(tour.name).stage != null,
+      )
+      .toList();
   final selectedIsNamedStage = stageTours.any(
     (tour) => tour.id == selectedTour.id,
   );
@@ -137,27 +136,16 @@ KnockoutBracket buildKnockoutBracket({
     );
   }
 
-  final progressedStages = applyMatchPlayAdvancement(baseStages, {
-    for (final tour in [...siblingTours, selectedTour]) tour.id: tour.info.matchPlayBracket,
+  final publishedStages = _withKnownWinners(
+    baseStages,
+    _inferEdges(baseStages),
+  );
+  final progressedStages = applyMatchPlayAdvancement(publishedStages, {
+    for (final tour in [...siblingTours, selectedTour])
+      tour.id: tour.info.matchPlayBracket,
   });
   final edgeResult = _inferEdges(progressedStages);
-  final stages = <KnockoutStage>[];
-  for (var stageIndex = 0; stageIndex < progressedStages.length; stageIndex++) {
-    final stage = progressedStages[stageIndex];
-    final matches =
-        stage.matches.map((match) {
-          BracketParticipant? winner = match.winner;
-          final advanced = edgeResult.advancedBySourceMatch[match.key];
-          if (advanced != null && advanced.length == 1) {
-            winner = match.participantById(advanced.single);
-          }
-          if (winner == null && stage.isComplete && match.isComplete) {
-            winner = match.leader;
-          }
-          return winner == null ? match : match.copyWith(winner: winner);
-        }).toList();
-    stages.add(stage.copyWith(matches: matches));
-  }
+  final stages = _withKnownWinners(progressedStages, edgeResult);
 
   String? currentStageKey;
   for (final stage in stages.reversed) {
@@ -205,6 +193,29 @@ KnockoutBracket buildKnockoutBracket({
   );
 }
 
+List<KnockoutStage> _withKnownWinners(
+  List<KnockoutStage> baseStages,
+  _EdgeInferenceResult edgeResult,
+) {
+  final stages = <KnockoutStage>[];
+  for (var stageIndex = 0; stageIndex < baseStages.length; stageIndex++) {
+    final stage = baseStages[stageIndex];
+    final matches = stage.matches.map((match) {
+      BracketParticipant? winner = match.winner;
+      final advanced = edgeResult.advancedBySourceMatch[match.key];
+      if (advanced != null && advanced.length == 1) {
+        winner = match.participantById(advanced.single);
+      }
+      if (winner == null && stage.isComplete && match.isComplete) {
+        winner = match.leader;
+      }
+      return winner == null ? match : match.copyWith(winner: winner);
+    }).toList();
+    stages.add(stage.copyWith(matches: matches));
+  }
+  return stages;
+}
+
 _StageSeedResult _multiTourStageSeeds(
   List<Tour> tours, {
   required Map<String, List<Round>> roundsByTourId,
@@ -226,10 +237,9 @@ _StageSeedResult _multiTourStageSeeds(
             .expand((tour) => roundsByTourId[tour.id] ?? const <Round>[])
             .toList()
           ..sort(_compareRounds);
-    final games =
-        sourceTours
-            .expand((tour) => gamesByTourId[tour.id] ?? const <Games>[])
-            .toList();
+    final games = sourceTours
+        .expand((tour) => gamesByTourId[tour.id] ?? const <Games>[])
+        .toList();
     final tourIds = sourceTours.map((tour) => tour.id).toList();
     final firstDate = sourceTours
         .map((tour) => tour.dates.isEmpty ? tour.createdAt : tour.dates.first)
@@ -307,8 +317,9 @@ _StageSeedResult _singleTourStageSeeds(
     stageDefinitions[item.stage.key] = item.stage;
   }
 
-  final unresolvedRounds =
-      sortedRounds.where((round) => !resolved.containsKey(round.id)).toList();
+  final unresolvedRounds = sortedRounds
+      .where((round) => !resolved.containsKey(round.id))
+      .toList();
   var ambiguous = false;
   if (unresolvedRounds.isNotEmpty) {
     if (roundsByStage.length == 1) {
@@ -369,16 +380,16 @@ _StageSeedResult _singleTourStageSeeds(
 
   if ((unresolvedRounds.isNotEmpty || unassignedGames.isNotEmpty) &&
       roundsByStage.length > 1) {
-    final unresolvedRoundIds =
-        unresolvedRounds.map((round) => round.id).toSet();
-    final fallbackGames =
-        games
-            .where(
-              (game) =>
-                  unresolvedRoundIds.contains(game.roundId) ||
-                  !stageForRoundId.containsKey(game.roundId),
-            )
-            .toList();
+    final unresolvedRoundIds = unresolvedRounds
+        .map((round) => round.id)
+        .toSet();
+    final fallbackGames = games
+        .where(
+          (game) =>
+              unresolvedRoundIds.contains(game.roundId) ||
+              !stageForRoundId.containsKey(game.roundId),
+        )
+        .toList();
     seeds.add(
       _StageSeed(
         key: _stageKey([tour.id], 'other-pairings'),
@@ -485,8 +496,8 @@ _MatchBuildResult _buildMatches(
           (isMatchPlay
               ? _hasPlayedMove(game)
               : ((allowTourLevelLive && liveTourIds.contains(game.tourId)) ||
-                  liveRoundIds.contains(game.roundId) ||
-                  (game.lastMove != null && game.lastMove!.isNotEmpty)));
+                    liveRoundIds.contains(game.roundId) ||
+                    (game.lastMove != null && game.lastMove!.isNotEmpty)));
       if (result == BracketGameResult.undecided) continue;
 
       final whiteId = registry.idFor(game.players![0]);
@@ -529,18 +540,15 @@ _MatchBuildResult _buildMatches(
     }
 
     final matchTourIds = matchGames.map((game) => game.tourId).toSet();
-    final sourceStandings =
-        matchTourIds.length == 1
-            ? sourceStandingsByTourId[matchTourIds.single]
-            : null;
+    final sourceStandings = matchTourIds.length == 1
+        ? sourceStandingsByTourId[matchTourIds.single]
+        : null;
     if (sourceStandings != null && sourceStandings.isNotEmpty) {
-      final completedGames =
-          matchGames
-              .where(
-                (game) =>
-                    bracketGameResult(game) != BracketGameResult.undecided,
-              )
-              .length;
+      final completedGames = matchGames
+          .where(
+            (game) => bracketGameResult(game) != BracketGameResult.undecided,
+          )
+          .length;
       final officialScore = resolveOfficialMatchScoreFromStandings(
         standings: sourceStandings,
         firstName: participant1.name,
@@ -555,12 +563,11 @@ _MatchBuildResult _buildMatches(
       }
     }
 
-    final BracketParticipant? leader =
-        participant1Score == participant2Score
-            ? null
-            : participant1Score > participant2Score
-            ? participant1
-            : participant2;
+    final BracketParticipant? leader = participant1Score == participant2Score
+        ? null
+        : participant1Score > participant2Score
+        ? participant1
+        : participant2;
     final ids = [participant1.id, participant2.id]..sort();
     final key =
         '${seed.key}:match:'
@@ -571,10 +578,9 @@ _MatchBuildResult _buildMatches(
     int? minimumBoard;
     for (final game in matchGames) {
       if (game.boardNr == null) continue;
-      minimumBoard =
-          minimumBoard == null
-              ? game.boardNr
-              : math.min(minimumBoard, game.boardNr!);
+      minimumBoard = minimumBoard == null
+          ? game.boardNr
+          : math.min(minimumBoard, game.boardNr!);
     }
 
     matches.add(
@@ -632,10 +638,9 @@ _EdgeInferenceResult _inferEdges(List<KnockoutStage> stages) {
           sourceIndex--
         ) {
           if (_isAmbiguousStage(stages[sourceIndex])) continue;
-          final sources =
-              stages[sourceIndex].matches
-                  .where((match) => match.containsParticipant(participant.id))
-                  .toList();
+          final sources = stages[sourceIndex].matches
+              .where((match) => match.containsParticipant(participant.id))
+              .toList();
           if (sources.isEmpty) continue;
           if (sources.length != 1) {
             ambiguousEvidence = true;
@@ -834,10 +839,9 @@ DateTime? _completionNotBefore(
     // Broadcast `dates` are calendar days, normally encoded at midnight.
     // Waiting until the following day prevents a decided first leg from
     // becoming a terminal winner while another leg can still be published.
-    final boundary =
-        listedEnd.isUtc
-            ? DateTime.utc(listedEnd.year, listedEnd.month, listedEnd.day + 1)
-            : DateTime(listedEnd.year, listedEnd.month, listedEnd.day + 1);
+    final boundary = listedEnd.isUtc
+        ? DateTime.utc(listedEnd.year, listedEnd.month, listedEnd.day + 1)
+        : DateTime(listedEnd.year, listedEnd.month, listedEnd.day + 1);
     if (latest == null || boundary.isAfter(latest)) latest = boundary;
   }
   if (latest != null) return latest;
@@ -958,10 +962,9 @@ class _ParticipantRegistry {
       final id = idFor(player);
       if (id == null) continue;
       final current = _dataById[id];
-      _dataById[id] =
-          current == null
-              ? _ParticipantData.fromPlayer(id, player)
-              : current.merge(player);
+      _dataById[id] = current == null
+          ? _ParticipantData.fromPlayer(id, player)
+          : current.merge(player);
     }
   }
 
@@ -1028,14 +1031,15 @@ class _ParticipantData {
   );
 }
 
-String _normalizedPlayerName(String name) =>
-    _titleFreeDisplayName(
-      name,
-    ).toLowerCase().replaceAll('’', "'").replaceAll(RegExp(r'\s+'), ' ').trim();
+String _normalizedPlayerName(String name) => _titleFreeDisplayName(
+  name,
+).toLowerCase().replaceAll('’', "'").replaceAll(RegExp(r'\s+'), ' ').trim();
 
 bool _isPlaceholderParticipantName(String name) {
-  final normalized =
-      name.toLowerCase().replaceAll(RegExp(r'[^a-z0-9?]+'), ' ').trim();
+  final normalized = name
+      .toLowerCase()
+      .replaceAll(RegExp(r'[^a-z0-9?]+'), ' ')
+      .trim();
   return normalized == '?' ||
       normalized == 'tbd' ||
       normalized == 'tba' ||
@@ -1046,15 +1050,14 @@ bool _isPlaceholderParticipantName(String name) {
       normalized.startsWith('loser of ');
 }
 
-String _titleFreeDisplayName(String name) =>
-    name
-        .trim()
-        .replaceFirst(
-          RegExp(
-            r'^(?:(?:GM|IM|FM|CM|WGM|WIM|WFM|WCM|NM|WNM)\.?\s+)+',
-            caseSensitive: false,
-          ),
-          '',
-        )
-        .replaceAll(RegExp(r'\s+'), ' ')
-        .trim();
+String _titleFreeDisplayName(String name) => name
+    .trim()
+    .replaceFirst(
+      RegExp(
+        r'^(?:(?:GM|IM|FM|CM|WGM|WIM|WFM|WCM|NM|WNM)\.?\s+)+',
+        caseSensitive: false,
+      ),
+      '',
+    )
+    .replaceAll(RegExp(r'\s+'), ' ')
+    .trim();

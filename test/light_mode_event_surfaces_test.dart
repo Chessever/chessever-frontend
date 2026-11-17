@@ -4,6 +4,7 @@ import 'package:chessever2/screens/streaks/models/streak_models.dart';
 import 'package:chessever2/screens/streaks/widgets/player_class_scoreboard.dart';
 import 'package:chessever2/screens/tour_detail/bracket/models/knockout_bracket.dart';
 import 'package:chessever2/screens/tour_detail/bracket/widgets/bracket_graph_layout.dart';
+import 'package:chessever2/screens/tour_detail/bracket/widgets/bracket_connector_painter.dart';
 import 'package:chessever2/screens/tour_detail/bracket/widgets/knockout_bracket_canvas.dart';
 import 'package:chessever2/screens/tour_detail/bracket/widgets/knockout_match_card.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/utils/knockout_match_detector.dart';
@@ -269,7 +270,7 @@ void main() {
       },
     );
 
-    Future<dynamic> pumpCanvas(
+    Future<BracketConnectorPainter> pumpCanvas(
       WidgetTester tester,
       Brightness brightness,
     ) async {
@@ -290,34 +291,29 @@ void main() {
               matching: find.byType(CustomPaint),
             ),
           )
-          .firstWhere(
-            (p) =>
-                p.painter.runtimeType.toString() == '_BracketConnectorPainter',
-          );
-      return paint.painter;
+          .firstWhere((p) => p.painter is BracketConnectorPainter);
+      return paint.painter! as BracketConnectorPainter;
     }
 
     testWidgets('light connectors and focus path read on paper', (
       tester,
     ) async {
-      final dynamic painter = await pumpCanvas(tester, Brightness.light);
-      final Color line = painter.lineColor as Color;
-      final double lineAlpha = painter.lineAlpha as double;
-      final Color focus = painter.focusedColor as Color;
-
-      final resting = line.withValues(alpha: lineAlpha);
+      final painter = await pumpCanvas(tester, Brightness.light);
+      final resting = painter.confirmedColor;
+      final focus = painter.focusedColor;
       expect(contrast(resting, light.background), greaterThanOrEqualTo(kUi));
-      expect(
-        contrast(focus.withValues(alpha: 0.82), light.background),
-        greaterThanOrEqualTo(kUi),
-      );
+      expect(contrast(focus, light.background), greaterThanOrEqualTo(kUi));
     });
 
     testWidgets('dark connectors keep their historic paint', (tester) async {
-      final dynamic painter = await pumpCanvas(tester, Brightness.dark);
-      expect(painter.lineColor, dark.dividerStrong);
-      expect(painter.lineAlpha, 0.62);
-      expect(painter.focusedColor, kPrimaryColor);
+      final painter = await pumpCanvas(tester, Brightness.dark);
+      expect(
+        painter.confirmedColor,
+        dark.dividerStrong.withValues(alpha: 0.62),
+      );
+      expect(painter.focusedColor, kPrimaryColor.withValues(alpha: 0.82));
+      expect(painter.connections, hasLength(2));
+      expect(painter.arrowheads, isFalse);
     });
 
     Future<void> pumpLiveCard(WidgetTester tester, Brightness brightness) {

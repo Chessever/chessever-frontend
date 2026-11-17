@@ -142,7 +142,7 @@ void main() {
           bracket.stages
               .firstWhere((s) => s.sourceRoundIds.contains('qhktidXj'))
               .matches,
-          isEmpty,
+          hasLength(4),
         );
       }
     },
@@ -230,9 +230,10 @@ void main() {
     final next = bracket.stages.firstWhere(
       (s) => s.sourceRoundIds.contains('qhktidXj'),
     );
-    expect(next.matches, hasLength(1));
-    expect(next.matches.single.isProjected, isFalse);
-    expect(next.matches.single.sourceGameIds, ['quarterfinal-game']);
-    expect(next.matches.single.participant2.fideId, 25092340);
+    expect(next.matches, hasLength(4));
+    final publishedMatch = next.matches.singleWhere((m) => !m.isProjected);
+    expect(publishedMatch.isProjected, isFalse);
+    expect(publishedMatch.sourceGameIds, ['quarterfinal-game']);
+    expect(publishedMatch.participant2.fideId, 25092340);
   });
 }

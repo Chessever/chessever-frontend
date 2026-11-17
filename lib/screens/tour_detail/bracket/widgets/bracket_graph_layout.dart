@@ -1,7 +1,9 @@
 import 'dart:math' as math;
 
 import 'package:chessever2/screens/tour_detail/bracket/models/knockout_bracket.dart';
-import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter/painting.dart';
+import '../utils/knockout_stage_parser.dart';
 
 /// Fixed logical measurements for the bracket canvas.
 ///
@@ -29,11 +31,13 @@ class BracketGraphLayout {
     required this.size,
     required this.stageHeaderRects,
     required this.matchRects,
+    this.connections = const [],
   });
 
   final Size size;
   final Map<String, Rect> stageHeaderRects;
   final Map<String, Rect> matchRects;
+  final List<BracketConnection> connections;
 
   Rect? matchRect(String matchKey) => matchRects[matchKey];
 
@@ -56,6 +60,20 @@ class BracketGraphLayout {
       height: 360,
     );
   }
+}
+
+/// A displayed route. A planned route never counts as advancement evidence.
+class BracketConnection {
+  const BracketConnection({
+    required this.sourceMatchKey,
+    required this.destinationMatchKey,
+    required this.isConfirmed,
+    this.feedsLosers = false,
+  });
+  final String sourceMatchKey;
+  final String destinationMatchKey;
+  final bool isConfirmed;
+  final bool feedsLosers;
 }
 
 /// Scene point to put at the viewport center when opening on [focusRect].
@@ -81,11 +99,11 @@ Offset readableStageCameraCenter({
   return Offset(center.dx, minimumCenterY);
 }
 
-/// Places stage columns and match cards without inferring any missing edges.
+/// Places the full tree while keeping planned routes separate from evidence.
 ///
-/// The first column is distributed evenly. A later card is aligned to the
-/// average center of its *published* incoming source cards when those edges
-/// exist; otherwise it keeps its proportional feed-order position. A forward
+/// The first column is distributed evenly. A later card aligns to the average
+/// center of both official feeders, or published incoming sources when no seed
+/// route is known; otherwise it keeps its proportional feed-order position. A forward
 /// and backward spacing pass then preserves feed order and prevents overlap.
 BracketGraphLayout buildBracketGraphLayout(KnockoutBracket bracket) {
   final stages = List<KnockoutStage>.of(bracket.stages)
@@ -102,88 +120,149 @@ BracketGraphLayout buildBracketGraphLayout(KnockoutBracket bracket) {
     );
   }
 
-  final largestStage = stages.fold<int>(
+  bool isThird(KnockoutStage stage) =>
+      resolveLogicalKnockoutStage(stage.label, '')?.key == 'third-place';
+  final finals = stages
+      .where((s) => resolveLogicalKnockoutStage(s.label, '')?.key == 'finals')
+      .toList();
+  final placements = finals.isNotEmpty
+      ? stages.where(isThird).toList()
+      : <KnockoutStage>[];
+  final mainStages = stages.where((s) => !placements.contains(s)).toList();
+  final largestStage = mainStages.fold<int>(
     0,
-    (largest, stage) => math.max(largest, stage.matches.length),
+    (largest, s) => math.max(largest, s.matches.length),
   );
-  final packedHeight =
-      largestStage <= 0
-          ? BracketGraphMetrics.minimumContentHeight
-          : largestStage * BracketGraphMetrics.matchHeight +
-              math.max(0, largestStage - 1) * BracketGraphMetrics.matchGap;
   final contentHeight = math.max(
     BracketGraphMetrics.minimumContentHeight,
-    packedHeight,
+    largestStage * BracketGraphMetrics.matchHeight +
+        math.max(0, largestStage - 1) * BracketGraphMetrics.matchGap,
   );
-  final canvasHeight =
-      BracketGraphMetrics.contentTop +
-      contentHeight +
-      BracketGraphMetrics.bottomPadding;
-  final canvasWidth =
-      BracketGraphMetrics.canvasPadding * 2 +
-      stages.length * BracketGraphMetrics.matchWidth +
-      math.max(0, stages.length - 1) * BracketGraphMetrics.stageGap;
-
+  var canvasBottom = BracketGraphMetrics.contentTop + contentHeight;
   final stageHeaderRects = <String, Rect>{};
   final matchRects = <String, Rect>{};
   final incomingSources = <String, List<String>>{};
   for (final edge in bracket.edges) {
     incomingSources
-        .putIfAbsent(edge.destinationMatchKey, () => <String>[])
+        .putIfAbsent(edge.destinationMatchKey, () => [])
         .add(edge.sourceMatchKey);
   }
-
-  for (var stageIndex = 0; stageIndex < stages.length; stageIndex += 1) {
-    final stage = stages[stageIndex];
+  for (var column = 0; column < mainStages.length; column++) {
+    final stage = mainStages[column];
     final x =
         BracketGraphMetrics.canvasPadding +
-        stageIndex * BracketGraphMetrics.stageStride;
+        column * BracketGraphMetrics.stageStride;
     stageHeaderRects[stage.key] = Rect.fromLTWH(
       x,
       BracketGraphMetrics.headerTop,
       BracketGraphMetrics.matchWidth,
       BracketGraphMetrics.headerHeight,
     );
-
-    final matchCount = stage.matches.length;
-    if (matchCount == 0) continue;
-
-    final desiredTop = <double>[];
-    for (var matchIndex = 0; matchIndex < matchCount; matchIndex += 1) {
-      final match = stage.matches[matchIndex];
-      final sourceCenters = (incomingSources[match.key] ?? const <String>[])
-          .map((key) => matchRects[key])
-          .whereType<Rect>()
-          .map((rect) => rect.center.dy)
-          .toList(growable: false);
-
-      final centerY =
-          sourceCenters.isNotEmpty
-              ? sourceCenters.reduce((a, b) => a + b) / sourceCenters.length
-              : BracketGraphMetrics.contentTop +
-                  ((matchIndex + 0.5) / matchCount) * contentHeight;
-      desiredTop.add(centerY - BracketGraphMetrics.matchHeight / 2);
+    final desired = <double>[];
+    for (var index = 0; index < stage.matches.length; index++) {
+      final match = stage.matches[index];
+      // Both feeders determine a reserved slot's position, including the one
+      // that has not played. Qualifying a player cannot move the bracket.
+      final feeders = match.feederMatchKeys.isNotEmpty
+          ? match.feederMatchKeys
+          : incomingSources[match.key] ?? const <String>[];
+      final centers = feeders
+          .map((key) => matchRects[key]?.center.dy)
+          .whereType<double>()
+          .toList();
+      final center = centers.isNotEmpty
+          ? centers.reduce((a, b) => a + b) / centers.length
+          : BracketGraphMetrics.contentTop +
+                ((index + 0.5) / stage.matches.length) * contentHeight;
+      desired.add(center - BracketGraphMetrics.matchHeight / 2);
     }
-
-    final placedTop = _spaceCards(
-      desiredTop,
+    final tops = _spaceCards(
+      desired,
       contentTop: BracketGraphMetrics.contentTop,
       contentBottom: BracketGraphMetrics.contentTop + contentHeight,
     );
-    for (var matchIndex = 0; matchIndex < matchCount; matchIndex += 1) {
-      matchRects[stage.matches[matchIndex].key] = Rect.fromLTWH(
+    for (var index = 0; index < stage.matches.length; index++) {
+      matchRects[stage.matches[index].key] = Rect.fromLTWH(
         x,
-        placedTop[matchIndex],
+        tops[index],
         BracketGraphMetrics.matchWidth,
         BracketGraphMetrics.matchHeight,
       );
     }
   }
-
+  // Third place hangs below the final, outside the title path. It never takes
+  // an intervening column or shifts the final away from its semifinal feeders.
+  for (final stage in placements) {
+    final finalStage = finals.first;
+    final x = stageHeaderRects[finalStage.key]!.left;
+    var top =
+        finalStage.matches
+            .map((m) => matchRects[m.key]?.bottom ?? 0)
+            .fold<double>(
+              BracketGraphMetrics.contentTop + contentHeight / 2,
+              math.max,
+            ) +
+        56;
+    stageHeaderRects[stage.key] = Rect.fromLTWH(
+      x,
+      top,
+      BracketGraphMetrics.matchWidth,
+      BracketGraphMetrics.headerHeight,
+    );
+    top += BracketGraphMetrics.headerHeight + BracketGraphMetrics.headerGap;
+    for (final match in stage.matches) {
+      matchRects[match.key] = Rect.fromLTWH(
+        x,
+        top,
+        BracketGraphMetrics.matchWidth,
+        BracketGraphMetrics.matchHeight,
+      );
+      top += BracketGraphMetrics.matchHeight + BracketGraphMetrics.matchGap;
+    }
+    canvasBottom = math.max(canvasBottom, top);
+  }
+  final evidence = {
+    for (final e in bracket.edges)
+      '${e.sourceMatchKey}\u0000${e.destinationMatchKey}',
+  };
+  final connections = <String, BracketConnection>{};
+  for (final stage in stages) {
+    for (final match in stage.matches) {
+      for (final source in match.feederMatchKeys) {
+        final key = '$source\u0000${match.key}';
+        connections[key] = BracketConnection(
+          sourceMatchKey: source,
+          destinationMatchKey: match.key,
+          isConfirmed: evidence.contains(key),
+          feedsLosers: match.feedsLosers,
+        );
+      }
+    }
+  }
+  for (final edge in bracket.edges) {
+    final key = '${edge.sourceMatchKey}\u0000${edge.destinationMatchKey}';
+    connections.putIfAbsent(
+      key,
+      () => BracketConnection(
+        sourceMatchKey: edge.sourceMatchKey,
+        destinationMatchKey: edge.destinationMatchKey,
+        isConfirmed: true,
+        feedsLosers: placements.any(
+          (s) => s.matches.any((m) => m.key == edge.destinationMatchKey),
+        ),
+      ),
+    );
+  }
   return BracketGraphLayout(
-    size: Size(canvasWidth, canvasHeight),
+    size: Size(
+      BracketGraphMetrics.canvasPadding * 2 +
+          mainStages.length * BracketGraphMetrics.matchWidth +
+          math.max(0, mainStages.length - 1) * BracketGraphMetrics.stageGap,
+      canvasBottom + BracketGraphMetrics.bottomPadding,
+    ),
     stageHeaderRects: Map.unmodifiable(stageHeaderRects),
     matchRects: Map.unmodifiable(matchRects),
+    connections: List.unmodifiable(connections.values),
   );
 }
 

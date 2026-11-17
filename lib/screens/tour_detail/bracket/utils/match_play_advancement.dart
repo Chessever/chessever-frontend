@@ -67,50 +67,131 @@ List<KnockoutStage> applyMatchPlayAdvancement(
     result.add(stage.copyWith(matches: matches));
   }
 
-  for (var i = 0; i < result.length - 1; i++) {
+  final possibleParticipants = <String, Set<String>>{};
+  for (final stage in result.where((s) => seeded.contains(s.key))) {
+    for (final match in stage.matches) {
+      possibleParticipants[match.key] = {
+        match.participant1.id,
+        match.participant2.id,
+      };
+    }
+  }
+  for (var i = 0; i < result.length; i++) {
     final source = result[i];
+    final size = _fieldSize(source);
     if (!seeded.contains(source.key) ||
-        !source.matches.any((m) => m.winner != null)) {
+        size < 4 ||
+        source.matches.length != size ~/ 2) {
       continue;
     }
-    // Placement rounds are not steps toward the title. Never fill a different
-    // stage or replace pairings already published by the organizer.
     final destinationIndex = result.indexWhere(
-      (s) => _fieldSize(s) == _fieldSize(source) ~/ 2,
+      (s) => _fieldSize(s) == size ~/ 2,
       i + 1,
     );
-    if (destinationIndex < 0 || _fieldSize(source) < 4) continue;
-    final destination = result[destinationIndex];
-    if (destination.matches.isNotEmpty ||
-        !destination.sourceTourIds.toSet().containsAll(source.sourceTourIds)) {
-      continue;
+    if (destinationIndex >= 0) {
+      final filled = _fillStage(
+        source,
+        result[destinationIndex],
+        possibleParticipants,
+      );
+      if (filled != null) {
+        result[destinationIndex] = filled;
+        seeded.add(filled.key);
+      }
     }
-    result[destinationIndex] = destination.copyWith(
-      matches: [
-        for (var slot = 0; slot < source.matches.length ~/ 2; slot++)
-          KnockoutMatch(
-            key: '${destination.key}:pending:$slot',
-            stageKey: destination.key,
-            participant1:
-                source.matches[slot * 2].winner ??
-                _pending(destination.key, slot, 0),
-            participant2:
-                source.matches[slot * 2 + 1].winner ??
-                _pending(destination.key, slot, 1),
-            games: const [],
-            participant1Score: 0,
-            participant2Score: 0,
-            leader: null,
-            winner: null,
-            minimumBoardOrder: slot,
-            isProjected: true,
-            isComplete: false,
-            isLive: false,
-          ),
-      ],
-    );
+    if (size == 4) {
+      final thirdIndex = result.indexWhere(
+        (s) => resolveLogicalKnockoutStage(s.label, '')?.key == 'third-place',
+      );
+      if (thirdIndex >= 0) {
+        final filled = _fillStage(
+          source,
+          result[thirdIndex],
+          possibleParticipants,
+          losers: true,
+        );
+        if (filled != null) result[thirdIndex] = filled;
+      }
+    }
   }
   return result;
+}
+
+// Preserve the official slots as real pairings arrive one match at a time.
+// Each slot retains its seed pool, so subsequent rounds can be routed even
+// while some players are still unknown. A contradictory pairing is never put
+// into an invented slot.
+KnockoutStage? _fillStage(
+  KnockoutStage source,
+  KnockoutStage destination,
+  Map<String, Set<String>> pools, {
+  bool losers = false,
+}) {
+  if (!destination.sourceTourIds.toSet().containsAll(source.sourceTourIds)) {
+    return null;
+  }
+  final slots = source.matches.length ~/ 2;
+  final published = <int, KnockoutMatch>{};
+  for (final match in destination.matches) {
+    final candidates = <int>[];
+    for (var slot = 0; slot < slots; slot++) {
+      final top = pools[source.matches[slot * 2].key] ?? const <String>{};
+      final bottom =
+          pools[source.matches[slot * 2 + 1].key] ?? const <String>{};
+      if ((top.contains(match.participant1.id) &&
+              bottom.contains(match.participant2.id)) ||
+          (top.contains(match.participant2.id) &&
+              bottom.contains(match.participant1.id))) {
+        candidates.add(slot);
+      }
+    }
+    if (candidates.length != 1 || published.containsKey(candidates.single)) {
+      return null;
+    }
+    published[candidates.single] = match;
+  }
+  final matches = <KnockoutMatch>[];
+  for (var slot = 0; slot < slots; slot++) {
+    final top = source.matches[slot * 2];
+    final bottom = source.matches[slot * 2 + 1];
+    final feeders = [top.key, bottom.key];
+    final existing = published[slot];
+    final match =
+        existing?.copyWith(feederMatchKeys: feeders, feedsLosers: losers) ??
+        KnockoutMatch(
+          key: '${destination.key}:pending:$slot',
+          stageKey: destination.key,
+          participant1:
+              _qualified(top, losers: losers) ??
+              _pending(destination.key, slot, 0),
+          participant2:
+              _qualified(bottom, losers: losers) ??
+              _pending(destination.key, slot, 1),
+          games: const [],
+          participant1Score: 0,
+          participant2Score: 0,
+          leader: null,
+          winner: null,
+          minimumBoardOrder: slot,
+          isProjected: true,
+          isComplete: false,
+          isLive: false,
+          feederMatchKeys: feeders,
+          feedsLosers: losers,
+        );
+    pools[match.key] = {...?pools[top.key], ...?pools[bottom.key]};
+    matches.add(match);
+  }
+  return destination.copyWith(matches: matches);
+}
+
+BracketParticipant? _qualified(KnockoutMatch match, {required bool losers}) {
+  final winner = match.winner;
+  if (winner == null) return null;
+  if (!losers) return winner;
+  return winner.id == match.participant1.id
+      ? match.participant2
+      : match.participant1;
 }
 
 Iterable<Map> _rows(dynamic value) =>
@@ -155,7 +236,8 @@ BracketParticipant? _confirmedWinner(KnockoutMatch match, Map? row) {
       scores[first] != match.participant1Score ||
       scores[1 - first] != match.participant2Score ||
       match.leader == null ||
-      row['winnerFideId'] != match.leader!.fideId.toString()) {
+      row['winnerFideId'] != match.leader!.fideId.toString() ||
+      (match.winner != null && match.winner != match.leader)) {
     return null;
   }
   return match.leader;

@@ -10,26 +10,27 @@ class KnockoutMatchCard extends StatelessWidget {
     required this.match,
     required this.onTap,
     this.isFocused = false,
+    this.isUpcoming = false,
     super.key,
   });
 
   final KnockoutMatch match;
   final bool isFocused;
+  final bool isUpcoming;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     final colors = context.colors;
     final winnerId = match.winner?.id;
-    final semantics =
-        StringBuffer()
-          ..write(match.isLive ? 'Live match. ' : 'Match. ')
-          ..write(
-            match.isProjected
-                ? '${match.participant1.displayName}, ${match.participant2.displayName}. Not played yet'
-                : '${match.participant1.displayName} ${_scoreLabel(match.participant1Score)}, '
+    final semantics = StringBuffer()
+      ..write(match.isLive ? 'Live match. ' : 'Match. ')
+      ..write(
+        match.isProjected
+            ? '${match.participant1.displayName}, ${match.participant2.displayName}. Not played yet'
+            : '${match.participant1.displayName} ${_scoreLabel(match.participant1Score)}, '
                   '${match.participant2.displayName} ${_scoreLabel(match.participant2Score)}',
-          );
+      );
     if (match.winner != null) {
       semantics.write('. ${match.winner!.displayName} advances');
     }
@@ -38,105 +39,110 @@ class KnockoutMatchCard extends StatelessWidget {
     return CappedTextScale(
       maxScale: 1.3,
       child: Semantics(
-      button: !match.isProjected,
-      label: semantics.toString(),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          key: ValueKey('bracket-match-${match.key}'),
-          onTap: match.isProjected ? null : () {
-            HapticFeedbackService.cardTap();
-            onTap();
-          },
-          borderRadius: BorderRadius.circular(12),
-          child: Ink(
-            decoration: BoxDecoration(
-              color: colors.popup,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                color:
-                    isFocused
-                        ? colors.accentText.withValues(alpha: 0.78)
-                        : colors.divider,
-                width: isFocused ? 1.4 : 0.8,
-              ),
-              // Paper lifts the card with one tight, ink-tinted shadow cast
-              // from above; dark gets its lift from tone alone.
-              boxShadow:
-                  context.isLightTheme
-                      ? [
+        button: !match.isProjected,
+        label: semantics.toString(),
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            key: ValueKey('bracket-match-${match.key}'),
+            onTap: match.isProjected
+                ? null
+                : () {
+                    HapticFeedbackService.cardTap();
+                    onTap();
+                  },
+            borderRadius: BorderRadius.circular(12),
+            child: Ink(
+              decoration: BoxDecoration(
+                color: colors.popup.withValues(alpha: isUpcoming ? 0.55 : 1),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: isFocused
+                      ? colors.accentText.withValues(alpha: 0.78)
+                      : colors.divider.withValues(alpha: isUpcoming ? 0.55 : 1),
+                  width: isFocused ? 1.4 : 0.8,
+                ),
+                // Paper lifts the card with one tight, ink-tinted shadow cast
+                // from above; dark gets its lift from tone alone.
+                boxShadow: context.isLightTheme
+                    ? [
                         BoxShadow(
                           color: colors.shadow,
                           blurRadius: 4,
                           offset: const Offset(0, 1),
                         ),
                       ]
-                      : null,
-            ),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(11),
-              child: Stack(
-                children: [
-                  Column(
-                    children: [
-                      Expanded(
-                        child: _ParticipantRow(
-                          participant: match.participant1,
-                          score: match.isProjected ? null : match.participant1Score,
-                          isWinner: winnerId == match.participant1.id,
-                          isEliminated:
-                              winnerId != null &&
-                              winnerId != match.participant1.id,
-                          isLeader: match.leader?.id == match.participant1.id,
+                    : null,
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(11),
+                child: Stack(
+                  children: [
+                    Column(
+                      children: [
+                        Expanded(
+                          child: _ParticipantRow(
+                            participant: match.participant1,
+                            isUpcoming: isUpcoming,
+                            score: match.isProjected
+                                ? null
+                                : match.participant1Score,
+                            isWinner: winnerId == match.participant1.id,
+                            isEliminated:
+                                winnerId != null &&
+                                winnerId != match.participant1.id,
+                            isLeader: match.leader?.id == match.participant1.id,
+                          ),
                         ),
-                      ),
-                      Divider(
-                        height: 0.8,
-                        thickness: 0.8,
-                        color: colors.divider,
-                      ),
-                      Expanded(
-                        child: _ParticipantRow(
-                          participant: match.participant2,
-                          score: match.isProjected ? null : match.participant2Score,
-                          isWinner: winnerId == match.participant2.id,
-                          isEliminated:
-                              winnerId != null &&
-                              winnerId != match.participant2.id,
-                          isLeader: match.leader?.id == match.participant2.id,
+                        Divider(
+                          height: 0.8,
+                          thickness: 0.8,
+                          color: colors.divider,
                         ),
-                      ),
-                    ],
-                  ),
-                  if (match.isLive)
-                    Positioned(
-                      left: 0,
-                      top: 11,
-                      bottom: 11,
-                      child: Container(
-                        width: 3,
-                        decoration: BoxDecoration(
-                          color: colors.accentText,
-                          borderRadius: const BorderRadius.horizontal(
-                            right: Radius.circular(2),
+                        Expanded(
+                          child: _ParticipantRow(
+                            participant: match.participant2,
+                            isUpcoming: isUpcoming,
+                            score: match.isProjected
+                                ? null
+                                : match.participant2Score,
+                            isWinner: winnerId == match.participant2.id,
+                            isEliminated:
+                                winnerId != null &&
+                                winnerId != match.participant2.id,
+                            isLeader: match.leader?.id == match.participant2.id,
+                          ),
+                        ),
+                      ],
+                    ),
+                    if (match.isLive)
+                      Positioned(
+                        left: 0,
+                        top: 11,
+                        bottom: 11,
+                        child: Container(
+                          width: 3,
+                          decoration: BoxDecoration(
+                            color: colors.accentText,
+                            borderRadius: const BorderRadius.horizontal(
+                              right: Radius.circular(2),
+                            ),
                           ),
                         ),
                       ),
-                    ),
-                  if (match.isLive)
-                    Positioned(
-                      top: 5,
-                      right: 6,
-                      child: Container(
-                        width: 5,
-                        height: 5,
-                        decoration: BoxDecoration(
-                          color: colors.accentText,
-                          shape: BoxShape.circle,
-                          boxShadow:
-                              context.isLightTheme
-                                  ? null
-                                  : [
+                    if (match.isLive)
+                      Positioned(
+                        top: 5,
+                        right: 6,
+                        child: Container(
+                          width: 5,
+                          height: 5,
+                          decoration: BoxDecoration(
+                            color: colors.accentText,
+                            shape: BoxShape.circle,
+                            boxShadow: context.isLightTheme
+                                ? null
+                                : [
                                     BoxShadow(
                                       color: colors.brand.withValues(
                                         alpha: 0.42,
@@ -144,15 +150,15 @@ class KnockoutMatchCard extends StatelessWidget {
                                       blurRadius: 5,
                                     ),
                                   ],
+                          ),
                         ),
                       ),
-                    ),
-                ],
+                  ],
+                ),
               ),
             ),
           ),
         ),
-      ),
       ),
     );
   }
@@ -165,6 +171,7 @@ class _ParticipantRow extends StatelessWidget {
     required this.isWinner,
     required this.isEliminated,
     required this.isLeader,
+    required this.isUpcoming,
   });
 
   final BracketParticipant participant;
@@ -172,12 +179,16 @@ class _ParticipantRow extends StatelessWidget {
   final bool isWinner;
   final bool isEliminated;
   final bool isLeader;
+  final bool isUpcoming;
 
   @override
   Widget build(BuildContext context) {
     final colors = context.colors;
-    final primaryColor =
-        isEliminated ? colors.textTertiary : colors.textPrimary;
+    final primaryColor = isEliminated
+        ? colors.textTertiary
+        : isUpcoming
+        ? colors.textSecondary
+        : colors.textPrimary;
     final federation = participant.federation;
     final hasFlag = FederationFlag.hasVisibleFlag(federation);
     final metadata = <String>[
@@ -217,14 +228,19 @@ class _ParticipantRow extends StatelessWidget {
                           color: primaryColor,
                           fontSize: 12.5,
                           height: 1.1,
-                          fontWeight:
-                              isWinner ? FontWeight.w700 : FontWeight.w600,
+                          fontWeight: isWinner
+                              ? FontWeight.w700
+                              : FontWeight.w600,
                         ),
                       ),
                     ),
                     if (isWinner) ...[
                       const SizedBox(width: 3),
-                      Icon(Icons.check_rounded, size: 13, color: context.colors.accentText),
+                      Icon(
+                        Icons.check_rounded,
+                        size: 13,
+                        color: context.colors.accentText,
+                      ),
                     ],
                   ],
                 ),
@@ -236,13 +252,12 @@ class _ParticipantRow extends StatelessWidget {
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
                       fontFamily: 'InterDisplay',
-                      color:
-                          isEliminated
-                              // 0.72 of the tertiary ink is 3:1 on paper.
-                              ? (context.isLightTheme
-                                  ? colors.textTertiary
-                                  : colors.textTertiary.withValues(alpha: 0.72))
-                              : colors.textSecondary,
+                      color: isEliminated
+                          // 0.72 of the tertiary ink is 3:1 on paper.
+                          ? (context.isLightTheme
+                                ? colors.textTertiary
+                                : colors.textTertiary.withValues(alpha: 0.72))
+                          : colors.textSecondary,
                       fontSize: 10,
                       height: 1,
                       fontWeight: FontWeight.w500,
@@ -253,25 +268,27 @@ class _ParticipantRow extends StatelessWidget {
             ),
           ),
           if (score != null) const SizedBox(width: 8),
-          if (score != null) Text(
-            _scoreLabel(score!),
-            textAlign: TextAlign.right,
-            style: TextStyle(
-              fontFamily: 'InterDisplay',
-              color:
-                  isWinner
-                      ? context.colors.accentText
-                      : isEliminated
-                      ? colors.textTertiary
-                      : isLeader
-                      ? context.colors.accentText
-                      : colors.textPrimary,
-              fontSize: 15,
-              height: 1,
-              fontWeight: FontWeight.w700,
-              fontFeatures: const [FontFeature.tabularFigures()],
+          if (score != null)
+            Text(
+              _scoreLabel(score!),
+              textAlign: TextAlign.right,
+              style: TextStyle(
+                fontFamily: 'InterDisplay',
+                color: isWinner
+                    ? context.colors.accentText
+                    : isEliminated
+                    ? colors.textTertiary
+                    : isLeader
+                    ? context.colors.accentText
+                    : isUpcoming
+                    ? colors.textSecondary
+                    : colors.textPrimary,
+                fontSize: 15,
+                height: 1,
+                fontWeight: FontWeight.w700,
+                fontFeatures: const [FontFeature.tabularFigures()],
+              ),
             ),
-          ),
         ],
       ),
     );

@@ -51,7 +51,10 @@ class KnockoutMatch {
     required this.isComplete,
     required this.isLive,
     this.isProjected = false,
-  }) : games = UnmodifiableListView(games);
+    List<String> feederMatchKeys = const [],
+    this.feedsLosers = false,
+  }) : games = UnmodifiableListView(games),
+       feederMatchKeys = UnmodifiableListView(feederMatchKeys);
 
   final String key;
   final String stageKey;
@@ -68,6 +71,19 @@ class KnockoutMatch {
 
   /// A future bracket slot with no published games yet.
   final bool isProjected;
+  final List<String> feederMatchKeys;
+  final bool feedsLosers;
+
+  bool get isUpcoming =>
+      winner == null &&
+      (isProjected ||
+          (!isComplete &&
+              !isLive &&
+              participant1Score == 0 &&
+              participant2Score == 0 &&
+              games.every(
+                (g) => g.lastMove?.isNotEmpty != true && g.lastMoveTime == null,
+              )));
 
   bool get isTied => participant1Score == participant2Score;
   bool get hasUnfinishedGames => !isComplete;
@@ -90,7 +106,11 @@ class KnockoutMatch {
     return null;
   }
 
-  KnockoutMatch copyWith({BracketParticipant? winner}) => KnockoutMatch(
+  KnockoutMatch copyWith({
+    BracketParticipant? winner,
+    List<String>? feederMatchKeys,
+    bool? feedsLosers,
+  }) => KnockoutMatch(
     key: key,
     stageKey: stageKey,
     participant1: participant1,
@@ -104,6 +124,8 @@ class KnockoutMatch {
     isComplete: isComplete,
     isLive: isLive,
     isProjected: isProjected,
+    feederMatchKeys: feederMatchKeys ?? this.feederMatchKeys,
+    feedsLosers: feedsLosers ?? this.feedsLosers,
   );
 }
 
