@@ -214,6 +214,19 @@ class KnockoutMatchDetector {
   static bool isMatchPlayGameLive(GamesTourModel game) =>
       !game.effectiveGameStatus.isFinished && matchPlayGameHasMoves(game);
 
+  /// Whether a board of a (non match-play) knockout has been played: it has
+  /// a move or a move time. Stages published up front (Total Chess: Games
+  /// 1-14 on day one) hold 0-move `*` boards with neither; those are future
+  /// games, never live ones.
+  static bool knockoutGameStarted(GamesTourModel game) =>
+      game.effectiveGameStatus.isFinished ||
+      game.lastMoveTime != null ||
+      matchPlayGameHasMoves(game);
+
+  /// A knockout board in play: started and not finished.
+  static bool isKnockoutGameLive(GamesTourModel game) =>
+      !game.effectiveGameStatus.isFinished && knockoutGameStarted(game);
+
   /// Total chronological order of one match's games (game 1 first).
   ///
   /// When every game carries a trusted PGN game index, that index decides,
@@ -412,8 +425,8 @@ class KnockoutMatchDetector {
           ownRoundStartsById: ownRoundStartsById,
         );
       } else {
-        tierByKey[key] =
-            games.any((game) => !game.effectiveGameStatus.isFinished) ? 0 : 1;
+        // A 0-move board published ahead of its day is not play.
+        tierByKey[key] = games.any(isKnockoutGameLive) ? 0 : 1;
         recency[key] = legacyRecency?.call(games);
       }
       bracketBoard[key] =
@@ -640,34 +653,50 @@ class KnockoutMatchDetector {
     return matches;
   }
 
-  /// Display order for one matchup's boards: boards still being played
-  /// first, then latest-played first. Board numbers do not exist in a
-  /// knockout — the same two players meet again and again — and on
-  /// matchup-labeled feeds every game shares one round slug, so the
-  /// chronological slug sort ties everywhere and Dart's unstable sort
-  /// strands the live board among finished ones. Live boards outrank
-  /// everything (a long think must not let a just-finished board leapfrog
-  /// the game in progress); finished boards follow by actual play time,
-  /// with the chronological slug order reversed as the undated fallback,
-  /// descending append board number when source metadata ties, and gameId
-  /// keeping the order total.
+  /// Display order for one matchup's boards: the board in play first, then
+  /// finished boards latest-played first, then boards not started yet in
+  /// game order (the next one first).
+  ///
+  /// A board is in play only once it was started ([knockoutGameStarted]).
+  /// Organizers publish every round of a stage up front as 0-move `*`
+  /// boards (Total Chess: Games 1-14 on day one); counting those as live
+  /// put tomorrow's games above the game being played and the finished
+  /// games under all of them.
+  ///
+  /// Board numbers do not exist in a knockout (the same two players meet
+  /// again and again) and on matchup-labeled feeds every game shares one
+  /// round slug, so the chronological slug sort ties everywhere. Finished
+  /// boards follow actual play time, with the chronological slug order
+  /// reversed as the undated fallback, descending append board number when
+  /// source metadata ties, and gameId keeping the order total.
   static List<GamesTourModel> orderMatchGamesLatestFirst(
     List<GamesTourModel> games,
   ) {
     if (games.length < 2) return games;
     // effectiveGameStatus parses the FEN for clock-flagged boards; resolve it
     // once per game instead of once per comparison.
-    final sortKeyByGameId = <String, ({bool isLive, DateTime? playedAt})>{
+    final sortKeyByGameId = <String, ({int tier, DateTime? playedAt})>{
       for (final game in games)
         game.gameId: (
-          isLive: !game.effectiveGameStatus.isFinished,
+          tier:
+              game.effectiveGameStatus.isFinished
+                  ? 1
+                  : knockoutGameStarted(game)
+                  ? 0
+                  : 2,
           playedAt: game.lastMoveTime ?? game.bucketDate,
         ),
     };
     return games.toList()..sort((a, b) {
       final aKey = sortKeyByGameId[a.gameId]!;
       final bKey = sortKeyByGameId[b.gameId]!;
-      if (aKey.isLive != bKey.isLive) return aKey.isLive ? -1 : 1;
+      if (aKey.tier != bKey.tier) return aKey.tier.compareTo(bKey.tier);
+      if (aKey.tier == 2) {
+        // Not started: game order, the next game first.
+        final bySlug = _compareRoundSlugs(a.roundSlug, b.roundSlug);
+        if (bySlug != 0) return bySlug;
+        return _compareBoardThenId(a, b);
+      }
       final aPlayedAt = aKey.playedAt;
       final bPlayedAt = bKey.playedAt;
       if (aPlayedAt != null && bPlayedAt != null) {
@@ -1147,12 +1176,12 @@ class MatchHeaderModel {
     this.isMatchPlay = false,
   });
 
-  /// Whether the match is being played now. Outside match play any unfinished
-  /// board counts, as before; in match play only a game that has a move.
+  /// Whether the match is being played now: a started, unfinished board.
+  /// A 0-move board published ahead of its day never lights a match.
   bool get hasLiveGame =>
       isMatchPlay
           ? games.any(KnockoutMatchDetector.isMatchPlayGameLive)
-          : games.any((game) => !game.effectiveGameStatus.isFinished);
+          : games.any(KnockoutMatchDetector.isKnockoutGameLive);
 
   String get matchTitle => '$player1 vs $player2';
 

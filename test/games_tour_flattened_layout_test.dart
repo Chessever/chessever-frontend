@@ -191,8 +191,17 @@ void main() {
     test('reversed-color legs produce one canonical match header', () {
       final round = _round('knockout-stage-quarterfinals', RoundStatus.live);
       final games = [
-        _game('leg-1', slug: 'game-1'),
-        _game('leg-2', reverseColors: true, slug: 'game-2'),
+        _game(
+          'leg-1',
+          slug: 'game-1',
+          lastMoveTime: DateTime.utc(2026, 7, 15, 14),
+        ),
+        _game(
+          'leg-2',
+          reverseColors: true,
+          slug: 'game-2',
+          lastMoveTime: DateTime.utc(2026, 7, 15, 15),
+        ),
       ];
 
       final layout = _layout(rounds: [round], gamesByRound: {round.id: games});
@@ -343,8 +352,17 @@ void main() {
     test('focus-on-live mode keeps finished boards visible in the grid', () {
       final round = _round('knockout-stage-finals', RoundStatus.live);
       final games = [
-        _game('live-1', slug: 'game-1'),
-        _game('live-2', reverseColors: true, slug: 'game-2'),
+        _game(
+          'live-1',
+          slug: 'game-1',
+          lastMoveTime: DateTime.utc(2026, 7, 15, 14),
+        ),
+        _game(
+          'live-2',
+          reverseColors: true,
+          slug: 'game-2',
+          lastMoveTime: DateTime.utc(2026, 7, 15, 15),
+        ),
         _game('finished', slug: 'tiebreak-1-rapid-1', status: GameStatus.draw),
       ];
 
@@ -954,8 +972,9 @@ items {x-g2: 2, x-g1: 2, y-g2: 4, y-g1: 4, z-tb: 7, z-g2: 7, z-g1: 8, s-1: 10, s
 
   // A stage can mix both kinds: a round per match where one round so far
   // holds a single 0-move board (no pairing repeats there yet). That match
-  // keeps the legacy reading (lit, highest rating at the bottom); the others
-  // are match play.
+  // keeps the legacy reading (highest rating at the bottom); the others are
+  // match play. A 0-move board is not play in either reading, so the played
+  // match leads.
   test('a stage mixing match-play and legacy matches reads each its way', () {
     final stage = _round('knockout-stage-mixed-round-of-16', RoundStatus.live);
     final games = [
@@ -990,11 +1009,11 @@ items {x-g2: 2, x-g1: 2, y-g2: 4, y-g1: 4, z-tb: 7, z-g2: 7, z-g1: 8, s-1: 10, s
         entry.matchHeader,
     ];
     expect(headers.map((header) => header.player1), [
-      'Swiss, One',
       'Gukesh D',
+      'Swiss, One',
     ]);
-    expect(headers.map((header) => header.isMatchPlay), [false, true]);
-    expect(headers.first.hasLiveGame, isTrue);
+    expect(headers.map((header) => header.isMatchPlay), [true, false]);
+    expect(headers.last.hasLiveGame, isFalse);
     final legacyRow =
         layout.entries.whereType<GamesTourGameRowEntry>().firstWhere(
           (row) => row.game1.gameId == 'c1',

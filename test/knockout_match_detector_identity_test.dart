@@ -272,6 +272,40 @@ void main() {
 
       expect(ordered.map((game) => game.gameId), ['a-newer', 'z-older']);
     });
+
+    // Total Chess World Championship Tour Pilot 2026, Semifinals (qEXour3L)
+    // on 2026-11-17: Games 1-14 published on day one as 0-move `*` boards,
+    // one per round. Games 1-4 played, Game 5 in play.
+    test('live game, then finished newest first, then future games in '
+        'order', () {
+      final giri = _player('Giri, Anish', fideId: 24116068);
+      final mvl = _player('Vachier-Lagrave, Maxime', fideId: 623539);
+      final day = DateTime.utc(2026, 11, 17, 14);
+      final games = [
+        for (var n = 14; n >= 1; n--)
+          _game(
+            id: 'g$n',
+            white: n.isOdd ? giri : mvl,
+            black: n.isOdd ? mvl : giri,
+            slug: 'game-$n',
+            boardNr: 1,
+            status: n <= 4 ? GameStatus.draw : GameStatus.ongoing,
+            lastMove: n <= 5 ? 'e2e4' : null,
+            lastMoveTime: n <= 5 ? day.add(Duration(minutes: 20 * n)) : null,
+          ),
+      ];
+
+      final ordered = KnockoutMatchDetector.orderMatchGamesLatestFirst(games);
+
+      expect(ordered.map((game) => game.gameId), [
+        'g5',
+        'g4',
+        'g3',
+        'g2',
+        'g1',
+        for (var n = 6; n <= 14; n++) 'g$n',
+      ]);
+    });
   });
 
   // Speed Chess Championship XI, Round of 16 (round 60IswAYI): all eight

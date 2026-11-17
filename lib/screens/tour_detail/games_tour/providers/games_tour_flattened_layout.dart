@@ -445,17 +445,32 @@ Map<String, List<GamesTourModel>> _orderMatchesByRecencyDesc(
 ) {
   if (matches.length <= 1) return matches;
 
+  // Live means a board with a move that is not finished: 0-move boards
+  // published ahead of their day are not play.
   final hasLiveBoardByKey = <String, bool>{
     for (final entry in matches.entries)
-      entry.key: entry.value.any(
-        (game) => !game.effectiveGameStatus.isFinished,
-      ),
+      entry.key: entry.value.any(KnockoutMatchDetector.isKnockoutGameLive),
   };
+  int firstBoard(List<GamesTourModel> games) {
+    var lowest = 1 << 30;
+    for (final game in games) {
+      final board = game.boardNr;
+      if (board != null && board < lowest) lowest = board;
+    }
+    return lowest;
+  }
+
   final entries =
       matches.entries.toList()..sort((a, b) {
         final aLive = hasLiveBoardByKey[a.key]!;
         final bLive = hasLiveBoardByKey[b.key]!;
         if (aLive != bLive) return aLive ? -1 : 1;
+        if (aLive) {
+          // Matches played at once keep bracket order; ordering them by
+          // their last move would swap them on every move.
+          final byBoard = firstBoard(a.value).compareTo(firstBoard(b.value));
+          if (byBoard != 0) return byBoard;
+        }
         final aDate = matchupRecency(a.value, roundStartTimesById);
         final bDate = matchupRecency(b.value, roundStartTimesById);
         if (aDate == null && bDate == null) return a.key.compareTo(b.key);
@@ -486,7 +501,11 @@ DateTime? matchupRecency(
     if (current == null || candidate.isAfter(current)) latest = candidate;
   }
 
-  for (final game in games) {
+  // Boards not started yet (0-move boards published ahead of their day)
+  // carry future dates; they date a matchup only when nothing was played.
+  final started =
+      games.where(KnockoutMatchDetector.knockoutGameStarted).toList();
+  for (final game in started.isEmpty ? games : started) {
     consider(roundStartTimesById[game.roundId]);
     consider(game.lastMoveTime);
     consider(game.bucketDate);
