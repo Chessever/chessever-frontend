@@ -8,7 +8,7 @@
 # ✅ Firebase & Google Play Services
 ##########################################
 -keep class com.google.firebase.** { *; }
--keep class com.google.android.gms.** { *; }
+# The Play services SDKs supply consumer keep rules for their runtime entry points.
 
 ##########################################
 # ✅ Gson / JSON Serialization
