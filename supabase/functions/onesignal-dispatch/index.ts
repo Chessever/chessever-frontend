@@ -20,6 +20,8 @@ import { prepGamesAddedCopy, prepGamesPushFromPayload } from "./prep_copy.ts";
 import {
   smartEventDigestCopy,
   smartEventDigestFromPayload,
+  smartEventLiveCopy,
+  smartEventLiveFromPayload,
 } from "./smart_event_copy.ts";
 import { timezoneFromOneSignalUser } from "./user_timezone.ts";
 import { collectFavoriteMatches } from "./favorite_match.ts";
@@ -339,6 +341,9 @@ async function processItem(item: OutboxItem) {
     // A smart event's push is about its own games, never a tournament's.
     if (item.event_type === "smart_event_digest") {
       return await sendSmartEventDigest(item, sendOneSignal);
+    }
+    if (item.event_type === "smart_event_live") {
+      return await sendSmartEventLive(item, sendOneSignal);
     }
     // Sends nothing: caches readers' timezones for the evening push above.
     if (item.event_type === "user_timezone_refresh") {
@@ -2516,6 +2521,72 @@ async function sendSmartEventDigest(
   return { id: item.id, status: "sent", recipients: eligible.length };
 }
 
+/**
+ * One starred smart event's afternoon push, queued by
+ * `public.queue_smart_event_digests` when one of its boards is in play: the
+ * strongest of them. Tapping opens the smart event's Games tab, as the
+ * evening push does (same data, `type: smart_event_games`).
+ */
+async function sendSmartEventLive(
+  item: OutboxItem,
+  send: (userIds: string[], notification: NotificationPayload) => Promise<void>,
+) {
+  const userId = optionalPayloadString(item.payload, "user_id");
+  const smartEventId = optionalPayloadString(item.payload, "smart_event_id");
+  if (!userId || !smartEventId) {
+    await markSkipped(item.id, "missing_smart_event");
+    return { id: item.id, status: "skipped", reason: "missing_smart_event" };
+  }
+
+  const live = smartEventLiveFromPayload(item.payload);
+  if (live.liveGames <= 0 || !live.white || !live.black) {
+    await markSkipped(item.id, "no_live_board");
+    return { id: item.id, status: "skipped", reason: "no_live_board" };
+  }
+
+  // Unstarring is the opt-out: the star may have come off since the queue.
+  if (!await isSmartEventStarred(userId, smartEventId)) {
+    await markSkipped(item.id, "not_starred");
+    return { id: item.id, status: "skipped", reason: "not_starred" };
+  }
+
+  const eligible = await filterCollectionRecipients([userId]);
+  if (eligible.length === 0) {
+    await markSkipped(item.id, "no_recipients");
+    return { id: item.id, status: "skipped", reason: "no_recipients" };
+  }
+
+  const copy = smartEventLiveCopy(live);
+  const liveGameId = optionalPayloadString(item.payload, "live_game_id");
+  const smartEventName = optionalPayloadString(
+    item.payload,
+    "smart_event_name",
+  );
+  await send(eligible, {
+    title: copy.title,
+    body: copy.body,
+    url: null,
+    data: {
+      type: "smart_event_games",
+      smart_event_id: smartEventId,
+      smart_event_kind: copy.kind,
+      games: String(live.games),
+      min_elo: String(live.minElo),
+      max_elo: String(live.maxElo),
+      formats: live.formats.join(","),
+      ...(live.ecoCode ? { eco_code: live.ecoCode } : {}),
+      ...(live.label ? { label: live.label } : {}),
+      ...(smartEventName ? { smart_event_name: smartEventName } : {}),
+      // Builds without the smart event route open the board instead.
+      ...(liveGameId ? { game_id: liveGameId } : {}),
+    },
+    androidChannelId: channelForEvent("smart_event_live"),
+  });
+
+  await markSent(item.id);
+  return { id: item.id, status: "sent", recipients: eligible.length };
+}
+
 /** Whether [userId] still stars [smartEventId]. */
 async function isSmartEventStarred(
   userId: string,
@@ -3077,6 +3148,7 @@ function channelForEvent(eventType: string) {
     case "collection_games_added":
     case "prep_games_added":
     case "smart_event_digest":
+    case "smart_event_live":
       return ANDROID_CHANNELS.favorites;
     case "book_game_added":
     case "book_game_updated":

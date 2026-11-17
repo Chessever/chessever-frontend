@@ -9,6 +9,8 @@ import {
   type SmartEventDigest,
   smartEventDigestCopy,
   smartEventDigestFromPayload,
+  smartEventLiveCopy,
+  smartEventLiveFromPayload,
   smartEventPlayerName,
 } from "./smart_event_copy.ts";
 
@@ -43,11 +45,14 @@ Deno.test("an opening smart event leads with how often it was played", () => {
     topStatus: "0-1",
     topAverage: 2551,
   }));
-  assertEquals(copy.kind, "opening:played");
-  assertEquals(copy.title, "Caro-Kann has been played 4 times today");
+  // A decisive strongest game is the story (Trello #1411); the count moves
+  // to the body.
+  assertEquals(copy.kind, "opening:played:top_win");
+  assertEquals(copy.title, "Yakubboev beat Godart");
   assertEquals(
     copy.body,
-    "Top game: Yakubboev beat Godart (2551 avg). Tap to see all 4.",
+    "The strongest game in the Caro-Kann today (2551 avg). 4 Caro-Kann " +
+      "games today. Tap to see all 4.",
   );
   assertEquals(
     smartEventDigestCopy(
@@ -205,7 +210,7 @@ Deno.test("other smart events that caught games are mentioned", () => {
   assertEquals(
     smartEventDigestCopy(digest({ otherSmartEvents: 2, topStatus: "1-0" }))
       .body,
-    "Top game: Grischuk beat Artemiev (2689 avg). 2 more of your smart events caught games too. Tap to see all 6.",
+    "The strongest game today (2689 avg). 6 games today. 2 more of your smart events caught games too. Tap to see all 6.",
   );
   assertEquals(
     smartEventDigestCopy(digest({ otherSmartEvents: 1 })).body,
@@ -242,4 +247,154 @@ Deno.test("the payload is read defensively", () => {
   assertEquals(read.formats, ["live"]);
   assertEquals(read.ecoCode, null);
   assertEquals(read.games, 4);
+});
+
+// ---------------------------------------------------------------------------
+// Stories (Trello #1411): the evening push leads with what happened.
+// ---------------------------------------------------------------------------
+
+Deno.test("an upset leads the evening push, with both ratings in the title", () => {
+  const copy = smartEventDigestCopy(digest({
+    label: "Sicilian defence",
+    ecoCode: "B20-B99",
+    games: 494,
+    liveGames: 3,
+    topStatus: "0-1",
+    upset: {
+      winner: "Emanuel, Yahav",
+      winnerTitle: "FM",
+      winnerRating: 2207,
+      loser: "Mirzoev, Azer",
+      loserTitle: "GM",
+      loserRating: 2524,
+      moves: 40,
+    },
+  }));
+  assertEquals(copy.title, "Upset in the Sicilian defence: 2207 beat 2524");
+  assertEquals(
+    copy.body,
+    "FM Emanuel took down GM Mirzoev in 40 moves, giving away 317 rating " +
+      "points. 494 Sicilian defence games today, 3 still live. " +
+      "Tap to see all 494.",
+  );
+  assertEquals(copy.kind, "opening:played:upset");
+});
+
+Deno.test("with no upset, a decisive top game names its titled winner", () => {
+  const copy = smartEventDigestCopy(digest({
+    minElo: 2500,
+    formats: ["blitz"],
+    games: 28,
+    topWhite: "Caruana, Fabiano",
+    topBlack: "Firouzja, Alireza",
+    topWhiteTitle: "GM",
+    topBlackTitle: "GM",
+    topStatus: "0-1",
+    topAverage: 2767,
+    topMoves: 37,
+    otherSmartEvents: 2,
+  }));
+  assertEquals(copy.title, "GM Firouzja beat GM Caruana in 37 moves");
+  assertEquals(
+    copy.body,
+    "The strongest game in GM-level Blitz today (2767 avg). 28 GM-level " +
+      "Blitz games today. 2 more of your smart events caught games too. " +
+      "Tap to see all 28.",
+  );
+});
+
+Deno.test("a drawn or unfinished top game keeps the count title", () => {
+  const copy = smartEventDigestCopy(digest({
+    label: "Caro-Kann",
+    ecoCode: "B1",
+    games: 4,
+    topStatus: "1/2-1/2",
+  }));
+  assertEquals(copy.title, "Caro-Kann has been played 4 times today");
+  assertEquals(copy.kind, "opening:played");
+});
+
+Deno.test("an upset outside the believable band is never a story", () => {
+  // The SQL bounds it; the copy also refuses a winner rated above the loser.
+  const copy = smartEventDigestCopy(digest({
+    games: 3,
+    topStatus: "*",
+    upset: {
+      winner: "A",
+      winnerTitle: null,
+      winnerRating: 2600,
+      loser: "B",
+      loserTitle: null,
+      loserRating: 2400,
+      moves: 30,
+    },
+  }));
+  assertEquals(copy.title, "3 games played today");
+});
+
+Deno.test("the upset fields come through the outbox payload", () => {
+  const parsed = smartEventDigestFromPayload({
+    games: 5,
+    upset_game_id: "abc",
+    upset_winner: "Emanuel, Yahav",
+    upset_winner_title: "FM",
+    upset_winner_rating: 2207,
+    upset_loser: "Mirzoev, Azer",
+    upset_loser_title: "GM",
+    upset_loser_rating: "2524",
+    upset_moves: 40,
+    top_white_title: "GM",
+    top_moves: 37,
+  });
+  assertEquals(parsed.upset?.loserRating, 2524);
+  assertEquals(parsed.topWhiteTitle, "GM");
+  assertEquals(parsed.topMoves, 37);
+  assertEquals(smartEventDigestFromPayload({ games: 5 }).upset, null);
+});
+
+// ---------------------------------------------------------------------------
+// The afternoon push: the strongest board in play.
+// ---------------------------------------------------------------------------
+
+Deno.test("a live push names the board, the move and the other boards", () => {
+  const copy = smartEventLiveCopy(smartEventLiveFromPayload({
+    label: "Sicilian defence",
+    eco_code: "B20-B99",
+    games: 494,
+    live_games: 7,
+    live_white: "Sadbhav Rautela",
+    live_black: "Vaibhav Jayant Raut",
+    live_white_title: null,
+    live_black_title: "FM",
+    live_average: 2381,
+    live_move: 20,
+  }));
+  assertEquals(copy.title, "Rautela vs FM Raut, live now");
+  assertEquals(
+    copy.body,
+    "Move 20 in the Sicilian defence, 2381 avg. 6 more Sicilian defence " +
+      "boards live. Tap to watch all 7.",
+  );
+  assertEquals(copy.kind, "opening:played:live_board");
+});
+
+Deno.test("a single live board on an every-game filter reads cleanly", () => {
+  const copy = smartEventLiveCopy(smartEventLiveFromPayload({
+    games: 1,
+    live_games: 1,
+    live_white: "Firouzja, Alireza",
+    live_black: "Caruana, Fabiano",
+    live_white_title: "GM",
+    live_black_title: "GM",
+    live_average: 2770,
+    live_move: 0,
+    other_smart_events: 1,
+  }));
+  assertEquals(copy.title, "GM Firouzja vs GM Caruana, live now");
+  assertEquals(
+    copy.body,
+    "In play, 2770 avg. Another of your smart events is live too. " +
+      "Tap to watch.",
+  );
+  assert(!copy.body.includes("  "));
 });

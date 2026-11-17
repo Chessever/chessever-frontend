@@ -8,7 +8,12 @@
  * gets its own line, named by [smartEventDigestKind] — a Najdorf star hears
  * about the Najdorf, a GM Blitz star about GM-level blitz.
  *
- * The counts come from `public.smart_event_digest_rows_since`.
+ * The evening push leads with the day's story when there is one: an upset
+ * ("Upset in the Najdorf: 2390 beat 2610"), else a decisive strongest game
+ * ("GM Firouzja beat GM Caruana in 37 moves"); the count moves to the body.
+ * The afternoon push (smart_event_live) names the strongest board in play.
+ *
+ * The counts come from `public.smart_event_stories_since`.
  */
 
 export type SmartEventDigest = {
@@ -28,8 +33,26 @@ export type SmartEventDigest = {
   topBlack: string | null;
   topStatus: string | null;
   topAverage: number;
+  /** "GM", "IM", ... of the strongest game's players, when the relay has one. */
+  topWhiteTitle?: string | null;
+  topBlackTitle?: string | null;
+  /** Full moves the strongest game took; 0 when unknown. */
+  topMoves?: number;
+  /** The day's upset: the lower-rated player won by 150-450 points. */
+  upset?: SmartEventUpset | null;
   /** The reader's other smart events that caught games today too. */
   otherSmartEvents: number;
+};
+
+export type SmartEventUpset = {
+  winner: string | null;
+  winnerTitle: string | null;
+  winnerRating: number;
+  loser: string | null;
+  loserTitle: string | null;
+  loserRating: number;
+  /** Full moves; 0 when unknown. */
+  moves: number;
 };
 
 export type SmartEventDigestState = "played" | "live" | "finished";
@@ -273,10 +296,215 @@ export function smartEventDigestCopy(
   digest: SmartEventDigest,
 ): SmartEventDigestCopy {
   const shape = smartEventDigestShape(digest);
+  const kind = smartEventDigestKind(shape);
+  const story = smartEventStoryCopy(shape, digest);
+  if (story) return { kind: `${kind}:${story.story}`, ...story.copy };
   return {
-    kind: smartEventDigestKind(shape),
+    kind,
     title: smartEventDigestTitle(shape, Math.max(1, digest.games)),
     body: smartEventDigestBody(shape, digest),
+  };
+}
+
+/** "GM Firouzja", "Rautela": the title the relay gives, then the surname. */
+export function smartEventPlayerLabel(
+  name: string | null,
+  title: string | null | undefined,
+): string {
+  const surname = smartEventPlayerName(name);
+  const t = title?.trim();
+  return t ? `${t} ${surname}` : surname;
+}
+
+/**
+ * Where the story happened, for a title: "in the Najdorf", "in GM-level
+ * Blitz", "at 2200–2400", or "" when the filter is every game.
+ */
+function storyScope(shape: SmartEventDigestShape): string {
+  if (shape.opening) return ` in the ${shape.opening}`;
+  const tier = shape.tier ? `${shape.tier}-level` : null;
+  const parts = [tier, shape.timeControl].filter(Boolean).join(" ");
+  if (parts) return ` in ${parts}`;
+  if (shape.level) return ` ${shape.level}`;
+  return "";
+}
+
+/** "494 Sicilian games today, 3 still live." The count, as a body sentence. */
+function storyTally(
+  shape: SmartEventDigestShape,
+  digest: SmartEventDigest,
+): string {
+  const total = Math.max(1, digest.games);
+  const noun = total === 1 ? "game" : "games";
+  const what = shape.opening ? `${shape.opening} ${noun}` : counted(
+    total,
+    shape,
+  ).replace(/^\d+ /, "");
+  const live = digest.liveGames > 0 && digest.liveGames < total
+    ? `, ${digest.liveGames} still live`
+    : "";
+  return `${total} ${what} today${live}.`;
+}
+
+function othersSentence(others: number, verb = "caught games"): string | null {
+  if (others === 1) return `Another of your smart events ${verb} too.`;
+  if (others > 1) return `${others} more of your smart events ${verb} too.`;
+  return null;
+}
+
+function tapLine(total: number): string {
+  return total <= 1 ? "Tap to see it." : `Tap to see all ${total}.`;
+}
+
+/**
+ * The evening's story, when the day has one: an upset first, then a decisive
+ * strongest game. Null when neither is there (the count line stays).
+ */
+export function smartEventStoryCopy(
+  shape: SmartEventDigestShape,
+  digest: SmartEventDigest,
+): { story: "upset" | "top_win"; copy: { title: string; body: string } } | null {
+  const total = Math.max(1, digest.games);
+  const tail = [
+    storyTally(shape, digest),
+    othersSentence(digest.otherSmartEvents),
+    tapLine(total),
+  ].filter(Boolean).join(" ");
+
+  const upset = digest.upset;
+  if (
+    upset && upset.winnerRating > 0 && upset.loserRating > upset.winnerRating
+  ) {
+    const winner = smartEventPlayerLabel(upset.winner, upset.winnerTitle);
+    const loser = smartEventPlayerLabel(upset.loser, upset.loserTitle);
+    const gap = upset.loserRating - upset.winnerRating;
+    const inMoves = upset.moves > 0 ? ` in ${upset.moves} moves` : "";
+    return {
+      story: "upset",
+      copy: {
+        title: `Upset${storyScope(shape)}: ${upset.winnerRating} beat ${
+          upset.loserRating
+        }`,
+        body: `${winner} took down ${loser}${inMoves}, giving away ${gap} ` +
+          `rating points. ${tail}`,
+      },
+    };
+  }
+
+  const decisive = digest.topStatus === "1-0" || digest.topStatus === "0-1";
+  if (decisive && shape.state !== "live") {
+    const white = smartEventPlayerLabel(digest.topWhite, digest.topWhiteTitle);
+    const black = smartEventPlayerLabel(digest.topBlack, digest.topBlackTitle);
+    const [winner, loser] = digest.topStatus === "1-0"
+      ? [white, black]
+      : [black, white];
+    const moves = digest.topMoves ?? 0;
+    const inMoves = moves > 0 ? ` in ${moves} moves` : "";
+    const rated = digest.topAverage > 0 ? ` (${digest.topAverage} avg)` : "";
+    return {
+      story: "top_win",
+      copy: {
+        title: `${winner} beat ${loser}${inMoves}`,
+        body: `The strongest game${storyScope(shape)} today${rated}. ${tail}`,
+      },
+    };
+  }
+  return null;
+}
+
+/** One starred smart event's afternoon push: its strongest board in play. */
+export type SmartEventLive = {
+  label: string | null;
+  minElo: number;
+  maxElo: number;
+  formats: string[];
+  ecoCode: string | null;
+  games: number;
+  liveGames: number;
+  white: string | null;
+  black: string | null;
+  whiteTitle: string | null;
+  blackTitle: string | null;
+  average: number;
+  /** The move the board is on; 0 when unknown. */
+  move: number;
+  otherSmartEvents: number;
+};
+
+/**
+ * "GM Firouzja vs GM Caruana, live now" / "Move 7 in the Sicilian, 2770 avg.
+ * 6 more Sicilian boards live. Tap to watch."
+ */
+export function smartEventLiveCopy(live: SmartEventLive): SmartEventDigestCopy {
+  const shape = smartEventDigestShape({
+    label: live.label,
+    minElo: live.minElo,
+    maxElo: live.maxElo,
+    formats: live.formats,
+    ecoCode: live.ecoCode,
+    games: live.games,
+    liveGames: live.liveGames,
+    whiteWins: 0,
+    blackWins: 0,
+    draws: 0,
+    topWhite: live.white,
+    topBlack: live.black,
+    topStatus: "*",
+    topAverage: live.average,
+    otherSmartEvents: live.otherSmartEvents,
+  });
+  const white = smartEventPlayerLabel(live.white, live.whiteTitle);
+  const black = smartEventPlayerLabel(live.black, live.blackTitle);
+
+  const where = storyScope(shape).trim();
+  const lead = [
+    live.move > 0 ? `Move ${live.move}` : "In play",
+    where ? ` ${where}` : "",
+    live.average > 0 ? `, ${live.average} avg.` : ".",
+  ].join("");
+  const more = Math.max(0, live.liveGames - 1);
+  const boards = more === 1 ? "board" : "boards";
+  const moreLine = more > 0
+    ? shape.opening
+      ? `${more} more ${shape.opening} ${boards} live.`
+      : `${more} more ${boards} live.`
+    : null;
+  const body = [
+    lead,
+    moreLine,
+    othersSentence(live.otherSmartEvents, "is live"),
+    more > 0 ? `Tap to watch all ${live.liveGames}.` : "Tap to watch.",
+  ].filter(Boolean).join(" ");
+
+  return {
+    kind: `${smartEventDigestKind(shape)}:live_board`,
+    title: `${white} vs ${black}, live now`,
+    body,
+  };
+}
+
+/** The outbox payload a `smart_event_live` row carries, read safely. */
+export function smartEventLiveFromPayload(
+  payload: Record<string, unknown> | null | undefined,
+): SmartEventLive {
+  const p = payload ?? {};
+  return {
+    label: toText(p.label),
+    minElo: toInt(p.min_elo, 0),
+    maxElo: toInt(p.max_elo, OPEN_MAX_ELO),
+    formats: Array.isArray(p.formats)
+      ? p.formats.filter((v): v is string => typeof v === "string")
+      : [],
+    ecoCode: toText(p.eco_code),
+    games: toInt(p.games, 0),
+    liveGames: toInt(p.live_games, 0),
+    white: toText(p.live_white),
+    black: toText(p.live_black),
+    whiteTitle: toText(p.live_white_title),
+    blackTitle: toText(p.live_black_title),
+    average: toInt(p.live_average, 0),
+    move: Math.max(0, toInt(p.live_move, 0)),
+    otherSmartEvents: Math.max(0, toInt(p.other_smart_events, 0)),
   };
 }
 
@@ -317,6 +545,20 @@ export function smartEventDigestFromPayload(
     topBlack: toText(p.top_black),
     topStatus: toText(p.top_status),
     topAverage: toInt(p.top_average, 0),
+    topWhiteTitle: toText(p.top_white_title),
+    topBlackTitle: toText(p.top_black_title),
+    topMoves: Math.max(0, toInt(p.top_moves, 0)),
+    upset: toText(p.upset_game_id)
+      ? {
+        winner: toText(p.upset_winner),
+        winnerTitle: toText(p.upset_winner_title),
+        winnerRating: toInt(p.upset_winner_rating, 0),
+        loser: toText(p.upset_loser),
+        loserTitle: toText(p.upset_loser_title),
+        loserRating: toInt(p.upset_loser_rating, 0),
+        moves: Math.max(0, toInt(p.upset_moves, 0)),
+      }
+      : null,
     otherSmartEvents: Math.max(0, toInt(p.other_smart_events, 0)),
   };
 }

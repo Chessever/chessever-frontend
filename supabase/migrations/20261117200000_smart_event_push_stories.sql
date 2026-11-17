@@ -11,7 +11,7 @@
 --     12:00-18:59 that finds one of their smart events live: the strongest
 --     board in play right now, its players' titles and the move it is on.
 --   * Evening recap (smart_event_digest, as before), 19:00-22:59: the day's
---     story first. An upset (the winner rated 150+ below the loser) leads,
+--     story first. An upset (the winner rated 150-450 below the loser) leads,
 --     then the strongest game with the players' titles and how many moves it
 --     took; the count moves to the body.
 --
@@ -219,7 +219,7 @@ as $$
     order by m.user_id, m.event_id, m.average desc nulls last,
       m.last_move_time desc nulls last, m.id
   ),
-  -- Decisive games the lower-rated player won, by 150 points or more: the
+  -- Decisive games the lower-rated player won, by 150 to 450 points: the
   -- widest gap is the day's upset.
   upsets as (
     select distinct on (u.user_id, u.event_id) u.*
@@ -234,8 +234,10 @@ as $$
       from matched m
       where m.status in ('1-0', '0-1')
     ) u
-    where u.winner_rating > 0 and u.loser_rating > 0
-      and u.loser_rating - u.winner_rating >= 150
+    -- Below 1600, or past 450 points, a relay's rating is more often wrong
+    -- (a rapid rating, a typo) than the result is a story.
+    where u.winner_rating >= 1600 and u.loser_rating >= 1600
+      and u.loser_rating - u.winner_rating between 150 and 450
     order by u.user_id, u.event_id, u.loser_rating - u.winner_rating desc,
       u.last_move_time desc, u.id
   ),

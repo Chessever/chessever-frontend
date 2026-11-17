@@ -249,11 +249,17 @@ Trello #1387.
   subscription. Undo restores only My Space state.
 - Keep deletion, unfavoriting, unliking, and unsubscribe actions on their source
   screens. My Space cards offer `Remove from My Space` instead.
-- Nothing in My Space adds or removes a favorite of any type: players,
-  events, smart events, collections (product decision, 2026-11-12, replacing
-  the Trello #1225 stars). Smart event and collection cards in My Space end in
-  a chevron, not their favorite star; event cards were already chevrons.
-  Favoriting stays on the source screens.
+- Nothing in My Space adds or removes a favorite of players, events or
+  collections (product decision, 2026-11-12). Collection and event cards in My
+  Space end in a chevron; favoriting them stays on the source screens.
+- **Smart event cards end in their star (Trello #1411, 2026-11-17,
+  reversing 38.4.0 for smart events only).** A smart event's star is its push
+  subscription: its favorites row is what `queue_smart_event_digests` reads,
+  so a smart event with no star in My Space can never notify, and with the
+  star gone 72 My Space smart event cards had 4 stars and no new star in five
+  days. Starring and unstarring there go through `toggleSmartEventFavorite`,
+  the one path behind every smart event star; unstarring stops its pushes and
+  keeps the card. Edit mode hides it. Do not remove it again as "a favorite".
 - Prep player cards end in the Prep star, which is not a favorite: it only
   turns that profile's new-game pushes on or off (`PrepProfile.watching`).
   It never follows, favorites or unfavorites the player; the heart does
@@ -271,6 +277,34 @@ Trello #1387.
   and older pins depend on both. Deleting a profile in Prep removes its pin,
   or the pin would rebuild it. Stars follow the server across devices
   (`_reconcileWatches`).
+
+## Starred smart event pushes (Trello #1411)
+
+A starred smart event sends at most two pushes a local day, on the rules the
+Prep star proved: never while the reader sleeps, at least four hours apart,
+one smart event per push with the reader's others counted. The queue is
+`queue_smart_event_digests` (cron `0 */4 * * *`, migration
+`20261117200000_smart_event_push_stories.sql`); the words are
+`supabase/functions/onesignal-dispatch/smart_event_copy.ts`.
+
+- **Afternoon, 12:00-18:59 local (`smart_event_live`)**: the first run that
+  finds one of the reader's smart events live names its strongest board in
+  play, with titles and the move ("GM Firouzja vs GM Caruana, live now" /
+  "Move 7 in the Sicilian, 2770 avg. 6 more Sicilian boards live.").
+- **Evening, 19:00-22:59 local (`smart_event_digest`)**: the day's story
+  leads. An upset (winner 150-450 below the loser, both 1600+; wider gaps
+  are usually a relay's wrong rating) outranks everything ("Upset in the
+  Najdorf: 2390 beat 2610"); else a decisive strongest game ("GM Firouzja
+  beat GM Caruana in 37 moves"); else the count title. The count is in the
+  body.
+- Both push `type: smart_event_games`, which every build since 37.0.4
+  routes to the smart event's Games tab (the build gate in the queue).
+- The four-hour UTC grid puts a run in every reader's afternoon and exactly
+  one in their evening, so the two are four hours apart by construction;
+  the queue also refuses a push within 3h50m of the last one.
+- Deploy `onesignal-dispatch` before the migration: an older dispatcher
+  does not know `smart_event_live`. Rehearse a change to the queue inside
+  `begin; ... rollback;` on the linked project and read the queued payloads.
 
 ## Prep profiles sync between devices and with the desktop app
 
