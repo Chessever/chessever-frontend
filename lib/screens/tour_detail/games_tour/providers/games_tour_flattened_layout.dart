@@ -472,9 +472,18 @@ Map<String, List<GamesTourModel>> _orderMatchesByRecencyDesc(
       );
     }
   }
-  final playedSideBySide = matchKeysByRound.values.any(
-    (keys) => keys.length > 1,
-  );
+  final roundCountByMatch = <String, int>{};
+  for (final keys in matchKeysByRound.values) {
+    for (final key in keys) {
+      roundCountByMatch[key] = (roundCountByMatch[key] ?? 0) + 1;
+    }
+  }
+  // One board per match in each of several shared rounds. Matches that share
+  // a single round file but play at different times (Esports World Cup) keep
+  // their recency order.
+  final playedSideBySide =
+      matchKeysByRound.values.any((keys) => keys.length > 1) &&
+      roundCountByMatch.values.every((count) => count > 1);
 
   final entries =
       matches.entries.toList()..sort((a, b) {
