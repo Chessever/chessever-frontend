@@ -488,6 +488,35 @@ void main() {
       ];
       expect(headers, ['GM Alpha Player 0', 'GM Alpha Player 100']);
     });
+
+    test('matches played side by side keep board order while one is live', () {
+      final stage = _round('knockout-stage-semifinals', RoundStatus.live);
+      final day = DateTime.utc(2026, 11, 17, 16, 30);
+      final games = [
+        for (final (offset, board, live) in [(0, 1, false), (100, 2, true)])
+          for (final n in [1, 2])
+            _game(
+              'b$board-g$n',
+              slug: 'game-$n',
+              roundId: 'r-game-$n',
+              identityOffset: offset,
+              boardNr: board,
+              reverseColors: n.isEven,
+              // Board 1 finished game 2 first; board 2 is still playing it.
+              status: live && n == 2 ? GameStatus.ongoing : GameStatus.draw,
+              lastMove: 'e2e4',
+              lastMoveTime: day.add(Duration(hours: n, minutes: board)),
+            ),
+      ];
+
+      final layout = _layout(rounds: [stage], gamesByRound: {stage.id: games});
+      final headers = [
+        for (final entry
+            in layout.entries.whereType<GamesTourMatchHeaderEntry>())
+          entry.matchHeader.player1,
+      ];
+      expect(headers, ['GM Alpha Player 0', 'GM Alpha Player 100']);
+    });
   });
 
   // Production fixture: Speed Chess Championship XI, Round of 16, round
