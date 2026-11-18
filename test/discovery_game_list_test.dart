@@ -22,6 +22,7 @@ import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrap
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/grid_game_card_wrapper_widget.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/widgets/destination_title.dart';
 import 'package:chessever2/widgets/game_date_header.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -106,6 +107,8 @@ GamesTourModel _game(
   DateTime? lastMoveTime,
   int whiteRating = 2700,
   int blackRating = 2700,
+  String white = 'White, Player',
+  String black = 'Black, Player',
 }) {
   PlayerCard player(String name, int rating) => PlayerCard(
     name: name,
@@ -118,8 +121,8 @@ GamesTourModel _game(
   return GamesTourModel(
     gameId: id,
     source: source,
-    whitePlayer: player('White, Player', whiteRating),
-    blackPlayer: player('Black, Player', blackRating),
+    whitePlayer: player(white, whiteRating),
+    blackPlayer: player(black, blackRating),
     whiteTimeDisplay: '--:--',
     blackTimeDisplay: '--:--',
     whiteClockCentiseconds: 0,
@@ -367,15 +370,16 @@ void main() {
     }
 
     testWidgets(
-      'Missed Chance leads the chips and keeps every page\'s miss to open on',
+      'Missed Chance leads the stories and keeps every page\'s miss to open on',
       (tester) async {
         final repository = _ReportsRepository();
         final container = await open(tester, repository);
         await complete(tester, repository, 0, [_game('all')]);
         double left(String key) =>
             tester.getTopLeft(find.byKey(ValueKey('report_type_$key'))).dx;
-        expect(left('missed_chance'), lessThan(left('all')));
-        expect(left('all'), lessThan(left('upside_down')));
+        // All comes first (37.7.1), Missed Chance straight after it.
+        expect(left('all'), lessThan(left('missed_chance')));
+        expect(left('missed_chance'), lessThan(left('upside_down')));
         expect(
           find.descendant(
             of: find.byKey(const ValueKey('report_type_missed_chance')),
@@ -712,6 +716,117 @@ void main() {
         container.read(reportsPaginationProvider).items.single.gameId,
         'fresh',
       );
+      expect(tester.takeException(), isNull);
+      await _teardown(tester, container);
+    });
+
+    testWidgets('the search floats over the list, opens in the header\'s '
+        'place filtering it, and back clears it', (tester) async {
+      final repository = _ReportsRepository();
+      final container = await open(
+        tester,
+        repository,
+        mode: GamesListViewMode.gamesCard,
+      );
+      await complete(tester, repository, 0, [
+        _game('carlsen', white: 'Carlsen, Magnus', black: 'Caruana, Fabiano'),
+        _game('gukesh', white: 'Gukesh, D', black: 'Nakamura, Hikaru'),
+        _game('firouzja', white: 'Firouzja, Alireza', black: 'Carlsen, Magnus'),
+      ]);
+      final field = find.byKey(const ValueKey('reports_search'));
+      final fab = find.byKey(const ValueKey('event_view_search_fab'));
+      final close = find.byKey(const ValueKey('event_view_search_close'));
+      final allChip = find.byKey(const ValueKey('report_type_all'));
+      Iterable<String> shown() => tester
+          .widgetList<DiscoveryGameCard>(find.byType(DiscoveryGameCard))
+          .map((card) => card.games[card.index].gameId);
+      const everyReport = ['carlsen', 'gukesh', 'firouzja'];
+
+      // The top bar holds no field: the title with the layout toggle beside
+      // it, then the report types. The search floats over the list.
+      expect(find.byType(TextField), findsNothing);
+      expect(fab, findsOneWidget);
+      expect(allChip, findsOneWidget);
+      final semantics = tester.ensureSemantics();
+      final toggle = find.bySemanticsLabel('Toggle chessboard view');
+      expect(toggle, findsOneWidget);
+      expect(
+        tester.getCenter(toggle).dy,
+        moreOrLessEquals(tester.getCenter(find.byType(DestinationTitle)).dy),
+      );
+      expect(
+        tester.getRect(toggle).bottom,
+        lessThan(tester.getRect(allChip).top),
+      );
+      semantics.dispose();
+      // The toggle's slot balances the back button, so the title keeps the
+      // centre of the screen.
+      expect(
+        tester.getCenter(find.byType(DestinationTitle)).dx,
+        moreOrLessEquals(_phone.width / 2, epsilon: 0.5),
+      );
+      expect(shown(), unorderedEquals(everyReport));
+
+      await tester.tap(fab);
+      await _settle(tester);
+      // The field in the header's place with the cursor in it, nothing
+      // floating, and the same list under it.
+      expect(field, findsOneWidget);
+      expect(tester.widget<TextField>(field).focusNode!.hasFocus, isTrue);
+      expect(close, findsOneWidget);
+      expect(fab, findsNothing);
+      expect(allChip, findsNothing);
+      expect(shown(), unorderedEquals(everyReport));
+
+      await tester.enterText(field, 'carlsen');
+      await _settle(tester);
+      expect(shown(), unorderedEquals(['carlsen', 'firouzja']));
+      await tester.enterText(field, 'nobody');
+      await _settle(tester);
+      expect(shown(), isEmpty);
+      expect(find.text('No reports match "nobody".'), findsOneWidget);
+
+      // The chevron leaves the search and clears what was searched.
+      await tester.tap(close);
+      await _settle(tester);
+      expect(field, findsNothing);
+      expect(fab, findsOneWidget);
+      expect(allChip, findsOneWidget);
+      expect(shown(), unorderedEquals(everyReport));
+
+      // It opens again empty, and system back leaves it the same way
+      // without leaving the screen.
+      await tester.tap(fab);
+      await _settle(tester);
+      expect(tester.widget<TextField>(field).controller!.text, isEmpty);
+      await tester.enterText(field, 'gukesh');
+      await _settle(tester);
+      expect(shown(), ['gukesh']);
+      await tester.binding.handlePopRoute();
+      await _settle(tester);
+      expect(find.byType(ReportsScreen), findsOneWidget);
+      expect(field, findsNothing);
+      expect(fab, findsOneWidget);
+      expect(shown(), unorderedEquals(everyReport));
+
+      // The chips are out of sight while searching, so a miss names the
+      // report type it was searched in.
+      await tester.tap(find.byKey(const ValueKey('report_type_missed_chance')));
+      await _settle(tester);
+      await complete(tester, repository, 1, [
+        _game('miss', white: 'Carlsen, Magnus'),
+      ]);
+      await tester.tap(fab);
+      await _settle(tester);
+      await tester.enterText(field, 'nobody');
+      await _settle(tester);
+      expect(
+        find.text(
+          'No ${ReportGameType.missedChance.label} reports match "nobody".',
+        ),
+        findsOneWidget,
+      );
+      expect(repository.requests, hasLength(2));
       expect(tester.takeException(), isNull);
       await _teardown(tester, container);
     });

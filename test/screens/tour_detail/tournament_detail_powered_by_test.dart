@@ -15,6 +15,7 @@ import 'package:chessever2/screens/tour_detail/provider/tour_detail_mode_provide
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_screen_provider.dart';
 import 'package:chessever2/screens/tour_detail/tournament_detail_screen.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/views/games_tour_screen.dart';
+import 'package:chessever2/screens/tour_detail/widgets/event_games_quick_actions.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:flutter/material.dart';
@@ -24,13 +25,14 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 void main() {
   const tourUrl = 'https://lichess.org/broadcast/test-open/tour-1';
 
-  GroupBroadcast broadcast({required String writer}) => GroupBroadcast.fromJson({
-    'id': 'gb-1',
-    'created_at': '2026-08-24T12:00:00.000Z',
-    'name': 'Test Open',
-    'search': const <String>[],
-    'broadcast_writer': writer,
-  });
+  GroupBroadcast broadcast({required String writer}) =>
+      GroupBroadcast.fromJson({
+        'id': 'gb-1',
+        'created_at': '2026-08-24T12:00:00.000Z',
+        'name': 'Test Open',
+        'search': const <String>[],
+        'broadcast_writer': writer,
+      });
 
   AboutTourModel aboutModel() => const AboutTourModel(
     id: 'tour-1',
@@ -82,6 +84,10 @@ void main() {
       gamesTourScreenProvider.overrideWith(
         (ref) => GamesTourScreenProvider.loading(ref: ref),
       ),
+      // The Games tab's floating Live first button shows only while a game
+      // is in play. Its source reads the raw games feed, which here would
+      // open SQLite and Supabase; nothing is live in this fixture.
+      eventGamesAnyLiveProvider.overrideWith((ref) => false),
     ];
   }
 
@@ -155,10 +161,7 @@ void main() {
       expect(find.text('Games'), findsWidgets);
 
       expect(
-        find.descendant(
-          of: appBar,
-          matching: find.text('Powered by Lichess'),
-        ),
+        find.descendant(of: appBar, matching: find.text('Powered by Lichess')),
         findsNothing,
       );
       expect(
@@ -169,7 +172,10 @@ void main() {
         findsNothing,
       );
       expect(
-        find.descendant(of: appBar, matching: find.textContaining('Powered by')),
+        find.descendant(
+          of: appBar,
+          matching: find.textContaining('Powered by'),
+        ),
         findsNothing,
       );
     },
@@ -193,6 +199,11 @@ void main() {
       expect(games, findsOneWidget);
       final retainedState = tester.state(games);
       expect(TickerMode.valuesOf(tester.element(games)).enabled, isTrue);
+      // Games floats its search; Live first stays away with nothing live.
+      final searchFab = find.byKey(const ValueKey('event_search_fab'));
+      final liveFirstFab = find.byKey(const ValueKey('event_live_first_fab'));
+      expect(searchFab, findsOneWidget);
+      expect(liveFirstFab, findsNothing);
 
       await tester.tap(find.text('About').first);
       await tester.pump();
@@ -200,12 +211,16 @@ void main() {
       expect(games, findsOneWidget);
       expect(tester.state(games), same(retainedState));
       expect(TickerMode.valuesOf(tester.element(games)).enabled, isFalse);
+      // About has no search (and Botvinnik is off in this fixture).
+      expect(searchFab, findsNothing);
 
       await tester.tap(find.text('Games').first);
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 500));
       expect(tester.state(games), same(retainedState));
       expect(TickerMode.valuesOf(tester.element(games)).enabled, isTrue);
+      expect(searchFab, findsOneWidget);
+      expect(liveFirstFab, findsNothing);
       await tester.pumpWidget(const SizedBox.shrink());
       await tester.pump();
     },

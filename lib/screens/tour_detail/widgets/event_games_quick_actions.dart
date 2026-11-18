@@ -1,7 +1,5 @@
 import 'dart:async';
 
-import 'package:chessever2/providers/game_list_live_first_provider.dart'
-    show kNoLiveGamesRightNowMessage;
 import 'package:chessever2/screens/tour_detail/combined/combined_category.dart';
 import 'package:chessever2/screens/tour_detail/combined/combined_games_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_app_bar_view_model.dart';
@@ -16,16 +14,13 @@ import 'package:chessever2/screens/tour_detail/games_tour/providers/knockout_tou
 import 'package:chessever2/screens/tour_detail/games_tour/providers/match_expansion_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/round_expansion_provider.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
-import 'package:chessever2/widgets/app_snack.dart';
 import 'package:chessever2/widgets/game_filter/game_filter_model.dart';
-import 'package:chessever2/widgets/quick_list_toggles.dart';
 import 'package:flutter/foundation.dart';
-import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
-// The event Games tab's one-tap list controls (Trello #1420): Live first and
-// Collapse all, beside the search field. They used to be rows in the event
-// ⋮ menu; the rules are the menu's, for the single-category list and for
+// The event Games tab's list controls (Trello #1420): Live first (a floating
+// button while something is live) and Collapse all (a row in the event ⋮
+// menu). The rules are the same for the single-category list and for
 // Combined alike.
 
 /// `ref.read` of a widget or a [ProviderContainer].
@@ -103,6 +98,39 @@ EventLiveFirstPress pressEventGamesLiveFirst(EventProviderReader read) {
   }());
   return isOn ? EventLiveFirstPress.turnedOff : EventLiveFirstPress.turnedOn;
 }
+
+/// Whether a game is in play in the event's Games list (single category or
+/// Combined). Live first floats over the list only while this holds (Trello
+/// #1420): with nothing live it has nothing to do.
+final eventGamesAnyLiveProvider = Provider.autoDispose<bool>((ref) {
+  if (ref.watch(combinedCategorySelectedProvider)) {
+    return _anyLive(
+      ref.watch(combinedGamesPresentationProvider).gamesByRound.values,
+    );
+  }
+  return _anyLive(ref.watch(gamesTourGroupedProvider).gamesByRound.values);
+});
+
+/// Live first is on in the event's Games list, the list has loaded, and no
+/// game in it is in play. Here Live first hides the finished games, so left
+/// on it would keep them hidden behind a button that is no longer shown; the
+/// screen turns it off. Never true while the list is still loading, whose
+/// empty first frame is not "nothing live".
+final eventGamesLiveFirstStrandedProvider = Provider.autoDispose<bool>((ref) {
+  if (!ref.watch(eventGamesLiveFirstProvider)) return false;
+  final loaded = ref.watch(combinedCategorySelectedProvider)
+      ? !ref.watch(
+          combinedGamesPresentationProvider.select(
+            (presentation) => presentation.source.isLoading,
+          ),
+        )
+      : ref.watch(
+          gamesTourScreenProvider.select(
+            (screen) => screen.hasValue && !screen.isLoading,
+          ),
+        );
+  return loaded && !ref.watch(eventGamesAnyLiveProvider);
+});
 
 bool _anyLive(Iterable<List<GamesTourModel>> rounds) => rounds.any(
   (games) => games.any((game) => GameFilterHelper.isLiveNow(game)),
@@ -267,52 +295,5 @@ void toggleEventGamesSections(EventProviderReader read) {
     if (sections.foldMatchKeys.isNotEmpty) {
       matches.collapseAll(sections.foldMatchKeys);
     }
-  }
-}
-
-/// Live first and Collapse all, bare glyphs on 44pt targets, for the Games
-/// tab's search row. Both read their state live, so the ink and the fold
-/// glyph follow every change, wherever it came from.
-class EventGamesQuickActions extends ConsumerWidget {
-  const EventGamesQuickActions({super.key, this.gap = 0});
-
-  /// Space between the two tap targets.
-  final double gap;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final liveFirst = ref.watch(eventGamesLiveFirstProvider);
-    final sections = ref.watch(eventGamesSectionsProvider);
-    final allCollapsed = areAllVisibleSectionsCollapsed(
-      visibleRoundIds: sections.roundIds,
-      visibleMatchKeys: sections.matchKeys,
-      roundExpansionState: ref.watch(roundExpansionProvider),
-      matchExpansionState: ref.watch(matchExpansionProvider),
-    );
-    final canFold = !sections.isEmpty;
-
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        LiveFirstToggleButton(
-          pressed: liveFirst,
-          onTap: () {
-            if (pressEventGamesLiveFirst(ref.read) ==
-                EventLiveFirstPress.nothingLive) {
-              showAppSnack(context, kNoLiveGamesRightNowMessage);
-            }
-          },
-        ),
-        SizedBox(width: gap),
-        // Nothing to fold while the list is loading or empty: a null onTap
-        // dims the glyph and marks it disabled instead of tapping into
-        // nothing.
-        QuickToggleIconButton(
-          label: allCollapsed ? kExpandAllRoundsLabel : kCollapseAllRoundsLabel,
-          onTap: canFold ? () => toggleEventGamesSections(ref.read) : null,
-          child: Icon(allCollapsed ? Icons.unfold_more : Icons.unfold_less),
-        ),
-      ],
-    );
   }
 }

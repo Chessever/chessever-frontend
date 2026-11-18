@@ -12,8 +12,6 @@ import 'package:chessever2/screens/group_event/widget/filter_popup/filter_popup_
 import 'package:chessever2/screens/group_event/smart_event/smart_aggregate_event_provider.dart';
 import 'package:chessever2/screens/group_event/smart_event/smart_event_screen.dart';
 import 'package:chessever2/screens/home/home_screen_provider.dart';
-import 'package:chessever2/screens/home/start_screen.dart';
-import 'package:chessever2/screens/home/widget/bottom_nav_bar.dart';
 import 'package:chessever2/screens/group_event/providers/group_event_screen_provider.dart';
 import 'package:chessever2/screens/group_event/providers/home_live_first_provider.dart';
 import 'package:chessever2/screens/group_event/providers/live_group_broadcast_id_provider.dart';
@@ -29,10 +27,11 @@ import 'package:chessever2/providers/for_you_games_provider.dart';
 import 'package:chessever2/screens/group_event/widget/filter_popup/filter_popup_state.dart';
 import 'package:chessever2/widgets/alert_dialog/alert_modal.dart';
 import 'package:chessever2/widgets/home_top_bar.dart';
-import 'package:chessever2/widgets/quick_list_toggles.dart';
 import 'package:chessever2/widgets/search/enhanced_rounded_search_bar.dart';
 import 'package:chessever2/widgets/skeleton_widget.dart';
 import 'package:chessever2/widgets/stable_height_slot.dart';
+import 'package:chessever2/widgets/ink_fab.dart';
+import 'package:chessever2/widgets/scroll_chrome.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
@@ -55,10 +54,9 @@ const eventsHomeCategories = <GroupEventCategory>[
 /// inserted) so the home segments keep their page index while a query runs.
 List<GroupEventCategory> visibleEventCategories({
   required bool hasActiveSearch,
-}) =>
-    hasActiveSearch
-        ? const [...eventsHomeCategories, GroupEventCategory.search]
-        : eventsHomeCategories;
+}) => hasActiveSearch
+    ? const [...eventsHomeCategories, GroupEventCategory.search]
+    : eventsHomeCategories;
 
 /// Provider for the current search query used in search tab
 final searchTabQueryProvider = StateProvider<String>((ref) => '');
@@ -157,7 +155,11 @@ class GroupEventScreen extends HookConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final searchController = useTextEditingController();
     final searchTabDebounce = useRef<Timer?>(null);
-    useEffect(() => () => searchTabDebounce.value?.cancel(), const []);
+    useEffect(
+      () =>
+          () => searchTabDebounce.value?.cancel(),
+      const [],
+    );
     final selectedTourEvent = ref.watch(selectedGroupCategoryProvider);
     final searchQuery = ref.watch(searchTabQueryProvider);
     final hasActiveSearch = searchQuery.trim().isNotEmpty;
@@ -177,10 +179,9 @@ class GroupEventScreen extends HookConsumerWidget {
     );
     // Search can outlive its query by a frame while the tab is restored; show
     // Current then instead of whatever page the index clamp would land on.
-    final activeCategory =
-        visibleCategories.contains(selectedTourEvent)
-            ? selectedTourEvent
-            : GroupEventCategory.current;
+    final activeCategory = visibleCategories.contains(selectedTourEvent)
+        ? selectedTourEvent
+        : GroupEventCategory.current;
 
     final pageController = usePageController(
       initialPage: visibleCategories.indexOf(activeCategory),
@@ -191,6 +192,52 @@ class GroupEventScreen extends HookConsumerWidget {
     final searchScrollController = useScrollController();
     final isAnimating = useRef(false);
     final focusNode = useFocusNode();
+    final chrome = useScrollChromeController();
+
+    // The field's panel reads the app-wide search providers, which the
+    // Search tab's field writes too. This page opens with its own query (or
+    // none): what those providers hold now is the Search tab's, and focusing
+    // this field must not open on its results. Leaving, it hands them back
+    // empty; the Search tab takes its own query back when it is shown.
+    // Deferred: providers cannot change while the tree builds or unmounts.
+    useEffect(() {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!context.mounted) return;
+        final own = searchController.text.trim();
+        if (ref.read(searchQueryProvider) == own &&
+            ref.read(debouncedSearchQueryProvider) == own) {
+          return;
+        }
+        cancelSearchDebounce();
+        ref.read(searchQueryProvider.notifier).state = own;
+        ref.read(debouncedSearchQueryProvider.notifier).state = own;
+      });
+      final container = ProviderScope.containerOf(context, listen: false);
+      return () {
+        final text = searchController.text.trim();
+        if (text.isEmpty) return;
+        Future<void>.microtask(() {
+          try {
+            if (container.read(searchQueryProvider) == text) {
+              container.read(searchQueryProvider.notifier).state = '';
+              container.read(isSearchingProvider.notifier).state = false;
+            }
+            if (container.read(debouncedSearchQueryProvider) == text) {
+              container.read(debouncedSearchQueryProvider.notifier).state = '';
+            }
+          } catch (_) {
+            // The whole scope went away with the page; nothing to reset.
+          }
+        });
+      };
+    }, const []);
+    // A new segment opens with its bar in view.
+    useEffect(() {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (context.mounted) chrome.show();
+      });
+      return null;
+    }, [activeCategory]);
 
     ScrollController scrollControllerFor(GroupEventCategory category) {
       return switch (category) {
@@ -258,16 +305,6 @@ class GroupEventScreen extends HookConsumerWidget {
       });
     });
 
-    void scrollActiveEventsTabToTop() {
-      final target = scrollControllerFor(activeCategory);
-      if (!target.hasClients) return;
-      target.animateTo(
-        0,
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeOutCubic,
-      );
-    }
-
     // Live first just came on over Current: bring its top, now the live
     // events, into view. From another segment Current opens fresh.
     void showCurrentTop() {
@@ -281,15 +318,6 @@ class GroupEventScreen extends HookConsumerWidget {
         curve: Curves.easeOutCubic,
       );
     }
-
-    ref.listen<BottomNavBarReTapRequest>(bottomNavBarReTapRequestProvider, (
-      previous,
-      next,
-    ) {
-      if (next.item == BottomNavBarItem.tournaments) {
-        scrollActiveEventsTabToTop();
-      }
-    });
 
     void onScroll() {
       if (!context.mounted || activeCategory != GroupEventCategory.past) {
@@ -314,446 +342,550 @@ class GroupEventScreen extends HookConsumerWidget {
     return Material(
       key: e2eKey(E2eIds.eventsRoot),
       color: context.colors.background,
-      child: Center(
-        child: ConstrainedBox(
-          constraints: BoxConstraints(
-            maxWidth: ResponsiveHelper.contentMaxWidth,
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // The home bar's shared frame: the same inset and gutter as
-              // every other home tab, so the avatar never moves on a switch.
-              HomeTopBarFrame(
-                // Plain SizedBox, not an AnimatedSwitcher: the switcher's child
-                // key never changed, so it never transitioned — it only added a
-                // Stack for the search bar's own morph to relayout through
-                // every frame.
-                child: SizedBox(
-                  width: double.infinity,
-                  // Live first rides inside the field, beside the filter
-                  // glyph, on every segment. Inside, not beside: the bar's
-                  // geometry is the reference every home tab matches.
-                  child: EnhancedRoundedSearchBar(
-                    fieldActions: [
-                      HomeLiveFirstToggle(
-                        key: const ValueKey(kHomeLiveFirstButtonKey),
-                        onTurnedOn: showCurrentTop,
-                      ),
-                    ],
-                    focusNode: focusNode,
-                    controller: searchController,
-                    textFieldKey: e2eKey(E2eIds.eventsSearchField),
-                    filterButtonKey: e2eKey(E2eIds.eventsFilterButton),
-                    hintText: 'Search',
-                    rotatingHints: const [
-                      'player',
-                      'tournament',
-                      'openings',
-                      'FIDE country',
-                    ],
-                    filterBadgeCount: filterBadgeCount,
-                    onChanged: (value) {
-                      // Tab switch is instant; the query that drives the
-                      // search fan-out (network + local scoring) is
-                      // debounced so keystrokes never trigger heavy work.
-                      final trimmed = value.trim();
-                      final previousQuery = ref.read(searchTabQueryProvider);
-                      searchTabDebounce.value?.cancel();
-                      if (trimmed.isNotEmpty) {
-                        ref
-                            .read(groupEventSearchTabControllerProvider)
-                            .showSearch();
-                        if (previousQuery.isEmpty) {
-                          // First keystroke must apply instantly: the search
-                          // tab is only rendered while the query is
-                          // non-empty (sub-2-char queries short-circuit in
-                          // the provider, so this is cheap).
-                          ref.read(searchTabQueryProvider.notifier).state =
-                              trimmed;
-                        } else {
-                          searchTabDebounce.value = Timer(
-                            const Duration(milliseconds: 300),
-                            () {
-                              ref.read(searchTabQueryProvider.notifier).state =
-                                  trimmed;
-                            },
-                          );
-                        }
-                      } else {
-                        ref.read(searchTabQueryProvider.notifier).state = '';
-                        if (previousQuery.isNotEmpty) {
-                          // Only switch tabs when user actively clears a
-                          // non-empty search (not on tapping an empty field)
-                          searchAnimatedEventIds.clear();
-                          ref
-                              .read(groupEventSearchTabControllerProvider)
-                              .restorePreviousTab();
-                          // ignore: unused_result
-                          ref.refresh(groupEventScreenProvider);
-                        }
-                      }
-                    },
-                    onTournamentSelected:
-                        (t) => ref
-                            .read(groupEventScreenProvider.notifier)
-                            .onSelectTournament(context: context, id: t.id),
-                    onPlayerSelected: (player) {
-                      FocusScope.of(context).unfocus();
-                      HapticFeedbackService.buttonPress();
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder:
-                              (_) => PlayerProfileScreen(
-                                fideId: player.fideId,
-                                playerName: player.name,
-                                title: player.title,
-                                federation: player.fed,
-                                rating: player.rating,
-                                gamebasePlayerId: player.gamebasePlayerId,
-                                memorialSourceIdentity:
-                                    player.memorialSourceIdentity,
-                                memorialRouteId: player.memorialRouteId,
-                              ),
-                        ),
-                      );
-                    },
-                    onOpeningSelected: (opening) {
-                      FocusScope.of(context).unfocus();
-                      HapticFeedbackService.buttonPress();
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder:
-                              (_) => SmartEventScreen(
-                                request: SmartEventRequest.forOpeningSelection(
-                                  opening,
-                                ),
-                              ),
-                        ),
-                      );
-                    },
-                    onFilterTap: () {
-                      ref
-                          .read(filterPopupProvider.notifier)
-                          .setState(appliedFilterState);
-
-                      showAlertModal<void>(
-                        context: context,
-                        horizontalPadding: 0,
-                        child: FilterPopup(
-                          onApplyFilters: (filterState) {
-                            ref
-                                .read(eventAppliedFilterProvider.notifier)
-                                .state = filterState;
-                            ref.invalidate(forYouEventsProvider);
-                          },
-                          onResetFilters: () {
-                            ref
-                                .read(eventAppliedFilterProvider.notifier)
-                                .state = defaultFilterPopupState;
-                            ref.invalidate(forYouEventsProvider);
-                          },
-                        ),
-                      );
-                    },
-                    onProfileTap: () => Scaffold.maybeOf(context)?.openDrawer(),
-                    onClearSearchField: () {
-                      // ignore: unused_result
-                      ref.refresh(groupEventScreenProvider);
-                      // Clear search tab state and switch back if on search tab
-                      ref.read(searchTabQueryProvider.notifier).state = '';
-                      searchAnimatedEventIds.clear();
-                      ref
-                          .read(groupEventSearchTabControllerProvider)
-                          .restorePreviousTab();
-                    },
-                  ),
+      child: Stack(
+        children: [
+          Positioned.fill(
+            child: Center(
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxWidth: ResponsiveHelper.contentMaxWidth,
                 ),
-              ),
-
-              SizedBox(height: 16.h),
-              Padding(
-                padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
-                child: Row(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  mainAxisSize: MainAxisSize.min,
                   children: [
+                    // The status bar's inset stays put; the bar under it scrolls
+                    // away with the list and back (X-style), the search field and
+                    // the segments together.
+                    SizedBox(height: MediaQuery.viewPaddingOf(context).top),
+                    CollapsingChrome(
+                      controller: chrome,
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          HomeTopBarFrame(
+                            statusBar: false,
+                            // Plain SizedBox, not an AnimatedSwitcher: the switcher's child
+                            // key never changed, so it never transitioned — it only added a
+                            // Stack for the search bar's own morph to relayout through
+                            // every frame.
+                            child: SizedBox(
+                              width: double.infinity,
+                              // Live first rides inside the field, beside the filter
+                              // glyph, on every segment. Inside, not beside: the bar's
+                              // geometry is the reference every home tab matches.
+                              child: EnhancedRoundedSearchBar(
+                                focusNode: focusNode,
+                                controller: searchController,
+                                textFieldKey: e2eKey(E2eIds.eventsSearchField),
+                                filterButtonKey: e2eKey(
+                                  E2eIds.eventsFilterButton,
+                                ),
+                                hintText: 'Search',
+                                rotatingHints: const [
+                                  'player',
+                                  'tournament',
+                                  'openings',
+                                  'FIDE country',
+                                ],
+                                filterBadgeCount: filterBadgeCount,
+                                onChanged: (value) {
+                                  // Tab switch is instant; the query that drives the
+                                  // search fan-out (network + local scoring) is
+                                  // debounced so keystrokes never trigger heavy work.
+                                  final trimmed = value.trim();
+                                  final previousQuery = ref.read(
+                                    searchTabQueryProvider,
+                                  );
+                                  searchTabDebounce.value?.cancel();
+                                  if (trimmed.isNotEmpty) {
+                                    ref
+                                        .read(
+                                          groupEventSearchTabControllerProvider,
+                                        )
+                                        .showSearch();
+                                    if (previousQuery.isEmpty) {
+                                      // First keystroke must apply instantly: the search
+                                      // tab is only rendered while the query is
+                                      // non-empty (sub-2-char queries short-circuit in
+                                      // the provider, so this is cheap).
+                                      ref
+                                              .read(
+                                                searchTabQueryProvider.notifier,
+                                              )
+                                              .state =
+                                          trimmed;
+                                    } else {
+                                      searchTabDebounce.value = Timer(
+                                        const Duration(milliseconds: 300),
+                                        () {
+                                          ref
+                                                  .read(
+                                                    searchTabQueryProvider
+                                                        .notifier,
+                                                  )
+                                                  .state =
+                                              trimmed;
+                                        },
+                                      );
+                                    }
+                                  } else {
+                                    ref
+                                            .read(
+                                              searchTabQueryProvider.notifier,
+                                            )
+                                            .state =
+                                        '';
+                                    if (previousQuery.isNotEmpty) {
+                                      // Only switch tabs when user actively clears a
+                                      // non-empty search (not on tapping an empty field)
+                                      searchAnimatedEventIds.clear();
+                                      ref
+                                          .read(
+                                            groupEventSearchTabControllerProvider,
+                                          )
+                                          .restorePreviousTab();
+                                      // ignore: unused_result
+                                      ref.refresh(groupEventScreenProvider);
+                                    }
+                                  }
+                                },
+                                onTournamentSelected: (t) => ref
+                                    .read(groupEventScreenProvider.notifier)
+                                    .onSelectTournament(
+                                      context: context,
+                                      id: t.id,
+                                    ),
+                                onPlayerSelected: (player) {
+                                  FocusScope.of(context).unfocus();
+                                  HapticFeedbackService.buttonPress();
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (_) => PlayerProfileScreen(
+                                        fideId: player.fideId,
+                                        playerName: player.name,
+                                        title: player.title,
+                                        federation: player.fed,
+                                        rating: player.rating,
+                                        gamebasePlayerId:
+                                            player.gamebasePlayerId,
+                                        memorialSourceIdentity:
+                                            player.memorialSourceIdentity,
+                                        memorialRouteId: player.memorialRouteId,
+                                      ),
+                                    ),
+                                  );
+                                },
+                                onOpeningSelected: (opening) {
+                                  FocusScope.of(context).unfocus();
+                                  HapticFeedbackService.buttonPress();
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (_) => SmartEventScreen(
+                                        request:
+                                            SmartEventRequest.forOpeningSelection(
+                                              opening,
+                                            ),
+                                      ),
+                                    ),
+                                  );
+                                },
+                                onFilterTap: () {
+                                  ref
+                                      .read(filterPopupProvider.notifier)
+                                      .setState(appliedFilterState);
+
+                                  showAlertModal<void>(
+                                    context: context,
+                                    horizontalPadding: 0,
+                                    child: FilterPopup(
+                                      onApplyFilters: (filterState) {
+                                        ref
+                                                .read(
+                                                  eventAppliedFilterProvider
+                                                      .notifier,
+                                                )
+                                                .state =
+                                            filterState;
+                                        ref.invalidate(forYouEventsProvider);
+                                      },
+                                      onResetFilters: () {
+                                        ref
+                                                .read(
+                                                  eventAppliedFilterProvider
+                                                      .notifier,
+                                                )
+                                                .state =
+                                            defaultFilterPopupState;
+                                        ref.invalidate(forYouEventsProvider);
+                                      },
+                                    ),
+                                  );
+                                },
+                                showProfile: false,
+                                leading: const HomeTopBarBackButton(
+                                  key: ValueKey('events_back'),
+                                ),
+                                onClearSearchField: () {
+                                  // ignore: unused_result
+                                  ref.refresh(groupEventScreenProvider);
+                                  // Clear search tab state and switch back if on search tab
+                                  ref
+                                          .read(searchTabQueryProvider.notifier)
+                                          .state =
+                                      '';
+                                  searchAnimatedEventIds.clear();
+                                  ref
+                                      .read(
+                                        groupEventSearchTabControllerProvider,
+                                      )
+                                      .restorePreviousTab();
+                                },
+                              ),
+                            ),
+                          ),
+
+                          SizedBox(height: 16.h),
+                          Padding(
+                            padding: EdgeInsets.symmetric(
+                              horizontal: horizontalPadding,
+                            ),
+                            child: Row(
+                              children: [
+                                Expanded(
+                                  child: _SegmentedSwitcher(
+                                    searchController: searchController,
+                                    selectedTourEvent: activeCategory,
+                                    visibleCategories: visibleCategories,
+                                    onSelectedChanged: (index) {
+                                      final newCategory =
+                                          visibleCategories[index];
+                                      final currentCategory = activeCategory;
+
+                                      // If tapping the same tab, scroll to top
+                                      if (newCategory == currentCategory) {
+                                        final controller = scrollControllerFor(
+                                          newCategory,
+                                        );
+
+                                        if (controller.hasClients) {
+                                          controller.animateTo(
+                                            0,
+                                            duration: const Duration(
+                                              milliseconds: 300,
+                                            ),
+                                            curve: Curves.easeOutCubic,
+                                          );
+                                        }
+                                        return; // Don't change category
+                                      }
+
+                                      ref
+                                              .read(
+                                                selectedGroupCategoryProvider
+                                                    .notifier,
+                                              )
+                                              .state =
+                                          newCategory;
+                                    },
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+
+                          SizedBox(height: 12.h),
+                        ],
+                      ),
+                    ),
                     Expanded(
-                      child: _SegmentedSwitcher(
-                        searchController: searchController,
-                        selectedTourEvent: activeCategory,
-                        visibleCategories: visibleCategories,
-                        onSelectedChanged: (index) {
-                          final newCategory = visibleCategories[index];
-                          final currentCategory = activeCategory;
-
-                          // If tapping the same tab, scroll to top
-                          if (newCategory == currentCategory) {
-                            final controller = scrollControllerFor(
-                              newCategory,
-                            );
-
-                            if (controller.hasClients) {
-                              controller.animateTo(
-                                0,
-                                duration: const Duration(milliseconds: 300),
-                                curve: Curves.easeOutCubic,
+                      child: ListenableBuilder(
+                        // While the field has the keyboard the bar holds still.
+                        listenable: focusNode,
+                        builder: (context, child) => ScrollChromeRegion(
+                          controller: chrome,
+                          enabled: !focusNode.hasFocus,
+                          child: child!,
+                        ),
+                        child: StableHeightSlot(
+                          child: PageView.builder(
+                            controller: pageController,
+                            itemCount: visibleCategories.length,
+                            onPageChanged: (index) {
+                              if (!isAnimating.value &&
+                                  index < visibleCategories.length) {
+                                final newCategory = visibleCategories[index];
+                                ref
+                                        .read(
+                                          selectedGroupCategoryProvider
+                                              .notifier,
+                                        )
+                                        .state =
+                                    newCategory;
+                              }
+                            },
+                            itemBuilder: (context, index) {
+                              if (index >= visibleCategories.length) {
+                                return const SizedBox.shrink();
+                              }
+                              final currentCategory = visibleCategories[index];
+                              final isPast =
+                                  currentCategory == GroupEventCategory.past;
+                              final isUpcoming =
+                                  currentCategory ==
+                                  GroupEventCategory.upcoming;
+                              final isSearch =
+                                  currentCategory == GroupEventCategory.search;
+                              final scrollController = scrollControllerFor(
+                                currentCategory,
                               );
-                            }
-                            return; // Don't change category
-                          }
 
-                          ref
-                              .read(selectedGroupCategoryProvider.notifier)
-                              .state = newCategory;
-                        },
+                              // Only load data for the currently selected tab. Heavy
+                              // tabs keep their provider caches, not their widget trees.
+                              if (currentCategory != activeCategory) {
+                                return const SizedBox.shrink();
+                              }
+
+                              final buildPage = pageBuilder;
+                              if (buildPage != null) {
+                                return buildPage(
+                                  context,
+                                  currentCategory,
+                                  scrollController,
+                                );
+                              }
+
+                              // Special handling for "Search" tab - show search results
+                              if (isSearch) {
+                                return SearchResultsWidget(
+                                  scrollController: searchScrollController,
+                                  searchQuery: searchQuery,
+                                );
+                              }
+
+                              return ref
+                                  .watch(groupEventScreenProvider)
+                                  .when(
+                                    data: (filteredEvents) {
+                                      final isLoadingMore =
+                                          isPast &&
+                                          ref
+                                              .read(
+                                                groupEventScreenProvider
+                                                    .notifier,
+                                              )
+                                              .isFetchingMore;
+
+                                      // Get favorites from unified favorites system (Supabase + local cache)
+                                      final favoritesAsync = ref.watch(
+                                        favoriteEventsProvider,
+                                      );
+                                      final favoriteEvents =
+                                          favoritesAsync.valueOrNull ?? [];
+
+                                      // Extract event IDs from favorites
+                                      final allFavorites = favoriteEvents
+                                          .map((e) => e.eventId)
+                                          .where((id) => id.isNotEmpty)
+                                          .toList();
+
+                                      // Build timestamp map for sorting within groups
+                                      final favoriteTimestamps =
+                                          <String, DateTime>{};
+                                      for (final fav in favoriteEvents) {
+                                        favoriteTimestamps[fav.eventId] =
+                                            fav.createdAt;
+                                      }
+
+                                      final isSearching = searchController.text
+                                          .trim()
+                                          .isNotEmpty;
+
+                                      // Get cached favorite player data (populated by event cards as they render)
+                                      final cachedEventFavoritePlayers = ref
+                                          .watch(
+                                            eventFavoritePlayersCacheProvider,
+                                          );
+
+                                      // Past keeps its date order; Upcoming keeps its
+                                      // soonest-first order with starred events pinned
+                                      // on top; Current ranks favourites and hearts.
+                                      final List<GroupEventCardModel>
+                                      finalEvents;
+                                      if (isSearching || isPast) {
+                                        finalEvents = filteredEvents;
+                                      } else if (isUpcoming) {
+                                        finalEvents = sortUpcomingEvents(
+                                          filteredEvents,
+                                          starredIds: allFavorites.toSet(),
+                                        );
+                                      } else {
+                                        // Live first is laid over the ranking here
+                                        // too: re-ranking the favourites would undo
+                                        // the order the list arrives in.
+                                        final liveFirst = ref.watch(
+                                          homeEventsLiveFirstProvider,
+                                        );
+                                        finalEvents = currentEventsDisplayOrder(
+                                          events: filteredEvents,
+                                          sorter: ref.read(
+                                            tournamentSortingServiceProvider,
+                                          ),
+                                          favorites: allFavorites,
+                                          eventFavoritePlayersMap:
+                                              cachedEventFavoritePlayers,
+                                          favoriteTimestamps:
+                                              favoriteTimestamps,
+                                          liveFirst: liveFirst,
+                                          liveIds: liveFirst
+                                              ? homeLiveEventIds(
+                                                  strict: ref
+                                                      .watch(
+                                                        liveGroupBroadcastIdsProvider,
+                                                      )
+                                                      .valueOrNull,
+                                                  mirror: ref.watch(
+                                                    liveBroadcastIdsProvider,
+                                                  ),
+                                                )
+                                              : const <String>{},
+                                        );
+                                      }
+                                      return RefreshIndicator(
+                                        onRefresh: ref
+                                            .read(homeScreenProvider)
+                                            .onEventsPullRefresh,
+                                        color: context.colors.textSecondary,
+                                        backgroundColor: context.colors.surface,
+                                        displacement: 60.h,
+                                        strokeWidth: 3.w,
+                                        child: isUpcoming && finalEvents.isEmpty
+                                            ? UpcomingEventsEmptyState(
+                                                filtersActive:
+                                                    filterBadgeCount > 0,
+                                                onResetFilters: () {
+                                                  HapticFeedbackService.buttonPress();
+                                                  ref
+                                                          .read(
+                                                            eventAppliedFilterProvider
+                                                                .notifier,
+                                                          )
+                                                          .state =
+                                                      defaultFilterPopupState;
+                                                  ref.invalidate(
+                                                    forYouEventsProvider,
+                                                  );
+                                                },
+                                                scrollController:
+                                                    scrollController,
+                                              )
+                                            : AllEventsTabWidget(
+                                                filteredEvents: finalEvents,
+                                                onSelect:
+                                                    (tourEventCardModel) => ref
+                                                        .read(
+                                                          groupEventScreenProvider
+                                                              .notifier,
+                                                        )
+                                                        .onSelectTournament(
+                                                          context: context,
+                                                          id: tourEventCardModel
+                                                              .id,
+                                                        ),
+                                                isLoadingMore: isLoadingMore,
+                                                scrollController:
+                                                    scrollController,
+                                              ),
+                                      );
+                                    },
+                                    loading: () => SkeletonWidget(
+                                      child: AllEventsTabWidget(
+                                        onSelect: (_) {},
+                                        filteredEvents: List.generate(
+                                          10,
+                                          (index) => GroupEventCardModel(
+                                            id: 'tour_001',
+                                            title:
+                                                'World Chess Championship 2025',
+                                            dates: 'Mar 15 - 25,2025',
+                                            timeUntilStart:
+                                                'Starts in 8 months',
+                                            tourEventCategory:
+                                                TourEventCategory
+                                                    .values[Random().nextInt(
+                                                  TourEventCategory
+                                                      .values
+                                                      .length,
+                                                )],
+                                            maxAvgElo: 0,
+                                            timeControl: 'Standard',
+                                            endDate: null,
+                                            startDate: null,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                    // A failed load (nothing cached to fall back on)
+                                    // says so and offers Retry on every tab; only a
+                                    // successful empty load shows an empty state.
+                                    error: (error, stackTrace) => RefreshIndicator(
+                                      onRefresh: ref
+                                          .read(homeScreenProvider)
+                                          .onEventsPullRefresh,
+                                      color: context.colors.textSecondary,
+                                      backgroundColor: context.colors.surface,
+                                      displacement: 60.h,
+                                      strokeWidth: 3.w,
+                                      child: EventsLoadErrorState(
+                                        key: ValueKey(
+                                          'events_load_error_${currentCategory.name}',
+                                        ),
+                                        error: error,
+                                        fallbackMessage: isUpcoming
+                                            ? "Couldn't load upcoming events."
+                                            : "Couldn't load these events.",
+                                        scrollController: scrollController,
+                                        onRetry: () {
+                                          HapticFeedbackService.buttonPress();
+                                          unawaited(
+                                            ref
+                                                .read(
+                                                  groupEventScreenProvider
+                                                      .notifier,
+                                                )
+                                                .loadTours(),
+                                          );
+                                        },
+                                      ),
+                                    ),
+                                  );
+                            },
+                          ),
+                        ),
                       ),
                     ),
                   ],
                 ),
               ),
-
-              SizedBox(height: 12.h),
-              Expanded(
-                child: StableHeightSlot(
-                  child: PageView.builder(
-                    controller: pageController,
-                    itemCount: visibleCategories.length,
-                    onPageChanged: (index) {
-                      if (!isAnimating.value &&
-                          index < visibleCategories.length) {
-                        final newCategory = visibleCategories[index];
-                        ref.read(selectedGroupCategoryProvider.notifier).state =
-                            newCategory;
-                      }
-                    },
-                    itemBuilder: (context, index) {
-                      if (index >= visibleCategories.length) {
-                        return const SizedBox.shrink();
-                      }
-                      final currentCategory = visibleCategories[index];
-                      final isPast = currentCategory == GroupEventCategory.past;
-                      final isUpcoming =
-                          currentCategory == GroupEventCategory.upcoming;
-                      final isSearch =
-                          currentCategory == GroupEventCategory.search;
-                      final scrollController = scrollControllerFor(
-                        currentCategory,
-                      );
-
-                      // Only load data for the currently selected tab. Heavy
-                      // tabs keep their provider caches, not their widget trees.
-                      if (currentCategory != activeCategory) {
-                        return const SizedBox.shrink();
-                      }
-
-                      final buildPage = pageBuilder;
-                      if (buildPage != null) {
-                        return buildPage(
-                          context,
-                          currentCategory,
-                          scrollController,
-                        );
-                      }
-
-                      // Special handling for "Search" tab - show search results
-                      if (isSearch) {
-                        return SearchResultsWidget(
-                          scrollController: searchScrollController,
-                          searchQuery: searchQuery,
-                        );
-                      }
-
-                      return ref
-                          .watch(groupEventScreenProvider)
-                          .when(
-                            data: (filteredEvents) {
-                              final isLoadingMore =
-                                  isPast &&
-                                  ref
-                                      .read(groupEventScreenProvider.notifier)
-                                      .isFetchingMore;
-
-                              // Get favorites from unified favorites system (Supabase + local cache)
-                              final favoritesAsync = ref.watch(
-                                favoriteEventsProvider,
-                              );
-                              final favoriteEvents =
-                                  favoritesAsync.valueOrNull ?? [];
-
-                              // Extract event IDs from favorites
-                              final allFavorites =
-                                  favoriteEvents
-                                      .map((e) => e.eventId)
-                                      .where((id) => id.isNotEmpty)
-                                      .toList();
-
-                              // Build timestamp map for sorting within groups
-                              final favoriteTimestamps = <String, DateTime>{};
-                              for (final fav in favoriteEvents) {
-                                favoriteTimestamps[fav.eventId] = fav.createdAt;
-                              }
-
-                              final isSearching =
-                                  searchController.text.trim().isNotEmpty;
-
-                              // Get cached favorite player data (populated by event cards as they render)
-                              final cachedEventFavoritePlayers = ref.watch(
-                                eventFavoritePlayersCacheProvider,
-                              );
-
-                              // Past keeps its date order; Upcoming keeps its
-                              // soonest-first order with starred events pinned
-                              // on top; Current ranks favourites and hearts.
-                              final List<GroupEventCardModel> finalEvents;
-                              if (isSearching || isPast) {
-                                finalEvents = filteredEvents;
-                              } else if (isUpcoming) {
-                                finalEvents = sortUpcomingEvents(
-                                  filteredEvents,
-                                  starredIds: allFavorites.toSet(),
-                                );
-                              } else {
-                                // Live first is laid over the ranking here
-                                // too: re-ranking the favourites would undo
-                                // the order the list arrives in.
-                                final liveFirst = ref.watch(
-                                  homeEventsLiveFirstProvider,
-                                );
-                                finalEvents = currentEventsDisplayOrder(
-                                  events: filteredEvents,
-                                  sorter: ref.read(
-                                    tournamentSortingServiceProvider,
-                                  ),
-                                  favorites: allFavorites,
-                                  eventFavoritePlayersMap:
-                                      cachedEventFavoritePlayers,
-                                  favoriteTimestamps: favoriteTimestamps,
-                                  liveFirst: liveFirst,
-                                  liveIds: liveFirst
-                                      ? homeLiveEventIds(
-                                          strict: ref
-                                              .watch(
-                                                liveGroupBroadcastIdsProvider,
-                                              )
-                                              .valueOrNull,
-                                          mirror: ref.watch(
-                                            liveBroadcastIdsProvider,
-                                          ),
-                                        )
-                                      : const <String>{},
-                                );
-                              }
-                              return RefreshIndicator(
-                                onRefresh:
-                                    ref.read(homeScreenProvider).onPullRefresh,
-                                color: context.colors.textSecondary,
-                                backgroundColor: context.colors.surface,
-                                displacement: 60.h,
-                                strokeWidth: 3.w,
-                                child:
-                                    isUpcoming && finalEvents.isEmpty
-                                        ? UpcomingEventsEmptyState(
-                                          filtersActive: filterBadgeCount > 0,
-                                          onResetFilters: () {
-                                            HapticFeedbackService.buttonPress();
-                                            ref
-                                                .read(
-                                                  eventAppliedFilterProvider
-                                                      .notifier,
-                                                )
-                                                .state = defaultFilterPopupState;
-                                            ref.invalidate(
-                                              forYouEventsProvider,
-                                            );
-                                          },
-                                          scrollController: scrollController,
-                                        )
-                                        : AllEventsTabWidget(
-                                          filteredEvents: finalEvents,
-                                          onSelect:
-                                              (tourEventCardModel) => ref
-                                                  .read(
-                                                    groupEventScreenProvider
-                                                        .notifier,
-                                                  )
-                                                  .onSelectTournament(
-                                                    context: context,
-                                                    id: tourEventCardModel.id,
-                                                  ),
-                                          isLoadingMore: isLoadingMore,
-                                          scrollController: scrollController,
-                                        ),
-                              );
-                            },
-                            loading:
-                                () => SkeletonWidget(
-                                  child: AllEventsTabWidget(
-                                    onSelect: (_) {},
-                                    filteredEvents: List.generate(
-                                      10,
-                                      (index) => GroupEventCardModel(
-                                        id: 'tour_001',
-                                        title: 'World Chess Championship 2025',
-                                        dates: 'Mar 15 - 25,2025',
-                                        timeUntilStart: 'Starts in 8 months',
-                                        tourEventCategory:
-                                            TourEventCategory
-                                                .values[Random().nextInt(
-                                              TourEventCategory.values.length,
-                                            )],
-                                        maxAvgElo: 0,
-                                        timeControl: 'Standard',
-                                        endDate: null,
-                                        startDate: null,
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                            // A failed load (nothing cached to fall back on)
-                            // says so and offers Retry on every tab; only a
-                            // successful empty load shows an empty state.
-                            error:
-                                (error, stackTrace) => RefreshIndicator(
-                                  onRefresh:
-                                      ref
-                                          .read(homeScreenProvider)
-                                          .onPullRefresh,
-                                  color: context.colors.textSecondary,
-                                  backgroundColor: context.colors.surface,
-                                  displacement: 60.h,
-                                  strokeWidth: 3.w,
-                                  child: EventsLoadErrorState(
-                                    key: ValueKey(
-                                      'events_load_error_${currentCategory.name}',
-                                    ),
-                                    error: error,
-                                    fallbackMessage:
-                                        isUpcoming
-                                            ? "Couldn't load upcoming events."
-                                            : "Couldn't load these events.",
-                                    scrollController: scrollController,
-                                    onRetry: () {
-                                      HapticFeedbackService.buttonPress();
-                                      unawaited(
-                                        ref
-                                            .read(
-                                              groupEventScreenProvider.notifier,
-                                            )
-                                            .loadTours(),
-                                      );
-                                    },
-                                  ),
-                                ),
-                          );
-                    },
-                  ),
-                ),
-              ),
-            ],
+            ),
           ),
-        ),
+          // Live first floats in the thumb's reach (Trello #1420), only
+          // while an event is in play, and steps away with the bar as the
+          // list scrolls.
+          Positioned(
+            right: 16,
+            bottom: 16 + MediaQuery.viewPaddingOf(context).bottom,
+            child: SlidingFabs(
+              controller: chrome,
+              child: EventsLiveFirstFab(
+                key: const ValueKey(kHomeLiveFirstButtonKey),
+                onTurnedOn: showCurrentTop,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -827,34 +959,30 @@ class _SegmentedSwitcher extends ConsumerWidget {
     // every character for no benefit.
     final searchTabQuery = ref.watch(searchTabQueryProvider);
 
-    final options =
-        visibleCategories.map((category) {
-          if (category == GroupEventCategory.search &&
-              searchTabQuery.isNotEmpty) {
-            return _formatSearchTabTitle(searchTabQuery);
-          }
-          return _mappedName[category]!;
-        }).toList();
+    final options = visibleCategories.map((category) {
+      if (category == GroupEventCategory.search && searchTabQuery.isNotEmpty) {
+        return _formatSearchTabTitle(searchTabQuery);
+      }
+      return _mappedName[category]!;
+    }).toList();
 
-    final optionLabels =
-        visibleCategories.map((category) {
-          String baseLabel;
-          if (category == GroupEventCategory.search &&
-              searchTabQuery.isNotEmpty) {
-            baseLabel = _formatSearchTabTitle(searchTabQuery);
-          } else {
-            baseLabel = _mappedName[category]!;
-          }
-          // Above the default size a label scales down rather than wrap
-          // into a second line the strip would clip.
-          if (context.textGrowth > 1) {
-            return FittedBox(
-              fit: BoxFit.scaleDown,
-              child: Text(baseLabel, maxLines: 1, softWrap: false),
-            );
-          }
-          return Text(baseLabel);
-        }).toList();
+    final optionLabels = visibleCategories.map((category) {
+      String baseLabel;
+      if (category == GroupEventCategory.search && searchTabQuery.isNotEmpty) {
+        baseLabel = _formatSearchTabTitle(searchTabQuery);
+      } else {
+        baseLabel = _mappedName[category]!;
+      }
+      // Above the default size a label scales down rather than wrap
+      // into a second line the strip would clip.
+      if (context.textGrowth > 1) {
+        return FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Text(baseLabel, maxLines: 1, softWrap: false),
+        );
+      }
+      return Text(baseLabel);
+    }).toList();
 
     return SegmentedSwitcher(
       dotScope: 'events.tab',
@@ -868,45 +996,34 @@ class _SegmentedSwitcher extends ConsumerWidget {
           .clamp(0, visibleCategories.length - 1),
       onSelectionChanged: onSelectedChanged,
       notifyOnReselect: true,
-      // Search is a transient segment and never a start page.
-      longPressFor: (index) {
-        final category = visibleCategories[index];
-        if (category == GroupEventCategory.search) return null;
-        return () => unawaited(
-          makeStartScreenDefault(
-            context,
-            ref,
-            section: BottomNavBarItem.tournaments,
-            page: eventsStartPage(category),
-          ),
-        );
-      },
-      longPressHint: (index) => startScreenHint(
-        BottomNavBarItem.tournaments,
-        eventsStartPage(visibleCategories[index]),
-      ),
     );
   }
 }
 
-/// The key of the home Events bar's Live first control.
+/// The key of the Events lists' Live first button.
 const String kHomeLiveFirstButtonKey = 'events_live_first_button';
 
-/// Live first on the home Events bar (Trello #1420), wearing the web's Live
-/// mark: one tap lists the live events first, from any segment
-/// ([pressHomeEventsLiveFirst]). [onTurnedOn] runs once it has come on.
-class HomeLiveFirstToggle extends ConsumerWidget {
-  const HomeLiveFirstToggle({super.key, this.onTurnedOn});
+/// Live first on the Events lists (Trello #1420), wearing the web's Live
+/// mark, floating where the thumb rests: one tap lists the live events
+/// first, from any segment ([pressHomeEventsLiveFirst]). Only there while
+/// an event is in play. [onTurnedOn] runs once it has come on.
+class EventsLiveFirstFab extends ConsumerWidget {
+  const EventsLiveFirstFab({super.key, this.onTurnedOn});
 
   final VoidCallback? onTurnedOn;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    return LiveFirstToggleButton(
+    final on = ref.watch(homeEventsLiveFirstProvider);
+    // With nothing live it has nothing to do, so it is not there to press.
+    // A flag left on only orders Current, the same order with nothing live.
+    if (!ref.watch(homeAnyLiveEventProvider)) {
+      return const SizedBox.shrink();
+    }
+    return LiveFirstInkFab(
       subject: 'events',
-      // Rests in the field's quiet ink, like the magnifier and the filter.
-      restingColor: context.colors.iconSecondary,
-      pressed: ref.watch(homeEventsLiveFirstProvider),
+      size: InkFabSize.regular,
+      on: on,
       onTap: () {
         if (pressHomeEventsLiveFirst(context: context, ref: ref)) {
           onTurnedOn?.call();

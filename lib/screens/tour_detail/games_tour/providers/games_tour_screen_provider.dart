@@ -18,38 +18,39 @@ import 'package:chessever2/widgets/search/gameSearch/enhanced_game_search.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
-final gamesTourScreenProvider = StateNotifierProvider<
-  GamesTourScreenProvider,
-  AsyncValue<GamesScreenModel>
->((ref) {
-  // Only the selected tournament identity should recreate this notifier.
-  // Live-tour/status updates are handled elsewhere and should not flash the
-  // Games tab back through loading.
-  final tourDetailAsync = ref.watch(
-    tourDetailScreenProvider.select(_GamesTourDetailSlice.from),
-  );
-  // unused: final showFinishedGames = ref.watch(showFinishedGamesProvider);
+final gamesTourScreenProvider =
+    StateNotifierProvider<
+      GamesTourScreenProvider,
+      AsyncValue<GamesScreenModel>
+    >((ref) {
+      // Only the selected tournament identity should recreate this notifier.
+      // Live-tour/status updates are handled elsewhere and should not flash the
+      // Games tab back through loading.
+      final tourDetailAsync = ref.watch(
+        tourDetailScreenProvider.select(_GamesTourDetailSlice.from),
+      );
+      // unused: final showFinishedGames = ref.watch(showFinishedGamesProvider);
 
-  if (tourDetailAsync.isLoading) {
-    return GamesTourScreenProvider.loading(ref: ref);
-  }
+      if (tourDetailAsync.isLoading) {
+        return GamesTourScreenProvider.loading(ref: ref);
+      }
 
-  if (tourDetailAsync.hasError) {
-    return GamesTourScreenProvider.withError(
-      ref: ref,
-      error: tourDetailAsync.error!,
-    );
-  }
+      if (tourDetailAsync.hasError) {
+        return GamesTourScreenProvider.withError(
+          ref: ref,
+          error: tourDetailAsync.error!,
+        );
+      }
 
-  final aboutTourModel = tourDetailAsync.aboutTourModel;
+      final aboutTourModel = tourDetailAsync.aboutTourModel;
 
-  if (aboutTourModel == null) {
-    return GamesTourScreenProvider.loading(ref: ref);
-  }
+      if (aboutTourModel == null) {
+        return GamesTourScreenProvider.loading(ref: ref);
+      }
 
-  // The notifier will read games/pins itself and keep state in sync
-  return GamesTourScreenProvider(ref: ref, aboutTourModel: aboutTourModel);
-});
+      // The notifier will read games/pins itself and keep state in sync
+      return GamesTourScreenProvider(ref: ref, aboutTourModel: aboutTourModel);
+    });
 
 // Can use this in future to maintain the state across the app
 final showFinishedGamesProvider = StateProvider<bool>((ref) => true);
@@ -172,6 +173,12 @@ class GamesTourScreenProvider
   final AboutTourModel? aboutTourModel;
   final Object? error;
   int _recomputeGeneration = 0;
+
+  /// Moves on whenever a text search starts, lands or is cleared. A search
+  /// still running when the reader closes it (or types on) must not land
+  /// after that, behind a closed field or over newer hits; a list computed
+  /// before a search's hits arrived must not replace them.
+  int _searchGeneration = 0;
 
   Future<void> _setupListeners() async {
     // The display-mode provider lives outside this notifier so it survives
@@ -325,6 +332,7 @@ class GamesTourScreenProvider
     if (aboutTourModel == null) return;
 
     int? generation;
+    final searchGeneration = _searchGeneration;
     try {
       final gamesAsync = ref.read(gamesTourProvider(aboutTourModel!.id));
       if (gamesAsync.isLoading) {
@@ -394,7 +402,11 @@ class GamesTourScreenProvider
         ),
       );
 
-      if (!mounted || generation != _recomputeGeneration) return;
+      if (!mounted ||
+          generation != _recomputeGeneration ||
+          searchGeneration != _searchGeneration) {
+        return;
+      }
 
       // Read the persisted display mode so it survives notifier recreations
       // (category change, live-tour-id push). `current?.gameDisplayMode` is
@@ -420,7 +432,8 @@ class GamesTourScreenProvider
       );
     } catch (e, st) {
       if (mounted &&
-          (generation == null || generation == _recomputeGeneration)) {
+          (generation == null || generation == _recomputeGeneration) &&
+          searchGeneration == _searchGeneration) {
         state = AsyncValue.error(e, st);
       }
     }
@@ -441,6 +454,8 @@ class GamesTourScreenProvider
 
   void clearSearch() {
     if (aboutTourModel == null) return;
+    // Ends any search still running, so its hits cannot land after this.
+    _searchGeneration++;
     final pins = ref.read(gamesPinprovider(aboutTourModel!.id)).allPins;
     _recompute(
       isSearchModeOverride: false,
@@ -619,12 +634,11 @@ class GamesTourScreenProvider
             ?.tours
             .map((tour) => tour.tour.id) ??
         const <String>[];
-    final stageTourIds =
-        siblingKnockoutStageTourIds(
-          rounds: rounds,
-          selectedTourId: aboutTourModel!.id,
-          knownTourIds: knownTourIds,
-        ).toSet();
+    final stageTourIds = siblingKnockoutStageTourIds(
+      rounds: rounds,
+      selectedTourId: aboutTourModel!.id,
+      knownTourIds: knownTourIds,
+    ).toSet();
 
     if (stageTourIds.isEmpty) {
       return baseGames;
@@ -733,6 +747,7 @@ class GamesTourScreenProvider
   Future<void> searchGamesEnhanced(String query) async {
     if (aboutTourModel == null) return;
 
+    final searchGeneration = ++_searchGeneration;
     try {
       if (query.isEmpty) {
         clearSearch();
@@ -793,20 +808,24 @@ class GamesTourScreenProvider
         '🔍 Search completed: Found ${models.length} games across all stages for query "$query"',
       );
 
-      if (mounted) {
-        state = AsyncValue.data(
-          GamesScreenModel(
-            gamesTourModels: models,
-            pinnedGamedIs: pinnedIds, // show accurate pins in search
-            isSearchMode: true,
-            searchQuery: query,
-            gameDisplayMode:
-                state.valueOrNull?.gameDisplayMode ?? GameDisplayMode.all,
-          ),
-        );
-      }
+      // Closed or overtaken by a newer query while it ran: drop it.
+      if (!mounted || searchGeneration != _searchGeneration) return;
+      // The hits are on screen now; a list computed before them is stale.
+      _searchGeneration++;
+      state = AsyncValue.data(
+        GamesScreenModel(
+          gamesTourModels: models,
+          pinnedGamedIs: pinnedIds, // show accurate pins in search
+          isSearchMode: true,
+          searchQuery: query,
+          gameDisplayMode:
+              state.valueOrNull?.gameDisplayMode ?? GameDisplayMode.all,
+        ),
+      );
     } catch (e, st) {
-      if (mounted) state = AsyncValue.error(e, st);
+      if (mounted && searchGeneration == _searchGeneration) {
+        state = AsyncValue.error(e, st);
+      }
     }
   }
 

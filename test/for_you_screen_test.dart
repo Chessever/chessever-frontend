@@ -1,16 +1,12 @@
 import 'package:chessever2/repository/local_storage/local_storage_repository.dart';
 import 'package:chessever2/screens/for_you/for_you_screen.dart';
 import 'package:chessever2/screens/for_you/providers/for_you_tab_provider.dart';
-import 'package:chessever2/screens/group_event/providers/group_event_screen_provider.dart';
-import 'package:chessever2/screens/group_event/providers/supabase_combined_search_provider.dart';
-import 'package:chessever2/screens/group_event/widget/search_results_widget.dart';
 import 'package:chessever2/screens/group_event/widget/for_you_games_widget.dart';
 import 'package:chessever2/screens/home/widget/bottom_nav_bar.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
-import 'package:chessever2/widgets/search/enhanced_group_broadcast_local_storage.dart';
 import 'package:chessever2/widgets/search/recent_searches_provider.dart';
-import 'package:chessever2/widgets/segmented_switcher.dart';
+import 'package:chessever2/widgets/user_avatar.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -64,9 +60,8 @@ Future<void> _pump(WidgetTester tester, Widget app) async {
   await tester.pump();
 }
 
-int _selectedSegment(WidgetTester tester) => tester
-    .widget<SegmentedSwitcher>(find.byType(SegmentedSwitcher))
-    .currentSelection!;
+int _selectedSegment(WidgetTester tester) =>
+    tester.widget<ForYouPageTabs>(find.byType(ForYouPageTabs)).selectedIndex;
 
 ForYouTab _selectedTab(WidgetTester tester) => ProviderScope.containerOf(
   tester.element(find.byType(ForYouScreen)),
@@ -89,10 +84,8 @@ void main() {
   ) async {
     await _pump(tester, _app());
 
-    final switcher = tester.widget<SegmentedSwitcher>(
-      find.byType(SegmentedSwitcher),
-    );
-    expect(switcher.options, ['My Space', 'Today', 'Discovery']);
+    final switcher = tester.widget<ForYouPageTabs>(find.byType(ForYouPageTabs));
+    expect(switcher.labels, ['My Space', 'Today', 'Discovery']);
     expect(_selectedSegment(tester), ForYouTab.today.index);
     expect(find.text('page:today'), findsOneWidget);
     // Only the selected page is built.
@@ -140,214 +133,13 @@ void main() {
     expect(prefs.getString(forYouLastTabPrefsKey), isNull);
   });
 
-  testWidgets(
-    'typing adds a Search segment; picking a tab leaves the search and keeps '
-    'the selected tab',
-    (tester) async {
-      await _pump(
-        tester,
-        _app(
-          initialTab: ForYouTab.discovery,
-          overrides: [
-            supabaseCombinedSearchProvider.overrideWith(
-              (ref, query) async => EnhancedSearchResult.empty(),
-            ),
-          ],
-        ),
-      );
-
-      await tester.enterText(find.byType(TextField), 'hikaru');
-      // The bar debounces onChanged by 300ms.
-      await tester.pump(const Duration(milliseconds: 350));
-      await tester.pump();
-      await tester.pump();
-
-      expect(
-        tester
-            .widget<SegmentedSwitcher>(find.byType(SegmentedSwitcher))
-            .options,
-        ['My Space', 'Today', 'Discovery', 'Hikaru'],
-      );
-      expect(_selectedSegment(tester), 3);
-      expect(find.byType(SearchResultsWidget), findsOneWidget);
-      // A search never overwrites the selected tab.
-      expect(_selectedTab(tester), ForYouTab.discovery);
-
-      await tester.tap(find.text('Today'));
-      await tester.pump(const Duration(milliseconds: 350));
-      await tester.pump();
-      await tester.pump();
-
-      expect(
-        tester
-            .widget<SegmentedSwitcher>(find.byType(SegmentedSwitcher))
-            .options,
-        ['My Space', 'Today', 'Discovery'],
-      );
-      expect(_selectedSegment(tester), ForYouTab.today.index);
-      expect(find.text('page:today'), findsOneWidget);
-      expect(find.byType(SearchResultsWidget), findsNothing);
-      expect(
-        tester.widget<TextField>(find.byType(TextField)).controller!.text,
-        isEmpty,
-      );
-      expect(_selectedTab(tester), ForYouTab.today);
-      expect(prefs.getString(forYouLastTabPrefsKey), isNull);
-    },
-  );
-
-  testWidgets('clearing the query returns to the tab the search covered', (
-    tester,
-  ) async {
-    await _pump(
-      tester,
-      _app(
-        initialTab: ForYouTab.discovery,
-        overrides: [
-          supabaseCombinedSearchProvider.overrideWith(
-            (ref, query) async => EnhancedSearchResult.empty(),
-          ),
-        ],
-      ),
-    );
-
-    await tester.enterText(find.byType(TextField), 'hikaru');
-    await tester.pump(const Duration(milliseconds: 350));
-    await tester.pump();
-    expect(_selectedSegment(tester), 3);
-
-    await tester.enterText(find.byType(TextField), '');
-    await tester.pump(const Duration(milliseconds: 350));
-    await tester.pump();
-    await tester.pump();
-
-    expect(
-      tester.widget<SegmentedSwitcher>(find.byType(SegmentedSwitcher)).options,
-      ['My Space', 'Today', 'Discovery'],
-    );
-    expect(_selectedSegment(tester), ForYouTab.discovery.index);
-    expect(find.text('page:discovery'), findsOneWidget);
-  });
-
-  testWidgets('clearing a search over Today lands on Today, keyboard kept', (
-    tester,
-  ) async {
-    await _pump(
-      tester,
-      _app(
-        overrides: [
-          supabaseCombinedSearchProvider.overrideWith(
-            (ref, query) async => EnhancedSearchResult.empty(),
-          ),
-        ],
-      ),
-    );
-
-    await tester.enterText(find.byType(TextField), 'hikaru');
-    await tester.pump(const Duration(milliseconds: 350));
-    await tester.pump();
-    expect(_selectedSegment(tester), 3);
-
-    await tester.enterText(find.byType(TextField), '');
-    await tester.pump(const Duration(milliseconds: 350));
-    for (var i = 0; i < 20; i++) {
-      await tester.pump(const Duration(milliseconds: 16));
-    }
-
-    expect(_selectedSegment(tester), ForYouTab.today.index);
-    expect(find.text('page:today'), findsOneWidget);
-    expect(find.text('page:discovery'), findsNothing);
-    expect(prefs.getString(forYouLastTabPrefsKey), isNull);
-    final editable = tester.state<EditableTextState>(find.byType(EditableText));
-    expect(editable.widget.focusNode.hasFocus, isTrue);
-  });
-
-  testWidgets('leaving For You mid-search clears the shared search state', (
-    tester,
-  ) async {
-    final container = ProviderContainer(
-      overrides: [
-        recentSearchStorageProvider.overrideWithValue(_MemoryRecentSearches()),
-        selectedBottomNavBarItemProvider.overrideWith(
-          (ref) => BottomNavBarItem.forYou,
-        ),
-        supabaseCombinedSearchProvider.overrideWith(
-          (ref, query) async => EnhancedSearchResult.empty(),
-        ),
-      ],
-    );
-    addTearDown(container.dispose);
-    final showForYou = ValueNotifier<bool>(true);
-    addTearDown(showForYou.dispose);
-
-    await tester.binding.setSurfaceSize(const Size(393, 852));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
-    await tester.pumpWidget(
-      UncontrolledProviderScope(
-        container: container,
-        child: MaterialApp(
-          theme: AppTheme.darkTheme,
-          home: Builder(
-            builder: (context) {
-              ResponsiveHelper.init(context);
-              return Scaffold(
-                body: ValueListenableBuilder<bool>(
-                  valueListenable: showForYou,
-                  builder: (context, show, _) => show
-                      ? const ForYouScreen(pageBuilder: _fakePage)
-                      : const SizedBox.shrink(),
-                ),
-              );
-            },
-          ),
-        ),
-      ),
-    );
-
-    await tester.enterText(find.byType(TextField), 'hikaru');
-    await tester.pump(const Duration(milliseconds: 450));
-    expect(container.read(searchQueryProvider), 'hikaru');
-    expect(container.read(debouncedSearchQueryProvider), 'hikaru');
-
-    showForYou.value = false;
-    await tester.pump();
-    await tester.pump();
-
-    expect(container.read(searchQueryProvider), isEmpty);
-    expect(container.read(debouncedSearchQueryProvider), isEmpty);
-    expect(container.read(isSearchingProvider), isFalse);
-
-    // This container outlives the widget tree, so its providers' timers would
-    // outlive the test; tear both down before the pending-timer check.
-    await tester.pumpWidget(const SizedBox.shrink());
-    container.dispose();
-    await tester.pump(const Duration(seconds: 2));
-  });
-
-  testWidgets('mounting drops a query another header left in the shared '
-      'search providers', (tester) async {
-    await _pump(
-      tester,
-      _app(
-        overrides: [
-          searchQueryProvider.overrideWith((ref) => 'carlsen'),
-          debouncedSearchQueryProvider.overrideWith((ref) => 'carlsen'),
-          isSearchingProvider.overrideWith((ref) => true),
-          supabaseCombinedSearchProvider.overrideWith(
-            (ref, query) async => EnhancedSearchResult.empty(),
-          ),
-        ],
-      ),
-    );
-    await tester.pump();
-
-    final container = ProviderScope.containerOf(
-      tester.element(find.byType(ForYouScreen)),
-    );
-    expect(container.read(searchQueryProvider), isEmpty);
-    expect(container.read(debouncedSearchQueryProvider), isEmpty);
-    expect(container.read(isSearchingProvider), isFalse);
-    expect(_selectedSegment(tester), ForYouTab.today.index);
+  testWidgets('Home wears no avatar and no search field: Search and Profile '
+      'have tabs of their own', (tester) async {
+    await _pump(tester, _app());
+    expect(find.byType(TextField), findsNothing);
+    expect(find.byType(UserAvatar), findsNothing);
+    // The brand mark over the page tabs is the whole top bar.
+    expect(find.byType(ForYouPageTabs), findsOneWidget);
   });
 
   testWidgets('a swipe follows the drag instead of snapping mid-gesture', (
@@ -451,23 +243,6 @@ void main() {
     expect(find.text('page:mySpace'), findsOneWidget);
   });
 
-  testWidgets('applying a filter from Discovery lands on the Today feed', (
-    tester,
-  ) async {
-    await _pump(tester, _app(initialTab: ForYouTab.discovery));
-    expect(_selectedSegment(tester), ForYouTab.discovery.index);
-
-    await tester.tap(find.byKey(const ValueKey('e2e_for_you_filter_button')));
-    await tester.pumpAndSettle();
-    await tester.ensureVisible(find.text('Apply Filters'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Apply Filters'));
-    await tester.pumpAndSettle();
-
-    expect(_selectedSegment(tester), ForYouTab.today.index);
-    expect(find.text('page:today'), findsOneWidget);
-  });
-
   testWidgets('Today hosts the existing For You feed widget', (tester) async {
     await _pump(
       tester,
@@ -539,7 +314,7 @@ void main() {
     });
 
     test('is false while another main section is selected', () {
-      final c = container(nav: BottomNavBarItem.tournaments);
+      final c = container(nav: BottomNavBarItem.feed);
       c.read(selectedForYouTabProvider.notifier).select(ForYouTab.today);
       expect(c.read(forYouTodayTabActiveProvider), isFalse);
     });

@@ -1,6 +1,12 @@
 import 'package:chessever2/widgets/window_metrics_dismissal.dart';
 import 'package:chessever2/widgets/paywall/premium_game_access.dart';
 import 'dart:async';
+import 'dart:math' as math;
+import 'package:chessever2/screens/tour_detail/widgets/event_search_bar.dart'
+    show EventSearchBarFrame;
+import 'package:chessever2/widgets/ink_fab.dart';
+import 'package:chessever2/widgets/scroll_chrome.dart';
+import 'package:chessever2/widgets/simple_search_bar.dart';
 import 'package:chessever2/screens/group_event/smart_event/saved_smart_event_editor.dart';
 import 'package:chessever2/screens/group_event/smart_event/smart_event_shortcut.dart';
 import 'package:chessever2/screens/group_event/smart_event/starred_smart_events_screen.dart';
@@ -47,7 +53,6 @@ import 'package:chessever2/widgets/event_card/smart_event_star.dart';
 import 'package:chessever2/widgets/fluid_shimmer_painter.dart';
 import 'package:chessever2/widgets/game_filter/game_filter_dialog.dart';
 import 'package:chessever2/widgets/game_filter/game_filter_model.dart';
-import 'package:chessever2/widgets/game_filter/game_search_filter_bar.dart';
 import 'package:chessever2/widgets/game_filter/rating_tier_filter.dart';
 import 'package:chessever2/widgets/generic_error_widget.dart';
 import 'package:chessever2/widgets/scroll_to_top_bus.dart';
@@ -87,7 +92,8 @@ class SmartEventScreen extends ConsumerStatefulWidget {
   ConsumerState<SmartEventScreen> createState() => _SmartEventScreenState();
 }
 
-class _SmartEventScreenState extends ConsumerState<SmartEventScreen> {
+class _SmartEventScreenState extends ConsumerState<SmartEventScreen>
+    with SingleTickerProviderStateMixin {
   static const _tabs = smartEventTabLabels;
   static const _validTiers = <String>{'GM', 'IM', 'FM', 'CM', 'All'};
 
@@ -95,13 +101,64 @@ class _SmartEventScreenState extends ConsumerState<SmartEventScreen> {
   late int _index = widget.initialTab.clamp(0, _tabs.length - 1);
   late final PageController _page = PageController(initialPage: _index);
 
-  // Search lives on the screen (not the Games tab) so the field can sit
-  // pinned above the tab switcher like the regular event view, and so the
-  // one query drives both the Games and Events tabs.
+  /// The header (title row and tabs) and the floating search scroll away
+  /// with the list and come back as it scrolls up (X-style).
+  late final ScrollChromeController _chrome = ScrollChromeController(
+    vsync: this,
+  );
+
+  // Search lives on the screen (not the Games tab) so its field can take the
+  // header's place, and so the one query drives both the Games and Events
+  // tabs.
   final TextEditingController _searchController = TextEditingController();
   final FocusNode _searchFocusNode = FocusNode();
   String _query = '';
   Timer? _searchDebounce;
+
+  /// The Games or Events tab's full-page search (Trello #1420): the field in
+  /// the header's place, the same tab under it, filtered, with nothing else
+  /// around it. Opened from the floating search.
+  bool _searching = false;
+
+  void _openSearch() {
+    if (_searching) return;
+    setState(() => _searching = true);
+    _chrome.show();
+  }
+
+  /// Leaves the search with the query cleared. The filters stay: they are
+  /// the smart event's criteria, applied or discarded on the way out.
+  void _closeSearch() {
+    if (!_searching) return;
+    _searchFocusNode.unfocus();
+    _searchDebounce?.cancel();
+    _searchController.clear();
+    setState(() {
+      _searching = false;
+      _query = '';
+    });
+    _chrome.show();
+  }
+
+  void _holdChromeWhileTyping() => _chrome.held = _searchFocusNode.hasFocus;
+
+  void _onSearchChanged(String value) {
+    // Debounce: every committed query is a server-side search across ALL
+    // games of the included events, so don't fire one per keystroke.
+    _searchDebounce?.cancel();
+    _searchDebounce = Timer(const Duration(milliseconds: 350), () {
+      if (mounted) setState(() => _query = value.trim());
+    });
+  }
+
+  void _clearSearchText() {
+    _searchDebounce?.cancel();
+    _searchFocusNode.unfocus();
+    setState(() {
+      _query = '';
+      _searchController.clear();
+    });
+  }
 
   // Local tier filter: starts from the saved request's tier (first word so
   // "GM Rapid" defaults the filter to GM) and is mutated by the app bar
@@ -132,12 +189,21 @@ class _SmartEventScreenState extends ConsumerState<SmartEventScreen> {
   }
 
   @override
+  void initState() {
+    super.initState();
+    _searchFocusNode.addListener(_holdChromeWhileTyping);
+  }
+
+  @override
   void dispose() {
     _searchDebounce?.cancel();
     _searchController.dispose();
-    _searchFocusNode.dispose();
+    _searchFocusNode
+      ..removeListener(_holdChromeWhileTyping)
+      ..dispose();
     _page.dispose();
     _scrollToTopBus.dispose();
+    _chrome.dispose();
     super.dispose();
   }
 
@@ -149,6 +215,7 @@ class _SmartEventScreenState extends ConsumerState<SmartEventScreen> {
     // Drop the keyboard when switching tabs so the field and the keyboard
     // collapse together instead of the keyboard hovering over About.
     _searchFocusNode.unfocus();
+    _chrome.show();
     setState(() => _index = i);
     _page.animateToPage(
       i,
@@ -252,58 +319,12 @@ class _SmartEventScreenState extends ConsumerState<SmartEventScreen> {
     }
   }
 
-  /// The pinned row: search field + filter button (+ view-mode toggle).
-  /// Lives at the screen level so it renders above the tab switcher; the
-  /// committed query travels to the tabs through [_SmartTierFilterScope].
-  Widget _buildSearchFilterBar(BuildContext context) {
-    return GameSearchFilterBar(
-      controller: _searchController,
-      focusNode: _searchFocusNode,
-      // The badge counts every root/override criterion that's narrowing the
-      // list — including the tier threshold picked in the app bar dropdown —
-      // so the red indicator mirrors the smart event's full active config.
-      currentFilter: _mergeTierIntoFilter(_filter, _tier) ?? _filter,
-      hintText: _index == 2 ? 'Search events' : 'Search games',
-      onChanged: (value) {
-        // Debounce: every committed query is a server-side search across ALL
-        // games of the included events, so don't fire one per keystroke.
-        _searchDebounce?.cancel();
-        _searchDebounce = Timer(const Duration(milliseconds: 350), () {
-          if (mounted) setState(() => _query = value.trim());
-        });
-      },
-      onClear: () {
-        _searchDebounce?.cancel();
-        setState(() {
-          _query = '';
-          _searchController.clear();
-        });
-      },
-      onFilterTap: _openFilterDialog,
-      trailing: _index != 0
-          ? GestureDetector(
-              onTap: () => ref.read(gamesListViewModeSwitcher).toggleViewMode(),
-              child: Container(
-                decoration: BoxDecoration(
-                  color: context.colors.background,
-                  borderRadius: BorderRadius.circular(12.br),
-                  border: Border.all(color: context.colors.surfaceRecessed),
-                ),
-                child: Center(
-                  child: SvgPicture.asset(
-                    SvgAsset.chase_grid,
-                    width: 20.sp,
-                    height: 20.sp,
-                    colorFilter: ColorFilter.mode(
-                      context.colors.textSecondary,
-                      BlendMode.srcIn,
-                    ),
-                  ),
-                ),
-              ),
-            )
-          : null,
-    );
+  /// How many criteria narrow the list, the tier threshold picked in the
+  /// title dropdown included, so the count mirrors the smart event's full
+  /// active config. Worn by the floating search and the search's filters.
+  int get _criteriaCount {
+    final criteria = _mergeTierIntoFilter(_filter, _tier) ?? _filter;
+    return criteria.activeFilterCount + criteria.activeSortCount;
   }
 
   /// Every dimension is offered — including the ones that GENERATED this
@@ -349,72 +370,108 @@ class _SmartEventScreenState extends ConsumerState<SmartEventScreen> {
         tabIndex: _index,
         searchQuery: _query,
         child: PopScope(
-          // A dirty config intercepts the pop (back button, system back,
+          // Back from the search closes it, back to the tab it searched. A
+          // dirty config intercepts the pop (back button, system back,
           // swipe-back) so the changes can be confirmed-applied or discarded.
-          canPop: !_isConfigDirty && !_saving,
+          canPop: !_searching && !_isConfigDirty && !_saving,
           onPopInvokedWithResult: (didPop, _) {
-            if (!didPop) _confirmLeaveWithChanges();
+            if (didPop) return;
+            if (_searching) {
+              _closeSearch();
+            } else {
+              _confirmLeaveWithChanges();
+            }
           },
           child: Scaffold(
             backgroundColor: context.colors.background,
+            // In the thumb's reach where the pinned search row used to sit
+            // (Trello #1420). Searching, nothing floats.
+            floatingActionButton: SlidingFabs(
+              controller: _chrome,
+              child: _SmartEventFabs(
+                tabIndex: _index,
+                searching: _searching,
+                criteriaCount: _criteriaCount,
+                onSearch: _openSearch,
+              ),
+            ),
             body: SafeArea(
               bottom: false,
               child: AbsorbPointer(
                 absorbing: _saving,
                 child: Column(
                   children: [
-                    _AppBar(
-                      request: _effectiveRequest,
-                      savedRequest: _baselineRequest,
-                      isDirty: _isConfigDirty,
-                      onApplyChanges: _applyConfigChanges,
+                    // Folds up under the status bar as the list scrolls
+                    // down, comes back as it scrolls up.
+                    CollapsingChrome(
+                      controller: _chrome,
+                      child: _searching
+                          ? _SmartEventSearchHeader(
+                              gutter: horizontalPadding,
+                              controller: _searchController,
+                              focusNode: _searchFocusNode,
+                              hintText: _index == 2
+                                  ? 'Search events'
+                                  : 'Search games',
+                              criteriaCount: _criteriaCount,
+                              onChanged: _onSearchChanged,
+                              onClear: _clearSearchText,
+                              onFilters: _openFilterDialog,
+                              onClose: _closeSearch,
+                            )
+                          : Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                _AppBar(
+                                  request: _effectiveRequest,
+                                  savedRequest: _baselineRequest,
+                                  isDirty: _isConfigDirty,
+                                  onApplyChanges: _applyConfigChanges,
+                                ),
+                                SizedBox(height: 8.h),
+                                Padding(
+                                  padding: EdgeInsets.symmetric(
+                                    horizontal: horizontalPadding,
+                                  ),
+                                  child: SegmentedSwitcher(
+                                    dotScope: 'smart_event.tab',
+                                    height: context.textExtent(40.h),
+                                    options: _tabs,
+                                    initialSelection: _index,
+                                    currentSelection: _index,
+                                    onSelectionChanged: _select,
+                                    notifyOnReselect: true,
+                                  ),
+                                ),
+                                SizedBox(height: 8.h),
+                              ],
+                            ),
                     ),
-                    SizedBox(height: 8.h),
-                    // Search + filter pinned ABOVE the tab switcher — identical
-                    // placement to the regular event view, with the smart
-                    // event's extra filter button kept on the row.
-                    _PinnedSearchFilterBar(
-                      pageController: _page,
-                      fallbackPage: _index.toDouble(),
-                      child: Padding(
-                        padding: EdgeInsets.only(
-                          left: horizontalPadding,
-                          right: horizontalPadding,
-                          top: 4.h,
-                          bottom: 8.h,
-                        ),
-                        child: _buildSearchFilterBar(context),
-                      ),
-                    ),
-                    Padding(
-                      padding: EdgeInsets.symmetric(
-                        horizontal: horizontalPadding,
-                      ),
-                      child: SegmentedSwitcher(
-                        dotScope: 'smart_event.tab',
-                        height: context.textExtent(40.h),
-                        options: _tabs,
-                        initialSelection: _index,
-                        currentSelection: _index,
-                        onSelectionChanged: _select,
-                        notifyOnReselect: true,
-                      ),
-                    ),
-                    SizedBox(height: 8.h),
                     Expanded(
-                      child: ScrollToTopScope(
-                        bus: _scrollToTopBus,
-                        child: PageView(
-                          controller: _page,
-                          onPageChanged: (i) {
-                            if (_index != i) _searchFocusNode.unfocus();
-                            setState(() => _index = i);
-                          },
-                          children: const [
-                            _AboutTab(),
-                            _GamesTab(),
-                            _EventsTab(),
-                          ],
+                      child: ScrollChromeRegion(
+                        controller: _chrome,
+                        child: ScrollToTopScope(
+                          bus: _scrollToTopBus,
+                          child: PageView(
+                            controller: _page,
+                            // Searching holds the tab: the search belongs to
+                            // it.
+                            physics: _searching
+                                ? const NeverScrollableScrollPhysics()
+                                : null,
+                            onPageChanged: (i) {
+                              if (_index != i) {
+                                _searchFocusNode.unfocus();
+                                _chrome.show();
+                              }
+                              setState(() => _index = i);
+                            },
+                            children: const [
+                              _AboutTab(),
+                              _GamesTab(),
+                              _EventsTab(),
+                            ],
+                          ),
                         ),
                       ),
                     ),
@@ -473,41 +530,235 @@ class _SmartTierFilterScope extends InheritedWidget {
   }
 }
 
-/// Mirrors the regular event view's pinned search bar: hidden on About
-/// (page 0), fully shown on Games/Events (page 1+), with height and
-/// opacity following the swipe progress between them.
-class _PinnedSearchFilterBar extends StatelessWidget {
-  const _PinnedSearchFilterBar({
-    required this.pageController,
-    required this.fallbackPage,
-    required this.child,
+/// The smart event's floating search (Trello #1420): on Games and Events,
+/// the two tabs the one query narrows; About has nothing to search. It wears
+/// the criteria count the pinned row's filter button used to, so a narrowed
+/// list says so from anywhere on the page. Searching, nothing floats.
+class _SmartEventFabs extends StatelessWidget {
+  const _SmartEventFabs({
+    required this.tabIndex,
+    required this.searching,
+    required this.criteriaCount,
+    required this.onSearch,
   });
 
-  final PageController pageController;
-  final double fallbackPage;
-  final Widget child;
+  final int tabIndex;
+  final bool searching;
+  final int criteriaCount;
+  final VoidCallback onSearch;
 
   @override
   Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: pageController,
-      builder: (context, child) {
-        final page = pageController.hasClients
-            ? (pageController.page ?? fallbackPage)
-            : fallbackPage;
-        final t = page.clamp(0.0, 1.0);
-        if (t <= 0.0) {
-          return const SizedBox.shrink();
-        }
-        return ClipRect(
-          child: Align(
-            alignment: Alignment.topCenter,
-            heightFactor: t,
-            child: Opacity(opacity: t, child: child),
+    if (searching || tabIndex == 0) return const SizedBox.shrink();
+    return SearchInkFab(
+      key: const ValueKey('smart_event_search_fab'),
+      label: tabIndex == 2 ? 'Search events' : 'Search games',
+      badgeCount: criteriaCount,
+      onTap: onSearch,
+    );
+  }
+}
+
+/// The header while Games or Events is being searched: a way back, the
+/// field, and the list's own controls (filters, layout) that used to sit
+/// beside the field in the pinned row, as bare glyphs. The tab fills the
+/// page under it, filtered as the reader types.
+class _SmartEventSearchHeader extends ConsumerWidget {
+  const _SmartEventSearchHeader({
+    required this.gutter,
+    required this.controller,
+    required this.focusNode,
+    required this.hintText,
+    required this.criteriaCount,
+    required this.onChanged,
+    required this.onClear,
+    required this.onFilters,
+    required this.onClose,
+  });
+
+  /// The screen's side margin: the chevron and the last glyph land on it.
+  final double gutter;
+  final TextEditingController controller;
+  final FocusNode focusNode;
+  final String hintText;
+  final int criteriaCount;
+  final ValueChanged<String> onChanged;
+  final VoidCallback onClear;
+  final VoidCallback onFilters;
+  final VoidCallback onClose;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return Padding(
+      // The chevron's and the last glyph's 44pt targets reach into the
+      // gutter, so the glyphs themselves land on it.
+      // Never negative: a folded Duo pane is narrower than the gutter.
+      padding: EdgeInsetsDirectional.fromSTEB(
+        math.max(0.0, gutter - 12),
+        4.h,
+        math.max(0.0, gutter - 12),
+        10.h,
+      ),
+      child: Row(
+        children: [
+          SizedBox.square(
+            dimension: 44,
+            child: IconButton(
+              key: const ValueKey('smart_event_search_close'),
+              tooltip: 'Close search',
+              padding: EdgeInsets.zero,
+              onPressed: () {
+                HapticFeedbackService.navigation();
+                onClose();
+              },
+              icon: Icon(
+                Icons.arrow_back_ios_new_outlined,
+                size: 22,
+                color: context.colors.textPrimary,
+              ),
+            ),
           ),
-        );
-      },
-      child: child,
+          const SizedBox(width: 4),
+          Expanded(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(minHeight: 44),
+              child: Center(
+                child: EventSearchBarFrame(
+                  compact: true,
+                  child: SimpleSearchBar(
+                    controller: controller,
+                    focusNode: focusNode,
+                    autofocus: true,
+                    hintText: hintText,
+                    onChanged: onChanged,
+                    onCloseTap: onClear,
+                    onOpenFilter: null,
+                  ),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 4),
+          _SearchHeaderGlyph(
+            key: const ValueKey('smart_event_search_filters'),
+            label: criteriaCount > 0
+                ? 'Filters, $criteriaCount applied'
+                : 'Filters',
+            onTap: onFilters,
+            child: _FilterGlyph(count: criteriaCount),
+          ),
+          _SearchHeaderGlyph(
+            label: 'Change games layout',
+            onTap: () => ref.read(gamesListViewModeSwitcher).toggleViewMode(),
+            child: SvgPicture.asset(
+              SvgAsset.chase_grid,
+              width: 20,
+              height: 20,
+              colorFilter: ColorFilter.mode(
+                context.colors.textSecondary,
+                BlendMode.srcIn,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// A bare control in the search header: the glyph alone on a 44pt target,
+/// with no tile and no splash drawn around it.
+class _SearchHeaderGlyph extends StatelessWidget {
+  const _SearchHeaderGlyph({
+    super.key,
+    required this.label,
+    required this.onTap,
+    required this.child,
+  });
+
+  final String label;
+  final VoidCallback onTap;
+  final Widget child;
+
+  void _activate() {
+    HapticFeedbackService.buttonPress();
+    onTap();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: label,
+      excludeFromSemantics: true,
+      child: Semantics(
+        container: true,
+        button: true,
+        label: label,
+        onTap: _activate,
+        excludeSemantics: true,
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: _activate,
+          child: SizedBox.square(dimension: 44, child: Center(child: child)),
+        ),
+      ),
+    );
+  }
+}
+
+/// The filters glyph, lit with the count of what narrows the list. The
+/// count is the floating search's own badge (teal disc, ink figure), so the
+/// number the reader tapped through reads the same up here.
+class _FilterGlyph extends StatelessWidget {
+  const _FilterGlyph({required this.count});
+
+  final int count;
+
+  @override
+  Widget build(BuildContext context) {
+    final active = count > 0;
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        Icon(
+          Icons.tune_rounded,
+          size: 22,
+          color: active
+              ? context.colors.textPrimary
+              : context.colors.textSecondary,
+        ),
+        if (active)
+          Positioned(
+            top: -6,
+            right: -8,
+            child: Container(
+              constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
+              padding: const EdgeInsets.symmetric(horizontal: 4),
+              alignment: Alignment.center,
+              // The filter count, as the floating buttons wear it: the
+              // brand's tonal blue (clears contrast on paper too) with the
+              // page's colour for its number.
+              decoration: BoxDecoration(
+                color: context.colors.accentText,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(
+                  color: context.colors.background,
+                  width: 1.5,
+                ),
+              ),
+              child: Text(
+                count > 9 ? '9+' : '$count',
+                textScaler: TextScaler.noScaling,
+                style: TextStyle(
+                  color: context.colors.background,
+                  fontSize: 10,
+                  height: 1,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+          ),
+      ],
     );
   }
 }
@@ -617,95 +868,123 @@ class _AppBar extends ConsumerWidget {
     final spaceDraft = smartEventSpaceDraft(savedRequest);
     final inSpace = ref.watch(spaceShortcutExistsProvider(spaceDraft.key));
 
+    // Bare glyphs (Trello #1420): no tile behind the view toggle or the ⋮.
+    // Their 44pt targets reach past the old tiles by this much on each side;
+    // the gaps give it back, so every glyph sits exactly where it was.
+    final reach = AppBarIconSurface.bareReach;
+    const backTarget = AppBarIconSurface.minTapTarget;
     return Padding(
-      padding: EdgeInsets.fromLTRB(8.w, 8.h, 16.w, 0),
+      padding: EdgeInsets.fromLTRB(8.w, 8.h, math.max(0, 16.w - reach), 0),
       child: Row(
         children: [
-          IconButton(
-            padding: EdgeInsets.zero,
-            constraints: const BoxConstraints(),
-            iconSize: 24.ic,
-            icon: Icon(
-              Icons.arrow_back_ios_new_outlined,
-              size: 24.ic,
-              color: context.colors.textPrimary,
+          // The chevron stays on its inset; its 44pt target reaches right,
+          // into the space that keeps the title centred.
+          Semantics(
+            button: true,
+            label: 'Back',
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              // maybePop so the screen's PopScope can intercept a dirty
+              // config and offer to apply + save it.
+              onTap: () => Navigator.of(context).maybePop(),
+              child: SizedBox.square(
+                dimension: backTarget,
+                child: Align(
+                  alignment: AlignmentDirectional.centerStart,
+                  child: Icon(
+                    Icons.arrow_back_ios_new_outlined,
+                    size: 24.ic,
+                    color: context.colors.textPrimary,
+                  ),
+                ),
+              ),
             ),
-            // maybePop so the screen's PopScope can intercept a dirty config
-            // and offer to apply + save it.
-            onPressed: () => Navigator.of(context).maybePop(),
           ),
           // Mirrors the toggle + menu on the right so the title stays
-          // centred on the screen, not just between the buttons.
-          SizedBox(width: 24.ic + 16.w),
+          // centred on the screen, not just between the buttons. The back
+          // target already covers part of that; the toggle's reaches [reach]
+          // into the title's slot, matched here so the title keeps its
+          // centre.
+          SizedBox(
+            width: math.max(0, 24.ic + 16.w + reach - (backTarget - 24.ic)),
+          ),
           Expanded(
             child: Center(child: _AppBarTitle(request: request)),
           ),
-          AppBarIcons(
-            image: SvgAsset.chase_grid,
-            onTap: () {
-              HapticFeedbackService.cardTap();
-              ref.read(gamesListViewModeSwitcher).toggleViewMode();
-            },
-          ),
-          SizedBox(width: 16.w),
-          Builder(
-            builder: (menuContext) => AppBarIcons(
-              image: SvgAsset.threeDots,
+          Semantics(
+            label: 'Toggle chessboard view',
+            child: AppBarIcons(
+              image: SvgAsset.chase_grid,
+              boxed: false,
               onTap: () {
                 HapticFeedbackService.cardTap();
-                unawaited(
-                  showLibraryContextMenu(
-                    context: menuContext,
-                    actions: [
-                      if (!isDirty)
+                ref.read(gamesListViewModeSwitcher).toggleViewMode();
+              },
+            ),
+          ),
+          SizedBox(width: math.max(0, 16.w - 2 * reach)),
+          Builder(
+            builder: (menuContext) => Semantics(
+              label: 'More options',
+              child: AppBarIcons(
+                image: SvgAsset.threeDots,
+                boxed: false,
+                onTap: () {
+                  HapticFeedbackService.cardTap();
+                  unawaited(
+                    showLibraryContextMenu(
+                      context: menuContext,
+                      actions: [
+                        if (!isDirty)
+                          LibraryMenuAction(
+                            icon: inSpace
+                                ? Icons.dashboard_customize
+                                : Icons.dashboard_customize_outlined,
+                            label: inSpace
+                                ? 'Remove from My Space'
+                                : 'Add to My Space',
+                            enabled: !busy,
+                            onSelected: () => toggleSpaceShortcut(
+                              context: context,
+                              ref: ref,
+                              draft: spaceDraft,
+                            ),
+                          ),
+                        if (isDirty)
+                          LibraryMenuAction(
+                            icon: Icons.check_circle_outline_rounded,
+                            label: 'Apply changes to ${request.displayName}',
+                            enabled: !busy,
+                            onSelected: () async {
+                              if (await _confirmApplyChanges(context) &&
+                                  context.mounted) {
+                                await onApplyChanges();
+                              }
+                            },
+                          ),
                         LibraryMenuAction(
-                          icon: inSpace
-                              ? Icons.dashboard_customize
-                              : Icons.dashboard_customize_outlined,
-                          label: inSpace
-                              ? 'Remove from My Space'
-                              : 'Add to My Space',
+                          icon: savedFavorite == null
+                              ? Icons.star_outline_rounded
+                              : Icons.star_rounded,
+                          label: savedFavorite == null
+                              ? 'Star saved event'
+                              : 'Unstar saved event / stop notifications',
                           enabled: !busy,
-                          onSelected: () => toggleSpaceShortcut(
+                          onSelected: () => toggleSmartEventFavorite(
                             context: context,
-                            ref: ref,
-                            draft: spaceDraft,
+                            request: savedRequest,
                           ),
                         ),
-                      if (isDirty)
                         LibraryMenuAction(
-                          icon: Icons.check_circle_outline_rounded,
-                          label: 'Apply changes to ${request.displayName}',
-                          enabled: !busy,
-                          onSelected: () async {
-                            if (await _confirmApplyChanges(context) &&
-                                context.mounted) {
-                              await onApplyChanges();
-                            }
-                          },
+                          icon: Icons.notifications_outlined,
+                          label: 'Starred Smart Events',
+                          onSelected: () => openStarredSmartEvents(context),
                         ),
-                      LibraryMenuAction(
-                        icon: savedFavorite == null
-                            ? Icons.star_outline_rounded
-                            : Icons.star_rounded,
-                        label: savedFavorite == null
-                            ? 'Star saved event'
-                            : 'Unstar saved event / stop notifications',
-                        enabled: !busy,
-                        onSelected: () => toggleSmartEventFavorite(
-                          context: context,
-                          request: savedRequest,
-                        ),
-                      ),
-                      LibraryMenuAction(
-                        icon: Icons.notifications_outlined,
-                        label: 'Starred Smart Events',
-                        onSelected: () => openStarredSmartEvents(context),
-                      ),
-                    ],
-                  ),
-                );
-              },
+                      ],
+                    ),
+                  );
+                },
+              ),
             ),
           ),
         ],
@@ -890,64 +1169,66 @@ class _TitleSelectorState extends State<_TitleSelector>
       onTap: () => _isOpen ? _close() : _open(),
       // The shimmer never stops. The painter repaints itself from the
       // controller and the boundary keeps the rest of the screen out of it.
-      child: RepaintBoundary(child: CustomPaint(
-        painter: _isOpen
-            ? null
-            : FluidShimmerPainter(
-                progress: _shimmerController,
-                shimmerColor: kPrimaryColor.withValues(alpha: 0.4),
-                borderRadius: 14.br,
-              ),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 220),
-          curve: Curves.easeOutCubic,
-          padding: EdgeInsets.symmetric(horizontal: 14.sp, vertical: 8.sp),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(14.br),
-            color: _isOpen
-                ? kPrimaryColor.withValues(alpha: 0.15)
-                : context.colors.textPrimary.withValues(alpha: 0.06),
-            border: Border.all(
+      child: RepaintBoundary(
+        child: CustomPaint(
+          painter: _isOpen
+              ? null
+              : FluidShimmerPainter(
+                  progress: _shimmerController,
+                  shimmerColor: kPrimaryColor.withValues(alpha: 0.4),
+                  borderRadius: 14.br,
+                ),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 220),
+            curve: Curves.easeOutCubic,
+            padding: EdgeInsets.symmetric(horizontal: 14.sp, vertical: 8.sp),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(14.br),
               color: _isOpen
-                  ? context.colors.accentText.withValues(alpha: 0.4)
-                  : context.colors.textPrimary.withValues(alpha: 0.12),
-              width: 1,
+                  ? kPrimaryColor.withValues(alpha: 0.15)
+                  : context.colors.textPrimary.withValues(alpha: 0.06),
+              border: Border.all(
+                color: _isOpen
+                    ? context.colors.accentText.withValues(alpha: 0.4)
+                    : context.colors.textPrimary.withValues(alpha: 0.12),
+                width: 1,
+              ),
             ),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Flexible(
-                child: Text(
-                  _triggerLabel(),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: AppTypography.textSmMedium.copyWith(
-                    color: _isOpen
-                        ? context.colors.accentText
-                        : context.colors.textPrimary,
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: 0.3,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Flexible(
+                  child: Text(
+                    _triggerLabel(),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: AppTypography.textSmMedium.copyWith(
+                      color: _isOpen
+                          ? context.colors.accentText
+                          : context.colors.textPrimary,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 0.3,
+                    ),
                   ),
                 ),
-              ),
-              SizedBox(width: 6.sp),
-              AnimatedRotation(
-                turns: _isOpen ? 0.5 : 0,
-                duration: const Duration(milliseconds: 250),
-                curve: Curves.easeOutCubic,
-                child: Icon(
-                  Icons.keyboard_arrow_down_rounded,
-                  size: 18.ic,
-                  color: _isOpen
-                      ? context.colors.accentText
-                      : context.colors.textPrimary.withValues(alpha: 0.7),
+                SizedBox(width: 6.sp),
+                AnimatedRotation(
+                  turns: _isOpen ? 0.5 : 0,
+                  duration: const Duration(milliseconds: 250),
+                  curve: Curves.easeOutCubic,
+                  child: Icon(
+                    Icons.keyboard_arrow_down_rounded,
+                    size: 18.ic,
+                    color: _isOpen
+                        ? context.colors.accentText
+                        : context.colors.textPrimary.withValues(alpha: 0.7),
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
-      )),
+      ),
     );
   }
 }

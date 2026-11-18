@@ -219,35 +219,37 @@ void main() {
     });
   });
 
-  group('Events bar', () {
+  group('Events button', () {
     final toggle = find.byKey(const ValueKey(kHomeLiveFirstButtonKey));
-    final surface = find.byKey(const ValueKey('simple-search-field-surface'));
 
-    testWidgets('carries Live first inside the field without growing it', (
+    testWidgets('with nothing live there is no button to press', (
       tester,
     ) async {
-      await _pumpEvents(tester, liveIds: const []);
+      final container = await _pumpEvents(tester, liveIds: const []);
 
-      expect(find.descendant(of: surface, matching: toggle), findsOneWidget);
+      expect(find.byType(LiveFirstMark), findsNothing);
+      expect(find.bySemanticsLabel('Show live events first'), findsNothing);
+      expect(container.read(homeEventsLiveFirstProvider), isFalse);
+      // Nothing left inside the search field but the search.
+      expect(
+        find.descendant(
+          of: find.byKey(const ValueKey('simple-search-field-surface')),
+          matching: find.byType(LiveFirstMark),
+        ),
+        findsNothing,
+      );
+      await _unmount(tester);
+    });
+
+    testWidgets('floats the Live mark in the thumb\'s reach', (tester) async {
+      await _pumpEvents(tester, liveIds: const ['gb_live']);
+
       expect(
         find.descendant(of: toggle, matching: find.byType(LiveFirstMark)),
         findsOneWidget,
       );
-      // The field stands exactly as tall as it always has at 393pt.
-      expect(tester.getSize(surface).height, closeTo(44, 0.5));
       expect(find.bySemanticsLabel('Show live events first'), findsOneWidget);
-      await _unmount(tester);
-    });
-
-    testWidgets('with nothing live it says so and stays off', (tester) async {
-      final container = await _pumpEvents(tester, liveIds: const []);
-
-      await tester.tap(toggle);
-      await tester.pump();
-
-      expect(find.text(kNoLiveEventsRightNowMessage), findsOneWidget);
-      expect(container.read(homeEventsLiveFirstProvider), isFalse);
-      expect(find.bySemanticsLabel('Show live events first'), findsOneWidget);
+      expect(tester.getCenter(toggle).dy, greaterThan(852 / 2));
       await _unmount(tester);
     });
 
@@ -261,7 +263,7 @@ void main() {
       );
       expect(find.text('events:past'), findsOneWidget);
 
-      await tester.tap(toggle);
+      await tester.tap(find.bySemanticsLabel('Show live events first'));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 300));
 
@@ -278,7 +280,7 @@ void main() {
       );
 
       // Off again with one more tap, and Current stays open.
-      await tester.tap(toggle);
+      await tester.tap(find.bySemanticsLabel('Live events are shown first'));
       await tester.pump();
       expect(container.read(homeEventsLiveFirstProvider), isFalse);
       expect(
@@ -288,47 +290,18 @@ void main() {
       await _unmount(tester);
     });
 
-    testWidgets('gives way to the text while the field has focus', (
-      tester,
-    ) async {
-      await _pumpEvents(tester, liveIds: const []);
-
-      final resting = tester.getRect(toggle);
-      expect(resting.width, greaterThan(20));
-
-      await tester.tap(find.byType(EditableText));
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 500));
-      // Squeezed to nothing (the slot scales its glyph away), and the field
-      // keeps its height.
-      expect(tester.getRect(toggle).width, closeTo(0, 0.5));
-      expect(tester.getSize(surface).height, closeTo(44, 0.5));
-      expect(tester.takeException(), isNull);
-
-      // The field's own clear button lets go of it.
-      await tester.tap(find.byIcon(Icons.close));
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 500));
-      final back = tester.getRect(toggle);
-      expect(back.left, closeTo(resting.left, 0.1));
-      expect(back.width, closeTo(resting.width, 0.1));
-      await _unmount(tester);
-    });
-
     for (final textScale in const [1.0, 2.0]) {
       testWidgets('fits a 320pt phone at ${textScale}x text', (tester) async {
         await _pumpEvents(
           tester,
-          liveIds: const [],
+          liveIds: const ['gb_live'],
           size: const Size(320, 640),
           textScale: textScale,
         );
 
         expect(tester.takeException(), isNull);
-        final field = tester.getRect(surface);
         final mark = tester.getRect(toggle);
-        expect(field.left <= mark.left && mark.right <= field.right, isTrue);
-        expect(field.top <= mark.top && mark.bottom <= field.bottom, isTrue);
+        expect(mark.right, lessThanOrEqualTo(320));
         await _unmount(tester);
       });
     }

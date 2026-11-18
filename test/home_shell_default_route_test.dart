@@ -1,4 +1,7 @@
 import 'package:chessever2/e2e/e2e_ids.dart';
+import 'package:chessever2/providers/auth_state_provider.dart';
+import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
+import 'package:chessever2/screens/inbox/inbox_provider.dart';
 import 'package:chessever2/repository/local_storage/local_storage_repository.dart';
 import 'package:chessever2/screens/for_you/for_you_screen.dart';
 import 'package:chessever2/screens/for_you/providers/for_you_tab_provider.dart';
@@ -9,7 +12,6 @@ import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/search/recent_searches_provider.dart';
-import 'package:chessever2/widgets/segmented_switcher.dart';
 import 'package:chessever2/widgets/svg_widget.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
@@ -29,6 +31,13 @@ final _themes = <(String, ThemeData, AppColors)>[
   ('light', AppTheme.lightTheme, AppColors.light),
   ('dark', AppTheme.darkTheme, AppColors.dark),
 ];
+
+class _Subscription extends StateNotifier<SubscriptionState>
+    implements SubscriptionNotifier {
+  _Subscription() : super(SubscriptionState(isSubscribed: false));
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
 
 class _MemoryRecentSearches implements RecentSearchStorage {
   @override
@@ -56,16 +65,34 @@ void main() {
       expect(sub.read(), BottomNavBarItem.forYou);
     });
 
-    test('the icon bar names Events, Home, Collections', () {
-      expect(BottomNavBarItem.values.map((item) => item.name), [
-        'tournaments',
+    test('the icon bar names Home, Feed, Botvinnik, Search, Profile', () {
+      expect(bottomNavBarOrder.map((item) => item.name), [
         'forYou',
-        'collections',
+        'feed',
+        'botvinnik',
+        'search',
+        'profile',
       ]);
-      expect(
-        BottomNavBarItem.values.map((item) => namesBottomNavBarIcons[item]),
-        ['Events', 'Home', 'Collections'],
+      expect(bottomNavBarOrder.map((item) => namesBottomNavBarIcons[item]), [
+        'Home',
+        'Feed',
+        'Botvinnik',
+        'Search',
+        'Profile',
+      ]);
+    });
+
+    test('Botvinnik switched off leaves four tabs', () {
+      final container = ProviderContainer(
+        overrides: [botvinnikTabAvailableProvider.overrideWithValue(false)],
       );
+      addTearDown(container.dispose);
+      expect(container.read(visibleBottomNavItemsProvider), [
+        BottomNavBarItem.forYou,
+        BottomNavBarItem.feed,
+        BottomNavBarItem.search,
+        BottomNavBarItem.profile,
+      ]);
     });
 
     test('a stored My Space or Discovery never survives into a launch', () {
@@ -95,6 +122,15 @@ void main() {
       addTearDown(tester.view.reset);
       await tester.pumpWidget(
         ProviderScope(
+          overrides: [
+            // The switch lives in SQLite, which retries on a timer here.
+            botvinnikTabAvailableProvider.overrideWithValue(true),
+            // Profile wears the reader's avatar.
+            currentUserProvider.overrideWithValue(null),
+            profileAvatarUrlProvider.overrideWithValue(null),
+            inboxHasUnreadProvider.overrideWithValue(false),
+            subscriptionProvider.overrideWith((ref) => _Subscription()),
+          ],
           child: MaterialApp(
             theme: theme,
             home: Builder(
@@ -123,20 +159,29 @@ void main() {
       ) async {
         await pumpBar(tester, theme: theme);
 
-        for (final item in BottomNavBarItem.values) {
+        for (final item in bottomNavBarOrder) {
           final slot = find.byWidgetPredicate(
             (w) =>
                 w is BottomNavBarWidget &&
                 w.title == namesBottomNavBarIcons[item],
           );
-          expect(
-            find.descendant(of: slot, matching: find.byType(Text)),
-            findsNothing,
-          );
           final selected = item == BottomNavBarItem.forYou;
           final ink = selected ? colors.textPrimary : colors.textSecondary;
 
-          expect(ink, selected ? colors.textPrimary : colors.textSecondary);
+          // The mark over its name, both in the slot's ink: the name says
+          // what the slot is (the avatar reads as Profile), weight says
+          // which one is open.
+          final label = tester.widget<Text>(
+            find.descendant(
+              of: slot,
+              matching: find.text(namesBottomNavBarIcons[item]!),
+            ),
+          );
+          expect(label.style!.color, ink);
+          expect(
+            label.style!.fontWeight,
+            selected ? FontWeight.w700 : FontWeight.w500,
+          );
           expect(
             _contrast(ink, colors.background),
             greaterThanOrEqualTo(4.5),
@@ -148,6 +193,18 @@ void main() {
               find.descendant(of: slot, matching: find.byType(Icon)),
             );
             expect(icon.color, ink);
+          } else if (item == BottomNavBarItem.profile) {
+            // Signed out, so no face: the bare person mark in the slot's
+            // ink, never one on a disc.
+            final icon = tester.widget<Icon>(
+              find.descendant(of: slot, matching: find.byType(Icon)),
+            );
+            expect(icon.icon, Icons.person_rounded);
+            expect(icon.color, ink);
+            expect(
+              find.descendant(of: slot, matching: find.byType(ClipOval)),
+              findsNothing,
+            );
           } else {
             final icon = tester.widget<SvgWidget>(
               find.descendant(of: slot, matching: find.byType(SvgWidget)),
@@ -170,38 +227,42 @@ void main() {
         isSemantics(label: 'Home', isButton: true, isSelected: true),
       );
       expect(
-        tester.getSemantics(find.byKey(e2eKey(E2eIds.navCollections))),
-        isSemantics(label: 'Collections', isButton: true, isSelected: false),
+        tester.getSemantics(find.byKey(e2eKey(E2eIds.navSearch))),
+        isSemantics(label: 'Search', isButton: true, isSelected: false),
+      );
+      expect(
+        tester.getSemantics(find.byKey(e2eKey(E2eIds.navProfile))),
+        isSemantics(label: 'Profile', isButton: true, isSelected: false),
       );
       handle.dispose();
     });
 
-    testWidgets('a press settles the slot to 0.97 and lets go on release', (
-      tester,
-    ) async {
-      await pumpBar(tester, theme: AppTheme.darkTheme);
-      final slot = find.byKey(e2eKey(E2eIds.navCollections));
+    testWidgets(
+      'a press takes the slot down under the finger and springs it back',
+      (tester) async {
+        await pumpBar(tester, theme: AppTheme.darkTheme);
+        final slot = find.byKey(e2eKey(E2eIds.navSearch));
 
-      double scale() {
-        final transform = tester.widget<Transform>(
-          find.descendant(of: slot, matching: find.byType(Transform)).first,
-        );
-        // The x axis: z stays 1 under Transform.scale, so the max-axis
-        // scale would always read 1.
-        return transform.transform.storage[0];
-      }
+        double scale() {
+          final transform = tester.widget<Transform>(
+            find.descendant(of: slot, matching: find.byType(Transform)).first,
+          );
+          // The x axis: z stays 1 under Transform.scale, so the max-axis
+          // scale would always read 1.
+          return transform.transform.storage[0];
+        }
 
-      expect(scale(), closeTo(1, 0.001));
-      final gesture = await tester.startGesture(tester.getCenter(slot));
-      // A tap reports its down once the press timeout passes.
-      await tester.pump(kPressTimeout);
-      // Inspect the press before the tooltip's long-press gesture wins.
-      await tester.pump(const Duration(milliseconds: 300));
-      expect(scale(), closeTo(0.97, 0.002));
-      await gesture.up();
-      await tester.pumpAndSettle();
-      expect(scale(), closeTo(1, 0.002));
-    });
+        expect(scale(), closeTo(1, 0.001));
+        final gesture = await tester.startGesture(tester.getCenter(slot));
+        // The press shows on touch-down, before any recognizer decides.
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 250));
+        expect(scale(), closeTo(BottomNavBarWidget.pressedScale, 0.01));
+        await gesture.up();
+        await tester.pumpAndSettle();
+        expect(scale(), closeTo(1, 0.002));
+      },
+    );
 
     testWidgets('360dp at 1.3x text: no overflow, 44dp slots', (tester) async {
       await pumpBar(
@@ -213,13 +274,15 @@ void main() {
 
       expect(tester.takeException(), isNull);
       for (final id in [
-        E2eIds.navEvents,
         E2eIds.navForYou,
-        E2eIds.navCollections,
+        E2eIds.navFeed,
+        E2eIds.navBotvinnik,
+        E2eIds.navSearch,
+        E2eIds.navProfile,
       ]) {
         final size = tester.getSize(find.byKey(e2eKey(id)));
         expect(size.height, greaterThanOrEqualTo(44));
-        expect(size.width, closeTo(120, 0.01));
+        expect(size.width, closeTo(72, 0.01));
       }
     });
   });
@@ -263,20 +326,17 @@ void main() {
         );
         await tester.pump();
 
-        final strip = find.byType(SegmentedSwitcher);
         for (final tab in ForYouTab.values) {
-          final text = tester.widget<Text>(
-            find.descendant(of: strip, matching: find.text(tab.label)),
-          );
+          final text = tester.widget<Text>(find.text(tab.label));
           final ink = text.style!.color!;
           expect(
             ink,
             tab == ForYouTab.today ? colors.textPrimary : colors.textSecondary,
           );
           expect(
-            _contrast(ink, colors.popup),
+            _contrast(ink, colors.background),
             greaterThanOrEqualTo(4.5),
-            reason: '${tab.label} on the segment strip',
+            reason: '${tab.label} on the page',
           );
         }
       });

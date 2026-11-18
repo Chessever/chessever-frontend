@@ -103,10 +103,15 @@ class HomeTopBarFrame extends StatelessWidget {
     super.key,
     required this.child,
     this.trailingOpticalInset = 0,
+    this.statusBar = true,
   });
 
   final Widget child;
   final double trailingOpticalInset;
+
+  /// Off, the frame leaves the status bar's inset to its host: a bar that
+  /// scrolls away folds up to the status bar, never into it.
+  final bool statusBar;
 
   @override
   Widget build(BuildContext context) {
@@ -121,7 +126,10 @@ class HomeTopBarFrame extends StatelessWidget {
           child: Padding(
             padding: EdgeInsets.fromLTRB(
               side,
-              HomeTopBarMetrics.topInset(context),
+              statusBar
+                  ? HomeTopBarMetrics.topInset(context)
+                  : HomeTopBarMetrics.topInset(context) -
+                        MediaQuery.viewPaddingOf(context).top,
               side - trailingOpticalInset,
               0,
             ),
@@ -248,7 +256,10 @@ class HomeTopBarRow extends StatelessWidget {
                     // lead here first.
                     DiscoveryDotAnchor(
                       id: 'home.menu',
-                      child: HomeTopBarAvatar(key: avatarKey, onTap: onAvatarTap),
+                      child: HomeTopBarAvatar(
+                        key: avatarKey,
+                        onTap: onAvatarTap,
+                      ),
                     ),
                   ),
                 ),

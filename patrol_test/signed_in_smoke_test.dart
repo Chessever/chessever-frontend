@@ -37,53 +37,52 @@ PlayerProfileKey _playerKey(SeededPlayerData player) => PlayerProfileKey(
 
 void main() {
   patrolTest(
-    'visits signed-in home roots, drawer surfaces, and guarded shells',
+    'visits signed-in home roots, Profile surfaces, and guarded shells',
     ($) async {
       await launchAppAndReachSignedInShell($);
       final seed = await seedBaselineData($);
 
       try {
-        // Home opens on For You. Collections is a primary destination;
+        // Home opens on For You. Collections and Events live on Profile;
         // Library remains available as its own pushed route.
         await expectVisible($, E2eIds.forYouRoot);
 
-        await tapBottomNavRoot(
+        await openProfileDestination(
           $,
-          navId: E2eIds.navCollections,
+          itemId: E2eIds.profileCollections,
           expectedRoot: E2eIds.collectionsRoot,
         );
+        await popRoute($);
         await pushNamedRoute($, '/library_screen');
         await expectVisible($, E2eIds.libraryRoot);
         await expectVisible($, E2eIds.libraryBoardButton);
         await expectVisible($, E2eIds.libraryCreateFolderButton);
         await popRoute($);
-        await tapBottomNavRoot(
+        await openProfileDestination(
           $,
-          navId: E2eIds.navEvents,
+          itemId: E2eIds.profileEvents,
           expectedRoot: E2eIds.eventsRoot,
         );
+        await popRoute($);
 
         await openSettingsDialog($);
         await popRoute($);
-        if (byId($, E2eIds.homeDrawer).isVisibleAt()) {
-          await popRoute($);
-        }
 
-        // The drawer has no Players row any more; the list is a route.
+        // Profile has no Players row; the list is a route.
         await pushNamedRoute($, '/player_list_screen');
         await expectVisible($, E2eIds.playersRoot);
         await popRoute($);
 
-        await openDrawerDestination(
+        await openProfileDestination(
           $,
-          drawerItemId: E2eIds.drawerPremium,
+          itemId: E2eIds.drawerPremium,
           expectedRoot: E2eIds.premiumRoot,
         );
         await popRoute($);
 
-        await openDrawerDestination(
+        await openProfileDestination(
           $,
-          drawerItemId: E2eIds.drawerBoard,
+          itemId: E2eIds.drawerBoard,
           expectedRoot: E2eIds.openingExplorerRoot,
         );
         await popRoute($);
@@ -100,8 +99,8 @@ void main() {
         await expectVisible($, E2eIds.authRoot);
         await popRoute($);
 
-        await openHomeDrawer($);
-        await tapDrawerItem($, E2eIds.drawerLogout);
+        await openProfileTab($);
+        await tapProfileItem($, E2eIds.drawerLogout);
         await expectTextVisible($, 'Logout');
         await $('Cancel').tap();
         await ensureHomeShell($);
@@ -171,7 +170,9 @@ void main() {
         await expectVisible($, E2eIds.playerProfileRoot);
         await expectAnyTextVisible($, const ['About', 'Games', 'Events']);
         await $('Games').tap();
+        await openGamesSearch($, e2eKey(E2eIds.playerGamesSearchFab));
         await expectVisible($, E2eIds.playerGamesSearchField);
+        // `popRoute` pops the route itself, search and all.
         await popRoute($);
       } finally {
         await cleanupSeedData(seed);
@@ -194,9 +195,9 @@ void main() {
 
       try {
         await resetToHome($);
-        await tapBottomNavRoot(
+        await openProfileDestination(
           $,
-          navId: E2eIds.navEvents,
+          itemId: E2eIds.profileEvents,
           expectedRoot: E2eIds.eventsRoot,
         );
         await expectVisible($, E2eIds.eventsSearchField);
@@ -240,11 +241,12 @@ void main() {
           timeout: const Duration(seconds: 45),
         );
 
-        // The calendar left the bottom bar: the sidebar month view's "Full
-        // calendar" link pushes it as an ordinary route.
-        await openDrawerDestination(
+        // The calendar is a row on the Profile tab, pushed as an ordinary
+        // route. Events is open over Home: go back to the shell first.
+        await resetToHome($);
+        await openProfileDestination(
           $,
-          drawerItemId: E2eIds.drawerFullCalendar,
+          itemId: E2eIds.drawerFullCalendar,
           expectedRoot: E2eIds.calendarRoot,
         );
         if (calendarQuery != null && calendarQuery.isNotEmpty) {
@@ -363,6 +365,7 @@ void main() {
 
         await openSeededPlayerProfile($, player);
         await $('Games').tap();
+        await openGamesSearch($, e2eKey(E2eIds.playerGamesSearchFab));
         await expectVisible($, E2eIds.playerGamesSearchField);
         await searchFor(
           $,
@@ -401,6 +404,7 @@ void main() {
                   .hasActiveFilters,
           reason: 'player profile filter reset',
         );
+        // `popRoute` pops the route itself, search and all.
         await popRoute($);
 
         await openPremiumFavoritesGames($);

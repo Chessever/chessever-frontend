@@ -126,6 +126,11 @@ void main() {
     policy = _FakePolicySource();
   });
 
+  tearDown(() {
+    observer.dispose();
+    PhoneUpdateRouteObserver.homeSectionSafe.value = true;
+  });
+
   Future<void> pumpShell(
     WidgetTester tester, {
     String initial = '/home_screen',
@@ -226,6 +231,26 @@ void main() {
     );
     now = now.add(const Duration(hours: 72));
     await pumpShell(tester);
+    expect(find.byType(AlertDialog), findsOneWidget);
+  });
+
+  testWidgets('Home on a section in use (Botvinnik, Feed, Search) defers until '
+      'the reader is back on a section to browse', (tester) async {
+    PhoneUpdateRouteObserver.homeSectionSafe.value = false;
+    await pumpShell(tester);
+    expect(find.byType(AlertDialog), findsNothing);
+    expect(updater.checks, 0);
+    PhoneUpdateRouteObserver.homeSectionSafe.value = true;
+    await tester.pumpAndSettle();
+    expect(find.byType(AlertDialog), findsOneWidget);
+    expect(updater.checks, 1);
+  });
+
+  testWidgets('a section in use holds Home only, not the pages above it', (
+    tester,
+  ) async {
+    PhoneUpdateRouteObserver.homeSectionSafe.value = false;
+    await pumpShell(tester, initial: '/calendar_screen');
     expect(find.byType(AlertDialog), findsOneWidget);
   });
 

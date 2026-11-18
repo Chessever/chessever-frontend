@@ -14,7 +14,6 @@ import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/user_error_message.dart';
 import 'package:chessever2/widgets/event_card/event_card.dart';
 import 'package:chessever2/widgets/scroll_to_top_bus.dart';
-import 'package:chessever2/widgets/scroll_to_top_button.dart';
 import 'package:chessever2/widgets/search/gameSearch/enhanced_game_search_widget.dart';
 import 'package:chessever2/widgets/paywall/past_event_access.dart';
 import 'package:flutter/material.dart';
@@ -24,10 +23,11 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 // --- Provider ---
 
-final countrymenEventsProvider = StateNotifierProvider.autoDispose<
-  CountrymenEventsNotifier,
-  CountrymenEventsState
->((ref) => CountrymenEventsNotifier(ref));
+final countrymenEventsProvider =
+    StateNotifierProvider.autoDispose<
+      CountrymenEventsNotifier,
+      CountrymenEventsState
+    >((ref) => CountrymenEventsNotifier(ref));
 
 class CountrymenEventsState {
   final List<GroupBroadcast> events;
@@ -197,6 +197,7 @@ class _CountrymenEventsTabState extends ConsumerState<CountrymenEventsTab>
   void onScrollToTopRequested() {
     animateScrollControllerToTop(_scrollController);
   }
+
   final TextEditingController _searchController = TextEditingController();
   final FocusNode _searchFocusNode = FocusNode();
   Timer? _debounceTimer;
@@ -252,7 +253,7 @@ class _CountrymenEventsTabState extends ConsumerState<CountrymenEventsTab>
       tablet: 24.w,
     );
 
-    Widget content = RefreshIndicator(
+    final content = RefreshIndicator(
       onRefresh: () async {
         HapticFeedbackService.medium();
         await ref.read(countrymenEventsProvider.notifier).refresh();
@@ -297,25 +298,14 @@ class _CountrymenEventsTabState extends ConsumerState<CountrymenEventsTab>
     // wrapper is always present so folding or unfolding an iPhone Duo between
     // phone and tablet widths keeps the same tree, and the list keeps its
     // scroll position instead of remounting at the top.
-    content = Center(
+    //
+    // No scroll-to-top button (Trello #1420): tapping the tab again
+    // already scrolls up.
+    return Center(
       child: ConstrainedBox(
-        constraints: BoxConstraints(
-          maxWidth: ResponsiveHelper.contentMaxWidth,
-        ),
+        constraints: BoxConstraints(maxWidth: ResponsiveHelper.contentMaxWidth),
         child: SizedBox.expand(child: content),
       ),
-    );
-
-    return Stack(
-      children: [
-        content,
-        // Scroll to top button
-        Positioned(
-          bottom: 0,
-          right: 0,
-          child: ScrollToTopButton(scrollController: _scrollController),
-        ),
-      ],
     );
   }
 
@@ -374,36 +364,35 @@ class _CountrymenEventsTabState extends ConsumerState<CountrymenEventsTab>
             return Padding(
               padding: EdgeInsets.symmetric(vertical: 24.h),
               child: Center(
-                child:
-                    state.isLoading
-                        ? Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            SizedBox(
-                              width: 24.w,
-                              height: 24.h,
-                              child: CircularProgressIndicator(
-                                color: context.colors.textPrimary,
-                                strokeWidth: 2,
-                              ),
+                child: state.isLoading
+                    ? Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          SizedBox(
+                            width: 24.w,
+                            height: 24.h,
+                            child: CircularProgressIndicator(
+                              color: context.colors.textPrimary,
+                              strokeWidth: 2,
                             ),
-                            SizedBox(height: 8.h),
-                            Text(
-                              'Loading more events...',
-                              style: AppTypography.textXsRegular.copyWith(
-                                color: context.collectionSubtleInk,
-                              ),
-                            ),
-                          ],
-                        )
-                        : state.hasMore
-                        ? const SizedBox.shrink()
-                        : Text(
-                          'No more events',
-                          style: AppTypography.textXsRegular.copyWith(
-                            color: const Color(0xFF52525B),
                           ),
+                          SizedBox(height: 8.h),
+                          Text(
+                            'Loading more events...',
+                            style: AppTypography.textXsRegular.copyWith(
+                              color: context.collectionSubtleInk,
+                            ),
+                          ),
+                        ],
+                      )
+                    : state.hasMore
+                    ? const SizedBox.shrink()
+                    : Text(
+                        'No more events',
+                        style: AppTypography.textXsRegular.copyWith(
+                          color: const Color(0xFF52525B),
                         ),
+                      ),
               ),
             );
           }
@@ -482,7 +471,9 @@ class _CountrymenEventsTabState extends ConsumerState<CountrymenEventsTab>
           SizedBox(height: 16.h),
           Text(
             'Failed to load events',
-            style: AppTypography.textMdMedium.copyWith(color: context.colors.textPrimary),
+            style: AppTypography.textMdMedium.copyWith(
+              color: context.colors.textPrimary,
+            ),
           ),
           SizedBox(height: 8.h),
           Padding(
@@ -497,10 +488,12 @@ class _CountrymenEventsTabState extends ConsumerState<CountrymenEventsTab>
           ),
           SizedBox(height: 24.h),
           TextButton(
-            onPressed:
-                () => ref.read(countrymenEventsProvider.notifier).refresh(),
+            onPressed: () =>
+                ref.read(countrymenEventsProvider.notifier).refresh(),
             style: TextButton.styleFrom(
-              backgroundColor: context.colors.textPrimary.withValues(alpha: 0.1),
+              backgroundColor: context.colors.textPrimary.withValues(
+                alpha: 0.1,
+              ),
               padding: EdgeInsets.symmetric(horizontal: 24.w, vertical: 12.h),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(8.br),
@@ -508,7 +501,9 @@ class _CountrymenEventsTabState extends ConsumerState<CountrymenEventsTab>
             ),
             child: Text(
               'Retry',
-              style: AppTypography.textSmMedium.copyWith(color: context.colors.textPrimary),
+              style: AppTypography.textSmMedium.copyWith(
+                color: context.colors.textPrimary,
+              ),
             ),
           ),
         ],
@@ -547,7 +542,9 @@ class _CountrymenEventsTabState extends ConsumerState<CountrymenEventsTab>
           SizedBox(height: 20.h),
           Text(
             'No events found',
-            style: AppTypography.textMdMedium.copyWith(color: context.colors.textPrimary),
+            style: AppTypography.textMdMedium.copyWith(
+              color: context.colors.textPrimary,
+            ),
           ),
           SizedBox(height: 8.h),
           Padding(

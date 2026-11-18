@@ -23,6 +23,7 @@ import 'package:chessever2/widgets/card_context_menu.dart'
     show CardActionButton;
 import 'package:chessever2/widgets/generic_loading_widget.dart';
 import 'package:chessever2/widgets/popover_add_fab.dart';
+import 'package:chessever2/widgets/scroll_chrome.dart';
 import 'package:chessever2/widgets/segmented_switcher.dart';
 import 'package:chessever2/widgets/skeleton_widget.dart';
 import 'package:chessever2/screens/my_prep/services/prep_watch.dart';
@@ -33,6 +34,9 @@ import 'package:motor/motor.dart';
 
 /// My Prep: the reader's own games, the profiles they prepare against, and
 /// players to study, with database and online sources.
+///
+/// The top bar and the tabs scroll away with the lists and come back as
+/// they scroll up; the add button slides away with them.
 class MyPrepHomeScreen extends ConsumerStatefulWidget {
   const MyPrepHomeScreen({super.key, this.initialTab = 0});
 
@@ -44,10 +48,16 @@ class MyPrepHomeScreen extends ConsumerStatefulWidget {
   ConsumerState<MyPrepHomeScreen> createState() => _MyPrepHomeScreenState();
 }
 
-class _MyPrepHomeScreenState extends ConsumerState<MyPrepHomeScreen> {
+class _MyPrepHomeScreenState extends ConsumerState<MyPrepHomeScreen>
+    with SingleTickerProviderStateMixin {
   late int _tab = widget.initialTab.clamp(0, MyPrepHomeScreen.tabs.length - 1);
   late final PageController _pages = PageController(initialPage: _tab);
   bool _refreshedOnOpen = false;
+
+  /// The top bar and the tabs, pushed away by the lists' scrolls.
+  late final ScrollChromeController _chrome = ScrollChromeController(
+    vsync: this,
+  );
 
   /// The profiles whose sources are listed under their card, on Games and
   /// Profiles alike. Kept here, so a list stays as the reader left it after
@@ -57,6 +67,7 @@ class _MyPrepHomeScreenState extends ConsumerState<MyPrepHomeScreen> {
   @override
   void dispose() {
     _pages.dispose();
+    _chrome.dispose();
     super.dispose();
   }
 
@@ -67,6 +78,8 @@ class _MyPrepHomeScreenState extends ConsumerState<MyPrepHomeScreen> {
   void _select(int index) {
     if (index == _tab) return;
     setState(() => _tab = index);
+    // Another tab opens with its header in place.
+    _chrome.show();
     if (MediaQuery.disableAnimationsOf(context)) {
       _pages.jumpToPage(index);
       return;
@@ -129,18 +142,21 @@ class _MyPrepHomeScreenState extends ConsumerState<MyPrepHomeScreen> {
       backgroundColor: context.colors.background,
       floatingActionButton: profiles == null || !_hasAdd(profiles)
           ? null
-          : PopoverAddFab<PrepSource>(
-              key: const ValueKey('prep_add_floating'),
-              label: _addLabel,
-              choices: [
-                for (final source in PrepSource.playerSources)
-                  PopoverAddChoice(
-                    leading: PrepSourceMark(source: source, size: 22),
-                    label: source.label,
-                    value: source,
-                  ),
-              ],
-              onPicked: _add,
+          : SlidingFabs(
+              controller: _chrome,
+              child: PopoverAddFab<PrepSource>(
+                key: const ValueKey('prep_add_floating'),
+                label: _addLabel,
+                choices: [
+                  for (final source in PrepSource.playerSources)
+                    PopoverAddChoice(
+                      leading: PrepSourceMark(source: source, size: 22),
+                      label: source.label,
+                      value: source,
+                    ),
+                ],
+                onPicked: _add,
+              ),
             ),
       body: Center(
         child: ConstrainedBox(
@@ -149,32 +165,50 @@ class _MyPrepHomeScreenState extends ConsumerState<MyPrepHomeScreen> {
           ),
           child: Column(
             children: [
+              // The status bar's inset stays put: the bars fold up to it,
+              // never into it.
               SizedBox(height: MediaQuery.viewPaddingOf(context).top + 4.h),
-              const _AppBar(),
-              SizedBox(height: 8.h),
-              Padding(
-                padding: EdgeInsets.symmetric(horizontal: gutter),
-                child: SegmentedSwitcher(
-                  dotScope: 'prep.tab',
-                  height: prepSegmentHeight(context),
-                  options: MyPrepHomeScreen.tabs,
-                  initialSelection: _tab,
-                  currentSelection: _tab,
-                  onSelectionChanged: _select,
-                  notifyOnReselect: true,
+              CollapsingChrome(
+                controller: _chrome,
+                child: SizedBox(
+                  width: double.infinity,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const _AppBar(),
+                      SizedBox(height: 8.h),
+                      Padding(
+                        padding: EdgeInsets.symmetric(horizontal: gutter),
+                        child: SegmentedSwitcher(
+                          dotScope: 'prep.tab',
+                          height: prepSegmentHeight(context),
+                          options: MyPrepHomeScreen.tabs,
+                          initialSelection: _tab,
+                          currentSelection: _tab,
+                          onSelectionChanged: _select,
+                          notifyOnReselect: true,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
               Expanded(
-                child: PageView(
-                  controller: _pages,
-                  onPageChanged: (index) {
-                    if (index != _tab) setState(() => _tab = index);
-                  },
-                  children: [
-                    _MyGamesTab(unfolded: _unfolded, onFold: _fold),
-                    _OpponentsTab(unfolded: _unfolded, onFold: _fold),
-                    const _FavoritesTab(),
-                  ],
+                child: ScrollChromeRegion(
+                  controller: _chrome,
+                  child: PageView(
+                    controller: _pages,
+                    onPageChanged: (index) {
+                      if (index == _tab) return;
+                      _chrome.show();
+                      setState(() => _tab = index);
+                    },
+                    children: [
+                      _MyGamesTab(unfolded: _unfolded, onFold: _fold),
+                      _OpponentsTab(unfolded: _unfolded, onFold: _fold),
+                      const _FavoritesTab(),
+                    ],
+                  ),
                 ),
               ),
             ],

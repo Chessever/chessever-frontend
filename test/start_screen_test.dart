@@ -74,20 +74,19 @@ void main() {
         ),
         'Home → Discovery',
       );
-      expect(
-        startScreenName(
-          BottomNavBarItem.tournaments,
-          eventsStartPage(GroupEventCategory.past),
-        ),
-        'Events → Past',
-      );
-      expect(
-        startScreenName(
-          BottomNavBarItem.collections,
-          collectionsStartPage(CollectionsTab.about),
-        ),
-        'Collections → About',
-      );
+      // Sections without pages are named alone.
+      expect(startScreenName(BottomNavBarItem.feed, null), 'Feed');
+      expect(startScreenName(BottomNavBarItem.profile, null), 'Profile');
+    });
+
+    test('a saved section that left the bar opens Home', () async {
+      // Events and Collections moved to Profile (2026-11-18).
+      await prefs.setString(defaultBottomTabPrefsKey, 'tournaments');
+      expect(readDefaultBottomTab(), BottomNavBarItem.forYou);
+      await prefs.setString(defaultBottomTabPrefsKey, 'collections');
+      expect(readDefaultBottomTab(), BottomNavBarItem.forYou);
+      await prefs.setString(defaultBottomTabPrefsKey, 'search');
+      expect(readDefaultBottomTab(), BottomNavBarItem.search);
     });
   });
 
@@ -198,7 +197,7 @@ void main() {
       container.dispose();
     });
 
-    testWidgets('a held tab title saves that tab, not the shown one', (
+    testWidgets('a section without pages saves the section alone', (
       tester,
     ) async {
       await pumpHost(
@@ -206,87 +205,18 @@ void main() {
         (context, ref) => makeStartScreenDefault(
           context,
           ref,
-          section: BottomNavBarItem.tournaments,
-          page: eventsStartPage(GroupEventCategory.upcoming),
+          section: BottomNavBarItem.search,
         ),
       );
-      // Events is on Past; the held title says Upcoming.
-      container.read(selectedGroupCategoryProvider.notifier).state =
-          GroupEventCategory.past;
 
       await tester.tap(find.text('hold'));
       await settle(tester);
-      expect(
-        find.text('Make Events → Upcoming your start screen?'),
-        findsOneWidget,
-      );
+      expect(find.text('Make Search your start screen?'), findsOneWidget);
       await tester.tap(find.text('Apply'));
       await settle(tester);
 
-      expect(prefs.getString(defaultBottomTabPrefsKey), 'tournaments');
-      expect(prefs.getString(defaultEventsCategoryPrefsKey), 'upcoming');
-      await tester.pump(const Duration(seconds: 6));
-      await tester.pumpWidget(const SizedBox.shrink());
-      container.dispose();
-    });
-
-    testWidgets('an Events nav hold during a search saves the list under it', (
-      tester,
-    ) async {
-      await pumpHost(
-        tester,
-        (context, ref) => makeStartScreenDefault(
-          context,
-          ref,
-          section: BottomNavBarItem.tournaments,
-        ),
-      );
-      container.read(selectedGroupCategoryProvider.notifier).state =
-          GroupEventCategory.past;
-      container.read(groupEventSearchTabControllerProvider).showSearch();
-      expect(
-        container.read(selectedGroupCategoryProvider),
-        GroupEventCategory.search,
-      );
-
-      await tester.tap(find.text('hold'));
-      await settle(tester);
-
-      expect(
-        find.text('Make Events → Past your start screen?'),
-        findsOneWidget,
-      );
-      await tester.tap(find.text('Cancel'));
-      await settle(tester);
-      await tester.pumpWidget(const SizedBox.shrink());
-      container.dispose();
-    });
-
-    testWidgets('a Collections nav hold saves the page it is on', (
-      tester,
-    ) async {
-      await pumpHost(
-        tester,
-        (context, ref) => makeStartScreenDefault(
-          context,
-          ref,
-          section: BottomNavBarItem.collections,
-        ),
-      );
-      container.read(selectedCollectionsTabProvider.notifier).state =
-          CollectionsTab.authors;
-
-      await tester.tap(find.text('hold'));
-      await settle(tester);
-      expect(
-        find.text('Make Collections → Authors your start screen?'),
-        findsOneWidget,
-      );
-      await tester.tap(find.text('Apply'));
-      await settle(tester);
-
-      expect(prefs.getString(defaultBottomTabPrefsKey), 'collections');
-      expect(prefs.getString(defaultCollectionsTabPrefsKey), 'authors');
+      expect(prefs.getString(defaultBottomTabPrefsKey), 'search');
+      expect(prefs.getString(defaultForYouTabPrefsKey), isNull);
       expect(hostContext.mounted, isTrue);
       await tester.pump(const Duration(seconds: 6));
       await tester.pumpWidget(const SizedBox.shrink());

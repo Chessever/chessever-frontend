@@ -1,4 +1,3 @@
-import 'package:chessever2/providers/game_list_live_first_provider.dart';
 import 'package:chessever2/screens/tour_detail/combined/combined_category.dart';
 import 'package:chessever2/screens/tour_detail/combined/combined_games_provider.dart';
 import 'package:chessever2/screens/tour_detail/combined/combined_round_sections.dart';
@@ -10,10 +9,6 @@ import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_s
 import 'package:chessever2/screens/tour_detail/games_tour/providers/match_expansion_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/round_expansion_provider.dart';
 import 'package:chessever2/screens/tour_detail/widgets/event_games_quick_actions.dart';
-import 'package:chessever2/theme/app_theme.dart';
-import 'package:chessever2/utils/responsive_helper.dart';
-import 'package:chessever2/widgets/live_first_mark.dart';
-import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -522,150 +517,105 @@ void main() {
     });
   });
 
-  group('EventGamesQuickActions', () {
-    Future<void> pumpActions(
-      WidgetTester tester,
-      List<Override> overrides,
-    ) async {
-      await tester.pumpWidget(
-        ProviderScope(
-          overrides: overrides,
-          child: MaterialApp(
-            theme: AppTheme.darkTheme,
-            home: Builder(
-              builder: (context) {
-                ResponsiveHelper.init(context);
-                return const Scaffold(
-                  body: Center(child: EventGamesQuickActions()),
-                );
-              },
-            ),
+  group('eventGamesLiveFirstStrandedProvider', () {
+    // Here Live first hides the finished games; with nothing live and its
+    // button gone, the screen turns it off (2026-11-18).
+    test(
+      'on, loaded, nothing in play: stranded, and pressing turns it off',
+      () async {
+        final container = ProviderContainer(
+          overrides: _singleCategory(
+            games: [_game('a', live: false), _game('b', live: true)],
           ),
-        ),
-      );
-      await tester.pump();
-    }
+        );
+        addTearDown(container.dispose);
+        final screen =
+            container.read(gamesTourScreenProvider.notifier) as _GamesScreen;
+        pressEventGamesLiveFirst(container.read);
+        await pumpEventQueue();
+        expect(container.read(eventGamesLiveFirstProvider), isTrue);
+        // A game in play: the button has work to do.
+        expect(container.read(eventGamesLiveFirstStrandedProvider), isFalse);
 
-    testWidgets('Live first wears the web mark and follows the state', (
-      tester,
-    ) async {
-      await pumpActions(
-        tester,
-        _singleCategory(games: [_game('b', live: true)]),
-      );
-      expect(find.byType(LiveFirstMark), findsOneWidget);
-      expect(find.bySemanticsLabel('Show live games first'), findsOneWidget);
-
-      await tester.tap(find.bySemanticsLabel('Show live games first'));
-      await tester.pump();
-      expect(
-        find.bySemanticsLabel('Live games are shown first'),
-        findsOneWidget,
-      );
-      expect(find.text(kNoLiveGamesRightNowMessage), findsNothing);
-
-      await tester.tap(find.bySemanticsLabel('Live games are shown first'));
-      await tester.pump();
-      expect(find.bySemanticsLabel('Show live games first'), findsOneWidget);
-    });
-
-    testWidgets('Live first with nothing in play says so and stays off', (
-      tester,
-    ) async {
-      await pumpActions(
-        tester,
-        _singleCategory(games: [_game('a', live: false)]),
-      );
-
-      await tester.tap(find.bySemanticsLabel('Show live games first'));
-      await tester.pump();
-      expect(find.text('No live games right now'), findsOneWidget);
-      expect(find.bySemanticsLabel('Show live games first'), findsOneWidget);
-    });
-
-    testWidgets('Collapse all flips its glyph and name as it folds', (
-      tester,
-    ) async {
-      await pumpActions(
-        tester,
-        _singleCategory(
-          games: const [],
-          sections: const EventGamesSections(
-            roundIds: ['r1', 'r2'],
-            foldRoundIds: ['r1', 'r2'],
+        // The last live game ends.
+        container.updateOverrides(
+          _singleCategory(
+            games: [_game('a', live: false), _game('b', live: false)],
           ),
-        ),
+        );
+        expect(container.read(eventGamesLiveFirstStrandedProvider), isTrue);
+        expect(
+          pressEventGamesLiveFirst(container.read),
+          EventLiveFirstPress.turnedOff,
+        );
+        await pumpEventQueue();
+        expect(screen.calls.last, 'showAllGames');
+      },
+    );
+
+    test('never while the list is still loading', () {
+      final container = ProviderContainer(
+        overrides: [
+          ..._singleCategory(games: const []),
+          gamesTourScreenProvider.overrideWith(
+            (ref) => GamesTourScreenProvider.loading(ref: ref),
+          ),
+          eventGamesLiveFirstProvider.overrideWithValue(true),
+        ],
       );
-      expect(find.byIcon(Icons.unfold_less), findsOneWidget);
-
-      await tester.tap(find.bySemanticsLabel(kCollapseAllRoundsLabel));
-      await tester.pump();
-      expect(find.bySemanticsLabel(kExpandAllRoundsLabel), findsOneWidget);
-      expect(find.byIcon(Icons.unfold_more), findsOneWidget);
-
-      await tester.tap(find.bySemanticsLabel(kExpandAllRoundsLabel));
-      await tester.pump();
-      expect(find.bySemanticsLabel(kCollapseAllRoundsLabel), findsOneWidget);
+      addTearDown(container.dispose);
+      expect(container.read(eventGamesLiveFirstStrandedProvider), isFalse);
     });
 
-    testWidgets('Collapse all rests disabled with nothing to fold', (
-      tester,
-    ) async {
-      await pumpActions(
-        tester,
-        _singleCategory(
-          games: const [],
-          sections: const EventGamesSections(roundIds: [], foldRoundIds: []),
+    test('off: never stranded', () {
+      final container = ProviderContainer(
+        overrides: _singleCategory(games: [_game('a', live: false)]),
+      );
+      addTearDown(container.dispose);
+      expect(container.read(eventGamesLiveFirstStrandedProvider), isFalse);
+    });
+  });
+
+  group('eventGamesAnyLiveProvider', () {
+    // Live first floats over Games only while this holds (Trello #1420).
+    test('one category: true while a game is in play', () {
+      final container = ProviderContainer(
+        overrides: _singleCategory(
+          games: [_game('a', live: false), _game('b', live: true)],
         ),
       );
-      expect(
-        tester.getSemantics(find.bySemanticsLabel(kCollapseAllRoundsLabel)),
-        containsSemantics(hasEnabledState: true, isEnabled: false),
-      );
-
-      await tester.tap(
-        find.bySemanticsLabel(kCollapseAllRoundsLabel),
-        warnIfMissed: false,
-      );
-      await tester.pump();
-      expect(find.bySemanticsLabel(kCollapseAllRoundsLabel), findsOneWidget);
+      addTearDown(container.dispose);
+      expect(container.read(eventGamesAnyLiveProvider), isTrue);
     });
 
-    testWidgets('Collapse all rests disabled during a search', (tester) async {
-      await pumpActions(
-        tester,
-        _combined([
-          _game('o1', live: false, tourId: 'open'),
-        ], searchQuery: 'o1'),
-      );
-      expect(
-        tester.getSemantics(find.bySemanticsLabel(kCollapseAllRoundsLabel)),
-        containsSemantics(hasEnabledState: true, isEnabled: false),
-      );
-    });
-
-    testWidgets('both targets are at least 44pt and carry no tile', (
-      tester,
-    ) async {
-      await pumpActions(
-        tester,
-        _singleCategory(games: [_game('b', live: true)]),
-      );
-      for (final label in ['Show live games first', kCollapseAllRoundsLabel]) {
-        final size = tester.getSize(find.bySemanticsLabel(label));
-        expect(size.width, greaterThanOrEqualTo(44));
-        expect(size.height, greaterThanOrEqualTo(44));
-      }
-      final boxes = find.descendant(
-        of: find.byType(EventGamesQuickActions),
-        matching: find.byWidgetPredicate(
-          (widget) =>
-              widget is DecoratedBox ||
-              (widget is Container && widget.decoration != null) ||
-              widget is Material,
+    test('one category: false with nothing in play', () {
+      final container = ProviderContainer(
+        overrides: _singleCategory(
+          games: [_game('a', live: false), _game('b', live: false)],
         ),
       );
-      expect(boxes, findsNothing);
+      addTearDown(container.dispose);
+      expect(container.read(eventGamesAnyLiveProvider), isFalse);
+    });
+
+    test('Combined: reads every merged category', () {
+      final live = ProviderContainer(
+        overrides: _combined([
+          _game('a', tourId: 'tour-a', live: false),
+          _game('b', tourId: 'tour-b', live: true),
+        ]),
+      );
+      addTearDown(live.dispose);
+      expect(live.read(eventGamesAnyLiveProvider), isTrue);
+
+      final quiet = ProviderContainer(
+        overrides: _combined([
+          _game('a', tourId: 'tour-a', live: false),
+          _game('b', tourId: 'tour-b', live: false),
+        ]),
+      );
+      addTearDown(quiet.dispose);
+      expect(quiet.read(eventGamesAnyLiveProvider), isFalse);
     });
   });
 }

@@ -1,10 +1,11 @@
 import 'dart:math' as math;
 
-import 'package:chessever2/chat/botvinnik_icon.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
-import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/widgets/glass_surface.dart';
+import 'package:chessever2/widgets/ink_fab.dart' show InkFabSize;
+import 'package:chessever2/widgets/press_spring.dart';
 import 'package:flutter/material.dart';
 import 'package:motor/motor.dart';
 
@@ -22,9 +23,8 @@ class PopoverAddChoice<T> {
   final T value;
 }
 
-/// A page's add button, in the floating slot Botvinnik's launcher holds on
-/// the other pages and cut from the same ink (surface, lit lip, one-light
-/// shadow), round where the launcher has its "ask" tail. A tap springs a
+/// A page's add button, in the floating slot, cut from the same frosted
+/// glass as every floating button ([GlassSurface]). A tap springs a
 /// popover out of it, pointing at it, with everything the page can add; the
 /// "+" turns an eighth of a turn into a "×" while it is open.
 class PopoverAddFab<T> extends StatefulWidget {
@@ -53,26 +53,16 @@ class PopoverAddFab<T> extends StatefulWidget {
 
 class _PopoverAddFabState<T> extends State<PopoverAddFab<T>>
     with SingleTickerProviderStateMixin {
-  static const _pressMotion = CupertinoMotion.snappy(
-    duration: Duration(milliseconds: 240),
-    snapToEnd: true,
-  );
-
   late final SingleMotionController _turn = SingleMotionController(
     motion: const CupertinoMotion.snappy(snapToEnd: true),
     vsync: this,
   );
   bool _open = false;
-  bool _pressed = false;
 
   @override
   void dispose() {
     _turn.dispose();
     super.dispose();
-  }
-
-  void _setPressed(bool value) {
-    if (_pressed != value && mounted) setState(() => _pressed = value);
   }
 
   void _setTurn(double value) {
@@ -120,100 +110,70 @@ class _PopoverAddFabState<T> extends State<PopoverAddFab<T>>
   @override
   Widget build(BuildContext context) {
     final saving = widget.onSave != null;
-    final light = context.isLightTheme;
     final reduce = MediaQuery.disableAnimationsOf(context);
-    // The launcher's own side, so the swap between the two never shifts.
-    final side = 56.ic.clamp(52.0, 64.0);
-    final surface = light ? _kInk : _kInkLifted;
-    final pressed = light ? const Color(0xFF16302D) : const Color(0xFF22403C);
+    // The floating buttons' side, so the swap between them never shifts.
+    final side = InkFabSize.regular.disc;
 
     return Semantics(
       container: true,
       button: true,
       label: saving ? widget.saveLabel ?? widget.label : widget.label,
       expanded: saving ? null : _open,
-      child: Listener(
-        // Raw pointer events: the press shows on touch-down, not after the
-        // tap recognizer's wait.
-        onPointerDown: (_) => _setPressed(true),
-        onPointerUp: (_) => _setPressed(false),
-        onPointerCancel: (_) => _setPressed(false),
-        child: GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTap: _toggle,
-          child: SizedBox.square(
-            dimension: side,
-            child: SingleMotionBuilder(
-              motion: _pressMotion,
-              value: _pressed ? 1.0 : 0.0,
-              active: !reduce,
-              builder: (context, value, child) {
-                final press = value.clamp(0.0, 1.0);
-                final scale = 1 - 0.04 * press;
-                return Transform.scale(
-                  scale: (scale - 1).abs() < 0.002 ? 1.0 : scale,
-                  child: CustomPaint(
-                    foregroundPainter: _RoundLipPainter(
-                      top: BotvinnikMark.teal.withValues(
-                        alpha: light ? 0.4 : 0.6,
-                      ),
-                      bottom: BotvinnikMark.teal.withValues(
-                        alpha: light ? 0.1 : 0.42,
-                      ),
-                    ),
-                    child: DecoratedBox(
-                      decoration: BoxDecoration(
-                        color: Color.lerp(surface, pressed, press),
-                        shape: BoxShape.circle,
-                        boxShadow: light ? _kLightShadows : _kDarkShadows,
-                      ),
-                      child: child,
-                    ),
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: _toggle,
+        child: SizedBox.square(
+          dimension: side,
+          // The app's press, as on every floating button.
+          child: PressSpring(
+            pressedScale: 0.9,
+            builder: (context, press, child) {
+              final scale = 1 - 0.1 * press;
+              return Transform.scale(
+                scale: (scale - 1).abs() < 0.001 ? 1.0 : scale,
+                // The same frosted glass as every floating button: the
+                // page shows through, blurred, behind a quiet plate.
+                child: GlassSurface(lift: press.clamp(0.0, 1.0), child: child),
+              );
+            },
+            // Saving swaps the "+" for a check in place: same button, same
+            // spot, now the way to save.
+            child: Center(
+              child: AnimatedSwitcher(
+                duration: reduce
+                    ? Duration.zero
+                    : const Duration(milliseconds: 200),
+                switchInCurve: Curves.easeOutCubic,
+                switchOutCurve: Curves.easeInCubic,
+                transitionBuilder: (child, animation) => FadeTransition(
+                  opacity: animation,
+                  child: ScaleTransition(
+                    scale: Tween<double>(begin: 0.6, end: 1).animate(animation),
+                    child: child,
                   ),
-                );
-              },
-              // Saving swaps the "+" for a check in place: same button, same
-              // spot, now the way to save.
-              child: Center(
-                child: AnimatedSwitcher(
-                  duration: reduce
-                      ? Duration.zero
-                      : const Duration(milliseconds: 200),
-                  switchInCurve: Curves.easeOutCubic,
-                  switchOutCurve: Curves.easeInCubic,
-                  transitionBuilder: (child, animation) => FadeTransition(
-                    opacity: animation,
-                    child: ScaleTransition(
-                      scale: Tween<double>(
-                        begin: 0.6,
-                        end: 1,
-                      ).animate(animation),
-                      child: child,
-                    ),
-                  ),
-                  child: saving
-                      ? Icon(
-                          Icons.check_rounded,
-                          key: const ValueKey<String>('popover_fab_save'),
-                          size: side * 0.46,
-                          color: BotvinnikMark.teal,
-                        )
-                      : AnimatedBuilder(
-                          key: const ValueKey<String>('popover_fab_add'),
-                          animation: _turn,
-                          builder: (context, child) => Transform.rotate(
-                            // "+" to "×": an eighth of a turn.
-                            angle: _turn.value * math.pi / 4,
-                            child: child,
-                          ),
-                          child: CustomPaint(
-                            size: Size.square(side * 0.36),
-                            painter: const _PlusPainter(
-                              color: BotvinnikMark.teal,
-                            ),
+                ),
+                child: saving
+                    ? Icon(
+                        Icons.check_rounded,
+                        key: const ValueKey<String>('popover_fab_save'),
+                        size: side * 0.46,
+                        color: GlassStyle.of(context).ink,
+                      )
+                    : AnimatedBuilder(
+                        key: const ValueKey<String>('popover_fab_add'),
+                        animation: _turn,
+                        builder: (context, child) => Transform.rotate(
+                          // "+" to "×": an eighth of a turn.
+                          angle: _turn.value * math.pi / 4,
+                          child: child,
+                        ),
+                        child: CustomPaint(
+                          size: Size.square(side * 0.36),
+                          painter: _PlusPainter(
+                            color: GlassStyle.of(context).ink,
                           ),
                         ),
-                ),
+                      ),
               ),
             ),
           ),
@@ -222,19 +182,6 @@ class _PopoverAddFabState<T> extends State<PopoverAddFab<T>>
     );
   }
 }
-
-// Botvinnik's launcher ink (`botvinnik_chat_button.dart`), so the two
-// buttons that share the slot are one object in two moods.
-const Color _kInk = Color(0xFF0B1A19);
-const Color _kInkLifted = Color(0xFF1B3431);
-const List<BoxShadow> _kDarkShadows = [
-  BoxShadow(color: Color(0x66000000), blurRadius: 2, offset: Offset(0, 1)),
-  BoxShadow(color: Color(0x73000000), blurRadius: 10, offset: Offset(0, 4)),
-];
-const List<BoxShadow> _kLightShadows = [
-  BoxShadow(color: Color(0x3D0B1A19), blurRadius: 2, offset: Offset(0, 1)),
-  BoxShadow(color: Color(0x380B1A19), blurRadius: 10, offset: Offset(0, 4)),
-];
 
 /// The "+": two bars with round caps, drawn so they cross at the exact
 /// centre (a font glyph's plus sits on its own baseline, not on centre).
@@ -257,34 +204,6 @@ class _PlusPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_PlusPainter old) => old.color != color;
-}
-
-/// The launcher's 1px lip, lit from above, on a circle.
-class _RoundLipPainter extends CustomPainter {
-  const _RoundLipPainter({required this.top, required this.bottom});
-
-  final Color top;
-  final Color bottom;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final rect = Offset.zero & size;
-    canvas.drawOval(
-      rect.deflate(0.5),
-      Paint()
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 1
-        ..shader = LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [top, bottom],
-        ).createShader(rect),
-    );
-  }
-
-  @override
-  bool shouldRepaint(_RoundLipPainter old) =>
-      old.top != top || old.bottom != bottom;
 }
 
 /// The popover as a route: back and the scrim both close it, and it sits

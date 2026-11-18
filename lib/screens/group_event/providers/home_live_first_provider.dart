@@ -159,3 +159,14 @@ Future<bool> pressForYouLiveFirst({
   flag.state = true;
   return true;
 }
+
+/// Whether any event is in play right now, by the strict live-ids stream
+/// (else the events list's copy of it). The Home Live first button only
+/// shows while this holds (Trello #1420): with nothing live it has nothing
+/// to do.
+final homeAnyLiveEventProvider = Provider.autoDispose<bool>((ref) {
+  return homeLiveEventIds(
+    strict: ref.watch(liveGroupBroadcastIdsProvider).valueOrNull,
+    mirror: ref.watch(liveBroadcastIdsProvider),
+  ).isNotEmpty;
+});

@@ -15,6 +15,7 @@ import 'package:chessever2/utils/location_service_provider.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/time_utils.dart';
 import 'package:chessever2/utils/user_error_message.dart';
+import 'package:chessever2/widgets/scroll_chrome.dart';
 import 'package:country_flags/country_flags.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -24,7 +25,10 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 /// from the gamebase games, rendered per format (regular / team / knockout).
 /// Pushed as the fallback from a player-profile event tap when no canonical
 /// ChessEver event exists.
-class DatabaseEventScreen extends ConsumerWidget {
+///
+/// The title and the tabs scroll away with the lists and come back as they
+/// scroll up (X style); the status bar's inset stays put.
+class DatabaseEventScreen extends HookConsumerWidget {
   const DatabaseEventScreen({super.key, required this.eventName, this.site});
 
   final String eventName;
@@ -34,6 +38,11 @@ class DatabaseEventScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final request = GamebaseEventViewRequest(eventName: eventName, site: site);
     final async = ref.watch(gamebaseEventViewProvider(request));
+    final chrome = useScrollChromeController();
+    final header = _Header(title: eventName);
+    // Nothing to scroll yet: the title stands alone over the state.
+    Widget still(Widget body) =>
+        Column(children: [header, Expanded(child: body)]);
 
     return Scaffold(
       backgroundColor: context.colors.background,
@@ -41,29 +50,19 @@ class DatabaseEventScreen extends ConsumerWidget {
       // under the Games list. Let the lists run to the bottom edge.
       body: SafeArea(
         bottom: false,
-        child: Column(
-          children: [
-            _Header(title: eventName),
-            Expanded(
-              child: async.when(
-                data: (view) {
-                  if (view == null) {
-                    return _EmptyState(eventName: eventName);
-                  }
-                  return _EventTabs(view: view);
-                },
-                loading: () => const Center(child: CircularProgressIndicator()),
-                error:
-                    (error, _) => _ErrorState(
-                      message: userFacingError(error),
-                      onRetry:
-                          () => ref.invalidate(
-                            gamebaseEventViewProvider(request),
-                          ),
-                    ),
-              ),
+        child: async.when(
+          data: (view) {
+            if (view == null) return still(_EmptyState(eventName: eventName));
+            return _EventTabs(view: view, header: header, chrome: chrome);
+          },
+          loading: () =>
+              still(const Center(child: CircularProgressIndicator())),
+          error: (error, _) => still(
+            _ErrorState(
+              message: userFacingError(error),
+              onRetry: () => ref.invalidate(gamebaseEventViewProvider(request)),
             ),
-          ],
+          ),
         ),
       ),
     );
@@ -109,30 +108,78 @@ class _Header extends StatelessWidget {
   }
 }
 
-class _EventTabs extends StatelessWidget {
-  const _EventTabs({required this.view});
+/// The title and the tab bar fold up together as a list scrolls down, and
+/// come back as it scrolls up or another tab opens.
+class _EventTabs extends StatefulWidget {
+  const _EventTabs({
+    required this.view,
+    required this.header,
+    required this.chrome,
+  });
 
   final GamebaseEventView view;
+  final Widget header;
+  final ScrollChromeController chrome;
+
+  @override
+  State<_EventTabs> createState() => _EventTabsState();
+}
+
+class _EventTabsState extends State<_EventTabs>
+    with SingleTickerProviderStateMixin {
+  late final TabController _tabs = TabController(length: 3, vsync: this)
+    ..addListener(_tabChanged);
+  int _shownTab = 0;
+
+  void _tabChanged() {
+    if (_tabs.index == _shownTab) return;
+    _shownTab = _tabs.index;
+    // Another tab opens with its header in place.
+    widget.chrome.show();
+  }
+
+  @override
+  void dispose() {
+    _tabs
+      ..removeListener(_tabChanged)
+      ..dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
-    return DefaultTabController(
-      length: 3,
-      child: Column(
-        children: [
-          TabBar(
-            labelColor: context.colors.textPrimary,
-            unselectedLabelColor: context.textInk(0.5),
-            indicatorColor: context.colors.textPrimary,
-            labelStyle: AppTypography.textSmMedium,
-            tabs: [
-              const Tab(text: 'About'),
-              const Tab(text: 'Games'),
-              Tab(text: view.isTeam ? 'Teams' : 'Standings'),
-            ],
+    final view = widget.view;
+    return Column(
+      children: [
+        CollapsingChrome(
+          controller: widget.chrome,
+          child: SizedBox(
+            width: double.infinity,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                widget.header,
+                TabBar(
+                  controller: _tabs,
+                  labelColor: context.colors.textPrimary,
+                  unselectedLabelColor: context.textInk(0.5),
+                  indicatorColor: context.colors.textPrimary,
+                  labelStyle: AppTypography.textSmMedium,
+                  tabs: [
+                    const Tab(text: 'About'),
+                    const Tab(text: 'Games'),
+                    Tab(text: view.isTeam ? 'Teams' : 'Standings'),
+                  ],
+                ),
+              ],
+            ),
           ),
-          Expanded(
+        ),
+        Expanded(
+          child: ScrollChromeRegion(
+            controller: widget.chrome,
             child: TabBarView(
+              controller: _tabs,
               children: [
                 _AboutTab(view: view),
                 _GamesTab(view: view),
@@ -140,8 +187,8 @@ class _EventTabs extends StatelessWidget {
               ],
             ),
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }

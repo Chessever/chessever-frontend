@@ -1,12 +1,20 @@
+import 'dart:async';
+import 'dart:math' as math;
+
 import 'package:chessever2/e2e/e2e_ids.dart';
+import 'package:chessever2/screens/favorites/player_games/provider/favorites_combined_games_provider.dart';
 import 'package:chessever2/screens/favorites/provider/favorites_mode_provider.dart';
 import 'package:chessever2/screens/favorites/tabs/favorites_games_tab.dart';
 import 'package:chessever2/screens/favorites/tabs/favorites_list_tab.dart';
 import 'package:chessever2/screens/favorites/tabs/favorites_players_tab.dart';
 import 'package:chessever2/screens/favorites/widgets/collection_inks.dart';
+import 'package:chessever2/screens/favorites/widgets/games_search_header.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/games_list_view_mode_provider.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/widgets/quick_list_toggles.dart';
+import 'package:chessever2/widgets/scroll_chrome.dart';
 import 'package:chessever2/widgets/scroll_to_top_bus.dart';
 import 'package:chessever2/widgets/segmented_switcher.dart';
 import 'package:flutter/material.dart';
@@ -21,9 +29,49 @@ class FavoritesTabScreen extends ConsumerStatefulWidget {
   ConsumerState<FavoritesTabScreen> createState() => _FavoritesTabScreenState();
 }
 
-class _FavoritesTabScreenState extends ConsumerState<FavoritesTabScreen> {
+class _FavoritesTabScreenState extends ConsumerState<FavoritesTabScreen>
+    with SingleTickerProviderStateMixin {
   late PageController _pageController;
   final ScrollToTopBus _scrollToTopBus = ScrollToTopBus();
+
+  /// The header (title row and tabs) and the floating buttons scroll away
+  /// with the list and come back as it scrolls up (X-style).
+  late final ScrollChromeController _chrome = ScrollChromeController(
+    vsync: this,
+  );
+
+  /// The Games page's full-page search (Trello #1420): the field in the
+  /// header's place, the same Games list under it, filtered, with nothing
+  /// else around it.
+  bool _searching = false;
+  final FocusNode _searchFocus = FocusNode();
+
+  void _openSearch() {
+    if (_searching) return;
+    setState(() => _searching = true);
+    _chrome.show();
+  }
+
+  /// Leaves the search with the query cleared. Classical and Filters stay,
+  /// counted on the floating search.
+  void _closeSearch() {
+    if (!_searching) return;
+    _searchFocus.unfocus();
+    setState(() => _searching = false);
+    _chrome.show();
+    // Cleared after the frame that takes the field away: a keystroke still
+    // waiting on its debounce dies with the field, so it cannot run the
+    // search again behind the closed header.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      unawaited(
+        ref.read(favoritesCombinedGamesProvider.notifier).clearSearch(),
+      );
+    });
+  }
+
+  /// A field with the keyboard keeps the header on screen.
+  void _holdChromeWhileTyping() => _chrome.held = _searchFocus.hasFocus;
 
   /// [FavoritesTabScreen.initialMode] until it reaches the mode provider after
   /// the first frame. The title row reads it so a screen opened on another
@@ -49,12 +97,17 @@ class _FavoritesTabScreenState extends ConsumerState<FavoritesTabScreen> {
     _pageController = PageController(
       initialPage: FavoritesScreenMode.values.indexOf(mode),
     );
+    _searchFocus.addListener(_holdChromeWhileTyping);
   }
 
   @override
   void dispose() {
     _pageController.dispose();
     _scrollToTopBus.dispose();
+    _searchFocus
+      ..removeListener(_holdChromeWhileTyping)
+      ..dispose();
+    _chrome.dispose();
     super.dispose();
   }
 
@@ -67,6 +120,10 @@ class _FavoritesTabScreenState extends ConsumerState<FavoritesTabScreen> {
         _scrollToTopBus.request();
         return;
       }
+      // The Favorites and Rankings pages carry fields of their own: their
+      // keyboard goes with the page.
+      FocusScope.of(context).unfocus();
+      _chrome.show();
       ref
           .read(selectedFavoritesModeProvider.notifier)
           .update((_) => FavoritesScreenMode.values[index]);
@@ -86,6 +143,8 @@ class _FavoritesTabScreenState extends ConsumerState<FavoritesTabScreen> {
         ref.read(selectedFavoritesModeProvider),
       );
       if (currentModeIndex != index) {
+        FocusScope.of(context).unfocus();
+        _chrome.show();
         ref
             .read(selectedFavoritesModeProvider.notifier)
             .update((_) => FavoritesScreenMode.values[index]);
@@ -98,60 +157,106 @@ class _FavoritesTabScreenState extends ConsumerState<FavoritesTabScreen> {
   @override
   Widget build(BuildContext context) {
     final selectedMode = ref.watch(selectedFavoritesModeProvider);
+    // Until the opening page reaches the provider, the header and the
+    // floating buttons follow it: a screen opened on another page never
+    // mounts the Games controls, which would start a games fetch.
+    final shownMode = _pendingInitialMode ?? selectedMode;
 
-    return Scaffold(
-      key: e2eKey(E2eIds.favoritesRoot),
-      backgroundColor: context.colors.background,
-      body: Center(
-        child: ConstrainedBox(
-          constraints: BoxConstraints(
-            maxWidth: ResponsiveHelper.contentMaxWidth,
-          ),
-          child: Column(
-            children: [
-              SizedBox(height: MediaQuery.viewPaddingOf(context).top + 4.h),
-              _buildAppBar(context, _pendingInitialMode ?? selectedMode),
-              SizedBox(height: 8.h),
-              _buildSegmentedSwitcher(selectedMode),
-              Expanded(
-                child: ScrollToTopScope(
-                  bus: _scrollToTopBus,
-                  child: PageView.builder(
-                    controller: _pageController,
-                    itemCount: 3,
-                    onPageChanged: _handlePageChanged,
-                    itemBuilder: (context, index) {
-                      switch (index) {
-                        case 0:
-                          return const FavoritesListTab();
-                        case 1:
-                          return const FavoritesGamesTab();
-                        case 2:
-                          return const FavoritesPlayersTab();
-                        default:
-                          return Center(
-                            child: Text(
-                              'Invalid page index: $index',
-                              style: TextStyle(
-                                color: context.colors.textPrimary,
-                              ),
-                            ),
-                          );
-                      }
-                    },
+    return PopScope(
+      // Back from the search closes it, back to the list it searched.
+      canPop: !_searching,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) _closeSearch();
+      },
+      child: Scaffold(
+        key: e2eKey(E2eIds.favoritesRoot),
+        backgroundColor: context.colors.background,
+        // Games keeps its search, and Live first while a game is in play, in
+        // the thumb's reach (Trello #1420). Searching, nothing floats.
+        floatingActionButton: SlidingFabs(
+          controller: _chrome,
+          child: shownMode == FavoritesScreenMode.games && !_searching
+              ? FavoritesGamesFabs(onSearch: _openSearch)
+              : const SizedBox.shrink(),
+        ),
+        body: Center(
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxWidth: ResponsiveHelper.contentMaxWidth,
+            ),
+            child: Column(
+              children: [
+                SizedBox(height: MediaQuery.viewPaddingOf(context).top + 4.h),
+                // Folds up under the status bar as the list scrolls down,
+                // comes back as it scrolls up.
+                CollapsingChrome(
+                  controller: _chrome,
+                  child: _searching
+                      ? GamesSearchHeader(
+                          onClose: _closeSearch,
+                          field: FavoritesGamesSearchField(
+                            focusNode: _searchFocus,
+                          ),
+                          trailing: const [FavoritesGamesSearchControls()],
+                        )
+                      : Column(
+                          children: [
+                            _buildAppBar(context, shownMode),
+                            SizedBox(height: 8.h),
+                            _buildSegmentedSwitcher(selectedMode),
+                            SizedBox(height: 4.h),
+                          ],
+                        ),
+                ),
+                Expanded(
+                  child: ScrollChromeRegion(
+                    controller: _chrome,
+                    child: ScrollToTopScope(
+                      bus: _scrollToTopBus,
+                      child: PageView.builder(
+                        controller: _pageController,
+                        // Searching holds the page: the search belongs to
+                        // Games.
+                        physics: _searching
+                            ? const NeverScrollableScrollPhysics()
+                            : null,
+                        itemCount: 3,
+                        onPageChanged: _handlePageChanged,
+                        itemBuilder: (context, index) {
+                          switch (index) {
+                            case 0:
+                              return const FavoritesListTab();
+                            case 1:
+                              return const FavoritesGamesTab();
+                            case 2:
+                              return const FavoritesPlayersTab();
+                            default:
+                              return Center(
+                                child: Text(
+                                  'Invalid page index: $index',
+                                  style: TextStyle(
+                                    color: context.colors.textPrimary,
+                                  ),
+                                ),
+                              );
+                          }
+                        },
+                      ),
+                    ),
                   ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
     );
   }
 
-  /// Back, the title, and on the Games page that page's one-tap controls
-  /// (Trello #1420): the title moves left beside back to make room for them.
-  /// Every other page keeps the title centred.
+  /// Back, the centred title, and on the Games page its board view at the
+  /// far end (Trello #1420). The end slot is as wide as back's on every page,
+  /// so the title stays centred and never moves when the page changes. The
+  /// list's other controls live in its search; Live first floats.
   Widget _buildAppBar(BuildContext context, FavoritesScreenMode selectedMode) {
     final isGames = selectedMode == FavoritesScreenMode.games;
     return Padding(
@@ -169,13 +274,23 @@ class _FavoritesTabScreenState extends ConsumerState<FavoritesTabScreen> {
               color: context.colors.textPrimary,
             ),
           ),
-          if (isGames) ...[
-            const Expanded(child: _FavoritesTitle(dropHeartWhenTight: true)),
-            const FavoritesGamesTitleControls(),
-          ] else ...[
-            const Expanded(child: Center(child: _FavoritesTitle())),
-            SizedBox(width: 48.w), // Placeholder for symmetry
-          ],
+          const Expanded(
+            child: Center(child: _FavoritesTitle(dropHeartWhenTight: true)),
+          ),
+          SizedBox(
+            // Back's 48pt target; never narrower than the toggle's 44.
+            width: math.max(48.w, 44),
+            child: isGames
+                ? Align(
+                    // The glyph lands where back's does, mirrored.
+                    alignment: AlignmentDirectional.centerEnd,
+                    child: BoardViewToggleButton(
+                      onTap: () =>
+                          ref.read(gamesListViewModeSwitcher).toggleViewMode(),
+                    ),
+                  )
+                : null,
+          ),
         ],
       ),
     );

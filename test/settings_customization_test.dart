@@ -90,10 +90,13 @@ class _AutoPin extends AutoPinPreferencesNotifier {
 }
 
 class _Botvinnik extends BotvinnikEnabledNotifier {
+  _Botvinnik({this.initial = true});
+
+  final bool initial;
   final calls = <bool>[];
 
   @override
-  Future<bool> build() async => true;
+  Future<bool> build() async => initial;
 
   @override
   Future<void> setEnabled(bool enabled) async {
@@ -415,8 +418,8 @@ void main() {
       await _tap(tester, find.text('Dark'));
       expect(container.read(themeModeProvider), ThemeMode.dark);
       await _tap(tester, find.text('Start section'));
-      await _tap(tester, find.text('Events'));
-      expect(readDefaultBottomTab(), BottomNavBarItem.tournaments);
+      await _tap(tester, find.text('Search'));
+      expect(readDefaultBottomTab(), BottomNavBarItem.search);
       await _tap(tester, find.text('Home page'));
       await _tap(tester, find.text('My Space'));
       expect(readDefaultForYouTab(), ForYouTab.mySpace);
@@ -424,6 +427,52 @@ void main() {
       expect(tester.takeException(), isNull);
     },
   );
+
+  testWidgets('start section offers only the sections on the bar', (
+    tester,
+  ) async {
+    // Botvinnik saved as the start section, then switched off: a launch
+    // opens Home, so Settings says Home and does not offer Botvinnik.
+    await writeDefaultBottomTab(BottomNavBarItem.botvinnik);
+    final container = await _pumpSettings(
+      tester,
+      initiallyExpanded: SettingsSection.customization,
+      botvinnik: _Botvinnik(initial: false),
+    );
+    final row = find.ancestor(
+      of: find.text('Start section'),
+      matching: find.byType(InkWell),
+    );
+    expect(
+      find.descendant(of: row.first, matching: find.text('Home')),
+      findsOneWidget,
+    );
+    await _tap(tester, find.text('Start section'));
+    final sheet = find.byType(BottomSheet);
+    for (final title in ['Home', 'Feed', 'Search', 'Profile']) {
+      expect(
+        find.descendant(of: sheet, matching: find.text(title)),
+        findsOneWidget,
+        reason: title,
+      );
+    }
+    expect(
+      find.descendant(of: sheet, matching: find.text('Botvinnik')),
+      findsNothing,
+    );
+    await _tap(tester, find.descendant(of: sheet, matching: find.text('Home')));
+    expect(readDefaultBottomTab(), BottomNavBarItem.forYou);
+
+    // Switched back on, it is offered again.
+    await container.read(botvinnikEnabledProvider.notifier).setEnabled(true);
+    await tester.pumpAndSettle();
+    await _tap(tester, find.text('Start section'));
+    expect(
+      find.descendant(of: sheet, matching: find.text('Botvinnik')),
+      findsOneWidget,
+    );
+    expect(tester.takeException(), isNull);
+  });
 
   testWidgets('back navigation still awaits moved auto-pin persistence', (
     tester,

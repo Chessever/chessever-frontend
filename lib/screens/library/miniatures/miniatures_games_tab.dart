@@ -20,21 +20,24 @@ import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
-import 'package:chessever2/utils/text_scale.dart';
 import 'package:chessever2/utils/scroll_cache.dart';
-import 'package:chessever2/utils/svg_asset.dart';
+import 'package:chessever2/screens/tour_detail/widgets/event_search_bar.dart'
+    show EventSearchBarFrame;
+import 'package:chessever2/widgets/ink_fab.dart' show InkFabSize;
 import 'package:chessever2/widgets/scroll_to_top_bus.dart';
-import 'package:chessever2/widgets/scroll_to_top_button.dart';
+import 'package:chessever2/widgets/simple_search_bar.dart';
 import 'package:chessever2/widgets/skeleton_widget.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_svg/flutter_svg.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:intl/intl.dart';
-import 'package:chessever2/screens/chessboard/utils/legible_ink.dart';
 
 /// Miniatures browsed as collapsible day sections, matching the Favorites and
 /// Countrymen games tabs. Cards honour the app-wide games list view mode, so
 /// switching to grid or board here switches it everywhere.
+///
+/// The list is all the tab draws: its search and filters open from the
+/// screen's floating search button ([MiniaturesGamesSearchField]), and the
+/// layout toggle sits in the screen's header.
 ///
 /// Everyone browses the same list: every day, every filter. Only opening a
 /// game, including Today, goes through the Premium guard (see
@@ -52,11 +55,7 @@ class MiniaturesGamesTab extends ConsumerStatefulWidget {
 class _MiniaturesGamesTabState extends ConsumerState<MiniaturesGamesTab>
     with AutomaticKeepAliveClientMixin, ScrollToTopListenerMixin {
   final ScrollController _scrollController = ScrollController();
-  final TextEditingController _searchController = TextEditingController();
-  final FocusNode _searchFocusNode = FocusNode();
 
-  Timer? _debounceTimer;
-  static const Duration _debounceDuration = Duration(milliseconds: 350);
   static const String _unknownDateKey = '0000-00-00';
 
   /// Collapsed (not expanded) day keys. Empty means every section is open.
@@ -78,11 +77,8 @@ class _MiniaturesGamesTabState extends ConsumerState<MiniaturesGamesTab>
 
   @override
   void dispose() {
-    _debounceTimer?.cancel();
     _scrollController.removeListener(_onScroll);
     _scrollController.dispose();
-    _searchController.dispose();
-    _searchFocusNode.dispose();
     super.dispose();
   }
 
@@ -95,40 +91,6 @@ class _MiniaturesGamesTabState extends ConsumerState<MiniaturesGamesTab>
         ref.read(miniaturesPaginatedProvider.notifier).loadNextPage();
       }
     }
-  }
-
-  void _onSearchChanged(String query) {
-    final trimmed = query.trim();
-    _debounceTimer?.cancel();
-    _debounceTimer = Timer(_debounceDuration, () {
-      if (!mounted) return;
-      final current = ref.read(miniaturesFilterProvider);
-      final next = current.copyWith(
-        search: trimmed.isEmpty ? null : trimmed,
-        clearSearch: trimmed.isEmpty,
-      );
-      // An equal filter (e.g. a trailing space) must not rebuild the list.
-      if (next == current) return;
-      ref.read(miniaturesFilterProvider.notifier).state = next;
-    });
-  }
-
-  void _clearSearch() {
-    _searchController.clear();
-    _onSearchChanged('');
-  }
-
-  Future<void> _openFilters() async {
-    HapticFeedbackService.buttonPress();
-    if (!mounted) return;
-
-    final newFilter = await showMiniaturesFilterDialog(
-      context: context,
-      currentFilter: ref.read(miniaturesFilterProvider),
-    );
-    if (newFilter == null || !mounted) return;
-
-    ref.read(miniaturesFilterProvider.notifier).state = newFilter;
   }
 
   void _toggleDateSection(String dateKey) {
@@ -264,10 +226,6 @@ class _MiniaturesGamesTabState extends ConsumerState<MiniaturesGamesTab>
     final games = ref.watch(miniatureGamesProvider);
     final filter = ref.watch(miniaturesFilterProvider);
     final viewMode = ref.watch(gamesListViewModeProvider);
-    final horizontalPadding = ResponsiveHelper.adaptive(
-      phone: 16.w,
-      tablet: 24.w,
-    );
 
     Widget content = RefreshIndicator(
       onRefresh: () async {
@@ -284,17 +242,7 @@ class _MiniaturesGamesTabState extends ConsumerState<MiniaturesGamesTab>
           parent: BouncingScrollPhysics(),
         ),
         slivers: [
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: EdgeInsets.fromLTRB(
-                horizontalPadding,
-                12.h,
-                horizontalPadding,
-                8.h,
-              ),
-              child: _buildSearchBar(filter),
-            ),
-          ),
+          SliverToBoxAdapter(child: SizedBox(height: 4.h)),
           SliverLayoutBuilder(
             builder: (context, constraints) => _buildContentSliver(
               state,
@@ -304,7 +252,10 @@ class _MiniaturesGamesTabState extends ConsumerState<MiniaturesGamesTab>
               constraints.crossAxisExtent,
             ),
           ),
-          SliverToBoxAdapter(child: SizedBox(height: 24.h)),
+          // Clear of the floating search button at the list's end.
+          SliverToBoxAdapter(
+            child: SizedBox(height: 24.h + InkFabSize.regular.side),
+          ),
         ],
       ),
     );
@@ -320,109 +271,7 @@ class _MiniaturesGamesTabState extends ConsumerState<MiniaturesGamesTab>
       );
     }
 
-    return Stack(
-      children: [
-        content,
-        Positioned(
-          bottom: 0,
-          right: 0,
-          child: ScrollToTopButton(scrollController: _scrollController),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildSearchBar(MiniatureGamesFilter filter) {
-    final hasActiveFilters = filter.dialogActiveCount > 0;
-    final activeFilterCount = filter.dialogActiveCount;
-    final searchBarHeight = 48.h;
-
-    Widget searchField = Container(
-      decoration: BoxDecoration(
-        color: context.colors.background,
-        borderRadius: BorderRadius.circular(12.br),
-        border: Border.all(color: context.colors.surfaceRecessed),
-      ),
-      child: Row(
-        children: [
-          SizedBox(width: 12.w),
-          Icon(Icons.search, size: 20.sp, color: context.colors.textSecondary),
-          SizedBox(width: 8.w),
-          Expanded(
-            child: TextField(
-              controller: _searchController,
-              focusNode: _searchFocusNode,
-              style: AppTypography.textSmRegular.copyWith(
-                color: context.colors.textPrimary,
-              ),
-              onChanged: _onSearchChanged,
-              decoration: InputDecoration(
-                isDense: true,
-                hintText: 'Search player, event or opening',
-                hintStyle: AppTypography.textSmRegular.copyWith(
-                  color: context.colors.textSecondary,
-                ),
-                border: InputBorder.none,
-                contentPadding: EdgeInsets.symmetric(vertical: 14.h),
-              ),
-            ),
-          ),
-          if (_searchController.text.isNotEmpty) ...[
-            GestureDetector(
-              onTap: _clearSearch,
-              child: Icon(
-                Icons.close,
-                size: 20.sp,
-                color: context.colors.textSecondary,
-              ),
-            ),
-            SizedBox(width: 8.w),
-          ],
-          SizedBox(width: 8.w),
-        ],
-      ),
-    );
-
-    return SizedBox(
-      height: context.textExtent(searchBarHeight),
-      child: Row(
-        children: [
-          Expanded(child: searchField),
-          SizedBox(width: 8.w),
-          _SquareIconButton(
-            size: searchBarHeight,
-            onTap: _openFilters,
-            isActive: hasActiveFilters,
-            badgeCount: activeFilterCount,
-            child: Icon(
-              Icons.tune_rounded,
-              size: 20.sp,
-              color: hasActiveFilters
-                  ? (context.isLightTheme
-                        ? context.colors.danger
-                        : const Color(0xFFEF4444))
-                  : context.colors.textSecondary,
-            ),
-          ),
-          SizedBox(width: 8.w),
-          _SquareIconButton(
-            size: searchBarHeight,
-            onTap: () {
-              ref.read(gamesListViewModeSwitcher).toggleViewMode();
-            },
-            child: SvgPicture.asset(
-              SvgAsset.chase_grid,
-              width: 20.sp,
-              height: 20.sp,
-              colorFilter: ColorFilter.mode(
-                context.colors.textSecondary,
-                BlendMode.srcIn,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
+    return content;
   }
 
   Widget _buildContentSliver(
@@ -462,11 +311,10 @@ class _MiniaturesGamesTabState extends ConsumerState<MiniaturesGamesTab>
               : null,
           actionLabel: filter.hasActiveFilters ? 'Clear filters' : null,
           onAction: filter.hasActiveFilters
-              ? () {
-                  _searchController.clear();
-                  ref.read(miniaturesFilterProvider.notifier).state =
-                      MiniatureGamesFilter.defaultFilter;
-                }
+              // The search field, when open, follows (see
+              // MiniaturesGamesSearchField).
+              ? () => ref.read(miniaturesFilterProvider.notifier).state =
+                    MiniatureGamesFilter.defaultFilter
               : null,
         ),
       );
@@ -778,6 +626,107 @@ class _MiniaturesGamesTabState extends ConsumerState<MiniaturesGamesTab>
   }
 }
 
+/// The Games list's search, typed in the Miniatures screen's search header:
+/// players, events and openings, with the filters behind its glyph. The
+/// filter it writes is the list's own ([miniaturesFilterProvider]), so the
+/// list narrows under it as the reader types.
+class MiniaturesGamesSearchField extends ConsumerStatefulWidget {
+  const MiniaturesGamesSearchField({super.key, required this.focusNode});
+
+  final FocusNode focusNode;
+
+  @override
+  ConsumerState<MiniaturesGamesSearchField> createState() =>
+      _MiniaturesGamesSearchFieldState();
+}
+
+class _MiniaturesGamesSearchFieldState
+    extends ConsumerState<MiniaturesGamesSearchField> {
+  // Opens on what the list is narrowed to, so reopening the search shows it.
+  late final TextEditingController _controller = TextEditingController(
+    text: ref.read(miniaturesFilterProvider).search ?? '',
+  );
+  Timer? _debounce;
+  static const Duration _debounceDuration = Duration(milliseconds: 350);
+
+  @override
+  void dispose() {
+    _debounce?.cancel();
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _apply(String query) {
+    final trimmed = query.trim();
+    final current = ref.read(miniaturesFilterProvider);
+    final next = current.copyWith(
+      search: trimmed.isEmpty ? null : trimmed,
+      clearSearch: trimmed.isEmpty,
+    );
+    // An equal filter (e.g. a trailing space) must not rebuild the list.
+    if (next == current) return;
+    ref.read(miniaturesFilterProvider.notifier).state = next;
+  }
+
+  void _changed(String query) {
+    _debounce?.cancel();
+    _debounce = Timer(_debounceDuration, () {
+      if (mounted) _apply(query);
+    });
+  }
+
+  void _clear() {
+    _debounce?.cancel();
+    _controller.clear();
+    widget.focusNode.unfocus();
+    _apply('');
+  }
+
+  Future<void> _openFilters() async {
+    HapticFeedbackService.buttonPress();
+    widget.focusNode.unfocus();
+    final next = await showMiniaturesFilterDialog(
+      context: context,
+      currentFilter: ref.read(miniaturesFilterProvider),
+    );
+    if (next == null || !mounted) return;
+    ref.read(miniaturesFilterProvider.notifier).state = next;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // The list's own "Clear filters" empties the search too.
+    ref.listen<String?>(miniaturesFilterProvider.select((f) => f.search), (
+      _,
+      next,
+    ) {
+      if ((next ?? '') != _controller.text.trim()) {
+        _controller.text = next ?? '';
+      }
+    });
+    final applied = ref.watch(
+      miniaturesFilterProvider.select((f) => f.dialogActiveCount),
+    );
+    return EventSearchBarFrame(
+      compact: true,
+      child: SimpleSearchBar(
+        controller: _controller,
+        focusNode: widget.focusNode,
+        // Built only as the search opens: the cursor goes straight in.
+        autofocus: true,
+        hintText: 'Search player, event or opening',
+        textFieldKey: const ValueKey('miniatures_games_search'),
+        filterButtonKey: const ValueKey('miniatures_games_filters'),
+        compactFilter: true,
+        filterBadgeCount: applied,
+        onChanged: _changed,
+        onOpenFilter: _openFilters,
+        onCloseTap: _clear,
+      ),
+    );
+  }
+}
+
 // ---- Row descriptors ----
 
 sealed class _MiniatureListEntry {
@@ -829,81 +778,6 @@ class _MiniatureFooterEntry extends _MiniatureListEntry {
 }
 
 // ---- Widgets ----
-
-class _SquareIconButton extends StatelessWidget {
-  const _SquareIconButton({
-    required this.size,
-    required this.onTap,
-    required this.child,
-    this.isActive = false,
-    this.badgeCount = 0,
-  });
-
-  final double size;
-  final VoidCallback onTap;
-  final Widget child;
-  final bool isActive;
-  final int badgeCount;
-
-  @override
-  Widget build(BuildContext context) {
-    // Paper: the deeper danger ink keeps the active glyph and badge at AA.
-    final activeColor = context.isLightTheme
-        ? context.colors.danger
-        : const Color(0xFFEF4444);
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: size,
-        height: size,
-        decoration: BoxDecoration(
-          color: isActive
-              ? activeColor.withValues(alpha: 0.15)
-              : context.colors.background,
-          borderRadius: BorderRadius.circular(12.br),
-          border: Border.all(
-            color: isActive
-                ? activeColor.withValues(alpha: 0.5)
-                : context.colors.surfaceRecessed,
-          ),
-        ),
-        child: Stack(
-          alignment: Alignment.center,
-          children: [
-            child,
-            if (isActive && badgeCount > 0)
-              Positioned(
-                right: 6.w,
-                top: 6.h,
-                child: Container(
-                  width: 14.w,
-                  height: 14.h,
-                  decoration: BoxDecoration(
-                    color: activeColor,
-                    shape: BoxShape.circle,
-                  ),
-                  child: Center(
-                    child: CappedTextScale(
-                      child: Text(
-                        '$badgeCount',
-                        style: AppTypography.textXsBold.copyWith(
-                          color: context.isLightTheme
-                              ? labelOnFill(context, activeColor)
-                              : context.colors.textPrimary,
-                          fontSize: 9.sp,
-                          height: 1,
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-          ],
-        ),
-      ),
-    );
-  }
-}
 
 class _MiniaturesMessage extends StatelessWidget {
   const _MiniaturesMessage({

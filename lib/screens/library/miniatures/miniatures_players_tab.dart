@@ -13,22 +13,24 @@ import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
-import 'package:chessever2/utils/text_scale.dart';
 import 'package:chessever2/utils/scroll_cache.dart';
 import 'package:chessever2/widgets/figma_player_card.dart';
+import 'package:chessever2/screens/tour_detail/widgets/event_search_bar.dart'
+    show EventSearchBarFrame;
+import 'package:chessever2/widgets/ink_fab.dart' show InkFabSize;
 import 'package:chessever2/widgets/scroll_to_top_bus.dart';
-import 'package:chessever2/widgets/scroll_to_top_button.dart';
+import 'package:chessever2/widgets/simple_search_bar.dart';
 import 'package:chessever2/widgets/skeleton_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:skeletonizer/skeletonizer.dart';
-import 'package:chessever2/screens/chessboard/utils/legible_ink.dart';
 
 /// High-ELO player leaderboard for Miniatures → Players, ranked the same way as
 /// For You → Favorites → Players (Supabase `chess_players`, rating desc).
 /// Same [FigmaPlayerCard] shell (rank + avatar + name/rating, miniature W-L in
-/// the score slot). Title filters live behind the filter icon next to search.
-/// Tapping opens the player profile.
+/// the score slot). The search and the title filters open from the screen's
+/// floating search button ([MiniaturePlayersSearchField]). Tapping opens the
+/// player profile.
 class MiniaturesPlayersTab extends ConsumerStatefulWidget {
   const MiniaturesPlayersTab({super.key});
 
@@ -40,11 +42,6 @@ class MiniaturesPlayersTab extends ConsumerStatefulWidget {
 class _MiniaturesPlayersTabState extends ConsumerState<MiniaturesPlayersTab>
     with AutomaticKeepAliveClientMixin, ScrollToTopListenerMixin {
   final ScrollController _scrollController = ScrollController();
-  final TextEditingController _searchController = TextEditingController();
-  final FocusNode _searchFocusNode = FocusNode();
-
-  Timer? _debounceTimer;
-  static const Duration _debounceDuration = Duration(milliseconds: 350);
 
   /// Latched true the first time this tab becomes the selected one.
   bool _activated = false;
@@ -65,11 +62,8 @@ class _MiniaturesPlayersTabState extends ConsumerState<MiniaturesPlayersTab>
 
   @override
   void dispose() {
-    _debounceTimer?.cancel();
     _scrollController.removeListener(_onScroll);
     _scrollController.dispose();
-    _searchController.dispose();
-    _searchFocusNode.dispose();
     super.dispose();
   }
 
@@ -81,33 +75,6 @@ class _MiniaturesPlayersTabState extends ConsumerState<MiniaturesPlayersTab>
       if (!state.isLoading && state.hasMore) {
         ref.read(miniaturePlayersPaginatedProvider.notifier).loadNextPage();
       }
-    }
-  }
-
-  void _onSearchChanged(String query) {
-    final trimmed = query.trim();
-    _debounceTimer?.cancel();
-    _debounceTimer = Timer(_debounceDuration, () {
-      if (!mounted) return;
-      final current = ref.read(miniaturePlayersQueryProvider);
-      final next = current.copyWith(
-        search: trimmed.isEmpty ? null : trimmed,
-        clearSearch: trimmed.isEmpty,
-      );
-      // An equal query (e.g. a trailing space) must not rebuild the list.
-      if (next == current) return;
-      ref.read(miniaturePlayersQueryProvider.notifier).state = next;
-    });
-  }
-
-  Future<void> _openFilters() async {
-    HapticFeedbackService.buttonPress();
-    final result = await showMiniaturePlayersFilterDialog(
-      context: context,
-      currentQuery: ref.read(miniaturePlayersQueryProvider),
-    );
-    if (result != null && mounted) {
-      ref.read(miniaturePlayersQueryProvider.notifier).state = result;
     }
   }
 
@@ -146,19 +113,12 @@ class _MiniaturesPlayersTabState extends ConsumerState<MiniaturesPlayersTab>
           parent: BouncingScrollPhysics(),
         ),
         slivers: [
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: EdgeInsets.fromLTRB(
-                horizontalPadding,
-                12.h,
-                horizontalPadding,
-                8.h,
-              ),
-              child: _buildSearchBar(query),
-            ),
-          ),
+          SliverToBoxAdapter(child: SizedBox(height: 4.h)),
           _buildContentSliver(state, query, horizontalPadding),
-          SliverToBoxAdapter(child: SizedBox(height: 24.h)),
+          // Clear of the floating search button at the list's end.
+          SliverToBoxAdapter(
+            child: SizedBox(height: 24.h + InkFabSize.regular.side),
+          ),
         ],
       ),
     );
@@ -174,154 +134,7 @@ class _MiniaturesPlayersTabState extends ConsumerState<MiniaturesPlayersTab>
       );
     }
 
-    return Stack(
-      children: [
-        content,
-        Positioned(
-          bottom: 0,
-          right: 0,
-          child: ScrollToTopButton(scrollController: _scrollController),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildSearchBar(MiniaturePlayersQuery query) {
-    final hasActiveFilters = query.hasActiveFilters;
-    final activeFilterCount = query.activeFilterCount;
-    final searchBarHeight = 48.h;
-
-    return SizedBox(
-      height: context.textExtent(searchBarHeight),
-      child: Row(
-        children: [
-          Expanded(
-            child: Container(
-              decoration: BoxDecoration(
-                color: context.colors.background,
-                borderRadius: BorderRadius.circular(12.br),
-                border: Border.all(color: context.colors.surfaceRecessed),
-              ),
-              child: Row(
-                children: [
-                  SizedBox(width: 12.w),
-                  Icon(
-                    Icons.search,
-                    size: 20.sp,
-                    color: context.colors.textSecondary,
-                  ),
-                  SizedBox(width: 8.w),
-                  Expanded(
-                    child: TextField(
-                      controller: _searchController,
-                      focusNode: _searchFocusNode,
-                      style: AppTypography.textSmRegular.copyWith(
-                        color: context.colors.textPrimary,
-                      ),
-                      onChanged: _onSearchChanged,
-                      decoration: InputDecoration(
-                        isDense: true,
-                        hintText: 'Search players',
-                        hintStyle: AppTypography.textSmRegular.copyWith(
-                          color: context.colors.textSecondary,
-                        ),
-                        border: InputBorder.none,
-                        contentPadding: EdgeInsets.symmetric(vertical: 14.h),
-                      ),
-                    ),
-                  ),
-                  if (_searchController.text.isNotEmpty) ...[
-                    GestureDetector(
-                      onTap: () {
-                        _searchController.clear();
-                        _onSearchChanged('');
-                      },
-                      child: Icon(
-                        Icons.close,
-                        size: 20.sp,
-                        color: context.colors.textSecondary,
-                      ),
-                    ),
-                    SizedBox(width: 8.w),
-                  ],
-                  SizedBox(width: 8.w),
-                ],
-              ),
-            ),
-          ),
-          SizedBox(width: 8.w),
-          GestureDetector(
-            onTap: _openFilters,
-            child: Container(
-              width: searchBarHeight,
-              height: searchBarHeight,
-              decoration: BoxDecoration(
-                color:
-                    hasActiveFilters
-                        ? const Color(0xFFEF4444).withValues(alpha: 0.15)
-                        : context.colors.background,
-                borderRadius: BorderRadius.circular(12.br),
-                border: Border.all(
-                  color:
-                      hasActiveFilters
-                          ? const Color(0xFFEF4444).withValues(alpha: 0.5)
-                          : context.colors.surfaceRecessed,
-                ),
-              ),
-              child: Stack(
-                alignment: Alignment.center,
-                children: [
-                  Icon(
-                    Icons.tune_rounded,
-                    size: 20.sp,
-                    color:
-                        hasActiveFilters
-                            ? (context.isLightTheme
-                                ? context.colors.danger
-                                : const Color(0xFFEF4444))
-                            : context.colors.textSecondary,
-                  ),
-                  if (hasActiveFilters)
-                    Positioned(
-                      right: 6.w,
-                      top: 6.h,
-                      child: Container(
-                        width: 14.w,
-                        height: 14.h,
-                        decoration: BoxDecoration(
-                          color:
-                              context.isLightTheme
-                                  ? context.colors.danger
-                                  : const Color(0xFFEF4444),
-                          shape: BoxShape.circle,
-                        ),
-                        child: Center(
-                          child: CappedTextScale(
-                            child: Text(
-                              '$activeFilterCount',
-                              style: AppTypography.textXsBold.copyWith(
-                                color:
-                                    context.isLightTheme
-                                        ? labelOnFill(
-                                          context,
-                                          context.colors.danger,
-                                        )
-                                        : context.colors.textPrimary,
-                                fontSize: 9.sp,
-                                height: 1,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
+    return content;
   }
 
   Widget _buildContentSliver(
@@ -416,37 +229,35 @@ class _MiniaturesPlayersTabState extends ConsumerState<MiniaturesPlayersTab>
             return Padding(
               padding: EdgeInsets.symmetric(vertical: 20.h),
               child: Center(
-                child:
-                    state.isLoading
-                        ? Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            SizedBox(
-                              width: 24.w,
-                              height: 24.h,
-                              child: CircularProgressIndicator(
-                                color: context.colors.textPrimary,
-                                strokeWidth: 2,
-                              ),
+                child: state.isLoading
+                    ? Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          SizedBox(
+                            width: 24.w,
+                            height: 24.h,
+                            child: CircularProgressIndicator(
+                              color: context.colors.textPrimary,
+                              strokeWidth: 2,
                             ),
-                            SizedBox(height: 8.h),
-                            Text(
-                              'Loading more…',
-                              style: AppTypography.textXsRegular.copyWith(
-                                color:
-                                    context.isLightTheme
-                                        ? context.colors.textSecondary
-                                        : const Color(0xFF71717A),
-                              ),
-                            ),
-                          ],
-                        )
-                        : Text(
-                          'No more players',
-                          style: AppTypography.textXsRegular.copyWith(
-                            color: const Color(0xFF52525B),
                           ),
+                          SizedBox(height: 8.h),
+                          Text(
+                            'Loading more…',
+                            style: AppTypography.textXsRegular.copyWith(
+                              color: context.isLightTheme
+                                  ? context.colors.textSecondary
+                                  : const Color(0xFF71717A),
+                            ),
+                          ),
+                        ],
+                      )
+                    : Text(
+                        'No more players',
+                        style: AppTypography.textXsRegular.copyWith(
+                          color: const Color(0xFF52525B),
                         ),
+                      ),
               ),
             );
           }
@@ -470,6 +281,98 @@ class _MiniaturesPlayersTabState extends ConsumerState<MiniaturesPlayersTab>
 /// score slot holds its width under a shimmer until its own lookup lands.
 /// Already-resolved players (a scroll back, a second visit) read straight off
 /// the session cache and paint their record on the first frame.
+/// The Players list's search, typed in the Miniatures screen's search
+/// header, with the title filters behind its glyph. It writes the list's own
+/// query ([miniaturePlayersQueryProvider]), so the ranking narrows under it.
+class MiniaturePlayersSearchField extends ConsumerStatefulWidget {
+  const MiniaturePlayersSearchField({super.key, required this.focusNode});
+
+  final FocusNode focusNode;
+
+  @override
+  ConsumerState<MiniaturePlayersSearchField> createState() =>
+      _MiniaturePlayersSearchFieldState();
+}
+
+class _MiniaturePlayersSearchFieldState
+    extends ConsumerState<MiniaturePlayersSearchField> {
+  // Opens on what the ranking is narrowed to, so reopening shows it.
+  late final TextEditingController _controller = TextEditingController(
+    text: ref.read(miniaturePlayersQueryProvider).search ?? '',
+  );
+  Timer? _debounce;
+  static const Duration _debounceDuration = Duration(milliseconds: 350);
+
+  @override
+  void dispose() {
+    _debounce?.cancel();
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _apply(String query) {
+    final trimmed = query.trim();
+    final current = ref.read(miniaturePlayersQueryProvider);
+    final next = current.copyWith(
+      search: trimmed.isEmpty ? null : trimmed,
+      clearSearch: trimmed.isEmpty,
+    );
+    // An equal query (e.g. a trailing space) must not rebuild the list.
+    if (next == current) return;
+    ref.read(miniaturePlayersQueryProvider.notifier).state = next;
+  }
+
+  void _changed(String query) {
+    _debounce?.cancel();
+    _debounce = Timer(_debounceDuration, () {
+      if (mounted) _apply(query);
+    });
+  }
+
+  void _clear() {
+    _debounce?.cancel();
+    _controller.clear();
+    widget.focusNode.unfocus();
+    _apply('');
+  }
+
+  Future<void> _openFilters() async {
+    HapticFeedbackService.buttonPress();
+    widget.focusNode.unfocus();
+    final result = await showMiniaturePlayersFilterDialog(
+      context: context,
+      currentQuery: ref.read(miniaturePlayersQueryProvider),
+    );
+    if (result != null && mounted) {
+      ref.read(miniaturePlayersQueryProvider.notifier).state = result;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final applied = ref.watch(
+      miniaturePlayersQueryProvider.select((q) => q.activeFilterCount),
+    );
+    return EventSearchBarFrame(
+      compact: true,
+      child: SimpleSearchBar(
+        controller: _controller,
+        focusNode: widget.focusNode,
+        // Built only as the search opens: the cursor goes straight in.
+        autofocus: true,
+        hintText: 'Search players',
+        textFieldKey: const ValueKey('miniatures_players_search'),
+        filterButtonKey: const ValueKey('miniatures_players_filters'),
+        compactFilter: true,
+        filterBadgeCount: applied,
+        onChanged: _changed,
+        onOpenFilter: _openFilters,
+        onCloseTap: _clear,
+      ),
+    );
+  }
+}
+
 class _MiniaturePlayerRow extends ConsumerWidget {
   const _MiniaturePlayerRow({
     super.key,
@@ -492,8 +395,9 @@ class _MiniaturePlayerRow extends ConsumerWidget {
     HapticFeedbackService.cardTap();
 
     final key = _recordKey;
-    var miniature =
-        key == null ? null : cachedMiniaturePlayerRecord(key.fideId);
+    var miniature = key == null
+        ? null
+        : cachedMiniaturePlayerRecord(key.fideId);
     if (miniature == null &&
         key != null &&
         !hasResolvedMiniaturePlayerRecord(key.fideId)) {
@@ -510,20 +414,18 @@ class _MiniaturePlayerRow extends ConsumerWidget {
     final resolved = miniature;
     Navigator.of(context).push(
       MaterialPageRoute(
-        builder:
-            (_) =>
-                resolved != null
-                    ? MiniaturePlayerScorecardScreen(
-                      player: resolved,
-                      avatarHeroTag: resolved.avatarHeroTag,
-                    )
-                    : PlayerProfileScreen(
-                      fideId: player.fideId,
-                      playerName: player.name,
-                      title: player.title,
-                      federation: player.countryCode,
-                      rating: player.score,
-                    ),
+        builder: (_) => resolved != null
+            ? MiniaturePlayerScorecardScreen(
+                player: resolved,
+                avatarHeroTag: resolved.avatarHeroTag,
+              )
+            : PlayerProfileScreen(
+                fideId: player.fideId,
+                playerName: player.name,
+                title: player.title,
+                federation: player.countryCode,
+                rating: player.score,
+              ),
       ),
     );
   }
@@ -535,18 +437,17 @@ class _MiniaturePlayerRow extends ConsumerWidget {
     // back into view never re-shimmers while its autoDispose provider replays
     // against the same cache. Only unresolved rows subscribe and fetch.
     final settled = key != null && hasResolvedMiniaturePlayerRecord(key.fideId);
-    final lookup =
-        key == null || settled
-            ? null
-            : ref.watch(miniaturePlayerRecordProvider(key));
-    final miniature =
-        settled ? cachedMiniaturePlayerRecord(key.fideId) : lookup?.valueOrNull;
+    final lookup = key == null || settled
+        ? null
+        : ref.watch(miniaturePlayerRecordProvider(key));
+    final miniature = settled
+        ? cachedMiniaturePlayerRecord(key.fideId)
+        : lookup?.valueOrNull;
 
     final matchScore = player.matchScore ?? miniature?.winLossLabel;
-    final cardPlayer =
-        matchScore == null || matchScore == player.matchScore
-            ? player
-            : player.copyWith(matchScore: matchScore);
+    final cardPlayer = matchScore == null || matchScore == player.matchScore
+        ? player
+        : player.copyWith(matchScore: matchScore);
 
     final hasScorecard = miniature != null;
     // Long-press lifts the row into the shared focus menu. The lifted copy
@@ -561,26 +462,24 @@ class _MiniaturePlayerRow extends ConsumerWidget {
         reserveMatchScoreSlot: true,
         onTap: () {},
       ),
-      actions:
-          (rowContext) => playerStandingMenuActions(
-            rowContext,
-            ref,
-            player,
-            onOpen: () => _open(context, ref),
-            openLabel: hasScorecard ? 'Open scorecard' : 'Open profile',
-            openIcon:
-                hasScorecard
-                    ? Icons.open_in_new_rounded
-                    : Icons.person_outline_rounded,
-            extra: [
-              if (hasScorecard)
-                LibraryMenuAction(
-                  icon: Icons.person_outline_rounded,
-                  label: 'Open profile',
-                  onSelected: () => openPlayerProfileFor(context, player),
-                ),
-            ],
-          ),
+      actions: (rowContext) => playerStandingMenuActions(
+        rowContext,
+        ref,
+        player,
+        onOpen: () => _open(context, ref),
+        openLabel: hasScorecard ? 'Open scorecard' : 'Open profile',
+        openIcon: hasScorecard
+            ? Icons.open_in_new_rounded
+            : Icons.person_outline_rounded,
+        extra: [
+          if (hasScorecard)
+            LibraryMenuAction(
+              icon: Icons.person_outline_rounded,
+              label: 'Open profile',
+              onSelected: () => openPlayerProfileFor(context, player),
+            ),
+        ],
+      ),
       child: FigmaPlayerCard(
         player: cardPlayer,
         rank: rank,

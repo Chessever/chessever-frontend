@@ -65,10 +65,14 @@ import 'package:motor/motor.dart';
 /// is, without its own copy of that game. A refresh is a fresh draw, without
 /// the lead.
 class FeedScreen extends ConsumerStatefulWidget {
-  const FeedScreen({super.key, this.lead});
+  const FeedScreen({super.key, this.lead, this.embedded = false});
 
   /// The game Watch opened Feed on, above the feed's own posts.
   final FeedItem? lead;
+
+  /// Feed as the home bar's Feed tab: no back chevron (there is nothing to
+  /// go back to), and the bar under it clears the home indicator.
+  final bool embedded;
 
   /// Opens Feed over whatever is showing.
   static Future<void> open(BuildContext context) {
@@ -1037,12 +1041,14 @@ class _FeedScreenState extends ConsumerState<FeedScreen>
         // home indicator itself.
         body: SafeArea(
           top: false,
+          bottom: !widget.embedded,
           child: Column(
             children: [
               // Outside the page's text cap: the home bar grows with the
               // system text size exactly as it does on the other tabs, and
               // caps its own chrome (the title included) at the same scale.
               _FeedHeader(
+                showBack: !widget.embedded,
                 soundOn: boardSoundOn && !sfx.muted,
                 soundHint: boardSoundOn ? null : _boardSoundOffHint,
                 onToggleSound: () => _toggleSound(boardSoundOn: boardSoundOn),
@@ -1064,11 +1070,16 @@ class _FeedScreenState extends ConsumerState<FeedScreen>
 
 class _FeedHeader extends StatelessWidget {
   const _FeedHeader({
+    required this.showBack,
     required this.soundOn,
     required this.onToggleSound,
     required this.onTitleTap,
     this.soundHint,
   });
+
+  /// A pushed Feed has a back chevron; the Feed tab has nowhere to go back
+  /// to.
+  final bool showBack;
 
   /// Whether Feed will actually make a sound: its own speaker is on AND the
   /// board's Sound setting is on.
@@ -1095,7 +1106,9 @@ class _FeedHeader extends StatelessWidget {
           children: [
             HomeTopBarRow(
               showAvatar: false,
-              leading: const HomeTopBarBackButton(key: ValueKey('feed_back')),
+              leading: showBack
+                  ? const HomeTopBarBackButton(key: ValueKey('feed_back'))
+                  : null,
               content: MediaQuery.withClampedTextScaling(
                 maxScaleFactor: HomeTopBarMetrics.maxTextScale,
                 child: const SizedBox.shrink(),

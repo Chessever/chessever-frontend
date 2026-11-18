@@ -1,3 +1,4 @@
+import 'package:chessever2/screens/home/widget/bottom_nav_bar.dart';
 import 'package:chessever2/screens/home/widget/tablet_nav_rail.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/adaptive_window.dart';
@@ -16,6 +17,10 @@ void main() {
         ..physicalSize = const Size(810, 300) * 3;
       await tester.pumpWidget(
         ProviderScope(
+          // Every section on the rail, Botvinnik included: the tallest rail
+          // is the one that must still scroll to its last slot. (The real
+          // setting reads SQLite, which a widget test cannot open.)
+          overrides: [botvinnikTabAvailableProvider.overrideWithValue(true)],
           child: MaterialApp(
             theme: dark ? AppTheme.darkTheme : AppTheme.lightTheme,
             builder: (_, child) => AdaptiveWindowScope(
@@ -37,9 +42,27 @@ void main() {
         ),
       );
       expect(tester.takeException(), isNull);
-      await tester.ensureVisible(find.text('Collections'));
-      await tester.pumpAndSettle();
-      expect(find.text('Collections').hitTestable(), findsOneWidget);
+
+      // The rail carries the phone bar's sections and nothing else: no menu
+      // button, and Events / Collections now live on the Profile page.
+      final items = ProviderScope.containerOf(
+        tester.element(find.byType(TabletNavRail)),
+      ).read(visibleBottomNavItemsProvider);
+      expect(items, bottomNavBarOrder);
+      expect(items.last, BottomNavBarItem.profile);
+      expect(find.byTooltip('Menu'), findsNothing);
+      expect(find.text('Events'), findsNothing);
+      expect(find.text('Collections'), findsNothing);
+
+      // 300dp tall at 2x text cannot fit every slot: each one, down to the
+      // last (Profile), must scroll into view and take a hit.
+      for (final item in items) {
+        final label = find.text(namesBottomNavBarIcons[item]!);
+        await tester.ensureVisible(label);
+        await tester.pumpAndSettle();
+        expect(label.hitTestable(), findsOneWidget, reason: item.name);
+      }
+
       await tester.ensureVisible(find.text('Home'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Home'));

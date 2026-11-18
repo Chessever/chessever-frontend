@@ -1,6 +1,4 @@
-import 'package:chessever2/screens/collections/collections_tab_provider.dart';
 import 'package:chessever2/screens/for_you/providers/for_you_tab_provider.dart';
-import 'package:chessever2/screens/group_event/group_event_screen.dart';
 import 'package:chessever2/screens/home/widget/bottom_nav_bar.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/widgets/alert_dialog/alert_modal.dart';
@@ -22,40 +20,29 @@ class StartPage {
 StartPage forYouStartPage(ForYouTab tab) =>
     StartPage(label: tab.label, save: () => writeDefaultForYouTab(tab));
 
-StartPage eventsStartPage(GroupEventCategory category) => StartPage(
-  label: groupEventCategoryLabel(category),
-  save: () => writeDefaultEventsCategory(category),
-);
-
-StartPage collectionsStartPage(CollectionsTab tab) =>
-    StartPage(label: tab.label, save: () => writeDefaultCollectionsTab(tab));
-
-/// The page [section] is on now: the tab its strip highlights, or the one it
-/// comes back to when it is not the visible section.
-StartPage currentStartPage(WidgetRef ref, BottomNavBarItem section) {
+/// The page [section] is on now: the tab its strip highlights. Only Home has
+/// pages; the other sections open as they are.
+StartPage? currentStartPage(WidgetRef ref, BottomNavBarItem section) {
   switch (section) {
     case BottomNavBarItem.forYou:
-      // A search overlays the strip but never replaces the tab under it.
       return forYouStartPage(ref.read(selectedForYouTabProvider));
-    case BottomNavBarItem.tournaments:
-      final selected = ref.read(selectedGroupCategoryProvider);
-      // Search is a transient segment; hold the list it will hand back to.
-      final searchTabs = ref.read(groupEventSearchTabControllerProvider);
-      final category = eventsHomeCategories.contains(selected)
-          ? selected
-          : searchTabs.categoryBeforeSearch;
-      return eventsStartPage(category);
-    case BottomNavBarItem.collections:
-      return collectionsStartPage(ref.read(selectedCollectionsTabProvider));
+    case BottomNavBarItem.feed:
+    case BottomNavBarItem.botvinnik:
+    case BottomNavBarItem.search:
+    case BottomNavBarItem.profile:
+      return null;
   }
 }
 
-/// "Home → Discovery": the section, then the tab inside it.
-String startScreenName(BottomNavBarItem section, StartPage page) =>
-    '${namesBottomNavBarIcons[section]} → ${page.label}';
+/// "Home → Discovery": the section, then the tab inside it. A section with
+/// no pages is just its name.
+String startScreenName(BottomNavBarItem section, StartPage? page) {
+  final name = namesBottomNavBarIcons[section]!;
+  return page == null ? name : '$name → ${page.label}';
+}
 
 /// What assistive technology announces for holding a nav slot or tab title.
-String startScreenHint(BottomNavBarItem section, StartPage page) =>
+String startScreenHint(BottomNavBarItem section, StartPage? page) =>
     'Make ${startScreenName(section, page)} the start screen';
 
 /// Premium-gated "hold to make this the launch screen", shared by the phone
@@ -87,7 +74,7 @@ Future<void> makeStartScreenDefault(
       );
       if (confirmed != true || !context.mounted) return;
       await writeDefaultBottomTab(section);
-      await target.save();
+      await target?.save();
       HapticFeedbackService.success();
       if (context.mounted) {
         showAppSnack(context, '$name is now your start screen');

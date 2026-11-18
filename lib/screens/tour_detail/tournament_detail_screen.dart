@@ -50,6 +50,14 @@ import 'package:chessever2/widgets/scroll_to_top_bus.dart';
 import 'package:chessever2/widgets/segmented_switcher.dart';
 import 'package:chessever2/widgets/skeleton_widget.dart';
 import 'package:flutter/foundation.dart';
+import 'package:chessever2/providers/game_list_live_first_provider.dart'
+    show kNoLiveGamesRightNowMessage;
+import 'package:chessever2/screens/home/widget/bottom_nav_bar.dart'
+    show botvinnikTabAvailableProvider;
+import 'package:chessever2/utils/haptic_feedback_service.dart';
+import 'package:chessever2/widgets/app_snack.dart';
+import 'package:chessever2/widgets/ink_fab.dart';
+import 'package:chessever2/widgets/scroll_chrome.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -70,8 +78,36 @@ class TournamentDetailScreen extends ConsumerStatefulWidget {
 }
 
 class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
-    with RouteAware, WidgetsBindingObserver {
+    with RouteAware, WidgetsBindingObserver, SingleTickerProviderStateMixin {
   late PageController pageController;
+
+  /// The header (title row and tabs) and the floating buttons scroll away
+  /// with the list and come back as it scrolls up (X-style).
+  late final ScrollChromeController _chrome = ScrollChromeController(
+    vsync: this,
+  );
+
+  /// The tab's full-page search: the field in the header's place, the same
+  /// tab under it, filtered, with nothing else around it.
+  bool _searching = false;
+  final FocusNode _searchFocus = FocusNode();
+
+  void _openSearch() {
+    if (_searching) return;
+    setState(() => _searching = true);
+    _chrome.show();
+  }
+
+  void _closeSearch() {
+    if (!_searching) return;
+    _searchFocus.unfocus();
+    ref.read(standingsSearchQueryProvider.notifier).state = '';
+    ref.read(gamesTourScreenProvider.notifier).clearSearch();
+    setState(() => _searching = false);
+    _chrome.show();
+  }
+
+  void _holdChromeWhileTyping() => _chrome.held = _searchFocus.hasFocus;
   late final String _scrollScopeId;
   final ScrollToTopBus _scrollToTopBus = ScrollToTopBus();
 
@@ -242,9 +278,7 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
           if (combinedTourIds.isNotEmpty) {
             ref.invalidate(
               combinedRoundsProvider(
-                combinedRoundsKey(
-                  ref.read(combinedCategoriesProvider).tourIds,
-                ),
+                combinedRoundsKey(ref.read(combinedCategoriesProvider).tourIds),
               ),
             );
           }
@@ -286,6 +320,7 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
       initialMode,
     );
     pageController = PageController(initialPage: initialPage);
+    _searchFocus.addListener(_holdChromeWhileTyping);
     _scrollScopeId = 'games_scroll_${UniqueKey()}';
     markGamesTourScrollScopeActive(_scrollScopeId);
   }
@@ -323,6 +358,10 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
     ForegroundTaskScheduler.cancel('tournament_detail_resume_$hashCode');
     pageController.dispose();
     _scrollToTopBus.dispose();
+    _searchFocus
+      ..removeListener(_holdChromeWhileTyping)
+      ..dispose();
+    _chrome.dispose();
     super.dispose();
   }
 
@@ -347,10 +386,9 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
           );
           final tourId = tourDetailAsync.valueOrNull?.aboutTourModel.id;
           final previousTourId = _layoutTracker.activeTourId;
-          final knockoutState =
-              tourId == null || tourId.isEmpty
-                  ? null
-                  : scopedRef.watch(knockoutTournamentStateProvider(tourId));
+          final knockoutState = tourId == null || tourId.isEmpty
+              ? null
+              : scopedRef.watch(knockoutTournamentStateProvider(tourId));
           final resolvedLayout = _layoutTracker.resolve(
             tourId: tourId,
             isTeam: knockoutState?.isTeamEvent ?? false,
@@ -361,10 +399,9 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
             ),
           );
           final hasResolvedTour = _layoutTracker.activeTourId != null;
-          final layout =
-              hasResolvedTour
-                  ? resolvedLayout
-                  : provisionalTournamentDetailLayoutForMode(selectedTourMode);
+          final layout = hasResolvedTour
+              ? resolvedLayout
+              : provisionalTournamentDetailLayoutForMode(selectedTourMode);
           final visibleModes = tournamentDetailModesFor(layout);
           final activeTourChanged =
               tourId != null &&
@@ -393,155 +430,174 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
           );
           _restoreCombinedSelection(scopedRef);
 
-          return ScreenWrapper(
-            child: Scaffold(
-              key: e2eKey(E2eIds.tournamentDetailRoot),
-              // The Bracket tab is a pannable canvas with its own zoom
-              // controls in that corner; the chat button would cover them.
-              floatingActionButton:
-                  effectiveMode == TournamentDetailScreenMode.bracket
-                      ? null
-                      : BotvinnikChatButton(
-                        heroTag: 'botvinnik-tournament',
-                        screenContext: ChatScreenContext(
-                          screen: 'tournament',
-                          eventId: selectedBroadcast?.id,
-                          eventName: selectedBroadcast?.name,
-                          tournamentId: selectedTour?.id,
-                          tournamentName: selectedTour?.name,
-                        ),
-                        iconOnly: true,
-                      ),
-              body: Center(
-                child: ConstrainedBox(
-                  constraints: BoxConstraints(
-                    maxWidth:
-                        ResponsiveHelper.isTablet
-                            ? ResponsiveHelper.contentMaxWidth
-                            : double.infinity,
+          return PopScope(
+            // Back from the search closes it, back to the tab it searched.
+            canPop: !_searching,
+            onPopInvokedWithResult: (didPop, _) {
+              if (!didPop) _closeSearch();
+            },
+            child: ScreenWrapper(
+              child: Scaffold(
+                key: e2eKey(E2eIds.tournamentDetailRoot),
+                // Per tab, in the thumb's reach: Games has its search and,
+                // while something is live, Live first; Standings its search
+                // and Botvinnik; About Botvinnik. The Bracket canvas keeps its
+                // corner for its own zoom controls. Searching, nothing floats.
+                floatingActionButton: SlidingFabs(
+                  controller: _chrome,
+                  child: _EventFabs(
+                    mode: effectiveMode,
+                    searching: _searching,
+                    onSearch: _openSearch,
+                    chatContext: ChatScreenContext(
+                      screen: 'tournament',
+                      eventId: selectedBroadcast?.id,
+                      eventName: selectedBroadcast?.name,
+                      tournamentId: selectedTour?.id,
+                      tournamentName: selectedTour?.name,
+                    ),
                   ),
-                  child: Column(
-                    children: [
-                      SizedBox(
-                        height: MediaQuery.viewPaddingOf(context).top + 4.h,
-                      ),
-                      tourDetailAsync.when(
-                        data:
-                            (data) => _buildSuccessAppBar(
+                ),
+                body: Center(
+                  child: ConstrainedBox(
+                    constraints: BoxConstraints(
+                      maxWidth: ResponsiveHelper.isTablet
+                          ? ResponsiveHelper.contentMaxWidth
+                          : double.infinity,
+                    ),
+                    child: Column(
+                      children: [
+                        SizedBox(
+                          height: MediaQuery.viewPaddingOf(context).top + 4.h,
+                        ),
+                        // Folds up under the status bar as the list scrolls
+                        // down, comes back as it scrolls up.
+                        CollapsingChrome(
+                          controller: _chrome,
+                          child: tourDetailAsync.when(
+                            data: (data) => _buildSuccessAppBar(
                               data,
                               effectiveMode,
                               visibleModes,
                             ),
-                        error:
-                            (error, stackTrace) => _buildErrorAppBar(
+                            error: (error, stackTrace) => _buildErrorAppBar(
                               error,
                               effectiveMode,
                               visibleModes,
                             ),
-                        loading:
-                            () => const _LoadingAppBarWithTitle(
+                            loading: () => const _LoadingAppBarWithTitle(
                               title: "ChessEver",
                             ),
-                      ),
-                      Expanded(
-                        child: ScrollToTopScope(
-                          bus: _scrollToTopBus,
-                          child: PageView.builder(
-                            controller: pageController,
-                            physics:
-                                effectiveMode ==
-                                        TournamentDetailScreenMode.bracket
-                                    ? const NeverScrollableScrollPhysics()
-                                    : null,
-                            itemCount: visibleModes.length,
-                            onPageChanged:
-                                (index) =>
-                                    _handlePageChanged(index, visibleModes),
-                            itemBuilder: (context, index) {
-                              if (index >= visibleModes.length) {
-                                return const SizedBox.shrink();
-                              }
-                              switch (visibleModes[index]) {
-                                case TournamentDetailScreenMode.about:
-                                  return AboutTourScreen();
-                                case TournamentDetailScreenMode.games:
-                                  // PageView keeps this tab mounted. Release
-                                  // card hydration, clocks and live listeners
-                                  // while another tab is selected, preserving
-                                  // its scroll/expansion state for the return.
-                                  return TickerMode(
-                                    enabled:
-                                        effectiveMode ==
-                                        TournamentDetailScreenMode.games,
-                                    // Combined swaps the list, not the tab:
-                                    // every category's rounds in one place.
-                                    child:
-                                        combinedSelected
-                                            ? const CombinedGamesScreen()
-                                            : const GamesTourScreen(),
-                                  );
-                                case TournamentDetailScreenMode.bracket:
-                                  return const KnockoutBracketScreen();
-                                case TournamentDetailScreenMode.standings:
-                                  // Combined swaps the table, not the tab:
-                                  // every category's own standings in one
-                                  // list, team tables for team categories.
-                                  if (combinedSelected) {
-                                    return ScreenshotShareNudge(
-                                      enabled:
-                                          effectiveMode ==
-                                          TournamentDetailScreenMode.standings,
-                                      onShare:
-                                          () => shareTournamentStandings(
-                                            context,
-                                            scopedRef,
-                                          ),
-                                      child: const CombinedStandingsScreen(),
-                                    );
-                                  }
-                                  // Team events: team table (no standings-image
-                                  // share nudge — the individual standings the
-                                  // nudge shares now live on the Players tab).
-                                  if (isTeam) {
-                                    return const TeamStandingsScreen();
-                                  }
-                                  return ScreenshotShareNudge(
-                                    enabled:
-                                        effectiveMode ==
-                                        TournamentDetailScreenMode.standings,
-                                    onShare:
-                                        () => shareTournamentStandings(
-                                          context,
-                                          scopedRef,
-                                        ),
-                                    child: PlayerTourScreen(),
-                                  );
-                                case TournamentDetailScreenMode.players:
-                                  // Individual standings for team events; the
-                                  // share nudge follows them here.
-                                  return ScreenshotShareNudge(
-                                    enabled:
-                                        effectiveMode ==
-                                        TournamentDetailScreenMode.players,
-                                    onShare:
-                                        () => shareTournamentStandings(
-                                          context,
-                                          scopedRef,
-                                        ),
-                                    child:
-                                        combinedSelected
-                                            ? const CombinedStandingsScreen(
-                                              view:
-                                                  CombinedStandingsView.players,
-                                            )
-                                            : PlayerTourScreen(),
-                                  );
-                              }
-                            },
                           ),
                         ),
-                      ),
-                    ],
+                        Expanded(
+                          child: ScrollChromeRegion(
+                            controller: _chrome,
+                            // The Bracket is a canvas, not a list.
+                            enabled:
+                                effectiveMode !=
+                                TournamentDetailScreenMode.bracket,
+                            child: ScrollToTopScope(
+                              bus: _scrollToTopBus,
+                              child: PageView.builder(
+                                controller: pageController,
+                                // Searching holds the tab: the search belongs
+                                // to it.
+                                physics:
+                                    _searching ||
+                                        effectiveMode ==
+                                            TournamentDetailScreenMode.bracket
+                                    ? const NeverScrollableScrollPhysics()
+                                    : null,
+                                itemCount: visibleModes.length,
+                                onPageChanged: (index) =>
+                                    _handlePageChanged(index, visibleModes),
+                                itemBuilder: (context, index) {
+                                  if (index >= visibleModes.length) {
+                                    return const SizedBox.shrink();
+                                  }
+                                  switch (visibleModes[index]) {
+                                    case TournamentDetailScreenMode.about:
+                                      return AboutTourScreen();
+                                    case TournamentDetailScreenMode.games:
+                                      // PageView keeps this tab mounted. Release
+                                      // card hydration, clocks and live listeners
+                                      // while another tab is selected, preserving
+                                      // its scroll/expansion state for the return.
+                                      return TickerMode(
+                                        enabled:
+                                            effectiveMode ==
+                                            TournamentDetailScreenMode.games,
+                                        // Combined swaps the list, not the tab:
+                                        // every category's rounds in one place.
+                                        child: combinedSelected
+                                            ? const CombinedGamesScreen()
+                                            : const GamesTourScreen(),
+                                      );
+                                    case TournamentDetailScreenMode.bracket:
+                                      return const KnockoutBracketScreen();
+                                    case TournamentDetailScreenMode.standings:
+                                      // Combined swaps the table, not the tab:
+                                      // every category's own standings in one
+                                      // list, team tables for team categories.
+                                      if (combinedSelected) {
+                                        return ScreenshotShareNudge(
+                                          enabled:
+                                              effectiveMode ==
+                                              TournamentDetailScreenMode
+                                                  .standings,
+                                          onShare: () =>
+                                              shareTournamentStandings(
+                                                context,
+                                                scopedRef,
+                                              ),
+                                          child:
+                                              const CombinedStandingsScreen(),
+                                        );
+                                      }
+                                      // Team events: team table (no standings-image
+                                      // share nudge — the individual standings the
+                                      // nudge shares now live on the Players tab).
+                                      if (isTeam) {
+                                        return const TeamStandingsScreen();
+                                      }
+                                      return ScreenshotShareNudge(
+                                        enabled:
+                                            effectiveMode ==
+                                            TournamentDetailScreenMode
+                                                .standings,
+                                        onShare: () => shareTournamentStandings(
+                                          context,
+                                          scopedRef,
+                                        ),
+                                        child: PlayerTourScreen(),
+                                      );
+                                    case TournamentDetailScreenMode.players:
+                                      // Individual standings for team events; the
+                                      // share nudge follows them here.
+                                      return ScreenshotShareNudge(
+                                        enabled:
+                                            effectiveMode ==
+                                            TournamentDetailScreenMode.players,
+                                        onShare: () => shareTournamentStandings(
+                                          context,
+                                          scopedRef,
+                                        ),
+                                        child: combinedSelected
+                                            ? const CombinedStandingsScreen(
+                                                view: CombinedStandingsView
+                                                    .players,
+                                              )
+                                            : PlayerTourScreen(),
+                                      );
+                                  }
+                                },
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ),
@@ -557,6 +613,15 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
     TournamentDetailScreenMode selectedTourMode,
     List<TournamentDetailScreenMode> visibleModes,
   ) {
+    if (_searching) {
+      return KeyedSubtree(
+        key: tournamentDetailSuccessAppBarKey,
+        child: _EventSearchHeader(
+          focusNode: _searchFocus,
+          onClose: _closeSearch,
+        ),
+      );
+    }
     return Column(
       key: tournamentDetailSuccessAppBarKey,
       children: [
@@ -564,20 +629,12 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
             ? const GamesAppBarWidget()
             : _TourDetailDropDownAppBar(data: data),
         SizedBox(height: 8.h),
-        _PinnedEventSearchBar(
-          pageController: pageController,
-          visibleModes: visibleModes,
-          fallbackPage:
-              tournamentDetailPageForMode(
-                visibleModes,
-                selectedTourMode,
-              ).toDouble(),
-        ),
         _buildSegmentedSwitcher(
           selectedTourMode,
           visibleModes,
           (index) => _handleTabSelection(index, visibleModes),
         ),
+        SizedBox(height: 4.h),
       ],
     );
   }
@@ -589,10 +646,7 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
   ) {
     return Column(
       children: [
-        _LoadingAppBarWithTitle(
-          title: userFacingError(error),
-          loading: false,
-        ),
+        _LoadingAppBarWithTitle(title: userFacingError(error), loading: false),
         SizedBox(height: 8.h),
         _buildSegmentedSwitcher(
           selectedTourMode,
@@ -651,6 +705,7 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
       // and the keyboard collapse together, instead of the keyboard hovering
       // over About after a swipe.
       FocusScope.of(context).unfocus();
+      _chrome.show();
       // Schedule the state change to avoid mutating provider state during
       // layout/semantics passes, which can trigger parentDataDirty assertions.
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -679,6 +734,7 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
 
       if (currentMode != nextMode) {
         FocusScope.of(context).unfocus();
+        _chrome.show();
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (!mounted) return;
           ref.read(selectedTourModeProvider.notifier).update((_) => nextMode);
@@ -830,98 +886,156 @@ const _mappedName = {
   TournamentDetailScreenMode.players: 'Players',
 };
 
-/// Search bar pinned above the tournament-detail tab switcher.
-///
-/// Hidden on About and Bracket; visible on Games, Standings, and Players.
-/// Drives its height and opacity directly from [pageController.page] so the
-/// reveal/collapse tracks the swipe finger in real time and smoothly chases
-/// `animateToPage` when a tab is tapped — no two-stage "page settles, then
-/// search bar pops" feel.
-///
-/// On Games the row also carries the list's one-tap controls, Live first and
-/// Collapse all ([EventGamesQuickActions]). They ride the same swipe: whole on
-/// Games, folded away one page off it.
-class _PinnedEventSearchBar extends StatelessWidget {
-  const _PinnedEventSearchBar({
-    required this.pageController,
-    required this.visibleModes,
-    required this.fallbackPage,
-  });
+/// The header while a tab is being searched: a way back and the field, and
+/// nothing else. The tab itself fills the page under it, filtered as the
+/// reader types (Games by players, openings and rounds; Standings and
+/// Players by name).
+class _EventSearchHeader extends StatelessWidget {
+  const _EventSearchHeader({required this.focusNode, required this.onClose});
 
-  final PageController pageController;
-  final List<TournamentDetailScreenMode> visibleModes;
-  final double fallbackPage;
-
-  /// Tall enough for the controls' 44pt targets on every tab, so the strip
-  /// keeps one height as they fold in and out.
-  static const double _rowHeight = 44;
+  final FocusNode focusNode;
+  final VoidCallback onClose;
 
   @override
   Widget build(BuildContext context) {
-    final horizontalPadding = ResponsiveHelper.adaptive(
-      phone: 20.sp,
-      tablet: 32.sp,
-    );
-    // The controls' glyphs sit in the two columns of the Games header's
-    // glyphs: the fold under the ⋮ (centred 20.w + 16.w from the end edge)
-    // and Live first under the view toggle, 50.w further in
-    // (games_app_bar_widget.dart).
-    const halfTarget = _rowHeight / 2;
-    final controlsEnd = math.max(0.0, 36.w - halfTarget);
-    final controls = EventGamesQuickActions(
-      gap: math.max(0.0, 50.w - 2 * halfTarget),
-    );
-    final gamesPage = visibleModes.indexOf(TournamentDetailScreenMode.games);
-    return AnimatedBuilder(
-      animation: pageController,
-      builder: (context, child) {
-        final page =
-            pageController.hasClients
-                ? (pageController.page ?? fallbackPage)
-                : fallbackPage;
-        final t = tournamentDetailSearchVisibility(visibleModes, page);
-        if (t <= 0.0) {
-          return const SizedBox.shrink();
-        }
-        final onGames = gamesPage < 0
-            ? 0.0
-            : (1 - (page - gamesPage).abs()).clamp(0.0, 1.0).toDouble();
-        return ClipRect(
-          child: Align(
-            alignment: Alignment.topCenter,
-            heightFactor: t,
-            child: Opacity(
-              opacity: t,
-              child: Padding(
-                padding: EdgeInsetsDirectional.only(
-                  start: horizontalPadding,
-                  end:
-                      horizontalPadding +
-                      (controlsEnd - horizontalPadding) * onGames,
-                  bottom: 2.h,
-                ),
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(minHeight: _rowHeight),
-                  child: Row(
-                    children: [
-                      Expanded(child: child!),
-                      if (onGames > 0)
-                        ClipRect(
-                          child: Align(
-                            alignment: AlignmentDirectional.centerStart,
-                            widthFactor: onGames,
-                            child: Opacity(opacity: onGames, child: controls),
-                          ),
-                        ),
-                    ],
-                  ),
-                ),
+    final side = ResponsiveHelper.adaptive(phone: 20.sp, tablet: 32.sp);
+    return Padding(
+      // The chevron's glyph lands on the gutter; its 44pt target reaches
+      // into it.
+      // Never negative: a folded Duo pane is narrower than the gutter.
+      padding: EdgeInsetsDirectional.fromSTEB(
+        math.max(0.0, side - 12),
+        4.h,
+        side,
+        10.h,
+      ),
+      child: Row(
+        children: [
+          SizedBox.square(
+            dimension: 44,
+            child: IconButton(
+              key: const ValueKey('event_search_close'),
+              tooltip: 'Close search',
+              padding: EdgeInsets.zero,
+              onPressed: () {
+                HapticFeedbackService.navigation();
+                onClose();
+              },
+              icon: Icon(
+                Icons.arrow_back_ios_new_outlined,
+                size: 22,
+                color: context.colors.textPrimary,
               ),
             ),
           ),
-        );
-      },
-      child: const EventSearchBar(),
+          const SizedBox(width: 4),
+          Expanded(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(minHeight: 44),
+              child: Center(
+                child: EventSearchBar(focusNode: focusNode, autofocus: true),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
+  }
+}
+
+/// The single-category Games list still shows a search's hits. Closing the
+/// search leaves them up until the list of every game is rebuilt; Combined
+/// drops its search with the query, at once.
+bool _listHoldsSearchHits(EventProviderReader read) =>
+    !read(combinedCategorySelectedProvider) &&
+    read(
+      gamesTourScreenProvider.select(
+        (screen) => screen.valueOrNull?.isSearchMode ?? false,
+      ),
+    );
+
+/// The event's floating buttons for the tab in view.
+///
+/// Games: the search (the tab's full-page search) and, above it only while
+/// a game is in play, Live first. Standings: the search and
+/// Botvinnik above it. Players: the search. About: Botvinnik. Bracket keeps
+/// its corner for the canvas's zoom controls. Botvinnik stays on About and
+/// Standings only (Trello #1420); everywhere else it has its own tab.
+class _EventFabs extends ConsumerWidget {
+  const _EventFabs({
+    required this.mode,
+    required this.searching,
+    required this.onSearch,
+    required this.chatContext,
+  });
+
+  final TournamentDetailScreenMode mode;
+  final bool searching;
+  final VoidCallback onSearch;
+  final ChatScreenContext chatContext;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    if (searching) return const SizedBox.shrink();
+    final botvinnik = ref.watch(botvinnikTabAvailableProvider);
+    Widget chat() => BotvinnikChatButton(
+      heroTag: 'botvinnik-tournament',
+      screenContext: chatContext,
+      iconOnly: true,
+    );
+    final search = SearchInkFab(
+      key: const ValueKey('event_search_fab'),
+      label: mode == TournamentDetailScreenMode.games
+          ? 'Search games'
+          : 'Search players',
+      onTap: onSearch,
+    );
+    switch (mode) {
+      case TournamentDetailScreenMode.bracket:
+        return const SizedBox.shrink();
+      case TournamentDetailScreenMode.about:
+        return botvinnik ? chat() : const SizedBox.shrink();
+      case TournamentDetailScreenMode.players:
+        return search;
+      case TournamentDetailScreenMode.standings:
+        return InkFabStack(children: [if (botvinnik) chat(), search]);
+      case TournamentDetailScreenMode.games:
+        final liveFirst = ref.watch(eventGamesLiveFirstProvider);
+        final anyLive = ref.watch(eventGamesAnyLiveProvider);
+        // Just after the search closes the list still holds its hits. Live
+        // first waits for every game: what is live among the hits says
+        // nothing of the event, and a press would run the closed query again.
+        final holdsHits = _listHoldsSearchHits(ref.watch);
+        // Here Live first hides the finished games. Left on after the last
+        // live game ended, it would keep them hidden behind a button that is
+        // no longer shown: once the list has loaded with nothing live, it
+        // turns itself off.
+        if (!holdsHits && ref.watch(eventGamesLiveFirstStrandedProvider)) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (context.mounted &&
+                !_listHoldsSearchHits(ref.read) &&
+                ref.read(eventGamesLiveFirstStrandedProvider)) {
+              pressEventGamesLiveFirst(ref.read);
+            }
+          });
+        }
+        return InkFabStack(
+          children: [
+            // Only while a game is in play (Trello #1420).
+            if (anyLive && !holdsHits)
+              LiveFirstInkFab(
+                key: const ValueKey('event_live_first_fab'),
+                on: liveFirst,
+                onTap: () {
+                  if (pressEventGamesLiveFirst(ref.read) ==
+                      EventLiveFirstPress.nothingLive) {
+                    showAppSnack(context, kNoLiveGamesRightNowMessage);
+                  }
+                },
+              ),
+            search,
+          ],
+        );
+    }
   }
 }

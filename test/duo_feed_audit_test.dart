@@ -49,7 +49,6 @@ import 'package:chessever2/services/rewarded_premium/rewarded_access_provider.da
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/adaptive_window.dart';
 import 'package:chessever2/widgets/search/recent_searches_provider.dart';
-import 'package:chessever2/widgets/segmented_switcher.dart';
 import 'package:chessground/chessground.dart';
 import 'package:dartchess/dartchess.dart';
 import 'package:flutter/material.dart';
@@ -1228,8 +1227,8 @@ void _expectPageFillsSlot(WidgetTester tester, ForYouTab tab) {
   expect(page.height, moreOrLessEquals(slot.height), reason: tab.name);
   expect(page.width, moreOrLessEquals(slot.width), reason: tab.name);
   expect(page.top, moreOrLessEquals(slot.top), reason: tab.name);
-  // The segment control sits above the slot and inside the window.
-  final segments = tester.getRect(find.byType(SegmentedSwitcher));
+  // The page tabs sit above the slot and inside the window.
+  final segments = tester.getRect(find.byType(ForYouPageTabs));
   expect(segments.bottom, lessThanOrEqualTo(slot.top + 0.5));
   expect(segments.top, greaterThanOrEqualTo(0));
 }

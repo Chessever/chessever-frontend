@@ -16,6 +16,9 @@ import 'package:chessever2/screens/my_prep/tabs/prep_games_tab.dart';
 import 'package:chessever2/screens/my_prep/widgets/prep_common.dart';
 import 'package:chessever2/screens/my_prep/widgets/prep_filters.dart';
 import 'package:chessever2/screens/my_prep/widgets/prep_open_profile_button.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/games_list_view_mode_provider.dart';
+import 'package:chessever2/screens/tour_detail/widgets/event_search_bar.dart'
+    show EventSearchBarFrame;
 import 'package:chessever2/services/game_tree/game_tree_service.dart';
 import 'package:chessever2/services/game_tree/game_tree_store.dart';
 import 'package:chessever2/theme/app_colors.dart';
@@ -24,7 +27,11 @@ import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/card_context_menu.dart';
 import 'package:chessever2/widgets/game_tree/build_tree_button.dart';
+import 'package:chessever2/widgets/ink_fab.dart';
 import 'package:chessever2/widgets/screen_wrapper.dart';
+import 'package:chessever2/widgets/scroll_chrome.dart';
+import 'package:chessever2/widgets/search_page_header.dart';
+import 'package:chessever2/widgets/simple_search_bar.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -213,8 +220,15 @@ class PrepAccountTreeTarget extends GameTreeTarget {
 
 // ------------------------------------------------------------------ screens
 
+/// The status bar's inset over a Library node screen's header, kept apart
+/// from it: a header that scrolls away folds up to this line, never into
+/// the status bar.
+double _headerInset(BuildContext context) =>
+    MediaQuery.viewPaddingOf(context).top + 4.h;
+
 /// The header every Library node screen wears: back, a centred title over
-/// a count line, and the node's actions at the right.
+/// a count line, and the node's actions at the right. It sits under
+/// [_headerInset].
 class _NodeHeader extends StatelessWidget {
   const _NodeHeader({
     required this.title,
@@ -231,12 +245,7 @@ class _NodeHeader extends StatelessWidget {
     final colors = context.colors;
     final horizontal = ResponsiveHelper.adaptive(phone: 8.w, tablet: 16.w);
     return Padding(
-      padding: EdgeInsets.fromLTRB(
-        horizontal,
-        MediaQuery.of(context).viewPadding.top + 8.h,
-        horizontal,
-        8.h,
-      ),
+      padding: EdgeInsets.fromLTRB(horizontal, 4.h, horizontal, 8.h),
       child: Row(
         children: [
           IconButton(
@@ -332,6 +341,7 @@ class PrepLibraryFolderScreen extends ConsumerWidget {
             ),
             child: Column(
               children: [
+                SizedBox(height: _headerInset(context)),
                 _NodeHeader(
                   title: profile.name,
                   subtitle:
@@ -487,7 +497,9 @@ GameTreeTarget _treeTarget(
 }
 
 /// One of a player's databases: its games, newest first, on the Library's
-/// game cards, with the tree at the top-right like every games view.
+/// game cards, with the tree at the top-right like every games view. The
+/// search floats at the bottom-right and opens over the whole page, as a
+/// profile's Games does.
 class PrepLibraryDatabaseScreen extends ConsumerStatefulWidget {
   const PrepLibraryDatabaseScreen({
     super.key,
@@ -522,12 +534,49 @@ class PrepLibraryDatabaseScreen extends ConsumerStatefulWidget {
 }
 
 class _PrepLibraryDatabaseScreenState
-    extends ConsumerState<PrepLibraryDatabaseScreen> {
+    extends ConsumerState<PrepLibraryDatabaseScreen>
+    with SingleTickerProviderStateMixin {
   PrepFilter _filter = const PrepFilter();
   final _gamesController = PrepGamesController();
   List<PrepGame>? _input;
   PrepFilter? _used;
   List<PrepGame> _output = const [];
+
+  /// The header, pushed away by the list's scroll and back as it scrolls
+  /// up, with the search button sliding out under it.
+  late final ScrollChromeController _chrome = ScrollChromeController(
+    vsync: this,
+  );
+
+  /// The full-page search: the field in the header's place, the games under
+  /// it narrowing as the reader types, nothing else around it.
+  bool _searching = false;
+  final _searchText = TextEditingController();
+  final _searchFocus = FocusNode();
+
+  void _openSearch() {
+    if (_searching) return;
+    setState(() => _searching = true);
+    _chrome.show();
+  }
+
+  /// Back from the search clears it; the filters stay, counted on the
+  /// search button.
+  void _closeSearch() {
+    if (!_searching) return;
+    _searchFocus.unfocus();
+    _searchText.clear();
+    setState(() => _searching = false);
+    _chrome.show();
+  }
+
+  @override
+  void dispose() {
+    _searchFocus.dispose();
+    _searchText.dispose();
+    _chrome.dispose();
+    super.dispose();
+  }
 
   List<PrepGame> _games(List<PrepGame> all, PrepAccount? account) {
     if (!identical(all, _input) || _used != _filter) {
@@ -575,86 +624,181 @@ class _PrepLibraryDatabaseScreenState
       account,
     );
     final count = account?.gameCount ?? profile.gameCount;
+    final unfiltered = _filter == const PrepFilter();
+    // The database lists its games (not a message): it has a search.
+    final listed =
+        analysis.hasValue &&
+        !analysis.hasError &&
+        (games.isNotEmpty || !unfiltered);
+    final searching = _searching && listed;
 
-    return Scaffold(
-      backgroundColor: context.colors.background,
-      body: ScreenWrapper(
-        child: Center(
-          child: ConstrainedBox(
-            constraints: BoxConstraints(
-              maxWidth: ResponsiveHelper.isTablet
-                  ? ResponsiveHelper.contentMaxWidth
-                  : double.infinity,
+    final bars = searching
+        ? SearchPageHeader(
+            closeKey: const ValueKey('prep_library_search_close'),
+            onClose: _closeSearch,
+            field: EventSearchBarFrame(
+              compact: true,
+              child: SimpleSearchBar(
+                controller: _searchText,
+                focusNode: _searchFocus,
+                autofocus: true,
+                hintText: 'Search games',
+                textFieldKey: const ValueKey('prep_library_games_search'),
+                filterButtonKey: const ValueKey('prep_library_games_filters'),
+                compactFilter: true,
+                filterBadgeCount: _filter.activeCount,
+                onOpenFilter: _gamesController.showFilters,
+                onCloseTap: () {
+                  _searchText.clear();
+                  _searchFocus.unfocus();
+                },
+              ),
             ),
-            child: Column(
-              children: [
-                _NodeHeader(
-                  title: account == null ? 'Combined' : _accountLabel(account),
-                  subtitle: '${profile.name} · ${prepGamesLabel(count)}',
-                  actions: [
-                    if (count > 0)
-                      BuildTreeButton(
-                        compact: false,
-                        target: _treeTarget(ref, profile, account),
-                      ),
-                    if (games.isNotEmpty)
-                      CardMoreButton(
-                        vertical: true,
-                        color: context.colors.textPrimary,
-                        size: 22.ic,
-                        actions: (_) => prepGamesMenu(_gamesController),
-                      ),
+          )
+        : _NodeHeader(
+            title: account == null ? 'Combined' : _accountLabel(account),
+            subtitle: '${profile.name} · ${prepGamesLabel(count)}',
+            actions: [
+              if (count > 0)
+                BuildTreeButton(
+                  compact: false,
+                  target: _treeTarget(ref, profile, account),
+                ),
+              // The list's layout is in the menu now that its own row is
+              // gone, so it stays while filters leave nothing to save.
+              if (listed)
+                CardMoreButton(
+                  vertical: true,
+                  color: context.colors.textPrimary,
+                  size: 22.ic,
+                  actions: (_) => [
+                    _layoutAction(ref),
+                    ...prepGamesMenu(_gamesController),
                   ],
                 ),
-                Expanded(
-                  child: analysis.when(
-                    skipLoadingOnReload: true,
-                    error: (error, _) => PrepMessage(
-                      title: 'Could not read these games',
-                      body: '$error',
+            ],
+          );
+
+    return PopScope(
+      // Back from the search closes it, back to the games it searched.
+      canPop: !searching,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) _closeSearch();
+      },
+      child: Scaffold(
+        backgroundColor: context.colors.background,
+        floatingActionButton: SlidingFabs(
+          controller: _chrome,
+          child: listed && !searching
+              ? SearchInkFab(
+                  key: const ValueKey('prep_library_search_fab'),
+                  label: 'Search games',
+                  badgeCount: _filter.activeCount,
+                  onTap: _openSearch,
+                )
+              : const SizedBox.shrink(),
+        ),
+        body: ScreenWrapper(
+          child: Center(
+            child: ConstrainedBox(
+              constraints: BoxConstraints(
+                maxWidth: ResponsiveHelper.isTablet
+                    ? ResponsiveHelper.contentMaxWidth
+                    : double.infinity,
+              ),
+              child: Column(
+                children: [
+                  SizedBox(height: _headerInset(context)),
+                  Focus(
+                    canRequestFocus: false,
+                    skipTraversal: true,
+                    // The field with the keyboard up holds the header:
+                    // scrolling the games must not push away the line
+                    // being typed.
+                    onFocusChange: (focused) => _chrome.held = focused,
+                    child: CollapsingChrome(
+                      controller: _chrome,
+                      child: SizedBox(width: double.infinity, child: bars),
                     ),
-                    loading: () => PrepMessage(
-                      title: indexing == null
-                          ? 'Reading games…'
-                          : 'Indexing games · $indexing%',
-                      body:
-                          'Done once on this phone. Later updates only '
-                          'add new games.',
-                      busy: true,
-                    ),
-                    data: (data) =>
-                        games.isEmpty && _filter == const PrepFilter()
-                        ? PrepMessage(
-                            title: 'No games yet',
-                            body:
-                                account?.error ??
-                                'Download games for this player in Prep.',
-                            actionLabel: 'Refresh games',
-                            onAction: () => account == null
-                                ? prepRefreshProfile(context, ref, profile.id)
-                                : prepRefreshAccount(
-                                    context,
-                                    ref,
-                                    profile.id,
-                                    account,
-                                  ),
-                          )
-                        : PrepGamesTab(
-                            analysis: data,
-                            games: games,
-                            filter: _filter,
-                            controller: _gamesController,
-                            onFilterChanged: (f) => setState(() => _filter = f),
-                          ),
                   ),
-                ),
-              ],
+                  Expanded(
+                    child: ScrollChromeRegion(
+                      controller: _chrome,
+                      child: analysis.when(
+                        skipLoadingOnReload: true,
+                        error: (error, _) => PrepMessage(
+                          title: 'Could not read these games',
+                          body: '$error',
+                        ),
+                        loading: () => PrepMessage(
+                          title: indexing == null
+                              ? 'Reading games…'
+                              : 'Indexing games · $indexing%',
+                          body:
+                              'Done once on this phone. Later updates only '
+                              'add new games.',
+                          busy: true,
+                        ),
+                        data: (data) => games.isEmpty && unfiltered
+                            ? PrepMessage(
+                                title: 'No games yet',
+                                body:
+                                    account?.error ??
+                                    'Download games for this player in Prep.',
+                                actionLabel: 'Refresh games',
+                                onAction: () => account == null
+                                    ? prepRefreshProfile(
+                                        context,
+                                        ref,
+                                        profile.id,
+                                      )
+                                    : prepRefreshAccount(
+                                        context,
+                                        ref,
+                                        profile.id,
+                                        account,
+                                      ),
+                              )
+                            : PrepGamesTab(
+                                analysis: data,
+                                games: games,
+                                filter: _filter,
+                                controller: _gamesController,
+                                // Typed in the search header.
+                                search: _searchText,
+                                onFilterChanged: (f) =>
+                                    setState(() => _filter = f),
+                              ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ),
       ),
     );
   }
+}
+
+/// The menu row that moves the games on to their next layout, named for the
+/// layout it brings. A row rather than a glyph: beside the tree and the
+/// menu, a third button would leave the title no room on a narrow phone.
+LibraryMenuAction _layoutAction(WidgetRef ref) {
+  final (icon, label) = switch (ref.read(gamesListViewModeProvider)) {
+    GamesListViewMode.gamesCard => (Icons.grid_view_rounded, 'Show as grid'),
+    GamesListViewMode.chessBoardGrid => (
+      Icons.view_agenda_outlined,
+      'Show as boards',
+    ),
+    GamesListViewMode.chessBoard => (Icons.view_list_rounded, 'Show as list'),
+  };
+  return LibraryMenuAction(
+    icon: icon,
+    label: label,
+    onSelected: () => ref.read(gamesListViewModeSwitcher).toggleViewMode(),
+  );
 }
 
 /// Opens the Library node a My Prep folder id names.

@@ -642,8 +642,35 @@ void main() {
       );
       expect(find.byType(MyLikesGameCard), findsOneWidget);
       expect(find.byTooltip('Export as PGN'), findsOneWidget);
-      expect(find.byType(TextField), findsOneWidget);
       expect(find.byType(PageView), findsNothing);
+      // No search row over the archive: search floats in the thumb's reach
+      // and opens the field in the title row's place, over the same list.
+      final fab = find.byKey(const ValueKey('my_likes_search_fab'));
+      final field = find.byKey(const ValueKey('my_likes_search'));
+      expect(find.byType(TextField), findsNothing);
+      expect(fab, findsOneWidget);
+      await tester.tap(fab);
+      await _settle(tester);
+      expect(find.byType(TextField), findsOneWidget);
+      expect(tester.widget<TextField>(field).focusNode!.hasFocus, isTrue);
+      expect(
+        find.byKey(const ValueKey('my_likes_filters')).hitTestable(),
+        findsOneWidget,
+      );
+      expect(find.byTooltip('Export as PGN'), findsNothing);
+      expect(find.byType(MyLikesGameCard), findsOneWidget);
+      expect(fab, findsNothing);
+      await tester.enterText(field, 'Carlsen');
+      await tester.pump(const Duration(milliseconds: 450));
+      expect(container.read(myLikesFilterProvider).searchQuery, 'Carlsen');
+      // System back leaves the search, not the archive, and clears it.
+      await tester.binding.handlePopRoute();
+      await _settle(tester);
+      expect(find.byType(MyLikesScreen), findsOneWidget);
+      expect(find.byType(TextField), findsNothing);
+      expect(find.byTooltip('Export as PGN'), findsOneWidget);
+      expect(fab, findsOneWidget);
+      expect(container.read(myLikesFilterProvider).searchQuery, '');
       await tester.tap(find.byType(DateSectionHeader));
       await _settle(tester);
       expect(find.byType(MyLikesGameCard), findsNothing);

@@ -894,6 +894,10 @@ void main() {
           paid,
           repo: repo,
         );
+        // The book's search opens from its floating button, in the
+        // header's place.
+        await tester.tap(find.byKey(const ValueKey('event_view_search_fab')));
+        await _settle(tester);
         await tester.enterText(find.byType(EditableText), 'Ganguly');
         await tester.pump(const Duration(seconds: 1));
         await _settle(tester);
@@ -911,6 +915,9 @@ void main() {
         await _settle(tester);
         expect(find.textContaining('Filter'), findsWidgets);
         Navigator.of(tester.element(find.textContaining('Filter').first)).pop();
+        await _settle(tester);
+        // Back closes the search; the tabs return.
+        await tester.tap(find.byKey(const ValueKey('event_view_search_close')));
         await _settle(tester);
         await tester.tap(find.text('Players'));
         await _settle(tester);

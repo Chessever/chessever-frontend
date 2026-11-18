@@ -18,7 +18,6 @@ import 'package:chessever2/widgets/alert_dialog/alert_modal.dart';
 import 'package:chessever2/widgets/app_snack.dart';
 import 'package:chessever2/widgets/figma_player_card.dart';
 import 'package:chessever2/widgets/scroll_to_top_bus.dart';
-import 'package:chessever2/widgets/scroll_to_top_button.dart';
 import 'package:chessever2/widgets/search/gameSearch/enhanced_game_search_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -68,33 +67,22 @@ class _FavoritesListTabState extends ConsumerState<FavoritesListTab>
   Widget build(BuildContext context) {
     super.build(context);
 
-    return Stack(
-      children: [
-        ref
-            .watch(favoritePlayersNotifierProvider)
-            .when(
-              data: (favoritesState) {
-                final filteredPlayers = ref.read(
-                  filteredFavoritePlayersProvider(_searchController.text),
-                );
-                return _buildContent(filteredPlayers, favoritesState.players);
-              },
-              loading:
-                  () => Center(
-                    child: CircularProgressIndicator(
-                      color: context.colors.textPrimary,
-                    ),
-                  ),
-              error: (error, stack) => _buildErrorState(userFacingError(error)),
-            ),
-        // Scroll to top button
-        Positioned(
-          bottom: 0,
-          right: 0,
-          child: ScrollToTopButton(scrollController: _scrollController),
-        ),
-      ],
-    );
+    // No scroll-to-top button (Trello #1420): tapping the tab again already
+    // scrolls up.
+    return ref
+        .watch(favoritePlayersNotifierProvider)
+        .when(
+          data: (favoritesState) {
+            final filteredPlayers = ref.read(
+              filteredFavoritePlayersProvider(_searchController.text),
+            );
+            return _buildContent(filteredPlayers, favoritesState.players);
+          },
+          loading: () => Center(
+            child: CircularProgressIndicator(color: context.colors.textPrimary),
+          ),
+          error: (error, stack) => _buildErrorState(userFacingError(error)),
+        );
   }
 
   Widget _buildContent(
@@ -251,11 +239,7 @@ class _FavoritesListTabState extends ConsumerState<FavoritesListTab>
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(
-            Icons.error_outline,
-            size: 48.ic,
-            color: context.colors.danger,
-          ),
+          Icon(Icons.error_outline, size: 48.ic, color: context.colors.danger),
           SizedBox(height: 16.h),
           Text(
             'Error loading favorites',
@@ -347,17 +331,16 @@ class _FavoritesListTabState extends ConsumerState<FavoritesListTab>
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder:
-            (context) => PlayerProfileScreen(
-              fideId: player.fideId,
-              playerName: player.name,
-              title: player.title,
-              federation: player.countryCode,
-              rating: player.score,
-              gamebasePlayerId: player.gamebasePlayerId,
-              memorialSourceIdentity: player.memorialSourceIdentity,
-              memorialRouteId: player.memorialRouteId,
-            ),
+        builder: (context) => PlayerProfileScreen(
+          fideId: player.fideId,
+          playerName: player.name,
+          title: player.title,
+          federation: player.countryCode,
+          rating: player.score,
+          gamebasePlayerId: player.gamebasePlayerId,
+          memorialSourceIdentity: player.memorialSourceIdentity,
+          memorialRouteId: player.memorialRouteId,
+        ),
       ),
     );
   }

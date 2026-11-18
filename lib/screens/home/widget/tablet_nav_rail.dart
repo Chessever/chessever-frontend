@@ -2,24 +2,21 @@ import 'dart:async';
 
 import 'package:chessever2/screens/home/start_screen.dart';
 import 'package:chessever2/screens/home/widget/bottom_nav_bar.dart';
-import 'package:chessever2/services/analytics/analytics_service.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/widgets/discovery_dot.dart';
-import 'package:chessever2/widgets/svg_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:motor/motor.dart';
 
-/// A tablet-optimized navigation rail that replaces the bottom navigation bar.
-/// Provides a vertical navigation experience with icons and labels.
+/// The tablet's navigation rail: the phone bar's five sections, stood on
+/// end, each with its name under its mark.
 class TabletNavRail extends ConsumerWidget {
-  final GlobalKey<ScaffoldState>? scaffoldKey;
-
-  const TabletNavRail({super.key, this.scaffoldKey});
+  const TabletNavRail({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final selectedItem = ref.watch(selectedBottomNavBarItemProvider);
+    final items = ref.watch(visibleBottomNavItemsProvider);
 
     final isLandscape =
         MediaQuery.orientationOf(context) == Orientation.landscape;
@@ -29,86 +26,30 @@ class TabletNavRail extends ConsumerWidget {
       width: railWidth,
       color: context.colors.background,
       child: SafeArea(
-        child: Column(
-          children: [
-            // Menu button at top
-            Padding(
-              padding: const EdgeInsets.only(top: 16.0, bottom: 24.0),
-              child: _MenuButton(
-                onTap: () {
-                  scaffoldKey?.currentState?.openDrawer();
-                },
-              ),
+        child: Padding(
+          padding: const EdgeInsets.only(top: 16.0),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.start,
+              children: [
+                for (final item in items)
+                  _NavRailItem(
+                    key: bottomNavBarItemKey(item),
+                    item: item,
+                    isSelected: selectedItem == item,
+                    onLongPress: () => unawaited(
+                      makeStartScreenDefault(context, ref, section: item),
+                    ),
+                    onTap: () => selectBottomNavBarItem(
+                      ref,
+                      item,
+                      navigationType: 'rail',
+                    ),
+                  ),
+              ],
             ),
-            // Navigation items
-            Expanded(
-              child: SingleChildScrollView(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.start,
-                  children: bottomNavBarOrder.map((item) {
-                    return _NavRailItem(
-                      item: item,
-                      isSelected: selectedItem == item,
-                      onLongPress: () => unawaited(
-                        makeStartScreenDefault(context, ref, section: item),
-                      ),
-                      onTap: () {
-                        final previous = ref.read(
-                          selectedBottomNavBarItemProvider,
-                        );
-                        if (previous == item) {
-                          // Same contract as the phone bar: a re-tap asks
-                          // the tab to jump (Flow: next clip, lists: top).
-                          ref
-                              .read(bottomNavBarReTapRequestProvider.notifier)
-                              .request(item);
-                          return;
-                        }
-
-                        ref
-                                .read(selectedBottomNavBarItemProvider.notifier)
-                                .state =
-                            item;
-
-                        unawaited(
-                          AnalyticsService.instance.trackEvent(
-                            'Tab Changed',
-                            properties: {
-                              'previous_tab': previous.name,
-                              'tab': item.name,
-                              'navigation_type': 'rail',
-                            },
-                          ),
-                        );
-                      },
-                    );
-                  }).toList(),
-                ),
-              ),
-            ),
-          ],
+          ),
         ),
-      ),
-    );
-  }
-}
-
-class _MenuButton extends StatelessWidget {
-  final VoidCallback onTap;
-
-  const _MenuButton({required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    // The bare mark on the rail, no tile behind it; 48 square to tap.
-    return SizedBox.square(
-      dimension: 48.0,
-      child: IconButton(
-        tooltip: 'Menu',
-        onPressed: onTap,
-        padding: EdgeInsets.zero,
-        color: context.colors.iconPrimary,
-        icon: const Icon(Icons.menu_rounded, size: 24.0),
       ),
     );
   }
@@ -125,6 +66,7 @@ class _NavRailItem extends StatefulWidget {
   final VoidCallback? onLongPress;
 
   const _NavRailItem({
+    super.key,
     required this.item,
     required this.isSelected,
     required this.onTap,
@@ -149,7 +91,6 @@ class _NavRailItemState extends State<_NavRailItem> {
 
   @override
   Widget build(BuildContext context) {
-    final iconPath = bottomNavBarIcons[widget.item]!;
     final title = namesBottomNavBarIcons[widget.item]!;
 
     final roomyRail =
@@ -194,17 +135,12 @@ class _NavRailItemState extends State<_NavRailItem> {
                   children: [
                     Padding(
                       padding: const EdgeInsets.symmetric(vertical: 8.0),
-                      child: widget.item == BottomNavBarItem.forYou
-                          ? Icon(Icons.home_rounded, size: iconSize, color: ink)
-                          : SvgWidget(
-                              iconPath,
-                              width: iconSize,
-                              height: iconSize,
-                              colorFilter: ColorFilter.mode(
-                                ink,
-                                BlendMode.srcIn,
-                              ),
-                            ),
+                      child: bottomNavBarGlyph(
+                        widget.item,
+                        ink: ink,
+                        side: iconSize,
+                        selected: widget.isSelected,
+                      ),
                     ),
                     const SizedBox(height: 4.0),
                     // Label

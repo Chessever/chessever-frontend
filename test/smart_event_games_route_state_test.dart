@@ -59,6 +59,41 @@ SmartEventRequest _request() {
   );
 }
 
+Future<ProviderContainer> _pumpSmartEvent(
+  WidgetTester tester,
+  SmartEventRequest request,
+) async {
+  final container = ProviderContainer(
+    overrides: [
+      boardSettingsProviderNew.overrideWith(_TestBoardSettingsNotifier.new),
+      favoriteEventsProvider.overrideWith(_TestFavoriteEventsNotifier.new),
+      spaceShortcutsProvider.overrideWith(_TestSpaceShortcutsNotifier.new),
+      smartAggregateEventRepositoryProvider.overrideWith(
+        (ref, query) => _LoadedAggregateNotifier(ref, query),
+      ),
+    ],
+  );
+  addTearDown(container.dispose);
+  await tester.pumpWidget(
+    UncontrolledProviderScope(
+      container: container,
+      child: MaterialApp(
+        theme: AppTheme.darkTheme,
+        navigatorObservers: [routeObserver],
+        home: Builder(
+          builder: (context) {
+            ResponsiveHelper.init(context);
+            return SmartEventScreen(request: request);
+          },
+        ),
+      ),
+    ),
+  );
+  await tester.pump();
+  await tester.pump(const Duration(seconds: 1));
+  return container;
+}
+
 void main() {
   testWidgets('Smart Event menu offers My Space without a bookmark save; layout cycles as usual', (
     tester,
@@ -241,6 +276,63 @@ void main() {
       expect(listStateBefore.position, same(scrollPositionBefore));
       expect(listStateBefore.position.pixels, scrollOffsetBefore);
       expect(createdNotifiers, [same(notifierBefore)]);
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump();
+    },
+  );
+
+  // Trello #1420: the search and the list controls left the header for a
+  // floating search that opens the tab's search in place.
+  testWidgets(
+    'the floating search opens Games search in place; back closes it and '
+    'clears the query',
+    (tester) async {
+      await _pumpSmartEvent(tester, _request());
+
+      final fab = find.byKey(const ValueKey('smart_event_search_fab'));
+      final close = find.byKey(const ValueKey('smart_event_search_close'));
+      expect(fab, findsOneWidget);
+      expect(find.byType(TextField), findsNothing);
+      expect(find.text('No games right now'), findsOneWidget);
+
+      await tester.tap(fab);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+
+      // The header is the search: a way back and the focused field. The title
+      // row, the tabs and the floating search are gone.
+      expect(close, findsOneWidget);
+      expect(find.byType(AppBarIcons), findsNothing);
+      expect(find.text('Events'), findsNothing);
+      expect(fab, findsNothing);
+      final field = find.byType(TextField);
+      expect(field, findsOneWidget);
+      expect(tester.widget<TextField>(field).focusNode!.hasFocus, isTrue);
+
+      await tester.enterText(field, 'carlsen');
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.pump();
+      expect(find.text('No games match your filters'), findsOneWidget);
+
+      // Back closes the search, not the screen, and takes the query with it.
+      final navigator = tester.state<NavigatorState>(find.byType(Navigator));
+      expect(await navigator.maybePop(), isTrue);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(find.byType(SmartEventScreen), findsOneWidget);
+      expect(close, findsNothing);
+      expect(find.byType(TextField), findsNothing);
+      expect(find.text('Events'), findsOneWidget);
+      expect(find.text('No games right now'), findsOneWidget);
+      expect(fab, findsOneWidget);
+
+      // About has nothing to search.
+      await tester.tap(find.text('About'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(fab, findsNothing);
+      expect(tester.takeException(), isNull);
 
       await tester.pumpWidget(const SizedBox.shrink());
       await tester.pump();

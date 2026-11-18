@@ -11,7 +11,10 @@ import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/country_dropdown.dart';
 import 'package:chessever2/widgets/game_filter/game_filter_model.dart';
+import 'package:chessever2/widgets/ink_fab.dart';
 import 'package:chessever2/widgets/quick_list_toggles.dart';
+import 'package:chessever2/widgets/scroll_chrome.dart';
+import 'package:chessever2/widgets/segmented_switcher.dart';
 import 'package:country_picker/country_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
@@ -19,18 +22,38 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
-/// Records filters instead of refetching from Supabase.
+/// Records filters and searches instead of refetching from Supabase.
 class _FakeGames extends StateNotifier<CountrymenCombinedGamesState>
     implements CountrymenCombinedGamesNotifier {
-  _FakeGames()
-    : super(CountrymenCombinedGamesState(isLoading: false, hasMore: false));
+  _FakeGames({List<GamesTourModel> games = const []})
+    : super(
+        CountrymenCombinedGamesState(
+          games: games,
+          isLoading: false,
+          hasMore: false,
+        ),
+      );
 
   final List<GameFilter> applied = [];
+  final List<String> searches = [];
+  int clears = 0;
 
   @override
   Future<void> applyFilter(GameFilter filter) async {
     applied.add(filter);
     state = state.copyWith(filter: filter);
+  }
+
+  @override
+  Future<void> searchGames(String query) async {
+    searches.add(query);
+    state = state.copyWith(searchQuery: query.trim());
+  }
+
+  @override
+  Future<void> clearSearch() async {
+    clears++;
+    state = state.copyWith(searchQuery: '');
   }
 
   @override
@@ -85,6 +108,7 @@ Future<void> _pumpScreen(
   double textScale = 1.0,
   Country? temporary,
   Country? pinned,
+  bool? anyLive,
 }) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1.0;
@@ -111,6 +135,8 @@ Future<void> _pumpScreen(
         gamesListViewModeProvider.overrideWithValue(
           GamesListViewMode.gamesCard,
         ),
+        if (anyLive != null)
+          countrymenGamesAnyLiveProvider.overrideWith((ref) => anyLive),
       ],
       child: MaterialApp(
         theme: AppTheme.darkTheme,
@@ -137,10 +163,28 @@ Finder _control(String label) => find.byWidgetPredicate(
   (widget) => widget is QuickToggleIconButton && widget.label == label,
 );
 
-Finder get _liveFirst => find.byType(LiveFirstToggleButton);
+Finder get _liveFirst => find.byType(LiveFirstInkFab);
 Finder get _classical => find.byType(ClassicalToggleButton);
 Finder get _filters => _control('Filters');
 Finder get _boardView => _control('Change board view');
+Finder get _searchFab => find.byType(SearchInkFab);
+Finder get _searchField => find.byType(CountrymenGamesSearchField);
+Finder get _closeSearch => find.byTooltip('Close search');
+
+/// Lets springs and routes finish without waiting on a caret's blink, which
+/// never settles while the search field has focus.
+Future<void> _settle(WidgetTester tester) async {
+  await tester.pump();
+  for (var i = 0; i < 10; i++) {
+    await tester.pump(const Duration(milliseconds: 100));
+  }
+}
+
+/// Opens the Games page's full-page search from its floating button.
+Future<void> _openSearch(WidgetTester tester) async {
+  await tester.tap(_searchFab);
+  await _settle(tester);
+}
 
 bool _liveFirstOn() => _container.read(
   gameListLiveFirstProvider(GameListLiveFirstSurface.countrymen),
@@ -215,54 +259,118 @@ GamesTourModel _game(
 }
 
 void main() {
-  group('Countrymen Games controls in the app bar row', () {
-    testWidgets('sit in order above the search field, beside the picker', (
-      tester,
-    ) async {
+  group('Countrymen Games header and floating buttons (Trello #1420)', () {
+    testWidgets('the app bar keeps only the board view beside the picker; '
+        'the search and the list controls leave the top', (tester) async {
       await _pumpScreen(tester);
 
-      for (final control in [_liveFirst, _classical, _filters, _boardView]) {
-        expect(control, findsOneWidget);
-      }
-
       final picker = tester.getRect(find.byType(CountryDropdown));
-      final live = tester.getRect(_liveFirst);
-      final classical = tester.getRect(_classical);
-      final filters = tester.getRect(_filters);
       final board = tester.getRect(_boardView);
-      final search = tester.getRect(find.widgetWithText(TextField, 'Search'));
-
-      // One row, left to right: picker, Live first, Classical, Filters,
-      // Board view.
-      for (final rect in [live, classical, filters, board]) {
-        expect(rect.center.dy, closeTo(picker.center.dy, 1));
-        expect(rect.bottom, lessThan(search.top));
-      }
-      expect(picker.right, lessThanOrEqualTo(live.left));
-      expect(live.right, lessThanOrEqualTo(classical.left));
-      expect(classical.right, lessThanOrEqualTo(filters.left));
-      expect(filters.right, lessThanOrEqualTo(board.left));
+      expect(board.center.dy, closeTo(picker.center.dy, 1));
+      expect(picker.right, lessThanOrEqualTo(board.left));
+      expect(board.right, lessThanOrEqualTo(393));
       // The same board-view mark as Favorites.
       expect(
         find.descendant(of: _boardView, matching: find.byType(BoardViewGlyph)),
         findsOneWidget,
       );
 
-      // The search row is the field alone now.
-      expect(find.byIcon(Icons.tune_rounded), findsOneWidget);
-      expect(
-        find.descendant(
-          of: find.byType(CountrymenGamesTab),
-          matching: find.byIcon(Icons.tune_rounded),
-        ),
-        findsNothing,
-      );
+      // Nothing is live, so Live first does not float; Classical and Filters
+      // wait in the search; no field sits on the page.
+      for (final control in [_liveFirst, _classical, _filters]) {
+        expect(control, findsNothing);
+      }
+      expect(find.byType(TextField), findsNothing);
+
+      // The search floats in the thumb's reach.
+      final search = tester.getRect(_searchFab);
+      expect(search.top, greaterThan(852 / 2));
+      expect(search.right, greaterThan(393 / 2));
     });
 
-    testWidgets('Classical toggles the server-side time-control filter', (
+    testWidgets('the header folds away with the list, the search slides with '
+        'it, and a page change brings it back', (tester) async {
+      await _pumpScreen(tester);
+      final chrome = ScrollChromeScope.maybeOf(
+        tester.element(find.byType(PageView)),
+      )!;
+      final searchTop = tester.getRect(_searchFab).top;
+
+      chrome.hide(animate: false);
+      await tester.pump();
+
+      expect(tester.getSize(find.byType(CollapsingChrome)).height, 0);
+      expect(tester.getTopLeft(find.byType(PageView)).dy, greaterThan(0));
+      expect(tester.getRect(_searchFab).top, greaterThan(searchTop));
+
+      await tester.drag(find.byType(PageView), const Offset(300, 0));
+      await _settle(tester);
+      expect(chrome.value, 1);
+      expect(find.byType(SegmentedSwitcher), findsOneWidget);
+    });
+
+    testWidgets('the search opens in place: back, the field, Classical and '
+        'Filters over the same Games list, and back closes it', (tester) async {
+      await _pumpScreen(tester);
+      await _openSearch(tester);
+
+      final field = find.descendant(
+        of: _searchField,
+        matching: find.byType(TextField),
+      );
+      expect(field, findsOneWidget);
+      expect(tester.widget<TextField>(field).focusNode!.hasFocus, isTrue);
+      // The header is the search row alone: no picker, no tabs, nothing
+      // floating.
+      expect(find.byType(CountryDropdown), findsNothing);
+      expect(find.byType(SegmentedSwitcher), findsNothing);
+      expect(_searchFab, findsNothing);
+      expect(find.byType(CountrymenGamesTab), findsOneWidget);
+      // One row, left to right: back, field, Classical, Filters.
+      final close = tester.getRect(_closeSearch);
+      final fieldRect = tester.getRect(field);
+      final classical = tester.getRect(_classical);
+      final filters = tester.getRect(_filters);
+      for (final rect in [fieldRect, classical, filters]) {
+        expect(rect.center.dy, closeTo(close.center.dy, 1));
+      }
+      expect(close.right, lessThanOrEqualTo(fieldRect.left));
+      expect(fieldRect.right, lessThanOrEqualTo(classical.left));
+      expect(classical.right, lessThanOrEqualTo(filters.left));
+
+      await tester.enterText(field, 'Carlsen');
+      await tester.pump(const Duration(milliseconds: 450));
+      expect(_games.searches, ['Carlsen']);
+
+      await tester.tap(_closeSearch);
+      await _settle(tester);
+
+      expect(_searchField, findsNothing);
+      expect(find.byType(CountryDropdown), findsOneWidget);
+      expect(find.byType(SegmentedSwitcher), findsOneWidget);
+      expect(_searchFab, findsOneWidget);
+      expect(_games.clears, 1);
+    });
+
+    testWidgets('system back closes the search, not Countrymen', (
       tester,
     ) async {
       await _pumpScreen(tester);
+      await _openSearch(tester);
+
+      await tester.binding.handlePopRoute();
+      await _settle(tester);
+
+      expect(find.byType(CountrymenTabScreen), findsOneWidget);
+      expect(_searchField, findsNothing);
+      expect(find.byType(CountryDropdown), findsOneWidget);
+      expect(_games.clears, 1);
+    });
+
+    testWidgets('Classical in the search toggles the server-side '
+        'time-control filter', (tester) async {
+      await _pumpScreen(tester);
+      await _openSearch(tester);
 
       await tester.tap(_classical);
       await tester.pump();
@@ -280,10 +388,50 @@ void main() {
       expect(_games.applied, hasLength(2));
     });
 
-    testWidgets('Live first with nothing in play says so and stays off', (
-      tester,
-    ) async {
+    testWidgets('Classical stays applied once the search closes, counted on '
+        'the floating search', (tester) async {
       await _pumpScreen(tester);
+      expect(tester.widget<SearchInkFab>(_searchFab).badgeCount, 0);
+
+      await _openSearch(tester);
+      await tester.tap(_classical);
+      await tester.pump();
+      await tester.tap(_closeSearch);
+      await _settle(tester);
+
+      // Only the query goes with the search; the filter keeps its sign.
+      expect(
+        _container.read(countrymenCombinedGamesProvider).filter.timeControl,
+        GameTimeControlFilter.classical,
+      );
+      expect(tester.widget<SearchInkFab>(_searchFab).badgeCount, 1);
+      expect(
+        find.descendant(of: _searchFab, matching: find.text('1')),
+        findsOneWidget,
+      );
+
+      await _openSearch(tester);
+      await tester.tap(_classical);
+      await tester.pump();
+      await tester.tap(_closeSearch);
+      await _settle(tester);
+      expect(tester.widget<SearchInkFab>(_searchFab).badgeCount, 0);
+    });
+
+    testWidgets('Filters in the search opens the games filter', (tester) async {
+      await _pumpScreen(tester);
+      await _openSearch(tester);
+
+      await tester.tap(_filters);
+      await _settle(tester);
+
+      expect(find.text('Apply Filters'), findsOneWidget);
+    });
+
+    testWidgets('Live first pressed with nothing in play says so and stays '
+        'off', (tester) async {
+      // Floated by a game that has since finished: the press finds none.
+      await _pumpScreen(tester, anyLive: true);
 
       await tester.tap(_liveFirst);
       await tester.pump();
@@ -292,17 +440,104 @@ void main() {
       expect(find.text(kNoLiveGamesRightNowMessage), findsOneWidget);
       expect(kNoLiveGamesRightNowMessage, 'No live games right now');
       expect(_liveFirstOn(), isFalse);
-      expect(tester.widget<LiveFirstToggleButton>(_liveFirst).pressed, isFalse);
+      expect(tester.widget<LiveFirstInkFab>(_liveFirst).on, isFalse);
     });
 
-    testWidgets('Filters opens the games filter', (tester) async {
-      await _pumpScreen(tester);
+    testWidgets('Live first floats only while a game is in play, above the '
+        'search, and turns on and off', (tester) async {
+      final container = ProviderContainer(
+        overrides: [
+          countrymenCombinedGamesProvider.overrideWith(
+            (ref) => _FakeGames(
+              games: [
+                _game('done', lastMoveTime: DateTime.now()),
+                _game('live', lastMoveTime: DateTime.now(), ongoing: true),
+              ],
+            ),
+          ),
+        ],
+      );
+      addTearDown(container.dispose);
+      var searches = 0;
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: MaterialApp(
+            theme: AppTheme.darkTheme,
+            home: Builder(
+              builder: (context) {
+                ResponsiveHelper.init(context);
+                return Scaffold(
+                  floatingActionButton: CountrymenGamesFabs(
+                    onSearch: () => searches++,
+                  ),
+                );
+              },
+            ),
+          ),
+        ),
+      );
+      final provider = gameListLiveFirstProvider(
+        GameListLiveFirstSurface.countrymen,
+      );
 
-      await tester.tap(_filters);
+      expect(
+        tester.getRect(_liveFirst).bottom,
+        lessThan(tester.getRect(_searchFab).top),
+      );
+      await tester.tap(_liveFirst);
       await tester.pump();
-      await tester.pump(const Duration(milliseconds: 600));
+      expect(container.read(provider), isTrue);
+      expect(find.text(kNoLiveGamesRightNowMessage), findsNothing);
+      expect(tester.widget<LiveFirstInkFab>(_liveFirst).on, isTrue);
 
-      expect(find.text('Apply Filters'), findsOneWidget);
+      await tester.tap(_liveFirst);
+      await tester.pump();
+      expect(container.read(provider), isFalse);
+      expect(_liveFirst, findsOneWidget);
+
+      await tester.tap(_searchFab);
+      expect(searches, 1);
+    });
+
+    testWidgets('the list keeps clear of the whole button stack over the '
+        'home indicator', (tester) async {
+      tester.view.physicalSize = const Size(393, 852);
+      tester.view.devicePixelRatio = 1;
+      tester.view.viewPadding = const FakeViewPadding(bottom: 34);
+      tester.view.padding = const FakeViewPadding(bottom: 34);
+      addTearDown(tester.view.reset);
+      final container = ProviderContainer(
+        overrides: [
+          countrymenCombinedGamesProvider.overrideWith((ref) => _FakeGames()),
+          countrymenGamesAnyLiveProvider.overrideWith((ref) => true),
+        ],
+      );
+      addTearDown(container.dispose);
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: MaterialApp(
+            theme: AppTheme.darkTheme,
+            home: Builder(
+              builder: (context) {
+                ResponsiveHelper.init(context);
+                return Scaffold(
+                  // Where the Games list sits: the Scaffold's body.
+                  body: const SizedBox.expand(key: ValueKey('list')),
+                  floatingActionButton: CountrymenGamesFabs(onSearch: () {}),
+                );
+              },
+            ),
+          ),
+        ),
+      );
+
+      final top = tester.getRect(_liveFirst).top;
+      final reach = CountrymenGamesFabs.reach(
+        tester.element(find.byKey(const ValueKey('list'))),
+      );
+      expect(852 - top, closeTo(reach, 0.01));
     });
 
     testWidgets('Events mode carries none of the Games controls', (
@@ -310,7 +545,13 @@ void main() {
     ) async {
       await _pumpScreen(tester, mode: CountrymenScreenMode.events);
 
-      for (final control in [_liveFirst, _classical, _filters, _boardView]) {
+      for (final control in [
+        _liveFirst,
+        _classical,
+        _filters,
+        _boardView,
+        _searchFab,
+      ]) {
         expect(control, findsNothing);
       }
       expect(find.byType(CountryDropdown), findsOneWidget);
@@ -321,10 +562,11 @@ void main() {
       expect(picker.width, lessThan(393 / 2));
     });
 
-    for (final (label, size, scale) in [
-      ('320 wide', const Size(320, 568), 1.0),
-      ('320 wide, large text', const Size(320, 568), 1.5),
-      ('393 wide, large text', const Size(393, 852), 1.5),
+    for (final (label, size, scale, pinInMenu) in [
+      ('320 wide', const Size(320, 568), 1.0, true),
+      ('320 wide, large text', const Size(320, 568), 1.5, true),
+      ('375 wide', const Size(375, 667), 1.0, false),
+      ('393 wide, large text', const Size(393, 852), 1.5, false),
     ]) {
       testWidgets('fits a $label phone with a temporary country', (
         tester,
@@ -341,6 +583,12 @@ void main() {
         final board = tester.getRect(_boardView);
         expect(board.right, lessThanOrEqualTo(size.width));
 
+        if (!pinInMenu) {
+          // Room beside the name: the Pin stays in the row.
+          final pin = tester.getRect(find.bySemanticsLabel(_pinGermany));
+          expect(pin.right, lessThanOrEqualTo(board.left));
+          return;
+        }
         // No room for a Pin beside the name: the country menu leads with it.
         expect(find.bySemanticsLabel(_pinGermany), findsNothing);
         await _openCountryMenu(tester);
@@ -352,36 +600,59 @@ void main() {
         expect(pin.bottom, lessThanOrEqualTo(size.height));
       });
     }
+
+    testWidgets('the search row fits a 320pt phone at the largest text size', (
+      tester,
+    ) async {
+      await _pumpScreen(tester, size: const Size(320, 568), textScale: 1.5);
+      await _openSearch(tester);
+
+      expect(tester.takeException(), isNull);
+      for (final target in [_closeSearch, _classical, _filters]) {
+        final rect = tester.getRect(target);
+        expect(rect.left, greaterThanOrEqualTo(0));
+        expect(rect.right, lessThanOrEqualTo(320));
+      }
+      expect(tester.getSize(_searchField).width, greaterThanOrEqualTo(80));
+    });
   });
 
   group('Countrymen app bar semantics', () {
     testWidgets('every control offers a tap to assistive tech', (tester) async {
       final semantics = tester.ensureSemantics();
-      // Wide enough for the Pin to sit in the row beside the Games controls.
-      await _pumpScreen(
-        tester,
-        size: const Size(540, 900),
-        temporary: _germany,
-      );
+      await _pumpScreen(tester, temporary: _germany);
 
-      for (final label in [
+      void expectTappable(List<String> labels) {
+        for (final label in labels) {
+          final data = tester
+              .getSemantics(find.bySemanticsLabel(label))
+              .getSemanticsData();
+          expect(data.hasAction(SemanticsAction.tap), isTrue, reason: label);
+        }
+      }
+
+      expectTappable([
         'Back',
-        'Show live games first',
-        'Show classical games only',
-        'Filters',
         BoardViewToggleButton.label,
         _pinGermany,
-      ]) {
-        final data = tester
-            .getSemantics(find.bySemanticsLabel(label))
-            .getSemanticsData();
-        expect(data.hasAction(SemanticsAction.tap), isTrue, reason: label);
-      }
+        'Search games',
+      ]);
+
+      await _openSearch(tester);
+      expectTappable(['Show classical games only', 'Filters']);
+      // An IconButton's tooltip is its accessible name.
+      expect(
+        tester
+            .getSemantics(_closeSearch)
+            .getSemanticsData()
+            .hasAction(SemanticsAction.tap),
+        isTrue,
+      );
       semantics.dispose();
     });
   });
 
-  group('Countrymen country name beside the Games controls', () {
+  group('Countrymen country name beside the board view', () {
     setUpAll(_loadInter);
 
     for (final (label, temporary, pinned) in [
@@ -415,7 +686,12 @@ void main() {
     testWidgets('the country menu leads with Pin, and it pins the country', (
       tester,
     ) async {
-      await _pumpScreen(tester, temporary: _germany);
+      // Too narrow for the Pin beside the name and the board view.
+      await _pumpScreen(
+        tester,
+        size: const Size(320, 568),
+        temporary: _germany,
+      );
       expect(find.bySemanticsLabel(_pinGermany), findsNothing);
 
       await _openCountryMenu(tester);
@@ -437,8 +713,14 @@ void main() {
     });
 
     for (final (label, mode, size) in [
+      ('a 393pt Games row', CountrymenScreenMode.games, const Size(393, 852)),
       ('a wide Games row', CountrymenScreenMode.games, const Size(540, 900)),
       ('Events mode', CountrymenScreenMode.events, const Size(393, 852)),
+      (
+        'Events mode on 320pt',
+        CountrymenScreenMode.events,
+        const Size(320, 568),
+      ),
     ]) {
       testWidgets('$label keeps the Pin in the row, out of the menu', (
         tester,

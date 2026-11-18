@@ -21,8 +21,14 @@ class StartScreenSettingsBody extends ConsumerStatefulWidget {
 
 class _StartScreenSettingsBodyState
     extends ConsumerState<StartScreenSettingsBody> {
-  late BottomNavBarItem _section = readDefaultBottomTab();
+  late BottomNavBarItem _saved = readDefaultBottomTab();
   late ForYouTab _homePage = readDefaultForYouTab();
+
+  /// The section a launch opens: the saved one while it is on the bar, else
+  /// Home, as Home itself falls back (Botvinnik saved, then switched off). So
+  /// only sections on the bar are offered.
+  BottomNavBarItem _launchSection(List<BottomNavBarItem> sections) =>
+      sections.contains(_saved) ? _saved : BottomNavBarItem.forYou;
 
   Future<void> _pickSection() async {
     final allowed = await ensureHomeCustomizationAccess(
@@ -32,17 +38,20 @@ class _StartScreenSettingsBodyState
       returnTo: 'settings',
     );
     if (!allowed || !mounted) return;
+    final sections = ref.read(visibleBottomNavItemsProvider);
     final picked = await showStartScreenPicker<BottomNavBarItem>(
       context: context,
       title: 'Start section',
-      options: bottomNavBarOrder,
+      options: sections,
       label: (item) => namesBottomNavBarIcons[item]!,
-      selected: _section,
+      selected: _launchSection(sections),
     );
-    if (picked == null || picked == _section) return;
+    // Against the saved section: picking Home over a hidden Botvinnik saves
+    // Home, so switching Botvinnik back on does not bring it back.
+    if (picked == null || picked == _saved) return;
     await writeDefaultBottomTab(picked);
     HapticFeedbackService.success();
-    if (mounted) setState(() => _section = picked);
+    if (mounted) setState(() => _saved = picked);
   }
 
   Future<void> _pickHomePage() async {
@@ -68,20 +77,17 @@ class _StartScreenSettingsBodyState
 
   @override
   Widget build(BuildContext context) {
+    final section = _launchSection(ref.watch(visibleBottomNavItemsProvider));
     return SettingCard(
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
           _PickerRow(
             title: 'Start section',
-            value: namesBottomNavBarIcons[_section]!,
+            value: namesBottomNavBarIcons[section]!,
             onTap: _pickSection,
           ),
-          Divider(
-            height: 1.h,
-            thickness: 0.5.w,
-            color: context.colors.divider,
-          ),
+          Divider(height: 1.h, thickness: 0.5.w, color: context.colors.divider),
           _PickerRow(
             title: 'Home page',
             caption: 'Used when Home is the start section',

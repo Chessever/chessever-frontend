@@ -6,6 +6,7 @@ import 'package:chessever2/chat/chat_screen.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/widgets/glass_surface.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:motor/motor.dart';
@@ -358,30 +359,29 @@ class _LauncherSurface extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final radius = _bubbleRadius(side);
+    // The same frosted glass as every floating button, in the bubble's own
+    // outline; the mark keeps its colours, which are the bot's face.
+    final glass = GlassSurface(
+      borderRadius: radius,
+      lift: press,
+      child: SizedBox.square(
+        dimension: side,
+        child: Center(child: child),
+      ),
+    );
+    if (!focused) return glass;
     return CustomPaint(
       foregroundPainter: _LipPainter(
         radius: radius,
-        top: palette.edgeTop,
-        bottom: palette.edgeBottom,
+        top: Colors.transparent,
+        bottom: Colors.transparent,
         // The ring sits outside the silhouette, on the page, so it takes the
         // page's accent ink in light (pale teal on mint is 1.35:1).
-        ring: focused
-            ? (context.isLightTheme
-                  ? context.colors.accentText
-                  : BotvinnikMark.teal)
-            : null,
+        ring: context.isLightTheme
+            ? context.colors.accentText
+            : BotvinnikMark.teal,
       ),
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          color: Color.lerp(palette.surface, palette.surfacePressed, press),
-          borderRadius: radius,
-          boxShadow: palette.shadows,
-        ),
-        child: SizedBox.square(
-          dimension: side,
-          child: Center(child: child),
-        ),
-      ),
+      child: glass,
     );
   }
 }

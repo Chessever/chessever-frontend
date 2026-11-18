@@ -21,7 +21,6 @@ import 'package:chessever2/screens/chessboard/chess_board_screen_new.dart';
 import 'package:chessever2/screens/collections/collections_data.dart';
 import 'package:chessever2/screens/collections/collections_screen.dart';
 import 'package:chessever2/screens/collections/collection_explore.dart';
-import 'package:chessever2/screens/home/widget/bottom_nav_bar.dart';
 import 'package:chessever2/screens/for_you/discovery/widgets/discovery_game_cards.dart';
 import 'package:chessever2/screens/my_space/models/space_shortcut.dart';
 import 'package:chessever2/screens/my_space/providers/space_shortcuts_provider.dart';
@@ -35,6 +34,7 @@ import 'package:chessever2/utils/adaptive_window.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/home_top_bar.dart';
 import 'package:chessever2/widgets/figma_player_card.dart';
+import 'package:chessever2/widgets/ink_fab.dart';
 import 'package:chessever2/widgets/segmented_switcher.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
@@ -408,6 +408,13 @@ Future<void> _teardown(WidgetTester tester) async {
 
 Finder _rich(String text) => find.textContaining(text, findRichText: true);
 
+/// Opens the page's full-page search from its floating button: the field
+/// takes the header's place.
+Future<void> _openSearch(WidgetTester tester) async {
+  await tester.tap(find.byKey(const ValueKey('event_view_search_fab')));
+  await tester.pumpAndSettle();
+}
+
 void main() {
   _FakeCollections duoRepository() => _FakeCollections(
     detail: const Collection(
@@ -448,6 +455,7 @@ void main() {
           expect(tester.takeException(), isNull);
         }
         expect(find.byType(GameCard), findsOneWidget);
+        await _openSearch(tester);
         final search = tester.getRect(find.byType(SimpleSearchBar));
         expect(search.left, greaterThanOrEqualTo(0));
         expect(search.right, lessThanOrEqualTo(window.size.width));
@@ -470,11 +478,13 @@ void main() {
       await tester.tap(find.text('Players').first);
       await tester.pumpAndSettle();
       final state = tester.state(find.byType(CollectionScreen));
-      final input = find.byKey(const ValueKey('collection_games_search'));
-      final searchController = tester.widget<TextField>(input).controller;
       final selection = tester
           .widget<SegmentedSwitcher>(find.byType(SegmentedSwitcher))
           .currentSelection;
+      // A book searches its players too: the search opens over Players.
+      await _openSearch(tester);
+      final input = find.byKey(const ValueKey('collection_games_search'));
+      final searchController = tester.widget<TextField>(input).controller;
 
       applyDuoWindow(tester, transition.to, mirrorInsets: true);
       await tester.pump();
@@ -485,6 +495,9 @@ void main() {
         tester.widget<TextField>(input).controller,
         same(searchController),
       );
+      expect(find.byType(FigmaPlayerCard), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('event_view_search_close')));
+      await tester.pumpAndSettle();
       expect(
         tester
             .widget<SegmentedSwitcher>(find.byType(SegmentedSwitcher))
@@ -563,19 +576,21 @@ void main() {
       final tournamentSearchSize = tester.getSize(find.byType(SimpleSearchBar));
       await _pump(tester, repo);
       final input = find.byKey(const ValueKey('collection_games_search'));
-      expect(
-        tester.getSize(find.byType(SimpleSearchBar)).width,
-        closeTo(tournamentSearchSize.width, 0.01),
+      final tabs = find.byKey(
+        const ValueKey('event_view_tabs_About_Games_Players'),
       );
+      // The search waits behind its floating button, off the list's top.
+      expect(input, findsNothing);
+      expect(tabs, findsOneWidget);
+      await _openSearch(tester);
+      // The field stands as tall as the event screen's, in the header's
+      // place: the tabs give way to it.
       expect(
         tester.getSize(find.byType(SimpleSearchBar)).height,
         closeTo(tournamentSearchSize.height, 0.01),
       );
-      final tabs = find.byKey(
-        const ValueKey('event_view_tabs_About_Games_Players'),
-      );
       expect(input, findsOneWidget);
-      expect(tester.getRect(input).bottom, lessThan(tester.getRect(tabs).top));
+      expect(tabs, findsNothing);
       expect(
         find.byKey(const ValueKey('collection_games_filters')),
         findsOneWidget,
@@ -594,16 +609,6 @@ void main() {
       expect(find.byType(GameCard), findsNothing);
       expect(find.text('No games match this search.'), findsOneWidget);
       expect(input, findsOneWidget);
-      await tester.drag(tabs, const Offset(300, 0));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('About').first);
-      await tester.pumpAndSettle();
-      expect(input, findsOneWidget);
-      expect(tester.getRect(input).bottom, lessThan(tester.getRect(tabs).top));
-      await tester.tap(find.text('Games').first);
-      await tester.pumpAndSettle();
-      expect(tester.widget<TextField>(input).controller!.text, 'missing');
-      expect(tester.getRect(input).bottom, lessThan(tester.getRect(tabs).top));
       await tester.enterText(input, 'Nimzowitsch');
       await tester.pump(const Duration(milliseconds: 300));
       await tester.pumpAndSettle();
@@ -612,6 +617,19 @@ void main() {
       await tester.pump(const Duration(milliseconds: 300));
       await tester.pumpAndSettle();
       expect(find.byType(GameCard), findsNWidgets(2));
+      // Back closes the search and clears it: the tabs return, and the
+      // games with them.
+      await tester.enterText(input, 'missing');
+      await tester.pump(const Duration(milliseconds: 300));
+      await tester.pumpAndSettle();
+      expect(find.byType(GameCard), findsNothing);
+      await tester.tap(find.byKey(const ValueKey('event_view_search_close')));
+      await tester.pumpAndSettle();
+      expect(input, findsNothing);
+      expect(tabs, findsOneWidget);
+      expect(find.byType(GameCard), findsNWidgets(2));
+      await _openSearch(tester);
+      expect(tester.widget<TextField>(input).controller!.text, isEmpty);
       expect(tester.takeException(), isNull);
       await _teardown(tester);
     },
@@ -637,6 +655,7 @@ void main() {
       home: const CollectionsScreen(),
     );
     await tester.pumpAndSettle();
+    await _openSearch(tester);
     final input = find.byKey(const ValueKey('collections_search'));
 
     await tester.enterText(input, 'sicilian');
@@ -691,6 +710,7 @@ void main() {
     final observer = _BookNavigationObserver();
     // Rewarded access admits these archived games without a paid subscription.
     await _pump(tester, repo, navigationObserver: observer, premium: true);
+    await _openSearch(tester);
     await tester.enterText(
       find.byKey(const ValueKey('collection_games_search')),
       '[White "Nimzowitsch"]',
@@ -720,7 +740,7 @@ void main() {
     await _teardown(tester);
   });
 
-  testWidgets('book search is fixed across tabs and combines existing cards', (
+  testWidgets('book search opens over its lists and combines existing cards', (
     tester,
   ) async {
     final repo = _FakeCollections(
@@ -750,13 +770,18 @@ void main() {
     await _pump(tester, repo, size: const Size(390, 844));
     await tester.pumpAndSettle();
     final input = find.byKey(const ValueKey('collection_games_search'));
-    final searchBar = find.byType(SimpleSearchBar);
-    final initialRect = tester.getRect(searchBar);
-    for (final tab in ['Players', 'About', 'Games']) {
+    final fab = find.byKey(const ValueKey('event_view_search_fab'));
+    // The button floats over the lists the search covers, not over About.
+    for (final (tab, shown) in [
+      ('Players', true),
+      ('About', false),
+      ('Games', true),
+    ]) {
       await tester.tap(find.text(tab).first);
       await tester.pumpAndSettle();
-      expect(tester.getRect(searchBar), initialRect);
+      expect(fab, shown ? findsOneWidget : findsNothing, reason: tab);
     }
+    await _openSearch(tester);
     await tester.enterText(input, 'Nimzowitsch');
     await tester.pump(const Duration(milliseconds: 300));
     await tester.pumpAndSettle();
@@ -806,14 +831,14 @@ void main() {
     await tester.ensureVisible(find.text('Reset'));
     await tester.tap(find.text('Reset'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Players').first);
-    await tester.pumpAndSettle();
-    expect(tester.getRect(searchBar), initialRect);
     expect(results, findsOneWidget);
-    await tester.enterText(input, '');
-    await tester.pump(const Duration(milliseconds: 300));
+    // Back closes the search and clears it, back on the tab it opened from.
+    await tester.tap(find.byKey(const ValueKey('event_view_search_close')));
     await tester.pumpAndSettle();
     expect(results, findsNothing);
+    expect(input, findsNothing);
+    await tester.tap(find.text('Players').first);
+    await tester.pumpAndSettle();
     expect(
       tester
           .widget<SegmentedSwitcher>(find.byType(SegmentedSwitcher))
@@ -826,6 +851,99 @@ void main() {
     );
     expect(playerCard.rank, 1);
     expect(playerCard.showRank, isTrue);
+    expect(tester.takeException(), isNull);
+    await _teardown(tester);
+  });
+
+  testWidgets('a book search closed with a filter on gives the tabs back', (
+    tester,
+  ) async {
+    final repo = _FakeCollections(
+      detail: const Collection(
+        id: 'book',
+        slug: 'book',
+        kind: CollectionKind.book,
+        title: 'Search book',
+        about: 'A collection of opening studies.',
+        access: CollectionAccess.free,
+      ),
+      games: [_game('match', eco: 'B00')],
+      players: const [
+        CollectionPlayer(
+          key: 'name:nimzowitsch, aron',
+          name: 'Nimzowitsch, Aron',
+          games: 1,
+        ),
+      ],
+    );
+    await _pump(tester, repo, size: const Size(390, 844));
+    await tester.pumpAndSettle();
+    final results = find.byKey(const ValueKey('book_search_results'));
+    final fab = find.byKey(const ValueKey('event_view_search_fab'));
+    await _openSearch(tester);
+    await tester.tap(find.byKey(const ValueKey('collection_games_filters')));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('1-0'));
+    await tester.tap(find.text('1-0'));
+    await tester.tap(find.text('Apply Filters'));
+    await tester.pumpAndSettle();
+    expect(results, findsOneWidget);
+
+    // Closed, the results leave with the field: the filter stays on the
+    // Games list it narrows, counted on the button.
+    await tester.tap(find.byKey(const ValueKey('event_view_search_close')));
+    await tester.pumpAndSettle();
+    expect(results, findsNothing);
+    expect(find.byType(GameCard), findsOneWidget);
+    expect(tester.widget<SearchInkFab>(fab).badgeCount, 1);
+    expect(repo.filteredQueries.last.query.result, '1-0');
+    await tester.tap(find.text('About').first);
+    await tester.pumpAndSettle();
+    expect(results, findsNothing);
+    expect(find.text('A collection of opening studies.'), findsOneWidget);
+    await tester.tap(find.text('Players').first);
+    await tester.pumpAndSettle();
+    expect(results, findsNothing);
+    expect(find.byType(FigmaPlayerCard), findsOneWidget);
+
+    // Opened again, the filter brings its results straight back.
+    await _openSearch(tester);
+    expect(results, findsOneWidget);
+    expect(tester.takeException(), isNull);
+    await _teardown(tester);
+  });
+
+  testWidgets('tapping the open tab again takes its list back to the top', (
+    tester,
+  ) async {
+    final repo = _FakeCollections(
+      detail: const Collection(
+        id: 'long-book',
+        slug: 'long-book',
+        kind: CollectionKind.book,
+        title: 'Long book',
+        access: CollectionAccess.free,
+      ),
+      games: [for (var i = 0; i < 30; i++) _game('g$i')],
+    );
+    await _pump(tester, repo, size: const Size(390, 844), premium: true);
+    await tester.pumpAndSettle();
+    final strip = find.byType(SegmentedSwitcher);
+    expect(tester.widget<SegmentedSwitcher>(strip).currentSelection, 1);
+    final list = find.byType(Scrollable).hitTestable().last;
+    double offset() => tester.state<ScrollableState>(list).position.pixels;
+    await tester.drag(list, const Offset(0, -900));
+    await tester.pumpAndSettle();
+    expect(offset(), greaterThan(300));
+
+    // Scrolling back a little brings the tabs in, far from the list's top.
+    await tester.drag(list, const Offset(0, 120));
+    await tester.pumpAndSettle();
+    expect(offset(), greaterThan(150));
+    await tester.tap(find.text('Games').first);
+    await tester.pumpAndSettle();
+    expect(offset(), 0);
+    expect(tester.widget<SegmentedSwitcher>(strip).currentSelection, 1);
     expect(tester.takeException(), isNull);
     await _teardown(tester);
   });
@@ -1395,8 +1513,9 @@ void main() {
       expect(find.byType(GameCard), findsNWidgets(2));
       expect(find.text('29 Aug 2026'), findsOneWidget);
       expect(repo.filteredQueries.last.player, 'fide:1');
+      // The player's games search behind their floating button.
       expect(
-        find.byKey(const ValueKey('collection_games_search')),
+        find.byKey(const ValueKey('event_view_search_fab')),
         findsOneWidget,
       );
       await tester.tap(find.byTooltip('Back'));
@@ -1481,6 +1600,8 @@ void main() {
       );
       expect(find.byType(CollectionCard), findsNWidgets(2));
       final field = find.byKey(const ValueKey('collections_search'));
+      expect(field, findsNothing);
+      await _openSearch(tester);
       expect(field, findsOneWidget);
       await tester.enterText(field, 'Carlsen');
       // Inside the debounce window the list has not filtered yet.
@@ -1685,7 +1806,7 @@ void main() {
   });
 
   testWidgets(
-    'primary Collections shows three tabs and re-tap returns the current list to the top',
+    'primary Collections shows three tabs that scroll away with the list',
     (tester) async {
       final books = [
         for (var i = 0; i < 25; i++)
@@ -1712,7 +1833,8 @@ void main() {
       expect(find.text('About'), findsOneWidget);
       expect(find.text('Openings'), findsNothing);
       expect(find.text('Authors'), findsOneWidget);
-      expect(find.text('Collections'), findsOneWidget);
+      // The title and the tab.
+      expect(find.text('Collections'), findsNWidgets(2));
       expect(find.byType(CollectionCard), findsWidgets);
       final list = find.descendant(
         of: find.byType(PageView),
@@ -1728,21 +1850,20 @@ void main() {
           )
           .position;
       expect(scroll.pixels, greaterThan(200));
-      final container = ProviderScope.containerOf(
-        tester.element(find.byType(CollectionsScreen)),
-      );
-      container
-          .read(bottomNavBarReTapRequestProvider.notifier)
-          .request(BottomNavBarItem.collections);
+      // The header and the tabs went up with the list...
+      expect(find.text('About').hitTestable(), findsNothing);
+      // ...and come back first as it scrolls back down.
+      await tester.drag(list, const Offset(0, 300));
       for (var i = 0; i < 12; i++) {
         await tester.pump(const Duration(milliseconds: 60));
       }
-      expect(scroll.pixels, closeTo(0, 0.5));
+      expect(find.text('About').hitTestable(), findsOneWidget);
+      expect(scroll.pixels, greaterThan(0));
       await tester.tap(find.text('About'));
       await tester.pumpAndSettle();
       expect(find.text('About collections'), findsOneWidget);
       expect(repo.openingSlugs, isEmpty);
-      await tester.tap(find.text('Collections').first);
+      await tester.tap(find.text('Collections').last);
       await tester.pumpAndSettle();
       expect(find.byType(CollectionCard), findsWidgets);
       expect(tester.takeException(), isNull);

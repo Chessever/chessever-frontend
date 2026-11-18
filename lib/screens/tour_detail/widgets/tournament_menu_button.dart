@@ -33,6 +33,9 @@ import 'package:chessever2/utils/svg_asset.dart';
 import 'package:chessever2/widgets/card_context_menu.dart';
 import 'package:chessever2/widgets/event_card/event_context_menu.dart';
 import 'package:chessever2/widgets/space_shortcut_drafts.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/match_expansion_provider.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/round_expansion_provider.dart';
+import 'package:chessever2/screens/tour_detail/widgets/event_games_quick_actions.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
@@ -129,10 +132,30 @@ class TournamentMenuButton extends ConsumerWidget {
     ];
   }
 
+  /// Collapse all rounds, or Expand all once every section is folded; none
+  /// while the list has nothing to fold (loading, empty).
+  List<LibraryMenuAction> _foldActions(WidgetRef ref) {
+    final sections = ref.read(eventGamesSectionsProvider);
+    if (sections.isEmpty) return const [];
+    final collapsed = areAllVisibleSectionsCollapsed(
+      visibleRoundIds: sections.roundIds,
+      visibleMatchKeys: sections.matchKeys,
+      roundExpansionState: ref.read(roundExpansionProvider),
+      matchExpansionState: ref.read(matchExpansionProvider),
+    );
+    return [
+      LibraryMenuAction(
+        icon: collapsed ? Icons.unfold_more : Icons.unfold_less,
+        label: collapsed ? kExpandAllRoundsLabel : kCollapseAllRoundsLabel,
+        onSelected: () => toggleEventGamesSections(ref.read),
+      ),
+    ];
+  }
+
   /// The Games-tab rows while the list is Combined: the same rows as a
   /// single category, each acting on every merged category where the
-  /// single-category rows act on the selected one. Live first and Collapse
-  /// all live beside the search field (event_games_quick_actions.dart).
+  /// single-category rows act on the selected one. Live first floats over
+  /// the list (event_games_quick_actions.dart).
   List<LibraryMenuAction> _combinedGamesTabActions(WidgetRef ref) {
     final tourIds = ref.read(combinedCategoriesProvider).tourIds;
 
@@ -147,6 +170,7 @@ class TournamentMenuButton extends ConsumerWidget {
     );
 
     return [
+      ..._foldActions(ref),
       LibraryMenuAction(
         icon: noSpoilersEnabled
             ? Icons.visibility_off_outlined
@@ -182,14 +206,15 @@ class TournamentMenuButton extends ConsumerWidget {
     ];
   }
 
-  /// The Games-tab rows for one category. Live first and Collapse all live
-  /// beside the search field (event_games_quick_actions.dart).
+  /// The Games-tab rows for one category. Live first floats over the list
+  /// (event_games_quick_actions.dart).
   List<LibraryMenuAction> _gamesTabActions(WidgetRef ref) {
     final tourId = tourData.aboutTourModel.id;
     final noSpoilersEnabled = ref.read(eventNoSpoilersProvider(tourId)).enabled;
     final isAnyPinned = ref.read(gamesPinprovider(tourId)).allPins.isNotEmpty;
 
     return [
+      ..._foldActions(ref),
       LibraryMenuAction(
         icon: noSpoilersEnabled
             ? Icons.visibility_off_outlined

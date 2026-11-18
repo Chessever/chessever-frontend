@@ -33,9 +33,10 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-/// Trello #1420, the For You tab (labelled Home): Live first rides in its
-/// search field, on the flag the Events tab uses, and lists the Today feed's
-/// live events first, including ones below the pages it has loaded.
+/// Trello #1420, the For You tab (labelled Home): Live first floats over
+/// Today while an event is live, on the flag the Events tab uses, and lists
+/// the Today feed's live events first, including ones below the pages it has
+/// loaded.
 void main() {
   setUpAll(() async {
     TestWidgetsFlutterBinding.ensureInitialized();
@@ -229,52 +230,31 @@ void main() {
     });
   });
 
-  group('Home bar', () {
+  group('Today button', () {
     final toggle = find.byKey(const ValueKey(kForYouLiveFirstButtonKey));
-    final surface = find.byKey(const ValueKey('simple-search-field-surface'));
 
-    testWidgets('carries the Live mark inside the field without growing it', (
+    testWidgets('with nothing live there is no button to press', (
       tester,
     ) async {
-      await _pumpHome(tester, liveIds: const []);
+      final container = await _pumpHome(tester, liveIds: const []);
 
-      expect(find.descendant(of: surface, matching: toggle), findsOneWidget);
+      expect(toggle, findsNothing);
+      expect(container.read(homeEventsLiveFirstProvider), isFalse);
+      expect(_rows(tester), ['a', 'b', 'c']);
+      await _unmount(tester);
+    });
+
+    testWidgets('floats the Live mark in the thumb\'s reach', (tester) async {
+      await _pumpHome(tester, liveIds: const ['c']);
+
+      expect(toggle, findsOneWidget);
       expect(
         find.descendant(of: toggle, matching: find.byType(LiveFirstMark)),
         findsOneWidget,
       );
-      expect(tester.getSize(surface).height, closeTo(44, 0.5));
       expect(find.bySemanticsLabel('Show live events first'), findsOneWidget);
-      await _unmount(tester);
-    });
-
-    for (final textScale in const [1.0, 2.0]) {
-      testWidgets('fits a 320pt phone at ${textScale}x text', (tester) async {
-        await _pumpHome(
-          tester,
-          liveIds: const [],
-          size: const Size(320, 640),
-          textScale: textScale,
-        );
-
-        expect(tester.takeException(), isNull);
-        final field = tester.getRect(surface);
-        final mark = tester.getRect(toggle);
-        expect(field.left <= mark.left && mark.right <= field.right, isTrue);
-        expect(field.top <= mark.top && mark.bottom <= field.bottom, isTrue);
-        await _unmount(tester);
-      });
-    }
-
-    testWidgets('with nothing live it says so and stays off', (tester) async {
-      final container = await _pumpHome(tester, liveIds: const []);
-
-      await tester.tap(toggle);
-      await tester.pump();
-
-      expect(find.text(kNoLiveEventsRightNowMessage), findsOneWidget);
-      expect(container.read(homeEventsLiveFirstProvider), isFalse);
-      expect(_rows(tester), ['a', 'b', 'c']);
+      // In the lower half, where the thumb rests, not in a top bar.
+      expect(tester.getCenter(toggle).dy, greaterThan(852 / 2));
       await _unmount(tester);
     });
 
@@ -304,24 +284,6 @@ void main() {
       await _unmount(tester);
     });
 
-    testWidgets('turned on from My Space it opens Today', (tester) async {
-      final container = await _pumpHome(
-        tester,
-        liveIds: const ['c'],
-        tab: ForYouTab.mySpace,
-      );
-      expect(find.text('page:mySpace'), findsOneWidget);
-
-      await tester.tap(toggle);
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 400));
-
-      expect(container.read(homeEventsLiveFirstProvider), isTrue);
-      expect(container.read(selectedForYouTabProvider), ForYouTab.today);
-      expect(_rows(tester), ['c', 'a', 'b']);
-      await _unmount(tester);
-    });
-
     testWidgets('shows the flag the Events bar sets', (tester) async {
       final container = await _pumpHome(tester, liveIds: const ['c']);
 
@@ -333,6 +295,24 @@ void main() {
         findsOneWidget,
       );
       expect(_rows(tester), ['c', 'a', 'b']);
+      await _unmount(tester);
+    });
+
+    testWidgets('the filter always floats over Today, counting what it '
+        'narrows', (tester) async {
+      // Home has no search field any more: the filter for this feed is a
+      // floating button of its own.
+      final container = await _pumpHome(tester, liveIds: const []);
+      final filter = find.byKey(const ValueKey(kForYouFilterButtonKey));
+      expect(filter, findsOneWidget);
+      expect(find.bySemanticsLabel('Filters'), findsOneWidget);
+
+      container.read(eventAppliedFilterProvider.notifier).state =
+          defaultFilterPopupState.copyWith(
+            eloRange: const RangeValues(2600, kFilterMaxElo),
+          );
+      await tester.pump();
+      expect(find.bySemanticsLabel('Filters, 1 applied'), findsOneWidget);
       await _unmount(tester);
     });
   });
@@ -462,6 +442,7 @@ Future<ProviderContainer> _pumpHome(
             ResponsiveHelper.init(context);
             return const Scaffold(
               resizeToAvoidBottomInset: false,
+              floatingActionButton: ForYouTodayFabs(),
               body: ForYouScreen(pageBuilder: _page),
             );
           },

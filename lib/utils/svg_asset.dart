@@ -36,6 +36,8 @@ class SvgAsset {
   static const libraryNavIcon = 'assets/svgs/library_nav.svg';
   static const feedNavIcon = 'assets/svgs/feed_nav.svg';
   static const forYouNavIcon = 'assets/svgs/for_you_nav.svg';
+  static const botvinnikNavIcon = 'assets/svgs/botvinnik_nav.svg';
+  static const searchNavIcon = 'assets/svgs/search_nav.svg';
 
   /// X's own mark (the About dialog's follow link).
   static const xLogo = 'assets/svgs/x_logo.svg';
@@ -112,6 +114,8 @@ class SvgAsset {
       forYouNavIcon,
       libraryNavIcon,
       feedNavIcon,
+      botvinnikNavIcon,
+      searchNavIcon,
       websiteIcon,
       infoIcon,
       premiumSelected,

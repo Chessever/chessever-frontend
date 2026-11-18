@@ -85,9 +85,6 @@ void main() {
         await openSettingsDialog($);
         await expectVisible($, E2eIds.settingsRoot);
         await popRoute($);
-        if (byId($, E2eIds.homeDrawer).isVisibleAt()) {
-          await popRoute($);
-        }
 
         await openPremiumScreen($);
         await expectVisible($, E2eIds.premiumRoot);
@@ -329,6 +326,7 @@ void main() {
         await resetToHome($);
         await openSeededPlayerProfile($, player);
         await $('Games').tap();
+        await openGamesSearch($, e2eKey(E2eIds.playerGamesSearchFab));
         await searchFor(
           $,
           fieldId: E2eIds.playerGamesSearchField,
@@ -356,6 +354,7 @@ void main() {
         );
         await byId($, E2eIds.playerGamesFilterButton).tap();
         await $('Reset').tap();
+        // `popRoute` pops the route itself, search and all.
         await popRoute($);
 
         await pushNamedRoute($, '/favorites_screen');

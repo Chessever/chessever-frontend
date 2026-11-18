@@ -39,6 +39,8 @@ void main() {
     await tester.binding.setSurfaceSize(const Size(390, 844));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     final repo = _CountingRepo();
+    final focus = FocusNode();
+    addTearDown(focus.dispose);
 
     await tester.pumpWidget(
       ProviderScope(
@@ -53,8 +55,19 @@ void main() {
           home: Builder(
             builder: (context) {
               ResponsiveHelper.init(context);
+              // The field the screen's search header holds, over the list
+              // it narrows.
               return Scaffold(
-                body: MiniaturesGamesTab(now: DateTime.utc(2026, 10, 29)),
+                body: Column(
+                  children: [
+                    MiniaturesGamesSearchField(focusNode: focus),
+                    Expanded(
+                      child: MiniaturesGamesTab(
+                        now: DateTime.utc(2026, 10, 29),
+                      ),
+                    ),
+                  ],
+                ),
               );
             },
           ),
@@ -63,7 +76,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    final field = find.byType(TextField).first;
+    final field = find.byKey(const ValueKey('miniatures_games_search'));
     await tester.enterText(field, 'carlsen');
     await tester.pump(const Duration(milliseconds: 400));
     await tester.pumpAndSettle();

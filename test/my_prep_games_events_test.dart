@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -26,6 +27,7 @@ import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/event_card/event_card.dart';
 import 'package:chessever2/widgets/event_card/event_image_provider.dart';
+import 'package:chessever2/widgets/scroll_to_top_button.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -656,4 +658,109 @@ void main() {
       expect(tester.takeException(), isNull);
     },
   );
+
+  testWidgets('with the search in the screen\'s header, the list still goes '
+      'back to its top', (tester) async {
+    tester.view.physicalSize = const Size(393 * 3, 852 * 3);
+    tester.view.devicePixelRatio = 3;
+    addTearDown(tester.view.reset);
+    final file = File('${dir.path}/long.pgn')
+      ..writeAsStringSync(
+        [for (var day = 1; day <= 20; day++) _archiveGame(day)].join('\n'),
+      );
+    final db = '${dir.path}/long.sqlite';
+    runGameTreeBuild(
+      GameTreeBuildRequest(
+        dbPath: db,
+        sources: [GameTreeSourceFile(path: file.path, kind: 'chessever')],
+        aliases: const ['durarbayli,v'],
+      ),
+    );
+    final store = GameTreeStore.open('long', db, playerScope: true)!;
+    addTearDown(store.close);
+    final rows = (await tester.runAsync(store.loadGames))!;
+    final games = [
+      for (final (i, row) in rows.indexed) PrepGame.fromIndex(row, i),
+    ];
+    final search = TextEditingController();
+    addTearDown(search.dispose);
+    final controller = PrepGamesController();
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          gamesListViewModeProvider.overrideWithValue(
+            GamesListViewMode.gamesCard,
+          ),
+          premiumAccessProvider.overrideWithValue(true),
+          playerEventCardProvider.overrideWith((ref, request) async => null),
+          spaceShortcutsProvider.overrideWith(_NoShortcuts.new),
+          favoriteEventsProvider.overrideWith(_NoFavorites.new),
+          eventImageProvider.overrideWith(
+            (ref, id) async => const EventImageData(),
+          ),
+        ],
+        child: MaterialApp(
+          theme: AppTheme.darkTheme,
+          home: Builder(
+            builder: (context) {
+              ResponsiveHelper.init(context);
+              return Scaffold(
+                body: PrepGamesTab(
+                  analysis: PrepAnalysis(profileId: 'long', games: games),
+                  games: games,
+                  filter: const PrepFilter(),
+                  onFilterChanged: (_) {},
+                  controller: controller,
+                  search: search,
+                ),
+              );
+            },
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    double offset() => tester
+        .state<ScrollableState>(find.byType(Scrollable).first)
+        .position
+        .pixels;
+    Future<void> scrollDown() async {
+      await tester.drag(find.byType(CustomScrollView), const Offset(0, -900));
+      await tester.pumpAndSettle();
+      expect(offset(), greaterThan(600));
+    }
+
+    // The up arrow's corner is the screen's search button's.
+    await scrollDown();
+    expect(find.byType(ScrollToTopButton), findsNothing);
+
+    // A tap on the status bar takes the list up, as on any iOS list.
+    tester.simulateStatusBarTap();
+    await tester.pumpAndSettle();
+    expect(offset(), 0);
+
+    // Not while something else is in front of it.
+    await scrollDown();
+    final scrolled = offset();
+    final context = tester.element(find.byType(PrepGamesTab));
+    unawaited(
+      showDialog<void>(
+        context: context,
+        builder: (_) => const AlertDialog(content: Text('In front')),
+      ),
+    );
+    await tester.pumpAndSettle();
+    tester.simulateStatusBarTap();
+    await tester.pumpAndSettle();
+    expect(offset(), scrolled);
+    Navigator.of(context).pop();
+    await tester.pumpAndSettle();
+
+    // A screen whose Games tab is tapped again sends it up too.
+    controller.scrollToTop();
+    await tester.pumpAndSettle();
+    expect(offset(), 0);
+    expect(tester.takeException(), isNull);
+  });
 }

@@ -4,31 +4,25 @@ import 'dart:math' as math;
 import 'package:chessever2/e2e/e2e_ids.dart';
 import 'package:chessever2/providers/for_you_games_provider.dart';
 import 'package:chessever2/screens/for_you/discovery/discovery_view.dart';
-import 'package:chessever2/screens/for_you/open_for_you_event.dart';
 import 'package:chessever2/screens/for_you/providers/for_you_tab_provider.dart';
-import 'package:chessever2/screens/group_event/group_event_screen.dart';
-import 'package:chessever2/screens/group_event/providers/group_event_screen_provider.dart';
 import 'package:chessever2/screens/group_event/providers/home_live_first_provider.dart';
-import 'package:chessever2/screens/group_event/smart_event/smart_aggregate_event_provider.dart';
-import 'package:chessever2/screens/group_event/smart_event/smart_event_screen.dart';
 import 'package:chessever2/screens/group_event/widget/filter_popup/filter_popup.dart';
 import 'package:chessever2/screens/group_event/widget/filter_popup/filter_popup_provider.dart';
 import 'package:chessever2/screens/group_event/widget/filter_popup/filter_popup_state.dart';
 import 'package:chessever2/screens/group_event/widget/for_you_games_widget.dart';
-import 'package:chessever2/screens/group_event/widget/search_results_widget.dart';
 import 'package:chessever2/screens/home/start_screen.dart';
 import 'package:chessever2/screens/home/widget/bottom_nav_bar.dart';
 import 'package:chessever2/screens/my_space/my_space_view.dart';
-import 'package:chessever2/screens/player_profile/player_profile_screen.dart';
 import 'package:chessever2/theme/app_colors.dart';
+import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/text_scale.dart';
 import 'package:chessever2/widgets/alert_dialog/alert_modal.dart';
 import 'package:chessever2/widgets/home_top_bar.dart';
-import 'package:chessever2/widgets/quick_list_toggles.dart';
-import 'package:chessever2/widgets/search/enhanced_rounded_search_bar.dart';
-import 'package:chessever2/widgets/segmented_switcher.dart';
+import 'package:chessever2/widgets/ink_fab.dart';
+import 'package:chessever2/widgets/press_spring.dart';
+import 'package:chessever2/widgets/scroll_chrome.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
@@ -65,13 +59,12 @@ const CupertinoMotion _scrollTopMotion = CupertinoMotion.smooth(
 );
 final Curve _scrollTopCurve = _scrollTopMotion.toCurve;
 
-/// The For You section: My Space | Today | Discovery under the same header
-/// as Events (avatar, search with its filter, segmented tabs).
+/// The For You section (Home): My Space | Today | Discovery.
 ///
-/// Typing in the header runs the Events global search: a transient Search
-/// segment is appended while the query is non-empty and shows the same
-/// results list; clearing it (or picking a tab) returns to the tab the user
-/// was on. The picked tab holds for the session; a launch opens on Today.
+/// Its only chrome is the segment strip, which scrolls away with the page
+/// and back. Search and the reader's profile have tabs of their own; Today's
+/// Live first and filter float over it ([ForYouTodayFabs]). The picked tab
+/// holds for the session; a launch opens on Today.
 class ForYouScreen extends HookConsumerWidget {
   const ForYouScreen({super.key, this.pageBuilder});
 
@@ -84,24 +77,14 @@ class ForYouScreen extends HookConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final searchController = useTextEditingController();
-    final focusNode = useFocusNode();
     final selectedTab = ref.watch(selectedForYouTabProvider);
-    final searchQuery = ref.watch(forYouSearchQueryProvider);
-    final hasSearch = searchQuery.isNotEmpty;
-    final pageCount = hasSearch ? _tabCount + 1 : _tabCount;
-    final selectedIndex = hasSearch ? _tabCount : selectedTab.index;
-    final appliedFilterState = ref.watch(eventAppliedFilterProvider);
-    final filterBadgeCount =
-        appliedFilterState.formatsAndStates.length +
-        (appliedFilterState.hasEloFilter ? 1 : 0) +
-        (appliedFilterState.eco.isAll ? 0 : 1);
+    const pageCount = _tabCount;
+    final selectedIndex = selectedTab.index;
 
     final pageController = usePageController(initialPage: selectedIndex);
     final mySpaceScrollController = useScrollController();
     final todayScrollController = useScrollController();
     final discoveryScrollController = useScrollController();
-    final searchScrollController = useScrollController();
     // Set while the shell moves the PageView itself, so the resulting
     // onPageChanged is not mistaken for a swipe.
     final isJumping = useRef(false);
@@ -122,7 +105,6 @@ class ForYouScreen extends HookConsumerWidget {
     ref.watch(forYouTodayInViewProvider);
 
     ScrollController controllerForIndex(int index) {
-      if (index >= _tabCount) return searchScrollController;
       return switch (ForYouTab.values[index]) {
         ForYouTab.mySpace => mySpaceScrollController,
         ForYouTab.today => todayScrollController,
@@ -218,108 +200,11 @@ class ForYouScreen extends HookConsumerWidget {
       return () => pageController.removeListener(track);
     }, [pageController]);
 
-    // The header's search bar writes the app-wide search providers, which the
-    // Events header reads too. Leaving For You mid-search must not hand that
-    // header a stale query, so drop it, but only while it is still this
-    // field's text (Events may already have restored its own). Deferred:
-    // providers cannot change during unmount.
-    useEffect(() {
-      final container = ProviderScope.containerOf(context, listen: false);
-      return () {
-        final text = searchController.text;
-        if (text.isEmpty) return;
-        Future<void>.microtask(() {
-          try {
-            if (container.read(searchQueryProvider) == text) {
-              container.read(searchQueryProvider.notifier).state = '';
-              container.read(isSearchingProvider.notifier).state = false;
-            }
-            if (container.read(debouncedSearchQueryProvider) == text) {
-              container.read(debouncedSearchQueryProvider.notifier).state = '';
-            }
-          } catch (_) {
-            // The whole scope went away with the screen; nothing to reset.
-          }
-        });
-      };
-    }, const []);
-
-    // The reverse leak: this field always mounts empty, so anything the
-    // shared providers hold now is another header's query (Events keeps its
-    // own copy and restores it when it comes back). Left in place, focusing
-    // this empty field would open on that query's results. Deferred: the
-    // providers cannot change while the tree is building.
-    useEffect(() {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!context.mounted || searchController.text.isNotEmpty) return;
-        final staleQuery =
-            ref.read(searchQueryProvider).isNotEmpty ||
-            ref.read(debouncedSearchQueryProvider).isNotEmpty;
-        if (!staleQuery) return;
-        cancelSearchDebounce();
-        ref.read(searchQueryProvider.notifier).state = '';
-        ref.read(debouncedSearchQueryProvider.notifier).state = '';
-        if (!focusNode.hasFocus) {
-          ref.read(isSearchingProvider.notifier).state = false;
-        }
-      });
-      return null;
-    }, const []);
-
-    void leaveSearch() {
-      searchAnimatedEventIds.clear();
-      ref.read(forYouSearchQueryProvider.notifier).state = '';
-    }
-
     void selectTab(ForYouTab tab) {
-      if (ref.read(forYouSearchQueryProvider).isNotEmpty) {
-        // Clearing the field also resets the shared search providers the bar
-        // drives; the query itself is cleared here so the tab switch is
-        // immediate rather than waiting for the bar's debounce.
-        searchController.clear();
-        leaveSearch();
-      }
       ref.read(selectedForYouTabProvider.notifier).select(tab);
       FocusScope.of(context).unfocus();
-    }
-
-    // Only Today and the Search page read this filter. Changed from My Space
-    // or Discovery it would alter nothing on screen, so land on the feed it
-    // filters. Apply always lands there (the user asked to see filtered
-    // games); Reset only when it actually cleared something.
-    void applyFilter(FilterPopupState next, {required bool isReset}) {
-      final notifier = ref.read(eventAppliedFilterProvider.notifier);
-      final changed = notifier.state != next;
-      notifier.state = next;
-      ref.invalidate(forYouEventsProvider);
-      if (!context.mounted || (isReset && !changed)) return;
-      if (ref.read(forYouSearchQueryProvider).isNotEmpty) return;
-      if (ref.read(selectedForYouTabProvider) == ForYouTab.today) return;
-      selectTab(ForYouTab.today);
-    }
-
-    // Live first just came on: show the top of Today, where the live events
-    // now stand. From another page Today opens first; its list attaches a
-    // frame or two after the switch, so the scroll waits for it.
-    void showTodayTop() {
-      if (!context.mounted) return;
-      final onToday =
-          ref.read(forYouSearchQueryProvider).isEmpty &&
-          ref.read(selectedForYouTabProvider) == ForYouTab.today;
-      if (!onToday) selectTab(ForYouTab.today);
-      void scrollOnceShown(int framesLeft) {
-        if (!context.mounted) return;
-        if (todayScrollController.hasClients) {
-          scrollToTop(todayScrollController);
-        } else if (framesLeft > 0) {
-          WidgetsBinding.instance.addPostFrameCallback(
-            (_) => scrollOnceShown(framesLeft - 1),
-          );
-          WidgetsBinding.instance.scheduleFrame();
-        }
-      }
-
-      scrollOnceShown(onToday ? 0 : 6);
+      // A new page (tapped or swiped to) opens with its bars in view.
+      ScrollChromeScope.maybeOf(context)?.show();
     }
 
     ref.listen<BottomNavBarReTapRequest>(bottomNavBarReTapRequestProvider, (
@@ -331,8 +216,6 @@ class ForYouScreen extends HookConsumerWidget {
       scrollToTop(controllerForIndex(selectedIndex));
     });
 
-    // The segments share the top bar's gutter.
-    final horizontalPadding = HomeTopBarMetrics.horizontalPadding;
     final buildPage = pageBuilder ?? buildForYouPage;
 
     return Material(
@@ -347,113 +230,19 @@ class ForYouScreen extends HookConsumerWidget {
             crossAxisAlignment: CrossAxisAlignment.center,
             mainAxisSize: MainAxisSize.min,
             children: [
-              // The home bar's shared frame: the same inset and gutter as
-              // every other home tab, so the avatar never moves on a switch.
-              HomeTopBarFrame(
-                child: SizedBox(
-                  width: double.infinity,
-                  child: EnhancedRoundedSearchBar(
-                    // Live first rides inside the field, beside the filter
-                    // glyph, as on the Events bar.
-                    fieldActions: [
-                      ForYouLiveFirstToggle(
-                        key: const ValueKey(kForYouLiveFirstButtonKey),
-                        onTurnedOn: showTodayTop,
-                      ),
-                    ],
-                    focusNode: focusNode,
-                    controller: searchController,
-                    textFieldKey: e2eKey(E2eIds.forYouSearchField),
-                    filterButtonKey: e2eKey(E2eIds.forYouFilterButton),
-                    hintText: 'Search',
-                    rotatingHints: const [
-                      'player',
-                      'tournament',
-                      'openings',
-                      'FIDE country',
-                    ],
-                    filterBadgeCount: filterBadgeCount,
-                    // Already debounced by the bar, so the query drives the
-                    // search fan-out directly.
-                    onChanged: (value) {
-                      final trimmed = value.trim();
-                      final notifier = ref.read(
-                        forYouSearchQueryProvider.notifier,
-                      );
-                      if (trimmed.isNotEmpty) {
-                        if (notifier.state != trimmed) notifier.state = trimmed;
-                      } else if (notifier.state.isNotEmpty) {
-                        leaveSearch();
-                      }
-                    },
-                    onClearSearchField: leaveSearch,
-                    onTournamentSelected: (tournament) => openForYouEvent(
-                      context,
-                      ref,
-                      eventId: tournament.id,
-                      category: GroupEventCategory.search,
-                    ),
-                    onPlayerSelected: (player) {
-                      FocusScope.of(context).unfocus();
-                      HapticFeedbackService.buttonPress();
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => PlayerProfileScreen(
-                            fideId: player.fideId,
-                            playerName: player.name,
-                            title: player.title,
-                            federation: player.fed,
-                            rating: player.rating,
-                            gamebasePlayerId: player.gamebasePlayerId,
-                            memorialSourceIdentity:
-                                player.memorialSourceIdentity,
-                            memorialRouteId: player.memorialRouteId,
-                          ),
-                        ),
-                      );
-                    },
-                    onOpeningSelected: (opening) {
-                      FocusScope.of(context).unfocus();
-                      HapticFeedbackService.buttonPress();
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => SmartEventScreen(
-                            request: SmartEventRequest.forOpeningSelection(
-                              opening,
-                            ),
-                          ),
-                        ),
-                      );
-                    },
-                    onFilterTap: () {
-                      ref
-                          .read(filterPopupProvider.notifier)
-                          .setState(appliedFilterState);
-                      showAlertModal<void>(
-                        context: context,
-                        horizontalPadding: 0,
-                        child: FilterPopup(
-                          onApplyFilters: (filterState) =>
-                              applyFilter(filterState, isReset: false),
-                          onResetFilters: () => applyFilter(
-                            defaultFilterPopupState,
-                            isReset: true,
-                          ),
-                        ),
-                      );
-                    },
-                    onProfileTap: () => Scaffold.maybeOf(context)?.openDrawer(),
-                  ),
-                ),
-              ),
-              SizedBox(height: 16.h),
-              Padding(
-                padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
-                child: _ForYouSegments(
+              // The status bar's inset stays; the strip under it scrolls away
+              // with the page and back (X-style). No avatar and no search
+              // field: Profile and Search have tabs of their own.
+              SizedBox(height: MediaQuery.viewPaddingOf(context).top),
+              // The header: the brand mark, then the pages as tabs with an
+              // indicator that rides the swipe. It scrolls away with the page
+              // and back (X-style).
+              _MaybeCollapsing(
+                child: _ForYouHeader(
+                  pageController: pageController,
                   selectedIndex: selectedIndex,
-                  searchQuery: searchQuery,
+                  onMarkTap: () =>
+                      scrollToTop(controllerForIndex(selectedIndex)),
                   onHold: (index) => unawaited(
                     makeStartScreenDefault(
                       context,
@@ -467,11 +256,10 @@ class ForYouScreen extends HookConsumerWidget {
                       scrollToTop(controllerForIndex(index));
                       return;
                     }
-                    if (index < _tabCount) selectTab(ForYouTab.values[index]);
+                    selectTab(ForYouTab.values[index]);
                   },
                 ),
               ),
-              SizedBox(height: 12.h),
               Expanded(
                 child: NotificationListener<ScrollEndNotification>(
                   // A selection made while a gesture owned the PageView (a
@@ -491,16 +279,12 @@ class ForYouScreen extends HookConsumerWidget {
                     onPageChanged: (index) {
                       if (isJumping.value || index >= _tabCount) return;
                       final tab = ForYouTab.values[index];
-                      // Already there: nothing to select, and no reason to
-                      // drop the keyboard.
-                      if (ref.read(forYouSearchQueryProvider).isEmpty &&
-                          ref.read(selectedForYouTabProvider) == tab) {
+                      // Already there: nothing to select.
+                      if (ref.read(selectedForYouTabProvider) == tab) {
                         return;
                       }
-                      // A swipe onto a regular page leaves the search (the
-                      // Search page is always last, so a swipe can only move
-                      // off it, never onto it). The gesture is already
-                      // carrying the view there, so the sync effect skips it.
+                      // The gesture is already carrying the view there, so
+                      // the sync effect skips it.
                       swipedTo.value = index;
                       selectTab(tab);
                     },
@@ -517,12 +301,6 @@ class ForYouScreen extends HookConsumerWidget {
                       if (index >= pageCount ||
                           (index != selectedIndex && !inView)) {
                         return const SizedBox.shrink();
-                      }
-                      if (index >= _tabCount) {
-                        return SearchResultsWidget(
-                          scrollController: searchScrollController,
-                          searchQuery: searchQuery,
-                        );
                       }
                       return buildPage(
                         context,
@@ -541,108 +319,339 @@ class ForYouScreen extends HookConsumerWidget {
   }
 }
 
-/// The key of the For You (Home) bar's Live first control.
+/// The key of Today's Live first button.
 const String kForYouLiveFirstButtonKey = 'for_you_live_first_button';
 
-/// Live first on the For You bar (Trello #1420), wearing the web's Live mark:
-/// the Events bar's control, on the same flag, over the Today feed
-/// ([pressForYouLiveFirst]). [onTurnedOn] runs once it has come on.
-class ForYouLiveFirstToggle extends HookConsumerWidget {
-  const ForYouLiveFirstToggle({super.key, this.onTurnedOn});
+/// The key of Today's filter button.
+const String kForYouFilterButtonKey = 'for_you_filter_button';
 
-  final VoidCallback? onTurnedOn;
+/// How many filters narrow the event lists (formats and states, Elo, ECO).
+int eventFilterCount(FilterPopupState state) =>
+    state.formatsAndStates.length +
+    (state.hasEloFilter ? 1 : 0) +
+    (state.eco.isAll ? 0 : 1);
+
+/// Opens the event filter that Today and the Search tab share. Applying it
+/// reloads the Today feed it narrows.
+void showEventFilters(BuildContext context, WidgetRef ref) {
+  ref
+      .read(filterPopupProvider.notifier)
+      .setState(ref.read(eventAppliedFilterProvider));
+  void apply(FilterPopupState next) {
+    ref.read(eventAppliedFilterProvider.notifier).state = next;
+    ref.invalidate(forYouEventsProvider);
+  }
+
+  showAlertModal<void>(
+    context: context,
+    horizontalPadding: 0,
+    child: FilterPopup(
+      onApplyFilters: apply,
+      onResetFilters: () => apply(defaultFilterPopupState),
+    ),
+  );
+}
+
+/// Today's floating buttons, in the thumb's reach where the search field and
+/// Botvinnik used to be (Trello #1420):
+///
+/// * Live first, only while an event is in play. With nothing live it has
+///   nothing to do, so it is not there to be pressed; a flag left on only
+///   orders the feed, which with nothing live is the same order.
+/// * The event filter (formats, Elo, ECO), always: it narrows this feed, and
+///   its count says how many filters are on.
+class ForYouTodayFabs extends HookConsumerWidget {
+  const ForYouTodayFabs({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     // A press can wait on the feed for live events below its pages; taps
     // until it is answered are ignored.
     final pressing = useRef(false);
-    return LiveFirstToggleButton(
-      subject: 'events',
-      // Rests in the field's quiet ink, like the magnifier and the filter.
-      restingColor: context.colors.iconSecondary,
-      pressed: ref.watch(homeEventsLiveFirstProvider),
-      onTap: () async {
-        if (pressing.value) return;
-        pressing.value = true;
-        try {
-          if (await pressForYouLiveFirst(context: context, ref: ref)) {
-            onTurnedOn?.call();
-          }
-        } finally {
-          pressing.value = false;
-        }
-      },
+    final liveFirst = ref.watch(homeEventsLiveFirstProvider);
+    final anyLive = ref.watch(homeAnyLiveEventProvider);
+    final filters = eventFilterCount(ref.watch(eventAppliedFilterProvider));
+    return InkFabStack(
+      children: [
+        InkFab(
+          key: const ValueKey(kForYouFilterButtonKey),
+          label: 'Filters',
+          size: InkFabSize.small,
+          badgeCount: filters,
+          onTap: () => showEventFilters(context, ref),
+          glyph: (color, size) =>
+              Icon(Icons.tune_rounded, size: size, color: color),
+        ),
+        if (anyLive)
+          LiveFirstInkFab(
+            key: const ValueKey(kForYouLiveFirstButtonKey),
+            subject: 'events',
+            size: InkFabSize.regular,
+            on: liveFirst,
+            onTap: () async {
+              if (pressing.value) return;
+              pressing.value = true;
+              try {
+                if (await pressForYouLiveFirst(context: context, ref: ref)) {
+                  // The live events now lead Today: show its top.
+                  ref
+                      .read(bottomNavBarReTapRequestProvider.notifier)
+                      .request(BottomNavBarItem.forYou);
+                }
+              } finally {
+                pressing.value = false;
+              }
+            },
+          ),
+      ],
     );
   }
 }
 
-class _ForYouSegments extends StatelessWidget {
-  const _ForYouSegments({
-    required this.selectedIndex,
-    required this.searchQuery,
-    required this.onSelected,
-    required this.onHold,
-  });
+/// The segment strip, folding away with the shell's chrome when there is
+/// one (in tests the screen can stand alone).
+class _MaybeCollapsing extends StatelessWidget {
+  const _MaybeCollapsing({required this.child});
 
-  final int selectedIndex;
-  final String searchQuery;
-  final ValueChanged<int> onSelected;
-
-  /// A held tab title (never the transient Search segment).
-  final ValueChanged<int> onHold;
+  final Widget child;
 
   @override
   Widget build(BuildContext context) {
-    final options = [
-      for (final tab in ForYouTab.values) tab.label,
-      if (searchQuery.isNotEmpty) forYouSearchTabTitle(searchQuery),
-    ];
-    final colors = context.colors;
-    final current = selectedIndex.clamp(0, options.length - 1);
-    return SegmentedSwitcher(
-      dotScope: 'home.tab',
-      height: context.textExtent(40.h),
-      backgroundColor: colors.popup,
-      selectedBackgroundColor: colors.popup,
-      options: options,
-      // One line, scaled down rather than wrapped: with the Search segment
-      // showing on a narrow phone at a large text scale, "My Space" would
-      // otherwise break onto a second line the 40-high strip clips.
-      //
-      // Ink is set here, not left to the switcher: its default dims the
-      // resting segments to 70% of a faint tab ink, under 4.5:1 in both
-      // themes. Secondary ink at full strength clears it on the strip.
-      // The strip has no thumb, so the selected label also steps up in
-      // weight: ink alone is too small a change to read the page at a glance.
-      optionLabels: [
-        for (var i = 0; i < options.length; i++)
-          Padding(
-            padding: EdgeInsets.symmetric(horizontal: 4.w),
-            child: FittedBox(
-              fit: BoxFit.scaleDown,
-              child: Text(
-                options[i],
-                maxLines: 1,
-                softWrap: false,
-                style: TextStyle(
-                  color: i == current
-                      ? colors.textPrimary
-                      : colors.textSecondary,
-                  fontWeight: i == current ? FontWeight.w700 : FontWeight.w500,
+    final chrome = ScrollChromeScope.maybeOf(context);
+    if (chrome == null) return child;
+    return CollapsingChrome(controller: chrome, child: child);
+  }
+}
+
+/// Home's header: the ChessEver mark, then My Space | Today | Discovery as
+/// text tabs.
+///
+/// The mark is the page's name (a tap takes the page back to its top, as a
+/// logo does on X); the tabs are full-width text, the selected one in body
+/// ink and weight with a short rounded bar under it in the brand's tonal
+/// blue. The bar rides the pages' own position, so it travels with a swipe
+/// under the finger rather than jumping when the swipe lands.
+class _ForYouHeader extends StatelessWidget {
+  const _ForYouHeader({
+    required this.pageController,
+    required this.selectedIndex,
+    required this.onSelected,
+    required this.onHold,
+    required this.onMarkTap,
+  });
+
+  final PageController pageController;
+  final int selectedIndex;
+  final ValueChanged<int> onSelected;
+
+  /// A held tab title.
+  final ValueChanged<int> onHold;
+  final VoidCallback onMarkTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final side = HomeTopBarMetrics.horizontalPadding;
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        SizedBox(height: 6.h),
+        Semantics(
+          button: true,
+          label: 'ChessEver, back to the top',
+          excludeSemantics: true,
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () {
+              HapticFeedbackService.navigation();
+              onMarkTap();
+            },
+            child: SizedBox(
+              height: 44,
+              width: 88,
+              child: PressSpring(
+                pressedScale: 0.86,
+                child: Center(
+                  child: Image.asset(
+                    kHomeMarkAsset,
+                    width: 26,
+                    height: 26,
+                    filterQuality: FilterQuality.medium,
+                    cacheWidth: (26 * MediaQuery.devicePixelRatioOf(context))
+                        .round(),
+                  ),
                 ),
               ),
             ),
           ),
+        ),
+        Padding(
+          padding: EdgeInsets.symmetric(horizontal: side),
+          child: ForYouPageTabs(
+            pageController: pageController,
+            selectedIndex: selectedIndex,
+            labels: [for (final tab in ForYouTab.values) tab.label],
+            onSelected: onSelected,
+            onHold: onHold,
+          ),
+        ),
       ],
-      currentSelection: current,
-      onSelectionChanged: onSelected,
-      notifyOnReselect: true,
-      longPressFor: (index) =>
-          index < ForYouTab.values.length ? () => onHold(index) : null,
-      longPressHint: (index) => startScreenHint(
-        BottomNavBarItem.forYou,
-        forYouStartPage(ForYouTab.values[index]),
+    );
+  }
+}
+
+/// The ChessEver mark Home wears at its top.
+const String kHomeMarkAsset = 'assets/pngs/chessever-mark.png';
+
+/// Equal-width text tabs with an indicator that follows [pageController].
+class ForYouPageTabs extends StatelessWidget {
+  const ForYouPageTabs({
+    required this.pageController,
+    required this.selectedIndex,
+    required this.labels,
+    required this.onSelected,
+    required this.onHold,
+  });
+
+  final PageController pageController;
+  final int selectedIndex;
+  final List<String> labels;
+  final ValueChanged<int> onSelected;
+  final ValueChanged<int> onHold;
+
+  static const double _height = 46;
+  static const double _barHeight = 3;
+
+  /// Where the pages are, as a tab index: fractional mid-swipe.
+  double _position() {
+    if (pageController.hasClients) {
+      final position = pageController.position;
+      if (position.hasPixels &&
+          position.hasViewportDimension &&
+          position.viewportDimension > 0) {
+        return (position.pixels / position.viewportDimension).clamp(
+          0.0,
+          labels.length - 1.0,
+        );
+      }
+    }
+    return selectedIndex.toDouble();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.colors;
+    // One line at any text size: scaled down rather than wrapped, so a long
+    // label at a large text scale never breaks the row.
+    final style = AppTypography.textMdMedium;
+    return MediaQuery.withClampedTextScaling(
+      maxScaleFactor: 1.6,
+      child: SizedBox(
+        height: context.textExtent(_height),
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final slot = constraints.maxWidth / labels.length;
+            final painters = [
+              for (final label in labels)
+                TextPainter(
+                  text: TextSpan(
+                    text: label,
+                    style: style.copyWith(fontWeight: FontWeight.w700),
+                  ),
+                  textDirection: Directionality.of(context),
+                  textScaler: MediaQuery.textScalerOf(context),
+                  maxLines: 1,
+                )..layout(),
+            ];
+            final widths = [
+              for (final painter in painters)
+                math.min(painter.width, slot - 16) + 8,
+            ];
+            for (final painter in painters) {
+              painter.dispose();
+            }
+            return Stack(
+              children: [
+                Row(
+                  children: [
+                    for (var i = 0; i < labels.length; i++)
+                      Expanded(
+                        child: Semantics(
+                          button: true,
+                          selected: i == selectedIndex,
+                          label: labels[i],
+                          onLongPressHint: startScreenHint(
+                            BottomNavBarItem.forYou,
+                            forYouStartPage(ForYouTab.values[i]),
+                          ),
+                          excludeSemantics: true,
+                          child: GestureDetector(
+                            behavior: HitTestBehavior.opaque,
+                            onTap: () {
+                              HapticFeedbackService.selection();
+                              onSelected(i);
+                            },
+                            onLongPress: () => onHold(i),
+                            child: PressSpring(
+                              pressedScale: 0.92,
+                              child: Center(
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 4,
+                                  ),
+                                  child: FittedBox(
+                                    fit: BoxFit.scaleDown,
+                                    child: Text(
+                                      labels[i],
+                                      maxLines: 1,
+                                      softWrap: false,
+                                      style: style.copyWith(
+                                        color: i == selectedIndex
+                                            ? colors.textPrimary
+                                            : colors.textSecondary,
+                                        fontWeight: i == selectedIndex
+                                            ? FontWeight.w700
+                                            : FontWeight.w500,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+                // The indicator: a short rounded bar under the selected
+                // title, as wide as its word, moving with the pages.
+                AnimatedBuilder(
+                  animation: pageController,
+                  builder: (context, _) {
+                    final at = _position();
+                    final from = at.floor().clamp(0, labels.length - 1);
+                    final to = at.ceil().clamp(0, labels.length - 1);
+                    final t = at - from;
+                    final width =
+                        widths[from] + (widths[to] - widths[from]) * t;
+                    final centre = slot * (at + 0.5);
+                    return Positioned(
+                      left: centre - width / 2,
+                      width: width,
+                      bottom: 0,
+                      height: _barHeight,
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          color: colors.accentText,
+                          borderRadius: BorderRadius.circular(_barHeight),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ],
+            );
+          },
+        ),
       ),
     );
   }

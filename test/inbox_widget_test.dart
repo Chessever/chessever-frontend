@@ -14,8 +14,9 @@ import 'package:chessever2/services/attention_policy.dart';
 import 'package:chessever2/services/editorial_link_service.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/adaptive_window.dart';
-import 'package:chessever2/widgets/hamburger_menu/hamburger_menu.dart';
-import 'package:chessever2/widgets/home_top_bar.dart';
+import 'package:chessever2/screens/home/widget/bottom_nav_bar.dart';
+import 'package:chessever2/screens/my_profile/my_profile_screen.dart';
+import 'package:chessever2/screens/my_profile/profile_hub_screen.dart';
 import 'package:chessever2/widgets/skeleton_widget.dart';
 import 'package:chessever2/widgets/user_avatar.dart';
 import 'package:flutter/material.dart';
@@ -73,13 +74,21 @@ Future<ProviderContainer> _pump(
       attentionClockProvider.overrideWithValue(inboxFixtureNow),
       inboxSourceProvider.overrideWithValue(source),
       inboxCacheProvider.overrideWithValue(FakeInboxCache()),
+      // The Botvinnik switch lives in SQLite, which retries on a timer here.
+      botvinnikTabAvailableProvider.overrideWithValue(true),
+      myProfileIdentityProvider.overrideWith(
+        (ref) => (
+          displayName: 'Fixture Reader',
+          email: anonymous ? null : 'reader@example.test',
+          isGuest: anonymous,
+        ),
+      ),
       if (openLink != null)
         editorialLinkOpenerProvider.overrideWithValue(openLink),
     ],
   );
   _testContainer = container;
   addTearDown(_disposeContainer);
-  final scaffoldKey = GlobalKey<ScaffoldState>();
   await tester.pumpWidget(
     UncontrolledProviderScope(
       container: container,
@@ -95,24 +104,8 @@ Future<ProviderContainer> _pump(
         home: Builder(
           builder: (context) {
             if (!shell) return const InboxScreen();
-            return Scaffold(
-              key: scaffoldKey,
-              drawer: HamburgerMenu(
-                callbacks: HamburgerMenuCallbacks(
-                  onPlayersPressed: () {},
-                  onBoardPressed: () {},
-                  onFavoritesPressed: () {},
-                  onSupportPressed: () {},
-                  onPremiumPressed: () {},
-                  onLogoutPressed: () {},
-                ),
-              ),
-              body: Center(
-                child: HomeTopBarAvatar(
-                  onTap: () => scaffoldKey.currentState!.openDrawer(),
-                ),
-              ),
-            );
+            // The Profile tab holds what the sidebar did, Inbox included.
+            return const Scaffold(body: ProfileHubScreen());
           },
         ),
       ),
@@ -148,7 +141,7 @@ void main() {
   tearDownAll(() => Supabase.instance.dispose());
 
   testWidgets(
-    'drawer avatar keeps its editor inside the Inbox unread wrapper',
+    'Profile avatar keeps its editor inside the Inbox unread wrapper',
     (tester) async {
       final source = FakeInboxSource();
       final container = await _pump(
@@ -158,10 +151,8 @@ void main() {
         anonymous: false,
       );
       await tester.pumpAndSettle();
-      await tester.tap(find.byType(HomeTopBarAvatar));
-      await tester.pumpAndSettle();
       final avatar = find.descendant(
-        of: find.byType(HamburgerMenu),
+        of: find.byType(ProfileHubScreen),
         matching: find.byType(UserAvatar),
       );
       expect(avatar, findsOneWidget);
@@ -178,21 +169,19 @@ void main() {
       expect(source.marks, isEmpty);
       await tester.tap(find.byTooltip('Close profile photo'));
       await tester.pumpAndSettle();
-      expect(find.byKey(const ValueKey('drawer-inbox-dot')), findsOneWidget);
+      expect(find.byKey(const ValueKey('profile-inbox-dot')), findsOneWidget);
       await _close(tester);
     },
   );
 
   testWidgets(
-    'drawer/list do not mark; Inbox directly above Board, feedback kept',
+    'Profile/list do not mark; Inbox directly above Board, feedback kept',
     (tester) async {
       final source = FakeInboxSource();
       final container = await _pump(tester, source, shell: true);
       await tester.pumpAndSettle();
       expect(find.byKey(const ValueKey('inbox-avatar-dot')), findsOneWidget);
-      await tester.tap(find.byType(HomeTopBarAvatar));
-      await tester.pumpAndSettle();
-      expect(find.byKey(const ValueKey('drawer-inbox-dot')), findsOneWidget);
+      expect(find.byKey(const ValueKey('profile-inbox-dot')), findsOneWidget);
       final inboxY = tester.getCenter(find.text('Inbox')).dy;
       final boardY = tester.getCenter(find.text('Board')).dy;
       final calendarY = tester.getCenter(find.text('Calendar')).dy;
@@ -200,7 +189,7 @@ void main() {
       expect(boardY - inboxY, closeTo(calendarY - boardY, 1));
       expect(find.text('Feedback'), findsOneWidget);
       expect(source.marks, isEmpty);
-      await tester.tap(find.byKey(const ValueKey('drawer-inbox')));
+      await tester.tap(find.byKey(const ValueKey('profile-inbox')));
       await tester.pumpAndSettle();
       expect(find.byType(InboxScreen), findsOneWidget);
       expect(source.marks, isEmpty);
@@ -380,25 +369,21 @@ void main() {
     expect(container.read(inboxProvider).syncError, isNull);
     await _close(tester);
   });
-  testWidgets('the drawer hides Inbox until its backend answers', (
-    tester,
-  ) async {
+  testWidgets('Profile hides Inbox until its backend answers', (tester) async {
     final source = FakeInboxSource()
       ..fetchOverride = (_) async => throw StateError('LOCAL FIXTURE no RPC');
     final container = await _pump(tester, source, shell: true);
     await tester.pumpAndSettle();
-    await tester.tap(find.byType(HomeTopBarAvatar));
-    await tester.pumpAndSettle();
     expect(find.text('Board'), findsOneWidget);
-    expect(find.byKey(const ValueKey('drawer-inbox')), findsNothing);
+    expect(find.byKey(const ValueKey('profile-inbox')), findsNothing);
 
     source.fetchOverride = (_) async => [];
     await container.read(inboxProvider.notifier).refresh();
     await tester.pumpAndSettle();
-    expect(find.byKey(const ValueKey('drawer-inbox')), findsOneWidget);
+    expect(find.byKey(const ValueKey('profile-inbox')), findsOneWidget);
     await _close(tester);
   });
-  testWidgets('all avatar and drawer dots clear only after the final read', (
+  testWidgets('all avatar and Profile dots clear only after the final read', (
     tester,
   ) async {
     final source = FakeInboxSource();
@@ -406,10 +391,9 @@ void main() {
     await tester.pumpAndSettle();
     await container.read(inboxProvider.notifier).markOpened(inboxIdA);
     await tester.pumpAndSettle();
-    expect(find.byType(InboxUnreadDot), findsOneWidget);
-    await tester.tap(find.byType(HomeTopBarAvatar));
-    await tester.pumpAndSettle();
-    expect(find.byKey(const ValueKey('drawer-inbox-dot')), findsOneWidget);
+    // The avatar's dot and the Inbox row's.
+    expect(find.byType(InboxUnreadDot), findsNWidgets(2));
+    expect(find.byKey(const ValueKey('profile-inbox-dot')), findsOneWidget);
     await container.read(inboxProvider.notifier).markOpened(inboxIdB);
     await tester.pumpAndSettle();
     expect(find.byType(InboxUnreadDot), findsNothing);

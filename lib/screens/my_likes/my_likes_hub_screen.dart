@@ -11,7 +11,10 @@ import 'package:chessever2/screens/for_you/discovery/widgets/discovery_common.da
 import 'package:chessever2/screens/gamebase/event_view/gamebase_virtual_event_id.dart'
     show virtualBroadcastId;
 import 'package:chessever2/screens/standings/player_standing_model.dart';
+import 'package:chessever2/screens/tour_detail/widgets/event_search_bar.dart'
+    show EventSearchBarFrame;
 import 'package:chessever2/widgets/figma_player_card.dart';
+import 'package:chessever2/widgets/simple_search_bar.dart';
 import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart';
 import 'package:chessever2/screens/group_event/providers/live_group_broadcast_id_provider.dart';
 import 'package:chessever2/screens/library/widgets/library_context_menu.dart';
@@ -37,7 +40,9 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 /// My Likes in the event view's frame (back, a centred title, segments that
 /// swipe), as Favorites and Countrymen open from Today: the liked games,
 /// their players, and a short explanation of how likes work.
-/// A player opens the Games page narrowed to them.
+/// A player opens the Games page narrowed to them, their name over the
+/// games. Games searches from a floating button, its field in the header's
+/// place.
 class MyLikesHubScreen extends ConsumerStatefulWidget {
   const MyLikesHubScreen({
     super.key,
@@ -58,25 +63,94 @@ class _MyLikesHubScreenState extends ConsumerState<MyLikesHubScreen> {
   final _tabs = EventViewController();
   bool _landingTabResolved = false;
 
+  /// The Games page's search, typed in the header's place once its floating
+  /// button opens it. Held here rather than by the page: the field lives in
+  /// the shell's header, and a player picked on Players fills it.
+  final _search = TextEditingController();
+  final _searchFocus = FocusNode();
+  Timer? _debounce;
+
+  /// The player picked on Players while the Games list is still theirs:
+  /// named over the games with Show all, since the search that holds the
+  /// name is closed. Typing something else, or clearing, lets go of it.
+  String? _player;
+
+  @override
+  void initState() {
+    super.initState();
+    // A search already in the filter shows in the field when it opens.
+    _search.text = ref.read(myLikesFilterProvider).searchQuery;
+  }
+
   @override
   void dispose() {
+    _debounce?.cancel();
+    _search.dispose();
+    _searchFocus.dispose();
     _tabs.dispose();
     super.dispose();
   }
 
-  /// Opens the Games page narrowed to [query] (a player's or an event's
-  /// name).
+  /// Opens the Games page narrowed to the player named [query]. The search
+  /// stays closed: the list names the player over their games, and the
+  /// field holds the name for when it opens.
   void _showGames(String query) {
     HapticFeedbackService.selection();
+    _debounce?.cancel();
+    _search.text = query;
     ref.read(myLikesFilterProvider.notifier).searchGames(query);
+    setState(() => _player = query);
     _tabs.showTab(0);
+  }
+
+  void _searchChanged(String value) {
+    // Typing searches for something else: the player's line goes with it.
+    if (_player != null) setState(() => _player = null);
+    _debounce?.cancel();
+    _debounce = Timer(const Duration(milliseconds: 400), () {
+      if (mounted) ref.read(myLikesFilterProvider.notifier).searchGames(value);
+    });
+  }
+
+  /// Empties the field and the search, and lets go of a picked player.
+  /// Filters and sorts stay, counted on the search button.
+  void _clearSearch() {
+    _debounce?.cancel();
+    _search.clear();
+    ref.read(myLikesFilterProvider.notifier).clearSearch();
+    if (_player != null) setState(() => _player = null);
+  }
+
+  /// Show all, beside the picked player's name: back to every like.
+  void _showAll() {
+    HapticFeedbackService.light();
+    _clearSearch();
+  }
+
+  Future<void> _showFilters() {
+    _searchFocus.unfocus();
+    // What was typed counts before the dialog, not 400ms after it.
+    _debounce?.cancel();
+    ref.read(myLikesFilterProvider.notifier).searchGames(_search.text);
+    return showMyLikesFilters(context, ref);
   }
 
   @override
   Widget build(BuildContext context) {
     // Held for the hub's lifetime: the pages share one search and filter,
     // whichever of them is on screen.
-    ref.watch(myLikesFilterProvider);
+    final narrowing = ref.watch(myLikesFilterProvider);
+    // Sorts count with the filters, as the page's own filter glyph counts
+    // them: a sort-only list still says it is arranged.
+    final applied =
+        narrowing.filter.activeFilterCount + narrowing.filter.activeSortCount;
+    // Whether Games has anything to search, from the view the page draws
+    // (its own query): the full list below is a separate request, and the
+    // button must not wait on it, or vanish when it fails, while the page
+    // shows cards.
+    final total = ref.watch(
+      myLikesViewProvider.select((v) => v.valueOrNull?.totalLiked),
+    );
     final likes = ref.watch(likedGamesProvider);
     // Choose the landing page once, after the initial list has resolved.
     // Later removals/refreshes must not pull the reader off their chosen tab.
@@ -99,8 +173,44 @@ class _MyLikesHubScreenState extends ConsumerState<MyLikesHubScreen> {
       tabs: MyLikesHubScreen.tabs,
       initialTab: initialTab,
       controller: _tabs,
+      // Games searches from a floating button that opens the field in the
+      // header's place, over the same list; Players and About, and a hub
+      // with no likes, have nothing to type into. Embedded, the shell offers
+      // no search, so the page keeps its own row.
+      search: EventViewSearch(
+        label: 'Search liked games',
+        focusNode: _searchFocus,
+        tabs: (total ?? list?.length ?? 0) > 0 ? const {0} : const <int>{},
+        badgeCount: applied,
+        onClose: _clearSearch,
+        field: EventSearchBarFrame(
+          compact: true,
+          child: SimpleSearchBar(
+            controller: _search,
+            focusNode: _searchFocus,
+            hintText: 'Search liked games',
+            textFieldKey: const ValueKey('my_likes_search'),
+            filterButtonKey: const ValueKey('my_likes_filters'),
+            compactFilter: true,
+            filterBadgeCount: applied,
+            onChanged: _searchChanged,
+            onOpenFilter: _showFilters,
+            onCloseTap: () {
+              HapticFeedbackService.light();
+              _clearSearch();
+              _searchFocus.unfocus();
+            },
+          ),
+        ),
+      ),
       pageBuilder: (context, index) => switch (index) {
-        0 => const MyLikesGamesPage(key: PageStorageKey('my_likes_games')),
+        // Embedded, the page's own field shows the picked player instead.
+        0 => MyLikesGamesPage(
+          key: const PageStorageKey('my_likes_games'),
+          searchInHeader: !widget.embedded,
+          player: widget.embedded ? null : _player,
+          onShowAll: _showAll,
+        ),
         1 => MyLikesPlayersPage(
           key: const PageStorageKey('my_likes_players'),
           onPick: _showGames,

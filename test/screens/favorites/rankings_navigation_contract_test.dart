@@ -3,16 +3,15 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  test('drawer Rankings opens the Rankings tab', () {
-    final drawer =
-        File(
-          'lib/widgets/hamburger_menu/hamburger_menu.dart',
-        ).readAsStringSync();
-    final home = File('lib/screens/home/home_screen.dart').readAsStringSync();
+  test('Profile Rankings opens the Rankings tab', () {
+    // The sidebar's rows moved to the Profile tab (2026-11-18).
+    final profile = File(
+      'lib/screens/my_profile/profile_hub_screen.dart',
+    ).readAsStringSync();
 
-    expect(drawer, contains("title: 'Rankings'"));
-    expect(drawer, contains('icon: Icons.leaderboard_outlined'));
-    expect(home, contains('initialMode: FavoritesScreenMode.players'));
+    expect(profile, contains("title: 'Rankings'"));
+    expect(profile, contains('Icons.leaderboard_outlined'));
+    expect(profile, contains('initialMode: FavoritesScreenMode.players'));
   });
 
   test('For You Favorites keeps its existing Games entry path', () {

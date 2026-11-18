@@ -8,8 +8,6 @@ import 'package:chessever2/screens/collections/collection_counts_refresher.dart'
 import 'package:chessever2/repository/gamebase/collections/collection_search_query.dart';
 import 'package:chessever2/screens/collections/collection_search_filters.dart';
 import 'package:chessever2/widgets/simple_search_bar.dart';
-import 'package:chessever2/widgets/search/search_motion.dart';
-import 'package:chessever2/widgets/home_top_bar.dart';
 import 'dart:async';
 import 'dart:math' as math;
 import 'package:chessever2/e2e/e2e_ids.dart';
@@ -25,8 +23,6 @@ import 'package:chessever2/screens/collections/collections_data.dart';
 import 'package:chessever2/screens/collections/open_collection_game.dart';
 import 'package:chessever2/screens/collections/collections_tab_provider.dart';
 import 'package:chessever2/screens/collections/event_view_shell.dart';
-import 'package:chessever2/screens/home/start_screen.dart';
-import 'package:chessever2/screens/home/widget/bottom_nav_bar.dart';
 import 'package:chessever2/screens/for_you/discovery/widgets/discovery_common.dart'
     show discoveryGutter;
 import 'package:chessever2/screens/for_you/discovery/widgets/discovery_game_cards.dart';
@@ -112,22 +108,6 @@ class _CollectionsScreenState extends ConsumerState<CollectionsScreen> {
         CollectionsTab.values[index];
   }
 
-  StartPage _startPage(int index) =>
-      collectionsStartPage(CollectionsTab.values[index]);
-
-  VoidCallback _holdTab(int index) =>
-      () => unawaited(
-        makeStartScreenDefault(
-          context,
-          ref,
-          section: BottomNavBarItem.collections,
-          page: _startPage(index),
-        ),
-      );
-
-  String _holdTabHint(int index) =>
-      startScreenHint(BottomNavBarItem.collections, _startPage(index));
-
   Future<void> _filters() async {
     _focus.unfocus();
     _debounce?.cancel();
@@ -147,53 +127,43 @@ class _CollectionsScreenState extends ConsumerState<CollectionsScreen> {
     return CollectionCountsRefresher(child: _shell(context, query));
   }
 
+  /// Empties the field and the query's text; filters stay, and the search
+  /// button counts them.
+  void _clearSearchText() {
+    _debounce?.cancel();
+    _search.clear();
+    setState(() => _query = _query.withText(''));
+  }
+
   Widget _shell(BuildContext context, CollectionSearchQuery query) {
     return EventViewShell(
       dotScope: 'collections.tab',
       key: e2eKey(E2eIds.collectionsRoot),
       title: 'Collections',
-      header: HomeTopBarFrame(
-        child: HomeTopBarRow(
-          showAvatar: embedded,
-          leading: embedded
-              ? null
-              : IconButton(
-                  tooltip: 'Back',
-                  onPressed: () => Navigator.maybePop(context),
-                  icon: const Icon(Icons.arrow_back_ios_new_outlined),
-                ),
-          onAvatarTap:
-              embedded && (Scaffold.maybeOf(context)?.hasDrawer ?? false)
-              ? () => Scaffold.maybeOf(context)?.openDrawer()
-              : null,
-          focusNode: _focus,
-          content: ListenableBuilder(
-            listenable: _focus,
-            child: SimpleSearchBar(
-              controller: _search,
-              focusNode: _focus,
-              hintText: 'Search collections',
-              textFieldKey: const ValueKey('collections_search'),
-              filterButtonKey: const ValueKey('collections_filters'),
-              onChanged: _searchChanged,
-              onOpenFilter: _filters,
-              filterBadgeCount: _query.filterCount,
-              onCloseTap: () {
-                _debounce?.cancel();
-                _search.clear();
-                setState(() => _query = _query.withText(''));
-                _focus.unfocus();
-              },
-            ),
-            builder: (context, child) => ParkedMotionBuilder(
-              value: _focus.hasFocus ? 1.0 : 0.0,
-              motion: SearchMotion.morph,
-              child: child,
-              builder: (context, lift, child) => HomeSearchFieldSurface(
-                lift: lift,
-                child: RepaintBoundary(child: child),
-              ),
-            ),
+      // The catalog's search floats over Collections and Authors and opens
+      // in the header's place; About has nothing to search.
+      search: EventViewSearch(
+        label: 'Search collections',
+        focusNode: _focus,
+        tabs: {CollectionsTab.collections.index, CollectionsTab.authors.index},
+        badgeCount: _query.filterCount,
+        onClose: _clearSearchText,
+        field: EventSearchBarFrame(
+          compact: true,
+          child: SimpleSearchBar(
+            controller: _search,
+            focusNode: _focus,
+            hintText: 'Search collections',
+            textFieldKey: const ValueKey('collections_search'),
+            filterButtonKey: const ValueKey('collections_filters'),
+            compactFilter: true,
+            onChanged: _searchChanged,
+            onOpenFilter: _filters,
+            filterBadgeCount: _query.filterCount,
+            onCloseTap: () {
+              _clearSearchText();
+              _focus.unfocus();
+            },
           ),
         ),
       ),
@@ -206,21 +176,10 @@ class _CollectionsScreenState extends ConsumerState<CollectionsScreen> {
           ? ref.read(selectedCollectionsTabProvider).index
           : CollectionsTab.collections.index,
       onTabChanged: embedded ? _rememberTab : null,
-      tabLongPressFor: embedded ? _holdTab : null,
-      tabLongPressHint: embedded ? _holdTabHint : null,
       showBackButton: !embedded,
       homeTab: embedded,
       onOpenSidebar: embedded && (Scaffold.maybeOf(context)?.hasDrawer ?? false)
           ? () => Scaffold.maybeOf(context)?.openDrawer()
-          : null,
-      scrollToTopSequence: embedded
-          ? ref.watch(
-              bottomNavBarReTapRequestProvider.select(
-                (request) => request.item == BottomNavBarItem.collections
-                    ? request.sequence
-                    : null,
-              ),
-            )
           : null,
       pageBuilder: (context, index) => switch (index) {
         // 0 => CollectionOpeningCatalog(
@@ -228,14 +187,10 @@ class _CollectionsScreenState extends ConsumerState<CollectionsScreen> {
         //   bottomPadding: embedded ? 72 : 0,
         // ),
         0 => _CollectionsAboutPage(bottomPadding: embedded ? 72 : 0),
-        1 => CollectionBooksCatalog(
-          query: query,
-          bottomPadding: embedded ? 72 : 0,
-        ),
-        _ => CollectionAuthorsCatalog(
-          query: query,
-          bottomPadding: embedded ? 72 : 0,
-        ),
+        // The catalogs end clear of the floating search button (and, in
+        // the tab bar's shell, of the bar).
+        1 => CollectionBooksCatalog(query: query, bottomPadding: 72),
+        _ => CollectionAuthorsCatalog(query: query, bottomPadding: 72),
       },
     );
   }
@@ -812,6 +767,7 @@ class CollectionScreen extends ConsumerStatefulWidget {
 class _CollectionScreenState extends ConsumerState<CollectionScreen> {
   // int get _gamesTab => _isBook ? 2 : 1;
   static const int _gamesTab = 1;
+  static const int _playersTab = 2;
 
   // List<String> get _collectionTabs => _isBook
   //     ? const ['About', 'Openings', 'Games', 'Players']
@@ -824,7 +780,10 @@ class _CollectionScreenState extends ConsumerState<CollectionScreen> {
   late final bool _isBook = widget.collection.kind == CollectionKind.book;
 
   final EventViewController _tabs = EventViewController();
-  final _bookGameSearch = _CollectionGamesSearchState();
+
+  /// The page's search: book-wide for a book (its results replace the
+  /// tabs), the Games list's own for an event collection.
+  final _gameSearch = _CollectionGamesSearchState();
 
   // A book opens on the compact tournament list, even if another screen was
   // left on a board grid. Switching this page never changes other screens.
@@ -846,7 +805,7 @@ class _CollectionScreenState extends ConsumerState<CollectionScreen> {
   @override
   void initState() {
     super.initState();
-    _bookGameSearch.addListener(_bookSearchChanged);
+    _gameSearch.addListener(_gameSearchChanged);
     if (_isBook) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) {
@@ -856,15 +815,15 @@ class _CollectionScreenState extends ConsumerState<CollectionScreen> {
     }
   }
 
-  void _bookSearchChanged() {
+  void _gameSearchChanged() {
     if (mounted) setState(() {});
   }
 
   @override
   void dispose() {
-    _bookGameSearch.removeListener(_bookSearchChanged);
+    _gameSearch.removeListener(_gameSearchChanged);
     _tabs.dispose();
-    _bookGameSearch.dispose();
+    _gameSearch.dispose();
     super.dispose();
   }
 
@@ -1001,19 +960,26 @@ class _CollectionScreenState extends ConsumerState<CollectionScreen> {
       // scrollableTabs: _isBook,
       initialTab: _initialTab,
       controller: _tabs,
-      beforeTabsBuilder: _isBook
-          ? (context, selectedTab) => _CollectionGamesSearchBar(
-              state: _bookGameSearch,
-              opening: _opening,
-              onClearOpening: () => setState(() => _opening = null),
-              pinned: true,
-              hintText: 'Search collection',
-            )
-          : null,
-      contentOverride: _isBook && _bookGameSearch.query.isActive
+      // The search floats over the lists it covers and opens in the header's
+      // place: a book's covers its games and players at once, an event's
+      // filters its Games list.
+      search: EventViewSearch(
+        label: _isBook ? 'Search collection' : 'Search games',
+        focusNode: _gameSearch.focus,
+        tabs: {_gamesTab, if (_isBook) _playersTab},
+        badgeCount: _gameSearch.filterBadgeCount(_opening),
+        onClose: _gameSearch.clear,
+        field: _CollectionGamesSearchBar(
+          state: _gameSearch,
+          opening: _opening,
+          onClearOpening: () => setState(() => _opening = null),
+          hintText: _isBook ? 'Search collection' : 'Search collection games',
+        ),
+      ),
+      contentOverride: _isBook && _gameSearch.query.isActive
           ? _BookSearchResults(
               slug: slug,
-              query: _bookGameSearch.query,
+              query: _gameSearch.query,
               opening: _opening,
               viewMode: _gamesViewMode,
               onOpening: (opening) => _showOpeningGames(c, opening),
@@ -1122,7 +1088,7 @@ class _CollectionScreenState extends ConsumerState<CollectionScreen> {
           1 => contents.when(
             data: (data) => _GamesPage(
               slug: slug,
-              searchState: _isBook ? _bookGameSearch : null,
+              searchState: _gameSearch,
               contents: data,
               showSelector: c.kind != CollectionKind.book,
               // Book chapters/rounds are paused; _groupedBody retains
@@ -1880,6 +1846,28 @@ class _CollectionScopedGamesScreen extends ConsumerStatefulWidget {
 
 class _CollectionScopedGamesScreenState
     extends ConsumerState<_CollectionScopedGamesScreen> {
+  /// The list's search, opened from its floating button in the header's
+  /// place.
+  final _search = _CollectionGamesSearchState();
+
+  @override
+  void initState() {
+    super.initState();
+    _search.addListener(_searchChanged);
+  }
+
+  void _searchChanged() {
+    if (mounted) setState(() {});
+  }
+
+  @override
+  void dispose() {
+    _search
+      ..removeListener(_searchChanged)
+      ..dispose();
+    super.dispose();
+  }
+
   bool _openingGame = false;
   Future<void> _openScoped(List<GamesTourModel> games, int index) async {
     if (_openingGame) return;
@@ -1903,6 +1891,13 @@ class _CollectionScopedGamesScreenState
     title: widget.player?.name ?? collectionOpeningName(widget.opening!),
     tabs: const ['Games'],
     tabStripOverride: const SizedBox.shrink(),
+    search: EventViewSearch(
+      label: 'Search games',
+      focusNode: _search.focus,
+      badgeCount: _search.filterBadgeCount(widget.opening),
+      onClose: _search.clear,
+      field: _CollectionGamesSearchBar(state: _search, opening: widget.opening),
+    ),
     actions: [
       IconButton(
         tooltip: 'Change games layout',
@@ -1919,6 +1914,7 @@ class _CollectionScopedGamesScreenState
     ],
     pageBuilder: (_, __) => _GamesPage(
       slug: widget.collection.slug,
+      searchState: _search,
       contents: const CollectionContents(sections: [], games: []),
       player: widget.player,
       opening: widget.opening,
@@ -2166,6 +2162,10 @@ class _CollectionGamesSearchState extends ChangeNotifier {
     setQuery(query.withText(''));
   }
 
+  /// The filters on, counting an opening the page was opened on as one.
+  int filterBadgeCount(CollectionOpening? opening) =>
+      query.filterCount + (query.eco.isEmpty && opening != null ? 1 : 0);
+
   @override
   void dispose() {
     _debounce?.cancel();
@@ -2180,14 +2180,12 @@ class _CollectionGamesSearchBar extends StatelessWidget {
     required this.state,
     this.opening,
     this.onClearOpening,
-    this.pinned = false,
     this.hintText = 'Search collection games',
   });
   final String hintText;
   final _CollectionGamesSearchState state;
   final CollectionOpening? opening;
   final VoidCallback? onClearOpening;
-  final bool pinned;
 
   Future<void> _filters(BuildContext context) async {
     state.focus.unfocus();
@@ -2219,19 +2217,17 @@ class _CollectionGamesSearchBar extends StatelessWidget {
   Widget build(BuildContext context) => AnimatedBuilder(
     animation: state,
     builder: (context, _) => EventSearchBarFrame(
-      horizontalPadding: pinned
-          ? ResponsiveHelper.adaptive(phone: 20.sp, tablet: 32.sp)
-          : 16.sp,
+      // In the page's search header, whose row sets the spacing: slim, and
+      // with no gutter of its own.
+      compact: true,
       child: SimpleSearchBar(
         controller: state.controller,
-        compactFilter: pinned,
+        compactFilter: true,
         focusNode: state.focus,
         hintText: hintText,
         textFieldKey: const ValueKey('collection_games_search'),
         filterButtonKey: const ValueKey('collection_games_filters'),
-        filterBadgeCount:
-            state.query.filterCount +
-            (state.query.eco.isEmpty && opening != null ? 1 : 0),
+        filterBadgeCount: state.filterBadgeCount(opening),
         onChanged: state.changed,
         onOpenFilter: () => _filters(context),
         onCloseTap: state.clear,
@@ -2253,12 +2249,14 @@ class _GamesPage extends ConsumerStatefulWidget {
     required this.slug,
     this.groupByDate = false,
     this.flatList = false,
-    this.searchState,
+    required this.searchState,
   });
   final String slug;
   final bool groupByDate;
   final bool flatList;
-  final _CollectionGamesSearchState? searchState;
+
+  /// The page's search, typed in the screen's search header.
+  final _CollectionGamesSearchState searchState;
   final CollectionContents contents;
   final bool showSelector;
   final CollectionPlayer? player;
@@ -2276,7 +2274,7 @@ class _GamesPageState extends ConsumerState<_GamesPage>
     with AutomaticKeepAliveClientMixin {
   final Set<String> _collapsed = {};
   String _selected = 'all';
-  late final _searchState = widget.searchState ?? _CollectionGamesSearchState();
+  _CollectionGamesSearchState get _searchState => widget.searchState;
   CollectionSearchQuery get _query => _searchState.query;
 
   @override
@@ -2295,9 +2293,16 @@ class _GamesPageState extends ConsumerState<_GamesPage>
   }
 
   @override
+  void didUpdateWidget(_GamesPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (identical(oldWidget.searchState, widget.searchState)) return;
+    oldWidget.searchState.removeListener(_queryChanged);
+    widget.searchState.addListener(_queryChanged);
+  }
+
+  @override
   void dispose() {
     _searchState.removeListener(_queryChanged);
-    if (widget.searchState == null) _searchState.dispose();
     super.dispose();
   }
 
@@ -2321,33 +2326,18 @@ class _GamesPageState extends ConsumerState<_GamesPage>
     final filtered = query.isActive || widget.player != null
         ? ref.watch(collectionFilteredContentsProvider(key))
         : null;
-    return Column(
-      children: [
-        if (widget.searchState == null)
-          _CollectionGamesSearchBar(
-            state: _searchState,
-            opening: widget.opening,
-            onClearOpening: widget.onClearOpening,
-          ),
-        Expanded(
-          child: filtered == null
-              ? _body(widget.contents)
-              : filtered.when(
-                  skipLoadingOnReload: false,
-                  data: _body,
-                  loading: () => const _CardsSkeleton(),
-                  error: (error, _) => _Notice(
-                    text: _collectionErrorText(
-                      error,
-                      fallback: "Couldn't load the games.",
-                    ),
-                    actionLabel: 'Try again',
-                    onAction: () =>
-                        ref.invalidate(collectionFilteredContentsProvider(key)),
-                  ),
-                ),
-        ),
-      ],
+    // The search is typed in the screen's search header; the list is all
+    // this page draws.
+    if (filtered == null) return _body(widget.contents);
+    return filtered.when(
+      skipLoadingOnReload: false,
+      data: _body,
+      loading: () => const _CardsSkeleton(),
+      error: (error, _) => _Notice(
+        text: _collectionErrorText(error, fallback: "Couldn't load the games."),
+        actionLabel: 'Try again',
+        onAction: () => ref.invalidate(collectionFilteredContentsProvider(key)),
+      ),
     );
   }
 

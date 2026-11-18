@@ -8,6 +8,8 @@ import 'package:chessever2/chat/botvinnik_icon.dart';
 import 'package:chessever2/chat/chat_api.dart';
 import 'package:chessever2/chat/botvinnik_provider.dart';
 import 'package:chessever2/providers/auth_state_provider.dart';
+import 'package:chessever2/repository/authentication/auth_repository.dart'
+    show authStateProvider;
 import 'package:chessever2/services/deep_link_service.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/screens/group_event/smart_event/smart_aggregate_event_provider.dart';
@@ -44,8 +46,14 @@ class ChatScreen extends ConsumerStatefulWidget {
     this.initialConversationId,
     this.createNewConversationOnOpen = false,
     this.onConversationChanged,
+    this.embedded = false,
     super.key,
   });
+
+  /// Botvinnik as the home bar's tab: nothing to close (a new chat sits where
+  /// the close button would), and the home shell lifts the page over the
+  /// keyboard, so this page does not lift it again.
+  final bool embedded;
 
   final ChatScreenContext? screenContext;
   final String? initialConversationId;
@@ -134,13 +142,47 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   String? _appVersion;
   String? _buildNumber;
 
+  /// The account whose chats this page holds: its user id, null for a guest.
+  /// The Botvinnik tab outlives a sign-in made in place (the auth sheet, the
+  /// guest prompt), so it reloads when the signed-in account stops matching.
+  String? _account;
+
   Locale get _locale => Localizations.localeOf(context);
+
+  static String? _signedInAccount() {
+    final auth = Supabase.instance.client.auth;
+    final user = auth.currentUser;
+    if (user == null || user.isAnonymous || auth.currentSession == null) {
+      return null;
+    }
+    return user.id;
+  }
+
+  /// Loads the signed-in account's chats unless they are already on screen
+  /// or on their way.
+  void _followAccount() {
+    if (_signedInAccount() != _account) unawaited(_load());
+  }
 
   @override
   void initState() {
     super.initState();
     unawaited(_load());
     unawaited(_loadClientMetadata());
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Home keeps this tab alive out of sight, on the same route as the tab
+    // in view. An open chats drawer holds a Back entry on that route, so the
+    // next Back there would only close a drawer nobody can see. Out of sight,
+    // the drawer closes.
+    if (widget.embedded && !TickerMode.valuesOf(context).enabled) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _closeDrawer();
+      });
+    }
   }
 
   Future<void> _loadClientMetadata() async {
@@ -162,10 +204,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   }
 
   Future<void> _load() async {
-    final auth = Supabase.instance.client.auth;
-    if (auth.currentUser == null ||
-        auth.currentUser!.isAnonymous ||
-        auth.currentSession == null) {
+    final account = _signedInAccount();
+    _account = account;
+    if (account == null) {
       if (mounted) {
         setState(() {
           _loading = false;
@@ -225,7 +266,14 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       _messages = const [];
       _error = null;
     });
-    Navigator.of(context).maybePop();
+    _closeDrawer();
+  }
+
+  /// Closes the conversations drawer if it is open. Never a route pop: in
+  /// the home tab that would pop Home itself.
+  void _closeDrawer() {
+    final scaffold = _scaffoldKey.currentState;
+    if (scaffold != null && scaffold.isDrawerOpen) scaffold.closeDrawer();
   }
 
   Future<void> _select(ChatConversation conversation) async {
@@ -244,7 +292,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         widget.onConversationChanged?.call(conversation.id);
       }
       _scrollToEnd(animate: false);
-      Navigator.of(context).maybePop();
+      _closeDrawer();
     } on ChatApiException catch (error) {
       if (mounted) setState(() => _error = error.message);
     }
@@ -492,7 +540,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     if (!mounted || !signedIn) return;
     setState(() => _error = null);
     await ref.read(botvinnikQuotaProvider.notifier).refresh();
-    await _load();
+    // The auth listener in build may have started this load already.
+    if (mounted) _followAccount();
   }
 
   /// Opens the Premium popup. [resend] sends what is in the composer once the
@@ -634,8 +683,21 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       isSignedIn: user != null && !user.isAnonymous,
       quota: quota.valueOrNull,
     );
+    // Keyed on anonymity as well as id: a guest upgraded in place keeps its
+    // id, and [currentUserProvider] compares users by id alone.
+    ref.listen(
+      authStateProvider.select((auth) {
+        final user = auth.valueOrNull?.user;
+        return (id: user?.id, guest: user?.isAnonymous);
+      }),
+      (_, _) => _followAccount(),
+    );
+    // Out of sight (the home tab kept alive behind another), nothing on the
+    // timeline is being read.
+    final inView = TickerMode.valuesOf(context).enabled;
     return Scaffold(
       key: _scaffoldKey,
+      resizeToAvoidBottomInset: !widget.embedded,
       onDrawerChanged: (open) => setState(() => _drawerOpen = open),
       drawer: _ConversationDrawer(
         conversations: _conversations,
@@ -700,11 +762,18 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           ],
         ),
         actions: [
-          IconButton(
-            tooltip: 'Close',
-            onPressed: () => Navigator.of(context).maybePop(),
-            icon: const Icon(Icons.close_rounded),
-          ),
+          if (widget.embedded)
+            IconButton(
+              tooltip: 'New chat',
+              onPressed: _sending ? null : _newConversation,
+              icon: const Icon(Icons.edit_note_rounded),
+            )
+          else
+            IconButton(
+              tooltip: 'Close',
+              onPressed: () => Navigator.of(context).maybePop(),
+              icon: const Icon(Icons.close_rounded),
+            ),
         ],
       ),
       body: ColoredBox(
@@ -723,7 +792,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
               ),
             Expanded(
               child: BotvinnikInboxTimeline(
-                exposed: !_drawerOpen,
+                exposed: inView && !_drawerOpen,
                 scrollController: _scrollController,
                 emptyState: _loading
                     ? Center(

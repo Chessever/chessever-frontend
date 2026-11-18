@@ -1,39 +1,58 @@
 import 'dart:async';
 
+import 'package:cached_network_image/cached_network_image.dart';
+import 'package:chessever2/providers/auth_state_provider.dart';
+
+import 'package:chessever2/chat/botvinnik_provider.dart';
+import 'package:chessever2/chat/chat_api.dart';
 import 'package:chessever2/e2e/e2e_ids.dart';
 import 'package:chessever2/repository/local_storage/local_storage_repository.dart';
 import 'package:chessever2/screens/home/start_screen.dart';
 import 'package:chessever2/screens/home/widget/bottom_nav_bar_widget.dart';
+import 'package:chessever2/screens/inbox/inbox_provider.dart';
+import 'package:chessever2/screens/inbox/inbox_unread_dot.dart';
 import 'package:chessever2/services/analytics/analytics_service.dart';
 import 'package:chessever2/theme/app_colors.dart';
+import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/svg_asset.dart';
+import 'package:chessever2/widgets/phone_update_route_observer.dart';
+import 'package:chessever2/widgets/svg_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
-/// Main sections: Home, Events, Collections. The calendar opens
-/// from the sidebar, and Feed from For You › Discovery.
+/// The five main sections: Home, Feed, Botvinnik, Search, Profile.
+///
+/// Events and Collections live on the Profile page with everything the
+/// sidebar used to hold; the sidebar itself is gone.
 ///
 /// Tabs are only ever addressed by value or by [Enum.name] (analytics sends
 /// the name), never by index, so reordering the bar moves nothing else.
-enum BottomNavBarItem {
-  tournaments,
-  forYou,
-  collections;
-
-  // Source compatibility for integrations compiled against the previous tab.
-  @Deprecated(
-    'Library is reached through My Space; use collections for the main tab',
-  )
-  static const library = collections;
-}
+enum BottomNavBarItem { forYou, feed, botvinnik, search, profile }
 
 /// Keep enum identities stable for callers; presentation has its own order.
 const bottomNavBarOrder = [
   BottomNavBarItem.forYou,
-  BottomNavBarItem.tournaments,
-  BottomNavBarItem.collections,
+  BottomNavBarItem.feed,
+  BottomNavBarItem.botvinnik,
+  BottomNavBarItem.search,
+  BottomNavBarItem.profile,
 ];
+
+/// Whether Botvinnik has a tab: built in and not switched off in Settings.
+final botvinnikTabAvailableProvider = Provider<bool>((ref) {
+  if (!ChatApi.buildEnabled) return false;
+  return ref.watch(botvinnikEnabledProvider).valueOrNull ?? true;
+});
+
+/// The sections the bar shows now, in order.
+final visibleBottomNavItemsProvider = Provider<List<BottomNavBarItem>>((ref) {
+  final botvinnik = ref.watch(botvinnikTabAvailableProvider);
+  return [
+    for (final item in bottomNavBarOrder)
+      if (item != BottomNavBarItem.botvinnik || botvinnik) item,
+  ];
+});
 
 /// Emitted whenever the user taps the already-selected bottom nav item.
 /// Screens that own a scrollable surface for [item] should listen and
@@ -68,37 +87,271 @@ final bottomNavBarReTapRequestProvider =
       BottomNavBarReTapRequest
     >((ref) => BottomNavBarReTapRequestNotifier());
 
-final Map<BottomNavBarItem, String> bottomNavBarIcons = {
-  BottomNavBarItem.tournaments: SvgAsset.tournamentIcon,
-  BottomNavBarItem.forYou: SvgAsset.forYouNavIcon,
-  BottomNavBarItem.collections: 'assets/svgs/collections_nav.svg',
-};
-
 /// Discovery-dot anchor ids of the root destinations, shared by the phone bar
 /// and the tablet rail.
 const bottomNavBarDotIds = {
-  BottomNavBarItem.tournaments: 'home.nav.events',
   BottomNavBarItem.forYou: 'home.nav.home',
-  BottomNavBarItem.collections: 'home.nav.collections',
+  BottomNavBarItem.feed: 'home.nav.feed',
+  BottomNavBarItem.botvinnik: 'home.nav.botvinnik',
+  BottomNavBarItem.search: 'home.nav.search',
+  // Profile took over the side menu the avatar used to open, so it keeps the
+  // avatar's id: published `drawer.*` dots trail through `home.menu`.
+  BottomNavBarItem.profile: 'home.menu',
 };
 
 final namesBottomNavBarIcons = {
-  BottomNavBarItem.tournaments: 'Events',
   BottomNavBarItem.forYou: 'Home',
-  BottomNavBarItem.collections: 'Collections',
+  BottomNavBarItem.feed: 'Feed',
+  BottomNavBarItem.botvinnik: 'Botvinnik',
+  BottomNavBarItem.search: 'Search',
+  BottomNavBarItem.profile: 'Profile',
 };
+
+/// The e2e key of each slot.
+Key bottomNavBarItemKey(BottomNavBarItem item) => e2eKey(switch (item) {
+  BottomNavBarItem.forYou => E2eIds.navForYou,
+  BottomNavBarItem.feed => E2eIds.navFeed,
+  BottomNavBarItem.botvinnik => E2eIds.navBotvinnik,
+  BottomNavBarItem.search => E2eIds.navSearch,
+  BottomNavBarItem.profile => E2eIds.navProfile,
+});
+
+/// The mark a slot wears, at [side] in [ink]. Profile wears the reader's
+/// own avatar, the circle that used to sit in every tab's top corner.
+Widget bottomNavBarGlyph(
+  BottomNavBarItem item, {
+  required Color ink,
+  required double side,
+  required bool selected,
+}) {
+  Widget svg(String asset) => SvgWidget(
+    asset,
+    height: side,
+    width: side,
+    colorFilter: ColorFilter.mode(ink, BlendMode.srcIn),
+  );
+  return switch (item) {
+    BottomNavBarItem.forYou => Icon(
+      Icons.home_rounded,
+      size: side + 4,
+      color: ink,
+    ),
+    BottomNavBarItem.feed => svg(SvgAsset.feedNavIcon),
+    BottomNavBarItem.botvinnik => svg(SvgAsset.botvinnikNavIcon),
+    BottomNavBarItem.search => svg(SvgAsset.searchNavIcon),
+    BottomNavBarItem.profile => _NavAvatar(
+      side: side + 6,
+      ink: ink,
+      selected: selected,
+    ),
+  };
+}
+
+/// The reader's avatar as a nav mark: their photo, or their initial on a
+/// disc tinted with the slot's own ink, so it reads with the marks beside
+/// it (and clears AA in both themes, which the gradient initials of the old
+/// top-bar avatar did not on paper). Selected, it wears a ring in the
+/// selected ink with a gap of page between ring and photo. A guest has no
+/// face to show (their name is the word "Guest"), so they get the bare person
+/// mark like the glyphs beside it, never a mark on a disc. An unread Inbox
+/// message puts the Inbox dot on its shoulder.
+class _NavAvatar extends ConsumerWidget {
+  const _NavAvatar({
+    required this.side,
+    required this.ink,
+    required this.selected,
+  });
+
+  final double side;
+  final Color ink;
+  final bool selected;
+
+  /// Inter's cap height as a share of the em (1490 of 2048 units).
+  static const _interCapHeight = 1490 / 2048;
+
+  static String _initial(String? name) {
+    final trimmed = name?.trim() ?? '';
+    if (trimmed.isEmpty) return '';
+    return String.fromCharCode(trimmed.runes.first).toUpperCase();
+  }
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final unread = ref.watch(inboxHasUnreadProvider);
+    final (:guest, :name) = ref.watch(
+      currentUserProvider.select(
+        (user) =>
+            (guest: user == null || user.isAnonymous, name: user?.displayName),
+      ),
+    );
+    // The photo is read even for a guest: [currentUserProvider] keeps quiet
+    // when a guest links an account (same id), and this one does not.
+    final url = ref.watch(profileAvatarUrlProvider)?.trim();
+    final initial = guest ? '' : _initial(name);
+    final dot = unread
+        ? const Positioned(
+            top: -1,
+            right: -1,
+            child: InboxUnreadDot(key: ValueKey('nav-profile-inbox-dot')),
+          )
+        : null;
+
+    if (initial.isEmpty && (url == null || url.isEmpty)) {
+      // Home's size (glyph side + 4, this square is glyph side + 6), centred
+      // in the avatar's square so the slot does not move when a guest signs in.
+      return SizedBox.square(
+        dimension: side,
+        child: Stack(
+          clipBehavior: Clip.none,
+          children: [
+            Center(
+              child: Icon(Icons.person_rounded, size: side - 2, color: ink),
+            ),
+            ?dot,
+          ],
+        ),
+      );
+    }
+
+    const ring = 1.6;
+    const gap = 1.6;
+    final inner = side - 2 * (ring + gap);
+    final fontSize = inner * 0.52;
+
+    // A plain disc while a photo loads (or when it fails) for a reader with
+    // no name to take an initial from.
+    final disc = DecoratedBox(
+      decoration: BoxDecoration(
+        color: ink.withValues(alpha: 0.18),
+        shape: BoxShape.circle,
+      ),
+      child: initial.isEmpty
+          ? null
+          : Align(
+              alignment: Alignment.topCenter,
+              // Centred on the capital's ink, not its line box (which put it
+              // about 0.06em high): the baseline goes half a cap height
+              // below the disc's centre, wherever the line box puts it.
+              child: Baseline(
+                baseline: inner / 2 + _interCapHeight * fontSize / 2,
+                baselineType: TextBaseline.alphabetic,
+                child: Text(
+                  initial,
+                  textScaler: TextScaler.noScaling,
+                  style: AppTypography.textSmMedium.copyWith(
+                    color: ink,
+                    fontSize: fontSize,
+                    height: 1,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ),
+    );
+    final cacheWidth = (inner * MediaQuery.devicePixelRatioOf(context)).round();
+    final photo = url == null || url.isEmpty
+        ? disc
+        : CachedNetworkImage(
+            imageUrl: url,
+            fit: BoxFit.cover,
+            width: inner,
+            height: inner,
+            memCacheWidth: cacheWidth,
+            placeholder: (_, _) => disc,
+            errorWidget: (_, _, _) => disc,
+          );
+
+    return SizedBox.square(
+      dimension: side,
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          DecoratedBox(
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              border: Border.all(
+                color: selected ? ink : Colors.transparent,
+                width: ring,
+              ),
+            ),
+            child: Center(
+              child: SizedBox.square(
+                dimension: inner,
+                child: ClipOval(child: photo),
+              ),
+            ),
+          ),
+          ?dot,
+        ],
+      ),
+    );
+  }
+}
 
 /// The section Home shows. The app opens on the stored default
 /// ([readDefaultBottomTab], For You unless the viewer picked another); deep
 /// links and notification taps push their screens over Home, so backing out
 /// of them lands there too.
+///
+/// It also tells the store-update reminder whether the section is one it may
+/// open over ([updatePromptSections]), from here because the bar, the tablet
+/// rail, Home's fallbacks and deep links all write it.
 final selectedBottomNavBarItemProvider =
-    StateProvider.autoDispose<BottomNavBarItem>(
-      (ref) => readDefaultBottomTab(),
-    );
+    StateProvider.autoDispose<BottomNavBarItem>((ref) {
+      void publish(BottomNavBarItem item) =>
+          PhoneUpdateRouteObserver.homeSectionSafe.value = updatePromptSections
+              .contains(item);
+      // StateProvider has no Notifier to listen on; this is its only hook.
+      // ignore: deprecated_member_use
+      ref.listenSelf((_, item) => publish(item));
+      ref.onDispose(
+        () => PhoneUpdateRouteObserver.homeSectionSafe.value = true,
+      );
+      final initial = readDefaultBottomTab();
+      publish(initial);
+      return initial;
+    });
+
+/// The sections the store-update reminder may open over: pages to browse.
+/// Botvinnik (a chat), Feed (a clip playing) and Search (a query being typed)
+/// keep it waiting until the reader is back on one of these, as it waited
+/// for each of them when they were pages of their own.
+const updatePromptSections = {
+  BottomNavBarItem.forYou,
+  BottomNavBarItem.profile,
+};
+
+/// Selects [item], announcing it to analytics. A section that is not on the
+/// bar right now (Botvinnik switched off) is never selected.
+void selectBottomNavBarItem(
+  WidgetRef ref,
+  BottomNavBarItem item, {
+  String navigationType = 'bar',
+}) {
+  final previous = ref.read(selectedBottomNavBarItemProvider);
+  if (previous == item) {
+    // Same tab re-tapped: signal screens to scroll their active list to top.
+    // Selected subtab + data are preserved; no pull-to-refresh, no reload.
+    ref.read(bottomNavBarReTapRequestProvider.notifier).request(item);
+    return;
+  }
+  if (!ref.read(visibleBottomNavItemsProvider).contains(item)) return;
+  ref.read(selectedBottomNavBarItemProvider.notifier).state = item;
+  unawaited(
+    AnalyticsService.instance.trackEvent(
+      'Bottom Nav Changed',
+      properties: {
+        'previous_tab': previous.name,
+        'tab': item.name,
+        'navigation_type': navigationType,
+      },
+    ),
+  );
+}
 
 /// The launch section a Premium viewer picked (long-press a tab, or Settings
-/// › Customization). Unset or unreadable means For You.
+/// › Customization). Unset or unreadable means For You. Sections that are no
+/// longer on the bar (Events, Collections) fall back to For You.
 const String defaultBottomTabPrefsKey = 'default_bottom_tab_v1';
 
 BottomNavBarItem readDefaultBottomTab() {
@@ -119,75 +372,56 @@ Future<void> writeDefaultBottomTab(BottomNavBarItem item) async {
   await prefs?.setString(defaultBottomTabPrefsKey, item.name);
 }
 
+/// The phone's bottom bar: one slot per section, its mark over its name.
 class BottomNavBar extends ConsumerWidget {
   const BottomNavBar({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final selectedItem = ref.watch(selectedBottomNavBarItemProvider);
+    final selected = ref.watch(selectedBottomNavBarItemProvider);
+    final items = ref.watch(visibleBottomNavItemsProvider);
     // Aspect-specific: `MediaQuery.of` subscribes this bar to viewInsets too,
     // so it rebuilt on every frame of the software keyboard sliding in.
     final bottomPadding = MediaQuery.viewPaddingOf(context).bottom;
+    final width = MediaQuery.sizeOf(context).width;
 
     return Container(
-      padding: EdgeInsets.only(top: 0, bottom: bottomPadding),
       decoration: BoxDecoration(
         color: context.colors.background,
         border: Border(
           top: BorderSide(color: context.colors.divider, width: 1.w),
         ),
       ),
-      // Keep comfortable touch targets plus the device's bottom safe area.
+      // Each slot takes the device's bottom safe area into its own target,
+      // so the whole column under a tab answers.
+      // The slots stretch to the bar's height, so no strip of it is dead.
       child: ConstrainedBox(
-        constraints: const BoxConstraints(minHeight: 48),
-        child: Row(
-          children: [
-            for (final item in bottomNavBarOrder)
-              BottomNavBarWidget(
-                key: switch (item) {
-                  BottomNavBarItem.tournaments => e2eKey(E2eIds.navEvents),
-                  BottomNavBarItem.forYou => e2eKey(E2eIds.navForYou),
-                  BottomNavBarItem.collections => e2eKey(E2eIds.navCollections),
-                },
-                width:
-                    MediaQuery.sizeOf(context).width / bottomNavBarOrder.length,
-                isSelected: selectedItem == item,
-                dotId: bottomNavBarDotIds[item],
-                onTap: () {
-                  final previous = ref.read(selectedBottomNavBarItemProvider);
-                  if (previous == item) {
-                    // Same tab re-tapped: signal screens to scroll their
-                    // active list to top. Selected subtab + data are
-                    // preserved; no pull-to-refresh, no reload.
-                    ref
-                        .read(bottomNavBarReTapRequestProvider.notifier)
-                        .request(item);
-                    return;
-                  }
-
-                  ref.read(selectedBottomNavBarItemProvider.notifier).state =
-                      item;
-
-                  unawaited(
-                    AnalyticsService.instance.trackEvent(
-                      'Bottom Nav Changed',
-                      properties: {
-                        'previous_tab': previous.name,
-                        'tab': item.name,
-                      },
-                    ),
-                  );
-                },
-                svgIcon: bottomNavBarIcons[item]!,
-                icon: item == BottomNavBarItem.forYou
-                    ? Icons.home_rounded
-                    : null,
-                title: namesBottomNavBarIcons[item]!,
-                onLongPress: () => unawaited(
-                  makeStartScreenDefault(context, ref, section: item),
+        constraints: BoxConstraints(minHeight: 60 + bottomPadding),
+        child: IntrinsicHeight(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              for (final item in items)
+                BottomNavBarWidget(
+                  key: bottomNavBarItemKey(item),
+                  width: width / items.length,
+                  bottomInset: bottomPadding,
+                  isSelected: selected == item,
+                  dotId: bottomNavBarDotIds[item],
+                  onTap: () => selectBottomNavBarItem(ref, item),
+                  glyph: (ink, side) => bottomNavBarGlyph(
+                    item,
+                    ink: ink,
+                    side: side,
+                    selected: selected == item,
+                  ),
+                  title: namesBottomNavBarIcons[item]!,
+                  onLongPress: () => unawaited(
+                    makeStartScreenDefault(context, ref, section: item),
+                  ),
                 ),
-              ),
-          ],
+            ],
+          ),
         ),
       ),
     );

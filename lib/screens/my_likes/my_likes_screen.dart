@@ -42,7 +42,13 @@ import 'package:chessever2/widgets/app_snack.dart';
 import 'package:chessever2/widgets/game_filter/game_filter.dart';
 import 'package:chessever2/widgets/game_filter/game_search_filter_bar.dart';
 import 'package:chessever2/widgets/hub_tile.dart';
+import 'package:chessever2/widgets/ink_fab.dart' show InkFabSize, SearchInkFab;
 import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
+import 'package:chessever2/widgets/scroll_chrome.dart';
+import 'package:chessever2/widgets/search_page_header.dart';
+import 'package:chessever2/widgets/simple_search_bar.dart';
+import 'package:chessever2/screens/tour_detail/widgets/event_search_bar.dart'
+    show EventSearchBarFrame;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -64,22 +70,114 @@ class MyLikesScreen extends StatelessWidget {
 /// guard.
 ///
 /// A page of [MyLikesHubScreen]: the hub's frame carries back and the title;
-/// this page starts with the same search and filters as Favorites.
+/// this page starts with the same search and filters as Favorites, unless
+/// the hub carries them ([searchInHeader]).
+///
+/// [standalone], it is the whole archive Library, My Space and Discovery
+/// open: its own title row, and its search behind a floating button that
+/// opens the field in that row's place, never a search row over the list.
 class MyLikesGamesPage extends ConsumerStatefulWidget {
-  const MyLikesGamesPage({super.key, this.standalone = false});
+  const MyLikesGamesPage({
+    super.key,
+    this.standalone = false,
+    this.searchInHeader = false,
+    this.player,
+    this.onShowAll,
+  });
 
   final bool standalone;
+
+  /// The screen around the page types its search in the header's place,
+  /// opened from a floating button ([MyLikesHubScreen]). The page then draws
+  /// no search row of its own, and its list ends clear of that button.
+  final bool searchInHeader;
+
+  /// The player the hub's Players page narrowed the list to, named over the
+  /// games with [onShowAll] beside it. With the search closed nothing else
+  /// on screen would say the list is one player's.
+  final String? player;
+  final VoidCallback? onShowAll;
 
   @override
   ConsumerState<MyLikesGamesPage> createState() => _MyLikesGamesPageState();
 }
 
+/// The liked games' filter and sort dialog, applied to the shared My Likes
+/// filter, from the page's own search row or the hub's search header.
+Future<void> showMyLikesFilters(BuildContext context, WidgetRef ref) async {
+  HapticFeedbackService.buttonPress();
+  // Search + filter + sort inside My Likes are free for everyone. The only
+  // gate is at open, not here, so no paywall on applying a filter or sort.
+  final result = await showGameFilterDialog(
+    context: context,
+    currentFilter: ref.read(myLikesFilterProvider).filter,
+    // Saved likes are never live broadcasts and never OTB rows, so the
+    // Status + Format sections are meaningless here. Sort takes the
+    // Status slot.
+    showFormatFilter: false,
+    showLiveFilter: false,
+    showSortSection: true,
+    // Color filter removed for the likes database; multi-key sort with
+    // per-key direction stays enabled.
+    showColorFilter: false,
+    showSortDirection: true,
+  );
+  if (result == null || !context.mounted) return;
+  ref.read(myLikesFilterProvider.notifier).applyFilter(result);
+}
+
 class _MyLikesGamesPageState extends ConsumerState<MyLikesGamesPage>
-    with WidgetsBindingObserver {
+    with WidgetsBindingObserver, SingleTickerProviderStateMixin {
   final ScrollController _scrollController = ScrollController();
   final TextEditingController _searchController = TextEditingController();
   final FocusNode _searchFocusNode = FocusNode();
   Timer? _debounceTimer;
+
+  /// The archive's title row, pushed away by the list's scroll and back as
+  /// it scrolls up (X style). Standalone only: in the hub the shell's frame
+  /// owns the chrome.
+  ScrollChromeController? _chrome;
+
+  /// The archive's full-page search is open: the field in the title row's
+  /// place, the same list under it narrowing as the reader types.
+  bool _searching = false;
+
+  /// The search is typed in a header's place, never in a row over the list:
+  /// the hub's header, or the archive's own title row.
+  bool get _searchInHeader => widget.searchInHeader || widget.standalone;
+
+  /// A field with the keyboard up holds the title row: scrolling what it
+  /// searches must not push away the line being typed.
+  void _holdChromeWhileTyping() => _chrome?.held = _searchFocusNode.hasFocus;
+
+  void _openSearch() {
+    if (_searching) return;
+    setState(() => _searching = true);
+    _chrome?.show();
+  }
+
+  /// Back from the search clears what was typed; filters, sorts and tags
+  /// stay, the first two counted on the search button.
+  void _closeSearch() {
+    if (!_searching) return;
+    _debounceTimer?.cancel();
+    _searchFocusNode.unfocus();
+    _searchController.clear();
+    ref.read(myLikesFilterProvider.notifier).clearSearch();
+    setState(() => _searching = false);
+    _chrome?.show();
+  }
+
+  /// The filter dialog from the search header. What was typed counts before
+  /// the dialog opens, not 400ms after it.
+  Future<void> _showFilters() {
+    _searchFocusNode.unfocus();
+    _debounceTimer?.cancel();
+    ref
+        .read(myLikesFilterProvider.notifier)
+        .searchGames(_searchController.text);
+    return showMyLikesFilters(context, ref);
+  }
 
   /// Collapsed liked-at date sections, keyed by `yyyy-MM-dd`.
   final Set<String> _collapsedDates = {};
@@ -99,6 +197,10 @@ class _MyLikesGamesPageState extends ConsumerState<MyLikesGamesPage>
     // A search set from the hub's Players or Events page (a player picked
     // there) is already in the filter when this page mounts.
     _searchController.text = ref.read(myLikesFilterProvider).searchQuery;
+    if (widget.standalone) {
+      _chrome = ScrollChromeController(vsync: this);
+      _searchFocusNode.addListener(_holdChromeWhileTyping);
+    }
   }
 
   @override
@@ -118,7 +220,10 @@ class _MyLikesGamesPageState extends ConsumerState<MyLikesGamesPage>
     _debounceTimer?.cancel();
     _scrollController.dispose();
     _searchController.dispose();
-    _searchFocusNode.dispose();
+    _searchFocusNode
+      ..removeListener(_holdChromeWhileTyping)
+      ..dispose();
+    _chrome?.dispose();
     super.dispose();
   }
 
@@ -135,30 +240,6 @@ class _MyLikesGamesPageState extends ConsumerState<MyLikesGamesPage>
     _searchController.clear();
     _searchFocusNode.unfocus();
     ref.read(myLikesFilterProvider.notifier).clearSearch();
-  }
-
-  Future<void> _showFilterDialog() async {
-    HapticFeedbackService.buttonPress();
-    // Search + filter + sort inside My Likes are free for everyone. The only
-    // gate is at open ([_openAnalysis]), not here, so no paywall on applying
-    // a filter or sort.
-    final result = await showGameFilterDialog(
-      context: context,
-      currentFilter: ref.read(myLikesFilterProvider).filter,
-      // Saved likes are never live broadcasts and never OTB rows, so the
-      // Status + Format sections are meaningless here. Sort takes the
-      // Status slot.
-      showFormatFilter: false,
-      showLiveFilter: false,
-      showSortSection: true,
-      // Color filter removed for the likes database; multi-key sort with
-      // per-key direction stays enabled.
-      showColorFilter: false,
-      showSortDirection: true,
-    );
-    if (result == null || !mounted) return;
-
-    ref.read(myLikesFilterProvider.notifier).applyFilter(result);
   }
 
   void _toggleDateSection(String dateKey) {
@@ -231,16 +312,19 @@ class _MyLikesGamesPageState extends ConsumerState<MyLikesGamesPage>
   @override
   Widget build(BuildContext context) {
     // The hub's other pages narrow this one by setting the search; the
-    // field shows it unless the reader is typing in it.
-    ref.listen<String>(myLikesFilterProvider.select((s) => s.searchQuery), (
-      _,
-      next,
-    ) {
-      if (_searchFocusNode.hasFocus) return;
-      if (_searchController.text.trim() != next.trim()) {
-        _searchController.text = next;
-      }
-    });
+    // field shows it unless the reader is typing in it. A hub that carries
+    // the field in its header keeps it in step itself.
+    if (!widget.searchInHeader) {
+      ref.listen<String>(myLikesFilterProvider.select((s) => s.searchQuery), (
+        _,
+        next,
+      ) {
+        if (_searchFocusNode.hasFocus) return;
+        if (_searchController.text.trim() != next.trim()) {
+          _searchController.text = next;
+        }
+      });
+    }
     final viewAsync = ref.watch(myLikesViewProvider);
     // Keep the last good data across reloads: a swipe-remove invalidates the
     // view, and dropping to the spinner here is what made the whole page (chip
@@ -261,58 +345,114 @@ class _MyLikesGamesPageState extends ConsumerState<MyLikesGamesPage>
     }
 
     if (!widget.standalone) return body;
-    return Scaffold(
-      backgroundColor: context.colors.background,
-      body: SafeArea(
-        bottom: false,
-        child: Column(
-          children: [
-            Padding(
-              padding: EdgeInsets.fromLTRB(8.w, 8.h, 16.w, 4.h),
-              child: Row(
-                children: [
+    final chrome = _chrome!;
+    final hasLikes = (data?.totalLiked ?? 0) > 0;
+    // Sorts count with the filters, as the hub's search button counts them:
+    // a sort-only list still says it is arranged.
+    final filter = ref.watch(myLikesFilterProvider.select((s) => s.filter));
+    final applied = filter.activeFilterCount + filter.activeSortCount;
+    final bars = _searching
+        ? SearchPageHeader(
+            closeKey: const ValueKey('my_likes_search_close'),
+            onClose: _closeSearch,
+            field: EventSearchBarFrame(
+              compact: true,
+              child: SimpleSearchBar(
+                controller: _searchController,
+                focusNode: _searchFocusNode,
+                autofocus: true,
+                hintText: 'Search liked games',
+                textFieldKey: const ValueKey('my_likes_search'),
+                filterButtonKey: const ValueKey('my_likes_filters'),
+                compactFilter: true,
+                filterBadgeCount: applied,
+                onChanged: _onSearchChanged,
+                onOpenFilter: _showFilters,
+                onCloseTap: _clearSearch,
+              ),
+            ),
+          )
+        : Padding(
+            padding: EdgeInsets.fromLTRB(8.w, 4.h, 16.w, 4.h),
+            child: Row(
+              children: [
+                IconButton(
+                  tooltip: 'Back',
+                  onPressed: () => Navigator.of(context).maybePop(),
+                  icon: Icon(
+                    Icons.arrow_back_ios_new_rounded,
+                    color: context.colors.textPrimary,
+                    size: 20.sp,
+                  ),
+                ),
+                // The heart the Library's My Likes card wears, at the
+                // size the title's glyph always had.
+                LikesHeartGlyph(size: 20.sp),
+                SizedBox(width: 8.w),
+                Expanded(
+                  child: Text(
+                    'Likes',
+                    style: AppTypography.textLgBold.copyWith(
+                      color: context.colors.textPrimary,
+                    ),
+                  ),
+                ),
+                if (hasLikes)
                   IconButton(
-                    tooltip: 'Back',
-                    onPressed: () => Navigator.of(context).maybePop(),
+                    tooltip: 'Export as PGN',
+                    onPressed: _handleExportPgn,
                     icon: Icon(
-                      Icons.arrow_back_ios_new_rounded,
+                      Icons.ios_share_rounded,
                       color: context.colors.textPrimary,
                       size: 20.sp,
                     ),
                   ),
-                  // The heart the Library's My Likes card wears, at the
-                  // size the title's glyph always had.
-                  LikesHeartGlyph(size: 20.sp),
-                  SizedBox(width: 8.w),
-                  Expanded(
-                    child: Text(
-                      'Likes',
-                      style: AppTypography.textLgBold.copyWith(
-                        color: context.colors.textPrimary,
-                      ),
+                if (hasLikes)
+                  BuildTreeButton(
+                    target: LikedGamesTreeTarget(
+                      repository: ref.read(libraryRepositoryProvider),
                     ),
                   ),
-                  if ((data?.totalLiked ?? 0) > 0)
-                    IconButton(
-                      tooltip: 'Export as PGN',
-                      onPressed: _handleExportPgn,
-                      icon: Icon(
-                        Icons.ios_share_rounded,
-                        color: context.colors.textPrimary,
-                        size: 20.sp,
-                      ),
-                    ),
-                  if ((data?.totalLiked ?? 0) > 0)
-                    BuildTreeButton(
-                      target: LikedGamesTreeTarget(
-                        repository: ref.read(libraryRepositoryProvider),
-                      ),
-                    ),
-                ],
-              ),
+              ],
             ),
-            Expanded(child: body),
-          ],
+          );
+    return PopScope(
+      // Back from the search closes it, back to every like.
+      canPop: !_searching,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) _closeSearch();
+      },
+      child: Scaffold(
+        backgroundColor: context.colors.background,
+        // Search floats in the thumb's reach over a list that has likes;
+        // nothing floats while searching, or with nothing to search.
+        floatingActionButton: SlidingFabs(
+          controller: chrome,
+          child: _searching || !hasLikes
+              ? const SizedBox.shrink()
+              : SearchInkFab(
+                  key: const ValueKey('my_likes_search_fab'),
+                  label: 'Search liked games',
+                  badgeCount: applied,
+                  onTap: _openSearch,
+                ),
+        ),
+        body: SafeArea(
+          bottom: false,
+          child: Column(
+            children: [
+              // The breathing room under the status bar stays put: the row
+              // folds up to it in either state, never into the inset.
+              SizedBox(height: 4.h),
+              CollapsingChrome(
+                controller: chrome,
+                child: SizedBox(width: double.infinity, child: bars),
+              ),
+              Expanded(
+                child: ScrollChromeRegion(controller: chrome, child: body),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -442,6 +582,34 @@ class _MyLikesGamesPageState extends ConsumerState<MyLikesGamesPage>
     if (data.isEmpty) return _buildEmptyState();
 
     final selectedTags = ref.watch(myLikesFilterProvider).selectedTags;
+    final tagFilters = _buildTagQuickFilters();
+    // What sits above the games, 12pt apart. With the search in a header
+    // there may be nothing, and then the first date line starts where the
+    // Players page's first row does.
+    final player = widget.player;
+    final onShowAll = widget.onShowAll;
+    final head = <Widget>[
+      if (player != null && onShowAll != null)
+        _PlayerLine(name: player, onShowAll: onShowAll),
+      if (!_searchInHeader)
+        Padding(
+          padding: EdgeInsets.symmetric(horizontal: 16.w),
+          child: _buildSearchBar(),
+        ),
+      if (data.totalLiked <= 5)
+        Padding(
+          padding: EdgeInsets.symmetric(horizontal: 16.w),
+          child: Text(
+            'Double-tap the chessboard to like a game.',
+            style: AppTypography.textSmRegular.copyWith(
+              color: context.colors.textSecondary,
+            ),
+          ),
+        ),
+      // Filter row is edge-to-edge so the horizontal scroll runs under the
+      // screen edges instead of being clipped by parent padding.
+      ?tagFilters,
+    ];
 
     Widget content = CustomScrollView(
       controller: _scrollController,
@@ -450,33 +618,20 @@ class _MyLikesGamesPageState extends ConsumerState<MyLikesGamesPage>
       ),
       slivers: [
         SliverToBoxAdapter(
-          child: Padding(
-            padding: EdgeInsets.fromLTRB(0, 12.h, 0, 8.h),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 16.w),
-                  child: _buildSearchBar(),
-                ),
-                if (data.totalLiked <= 5) ...[
-                  Padding(
-                    padding: EdgeInsets.fromLTRB(16.w, 12.h, 16.w, 0),
-                    child: Text(
-                      'Double-tap the chessboard to like a game.',
-                      style: AppTypography.textSmRegular.copyWith(
-                        color: context.colors.textSecondary,
-                      ),
-                    ),
+          child: head.isEmpty
+              ? SizedBox(height: 4.h)
+              : Padding(
+                  padding: EdgeInsets.fromLTRB(0, 12.h, 0, 8.h),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      for (var i = 0; i < head.length; i++) ...[
+                        if (i > 0) SizedBox(height: 12.h),
+                        head[i],
+                      ],
+                    ],
                   ),
-                ],
-                // Filter row is edge-to-edge so the horizontal scroll runs
-                // under the screen edges instead of being clipped by parent
-                // padding.
-                _buildTagQuickFilters(),
-              ],
-            ),
-          ),
+                ),
         ),
         if (data.hasNoMatches)
           SliverFillRemaining(
@@ -489,7 +644,20 @@ class _MyLikesGamesPageState extends ConsumerState<MyLikesGamesPage>
           )
         else
           _buildSectionsSliver(data),
-        SliverToBoxAdapter(child: SizedBox(height: 24.h)),
+        // The list ends clear of the floating search button, which the
+        // Scaffold lifts by its margin and the home indicator's inset.
+        SliverToBoxAdapter(
+          child: SizedBox(
+            key: const ValueKey('my_likes_list_end'),
+            height:
+                24.h +
+                (_searchInHeader
+                    ? InkFabSize.regular.side +
+                          kFloatingActionButtonMargin +
+                          MediaQuery.viewPaddingOf(context).bottom
+                    : 0),
+          ),
+        ),
       ],
     );
 
@@ -499,9 +667,7 @@ class _MyLikesGamesPageState extends ConsumerState<MyLikesGamesPage>
     // scroll position instead of remounting at the top.
     content = Center(
       child: ConstrainedBox(
-        constraints: BoxConstraints(
-          maxWidth: ResponsiveHelper.contentMaxWidth,
-        ),
+        constraints: BoxConstraints(maxWidth: ResponsiveHelper.contentMaxWidth),
         child: SizedBox.expand(child: content),
       ),
     );
@@ -516,11 +682,12 @@ class _MyLikesGamesPageState extends ConsumerState<MyLikesGamesPage>
       currentFilter: ref.watch(myLikesFilterProvider).filter,
       onChanged: _onSearchChanged,
       onClear: _clearSearch,
-      onFilterTap: _showFilterDialog,
+      onFilterTap: () => showMyLikesFilters(context, ref),
     );
   }
 
-  Widget _buildTagQuickFilters() {
+  /// The tag chips, or null when there is no tag to pick.
+  Widget? _buildTagQuickFilters() {
     final selectedTags = ref.watch(myLikesFilterProvider).selectedTags;
     // Retain the last counts through a reload so the chip row doesn't collapse
     // and snap back when a swipe-remove re-derives the tag counts.
@@ -529,9 +696,7 @@ class _MyLikesGamesPageState extends ConsumerState<MyLikesGamesPage>
       _lastTagCounts = liveCounts;
     }
     final counts = liveCounts ?? _lastTagCounts;
-    if (counts.isEmpty && selectedTags.isEmpty) {
-      return const SizedBox.shrink();
-    }
+    if (counts.isEmpty && selectedTags.isEmpty) return null;
 
     // No "All" chip — empty selection IS "all" (PM removed it). Total-liked
     // count remains visible via the date headers / sticky title.
@@ -555,18 +720,15 @@ class _MyLikesGamesPageState extends ConsumerState<MyLikesGamesPage>
     // 48h gives the chip's 40h pill room for the selected-state 1.03 scale
     // without vertical clipping. ListView eats the horizontal padding so the
     // strip itself can run from screen edge to screen edge.
-    return Padding(
-      padding: EdgeInsets.only(top: 12.h),
-      child: SizedBox(
-        height: 48.h,
-        child: ListView.separated(
-          scrollDirection: Axis.horizontal,
-          padding: EdgeInsets.symmetric(horizontal: 16.w),
-          physics: const BouncingScrollPhysics(),
-          itemCount: chips.length,
-          separatorBuilder: (_, __) => SizedBox(width: 8.w),
-          itemBuilder: (_, i) => Center(child: chips[i]),
-        ),
+    return SizedBox(
+      height: 48.h,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        padding: EdgeInsets.symmetric(horizontal: 16.w),
+        physics: const BouncingScrollPhysics(),
+        itemCount: chips.length,
+        separatorBuilder: (_, __) => SizedBox(width: 8.w),
+        itemBuilder: (_, i) => Center(child: chips[i]),
       ),
     );
   }
@@ -921,6 +1083,49 @@ class _MyLikesGamesPageState extends ConsumerState<MyLikesGamesPage>
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// The picked player's name over their liked games, and the one tap back to
+/// every like: the narrowing read aloud, not only a count on a button.
+class _PlayerLine extends StatelessWidget {
+  const _PlayerLine({required this.name, required this.onShowAll});
+
+  final String name;
+  final VoidCallback onShowAll;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.colors;
+    return Padding(
+      padding: EdgeInsets.only(left: 16.w, right: 8.w),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              'Games of $name',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: AppTypography.textSmMedium.copyWith(
+                color: colors.textPrimary,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+          TextButton(
+            key: const ValueKey('my_likes_show_all'),
+            onPressed: onShowAll,
+            style: TextButton.styleFrom(minimumSize: const Size(44, 44)),
+            child: Text(
+              'Show all',
+              style: AppTypography.textSmMedium.copyWith(
+                color: colors.accentText,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

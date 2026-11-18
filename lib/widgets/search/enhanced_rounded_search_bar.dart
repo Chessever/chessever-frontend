@@ -37,7 +37,17 @@ class EnhancedRoundedSearchBar extends ConsumerStatefulWidget {
     this.filterButtonKey,
     this.rotatingHints,
     this.fieldActions,
+    this.leading,
+    this.dropdown = true,
   });
+
+  /// Off, the field shows no drop-down under it: the page around it shows
+  /// the results itself (the Search tab, whose whole page is the results).
+  final bool dropdown;
+
+  /// Stands where the avatar would (a back chevron on a pushed page). Shown
+  /// only when [showProfile] is false.
+  final Widget? leading;
 
   final TextEditingController controller;
   final ValueChanged<String>? onChanged;
@@ -254,6 +264,7 @@ class _EnhancedRoundedSearchBarState
   }
 
   Widget _buildOverlaySlot() {
+    if (!widget.dropdown) return const SizedBox.shrink();
     return ValueListenableBuilder<bool>(
       valueListenable: _overlayMounted,
       builder: (context, mounted, _) {
@@ -305,6 +316,7 @@ class _EnhancedRoundedSearchBarState
   Widget _buildSearchBar() {
     return HomeTopBarRow(
       showAvatar: widget.showProfile,
+      leading: widget.leading,
       onAvatarTap: widget.onProfileTap,
       focusNode: _effectiveNode,
       content: AnimatedBuilder(

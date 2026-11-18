@@ -15,8 +15,18 @@ class E2eIds {
 
   static const navEvents = 'e2e_nav_events';
   static const navForYou = 'e2e_nav_for_you';
+  static const navFeed = 'e2e_nav_feed';
+  static const navBotvinnik = 'e2e_nav_botvinnik';
+  static const navSearch = 'e2e_nav_search';
+  static const navProfile = 'e2e_nav_profile';
   static const navCollections = 'e2e_nav_collections';
   static const navLibrary = navCollections;
+
+  /// The Profile tab's page, which holds what the sidebar used to.
+  static const profileRoot = 'e2e_profile_root';
+  static const profileEvents = 'e2e_profile_events';
+  static const profileCollections = 'e2e_profile_collections';
+  static const searchRoot = 'e2e_search_root';
 
   static const drawerSettings = 'e2e_drawer_settings';
   static const drawerPlayers = 'e2e_drawer_players';
@@ -24,9 +34,9 @@ class E2eIds {
   static const drawerPremium = 'e2e_drawer_premium';
   static const drawerLogout = 'e2e_drawer_logout';
 
-  /// The sidebar month view's "Full calendar" link, the calendar's entry
-  /// point now that it is no longer a main section. The value predates the
-  /// id (widget tests find it by this key), so it keeps its original string.
+  /// The Calendar row on the Profile tab (the sidebar's, before it). The
+  /// value predates the id (widget tests find it by this key), so it keeps
+  /// its original string.
   static const drawerFullCalendar = 'sidebar_calendar_full';
 
   static const eventsRoot = 'e2e_events_root';
@@ -75,6 +85,8 @@ class E2eIds {
   static const favoritesGamesSearchField = 'e2e_favorites_games_search_field';
   static const favoritesGamesFilterButton = 'e2e_favorites_games_filter_button';
   static const playerGamesSearchField = 'e2e_player_games_search_field';
+  /// The player Games tab's search button (the field opens from it).
+  static const playerGamesSearchFab = 'player_games_search_fab';
   static const playerGamesFilterButton = 'e2e_player_games_filter_button';
   static const premiumGamesFilterButton = 'e2e_premium_games_filter_button';
   static const countrymenSearchToggle = 'e2e_countrymen_search_toggle';

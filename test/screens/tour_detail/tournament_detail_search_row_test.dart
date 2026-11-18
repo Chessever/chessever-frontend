@@ -6,6 +6,7 @@ import 'package:chessever2/screens/group_event/model/about_tour_model.dart';
 import 'package:chessever2/screens/group_event/model/tour_detail_view_model.dart';
 import 'package:chessever2/screens/group_event/widget/appbar_icons_widget.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_app_bar_view_model.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/event_no_spoilers_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_app_bar_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_list_view_mode_provider.dart';
@@ -16,20 +17,24 @@ import 'package:chessever2/screens/tour_detail/games_tour/providers/live_tour_id
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_mode_provider.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_screen_provider.dart';
 import 'package:chessever2/screens/tour_detail/tournament_detail_screen.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/widgets/games_app_bar_widget.dart';
+import 'package:chessever2/widgets/segmented_switcher.dart';
 import 'package:chessever2/screens/tour_detail/widgets/event_games_quick_actions.dart';
 import 'package:chessever2/screens/tour_detail/widgets/event_search_bar.dart';
 import 'package:chessever2/screens/tour_detail/widgets/tournament_menu_button.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/svg_asset.dart';
+import 'package:chessever2/widgets/ink_fab.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
-/// The event screen's pinned search row (Trello #1420): on Games it carries
-/// Live first and Collapse all beside a slimmer field, under bare header
-/// glyphs; the other tabs keep the plain field.
+/// The event screen's search (Trello #1420, 2026-11-18 navigation overhaul):
+/// no search row on top any more. Games and Standings float a search button
+/// in the thumb's reach; it opens the tab under a full-page search, the field
+/// in the header's place.
 
 const _about = AboutTourModel(
   id: 'tour-1',
@@ -64,7 +69,11 @@ TourDetailViewModel _viewModel() => TourDetailViewModel(
   ],
 );
 
-List<Override> _overrides(TournamentDetailScreenMode mode) => [
+List<Override> _overrides(
+  TournamentDetailScreenMode mode, {
+  Override? gamesScreen,
+  Override? anyLive,
+}) => [
   selectedBroadcastModelProvider.overrideWith(
     (ref) => GroupBroadcast(
       id: 'gb-1',
@@ -89,9 +98,11 @@ List<Override> _overrides(TournamentDetailScreenMode mode) => [
   knockoutTournamentStateProvider.overrideWith(
     (ref, tourId) => const KnockoutTournamentState.empty(),
   ),
-  gamesTourScreenProvider.overrideWith(
-    (ref) => GamesTourScreenProvider.loading(ref: ref),
-  ),
+  gamesScreen ??
+      gamesTourScreenProvider.overrideWith(
+        (ref) => GamesTourScreenProvider.loading(ref: ref),
+      ),
+  ?anyLive,
 ];
 
 Future<void> _pumpScreen(
@@ -99,13 +110,14 @@ Future<void> _pumpScreen(
   required TournamentDetailScreenMode mode,
   Size size = const Size(393, 852),
   double textScale = 1,
+  List<Override>? overrides,
 }) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.reset);
   await tester.pumpWidget(
     ProviderScope(
-      overrides: _overrides(mode),
+      overrides: overrides ?? _overrides(mode),
       child: MaterialApp(
         theme: AppTheme.darkTheme,
         builder: (context, child) => MediaQuery(
@@ -161,41 +173,205 @@ void main() {
     }
   });
 
-  testWidgets('Games: slim field, Live first and Collapse all beside it', (
+  final searchFab = find.byKey(const ValueKey('event_search_fab'));
+
+  testWidgets('Games: no search row on top; the search floats in reach', (
     tester,
   ) async {
     await _pumpScreen(tester, mode: TournamentDetailScreenMode.games);
 
-    expect(find.byType(EventSearchBar), findsOneWidget);
-    expect(find.byType(EventGamesQuickActions), findsOneWidget);
-    expect(find.bySemanticsLabel('Show live games first'), findsOneWidget);
-    expect(find.bySemanticsLabel(kCollapseAllRoundsLabel), findsOneWidget);
-
-    // The field itself is slimmer than the 40pt it used to be.
-    final field = tester.getSize(
-      find
-          .descendant(
-            of: find.byType(EventSearchBarFrame),
-            matching: find.byType(Container),
-          )
-          .first,
-    );
-    expect(field.height, lessThan(40));
-
-    // The field, Live first and Collapse all share one centre line.
-    final fieldCentre = tester.getCenter(find.byType(EventSearchBarFrame)).dy;
-    for (final label in ['Show live games first', kCollapseAllRoundsLabel]) {
-      expect(
-        tester.getCenter(find.bySemanticsLabel(label)).dy,
-        moreOrLessEquals(fieldCentre, epsilon: 0.5),
-      );
-    }
+    expect(find.byType(EventSearchBar), findsNothing);
+    expect(searchFab, findsOneWidget);
+    // In the lower half, where the thumb rests.
+    expect(tester.getCenter(searchFab).dy, greaterThan(852 / 2));
+    // Nothing is live, so Live first has nothing to do and is not there.
+    expect(find.bySemanticsLabel('Show live games first'), findsNothing);
     await _unmount(tester);
   });
 
-  testWidgets('Games header: bare glyphs, list controls in their columns', (
+  testWidgets('the search button opens the tab under a full-page search', (
     tester,
   ) async {
+    await _pumpScreen(tester, mode: TournamentDetailScreenMode.games);
+    expect(find.byType(SegmentedSwitcher), findsOneWidget);
+
+    await tester.tap(searchFab);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+
+    // The field takes the header's place, cursor in it; the tabs step
+    // aside and Games stays on screen under it.
+    expect(find.byType(EventSearchBar), findsOneWidget);
+    expect(find.byType(SegmentedSwitcher), findsNothing);
+    expect(find.byType(GamesAppBarWidget), findsNothing);
+    final editable = tester.widget<EditableText>(
+      find.descendant(
+        of: find.byType(EventSearchBar),
+        matching: find.byType(EditableText),
+      ),
+    );
+    expect(editable.focusNode.hasFocus, isTrue);
+    expect(searchFab, findsNothing);
+
+    // The chevron closes it: the header and the tabs are back.
+    await tester.tap(find.byKey(const ValueKey('event_search_close')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(find.byType(EventSearchBar), findsNothing);
+    expect(find.byType(SegmentedSwitcher), findsOneWidget);
+    expect(searchFab, findsOneWidget);
+    await _unmount(tester);
+  });
+
+  testWidgets('system back closes the search before the screen', (
+    tester,
+  ) async {
+    await _pumpScreen(tester, mode: TournamentDetailScreenMode.games);
+    await tester.tap(searchFab);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+
+    await tester.binding.handlePopRoute();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+
+    expect(find.byType(TournamentDetailScreen), findsOneWidget);
+    expect(find.byType(EventSearchBar), findsNothing);
+    expect(find.byType(SegmentedSwitcher), findsOneWidget);
+    await _unmount(tester);
+  });
+
+  group('closing the Games search', () {
+    final anyLive = StateProvider<bool>((ref) => true);
+    List<Override> overrides() => _overrides(
+      TournamentDetailScreenMode.games,
+      gamesScreen: gamesTourScreenProvider.overrideWith(
+        (ref) => _SearchedGames(ref: ref),
+      ),
+      anyLive: eventGamesAnyLiveProvider.overrideWith(
+        (ref) => ref.watch(anyLive),
+      ),
+    );
+    ProviderContainer containerOf(WidgetTester tester) =>
+        ProviderScope.containerOf(
+          tester.element(find.byType(TournamentDetailScreen)),
+        );
+    _SearchedGames games(ProviderContainer container) =>
+        container.read(gamesTourScreenProvider.notifier) as _SearchedGames;
+
+    Future<void> openSearch(WidgetTester tester) async {
+      await tester.tap(searchFab);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+    }
+
+    Future<void> closeSearch(WidgetTester tester) async {
+      await tester.tap(find.byKey(const ValueKey('event_search_close')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+    }
+
+    testWidgets('keeps Live first on while the hits are still up', (
+      tester,
+    ) async {
+      await _pumpScreen(
+        tester,
+        mode: TournamentDetailScreenMode.games,
+        overrides: overrides(),
+      );
+      final container = containerOf(tester);
+      await openSearch(tester);
+      // Live first is on; the hits for "carl" hold no game in play.
+      games(container).land(search: true);
+      container.read(anyLive.notifier).state = false;
+      await tester.pump();
+
+      // Closed: the list of every game is still being rebuilt, the hits are
+      // up. Nothing live among them is not the event having nothing live.
+      await closeSearch(tester);
+      expect(games(container).calls, ['clearSearch']);
+
+      // Every game is back, a game among them in play: Live first stays.
+      games(container).land(search: false);
+      container.read(anyLive.notifier).state = true;
+      await tester.pump();
+      await tester.pump();
+      expect(games(container).calls, ['clearSearch']);
+      expect(
+        tester.widget<LiveFirstInkFab>(find.byType(LiveFirstInkFab)).on,
+        isTrue,
+      );
+
+      // With nothing live in the event it still turns itself off.
+      container.read(anyLive.notifier).state = false;
+      await tester.pump();
+      await tester.pump();
+      expect(games(container).calls, ['clearSearch', 'showAllGames']);
+      await _unmount(tester);
+    });
+
+    testWidgets('Live first waits for every game before it can be pressed', (
+      tester,
+    ) async {
+      await _pumpScreen(
+        tester,
+        mode: TournamentDetailScreenMode.games,
+        overrides: overrides(),
+      );
+      final container = containerOf(tester);
+      await openSearch(tester);
+      // A hit for "carl" is in play.
+      games(container).land(search: true);
+      await tester.pump();
+
+      // Closed with the hits still up: a press now would run "carl" again
+      // behind the closed field, so Live first is not offered yet.
+      await closeSearch(tester);
+      expect(find.byType(LiveFirstInkFab), findsNothing);
+      expect(searchFab, findsOneWidget);
+
+      // Every game is back: Live first is offered, and its press only
+      // switches the order.
+      games(container).land(search: false);
+      await tester.pump();
+      await tester.tap(find.byType(LiveFirstInkFab));
+      await tester.pump();
+      await tester.pump();
+      expect(games(container).calls, ['clearSearch', 'showAllGames']);
+      await _unmount(tester);
+    });
+
+    testWidgets('a keystroke still pending does not search again', (
+      tester,
+    ) async {
+      await _pumpScreen(
+        tester,
+        mode: TournamentDetailScreenMode.games,
+        overrides: overrides(),
+      );
+      final container = containerOf(tester);
+      await openSearch(tester);
+
+      await tester.enterText(
+        find.descendant(
+          of: find.byType(EventSearchBar),
+          matching: find.byType(EditableText),
+        ),
+        'carl',
+      );
+      // Closed inside the field's debounce: the query must not run behind
+      // the closed field.
+      await tester.tap(find.byKey(const ValueKey('event_search_close')));
+      await tester.pump(const Duration(milliseconds: 300));
+      await tester.pump(const Duration(milliseconds: 400));
+
+      expect(games(container).calls, ['clearSearch']);
+      expect(find.byType(EventSearchBar), findsNothing);
+      await _unmount(tester);
+    });
+  });
+
+  testWidgets('Games header: bare glyphs on 44pt targets', (tester) async {
     await _pumpScreen(tester, mode: TournamentDetailScreenMode.games);
 
     final icons = tester.widgetList<AppBarIcons>(find.byType(AppBarIcons));
@@ -208,8 +384,6 @@ void main() {
       ),
     );
     expect(tiles, findsNothing);
-
-    // Each tap target is at least 44pt.
     for (final surface in tester.widgetList<AppBarIconSurface>(
       find.byType(AppBarIconSurface),
     )) {
@@ -217,46 +391,29 @@ void main() {
       expect(size.width, greaterThanOrEqualTo(44));
       expect(size.height, greaterThanOrEqualTo(44));
     }
-
-    // Live first sits under the view toggle and Collapse all under the ⋮.
-    final toggle = tester.getCenter(
+    expect(
       find.byWidgetPredicate(
         (widget) =>
             widget is AppBarIcons && widget.image == SvgAsset.chase_grid,
       ),
+      findsOneWidget,
     );
-    final menu = tester.getCenter(find.byType(TournamentMenuButton));
-    final live = tester.getCenter(
-      find.bySemanticsLabel('Show live games first'),
-    );
-    final fold = tester.getCenter(
-      find.bySemanticsLabel(kCollapseAllRoundsLabel),
-    );
-    expect(live.dx, moreOrLessEquals(toggle.dx, epsilon: 0.5));
-    expect(fold.dx, moreOrLessEquals(menu.dx, epsilon: 0.5));
+    expect(find.byType(TournamentMenuButton), findsOneWidget);
     await _unmount(tester);
   });
 
-  testWidgets('Standings keeps the plain field, no list controls', (
+  testWidgets('Standings: its own search button, no Live first', (
     tester,
   ) async {
     await _pumpScreen(tester, mode: TournamentDetailScreenMode.games);
-    final gamesRowHeight = tester
-        .getSize(find.byType(EventSearchBarFrame))
-        .height;
 
     await tester.tap(find.text('Standings').first);
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 500));
 
-    expect(find.byType(EventSearchBar), findsOneWidget);
-    expect(find.byType(EventGamesQuickActions), findsNothing);
+    expect(find.byType(EventSearchBar), findsNothing);
+    expect(searchFab, findsOneWidget);
     expect(find.bySemanticsLabel('Show live games first'), findsNothing);
-    // The field keeps its height between the tabs.
-    expect(
-      tester.getSize(find.byType(EventSearchBarFrame)).height,
-      gamesRowHeight,
-    );
     await _unmount(tester);
   });
 
@@ -271,12 +428,57 @@ void main() {
         textScale: textScale,
       );
       expect(tester.takeException(), isNull);
-      expect(find.bySemanticsLabel('Show live games first'), findsOneWidget);
-      final row = tester.getRect(find.byType(EventGamesQuickActions));
-      expect(row.right, lessThanOrEqualTo(320));
+      await tester.tap(searchFab);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(tester.takeException(), isNull);
+      expect(
+        tester.getRect(find.byType(EventSearchBar)).right,
+        lessThanOrEqualTo(320),
+      );
       await _unmount(tester);
     });
   }
+}
+
+/// The Games screen model with Live first on, recording what the screen asks
+/// of it. [clearSearch] only records: the list of every game it rebuilds
+/// arrives later, through [land].
+class _SearchedGames extends GamesTourScreenProvider {
+  _SearchedGames({required super.ref}) : super.loading() {
+    land(search: false);
+  }
+
+  final calls = <String>[];
+
+  void land({
+    required bool search,
+    GameDisplayMode mode = GameDisplayMode.hideFinishedGames,
+  }) => state = AsyncValue.data(
+    GamesScreenModel(
+      gamesTourModels: const [],
+      pinnedGamedIs: const [],
+      isSearchMode: search,
+      searchQuery: search ? 'carl' : null,
+      gameDisplayMode: mode,
+    ),
+  );
+
+  @override
+  void clearSearch() => calls.add('clearSearch');
+
+  @override
+  Future<void> showAllGames() async {
+    calls.add('showAllGames');
+    land(search: false, mode: GameDisplayMode.all);
+  }
+
+  @override
+  Future<void> hideFinishedGames() async => calls.add('hideFinishedGames');
+
+  @override
+  Future<void> searchGamesEnhanced(String query) async =>
+      calls.add('search:$query');
 }
 
 class _DisabledChat extends BotvinnikEnabledNotifier {

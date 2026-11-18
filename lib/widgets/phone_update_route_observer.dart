@@ -4,14 +4,27 @@ import 'package:flutter/material.dart';
 /// puzzles) and all modals defer reminders. Track the actual stack so removing
 /// a covered route cannot accidentally declare an active game safe.
 class PhoneUpdateRouteObserver extends NavigatorObserver {
+  PhoneUpdateRouteObserver() {
+    homeSectionSafe.addListener(_publish);
+  }
+
+  static const homeRoute = '/home_screen';
+
   static const safeRoutes = {
-    '/home_screen',
+    homeRoute,
     '/group_event_screen',
     '/calendar_screen',
     '/library_screen',
     '/favorites_screen',
     '/player_list_screen',
   };
+
+  /// Whether the section [homeRoute] shows is a page to browse. Home's route
+  /// holds every bottom-bar section, and Botvinnik, Feed and Search were
+  /// unnamed pages (so deferred) before they became tabs: a chat, a clip
+  /// playing or a query being typed must still not be interrupted. The bar's
+  /// selection keeps this current; true when nothing has set it.
+  static final homeSectionSafe = ValueNotifier<bool>(true);
 
   final safeToPrompt = ValueNotifier<bool>(false);
   final List<Route<dynamic>> _routes = [];
@@ -21,11 +34,17 @@ class PhoneUpdateRouteObserver extends NavigatorObserver {
       return false;
     }
     final top = _routes.last;
+    final name = top.settings.name;
     return top is PageRoute &&
-        safeRoutes.contains(top.settings.name) &&
+        safeRoutes.contains(name) &&
+        (name != homeRoute || homeSectionSafe.value) &&
         !top.willHandlePopInternally &&
         top.animation?.status == AnimationStatus.completed;
   }
+
+  /// Stops following [homeSectionSafe]. The app's observer lives as long as
+  /// the app; this is for observers made and dropped, as in tests.
+  void dispose() => homeSectionSafe.removeListener(_publish);
 
   void _publish([AnimationStatus? _]) => safeToPrompt.value = isSafe;
 

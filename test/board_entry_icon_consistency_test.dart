@@ -7,8 +7,9 @@ void main() {
     final icon = File(
       'lib/widgets/board_navigation_icon.dart',
     ).readAsStringSync();
-    final drawer = File(
-      'lib/widgets/hamburger_menu/hamburger_menu.dart',
+    // The sidebar drawer is gone; its Board entry lives on the Profile tab.
+    final profileHub = File(
+      'lib/screens/my_profile/profile_hub_screen.dart',
     ).readAsStringSync();
     final library = File(
       'lib/screens/library/library_screen.dart',
@@ -23,7 +24,11 @@ void main() {
     expect(icon, contains('SvgAsset.analysisBoard'));
     expect(icon, contains('preserveOriginalColors: true'));
 
-    expect(drawer, contains('BoardNavigationIcon'));
+    expect(profileHub, contains('BoardNavigationIcon'));
+    expect(profileHub, contains('E2eIds.drawerBoard'));
+    expect(profileHub, contains("title: 'Board'"));
+    expect(profileHub, contains('requireFullAuthGuard(context)'));
+    expect(profileHub, contains('GamebaseExplorerScreen.scoped()'));
     expect(library, contains('BoardNavigationIcon'));
     expect(database, contains('BoardNavigationIcon'));
 

@@ -15,7 +15,14 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 /// Standings). Stays visible while the inner tab content scrolls. Horizontal
 /// inset comes from the enclosing column.
 class EventSearchBar extends ConsumerStatefulWidget {
-  const EventSearchBar({super.key});
+  const EventSearchBar({super.key, this.focusNode, this.autofocus = false});
+
+  /// The page's own node, so it can tell when the keyboard is up. Null: the
+  /// bar keeps one of its own.
+  final FocusNode? focusNode;
+
+  /// Puts the cursor in the field as it appears (the search page opening).
+  final bool autofocus;
 
   @override
   ConsumerState<EventSearchBar> createState() => _EventSearchBarState();
@@ -23,7 +30,9 @@ class EventSearchBar extends ConsumerStatefulWidget {
 
 class _EventSearchBarState extends ConsumerState<EventSearchBar> {
   late final TextEditingController _controller;
-  late final FocusNode _focusNode;
+  FocusNode? _ownFocusNode;
+  FocusNode get _focusNode =>
+      widget.focusNode ?? (_ownFocusNode ??= FocusNode());
   late final int _placeholderIndex;
   Timer? _debounce;
 
@@ -33,7 +42,6 @@ class _EventSearchBarState extends ConsumerState<EventSearchBar> {
     _controller = TextEditingController(
       text: ref.read(standingsSearchQueryProvider),
     );
-    _focusNode = FocusNode();
     _placeholderIndex = math.Random().nextInt(eventSearchPlaceholderCount);
   }
 
@@ -41,7 +49,7 @@ class _EventSearchBarState extends ConsumerState<EventSearchBar> {
   void dispose() {
     _debounce?.cancel();
     _controller.dispose();
-    _focusNode.dispose();
+    _ownFocusNode?.dispose();
     super.dispose();
   }
 
@@ -63,6 +71,13 @@ class _EventSearchBarState extends ConsumerState<EventSearchBar> {
     // query per keystroke.
     _debounce?.cancel();
     _debounce = Timer(const Duration(milliseconds: 200), () {
+      // Closing the search clears the query before this bar is disposed
+      // (which cancels the timer); a keystroke still pending in between
+      // must not run the closed query again behind the closed field.
+      if (!mounted ||
+          ref.read(standingsSearchQueryProvider).trim() != trimmed) {
+        return;
+      }
       final gamesNotifier = ref.read(gamesTourScreenProvider.notifier);
       if (trimmed.isEmpty) {
         gamesNotifier.clearSearch();
@@ -104,6 +119,7 @@ class _EventSearchBarState extends ConsumerState<EventSearchBar> {
       child: SimpleSearchBar(
         controller: _controller,
         focusNode: _focusNode,
+        autofocus: widget.autofocus,
         hintText: hintText,
         onChanged: _handleChanged,
         onCloseTap: _handleCleared,

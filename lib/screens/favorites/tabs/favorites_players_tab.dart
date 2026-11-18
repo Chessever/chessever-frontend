@@ -24,7 +24,6 @@ import 'package:chessever2/screens/player_profile/utils/player_menu_actions.dart
 import 'package:chessever2/screens/player_profile/widgets/lifted_row_menu.dart';
 import 'package:chessever2/widgets/figma_player_card.dart';
 import 'package:chessever2/widgets/scroll_to_top_bus.dart';
-import 'package:chessever2/widgets/scroll_to_top_button.dart';
 import 'package:chessever2/widgets/search/gameSearch/enhanced_game_search_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -43,10 +42,11 @@ final playerPhotoProvider = FutureProvider.autoDispose.family<String?, int?>((
 });
 
 // Provider for world rankings search
-final worldPlayersSearchProvider = StateNotifierProvider.autoDispose<
-  WorldPlayersSearchNotifier,
-  WorldPlayersSearchState
->((ref) => WorldPlayersSearchNotifier(ref));
+final worldPlayersSearchProvider =
+    StateNotifierProvider.autoDispose<
+      WorldPlayersSearchNotifier,
+      WorldPlayersSearchState
+    >((ref) => WorldPlayersSearchNotifier(ref));
 
 class WorldPlayersSearchState {
   final List<PlayerStandingModel> players;
@@ -146,20 +146,19 @@ class WorldPlayersSearchNotifier
 
       if (!mounted || generation != _requestGeneration) return;
 
-      final playerModels =
-          players
-              .map(
-                (player) => PlayerStandingModel(
-                  name: player.name,
-                  countryCode: _fideFedToCountryCode(player.country),
-                  score: player.ratingFor(requestedFilters.timeControl) ?? 0,
-                  scoreChange: 0,
-                  matchScore: null,
-                  title: player.title,
-                  fideId: player.fideid,
-                ),
-              )
-              .toList();
+      final playerModels = players
+          .map(
+            (player) => PlayerStandingModel(
+              name: player.name,
+              countryCode: _fideFedToCountryCode(player.country),
+              score: player.ratingFor(requestedFilters.timeControl) ?? 0,
+              scoreChange: 0,
+              matchScore: null,
+              title: player.title,
+              fideId: player.fideid,
+            ),
+          )
+          .toList();
       final byIdentity = <String, PlayerStandingModel>{};
       String identityKey(PlayerStandingModel player) {
         if (player.fideId != null && player.fideId! > 0) {
@@ -169,12 +168,11 @@ class WorldPlayersSearchNotifier
         if (memorialIdentity != null && memorialIdentity.isNotEmpty) {
           return 'memorial:${memorialIdentity.toLowerCase()}';
         }
-        final normalized =
-            player.name
-                .toLowerCase()
-                .replaceAll(',', ' ')
-                .replaceAll(RegExp(r'\s+'), ' ')
-                .trim();
+        final normalized = player.name
+            .toLowerCase()
+            .replaceAll(',', ' ')
+            .replaceAll(RegExp(r'\s+'), ' ')
+            .trim();
         return 'name:$normalized';
       }
 
@@ -196,20 +194,18 @@ class WorldPlayersSearchNotifier
         );
         final key = identityKey(memorialModel);
         final existing = byIdentity[key];
-        byIdentity[key] =
-            existing == null
-                ? memorialModel
-                : existing.copyWith(
-                  gamebasePlayerId: memorial.gamebasePlayerId,
-                  memorialSourceIdentity: memorial.sourceIdentity,
-                  memorialRouteId: memorial.routeId,
-                );
+        byIdentity[key] = existing == null
+            ? memorialModel
+            : existing.copyWith(
+                gamebasePlayerId: memorial.gamebasePlayerId,
+                memorialSourceIdentity: memorial.sourceIdentity,
+                memorialRouteId: memorial.routeId,
+              );
       }
       final mergedPlayerModels = byIdentity.values.toList(growable: false);
-      final allPlayers =
-          isInitial
-              ? mergedPlayerModels
-              : [...state.players, ...mergedPlayerModels];
+      final allPlayers = isInitial
+          ? mergedPlayerModels
+          : [...state.players, ...mergedPlayerModels];
       final inactiveIds = <int>{
         if (!isInitial) ...state.inactivePlayerIds,
         ...players.where((player) => player.isInactive).map((p) => p.fideid),
@@ -544,7 +540,7 @@ class _FavoritesPlayersTabState extends ConsumerState<FavoritesPlayersTab>
     final favorites = favoritesAsync.valueOrNull ?? const [];
 
     // Apply tablet max-width constraint
-    Widget content = RefreshIndicator(
+    final content = RefreshIndicator(
       onRefresh: () async {
         HapticFeedbackService.medium();
         await ref.read(worldPlayersSearchProvider.notifier).refresh();
@@ -587,10 +583,9 @@ class _FavoritesPlayersTabState extends ConsumerState<FavoritesPlayersTab>
                       SizedBox(width: 8.w),
                       RankingActivityControl(
                         value: state.filters.activity,
-                        onChanged:
-                            (value) => _onFiltersChanged(
-                              state.filters.copyWith(activity: value),
-                            ),
+                        onChanged: (value) => _onFiltersChanged(
+                          state.filters.copyWith(activity: value),
+                        ),
                       ),
                     ],
                   ),
@@ -618,25 +613,14 @@ class _FavoritesPlayersTabState extends ConsumerState<FavoritesPlayersTab>
     // wrapper is always present so folding or unfolding an iPhone Duo between
     // phone and tablet widths keeps the same tree, and the list keeps its
     // scroll position instead of remounting at the top.
-    content = Center(
+    //
+    // No scroll-to-top button (Trello #1420): tapping the tab again
+    // already scrolls up.
+    return Center(
       child: ConstrainedBox(
-        constraints: BoxConstraints(
-          maxWidth: ResponsiveHelper.contentMaxWidth,
-        ),
+        constraints: BoxConstraints(maxWidth: ResponsiveHelper.contentMaxWidth),
         child: SizedBox.expand(child: content),
       ),
-    );
-
-    return Stack(
-      children: [
-        content,
-        // Scroll to top button
-        Positioned(
-          bottom: 0,
-          right: 0,
-          child: ScrollToTopButton(scrollController: _scrollController),
-        ),
-      ],
     );
   }
 
@@ -690,36 +674,35 @@ class _FavoritesPlayersTabState extends ConsumerState<FavoritesPlayersTab>
             return Padding(
               padding: EdgeInsets.symmetric(vertical: 24.h),
               child: Center(
-                child:
-                    state.isLoading
-                        ? Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            SizedBox(
-                              width: 24.w,
-                              height: 24.h,
-                              child: CircularProgressIndicator(
-                                color: context.colors.textPrimary,
-                                strokeWidth: 2,
-                              ),
+                child: state.isLoading
+                    ? Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          SizedBox(
+                            width: 24.w,
+                            height: 24.h,
+                            child: CircularProgressIndicator(
+                              color: context.colors.textPrimary,
+                              strokeWidth: 2,
                             ),
-                            SizedBox(height: 8.h),
-                            Text(
-                              'Loading more players...',
-                              style: AppTypography.textXsRegular.copyWith(
-                                color: context.collectionSubtleInk,
-                              ),
-                            ),
-                          ],
-                        )
-                        : state.hasMore
-                        ? const SizedBox.shrink()
-                        : Text(
-                          'No more players',
-                          style: AppTypography.textXsRegular.copyWith(
-                            color: const Color(0xFF52525B),
                           ),
+                          SizedBox(height: 8.h),
+                          Text(
+                            'Loading more players...',
+                            style: AppTypography.textXsRegular.copyWith(
+                              color: context.collectionSubtleInk,
+                            ),
+                          ),
+                        ],
+                      )
+                    : state.hasMore
+                    ? const SizedBox.shrink()
+                    : Text(
+                        'No more players',
+                        style: AppTypography.textXsRegular.copyWith(
+                          color: const Color(0xFF52525B),
                         ),
+                      ),
               ),
             );
           }
@@ -737,28 +720,25 @@ class _FavoritesPlayersTabState extends ConsumerState<FavoritesPlayersTab>
           // Long-press lifts the row into the shared focus menu.
           return LiftedRowMenu(
             onPreviewTap: () => _navigateToPlayerDetail(player),
-            actions:
-                (rowContext) => playerStandingMenuActions(
-                  rowContext,
-                  ref,
-                  player,
-                  onOpen: () => _navigateToPlayerDetail(player),
-                  extra: [
-                    LibraryMenuAction(
-                      icon:
-                          isFavorite
-                              ? Icons.favorite_rounded
-                              : Icons.favorite_border_rounded,
-                      label:
-                          isFavorite
-                              ? 'Remove from favorites'
-                              : 'Add to favorites',
-                      onSelected: () {
-                        if (mounted) _toggleFavorite(player, isFavorite);
-                      },
-                    ),
-                  ],
+            actions: (rowContext) => playerStandingMenuActions(
+              rowContext,
+              ref,
+              player,
+              onOpen: () => _navigateToPlayerDetail(player),
+              extra: [
+                LibraryMenuAction(
+                  icon: isFavorite
+                      ? Icons.favorite_rounded
+                      : Icons.favorite_border_rounded,
+                  label: isFavorite
+                      ? 'Remove from favorites'
+                      : 'Add to favorites',
+                  onSelected: () {
+                    if (mounted) _toggleFavorite(player, isFavorite);
+                  },
                 ),
+              ],
+            ),
             child: FigmaPlayerCard(
               player: player,
               isFavorite: isFavorite,
@@ -783,17 +763,16 @@ class _FavoritesPlayersTabState extends ConsumerState<FavoritesPlayersTab>
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder:
-            (context) => PlayerProfileScreen(
-              fideId: player.fideId,
-              playerName: player.name,
-              title: player.title,
-              federation: player.countryCode,
-              rating: player.score,
-              gamebasePlayerId: player.gamebasePlayerId,
-              memorialSourceIdentity: player.memorialSourceIdentity,
-              memorialRouteId: player.memorialRouteId,
-            ),
+        builder: (context) => PlayerProfileScreen(
+          fideId: player.fideId,
+          playerName: player.name,
+          title: player.title,
+          federation: player.countryCode,
+          rating: player.score,
+          gamebasePlayerId: player.gamebasePlayerId,
+          memorialSourceIdentity: player.memorialSourceIdentity,
+          memorialRouteId: player.memorialRouteId,
+        ),
       ),
     );
   }
@@ -912,8 +891,8 @@ class _FavoritesPlayersTabState extends ConsumerState<FavoritesPlayersTab>
           ),
           SizedBox(height: 24.h),
           TextButton(
-            onPressed:
-                () => ref.read(worldPlayersSearchProvider.notifier).refresh(),
+            onPressed: () =>
+                ref.read(worldPlayersSearchProvider.notifier).refresh(),
             style: TextButton.styleFrom(
               backgroundColor: context.colors.textPrimary.withValues(
                 alpha: 0.1,

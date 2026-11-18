@@ -56,11 +56,12 @@ void main() {
               home: Builder(
                 builder: (context) {
                   ResponsiveHelper.init(context);
-                  // The Filters control lives in the Favorites title row (Trello #1420).
+                  // The Filters control lives in the Games search header
+                  // (Trello #1420).
                   return const Scaffold(
                     body: Column(
                       children: [
-                        FavoritesGamesTitleControls(),
+                        FavoritesGamesSearchControls(),
                         Expanded(child: FavoritesGamesTab()),
                       ],
                     ),

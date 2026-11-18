@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'dart:async';
 
 import 'package:chessever2/e2e/e2e_ids.dart';
@@ -21,6 +22,8 @@ import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_p
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/game_card_wrapper_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/board_game_card_wrapper_widget.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/grid_game_card_wrapper_widget.dart';
+import 'package:chessever2/screens/tour_detail/widgets/event_search_bar.dart'
+    show EventSearchBarFrame;
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/widgets/app_snack.dart';
 import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
@@ -34,8 +37,10 @@ import 'package:chessever2/utils/number_format_utils.dart';
 import 'package:chessever2/utils/user_error_message.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/game_filter/game_filter.dart';
+import 'package:chessever2/utils/svg_asset.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:chessever2/widgets/scroll_to_top_bus.dart';
-import 'package:chessever2/widgets/scroll_to_top_button.dart';
+import 'package:chessever2/widgets/simple_search_bar.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
@@ -75,9 +80,6 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
     animateScrollControllerToTop(_scrollController);
   }
 
-  final TextEditingController _searchController = TextEditingController();
-  final FocusNode _searchFocusNode = FocusNode();
-  Timer? _debounceTimer;
   Timer? _scrollIdleTimer;
   bool _routeSubscribed = false;
   bool _appIsResumed = true;
@@ -115,12 +117,6 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
     );
     WidgetsBinding.instance.addObserver(this);
     _scrollController.addListener(_onScroll);
-    _searchFocusNode.addListener(_onSearchFocusChange);
-  }
-
-  void _onSearchFocusChange() {
-    if (!mounted) return;
-    setState(() {});
   }
 
   /// Get the player profile key for provider lookups
@@ -149,14 +145,10 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
     }
     WidgetsBinding.instance.removeObserver(this);
     ForegroundTaskScheduler.cancel('player_games_resume_$hashCode');
-    _debounceTimer?.cancel();
     _scrollIdleTimer?.cancel();
     _setLiveCardsPausedForScroll(false);
     _scrollController.removeListener(_onScroll);
     _scrollController.dispose();
-    _searchFocusNode.removeListener(_onSearchFocusChange);
-    _searchController.dispose();
-    _searchFocusNode.dispose();
     super.dispose();
   }
 
@@ -266,15 +258,6 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
     );
   }
 
-  void _onSearchChanged(String value) {
-    _debounceTimer?.cancel();
-    _debounceTimer = Timer(const Duration(milliseconds: 400), () {
-      ref
-          .read(playerProfileGamesKeyProvider(_playerKey).notifier)
-          .setSearchQuery(value);
-    });
-  }
-
   int _resolveBulkMaxPages(PlayerProfileGamesState state) {
     const defaultMaxPages = 250;
     const fallbackPageSize = 50;
@@ -285,47 +268,6 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
     final estimatedPages = (remaining / fallbackPageSize).ceil();
     final safeWithBuffer = estimatedPages + 10;
     return safeWithBuffer.clamp(defaultMaxPages, 5000);
-  }
-
-  void _clearSearch() {
-    HapticFeedback.lightImpact();
-    _debounceTimer?.cancel();
-    _searchController.clear();
-    _searchFocusNode.unfocus();
-    ref
-        .read(playerProfileGamesKeyProvider(_playerKey).notifier)
-        .setSearchQuery('');
-  }
-
-  GameFilter _dialogFilter(GameFilter filter) {
-    return playerProfileEffectiveFilter(filter);
-  }
-
-  GameFilter _storedFilter(GameFilter filter) {
-    return filter.copyWith(
-      minYear: filter.minYear == GameFilter.absoluteMinYear
-          ? GameFilter.defaultMinYear
-          : filter.minYear,
-      minRating: filter.minRating == GameFilter.absoluteMinRating
-          ? GameFilter.defaultMinRating
-          : filter.minRating,
-    );
-  }
-
-  Future<void> _showFilterDialog() async {
-    HapticFeedbackService.buttonPress();
-    final currentState = ref.read(playerProfileGamesKeyProvider(_playerKey));
-    final result = await showGameFilterDialog(
-      context: context,
-      currentFilter: _dialogFilter(currentState.filter),
-      showFormatFilter: widget.dataSource == PlayerProfileDataSource.twic,
-      showLiveFilter: false,
-    );
-    if (result != null && mounted) {
-      ref
-          .read(playerProfileGamesKeyProvider(_playerKey).notifier)
-          .applyFilter(_storedFilter(result));
-    }
   }
 
   void _toggleGameSelection(String gameId) {
@@ -510,21 +452,17 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
     });
 
     final state = ref.watch(playerProfileGamesKeyProvider(_playerKey));
-    if (!_searchFocusNode.hasFocus &&
-        _searchController.text != state.searchQuery) {
-      _searchController.value = TextEditingValue(
-        text: state.searchQuery,
-        selection: TextSelection.collapsed(offset: state.searchQuery.length),
-      );
-    }
     final viewMode = ref.watch(gamesListViewModeProvider);
     final horizontalPadding = ResponsiveHelper.adaptive(
       phone: 16.w,
       tablet: 24.w,
     );
+    // The search row left the list for the profile's own search page
+    // (Trello #1420). What stays floats over the list only while it has
+    // something to say: the picking panel, and what narrows the list.
+    final hasStickyHeader = isSelectionMode || state.hasActiveFilters;
     final headerHeight =
-        PlayerGamesSearchBar.heightOf(context) +
-        10.h +
+        8.h +
         (state.hasActiveFilters
             ? PlayerGamesActiveFiltersChip.heightOf(context)
             : 0) +
@@ -549,26 +487,27 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
           parent: BouncingScrollPhysics(),
         ),
         slivers: [
-          SliverAppBar(
-            primary: false,
-            floating: true,
-            snap: true,
-            pinned: false,
-            elevation: 0,
-            backgroundColor: Colors.transparent,
-            automaticallyImplyLeading: false,
-            toolbarHeight: headerHeight,
-            flexibleSpace: FlexibleSpaceBar(
-              background: Align(
-                alignment: Alignment.bottomCenter,
-                child: _buildStickyHeader(
-                  state,
-                  horizontalPadding,
-                  isSelectionMode,
+          if (hasStickyHeader)
+            SliverAppBar(
+              primary: false,
+              floating: true,
+              snap: true,
+              pinned: false,
+              elevation: 0,
+              backgroundColor: Colors.transparent,
+              automaticallyImplyLeading: false,
+              toolbarHeight: headerHeight,
+              flexibleSpace: FlexibleSpaceBar(
+                background: Align(
+                  alignment: Alignment.bottomCenter,
+                  child: _buildStickyHeader(
+                    state,
+                    horizontalPadding,
+                    isSelectionMode,
+                  ),
                 ),
               ),
             ),
-          ),
 
           // Content
           SliverLayoutBuilder(
@@ -591,25 +530,13 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
     // wrapper is always present so folding or unfolding an iPhone Duo between
     // phone and tablet widths keeps the same tree, and the list keeps its
     // scroll position instead of remounting at the top.
-    content = Center(
+    // The corner the scroll-to-top arrow held is the profile's floating
+    // search now; a reselected Games tab still scrolls the list to the top.
+    return Center(
       child: ConstrainedBox(
-        constraints: BoxConstraints(
-          maxWidth: ResponsiveHelper.contentMaxWidth,
-        ),
+        constraints: BoxConstraints(maxWidth: ResponsiveHelper.contentMaxWidth),
         child: SizedBox.expand(child: content),
       ),
-    );
-
-    return Stack(
-      children: [
-        content,
-        // Scroll to top button
-        Positioned(
-          bottom: 0,
-          right: 0,
-          child: ScrollToTopButton(scrollController: _scrollController),
-        ),
-      ],
     );
   }
 
@@ -627,15 +554,6 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
       child: Column(
         mainAxisAlignment: MainAxisAlignment.end,
         children: [
-          Padding(
-            padding: EdgeInsets.fromLTRB(
-              horizontalPadding,
-              2.h,
-              horizontalPadding,
-              4.h,
-            ),
-            child: _buildSearchBar(state),
-          ),
           if (isSelectionMode)
             Padding(
               padding: EdgeInsets.fromLTRB(
@@ -653,23 +571,6 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
             ),
         ],
       ),
-    );
-  }
-
-  Widget _buildSearchBar(PlayerProfileGamesState state) {
-    return PlayerGamesSearchBar(
-      controller: _searchController,
-      focusNode: _searchFocusNode,
-      onChanged: _onSearchChanged,
-      onClear: _clearSearch,
-      onFilterTap: _showFilterDialog,
-      onLayoutToggle: () =>
-          ref.read(gamesListViewModeSwitcher).toggleViewMode(),
-      hasQuery: state.searchQuery.isNotEmpty,
-      hasActiveFilters: state.hasActiveFilters,
-      activeFilterCount: state.activeFilterCount,
-      searchFieldKey: e2eKey(E2eIds.playerGamesSearchField),
-      filterButtonKey: e2eKey(E2eIds.playerGamesFilterButton),
     );
   }
 
@@ -1350,10 +1251,10 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
     return PlayerGamesNoMatches(
       onClear: () {
         HapticFeedback.mediumImpact();
+        // Clears the search too; an open search field follows.
         ref
             .read(playerProfileGamesKeyProvider(_playerKey).notifier)
             .clearFilter();
-        _clearSearch();
       },
     );
   }
@@ -1452,4 +1353,305 @@ class _PlayerCardGameEntry extends _PlayerGamesListEntry {
 
 class _PlayerPaginationFooterEntry extends _PlayerGamesListEntry {
   const _PlayerPaginationFooterEntry();
+}
+
+/// The profile's header while its Games tab is searched (Trello #1420): a
+/// way back, the field, and the list's own controls, filters and layout,
+/// as bare glyphs (they used to sit beside the field above the list). The
+/// tab fills the page under it, filtered as the reader types.
+class PlayerGamesSearchHeader extends ConsumerStatefulWidget {
+  const PlayerGamesSearchHeader({
+    super.key,
+    required this.playerKey,
+    required this.focusNode,
+    required this.onClose,
+  });
+
+  /// The list it searches: the Games tab's own key.
+  final PlayerProfileKey playerKey;
+
+  /// The page's node, so the page can hold its chrome while the keyboard
+  /// is up.
+  final FocusNode focusNode;
+  final VoidCallback onClose;
+
+  @override
+  ConsumerState<PlayerGamesSearchHeader> createState() =>
+      _PlayerGamesSearchHeaderState();
+}
+
+class _PlayerGamesSearchHeaderState
+    extends ConsumerState<PlayerGamesSearchHeader> {
+  static const List<String> _hintWords = ['event', 'opponent', 'opening'];
+
+  late final TextEditingController _controller;
+  Timer? _debounce;
+
+  /// The query this field last handed the list. A different one arriving
+  /// from the list (Clear Filters, the filters strip) is written into the
+  /// field; this one is not, as the field may hold more typed since.
+  late String _applied;
+
+  PlayerProfileGamesNotifier get _games =>
+      ref.read(playerProfileGamesKeyProvider(widget.playerKey).notifier);
+
+  @override
+  void initState() {
+    super.initState();
+    // A query set before the search opened (an About stat) is in the field.
+    _applied = ref
+        .read(playerProfileGamesKeyProvider(widget.playerKey))
+        .searchQuery;
+    _controller = TextEditingController(text: _applied);
+  }
+
+  @override
+  void dispose() {
+    _debounce?.cancel();
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _onChanged(String value) {
+    // TWIC searches on the server: one query per pause, not per keystroke.
+    _debounce?.cancel();
+    _debounce = Timer(const Duration(milliseconds: 400), () {
+      if (!mounted) return;
+      _applied = value;
+      _games.setSearchQuery(value);
+    });
+  }
+
+  void _clear() {
+    HapticFeedback.lightImpact();
+    _debounce?.cancel();
+    _controller.clear();
+    widget.focusNode.unfocus();
+    _applied = '';
+    _games.setSearchQuery('');
+  }
+
+  Future<void> _openFilters() async {
+    final current = ref.read(playerProfileGamesKeyProvider(widget.playerKey));
+    final result = await showGameFilterDialog(
+      context: context,
+      currentFilter: playerProfileEffectiveFilter(current.filter),
+      showFormatFilter: widget.playerKey.source == PlayerProfileDataSource.twic,
+      showLiveFilter: false,
+    );
+    if (result == null || !mounted) return;
+    _games.applyFilter(_storedFilter(result));
+  }
+
+  /// The dialog speaks in absolute bounds; the list keeps its defaults, so
+  /// an untouched bound never reads as a filter.
+  static GameFilter _storedFilter(GameFilter filter) {
+    return filter.copyWith(
+      minYear: filter.minYear == GameFilter.absoluteMinYear
+          ? GameFilter.defaultMinYear
+          : filter.minYear,
+      minRating: filter.minRating == GameFilter.absoluteMinRating
+          ? GameFilter.defaultMinRating
+          : filter.minRating,
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final games = playerProfileGamesKeyProvider(widget.playerKey);
+    ref.listen<String>(games.select((s) => s.searchQuery), (_, next) {
+      if (next == _applied) return;
+      _debounce?.cancel();
+      _applied = next;
+      if (_controller.text == next) return;
+      _controller.value = TextEditingValue(
+        text: next,
+        selection: TextSelection.collapsed(offset: next.length),
+      );
+    });
+    // The field shows the query; the glyph counts what else narrows the list.
+    final filters = ref.watch(
+      games.select(
+        (s) =>
+            s.filter.activeFilterCount +
+            (s.playerResultFilter != PlayerResultFilter.all ? 1 : 0),
+      ),
+    );
+    final side = ResponsiveHelper.adaptive(phone: 20.sp, tablet: 32.sp);
+    return Padding(
+      // The chevron's and the last glyph's 44pt targets reach into the
+      // gutter, so the glyphs themselves land on it.
+      // Never negative: a folded Duo pane is narrower than the gutter.
+      padding: EdgeInsetsDirectional.fromSTEB(
+        math.max(0.0, side - 12),
+        4.h,
+        math.max(0.0, side - 12),
+        10.h,
+      ),
+      child: Row(
+        children: [
+          SizedBox.square(
+            dimension: 44,
+            child: IconButton(
+              key: const ValueKey('player_games_search_close'),
+              tooltip: 'Close search',
+              padding: EdgeInsets.zero,
+              onPressed: () {
+                HapticFeedbackService.navigation();
+                widget.onClose();
+              },
+              icon: Icon(
+                Icons.arrow_back_ios_new_outlined,
+                size: 22,
+                color: context.colors.textPrimary,
+              ),
+            ),
+          ),
+          const SizedBox(width: 4),
+          Expanded(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(minHeight: 44),
+              child: Center(
+                child: EventSearchBarFrame(
+                  compact: true,
+                  child: SimpleSearchBar(
+                    textFieldKey: e2eKey(E2eIds.playerGamesSearchField),
+                    controller: _controller,
+                    focusNode: widget.focusNode,
+                    autofocus: true,
+                    hintText: 'Search',
+                    rotatingHints: _hintWords,
+                    onChanged: _onChanged,
+                    onCloseTap: _clear,
+                    onOpenFilter: null,
+                  ),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 4),
+          _SearchHeaderGlyph(
+            buttonKey: e2eKey(E2eIds.playerGamesFilterButton),
+            label: filters > 0
+                ? 'Filter and sort games, $filters applied'
+                : 'Filter and sort games',
+            onTap: _openFilters,
+            child: _FilterGlyph(count: filters),
+          ),
+          _SearchHeaderGlyph(
+            label: 'Change games layout',
+            onTap: () => ref.read(gamesListViewModeSwitcher).toggleViewMode(),
+            child: SvgPicture.asset(
+              SvgAsset.chase_grid,
+              width: 20,
+              height: 20,
+              colorFilter: ColorFilter.mode(
+                context.colors.textSecondary,
+                BlendMode.srcIn,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// A bare control in the search header: the glyph alone on a 44pt target,
+/// with no tile and no splash drawn around it.
+class _SearchHeaderGlyph extends StatelessWidget {
+  const _SearchHeaderGlyph({
+    required this.label,
+    required this.onTap,
+    required this.child,
+    this.buttonKey,
+  });
+
+  final String label;
+  final VoidCallback onTap;
+  final Widget child;
+  final Key? buttonKey;
+
+  void _activate() {
+    HapticFeedbackService.buttonPress();
+    onTap();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: label,
+      excludeFromSemantics: true,
+      child: Semantics(
+        container: true,
+        button: true,
+        label: label,
+        onTap: _activate,
+        excludeSemantics: true,
+        child: GestureDetector(
+          key: buttonKey,
+          behavior: HitTestBehavior.opaque,
+          onTap: _activate,
+          child: SizedBox.square(dimension: 44, child: Center(child: child)),
+        ),
+      ),
+    );
+  }
+}
+
+/// The filters glyph, lit with the count of what narrows the list. The
+/// count is the floating search's own badge (teal disc, ink figure), so the
+/// number the reader tapped through reads the same up here.
+class _FilterGlyph extends StatelessWidget {
+  const _FilterGlyph({required this.count});
+
+  final int count;
+
+  @override
+  Widget build(BuildContext context) {
+    final active = count > 0;
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        Icon(
+          Icons.tune_rounded,
+          size: 22,
+          color: active
+              ? context.colors.textPrimary
+              : context.colors.textSecondary,
+        ),
+        if (active)
+          Positioned(
+            top: -6,
+            right: -8,
+            child: Container(
+              constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
+              padding: const EdgeInsets.symmetric(horizontal: 4),
+              alignment: Alignment.center,
+              // The filter count, as the floating buttons wear it: the
+              // brand's tonal blue (clears contrast on paper too) with the
+              // page's colour for its number.
+              decoration: BoxDecoration(
+                color: context.colors.accentText,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(
+                  color: context.colors.background,
+                  width: 1.5,
+                ),
+              ),
+              child: Text(
+                count > 9 ? '9+' : '$count',
+                textScaler: TextScaler.noScaling,
+                style: TextStyle(
+                  color: context.colors.background,
+                  fontSize: 10,
+                  height: 1,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
 }

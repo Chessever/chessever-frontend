@@ -348,19 +348,13 @@ Future<void> popRoute(PatrolTester $) async {
   await $.pumpAndTrySettle(timeout: _defaultTimeout);
 }
 
-Future<void> openHomeDrawer(PatrolTester $) async {
+/// Opens the Profile tab, which holds what the sidebar used to (the sidebar
+/// is gone since the 2026-11-18 navigation overhaul).
+Future<void> openProfileTab(PatrolTester $) async {
   await ensureHomeShell($);
-  final scaffoldFinder = find.ancestor(
-    of: find.byKey(e2eKey(E2eIds.homeRoot)),
-    matching: find.byType(Scaffold),
-  );
-  if (scaffoldFinder.evaluate().isEmpty) {
-    throw TestFailure('Home scaffold not found');
-  }
-  final scaffoldState = $.tester.state<ScaffoldState>(scaffoldFinder.first);
-  scaffoldState.openDrawer();
+  await byId($, E2eIds.navProfile).tap();
   await $.pumpAndTrySettle(timeout: _defaultTimeout);
-  await expectVisible($, E2eIds.homeDrawer);
+  await expectVisible($, E2eIds.profileRoot);
 }
 
 Future<void> tapBottomNavRoot(
@@ -373,28 +367,34 @@ Future<void> tapBottomNavRoot(
   await expectVisible($, expectedRoot);
 }
 
-/// Taps a drawer row, scrolling the drawer's list to it first. The sidebar
-/// month calendar sits above the menu rows, so on short phones the lower rows
-/// start below the fold (and, in a lazy list, unbuilt).
-Future<void> tapDrawerItem(PatrolTester $, String drawerItemId) async {
-  final drawerList = find
+/// Taps a Profile row, scrolling the page to it first: on short phones the
+/// lower rows start below the fold (and, in a lazy list, unbuilt).
+Future<void> tapProfileItem(PatrolTester $, String itemId) async {
+  final list = find
       .descendant(
-        of: find.byKey(e2eKey(E2eIds.homeDrawer)),
+        of: find.byKey(e2eKey(E2eIds.profileRoot)),
         matching: find.byType(Scrollable),
       )
       .first;
-  await byId($, drawerItemId).scrollTo(view: drawerList);
-  await byId($, drawerItemId).tap();
+  await byId($, itemId).scrollTo(view: list);
+  await byId($, itemId).tap();
 }
 
-Future<void> openDrawerDestination(
+Future<void> openProfileDestination(
   PatrolTester $, {
-  required String drawerItemId,
+  required String itemId,
   required String expectedRoot,
 }) async {
-  await openHomeDrawer($);
-  await tapDrawerItem($, drawerItemId);
+  await openProfileTab($);
+  await tapProfileItem($, itemId);
   await expectVisible($, expectedRoot);
+}
+
+/// Opens a Games tab's full-page search: the search floats over the list as
+/// a button now (2026-11-18), and the field appears in the header's place.
+Future<void> openGamesSearch(PatrolTester $, Key fabKey) async {
+  await $(fabKey).tap();
+  await $.pumpAndTrySettle(timeout: _defaultTimeout);
 }
 
 Future<void> searchFor(
@@ -881,8 +881,8 @@ Future<void> openSyntheticBoard(PatrolTester $) async {
 }
 
 Future<void> openSettingsDialog(PatrolTester $) async {
-  await openHomeDrawer($);
-  await tapDrawerItem($, E2eIds.drawerSettings);
+  await openProfileTab($);
+  await tapProfileItem($, E2eIds.drawerSettings);
   await expectVisible($, E2eIds.settingsRoot);
 }
 

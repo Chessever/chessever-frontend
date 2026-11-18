@@ -1,7 +1,9 @@
-import 'package:chessever2/theme/app_theme.dart';
+import 'package:chessever2/theme/app_colors.dart';
 import 'package:flutter/material.dart';
 
-/// In-app brand cyan, not a native app-icon badge or notification permission.
+/// The brand's tonal accent (cyan on dark, deep teal on paper, where cyan
+/// alone does not stand off the page), not a native app-icon badge or
+/// notification permission.
 class InboxUnreadDot extends StatelessWidget {
   const InboxUnreadDot({super.key});
 
@@ -11,8 +13,8 @@ class InboxUnreadDot extends StatelessWidget {
     child: Container(
       width: 8,
       height: 8,
-      decoration: const BoxDecoration(
-        color: kPrimaryColor,
+      decoration: BoxDecoration(
+        color: context.colors.accentText,
         shape: BoxShape.circle,
       ),
     ),

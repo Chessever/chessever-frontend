@@ -13,20 +13,23 @@ import 'package:chessever2/screens/for_you/discovery/widgets/report_type_chips.d
 import 'package:chessever2/screens/group_event/widget/appbar_icons_widget.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_list_view_mode_provider.dart';
+import 'package:chessever2/screens/tour_detail/widgets/event_search_bar.dart'
+    show EventSearchBarFrame;
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/scroll_cache.dart';
 import 'package:chessever2/utils/svg_asset.dart';
-import 'package:chessever2/widgets/home_top_bar.dart';
+import 'package:chessever2/widgets/ink_fab.dart' show InkFabSize;
+import 'package:chessever2/widgets/simple_search_bar.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:intl/intl.dart';
 
 /// Saved reports, progressively loaded on the existing game-card design.
-/// A single page, so the tab strip is a search row with the usual layout
-/// toggle instead of a one-word "Games" tab.
+/// A single page: the report types stand where tabs would, the layout
+/// toggle sits in the header, and the search floats over the list.
 class ReportsScreen extends ConsumerStatefulWidget {
   const ReportsScreen({super.key});
   static Future<void> open(BuildContext context) async {
@@ -41,12 +44,20 @@ class ReportsScreen extends ConsumerStatefulWidget {
 
 class _ReportsScreenState extends ConsumerState<ReportsScreen> {
   final TextEditingController _searchController = TextEditingController();
+  final FocusNode _searchFocus = FocusNode();
   String _query = '';
 
   @override
   void dispose() {
     _searchController.dispose();
+    _searchFocus.dispose();
     super.dispose();
+  }
+
+  /// Empties the field and the list's filter.
+  void _clearSearch() {
+    _searchController.clear();
+    setState(() => _query = '');
   }
 
   @override
@@ -54,99 +65,63 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
     title: 'Reports',
     titleIcon: Icon(Icons.assessment_rounded),
     tabs: const ['Reports'],
+    actions: [
+      // The list's layout, in the header as on an event's Games tab: the
+      // list's top is the list's own. Its slot is the back button's width,
+      // so the title keeps the centre of the screen. A button node of its
+      // own, or a screen reader folds it into the title.
+      SizedBox(
+        width: kMinInteractiveDimension,
+        child: Center(
+          child: Semantics(
+            container: true,
+            button: true,
+            label: 'Toggle chessboard view',
+            child: AppBarIcons(
+              image: SvgAsset.chase_grid,
+              boxed: false,
+              onTap: () {
+                HapticFeedbackService.cardTap();
+                ref.read(gamesListViewModeSwitcher).toggleViewMode();
+              },
+            ),
+          ),
+        ),
+      ),
+    ],
+    // The chips scroll edge to edge and pad themselves.
     tabStripPadding: EdgeInsets.zero,
-    tabStripOverride: Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Padding(
-          padding: EdgeInsets.symmetric(
-            horizontal: HomeTopBarMetrics.horizontalPadding,
-          ),
-          child: Row(
-            children: [
-              Expanded(
-                child: Container(
-                  height: 44.h,
-                  decoration: BoxDecoration(
-                    color: context.colors.background,
-                    borderRadius: BorderRadius.circular(12.br),
-                    border: Border.all(color: context.colors.surfaceRecessed),
-                  ),
-                  child: Row(
-                    children: [
-                      SizedBox(width: 12.w),
-                      Icon(
-                        Icons.search,
-                        size: 20.sp,
-                        color: context.colors.textSecondary,
-                      ),
-                      SizedBox(width: 8.w),
-                      Expanded(
-                        child: TextField(
-                          controller: _searchController,
-                          textInputAction: TextInputAction.search,
-                          style: AppTypography.textSmRegular.copyWith(
-                            color: context.colors.textPrimary,
-                          ),
-                          decoration: InputDecoration(
-                            hintText: 'Search players',
-                            hintStyle: AppTypography.textSmRegular.copyWith(
-                              color: context.colors.textSecondary,
-                            ),
-                            border: InputBorder.none,
-                            isDense: true,
-                            contentPadding: EdgeInsets.zero,
-                          ),
-                          onChanged: (value) =>
-                              setState(() => _query = value.trim()),
-                        ),
-                      ),
-                      if (_query.isNotEmpty)
-                        GestureDetector(
-                          onTap: () {
-                            _searchController.clear();
-                            setState(() => _query = '');
-                          },
-                          child: Padding(
-                            padding: EdgeInsets.all(8.w),
-                            child: Icon(
-                              Icons.close,
-                              size: 18.sp,
-                              color: context.colors.textSecondary,
-                            ),
-                          ),
-                        )
-                      else
-                        SizedBox(width: 12.w),
-                    ],
-                  ),
-                ),
-              ),
-              SizedBox(width: 12.w),
-              Semantics(
-                label: 'Toggle chessboard view',
-                child: AppBarIcons(
-                  image: SvgAsset.chase_grid,
-                  onTap: () {
-                    HapticFeedbackService.cardTap();
-                    ref.read(gamesListViewModeSwitcher).toggleViewMode();
-                  },
-                ),
-              ),
-            ],
-          ),
-        ),
-        SizedBox(height: 8.h),
-        ReportTypeChips(
-          onLongPress: (context, type) => showReportsShareMenu(context, type),
-          selected: ref.watch(reportsGameTypeProvider),
-          onSelected: (type) {
-            if (type == ref.read(reportsGameTypeProvider)) return;
-            HapticFeedbackService.selection();
-            ref.read(reportsGameTypeProvider.notifier).state = type;
+    tabStripOverride: ReportTypeChips(
+      onLongPress: (context, type) => showReportsShareMenu(context, type),
+      selected: ref.watch(reportsGameTypeProvider),
+      onSelected: (type) {
+        if (type == ref.read(reportsGameTypeProvider)) return;
+        HapticFeedbackService.selection();
+        ref.read(reportsGameTypeProvider.notifier).state = type;
+      },
+    ),
+    // Names are searched in place: the floating button opens the field in
+    // the header's place, over this list filtered as the reader types,
+    // within the report type chosen before it opened.
+    search: EventViewSearch(
+      label: 'Search reports',
+      focusNode: _searchFocus,
+      onClose: _clearSearch,
+      field: EventSearchBarFrame(
+        compact: true,
+        child: SimpleSearchBar(
+          controller: _searchController,
+          focusNode: _searchFocus,
+          hintText: 'Search players',
+          textFieldKey: const ValueKey('reports_search'),
+          onChanged: (value) => setState(() => _query = value.trim()),
+          onCloseTap: () {
+            _clearSearch();
+            _searchFocus.unfocus();
           },
+          onOpenFilter: null,
         ),
-      ],
+      ),
     ),
     // Every card here is a saved report, so its eval bar shows what the
     // report recorded for the final position rather than waiting on caches
@@ -434,11 +409,15 @@ class _ReportsGamesState extends ConsumerState<_ReportsGames> {
               else if (reports.error == null)
                 SliverToBoxAdapter(
                   child: DiscoveryNotice(
+                    // The chips give way to the search field, so a miss
+                    // names the type it was searched in.
                     text: widget.query.isEmpty
                         ? gameType == null
                               ? 'Analyzed games will appear here when a report is available.'
                               : 'No ${gameType.label} reports yet.'
-                        : 'No reports match "${widget.query}".',
+                        : gameType == null
+                        ? 'No reports match "${widget.query}".'
+                        : 'No ${gameType.label} reports match "${widget.query}".',
                   ),
                 ),
               if (reports.error != null)
@@ -482,9 +461,14 @@ class _ReportsGamesState extends ConsumerState<_ReportsGames> {
                     ),
                   ),
                 ),
+              // The list ends clear of the floating search button.
               SliverToBoxAdapter(
                 child: SizedBox(
-                  height: 24.h + MediaQuery.viewPaddingOf(context).bottom,
+                  height:
+                      24.h +
+                      InkFabSize.regular.side +
+                      kFloatingActionButtonMargin +
+                      MediaQuery.viewPaddingOf(context).bottom,
                 ),
               ),
             ],

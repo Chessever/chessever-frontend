@@ -4,8 +4,6 @@ import 'dart:io' as io;
 import 'dart:math' as math;
 
 import 'package:cached_network_image/cached_network_image.dart';
-import 'package:chessever2/chat/botvinnik_chat_button.dart';
-import 'package:chessever2/chat/chat_api.dart';
 import 'package:chessever2/e2e/e2e_ids.dart';
 import 'package:chessever2/repository/supabase/game/games.dart';
 import 'package:chessever2/providers/favorite_players_provider.dart';
@@ -56,6 +54,8 @@ import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
 import 'package:chessever2/widgets/player_name_share_target.dart';
 import 'package:chessever2/widgets/screenshot_share_nudge.dart';
 import 'package:chessever2/widgets/scroll_to_top_bus.dart';
+import 'package:chessever2/widgets/ink_fab.dart';
+import 'package:chessever2/widgets/scroll_chrome.dart';
 import 'package:chessever2/widgets/segmented_switcher.dart';
 import 'package:chessever2/widgets/svg_widget.dart';
 import 'package:chessever2/screens/gamebase/gamebase_explorer_screen.dart';
@@ -138,11 +138,53 @@ class PlayerProfileScreen extends ConsumerStatefulWidget {
 }
 
 class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
-    with SingleTickerProviderStateMixin {
+    with TickerProviderStateMixin {
   late PageController _pageController;
   late AnimationController _favoriteAnimationController;
   late Animation<double> _favoriteScaleAnimation;
   final ScrollToTopBus _scrollToTopBus = ScrollToTopBus();
+
+  /// The header (name row, tabs and the tab's actions) and the floating
+  /// search scroll away with the list and come back as it scrolls up
+  /// (X-style).
+  late final ScrollChromeController _chrome = ScrollChromeController(
+    vsync: this,
+  );
+
+  /// The Games tab's full-page search (Trello #1420): the field in the
+  /// header's place, the same tab under it, filtered, with nothing else
+  /// around it. Opened from the floating search.
+  bool _searching = false;
+  final FocusNode _searchFocus = FocusNode();
+
+  void _openSearch() {
+    if (_searching) return;
+    setState(() => _searching = true);
+    _chrome.show();
+  }
+
+  /// Leaves the search with the query cleared; the filters stay, as the
+  /// strip over the list says.
+  void _closeSearch() {
+    if (!_searching) return;
+    _searchFocus.unfocus();
+    ref
+        .read(playerProfileGamesKeyProvider(_gamesKey).notifier)
+        .setSearchQuery('');
+    setState(() => _searching = false);
+    _chrome.show();
+  }
+
+  void _holdChromeWhileTyping() => _chrome.held = _searchFocus.hasFocus;
+
+  /// The Games tab's list, as the tab itself keys it.
+  PlayerProfileKey get _gamesKey => PlayerProfileKey(
+    fideId: widget.fideId,
+    playerName: widget.playerName,
+    source: _source,
+    gamebasePlayerId: _currentGamebasePlayerId,
+    memorialSourceIdentity: widget.memorialSourceIdentity,
+  );
 
   /// Games/events are now sourced exclusively from TWIC. The old
   /// ChessEver/TWIC source selector was removed after the two databases were
@@ -187,37 +229,6 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
     return index < 0 ? 0 : index;
   }
 
-  bool _showHeaderExtras = true;
-  double _scrollAccumulator = 0.0;
-  static const _scrollCollapseThreshold = 40.0;
-
-  bool _handleScrollNotification(ScrollUpdateNotification notification) {
-    if (notification.metrics.axis != Axis.vertical) return false;
-
-    final delta = notification.scrollDelta ?? 0.0;
-    final offset = notification.metrics.pixels;
-
-    if (offset <= 0) {
-      if (!_showHeaderExtras) setState(() => _showHeaderExtras = true);
-      _scrollAccumulator = 0.0;
-      return false;
-    }
-
-    if ((delta > 0 && _scrollAccumulator < 0) ||
-        (delta < 0 && _scrollAccumulator > 0)) {
-      _scrollAccumulator = 0.0;
-    }
-    _scrollAccumulator += delta;
-
-    if (_scrollAccumulator > _scrollCollapseThreshold && _showHeaderExtras) {
-      setState(() => _showHeaderExtras = false);
-    } else if (_scrollAccumulator < -_scrollCollapseThreshold &&
-        !_showHeaderExtras) {
-      setState(() => _showHeaderExtras = true);
-    }
-    return false;
-  }
-
   @override
   void initState() {
     super.initState();
@@ -257,6 +268,7 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
         curve: Curves.easeInOut,
       ),
     );
+    _searchFocus.addListener(_holdChromeWhileTyping);
   }
 
   @override
@@ -264,6 +276,10 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
     _pageController.dispose();
     _favoriteAnimationController.dispose();
     _scrollToTopBus.dispose();
+    _searchFocus
+      ..removeListener(_holdChromeWhileTyping)
+      ..dispose();
+    _chrome.dispose();
     super.dispose();
   }
 
@@ -281,6 +297,7 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
       return;
     }
     _pendingInitialTab = null;
+    _chrome.show();
     ref.read(selectedPlayerProfileTabProvider.notifier).state = nextTab;
     if (nextTab == PlayerProfileTab.games && _gamesTabCueCount != null) {
       setState(() => _gamesTabCueCount = null);
@@ -298,6 +315,7 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
     _pendingInitialTab = null;
     if (_availableTabs.indexOf(currentTab) != index ||
         ref.read(selectedPlayerProfileTabProvider) != nextTab) {
+      _chrome.show();
       ref.read(selectedPlayerProfileTabProvider.notifier).state = nextTab;
     }
     if (nextTab == PlayerProfileTab.games && _gamesTabCueCount != null) {
@@ -871,20 +889,24 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
     final isTwicLoading = gamesState.isLoading || isTwicStatsLoading;
     final streakFideId = _streakFideId;
 
+    final searching = _searching && selectedTab == PlayerProfileTab.games;
     final scaffold = Scaffold(
       key: e2eKey(E2eIds.playerProfileRoot),
       backgroundColor: context.colors.background,
-      floatingActionButton: BotvinnikChatButton(
-        heroTag: 'botvinnik-player',
-        screenContext: ChatScreenContext(
-          screen: 'player',
-          playerId:
-              widget.fideId?.toString() ??
-              _resolveGamebasePlayerId() ??
-              widget.memorialRouteId,
-          playerName: effectiveName,
-        ),
-        iconOnly: true,
+      // Games' search, in the thumb's reach where the search row above the
+      // list used to be (Trello #1420), wearing the count of what narrows
+      // the list. Botvinnik has its own tab now. Searching, nothing floats.
+      floatingActionButton: SlidingFabs(
+        controller: _chrome,
+        child:
+            selectedTab == PlayerProfileTab.games && !searching
+                ? SearchInkFab(
+                  key: e2eKey(E2eIds.playerGamesSearchFab),
+                  label: 'Search games',
+                  badgeCount: gamesState.activeFilterCount,
+                  onTap: _openSearch,
+                )
+                : const SizedBox.shrink(),
       ),
       body: Center(
         child: ConstrainedBox(
@@ -898,80 +920,85 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
             children: [
               SizedBox(height: MediaQuery.viewPaddingOf(context).top + 4.h),
 
-              // App bar
-              _buildAppBar(
-                context,
-                isFavorite,
-                effectiveFederation: effectiveFederation,
-                effectiveName: effectiveName,
-                effectiveTitle: effectiveTitle,
-                hasPlayerExplorer: hasPlayerExplorer,
-              ),
-
-              // Live streaks, one line under the name, only when the line was
-              // there on the first frame (see [_streakLineAboveTabs]).
-              if (streakFideId != null && _streakLineAboveTabs == true)
-                _ProfileStreakRow(
-                  fideId: streakFideId,
-                  playerName: effectiveName,
-                ),
-
-              SizedBox(height: 8.h),
-
-              // Tab switcher
-              _buildTabSwitcher(selectedTab),
-
-              // Filter/loading indicator bar — adjacent to tab
-              _buildIndicatorBar(
-                hasActiveFilter: hasActiveFilter,
-                isTwicLoading: isTwicLoading,
-              ),
-
-              SingleMotionBuilder(
-                motion: const CupertinoMotion.snappy(),
-                value: _showHeaderExtras ? 1.0 : 0.0,
-                builder: (context, progress, child) {
-                  final clamped = progress.clamp(0.0, 1.0);
-                  if (clamped == 0) return const SizedBox.shrink();
-                  return ClipRect(
-                    child: Align(
-                      heightFactor: clamped,
-                      alignment: Alignment.topCenter,
-                      child: Opacity(opacity: clamped, child: child),
-                    ),
-                  );
-                },
+              // The whole header folds up under the status bar as the list
+              // scrolls down and comes back as it scrolls up: name, tabs and
+              // the tab's actions together, so the list gains all of it.
+              CollapsingChrome(
+                controller: _chrome,
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    // A live streak that arrives after first paint opens here,
-                    // under the tabs, so the tab bar never moves.
-                    if (streakFideId != null && _streakLineAboveTabs == false)
-                      _ProfileStreakRow(
-                        fideId: streakFideId,
-                        playerName: effectiveName,
-                        growIn: true,
+                    if (searching)
+                      PlayerGamesSearchHeader(
+                        playerKey: _gamesKey,
+                        focusNode: _searchFocus,
+                        onClose: _closeSearch,
+                      )
+                    else ...[
+                      // App bar
+                      _buildAppBar(
+                        context,
+                        isFavorite,
+                        effectiveFederation: effectiveFederation,
+                        effectiveName: effectiveName,
+                        effectiveTitle: effectiveTitle,
+                        hasPlayerExplorer: hasPlayerExplorer,
                       ),
-                    if (hasPlayerExplorer &&
-                        selectedTab == PlayerProfileTab.about)
-                      _buildStudyOpeningRow(),
-                    if (selectedTab == PlayerProfileTab.games)
-                      _buildGamesActionButtons(
-                        showStudyOpening: hasPlayerExplorer,
-                        playerKey: activePlayerKey,
-                        hasActiveFilter: hasActiveFilter,
-                        knownTotalCount:
-                            twicSummaryAsync.valueOrNull?.totalGames,
-                      ),
+
+                      // Live streaks, one line under the name, only when the
+                      // line was there on the first frame (see
+                      // [_streakLineAboveTabs]).
+                      if (streakFideId != null && _streakLineAboveTabs == true)
+                        _ProfileStreakRow(
+                          fideId: streakFideId,
+                          playerName: effectiveName,
+                        ),
+
+                      SizedBox(height: 8.h),
+
+                      // Tab switcher
+                      _buildTabSwitcher(selectedTab),
+                    ],
+
+                    // Filter/loading indicator bar, adjacent to the tabs and
+                    // under the search, where a TWIC query shows it working.
+                    _buildIndicatorBar(
+                      hasActiveFilter: hasActiveFilter,
+                      isTwicLoading: isTwicLoading,
+                    ),
+
+                    if (!searching) ...[
+                      // A live streak that arrives after first paint opens
+                      // here, under the tabs, so the tab bar never moves.
+                      if (streakFideId != null &&
+                          _streakLineAboveTabs == false)
+                        _ProfileStreakRow(
+                          fideId: streakFideId,
+                          playerName: effectiveName,
+                          growIn: true,
+                        ),
+                      if (hasPlayerExplorer &&
+                          selectedTab == PlayerProfileTab.about)
+                        _buildStudyOpeningRow(),
+                      if (selectedTab == PlayerProfileTab.games)
+                        _buildGamesActionButtons(
+                          showStudyOpening: hasPlayerExplorer,
+                          playerKey: activePlayerKey,
+                          hasActiveFilter: hasActiveFilter,
+                          knownTotalCount:
+                              twicSummaryAsync.valueOrNull?.totalGames,
+                        ),
+                    ],
                   ],
                 ),
               ),
 
               // Tab content
               Expanded(
-                child: NotificationListener<ScrollUpdateNotification>(
-                  onNotification: _handleScrollNotification,
+                child: ScrollChromeRegion(
+                  controller: _chrome,
                   child: _buildTabContent(
+                    searching: searching,
                     effectiveTitle: effectiveTitle,
                     effectiveFederation: effectiveFederation,
                   ),
@@ -983,16 +1010,23 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
       ),
     );
 
-    // Screenshot → open the branded profile share preview (same flow as
-    // tapping the player name in the app bar).
-    return ScreenshotShareNudge(
-      onShare:
-          () => _shareProfile(
-            effectiveName: effectiveName,
-            effectiveTitle: effectiveTitle,
-            effectiveFederation: effectiveFederation,
-          ),
-      child: scaffold,
+    return PopScope(
+      // Back from the search closes it, back to the Games tab it searched.
+      canPop: !searching,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) _closeSearch();
+      },
+      // Screenshot → open the branded profile share preview (same flow as
+      // tapping the player name in the app bar).
+      child: ScreenshotShareNudge(
+        onShare:
+            () => _shareProfile(
+              effectiveName: effectiveName,
+              effectiveTitle: effectiveTitle,
+              effectiveFederation: effectiveFederation,
+            ),
+        child: scaffold,
+      ),
     );
   }
 
@@ -1372,6 +1406,7 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
   }
 
   Widget _buildTabContent({
+    required bool searching,
     String? effectiveTitle,
     String? effectiveFederation,
   }) {
@@ -1379,6 +1414,8 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
       bus: _scrollToTopBus,
       child: PageView.builder(
         controller: _pageController,
+        // Searching holds the Games tab: the search belongs to it.
+        physics: searching ? const NeverScrollableScrollPhysics() : null,
         itemCount: _availableTabs.length,
         onPageChanged: _handlePageChanged,
         itemBuilder: (context, index) {

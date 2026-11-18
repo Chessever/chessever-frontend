@@ -44,6 +44,7 @@ import 'package:chessever2/screens/streaks/streak_player_screen.dart';
 import 'package:chessever2/screens/streaks/streaks_screen.dart';
 import 'package:chessever2/services/app_destination.dart';
 import 'package:chessever2/widgets/paywall/premium_game_access.dart';
+import 'package:chessever2/screens/my_profile/profile_hub_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -384,11 +385,8 @@ void _openHome(
   // this notification creates Home for the first time.
   final container = ProviderScope.containerOf(context, listen: false);
   final hold = container.listen(selectedBottomNavBarItemProvider, (_, _) {});
-  ref
-      .read(selectedBottomNavBarItemProvider.notifier)
-      .state = destination.kind == AppDestinationKind.events
-      ? BottomNavBarItem.tournaments
-      : BottomNavBarItem.forYou;
+  ref.read(selectedBottomNavBarItemProvider.notifier).state =
+      BottomNavBarItem.forYou;
   if (destination.kind == AppDestinationKind.home) {
     ref.read(selectedForYouTabProvider.notifier).select(
       switch (destination.section) {
@@ -407,6 +405,14 @@ void _openHome(
   });
   if (!foundHome) {
     unawaited(navigator.pushNamed('/home_screen'));
+  }
+  // Events left the bottom bar for Profile: it opens over Home.
+  if (destination.kind == AppDestinationKind.events) {
+    unawaited(
+      WidgetsBinding.instance.endOfFrame.then((_) {
+        if (navigator.mounted) unawaited(navigator.push(eventsScreenRoute()));
+      }),
+    );
   }
   unawaited(WidgetsBinding.instance.endOfFrame.then((_) => hold.close()));
 }
