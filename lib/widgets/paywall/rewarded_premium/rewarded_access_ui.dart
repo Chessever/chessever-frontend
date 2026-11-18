@@ -13,6 +13,10 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 typedef PremiumUpgrade = Future<bool> Function(BuildContext context);
 bool _choiceOpen = false;
 
+/// Forgets a popup a failed test left open, so the next test can show one.
+@visibleForTesting
+void debugResetRewardedAccessChoice() => _choiceOpen = false;
+
 Future<bool> showRewardedAccessChoice(
   BuildContext context, {
   required PremiumUpgrade upgrade,
@@ -123,9 +127,11 @@ class _AccessChoiceState extends ConsumerState<_AccessChoice> {
     final confirming = reward.pending;
     final watching = _busy && !_upgrading;
     final upgrading = _busy && _upgrading;
+    final playIcon = !watching && !confirming;
     // The title's first line and the close button's padded 48 px tap target
     // share one centre line at every text size; whichever is shorter is
-    // inset by half the difference.
+    // inset by half the difference. The title's inset comes out of the top
+    // padding, so it starts 20 px down with or without the close button.
     const closeSize = 44.0;
     const closeTarget = kMinInteractiveDimension;
     final titleLine = MediaQuery.textScalerOf(context).scale(24) * 1.25;
@@ -152,7 +158,7 @@ class _AccessChoiceState extends ConsumerState<_AccessChoice> {
         ),
         child: SingleChildScrollView(
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(20, 20, 20, 12),
+            padding: EdgeInsets.fromLTRB(20, 20 - titleInset, 20, 12),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -293,9 +299,16 @@ class _AccessChoiceState extends ConsumerState<_AccessChoice> {
                             color: titleInk,
                           ),
                         )
-                      else if (!confirming)
+                      else if (playIcon)
                         const Icon(Icons.play_arrow_rounded, size: 20),
-                      if (watching || !confirming) const SizedBox(width: 8),
+                      // The play triangle's ink starts ~6.7 px into its 20 px
+                      // box and stops ~4.9 px short of the end. A 3 px gap
+                      // reads like the spinner's 8, and the trailing 6 px
+                      // below keeps the visible group on the button's centre.
+                      if (watching)
+                        const SizedBox(width: 8)
+                      else if (playIcon)
+                        const SizedBox(width: 3),
                       Flexible(
                         child: Text(
                           watching
@@ -310,6 +323,7 @@ class _AccessChoiceState extends ConsumerState<_AccessChoice> {
                           textAlign: TextAlign.center,
                         ),
                       ),
+                      if (playIcon) const SizedBox(width: 6),
                     ],
                   ),
                 ),

@@ -23,9 +23,16 @@ class _Reward extends RewardedAccessNotifier {
     calls++;
     return completion == null ? true : completion!.future;
   }
+
+  /// An ad was watched but the server has not confirmed the reward yet.
+  void markPending() => state = const RewardedAccessState(pending: true);
 }
 
 void main() {
+  // A test that fails with the popup open would otherwise block every
+  // later test's popup.
+  setUp(debugResetRewardedAccessChoice);
+
   Future<void> host(
     WidgetTester tester,
     _Reward reward, {
@@ -33,6 +40,7 @@ void main() {
     void Function(bool)? answer,
     double textScale = 1,
     PremiumUpgrade? upgrade,
+    ThemeData? theme,
   }) async {
     await tester.pumpWidget(
       ProviderScope(
@@ -41,6 +49,7 @@ void main() {
           rewardedAccessProvider.overrideWith((ref) => reward),
         ],
         child: MaterialApp(
+          theme: theme,
           builder: (context, child) => MediaQuery(
             data: MediaQuery.of(
               context,
@@ -189,28 +198,83 @@ void main() {
           ),
           findsNothing,
         );
-        // Close it: an open popup keeps the next test's from showing.
+        // Blue belongs to Upgrade alone: Watch ad's ink and border are not.
+        final watch = tester.widget<OutlinedButton>(watchButton()).style!;
+        expect(
+          watch.foregroundColor!.resolve(const <WidgetState>{}),
+          isNot(kPrimaryColor),
+        );
+        expect(
+          watch.side!.resolve(const <WidgetState>{})!.color,
+          isNot(kPrimaryColor),
+        );
         await tester.tap(find.text(expired ? 'Go back' : 'Not now'));
         await tester.pumpAndSettle();
       },
     );
   }
 
-  for (final textScale in [1.0, 2.0]) {
-    testWidgets('close button centres on the title line (scale $textScale)', (
-      tester,
-    ) async {
+  // kMaxAppTextScale is 1.5. shrinkWrap is the desktop tap-target default,
+  // which would shrink the close button to 44 px without the padded pin.
+  for (final (textScale, tapTarget) in [
+    (1.0, MaterialTapTargetSize.padded),
+    (1.5, MaterialTapTargetSize.padded),
+    (1.0, MaterialTapTargetSize.shrinkWrap),
+  ]) {
+    testWidgets('close button centres on the title line '
+        '(scale $textScale, ${tapTarget.name})', (tester) async {
       final reward = _Reward();
-      await host(tester, reward, textScale: textScale);
+      await host(
+        tester,
+        reward,
+        textScale: textScale,
+        theme: ThemeData(materialTapTargetSize: tapTarget),
+      );
       final title = tester.getRect(find.text('Unlock Premium'));
       final close = tester.getCenter(find.byIcon(Icons.close));
       final firstLine = title.top + 24 * textScale * 1.25 / 2;
       expect(close.dy, closeTo(firstLine, 0.5));
+      // The title keeps the popup's 20 px top padding, as it does in the
+      // expired popup that has no close button.
+      expect(title.top - cardTop(tester), closeTo(20, 0.5));
       await tester.ensureVisible(find.text('Not now'));
       await tester.tap(find.text('Not now'));
       await tester.pumpAndSettle();
     });
   }
+
+  testWidgets('expired title sits on the same 20 px top padding', (
+    tester,
+  ) async {
+    final reward = _Reward();
+    await host(tester, reward, expired: true);
+    final title = tester.getRect(find.text('Your Premium access has ended'));
+    expect(title.top - cardTop(tester), closeTo(20, 0.5));
+    await tester.tap(find.text('Go back'));
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('pending reward keeps Upgrade first, retry in the outline', (
+    tester,
+  ) async {
+    final reward = _Reward()..markPending();
+    await host(tester, reward);
+    expect(find.text('Confirming your reward…'), findsOneWidget);
+    expect(tester.widget<FilledButton>(upgradeButton()).onPressed, isNotNull);
+    expect(
+      find.ancestor(
+        of: find.text('Retry confirmation'),
+        matching: find.byType(OutlinedButton),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      tester.getTopLeft(find.text('Upgrade')).dy,
+      lessThan(tester.getTopLeft(find.text('Retry confirmation')).dy),
+    );
+    await tester.tap(find.text('Not now'));
+    await tester.pumpAndSettle();
+  });
 
   testWidgets('in-flight upgrade stays blue and blocks the ad', (tester) async {
     final reward = _Reward();
@@ -254,3 +318,13 @@ Finder watchButton() => find.descendant(
   of: find.byType(Dialog),
   matching: find.byType(OutlinedButton),
 );
+
+/// Top edge of the popup's card (its scroll view fills the card).
+double cardTop(WidgetTester tester) => tester
+    .getRect(
+      find.descendant(
+        of: find.byType(Dialog),
+        matching: find.byType(SingleChildScrollView),
+      ),
+    )
+    .top;
