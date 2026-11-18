@@ -9,6 +9,7 @@ import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessground/chessground.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -35,6 +36,7 @@ Future<void> _pumpOverlay(
   ThemeData theme, {
   Size size = const Size(430, 932),
   double textScale = 1,
+  String whitePlayerName = 'Carlsen, Magnus',
 }) async {
   await tester.binding.setSurfaceSize(size);
   addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -58,7 +60,7 @@ Future<void> _pumpOverlay(
               lastMove: null,
               pgn: '1. e4 e5 *',
               moveSans: const ['e4', 'e5'],
-              whitePlayerName: 'Carlsen, Magnus',
+              whitePlayerName: whitePlayerName,
               blackPlayerName: 'Nakamura, Hikaru',
               whitePlayerElo: '2831',
               blackPlayerElo: '2802',
@@ -215,6 +217,34 @@ void main() {
       containsAll(<String>['Nakamura', '1:57:00', '0.0', 'Share GIF']),
     );
     expect(failures, isEmpty, reason: failures.join('\n'));
+  });
+
+  testWidgets('a shared board fits a long surname beside the clock', (
+    tester,
+  ) async {
+    const surname = 'García de la Cruz Fernández de la Fuente';
+    await _pumpOverlay(
+      tester,
+      AppTheme.darkTheme,
+      size: const Size(360, 780),
+      whitePlayerName: '$surname, María',
+    );
+
+    final labels = find.textContaining(surname, findRichText: true);
+    final clocks = find.text('1:57:00');
+    expect(labels, findsNWidgets(2)); // Visible preview and export capture.
+    expect(clocks, findsNWidgets(2));
+    for (var i = 0; i < 2; i++) {
+      final label = labels.at(i);
+      expect(
+        tester.renderObject<RenderParagraph>(label).didExceedMaxLines,
+        isFalse,
+      );
+      expect(
+        tester.getRect(label).right,
+        lessThan(tester.getRect(clocks.at(i)).left),
+      );
+    }
   });
 }
 

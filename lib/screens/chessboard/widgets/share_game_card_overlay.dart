@@ -1551,7 +1551,7 @@ class _ShareCard extends ConsumerWidget {
                     final firstNameParts = firstName.split(' ');
                     final abbreviatedFirst = firstNameParts
                         .where((part) => part.isNotEmpty)
-                        .map((part) => '${part[0]}.')
+                        .map((part) => '${part.characters.first}.')
                         .join(' ');
                     displayFirstName = ', $abbreviatedFirst';
 
@@ -1573,22 +1573,25 @@ class _ShareCard extends ConsumerWidget {
                   }
                 }
 
-                return RichText(
-                  overflow: TextOverflow.ellipsis,
-                  maxLines: 1,
-                  softWrap: false,
-                  textAlign: TextAlign.left,
-                  text: TextSpan(
-                    style: nameStyle,
-                    children: [
-                      if (title.isNotEmpty)
-                        TextSpan(text: '$title ', style: titleStyle),
-                      if (displaySurname.isNotEmpty)
-                        TextSpan(text: displaySurname, style: nameStyle),
-                      if (displayFirstName.isNotEmpty)
-                        TextSpan(text: displayFirstName, style: nameStyle),
-                      TextSpan(text: rating, style: ratingStyle),
-                    ],
+                textPainter.dispose();
+                return FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerLeft,
+                  child: RichText(
+                    maxLines: 1,
+                    softWrap: false,
+                    text: TextSpan(
+                      style: nameStyle,
+                      children: [
+                        if (title.isNotEmpty)
+                          TextSpan(text: '$title ', style: titleStyle),
+                        if (displaySurname.isNotEmpty)
+                          TextSpan(text: displaySurname, style: nameStyle),
+                        if (displayFirstName.isNotEmpty)
+                          TextSpan(text: displayFirstName, style: nameStyle),
+                        TextSpan(text: rating, style: ratingStyle),
+                      ],
+                    ),
                   ),
                 );
               },

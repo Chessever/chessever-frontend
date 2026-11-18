@@ -1002,15 +1002,17 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
                   ],
                 );
 
-                final nameWidget = RichText(
-                  overflow: TextOverflow.ellipsis,
-                  maxLines: 1,
-                  softWrap: false,
-                  textAlign: TextAlign.left,
-                  // The tap box is sized to the measured text. Painting with
-                  // RichText's unscaled default can ellipsize a name that fits.
-                  textScaler: textScaler,
-                  text: finalNameSpan,
+                // Keep the whole fitted label visible, even when the surname
+                // alone is wider than the space left beside the clock.
+                final nameWidget = FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerLeft,
+                  child: RichText(
+                    maxLines: 1,
+                    softWrap: false,
+                    textScaler: textScaler,
+                    text: finalNameSpan,
+                  ),
                 );
 
                 final maxNameTapWidth =
@@ -1475,7 +1477,7 @@ _PlayerNameFit _fitPlayerName({
     // Compact form: "Surname I." — last name + first initial.
     final trimmedFirst = firstName.trim();
     if (trimmedFirst.isNotEmpty) {
-      displayFirstName = ' ${trimmedFirst[0].toUpperCase()}.';
+      displayFirstName = ' ${trimmedFirst.characters.first.toUpperCase()}.';
     } else {
       // No "Surname, Given" comma: treat "Given ... Surname" by
       // taking the last token as the surname and the first token's
@@ -1487,7 +1489,7 @@ _PlayerNameFit _fitPlayerName({
               .toList();
       if (tokens.length > 1) {
         displaySurname = tokens.last;
-        displayFirstName = ' ${tokens.first[0].toUpperCase()}.';
+        displayFirstName = ' ${tokens.first.characters.first.toUpperCase()}.';
       } else {
         displayFirstName = '';
       }
@@ -1511,7 +1513,7 @@ _PlayerNameFit _fitPlayerName({
       final firstNameParts = firstName.split(' ');
       final abbreviatedFirst = firstNameParts
           .where((part) => part.isNotEmpty)
-          .map((part) => '${part[0]}.')
+          .map((part) => '${part.characters.first}.')
           .join(' ');
       displayFirstName = ', $abbreviatedFirst';
 
@@ -1528,9 +1530,6 @@ _PlayerNameFit _fitPlayerName({
       // Strategy 3: If still doesn't fit, drop first name entirely
       if (textPainter.width > availableWidth) {
         displayFirstName = '';
-
-        // Strategy 4: If STILL doesn't fit, let ellipsis truncate
-        // surname. RichText handles "..." — keep full surname.
       }
     }
   }

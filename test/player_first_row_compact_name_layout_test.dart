@@ -118,6 +118,31 @@ void main() {
     await tester.pump();
   }
 
+  testWidgets('a long surname fits on a narrow board without dots', (
+    tester,
+  ) async {
+    await pumpCompactRow(
+      tester,
+      whiteName: 'Wiśniewska-Kowalczyk, Aleksandra',
+      blackName: 'Firouzja, Alireza',
+      maxWidth: 260,
+      compactName: false,
+      playerView: PlayerView.boardView,
+      textScaler: const TextScaler.linear(1.5),
+      showClock: true,
+      hasStarted: true,
+    );
+
+    final label = find.text('GM Wiśniewska-Kowalczyk 2830', findRichText: true);
+    final paragraph = tester.renderObject<RenderParagraph>(label);
+    expect(paragraph.didExceedMaxLines, isFalse);
+    expect(tester.getRect(label).width, lessThan(paragraph.size.width));
+    expect(
+      tester.getRect(label).right,
+      lessThan(tester.getRect(find.text('46:24')).left),
+    );
+  });
+
   for (final scale in [0.85, 1.0, 1.5]) {
     testWidgets('focused board paints the full player label at scale $scale', (
       tester,
