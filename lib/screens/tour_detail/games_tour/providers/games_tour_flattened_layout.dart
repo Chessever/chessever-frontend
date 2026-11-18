@@ -193,6 +193,11 @@ GamesTourFlattenedLayout buildGamesTourFlattenedLayout({
         isKnockoutRound
             ? (fullGamesByRound[round.id] ?? roundGames)
             : roundGames;
+    final sequentialRounds = isKnockoutRound
+        ? _totalChessRoundVisibility(
+            fullRoundGames.isEmpty ? roundGames : fullRoundGames,
+          )
+        : null;
     final matchPlayKeys =
         isKnockoutRound
             ? KnockoutMatchDetector.matchPlayMatchKeys(
@@ -257,20 +262,25 @@ GamesTourFlattenedLayout buildGamesTourFlattenedLayout({
     // Boards inside a matchup render latest-first (live on top). The
     // chronological grouping in `matches` is kept for the match headers,
     // whose player naming and score orientation key off game 1.
-    final displayMatches =
-        isKnockoutRound
-            ? <String, List<GamesTourModel>>{
-              for (final entry in matches.entries)
-                entry.key:
-                    matchPlayKeys.contains(entry.key)
-                        ? KnockoutMatchDetector.orderMatchPlayGamesForDisplay(
-                          entry.value,
-                        ).where(isVisible).toList()
-                        : KnockoutMatchDetector.orderMatchGamesLatestFirst(
-                          entry.value,
-                        ),
-            }
-            : const <String, List<GamesTourModel>>{};
+    final displayMatches = <String, List<GamesTourModel>>{};
+    for (final entry in matches.entries) {
+      final ordered = matchPlayKeys.contains(entry.key)
+          ? KnockoutMatchDetector.orderMatchPlayGamesForDisplay(
+              entry.value,
+            ).where(isVisible).toList()
+          : KnockoutMatchDetector.orderMatchGamesLatestFirst(entry.value);
+      if (sequentialRounds == null) {
+        displayMatches[entry.key] = ordered;
+        continue;
+      }
+      final (visible, leading) = sequentialRounds;
+      displayMatches[entry.key] = [
+        ...ordered.where((game) => game.roundId == leading),
+        ...ordered.where(
+          (game) => game.roundId != leading && visible.contains(game.roundId),
+        ),
+      ];
+    }
     if (isKnockoutRound) {
       matchGroupsByRound[round.id] = displayMatches;
     }
@@ -281,12 +291,16 @@ GamesTourFlattenedLayout buildGamesTourFlattenedLayout({
               for (final matchGames in displayMatches.values) ...matchGames,
             ]
             : roundGames;
+    if (sequentialRounds != null && orderedRoundGames.isEmpty) continue;
     final roundStartIndex = orderedGames.length;
     orderedGames.addAll(orderedRoundGames);
 
     roundHeaderIndices[round.id] = entries.length;
     entries.add(
-      GamesTourRoundHeaderEntry(round: round, roundGames: roundGames),
+      GamesTourRoundHeaderEntry(
+        round: round,
+        roundGames: sequentialRounds == null ? roundGames : orderedRoundGames,
+      ),
     );
 
     final sources = sourceSectionsByRound[round.id];
@@ -350,6 +364,7 @@ GamesTourFlattenedLayout buildGamesTourFlattenedLayout({
       final matchKey = matchEntry.key;
       final chronologicalGames = matchEntry.value;
       final matchGames = displayMatches[matchKey]!;
+      if (sequentialRounds != null && matchGames.isEmpty) continue;
       final isMatchPlay = matchPlayKeys.contains(matchKey);
       entries.add(
         GamesTourMatchHeaderEntry(
@@ -415,6 +430,56 @@ GamesTourFlattenedLayout buildGamesTourFlattenedLayout({
         ),
     roundHeaderIndices: Map<String, int>.unmodifiable(roundHeaderIndices),
     gameItemIndices: Map<String, int>.unmodifiable(gameItemIndices),
+  );
+}
+
+final _totalChessGameNumber = RegExp(r'^game-(\d+)(?:-|$)');
+
+/// These feeds publish both days' pairings up front. Wait for the entire
+/// source round to finish, even when a reader has filtered to one matchup.
+(Set<String>, String?)? _totalChessRoundVisibility(List<GamesTourModel> games) {
+  if (games.isEmpty ||
+      !const {'qEXour3L', '6PTzCQFL'}.contains(games.first.tourId)) {
+    return null;
+  }
+  final byRound = <String, List<GamesTourModel>>{};
+  final slots = <String, int>{};
+  for (final game in games) {
+    final slug = game.roundSlug ?? '';
+    final slot = slug == 'armageddon'
+        ? 15
+        : int.tryParse(_totalChessGameNumber.firstMatch(slug)?.group(1) ?? '');
+    if (slot != null) slots[game.roundId] = slot;
+    (byRound[game.roundId] ??= []).add(game);
+  }
+  if (slots.isEmpty) return null;
+
+  final knownRounds = slots.keys.toList()
+    ..sort((a, b) => slots[a]!.compareTo(slots[b]!));
+  bool isFinished(GamesTourModel game) =>
+      game.isDoubleForfeit || game.effectiveGameStatus.isFinished;
+  final played = knownRounds
+      .where(
+        (id) => byRound[id]!.any((game) =>
+            game.isDoubleForfeit ||
+            KnockoutMatchDetector.knockoutGameStarted(game)),
+      )
+      .toList();
+  final latest = played.lastOrNull;
+  final latestSlot = slots[latest] ?? 0;
+  final allFinished = played.every(
+    (id) => byRound[id]!.every(isFinished),
+  );
+  final next = allFinished
+      ? knownRounds.where((id) => slots[id]! > latestSlot).firstOrNull
+      : null;
+  return (
+    {
+      ...played,
+      if (next != null) next,
+      ...byRound.keys.where((id) => !slots.containsKey(id)),
+    },
+    next ?? latest,
   );
 }
 

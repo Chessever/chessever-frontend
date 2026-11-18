@@ -458,6 +458,60 @@ void main() {
     // Total Chess semifinals between Game 5 and Game 6: every match plays one
     // board in each "Game N" round. The match that finished last
     // (Mishra-Vaishali, a lower board) jumped to the top.
+    test(
+      'Total Chess releases the next game only when the whole round ends',
+      () {
+        final stage = _round('knockout-stage-qEXour3L', RoundStatus.live);
+        final games = [
+          for (final board in [1, 2])
+            for (final game in [10, 11, 12, 13])
+              _game(
+                'b$board-g$game',
+                tourId: 'qEXour3L',
+                slug: game < 12 ? 'game-$game-blitz' : 'game-$game-rapid',
+                identityOffset: board * 100,
+                boardNr: board,
+                status: game == 10 || (game == 11 && board == 1)
+                    ? GameStatus.draw
+                    : GameStatus.ongoing,
+                lastMove: game <= 11 ? 'e2e4' : null,
+                lastMoveTime: game <= 11
+                    ? DateTime.utc(2026, 11, 18, 12, game)
+                    : null,
+              ),
+        ];
+        List<String> visibleBoards({List<GamesTourModel>? subset}) => _layout(
+          rounds: [stage],
+          gamesByRound: {stage.id: subset ?? games},
+          fullGamesByRound: {stage.id: games},
+        ).orderedGames.map((game) => game.gameId).toList();
+
+        expect(visibleBoards(), ['b1-g11', 'b1-g10', 'b2-g11', 'b2-g10']);
+        expect(visibleBoards(subset: games.take(4).toList()), [
+          'b1-g11',
+          'b1-g10',
+        ]);
+
+        games[5] = _game(
+          'b2-g11',
+          tourId: 'qEXour3L',
+          slug: 'game-11-blitz',
+          identityOffset: 200,
+          boardNr: 2,
+          status: GameStatus.draw,
+          lastMoveTime: DateTime.utc(2026, 11, 18, 12, 11),
+        );
+        expect(visibleBoards(), [
+          'b1-g12',
+          'b1-g11',
+          'b1-g10',
+          'b2-g12',
+          'b2-g11',
+          'b2-g10',
+        ]);
+      },
+    );
+
     test('matches played side by side keep board order between games', () {
       final stage = _round('knockout-stage-semifinals', RoundStatus.live);
       final day = DateTime.utc(2026, 11, 17, 14);
@@ -1300,6 +1354,7 @@ GamesTourModel _game(
   String slug = 'game-1',
   GameStatus status = GameStatus.ongoing,
   int identityOffset = 0,
+  String tourId = 'tour',
   String? roundId,
   DateTime? lastMoveTime,
   String? lastMove,
@@ -1328,7 +1383,7 @@ GamesTourModel _game(
     gameStatus: status,
     roundId: roundId ?? slug,
     roundSlug: slug,
-    tourId: 'tour',
+    tourId: tourId,
     boardNr: boardNr,
     lastMoveTime: lastMoveTime,
     lastMove: lastMove,
