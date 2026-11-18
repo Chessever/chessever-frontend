@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
+import 'package:chessever2/screens/chessboard/video/video_country_preference.dart';
 import 'package:chessever2/screens/chessboard/video/video_player.dart';
 import 'package:chessever2/screens/chessboard/video/video_repository.dart';
 import 'package:chessever2/screens/chessboard/video/video_session.dart';
@@ -235,6 +236,44 @@ void main() {
       expect(session.selected!.id, 'spanish');
       expect(session.streams.first.id, session.selected!.id);
       session.dispose();
+    }
+  });
+
+  test('new commentary groups favor shared language across countries', () {
+    final fallbackCases = [
+      ('RU', 'KZ', 'ru'),
+      ('BY', 'RU', 'ru'),
+      ('KZ', 'RU', 'ru'),
+      ('KG', 'RU', 'ru'),
+      ('CY', 'TR', 'tr'),
+      ('AF', 'UZ', 'uz'),
+      ('GH', 'GB', 'en'),
+      ('GN', 'FR', 'fr'),
+      ('TD', 'SA', 'ar'),
+    ];
+    for (final (country, flag, language) in fallbackCases) {
+      final streams = EventVideoStream.readList([
+        {
+          'label': 'Different commentary',
+          'url': 'https://kick.com/different',
+          'countryCode': flag,
+          'language': 'es',
+          'preferred': true,
+        },
+        {
+          'label': 'Shared commentary',
+          'url': 'https://kick.com/shared',
+          'countryCode': flag,
+          'language': language,
+        },
+      ]);
+      expect(videoCountryPriority(streams.first, country), 2);
+      expect(videoCountryPriority(streams.last, country), 1);
+      expect(
+        prioritizeVideoCountry(streams, country).first.language,
+        language,
+        reason: '$country should favor $language commentary',
+      );
     }
   });
 
