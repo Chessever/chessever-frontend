@@ -35,6 +35,7 @@ class MatchHeader extends ConsumerWidget {
     final player2Card = _matchPlayerCard(match, match.player2);
     final player1Flag = _playerFlag(player1Card);
     final player2Flag = _playerFlag(player2Card);
+    final setScores = match.setScores;
 
     return Container(
       margin: EdgeInsets.zero,
@@ -109,7 +110,7 @@ class MatchHeader extends ConsumerWidget {
                                         ],
                                       ),
                                     ),
-                                    if (!hideScores) ...[
+                                    if (!hideScores && setScores == null) ...[
                                       SizedBox(width: 8.w),
                                       Text(
                                         '${match.player1Score}',
@@ -156,7 +157,7 @@ class MatchHeader extends ConsumerWidget {
                                         ],
                                       ),
                                     ),
-                                    if (!hideScores) ...[
+                                    if (!hideScores && setScores == null) ...[
                                       SizedBox(width: 8.w),
                                       Text(
                                         '${match.player2Score}',
@@ -192,6 +193,25 @@ class MatchHeader extends ConsumerWidget {
                   ],
                 ],
               ),
+              if (!hideScores && setScores != null && setScores.isNotEmpty) ...[
+                SizedBox(height: 8.h),
+                Padding(
+                  padding: EdgeInsets.only(left: 3.w + 12.w),
+                  child: Wrap(
+                    spacing: 12.w,
+                    runSpacing: 4.h,
+                    children: [
+                      for (final set in setScores)
+                        Text(
+                          set.scoreDisplay,
+                          style: AppTypography.textXsMedium.copyWith(
+                            color: context.colors.textPrimary,
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ],
               if (match.playedAt != null) ...[
                 SizedBox(height: 6.h),
                 Padding(

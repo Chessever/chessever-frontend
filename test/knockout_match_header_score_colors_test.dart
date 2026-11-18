@@ -16,11 +16,14 @@ void main() {
     WidgetTester tester, {
     required double player1Score,
     required double player2Score,
+    List<MatchSetScore>? setScores,
     bool hideScores = false,
     Brightness brightness = Brightness.dark,
+    Size size = const Size(393, 852),
+    VoidCallback? onToggle,
   }) async {
     tester.view.devicePixelRatio = 1;
-    tester.view.physicalSize = const Size(393, 852);
+    tester.view.physicalSize = size;
     addTearDown(tester.view.resetDevicePixelRatio);
     addTearDown(tester.view.resetPhysicalSize);
 
@@ -30,6 +33,7 @@ void main() {
       player2: 'Alireza Firouzja',
       player1Score: player1Score,
       player2Score: player2Score,
+      setScores: setScores,
       games: const [],
       roundName: 'Final',
       isComplete: true,
@@ -38,15 +42,18 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         child: MaterialApp(
-          theme:
-              brightness == Brightness.light
-                  ? AppTheme.lightTheme
-                  : AppTheme.darkTheme,
+          theme: brightness == Brightness.light
+              ? AppTheme.lightTheme
+              : AppTheme.darkTheme,
           home: Builder(
             builder: (context) {
               ResponsiveHelper.init(context);
               return Scaffold(
-                body: MatchHeader(match: match, hideScores: hideScores),
+                body: MatchHeader(
+                  match: match,
+                  hideScores: hideScores,
+                  onToggle: onToggle,
+                ),
               );
             },
           ),
@@ -190,5 +197,42 @@ void main() {
     expect(find.text('Alireza Firouzja'), findsOneWidget);
     expect(find.text('2.0'), findsNothing);
     expect(find.text('1.0'), findsNothing);
+  });
+
+  testWidgets('daily sets remain readable and hide with No Spoilers', (
+    tester,
+  ) async {
+    const setScores = [
+      MatchSetScore(label: 'Day 1', player1Score: 14.5, player2Score: 5.5),
+      MatchSetScore(label: 'Day 2', player1Score: 1, player2Score: 1),
+      MatchSetScore(label: 'Armageddon', player1Score: 1, player2Score: 0),
+    ];
+    var toggles = 0;
+    await pumpMatchHeader(
+      tester,
+      player1Score: 15.5,
+      player2Score: 6.5,
+      setScores: setScores,
+      size: const Size(320, 700),
+      onToggle: () => toggles++,
+    );
+    for (final score in ['Day 1 14.5–5.5', 'Day 2 1–1', 'Armageddon 1–0']) {
+      expect(find.text(score), findsOneWidget);
+    }
+    expect(find.text('15.5'), findsNothing);
+    expect(tester.takeException(), isNull);
+    await tester.tap(find.text('Day 2 1–1'));
+    expect(toggles, 1);
+
+    await pumpMatchHeader(
+      tester,
+      player1Score: 15.5,
+      player2Score: 6.5,
+      setScores: setScores,
+      hideScores: true,
+    );
+    expect(find.text('Magnus Carlsen'), findsOneWidget);
+    expect(find.text('Day 2 1–1'), findsNothing);
+    expect(find.text('Armageddon 1–0'), findsNothing);
   });
 }

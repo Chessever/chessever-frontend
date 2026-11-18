@@ -1,9 +1,11 @@
 import 'package:chessever2/widgets/paywall/rewarded_premium/rewarded_navigation.dart';
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:chessever2/services/rewarded_premium/rewarded_ads.dart';
 import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
 import 'package:chessever2/services/rewarded_premium/rewarded_access_provider.dart';
+import 'package:chessever2/theme/app_theme.dart' show kPrimaryColor;
 import 'package:chessever2/widgets/app_snack.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -110,14 +112,27 @@ class _AccessChoiceState extends ConsumerState<_AccessChoice> {
   Widget build(BuildContext context) {
     final reward = ref.watch(rewardedAccessProvider);
     const card = Color(0xFF242A30);
-    const primary = Color(0xFF10B9DF);
+    // Upgrade is the popup's one brand-blue action, first in line. Watch ad
+    // follows as the neutral outlined alternative (Trello #1416).
+    const primary = kPrimaryColor;
     const primaryInk = Color(0xFF07232B);
     const titleInk = Color(0xFFF5F7FA);
     const bodyInk = Color(0xFFC5CDD6);
-    const secondaryInk = Color(0xFF35CCED);
     const outline = Color(0xFF74818E);
+    const disabledFill = Color(0xFF334149);
     final confirming = reward.pending;
     final watching = _busy && !_upgrading;
+    final upgrading = _busy && _upgrading;
+    // The title's first line and the close button's padded 48 px tap target
+    // share one centre line at every text size; whichever is shorter is
+    // inset by half the difference.
+    const closeSize = 44.0;
+    const closeTarget = kMinInteractiveDimension;
+    final titleLine = MediaQuery.textScalerOf(context).scale(24) * 1.25;
+    final titleInset = widget.expired
+        ? 0.0
+        : math.max(0.0, (closeTarget - titleLine) / 2);
+    final closeInset = math.max(0.0, (titleLine - closeTarget) / 2);
     ref.listen<bool>(subscriptionProvider.select((s) => s.isSubscribed), (
       _,
       paid,
@@ -146,37 +161,46 @@ class _AccessChoiceState extends ConsumerState<_AccessChoice> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Expanded(
-                      child: Semantics(
-                        namesRoute: true,
-                        header: true,
-                        child: Text(
-                          widget.expired
-                              ? 'Your Premium access has ended'
-                              : 'Unlock Premium',
-                          style: const TextStyle(
-                            color: titleInk,
-                            fontSize: 24,
-                            height: 1.25,
-                            fontWeight: FontWeight.w700,
+                      child: Padding(
+                        padding: EdgeInsets.only(top: titleInset),
+                        child: Semantics(
+                          namesRoute: true,
+                          header: true,
+                          child: Text(
+                            widget.expired
+                                ? 'Your Premium access has ended'
+                                : 'Unlock Premium',
+                            style: const TextStyle(
+                              color: titleInk,
+                              fontSize: 24,
+                              height: 1.25,
+                              fontWeight: FontWeight.w700,
+                            ),
                           ),
                         ),
                       ),
                     ),
                     if (!widget.expired)
-                      IconButton(
-                        tooltip: 'Close',
-                        onPressed: _busy
-                            ? null
-                            : () => Navigator.of(context).pop(false),
-                        constraints: const BoxConstraints(
-                          minWidth: 44,
-                          minHeight: 44,
+                      Padding(
+                        padding: EdgeInsets.only(top: closeInset),
+                        child: IconButton(
+                          tooltip: 'Close',
+                          onPressed: _busy
+                              ? null
+                              : () => Navigator.of(context).pop(false),
+                          constraints: const BoxConstraints(
+                            minWidth: closeSize,
+                            minHeight: closeSize,
+                          ),
+                          padding: EdgeInsets.zero,
+                          visualDensity: VisualDensity.standard,
+                          style: const ButtonStyle(
+                            tapTargetSize: MaterialTapTargetSize.padded,
+                          ),
+                          color: bodyInk,
+                          disabledColor: outline,
+                          icon: const Icon(Icons.close, size: 20),
                         ),
-                        padding: EdgeInsets.zero,
-                        visualDensity: VisualDensity.standard,
-                        color: bodyInk,
-                        disabledColor: outline,
-                        icon: const Icon(Icons.close, size: 20),
                       ),
                   ],
                 ),
@@ -193,14 +217,56 @@ class _AccessChoiceState extends ConsumerState<_AccessChoice> {
                 ),
                 const SizedBox(height: 24),
                 FilledButton(
-                  onPressed: _busy ? null : _watch,
+                  onPressed: _busy ? null : _upgrade,
                   style: FilledButton.styleFrom(
                     backgroundColor: primary,
                     foregroundColor: primaryInk,
-                    disabledBackgroundColor: watching
-                        ? primary
-                        : const Color(0xFF334149),
-                    disabledForegroundColor: watching ? primaryInk : outline,
+                    disabledBackgroundColor: upgrading ? primary : disabledFill,
+                    disabledForegroundColor: upgrading ? primaryInk : outline,
+                    minimumSize: const Size(0, 48),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 12,
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    textStyle: const TextStyle(
+                      fontSize: 16,
+                      height: 1.25,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      if (upgrading) ...[
+                        const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: primaryInk,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                      ],
+                      Flexible(
+                        child: Text(
+                          upgrading ? 'Opening…' : 'Upgrade',
+                          textAlign: TextAlign.center,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 12),
+                OutlinedButton(
+                  onPressed: _busy ? null : _watch,
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: titleInk,
+                    disabledForegroundColor: watching ? titleInk : outline,
+                    side: const BorderSide(color: outline),
                     minimumSize: const Size(0, 48),
                     padding: const EdgeInsets.symmetric(
                       horizontal: 16,
@@ -224,7 +290,7 @@ class _AccessChoiceState extends ConsumerState<_AccessChoice> {
                           height: 16,
                           child: CircularProgressIndicator(
                             strokeWidth: 2,
-                            color: primaryInk,
+                            color: titleInk,
                           ),
                         )
                       else if (!confirming)
@@ -241,52 +307,6 @@ class _AccessChoiceState extends ConsumerState<_AccessChoice> {
                               : widget.expired
                               ? 'Watch ad again'
                               : 'Watch ad',
-                          textAlign: TextAlign.center,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 12),
-                OutlinedButton(
-                  onPressed: _busy ? null : _upgrade,
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: secondaryInk,
-                    disabledForegroundColor: _upgrading
-                        ? secondaryInk
-                        : outline,
-                    side: const BorderSide(color: outline),
-                    minimumSize: const Size(0, 48),
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 12,
-                    ),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    textStyle: const TextStyle(
-                      fontSize: 16,
-                      height: 1.25,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      if (_busy && _upgrading) ...[
-                        const SizedBox(
-                          width: 16,
-                          height: 16,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: secondaryInk,
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                      ],
-                      Flexible(
-                        child: Text(
-                          _busy && _upgrading ? 'Opening…' : 'Upgrade',
                           textAlign: TextAlign.center,
                         ),
                       ),

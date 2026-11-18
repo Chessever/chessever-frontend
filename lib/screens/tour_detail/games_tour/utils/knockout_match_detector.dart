@@ -800,17 +800,34 @@ class KnockoutMatchDetector {
       throw ArgumentError('Match must have at least one game');
     }
 
-    final firstGame = matchGames.first;
+    final matchTourIds = matchGames.map((game) => game.tourId).toSet();
+    final hasDailySets =
+        matchTourIds.length == 1 &&
+        _totalChessKnockoutTourIds.contains(matchTourIds.single);
+    final firstGame = hasDailySets
+        ? matchGames.reduce((first, game) {
+            final firstSlot = _totalChessSlot(first.roundSlug);
+            final nextSlot = _totalChessSlot(game.roundSlug);
+            return nextSlot != null &&
+                    (firstSlot == null || nextSlot < firstSlot)
+                ? game
+                : first;
+          })
+        : matchGames.first;
     final player1 = firstGame.whitePlayer.name;
     final player2 = firstGame.blackPlayer.name;
-
-    // Calculate match score
-    var score = _calculateMatchScore(matchGames);
-    final matchTourIds = matchGames.map((game) => game.tourId).toSet();
-    final sourceStandings =
-        matchTourIds.length == 1
-            ? sourceStandingsByTourId[matchTourIds.single]
-            : null;
+    final setScores = hasDailySets
+        ? _totalChessSetScores(matchGames, firstGame.whitePlayer)
+        : null;
+    var score = setScores == null
+        ? _calculateMatchScore(matchGames)
+        : (
+            player1Score: setScores.lastOrNull?.player1Score ?? 0.0,
+            player2Score: setScores.lastOrNull?.player2Score ?? 0.0,
+          );
+    final sourceStandings = !hasDailySets && matchTourIds.length == 1
+        ? sourceStandingsByTourId[matchTourIds.single]
+        : null;
     if (sourceStandings != null && sourceStandings.isNotEmpty) {
       final officialScore = resolveOfficialMatchScoreFromStandings(
         standings: sourceStandings,
@@ -840,12 +857,99 @@ class KnockoutMatchDetector {
       player2: player2,
       player1Score: score.player1Score,
       player2Score: score.player2Score,
+      setScores: setScores,
       games: matchGames,
       roundName: roundName,
       isComplete: _isMatchComplete(matchGames),
       playedAt: playedAt,
       isMatchPlay: isMatchPlay,
     );
+  }
+
+  static const _totalChessKnockoutTourIds = {'qEXour3L', '6PTzCQFL'};
+  static final _totalChessGameSlug = RegExp(
+    r'^game-(\d+)(?:-(?:blitz|rapid|fast-classic))?$',
+  );
+
+  // Source round slugs carry the slot even when a PGN copied its Round or
+  // Date header from another game. These two tours use the same schedule.
+  static int? _totalChessSlot(String? slug) {
+    if (slug == null) return null;
+    if (slug == 'armageddon') return 15;
+    final slot = int.tryParse(
+      _totalChessGameSlug.firstMatch(slug)?.group(1) ?? '',
+    );
+    return slot != null && slot >= 1 && slot <= 14 ? slot : null;
+  }
+
+  static List<MatchSetScore> _totalChessSetScores(
+    List<GamesTourModel> games,
+    PlayerCard player1,
+  ) {
+    final identities = _ParticipantIdentityRegistry(games);
+    final player1Id = identities.idFor(player1);
+    final scores = <int, ({double player1, double player2})>{};
+    for (final game in games) {
+      final slot = _totalChessSlot(game.roundSlug);
+      if (slot == null) continue;
+      final set = (slot - 1) ~/ 7 + 1;
+      final gameOfDay = (slot - 1) % 7 + 1;
+      final weight = gameOfDay <= 4
+          ? 1.0
+          : gameOfDay <= 6
+          ? 4.0
+          : 8.0;
+
+      // Only the recorded result awards points. A scheduled shell awards
+      // nothing and can become a visible 0–0 once its first move arrives.
+      final status = game.gameStatus;
+      if (!game.isDoubleForfeit &&
+          !status.isFinished &&
+          !knockoutGameStarted(game)) {
+        continue;
+      }
+      final previous = scores[set] ?? (player1: 0.0, player2: 0.0);
+      // Black advances on an Armageddon draw. The board keeps its PGN draw.
+      final drawOdds = set == 3 && status == GameStatus.draw;
+      final white = drawOdds
+          ? 0.0
+          : standardResultValueForSide(status, isWhite: true);
+      final black = drawOdds
+          ? 1.0
+          : standardResultValueForSide(status, isWhite: false);
+      if (game.isDoubleForfeit || white == null || black == null) {
+        scores[set] = previous;
+        continue;
+      }
+      final stampWhite = game.whitePlayer.customPoints;
+      final stampBlack = game.blackPlayer.customPoints;
+      final hasScoringStamp =
+          set <= 2 &&
+          stampWhite != null &&
+          stampBlack != null &&
+          stampWhite >= 0 &&
+          stampBlack >= 0 &&
+          stampWhite + stampBlack == weight &&
+          stampWhite.compareTo(stampBlack) == white.compareTo(black);
+      final whitePoints = hasScoringStamp ? stampWhite : white * weight;
+      final blackPoints = hasScoringStamp ? stampBlack : black * weight;
+      final player1IsWhite = identities.idFor(game.whitePlayer) == player1Id;
+      scores[set] = (
+        player1:
+            previous.player1 + (player1IsWhite ? whitePoints : blackPoints),
+        player2:
+            previous.player2 + (player1IsWhite ? blackPoints : whitePoints),
+      );
+    }
+    return [
+      for (final set in [1, 2, 3])
+        if (scores[set] case final score?)
+          MatchSetScore(
+            label: set == 3 ? 'Armageddon' : 'Day $set',
+            player1Score: score.player1,
+            player2Score: score.player2,
+          ),
+    ];
   }
 
   /// Formats round slug for display
@@ -1150,6 +1254,9 @@ class MatchHeaderModel {
   final String player2;
   final double player1Score;
   final double player2Score;
+
+  /// A match with independent sets has no single board-points total.
+  final List<MatchSetScore>? setScores;
   final List<GamesTourModel> games;
   final String roundName;
   final bool isComplete;
@@ -1169,6 +1276,7 @@ class MatchHeaderModel {
     required this.player2,
     required this.player1Score,
     required this.player2Score,
+    this.setScores,
     required this.games,
     required this.roundName,
     required this.isComplete,
@@ -1185,7 +1293,26 @@ class MatchHeaderModel {
 
   String get matchTitle => '$player1 vs $player2';
 
-  String get scoreDisplay => '$player1Score - $player2Score';
+  String get scoreDisplay {
+    final sets = setScores;
+    if (sets != null) return sets.lastOrNull?.scoreDisplay ?? '–';
+    return '$player1Score - $player2Score';
+  }
 
   String get fullTitle => '$roundName: $matchTitle';
+}
+
+class MatchSetScore {
+  const MatchSetScore({
+    required this.label,
+    required this.player1Score,
+    required this.player2Score,
+  });
+
+  final String label;
+  final double player1Score;
+  final double player2Score;
+
+  String get scoreDisplay =>
+      '$label ${formatBroadcastScore(player1Score)}–${formatBroadcastScore(player2Score)}';
 }

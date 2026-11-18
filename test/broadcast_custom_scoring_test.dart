@@ -115,6 +115,94 @@ void main() {
   });
 
   group('aggregate Games match headers', () {
+    test(
+      'Total Chess scores each day independently of the stage standings',
+      () {
+        const giri = 'Giri, Anish';
+        const mvl = 'Vachier-Lagrave, Maxime';
+        const tourId = 'qEXour3L';
+        final games = [
+          for (final (slot, speed, status) in [
+            (1, 'blitz', GameStatus.draw),
+            (2, 'blitz', GameStatus.draw),
+            (3, 'blitz', GameStatus.whiteWins),
+            (4, 'blitz', GameStatus.draw),
+            (5, 'rapid', GameStatus.draw),
+            (6, 'rapid', GameStatus.draw),
+            (7, 'fast-classic', GameStatus.whiteWins),
+            (8, 'blitz', GameStatus.draw),
+            (9, 'blitz', GameStatus.draw),
+            (10, 'blitz', GameStatus.ongoing),
+            (12, 'rapid', GameStatus.ongoing),
+          ])
+            _game(
+              status: status,
+              roundSlug: 'game-$slot-$speed',
+              whiteName: slot.isOdd ? giri : mvl,
+              blackName: slot.isOdd ? mvl : giri,
+              tourId: tourId,
+            ),
+        ];
+
+        final match = KnockoutMatchDetector.createMatchHeader(
+          'semifinal',
+          games.reversed.toList(),
+          sourceStandingsByTourId: {
+            tourId: [
+              TournamentPlayer(name: giri, played: 9, score: 15.5),
+              TournamentPlayer(name: mvl, played: 9, score: 6.5),
+            ],
+          },
+        );
+
+        expect(match.player1, giri);
+        expect(match.setScores?.map((set) => set.scoreDisplay), [
+          'Day 1 14.5–5.5',
+          'Day 2 1–1',
+        ]);
+        expect(match.scoreDisplay, 'Day 2 1–1');
+      },
+    );
+
+    test('Total Chess grants stamped points and keeps Armageddon separate', () {
+      const tourId = '6PTzCQFL';
+      final match = KnockoutMatchDetector.createMatchHeader('final', [
+        _game(
+          tourId: tourId,
+          roundSlug: 'game-5-rapid',
+          status: GameStatus.whiteWins,
+          whiteCustomPoints: 3,
+          blackCustomPoints: 1,
+        ),
+        _game(
+          tourId: tourId,
+          roundSlug: 'game-7-fast-classic',
+          status: GameStatus.draw,
+          whiteCustomPoints: 0,
+          blackCustomPoints: 0,
+        ),
+        _game(
+          tourId: tourId,
+          roundSlug: 'game-8-blitz',
+          status: GameStatus.blackWins,
+        ),
+        _game(
+          tourId: tourId,
+          roundSlug: 'armageddon',
+          status: GameStatus.draw,
+          whiteCustomPoints: 8,
+          blackCustomPoints: 0,
+        ),
+      ]);
+
+      expect(match.setScores?.map((set) => set.scoreDisplay), [
+        'Day 1 7–5',
+        'Day 2 0–1',
+        'Armageddon 0–1',
+      ]);
+      expect(match.games.last.gameStatus, GameStatus.draw);
+    });
+
     test('sums adapted points across alternating colours', () {
       final games = [
         _game(
@@ -246,9 +334,10 @@ GamesTourModel _game({
   String blackName = 'Gukesh D',
   double? whiteCustomPoints,
   double? blackCustomPoints,
+  String tourId = 'norway-chess',
 }) {
   return GamesTourModel(
-    gameId: 'game-1',
+    gameId: roundSlug,
     source: GameSource.supabase,
     whitePlayer: PlayerCard(
       name: whiteName,
@@ -275,7 +364,7 @@ GamesTourModel _game({
     gameStatus: status,
     roundId: roundSlug,
     roundSlug: roundSlug,
-    tourId: 'norway-chess',
+    tourId: tourId,
     tourSlug: 'norway-chess-2026',
   );
 }

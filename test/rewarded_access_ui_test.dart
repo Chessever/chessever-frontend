@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
 import 'package:chessever2/services/rewarded_premium/rewarded_access_provider.dart';
+import 'package:chessever2/theme/app_theme.dart' show kPrimaryColor;
 import 'package:chessever2/widgets/paywall/rewarded_premium/rewarded_access_ui.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -31,6 +32,7 @@ void main() {
     bool expired = false,
     void Function(bool)? answer,
     double textScale = 1,
+    PremiumUpgrade? upgrade,
   }) async {
     await tester.pumpWidget(
       ProviderScope(
@@ -52,7 +54,7 @@ void main() {
                   final result = await showRewardedAccessChoice(
                     context,
                     expired: expired,
-                    upgrade: (_) async => true,
+                    upgrade: upgrade ?? (_) async => true,
                   );
                   answer?.call(result);
                 },
@@ -149,11 +151,106 @@ void main() {
       tester.widget<IconButton>(find.byType(IconButton)).onPressed,
       isNull,
     );
-    expect(
-      tester.widget<OutlinedButton>(find.byType(OutlinedButton)).onPressed,
-      isNull,
-    );
+    expect(tester.widget<FilledButton>(upgradeButton()).onPressed, isNull);
+    expect(tester.widget<OutlinedButton>(watchButton()).onPressed, isNull);
     reward.completion!.complete(true);
     await tester.pumpAndSettle();
   });
+
+  // Trello #1416: Upgrade comes first and is the blue action; Watch ad is the
+  // outlined alternative under it.
+  for (final expired in [false, true]) {
+    testWidgets(
+      'Upgrade leads in brand blue above Watch ad (expired: $expired)',
+      (tester) async {
+        final reward = _Reward();
+        await host(tester, reward, expired: expired);
+        final watchLabel = expired ? 'Watch ad again' : 'Watch ad';
+        expect(
+          tester.getTopLeft(find.text('Upgrade')).dy,
+          lessThan(tester.getTopLeft(find.text(watchLabel)).dy),
+        );
+        final upgrade = tester.widget<FilledButton>(upgradeButton());
+        expect(
+          upgrade.style!.backgroundColor!.resolve(const <WidgetState>{}),
+          kPrimaryColor,
+        );
+        expect(
+          find.ancestor(
+            of: find.text(watchLabel),
+            matching: find.byType(OutlinedButton),
+          ),
+          findsOneWidget,
+        );
+        expect(
+          find.ancestor(
+            of: find.text(watchLabel),
+            matching: find.byType(FilledButton),
+          ),
+          findsNothing,
+        );
+        // Close it: an open popup keeps the next test's from showing.
+        await tester.tap(find.text(expired ? 'Go back' : 'Not now'));
+        await tester.pumpAndSettle();
+      },
+    );
+  }
+
+  for (final textScale in [1.0, 2.0]) {
+    testWidgets('close button centres on the title line (scale $textScale)', (
+      tester,
+    ) async {
+      final reward = _Reward();
+      await host(tester, reward, textScale: textScale);
+      final title = tester.getRect(find.text('Unlock Premium'));
+      final close = tester.getCenter(find.byIcon(Icons.close));
+      final firstLine = title.top + 24 * textScale * 1.25 / 2;
+      expect(close.dy, closeTo(firstLine, 0.5));
+      await tester.ensureVisible(find.text('Not now'));
+      await tester.tap(find.text('Not now'));
+      await tester.pumpAndSettle();
+    });
+  }
+
+  testWidgets('in-flight upgrade stays blue and blocks the ad', (tester) async {
+    final reward = _Reward();
+    final checkout = Completer<bool>();
+    bool? answer;
+    await host(
+      tester,
+      reward,
+      answer: (value) => answer = value,
+      upgrade: (_) => checkout.future,
+    );
+    await tester.tap(find.text('Upgrade'));
+    await tester.pump();
+    expect(find.text('Opening…'), findsOneWidget);
+    final upgrade = tester.widget<FilledButton>(
+      find.ancestor(
+        of: find.text('Opening…'),
+        matching: find.byType(FilledButton),
+      ),
+    );
+    expect(upgrade.onPressed, isNull);
+    expect(
+      upgrade.style!.backgroundColor!.resolve(const {WidgetState.disabled}),
+      kPrimaryColor,
+    );
+    expect(tester.widget<OutlinedButton>(watchButton()).onPressed, isNull);
+    checkout.complete(true);
+    await tester.pumpAndSettle();
+    expect(answer, true);
+    expect(reward.calls, 0);
+  });
 }
+
+Finder upgradeButton() => find.ancestor(
+  of: find.text('Upgrade'),
+  matching: find.byType(FilledButton),
+);
+
+/// The popup's only outlined button; its label changes while the ad runs.
+Finder watchButton() => find.descendant(
+  of: find.byType(Dialog),
+  matching: find.byType(OutlinedButton),
+);
