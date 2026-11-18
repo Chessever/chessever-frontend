@@ -199,7 +199,7 @@ void main() {
     expect(find.text('1.0'), findsNothing);
   });
 
-  testWidgets('daily sets remain readable and hide with No Spoilers', (
+  testWidgets('daily score numbers are colored and hide with No Spoilers', (
     tester,
   ) async {
     const setScores = [
@@ -216,8 +216,19 @@ void main() {
       size: const Size(320, 700),
       onToggle: () => toggles++,
     );
-    for (final score in ['Day 1 14.5–5.5', 'Day 2 1–1', 'Armageddon 1–0']) {
-      expect(find.text(score), findsOneWidget);
+    for (final (score, first, second) in [
+      ('Day 1 14.5–5.5', kPrimaryColor, kRedColor),
+      ('Day 2 1–1', kWhiteColor, kWhiteColor),
+      ('Armageddon 1–0', kPrimaryColor, kRedColor),
+    ]) {
+      final text = tester.widget<Text>(find.text(score));
+      final spans = (text.textSpan! as TextSpan).children!.cast<TextSpan>();
+      expect(spans.map((span) => span.style?.color), [
+        null,
+        first,
+        null,
+        second,
+      ]);
     }
     expect(find.text('15.5'), findsNothing);
     expect(tester.takeException(), isNull);

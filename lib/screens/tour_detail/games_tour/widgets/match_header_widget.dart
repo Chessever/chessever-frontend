@@ -2,6 +2,7 @@ import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_mode
 import 'package:chessever2/screens/tour_detail/games_tour/utils/knockout_match_detector.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/app_typography.dart';
+import 'package:chessever2/utils/broadcast_custom_scoring.dart';
 
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/time_utils.dart';
@@ -202,8 +203,33 @@ class MatchHeader extends ConsumerWidget {
                     runSpacing: 4.h,
                     children: [
                       for (final set in setScores)
-                        Text(
-                          set.scoreDisplay,
+                        Text.rich(
+                          TextSpan(
+                            children: [
+                              TextSpan(text: '${set.label} '),
+                              TextSpan(
+                                text: formatBroadcastScore(set.player1Score),
+                                style: TextStyle(
+                                  color: _matchScoreColor(
+                                    context,
+                                    set.player1Score,
+                                    set.player2Score,
+                                  ),
+                                ),
+                              ),
+                              const TextSpan(text: '–'),
+                              TextSpan(
+                                text: formatBroadcastScore(set.player2Score),
+                                style: TextStyle(
+                                  color: _matchScoreColor(
+                                    context,
+                                    set.player2Score,
+                                    set.player1Score,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
                           style: AppTypography.textXsMedium.copyWith(
                             color: context.colors.textPrimary,
                           ),
