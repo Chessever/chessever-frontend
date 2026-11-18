@@ -4,6 +4,8 @@ import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_mode
 import 'package:chessever2/screens/tour_detail/games_tour/providers/event_no_spoilers_provider.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -13,6 +15,14 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 /// "Text layout not available / The TextPainter has never been laid out".
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+  // Match the focused board's glyph widths instead of the test font's.
+  setUpAll(() async {
+    final font = FontLoader('InterDisplay');
+    for (final weight in ['Regular', 'Medium', 'Bold']) {
+      font.addFont(rootBundle.load('assets/fonts/Inter-$weight.otf'));
+    }
+    await font.load();
+  });
 
   Future<void> pumpCompactRow(
     WidgetTester tester, {
@@ -20,6 +30,9 @@ void main() {
     required String blackName,
     double maxWidth = 168,
     bool compactName = true,
+    PlayerView playerView = PlayerView.gridView,
+    TextScaler textScaler = TextScaler.noScaling,
+    bool showClock = false,
     EngineSettings engineSettings = const EngineSettings(
       showEngineAnalysis: false,
     ),
@@ -40,8 +53,8 @@ void main() {
       source: source,
       whitePlayer: _player(whiteName),
       blackPlayer: _player(blackName),
-      whiteTimeDisplay: '--:--',
-      blackTimeDisplay: '--:--',
+      whiteTimeDisplay: showClock ? '46:24' : '--:--',
+      blackTimeDisplay: showClock ? '44:28' : '--:--',
       whiteClockCentiseconds: 0,
       blackClockCentiseconds: 0,
       gameStatus: GameStatus.ongoing,
@@ -70,6 +83,10 @@ void main() {
           ),
         ],
         child: MaterialApp(
+          builder: (context, child) => MediaQuery(
+            data: MediaQuery.of(context).copyWith(textScaler: textScaler),
+            child: child!,
+          ),
           home: Builder(
             builder: (context) {
               ResponsiveHelper.init(context);
@@ -80,10 +97,12 @@ void main() {
                     // gridView row height is fixed at 20.h; give a little room.
                     height: 40,
                     child: PlayerFirstRowDetailWidget(
-                      playerView: PlayerView.gridView,
+                      playerView: playerView,
                       isWhitePlayer: true,
                       gamesTourModel: game,
-                      showClock: false,
+                      showClock: showClock,
+                      showSubSecondClock: playerView == PlayerView.boardView,
+                      replayMoveTimes: showClock ? const [] : null,
                       compactName: compactName,
                     ),
                   ),
@@ -97,6 +116,37 @@ void main() {
     // The second frame applies the overridden async settings and spoiler state.
     await tester.pump();
     await tester.pump();
+  }
+
+  for (final scale in [0.85, 1.0, 1.5]) {
+    testWidgets('focused board paints the full player label at scale $scale', (
+      tester,
+    ) async {
+      await pumpCompactRow(
+        tester,
+        whiteName: 'Caruana, Fabiano',
+        blackName: 'Firouzja, Alireza',
+        maxWidth: 400,
+        compactName: false,
+        playerView: PlayerView.boardView,
+        textScaler: TextScaler.linear(scale),
+        showClock: true,
+        hasStarted: true,
+      );
+
+      final label = find.text('GM Caruana, Fabiano 2830', findRichText: true);
+      final clock = find.text('46:24');
+      expect(label, findsOneWidget);
+      expect(clock, findsOneWidget);
+      final paragraph = tester.renderObject<RenderParagraph>(label);
+      expect(paragraph.didExceedMaxLines, isFalse);
+      expect(
+        paragraph.size.height,
+        greaterThanOrEqualTo(paragraph.textSize.height),
+      );
+      expect(tester.getRect(label).right, lessThan(tester.getRect(clock).left));
+      expect(tester.widget<RichText>(label).textScaler.scale(14), 14 * scale);
+    });
   }
 
   testWidgets(

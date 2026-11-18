@@ -965,6 +965,13 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
                         ? ' ${effectivePlayerCard.rating}'
                         : '';
 
+                // Compact previews reserve a fixed name height. The board
+                // and rows with a font override have room for scaled text.
+                final textScaler =
+                    playerView == PlayerView.boardView || fontOverride != null
+                        ? context.textScaler
+                        : TextScaler.noScaling;
+
                 // Which name parts fit is measured once per distinct
                 // (name, width, style) and remembered: rows rebuild far more
                 // often than any of those change.
@@ -978,7 +985,7 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
                   nameStyle: nameStyle,
                   rankStyle: rankStyle,
                   ratingStyle: ratingStyle,
-                  textScaler: context.textScaler,
+                  textScaler: textScaler,
                 );
                 final finalNameSpan = TextSpan(
                   style: nameStyle,
@@ -1000,6 +1007,9 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
                   maxLines: 1,
                   softWrap: false,
                   textAlign: TextAlign.left,
+                  // The tap box is sized to the measured text. Painting with
+                  // RichText's unscaled default can ellipsize a name that fits.
+                  textScaler: textScaler,
                   text: finalNameSpan,
                 );
 

@@ -8434,9 +8434,10 @@ class _AnalysisGameBody extends ConsumerWidget {
         // A folded portrait window can be wider but shorter than a regular
         // phone. Keep the player rows, engine lines and notation reachable
         // instead of allowing the width-sized board to consume their height.
+        // Both the player rows and the analysis chrome grow with text size.
         final stackedBoardLimit = math.max(
           1.0,
-          availableHeight - context.textExtent(144.sp) - 120.h,
+          availableHeight - context.textExtent(144.sp + 120.h),
         );
 
         // PV sits above the swipeable panels on both pages. The explorer
