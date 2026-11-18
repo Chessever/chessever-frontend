@@ -199,15 +199,12 @@ void main() {
     expect(find.text('1.0'), findsNothing);
   });
 
-  testWidgets('daily scores highlight the leader and hide with No Spoilers', (
+  testWidgets('daily score numbers are colored and hide with No Spoilers', (
     tester,
   ) async {
     const setScores = [
       MatchSetScore(label: 'Day 1', player1Score: 14.5, player2Score: 5.5),
       MatchSetScore(label: 'Day 2', player1Score: 1, player2Score: 1),
-      MatchSetScore(label: 'Day 3', player1Score: 0, player2Score: 1),
-      MatchSetScore(label: 'Day 4', player1Score: 1, player2Score: 0),
-      MatchSetScore(label: 'Day 5', player1Score: 1, player2Score: 0),
       MatchSetScore(label: 'Armageddon', player1Score: 1, player2Score: 0),
     ];
     var toggles = 0;
@@ -219,28 +216,20 @@ void main() {
       size: const Size(320, 700),
       onToggle: () => toggles++,
     );
-    final leader = Color.lerp(kPrimaryColor, kWhiteColor, 0.35);
     for (final (score, first, second) in [
-      ('Day 1 14.5–5.5', leader, null),
-      ('Day 2 1–1', null, null),
-      ('Day 3 0–1', null, leader),
-      ('Day 4 1–0', leader, null),
-      ('Day 5 1–0', leader, null),
-      ('Armageddon 1–0', leader, null),
+      ('Day 1 14.5–5.5', kPrimaryColor, kRedColor),
+      ('Day 2 1–1', kWhiteColor, kWhiteColor),
+      ('Armageddon 1–0', kPrimaryColor, kRedColor),
     ]) {
       final text = tester.widget<Text>(find.text(score));
       final spans = (text.textSpan! as TextSpan).children!.cast<TextSpan>();
       expect(spans.map((span) => span.style?.color), [
-        AppColors.dark.textPrimaryMuted,
+        null,
         first,
-        AppColors.dark.textPrimaryMuted,
+        null,
         second,
       ]);
     }
-    expect(
-      tester.getTopLeft(find.text('Day 5 1–0')).dy,
-      greaterThan(tester.getTopLeft(find.text('Day 1 14.5–5.5')).dy),
-    );
     expect(find.text('15.5'), findsNothing);
     expect(tester.takeException(), isNull);
     await tester.tap(find.text('Day 2 1–1'));
