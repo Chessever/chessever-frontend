@@ -46,6 +46,7 @@ class SvgAsset {
   static const premiumUnselected = 'assets/svgs/unselected.svg';
   static const selectedSvg = 'assets/svgs/selected.svg';
   static const chase_grid = 'assets/svgs/chase_grid.svg';
+  static const classicalToolbar = 'assets/svgs/classical_toolbar.svg';
   static const boat = 'assets/svgs/chat-bot.svg';
   static const countryMan = 'assets/svgs/country_man.svg';
   static const pin = 'assets/svgs/pin.svg';
@@ -117,6 +118,7 @@ class SvgAsset {
       premiumUnselected,
       selectedSvg,
       chase_grid,
+      classicalToolbar,
       boat,
       countryMan,
       pin,

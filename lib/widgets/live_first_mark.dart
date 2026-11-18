@@ -9,9 +9,8 @@ import 'package:flutter/widgets.dart';
 /// app and the website. It replaced a lightning bolt, which collided with the
 /// Blitz time-control mark.
 ///
-/// Geometry is the web's 16-unit grid verbatim: a 3x3 core at (6.5, 6.5) and
-/// two radius-5 arcs with a 1.7 butt-capped stroke. The ink runs from 2.0 to
-/// 14.0 across and from about 3.8 to 12.2 down, so it is centred on its box.
+/// The phone mark keeps the web's centered square and uses taller, lighter
+/// arcs to match the weight of the other toolbar glyphs.
 ///
 /// Like [Icon], [size] and [color] fall back to the ambient [IconTheme].
 class LiveFirstMark extends StatelessWidget {
@@ -45,8 +44,8 @@ class LiveFirstMarkPainter extends CustomPainter {
   final Color color;
 
   static const double _grid = 16;
-  static const double _stroke = 1.7;
-  static const Radius _arcRadius = Radius.circular(5);
+  static const double _stroke = 1.5;
+  static const Radius _arcRadius = Radius.circular(6.5);
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -68,22 +67,20 @@ class LiveFirstMarkPainter extends CustomPainter {
       ..style = PaintingStyle.stroke
       ..strokeWidth = _stroke
       ..strokeCap = StrokeCap.butt;
-    // SVG `M4.4 4.4 a5 5 0 0 0 0 7.2`: sweep 0, the arc bulges left.
     canvas.drawPath(
       Path()
-        ..moveTo(4.4, 4.4)
+        ..moveTo(4.4, 3.2)
         ..arcToPoint(
-          const Offset(4.4, 11.6),
+          const Offset(4.4, 12.8),
           radius: _arcRadius,
           clockwise: false,
         ),
       stroke,
     );
-    // SVG `M11.6 4.4 a5 5 0 0 1 0 7.2`: sweep 1, the arc bulges right.
     canvas.drawPath(
       Path()
-        ..moveTo(11.6, 4.4)
-        ..arcToPoint(const Offset(11.6, 11.6), radius: _arcRadius),
+        ..moveTo(11.6, 3.2)
+        ..arcToPoint(const Offset(11.6, 12.8), radius: _arcRadius),
       stroke,
     );
     canvas.restore();

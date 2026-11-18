@@ -1,14 +1,20 @@
 import 'dart:ui' show Tristate;
 
+import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/widgets/live_first_mark.dart';
 import 'package:chessever2/widgets/quick_list_toggles.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-Future<void> _pump(WidgetTester tester, Widget child) async {
+Future<void> _pump(
+  WidgetTester tester,
+  Widget child, {
+  bool light = false,
+}) async {
   tester.view.physicalSize = const Size(393, 852);
   tester.view.devicePixelRatio = 1;
   addTearDown(() {
@@ -17,7 +23,7 @@ Future<void> _pump(WidgetTester tester, Widget child) async {
   });
   await tester.pumpWidget(
     MaterialApp(
-      theme: AppTheme.darkTheme,
+      theme: light ? AppTheme.lightTheme : AppTheme.darkTheme,
       home: Builder(
         builder: (context) {
           ResponsiveHelper.init(context);
@@ -73,6 +79,73 @@ void main() {
       semantics.dispose();
     });
   });
+
+  for (final light in [false, true]) {
+    testWidgets(
+      'quick filters share toolbar ink in ${light ? 'light' : 'dark'} mode',
+      (tester) async {
+        var pressed = false;
+        await _pump(
+          tester,
+          StatefulBuilder(
+            builder: (context, setState) => Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                LiveFirstToggleButton(
+                  pressed: pressed,
+                  onTap: () => setState(() => pressed = !pressed),
+                ),
+                ClassicalToggleButton(pressed: pressed, onTap: () {}),
+                QuickToggleIconButton(
+                  label: 'Filters',
+                  selected: pressed,
+                  onTap: () {},
+                  child: const Icon(Icons.tune_rounded),
+                ),
+              ],
+            ),
+          ),
+          light: light,
+        );
+
+        final live = find.byType(LiveFirstToggleButton);
+        final classical = find.byType(ClassicalToggleButton);
+        final broadcast = find.byType(LiveFirstMark);
+        final owl = find.byType(SvgPicture);
+        final paint = find.descendant(
+          of: broadcast,
+          matching: find.byType(CustomPaint),
+        );
+        final filter = find.byIcon(Icons.tune_rounded);
+        final colors = tester.element(filter).colors;
+
+        void expectInk(Color ink) {
+          expect(
+            (tester.widget<CustomPaint>(paint).painter! as LiveFirstMarkPainter)
+                .color,
+            ink,
+          );
+          expect(
+            tester.widget<SvgPicture>(owl).colorFilter,
+            ColorFilter.mode(ink, BlendMode.srcIn),
+          );
+          expect(IconTheme.of(tester.element(filter)).color, ink);
+        }
+
+        expect(tester.getSize(live), const Size.square(44));
+        expect(tester.getSize(classical), const Size.square(44));
+        expect(tester.getSize(owl), tester.getSize(filter));
+        expect(tester.getSize(broadcast), tester.getSize(filter));
+        expect(tester.getCenter(owl), tester.getCenter(classical));
+        expect(tester.getCenter(broadcast), tester.getCenter(live));
+        expectInk(colors.iconPrimary);
+
+        await tester.tap(live);
+        await tester.pump();
+        expectInk(colors.accentText);
+      },
+    );
+  }
 
   group('BoardViewToggleButton', () {
     testWidgets('draws the board mark at an icon\'s optical size', (

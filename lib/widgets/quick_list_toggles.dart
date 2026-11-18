@@ -1,10 +1,8 @@
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/app_typography.dart';
-import 'package:chessever2/utils/png_asset.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/svg_asset.dart';
 import 'package:chessever2/widgets/live_first_mark.dart';
-import 'package:chessever2/widgets/time_control_glyph.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
@@ -31,8 +29,7 @@ class QuickToggleIconButton extends StatelessWidget {
   final String label;
   final VoidCallback? onTap;
 
-  /// The glyph. An [Icon], `LiveFirstMark` or `SvgWidget` reads its colour and
-  /// size from the icon theme set here.
+  /// The glyph, built under the toolbar's [IconTheme] for size and color.
   final Widget child;
   final bool selected;
   final bool? toggled;
@@ -156,10 +153,6 @@ class LiveFirstToggleButton extends StatelessWidget {
 }
 
 /// One-tap Classical-only filter, wearing the owl time-control mark.
-///
-/// The owl is art, not ink, so the state cannot be a tint: at rest the coin
-/// sits at half strength, and pressed it is at full strength inside a thin
-/// [AppColors.brand] ring that hugs the coin.
 class ClassicalToggleButton extends StatelessWidget {
   const ClassicalToggleButton({
     super.key,
@@ -172,7 +165,6 @@ class ClassicalToggleButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final glyph = 20.ic;
     return QuickToggleIconButton(
       label: pressed
           ? 'Showing classical games only'
@@ -180,21 +172,27 @@ class ClassicalToggleButton extends StatelessWidget {
       selected: pressed,
       toggled: pressed,
       onTap: onTap,
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          border: Border.all(
-            color: pressed ? context.colors.brand : Colors.transparent,
-            width: 1.5,
-          ),
-        ),
-        child: Padding(
-          padding: const EdgeInsets.all(2.5),
-          child: Opacity(
-            opacity: pressed ? 1 : 0.55,
-            child: TimeControlGlyph(PngAsset.classicalIcon, size: glyph),
-          ),
-        ),
+      child: const _ClassicalToolbarGlyph(),
+    );
+  }
+}
+
+/// The owl face from the time-control coin, drawn in the toolbar's ink.
+class _ClassicalToolbarGlyph extends StatelessWidget {
+  const _ClassicalToolbarGlyph();
+
+  @override
+  Widget build(BuildContext context) {
+    final iconTheme = IconTheme.of(context);
+    final size = iconTheme.size ?? 20.ic;
+    return SvgPicture.asset(
+      SvgAsset.classicalToolbar,
+      width: size,
+      height: size,
+      excludeFromSemantics: true,
+      colorFilter: ColorFilter.mode(
+        iconTheme.color ?? context.colors.iconPrimary,
+        BlendMode.srcIn,
       ),
     );
   }
