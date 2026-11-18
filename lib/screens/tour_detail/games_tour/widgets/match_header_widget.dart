@@ -204,32 +204,7 @@ class MatchHeader extends ConsumerWidget {
                     children: [
                       for (final set in setScores)
                         Text.rich(
-                          TextSpan(
-                            children: [
-                              TextSpan(text: '${set.label} '),
-                              TextSpan(
-                                text: formatBroadcastScore(set.player1Score),
-                                style: TextStyle(
-                                  color: _matchScoreColor(
-                                    context,
-                                    set.player1Score,
-                                    set.player2Score,
-                                  ),
-                                ),
-                              ),
-                              const TextSpan(text: '–'),
-                              TextSpan(
-                                text: formatBroadcastScore(set.player2Score),
-                                style: TextStyle(
-                                  color: _matchScoreColor(
-                                    context,
-                                    set.player2Score,
-                                    set.player1Score,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
+                          _dailyScoreSpan(context, set),
                           style: AppTypography.textXsMedium.copyWith(
                             color: context.colors.textPrimary,
                           ),
@@ -396,6 +371,29 @@ PlayerCard? _matchPlayerCard(MatchHeaderModel match, String playerName) {
     if (black.name == playerName) return black;
   }
   return null;
+}
+
+TextSpan _dailyScoreSpan(BuildContext context, MatchSetScore set) {
+  final colors = context.colors;
+  final labelStyle = TextStyle(color: colors.textPrimaryMuted);
+  final leaderStyle = TextStyle(
+    color: Color.lerp(colors.accentText, colors.textPrimary, 0.35),
+  );
+
+  return TextSpan(
+    children: [
+      TextSpan(text: '${set.label} ', style: labelStyle),
+      TextSpan(
+        text: formatBroadcastScore(set.player1Score),
+        style: set.player1Score > set.player2Score ? leaderStyle : null,
+      ),
+      TextSpan(text: '–', style: labelStyle),
+      TextSpan(
+        text: formatBroadcastScore(set.player2Score),
+        style: set.player2Score > set.player1Score ? leaderStyle : null,
+      ),
+    ],
+  );
 }
 
 /// Reads a knockout match score the way the pairing does: whoever is ahead
