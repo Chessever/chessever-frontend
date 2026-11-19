@@ -45,6 +45,7 @@ import 'package:chessever2/utils/foreground_task_scheduler.dart';
 import 'package:chessever2/utils/lifecycle_event_handler.dart';
 import 'package:chessever2/utils/adaptive_window.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/utils/app_motion.dart';
 import 'package:chessever2/utils/text_scale.dart';
 import 'package:chessever2/widgets/auth_state_listener.dart';
 import 'package:chessever2/widgets/board_color_dialog.dart';
@@ -1378,23 +1379,25 @@ class MyApp extends HookConsumerWidget {
           // AdaptiveWindowScope sits above every route, dialog and sheet so
           // all of them follow the window as it folds, opens or resizes.
           builder: (context, child) => AppTextScaleCap(
-            child: WindowOrientationScope(
-              child: AdaptiveWindowScope(
-                child: DismissKeyboard(
-                  child: AnnotatedRegion<SystemUiOverlayStyle>(
-                    value: AppTheme.overlayFor(Theme.of(context).brightness),
-                    child: CustomUpgradeAlert(
-                      upgrader: upgrader,
-                      navigatorKey: navigatorKey,
-                      routeObserver: updateRouteObserver,
-                      policySource: forcedUpdatePolicy,
-                      child: RewardedAccessHost(
+            child: AppMotionAlwaysOn(
+              child: WindowOrientationScope(
+                child: AdaptiveWindowScope(
+                  child: DismissKeyboard(
+                    child: AnnotatedRegion<SystemUiOverlayStyle>(
+                      value: AppTheme.overlayFor(Theme.of(context).brightness),
+                      child: CustomUpgradeAlert(
+                        upgrader: upgrader,
                         navigatorKey: navigatorKey,
-                        upgrade: (context) => showPremiumPaywallSheet(
-                          context: context,
-                          allowRewarded: false,
+                        routeObserver: updateRouteObserver,
+                        policySource: forcedUpdatePolicy,
+                        child: RewardedAccessHost(
+                          navigatorKey: navigatorKey,
+                          upgrade: (context) => showPremiumPaywallSheet(
+                            context: context,
+                            allowRewarded: false,
+                          ),
+                          child: child ?? const SizedBox.shrink(),
                         ),
-                        child: child ?? const SizedBox.shrink(),
                       ),
                     ),
                   ),
