@@ -627,8 +627,13 @@ class _Bars extends StatelessWidget {
     final blackPieceColor = context.colors.evalBlack;
 
     final labelInset = playerView == PlayerView.gridView ? 6.h : 10.h;
-    final labelClampMax =
-        height - (playerView == PlayerView.gridView ? 12.h : 20.h);
+    // A bar shorter than its label (a card mid-collapse, a 0-height first
+    // layout) would make the upper bound negative, and `clamp` throws when
+    // upper < lower: once per animation frame (Sentry CHESSEVER-27D).
+    final labelClampMax = math.max(
+      0.0,
+      height - (playerView == PlayerView.gridView ? 12.h : 20.h),
+    );
 
     final displayText = isEvaluating && !hasEvaluationData
         ? '...'
