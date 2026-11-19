@@ -980,6 +980,8 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
                   ratingStyle: ratingStyle,
                   textScaler: context.textScaler,
                 );
+                final separateRating =
+                    playerView == PlayerView.gridView && rating.isNotEmpty;
                 final finalNameSpan = TextSpan(
                   style: nameStyle,
                   children: [
@@ -991,7 +993,8 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
                       TextSpan(text: fit.surname, style: nameStyle),
                     if (fit.firstName.isNotEmpty)
                       TextSpan(text: fit.firstName, style: nameStyle),
-                    TextSpan(text: rating, style: ratingStyle),
+                    if (!separateRating)
+                      TextSpan(text: rating, style: ratingStyle),
                   ],
                 );
 
@@ -1000,6 +1003,9 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
                   maxLines: 1,
                   softWrap: false,
                   textAlign: TextAlign.left,
+                  textScaler: separateRating
+                      ? context.textScaler
+                      : TextScaler.noScaling,
                   text: finalNameSpan,
                 );
 
@@ -1019,7 +1025,9 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
                 final tappableName = GestureDetector(
                   behavior: HitTestBehavior.translucent,
                   onTap: openPlayerScoreCard,
-                  child: SizedBox(width: nameTapWidth, child: nameWidget),
+                  child: separateRating
+                      ? nameWidget
+                      : SizedBox(width: nameTapWidth, child: nameWidget),
                 );
                 // The long-press sits on its own layer over the same name-only
                 // rect, so the scorecard tap target stays exactly the name and
@@ -1070,13 +1078,39 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
                         )
                         : tappableName;
 
+                Widget withRating(Widget identity) {
+                  if (!separateRating) return identity;
+                  // Reserve the full rating before laying out the name. The
+                  // outer row already reserves the clock at its natural width.
+                  return Row(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.baseline,
+                    textBaseline: TextBaseline.alphabetic,
+                    children: [
+                      Flexible(child: identity),
+                      ConstrainedBox(
+                        constraints: BoxConstraints(maxWidth: maxNameTapWidth),
+                        child: FittedBox(
+                          fit: BoxFit.scaleDown,
+                          alignment: Alignment.centerLeft,
+                          child: Text(
+                            rating,
+                            style: nameStyle.merge(ratingStyle),
+                            maxLines: 1,
+                          ),
+                        ),
+                      ),
+                    ],
+                  );
+                }
+
                 if (onEditName != null) {
                   return Align(
                     alignment: Alignment.centerLeft,
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Flexible(child: tappableName),
+                        Flexible(child: withRating(tappableName)),
                         SizedBox(width: 4.w),
                         GestureDetector(
                           onTap:
@@ -1098,7 +1132,7 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
 
                 return Align(
                   alignment: Alignment.centerLeft,
-                  child: nameTarget,
+                  child: withRating(nameTarget),
                 );
               },
             ),
