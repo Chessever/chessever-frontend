@@ -195,9 +195,8 @@ class GameAnalysisReportStore {
   Future<void> _evictSqliteIfNeeded(AppDatabase db) async {
     final all = await db.getCacheByPrefixes(prefixes: [keyPrefix]);
     if (all.length <= maxEntries) return;
-    final ordered =
-        all.entries.toList()
-          ..sort((a, b) => a.value.cachedAt.compareTo(b.value.cachedAt));
+    final ordered = all.entries.toList()
+      ..sort((a, b) => a.value.cachedAt.compareTo(b.value.cachedAt));
     final excess = ordered.length - maxEntries;
     for (var i = 0; i < excess; i++) {
       await db.removeCache(key: ordered[i].key);
@@ -247,7 +246,9 @@ class _MemoryEntry {
 /// symbols are suppressed when the mover retains a decisive (77%+, about +3.3)
 /// win. v8: the same amnesty applies when the mover remains decisively lost
 /// (23% or lower, about -3.3).
-const int gameAnalysisReportSchemaVersion = 8;
+/// v9: native confirmation, same-root evidence and critical punishment.
+/// v10: enforce three-position quality at winning boundaries and promotion roots.
+const int gameAnalysisReportSchemaVersion = 10;
 
 Map<String, dynamic> gameAnalysisReportToJson(GameAnalysisReport report) {
   return <String, dynamic>{
@@ -290,11 +291,10 @@ GameAnalysisReport? gameAnalysisReportFromJson(Map<String, dynamic> json) {
       moves.add(move);
     }
     final generatedAtRaw = json['generatedAt'] as String?;
-    final generatedAt =
-        generatedAtRaw == null
-            ? DateTime.fromMillisecondsSinceEpoch(0, isUtc: true)
-            : (DateTime.tryParse(generatedAtRaw) ??
-                DateTime.fromMillisecondsSinceEpoch(0, isUtc: true));
+    final generatedAt = generatedAtRaw == null
+        ? DateTime.fromMillisecondsSinceEpoch(0, isUtc: true)
+        : (DateTime.tryParse(generatedAtRaw) ??
+              DateTime.fromMillisecondsSinceEpoch(0, isUtc: true));
     return GameAnalysisReport(
       fingerprint: fingerprint,
       positions: List.unmodifiable(positions),
@@ -313,6 +313,13 @@ GameAnalysisReport? gameAnalysisReportFromJson(Map<String, dynamic> json) {
 Map<String, dynamic> _positionToJson(GameReportPosition position) => {
   'fen': position.fen,
   'lines': position.lines.map(_lineToJson).toList(growable: false),
+  if (position.search case final search?)
+    'search': {
+      'engineId': search.engineId,
+      'searchId': search.searchId,
+      'complete': search.complete,
+    },
+  if (position.uncertainty != null) 'uncertainty': position.uncertainty,
 };
 
 GameReportPosition? _positionFromJson(Map<String, dynamic> json) {
@@ -326,7 +333,23 @@ GameReportPosition? _positionFromJson(Map<String, dynamic> json) {
     if (line == null) return null;
     lines.add(line);
   }
-  return GameReportPosition(fen: fen, lines: List.unmodifiable(lines));
+  final rawSearch = json['search'];
+  return GameReportPosition(
+    fen: fen,
+    lines: List.unmodifiable(lines),
+    search:
+        rawSearch is Map &&
+            rawSearch['engineId'] is String &&
+            rawSearch['searchId'] is String &&
+            rawSearch['complete'] is bool
+        ? GameReportSearchEvidence(
+            engineId: rawSearch['engineId'] as String,
+            searchId: rawSearch['searchId'] as String,
+            complete: rawSearch['complete'] as bool,
+          )
+        : null,
+    uncertainty: json['uncertainty'] as String?,
+  );
 }
 
 Map<String, dynamic> _lineToJson(GameReportLine line) => {
