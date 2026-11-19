@@ -906,11 +906,28 @@ void stabilityTests() {
     }
   });
 
+  // Android reports reduced motion whenever the animator scale is 0 (many
+  // battery savers): the bars must still leave there, snapping.
+  testWidgets('with reduced motion the bars still leave and come back', (
+    tester,
+  ) async {
+    late ScrollChromeController chrome;
+    await tester.pumpWidget(
+      _Shell(
+        onController: (c) => chrome = c,
+        body: _longList(),
+        media: (data) => data.copyWith(disableAnimations: true),
+      ),
+    );
+    await tester.fling(find.byType(ListView), const Offset(0, -600), 2000);
+    await tester.pumpAndSettle();
+    expect(chrome.value, 0);
+    await tester.fling(find.byType(ListView), const Offset(0, 300), 1500);
+    await tester.pumpAndSettle();
+    expect(chrome.value, 1);
+  });
+
   for (final (name, media) in [
-    (
-      'reduced motion',
-      (MediaQueryData data) => data.copyWith(disableAnimations: true),
-    ),
     (
       'a screen reader',
       (MediaQueryData data) => data.copyWith(accessibleNavigation: true),

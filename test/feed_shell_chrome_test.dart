@@ -519,7 +519,10 @@ void main() {
     await _tearDown(tester);
   });
 
-  testWidgets('reduced motion: the bars stay and no post ever moves', (
+  // Android reports reduced motion whenever the animator scale is 0 (many
+  // battery savers): the bars still leave as the reader pages on, snapping,
+  // never part-way, with the post centred between them every frame.
+  testWidgets('reduced motion: the bars snap away and the post stays centred', (
     tester,
   ) async {
     final chrome = await _pump(tester, reduceMotion: true);
@@ -530,9 +533,11 @@ void main() {
     await tester.flingFrom(_onTopRow(tester), const Offset(0, -320), 1500);
     for (var i = 0; i < 60; i++) {
       await tester.pump(const Duration(milliseconds: 16));
-      expect(chrome.value, 1);
-      _expectCentred(tester, shown: 1, header: header, post: post);
+      expect(chrome.value, anyOf(0.0, 1.0));
     }
+    await tester.pumpAndSettle();
+    expect(chrome.value, 0);
+    _expectCentred(tester, shown: 0, header: header, post: post);
     await _tearDown(tester);
   });
 

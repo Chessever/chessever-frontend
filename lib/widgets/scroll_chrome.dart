@@ -1042,8 +1042,9 @@ class ScrollChromeScope extends InheritedWidget {
 /// outermost vertical list in the region reads as the page.
 ///
 /// While a text field inside the region has focus the keyboard is up, and
-/// the chrome holds still, shown. With reduced motion or a screen reader the
-/// chrome stays shown and nothing moves it.
+/// the chrome holds still, shown. With a screen reader the chrome stays
+/// shown and nothing moves it; with reduced motion it still moves, snapping
+/// where it would spring.
 class ScrollChromeRegion extends StatefulWidget {
   const ScrollChromeRegion({
     super.key,
@@ -1156,10 +1157,11 @@ class _ScrollChromeRegionState extends State<ScrollChromeRegion> {
     final controller = widget.controller
       ..reduceMotion = reduceMotion
       .._paged = widget.paged
-      ..enabled =
-          widget.enabled &&
-          !reduceMotion &&
-          !MediaQuery.accessibleNavigationOf(context);
+      // Reduced motion only drops the springs (the bars snap): on Android
+      // it is on whenever the animator scale is 0, which many battery
+      // savers set, and the bars must still step away there. A screen
+      // reader keeps them shown.
+      ..enabled = widget.enabled && !MediaQuery.accessibleNavigationOf(context);
     return ScrollChromeScope(
       controller: controller,
       child: NotificationListener<ScrollMetricsNotification>(
