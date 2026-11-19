@@ -29,6 +29,7 @@ void main() {
     ),
     GameSource source = GameSource.gamebase,
     bool hasStarted = false,
+    String? clock,
   }) async {
     tester.view.devicePixelRatio = 1;
     tester.view.physicalSize = const Size(400, 800);
@@ -40,17 +41,16 @@ void main() {
       source: source,
       whitePlayer: _player(whiteName),
       blackPlayer: _player(blackName),
-      whiteTimeDisplay: '--:--',
+      whiteTimeDisplay: clock ?? '--:--',
       blackTimeDisplay: '--:--',
       whiteClockCentiseconds: 0,
       blackClockCentiseconds: 0,
-      gameStatus: GameStatus.ongoing,
+      gameStatus: clock == null ? GameStatus.ongoing : GameStatus.draw,
       roundId: 'r1',
       tourId: 't1',
-      fen:
-          hasStarted
-              ? 'rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 0 2'
-              : 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
+      fen: hasStarted
+          ? 'rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 0 2'
+          : 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
       lastMove: hasStarted ? 'e7e5' : null,
     );
 
@@ -83,7 +83,7 @@ void main() {
                       playerView: PlayerView.gridView,
                       isWhitePlayer: true,
                       gamesTourModel: game,
-                      showClock: false,
+                      showClock: clock != null,
                       compactName: compactName,
                     ),
                   ),
@@ -98,6 +98,45 @@ void main() {
     await tester.pump();
     await tester.pump();
   }
+
+  testWidgets('grid rating stays whole as the clock changes width', (
+    tester,
+  ) async {
+    Future<double> nameWidth(String clock) async {
+      await pumpCompactRow(
+        tester,
+        whiteName: 'Fernández de la Vega Martínez, Alejandra María',
+        blackName: 'Other',
+        maxWidth: 194,
+        compactName: false,
+        hasStarted: true,
+        clock: clock,
+      );
+      final rating = find.text(' 2830');
+      final clockLabel = find.text(clock);
+      final name = find.byWidgetPredicate(
+        (widget) =>
+            widget is RichText &&
+            widget.text.toPlainText().contains('Fernández'),
+      );
+      expect(rating, findsOneWidget);
+      expect(clockLabel, findsOneWidget);
+      expect(tester.widget<RichText>(name).overflow, TextOverflow.ellipsis);
+      expect(
+        tester.getTopRight(name).dx,
+        lessThanOrEqualTo(tester.getTopLeft(rating).dx),
+      );
+      expect(
+        tester.getTopRight(rating).dx,
+        lessThan(tester.getTopLeft(clockLabel).dx),
+      );
+      expect(tester.takeException(), isNull);
+      return tester.getSize(name).width;
+    }
+
+    final hoursWidth = await nameWidth('2:00:00');
+    expect(await nameWidth('55:40'), greaterThan(hoursWidth));
+  });
 
   testWidgets(
     'compactName builds without TextPainter layout error (full name)',
