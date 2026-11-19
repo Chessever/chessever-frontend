@@ -259,15 +259,7 @@ void main() {
         find.descendant(of: toggle, matching: find.byType(LiveFirstCapsule)),
         findsOneWidget,
       );
-      expect(
-        find.descendant(
-          of: toggle,
-          matching: find.text(
-            LiveFirstCapsule.labelFor(on: false, liveCount: 3),
-          ),
-        ),
-        findsOneWidget,
-      );
+      expect(find.text('See 3 live'), findsNothing);
       expect(words('on'), findsNothing);
       expect(
         find.bySemanticsLabel('Show the 3 live events first'),
@@ -275,10 +267,8 @@ void main() {
       );
       final rect = tester.getRect(toggle);
       expect(rect.center.dy, greaterThan(852 / 2));
-      // In the page's own button slot, stacked as every page's buttons are:
-      // the small capsule, its trailing edge on the floating buttons'
-      // gutter, above the home indicator by the slot's margin.
-      expect(rect.height, InkFabSize.small.side);
+      // Its only floating action uses the regular disc and the page gutter.
+      expect(rect.height, InkFabSize.regular.side);
       expect(rect.right, 393 - 16);
       expect(rect.bottom, 852 - kFloatingActionButtonMargin);
       await _unmount(tester);
@@ -298,26 +288,21 @@ void main() {
       );
 
       expect(
-        find.descendant(of: toggle, matching: find.text('See 1 live')),
+        find.bySemanticsLabel('Show the live event first'),
         findsOneWidget,
       );
       await _unmount(tester);
     });
 
-    testWidgets('reads "See live" until the count is known', (tester) async {
+    testWidgets('announces Live first without a count until known', (
+      tester,
+    ) async {
       await _pumpEvents(
         tester,
         liveIds: const ['gb_live'],
         liveCurrentError: true,
       );
 
-      expect(
-        find.descendant(
-          of: toggle,
-          matching: find.text(LiveFirstCapsule.unknownLabel),
-        ),
-        findsOneWidget,
-      );
       expect(find.bySemanticsLabel('Show live events first'), findsOneWidget);
       await _unmount(tester);
     });
@@ -332,12 +317,7 @@ void main() {
       );
       expect(find.text('events:past'), findsOneWidget);
       expect(
-        find.descendant(
-          of: toggle,
-          matching: find.text(
-            LiveFirstCapsule.labelFor(on: false, liveCount: 1),
-          ),
-        ),
+        find.bySemanticsLabel('Show the live event first'),
         findsOneWidget,
       );
 
@@ -357,7 +337,7 @@ void main() {
       expect(words('off'), findsNothing);
       expect(
         find.descendant(of: toggle, matching: find.text('Live first')),
-        findsOneWidget,
+        findsNothing,
       );
       expect(find.bySemanticsLabel('Live events shown first'), findsOneWidget);
 
@@ -371,12 +351,7 @@ void main() {
         GroupEventCategory.current,
       );
       expect(
-        find.descendant(
-          of: toggle,
-          matching: find.text(
-            LiveFirstCapsule.labelFor(on: false, liveCount: 1),
-          ),
-        ),
+        find.bySemanticsLabel('Show the live event first'),
         findsOneWidget,
       );
       await _unmount(tester);
@@ -473,12 +448,7 @@ void main() {
         expect(rect.left, greaterThanOrEqualTo(0));
         expect(rect.right, lessThanOrEqualTo(320));
         expect(
-          find.descendant(
-            of: toggle,
-            matching: find.text(
-              LiveFirstCapsule.labelFor(on: false, liveCount: 1),
-            ),
-          ),
+          find.bySemanticsLabel('Show the live event first'),
           findsOneWidget,
         );
         await _unmount(tester);

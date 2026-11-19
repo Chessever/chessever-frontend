@@ -1142,20 +1142,13 @@ class _EventFabs extends ConsumerWidget {
         // always be seen and turned off. It only reorders (every game stays
         // listed), so left on with nothing live it changes nothing.
         final offered = (anyLive || liveFirst) && !holdsHits;
-        // Counted only while it is offered: the server's count of the
-        // boards in play, null ("See live") until it answers.
+        // The tooltip and accessibility label use the server's live count
+        // once it arrives.
         final liveCount = offered
             ? ref.watch(eventGamesLiveCountProvider)
             : null;
         return InkFabStack(
           children: [
-            // In words: what a tap does ("See 3 live"), then the order in
-            // force ("Live first") while the live games lead. The event's
-            // Live first (`GameDisplayMode.hideFinishedGames`, despite its
-            // name) only moves the boards in play to the top: every
-            // finished game stays listed in its usual place. So it reads as
-            // a reorder, never "Live only", and a second tap restores the
-            // usual order.
             if (offered)
               LiveFirstCapsule(
                 key: const ValueKey('event_live_first_fab'),

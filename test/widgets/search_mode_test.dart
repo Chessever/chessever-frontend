@@ -5,6 +5,7 @@ import 'package:chessever2/widgets/glass_surface.dart';
 import 'package:chessever2/widgets/home_top_bar.dart';
 import 'package:chessever2/widgets/ink_fab.dart';
 import 'package:chessever2/widgets/live_first_capsule.dart';
+import 'package:chessever2/widgets/live_glyph.dart';
 import 'package:chessever2/widgets/quick_list_toggles.dart';
 import 'package:chessever2/widgets/scroll_chrome.dart';
 import 'package:chessever2/widgets/search_mode/search_mode.dart';
@@ -994,14 +995,14 @@ void main() {
       ),
     );
     expect(glyph.colorFilter, ColorFilter.mode(style.ink, BlendMode.srcIn));
-    // Live first's words, off, in the same ink.
-    final live = tester.widget<Text>(
+    // Live first's waves use the same ink while the toggle is off.
+    final live = tester.widget<LiveGlyph>(
       find.descendant(
         of: find.byKey(_liveKey),
         matching: find.byKey(const ValueKey('live_first_capsule_off')),
       ),
     );
-    expect(live.style?.color, style.ink);
+    expect(live.waveColor, style.ink);
     await _done(tester, search);
   });
 

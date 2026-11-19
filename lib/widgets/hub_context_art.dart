@@ -14,6 +14,7 @@ enum HubScene {
   smartEvents,
   mostLiked,
   myPrep,
+  collections,
 }
 
 class HubSceneBackdrop extends StatelessWidget {

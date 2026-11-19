@@ -284,9 +284,14 @@ void main() {
         );
         await Future<void>.delayed(Duration.zero);
         expect(count(container), isNull);
+        // The button then leaves the number out of what it says.
         expect(
-          LiveFirstCapsule.labelFor(on: false, liveCount: count(container)),
-          LiveFirstCapsule.unknownLabel,
+          LiveFirstCapsule.semanticsLabelFor(
+            on: false,
+            liveCount: count(container),
+            subject: 'events',
+          ),
+          'Show live events first',
         );
 
         gate.complete();
@@ -342,9 +347,18 @@ void main() {
   group('Today button', () {
     final toggle = find.byKey(const ValueKey(kForYouLiveFirstButtonKey));
     final filter = find.byKey(const ValueKey(kForYouFilterButtonKey));
+    // The mark in its off or on state.
     Finder words(String state) => find.descendant(
       of: toggle,
       matching: find.byKey(ValueKey('live_first_capsule_$state')),
+    );
+    // What the button says: its tooltip, the words read aloud.
+    Finder says(String label) =>
+        find.descendant(of: toggle, matching: find.byTooltip(label));
+    // Icon only: no count, no words drawn on it.
+    void expectNoWords() => expect(
+      find.descendant(of: toggle, matching: find.byType(Text)),
+      findsNothing,
     );
     Rect glassOf(WidgetTester tester, Finder button) => tester.getRect(
       find.descendant(of: button, matching: find.byType(GlassSurface)).first,
@@ -363,15 +377,15 @@ void main() {
       await _unmount(tester);
     });
 
-    testWidgets('says in words how many events are live, in the thumb\'s '
-        'reach', (tester) async {
+    testWidgets('says how many events are live, aloud and in its tooltip, '
+        'drawing only the mark, in the thumb\'s reach', (tester) async {
       await _pumpHome(tester, liveIds: const ['a', 'c']);
 
       expect(tester.widget(toggle), isA<LiveFirstCapsule>());
-      expect(
-        find.descendant(of: toggle, matching: find.text('See 2 live')),
-        findsOneWidget,
-      );
+      expect(says('Show the 2 live events first'), findsOneWidget);
+      expectNoWords();
+      expect(find.text('See 2 live'), findsNothing);
+      expect(words('off'), findsOneWidget);
       expect(words('on'), findsNothing);
       expect(
         find.bySemanticsLabel('Show the 2 live events first'),
@@ -382,13 +396,11 @@ void main() {
       await _unmount(tester);
     });
 
-    testWidgets('one live event reads "See 1 live"', (tester) async {
+    testWidgets('one live event reads as the live event', (tester) async {
       await _pumpHome(tester, liveIds: const ['c']);
 
-      expect(
-        find.descendant(of: toggle, matching: find.text('See 1 live')),
-        findsOneWidget,
-      );
+      expect(says('Show the live event first'), findsOneWidget);
+      expectNoWords();
       expect(
         find.bySemanticsLabel('Show the live event first'),
         findsOneWidget,
@@ -413,7 +425,7 @@ void main() {
       expect(toggle, findsOneWidget);
       expect(tester.getRect(filter), rest);
       // Stacked as every page's buttons are (the event screen's): the small
-      // capsule a step above the regular filter, rims on one trailing edge.
+      // disc a step above the regular filter, rims on one trailing edge.
       expect(
         rest.top - tester.getRect(toggle).bottom,
         moreOrLessEquals(InkFabStack.step, epsilon: 0.01),
@@ -432,7 +444,7 @@ void main() {
       // On the floating buttons' gutter.
       expect(rest.right, 393 - 16);
 
-      // Turned on, it springs to its new words leftward; the filter holds.
+      // Turned on, it changes colour in place; the filter holds.
       await tester.tap(toggle);
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 120));
@@ -465,10 +477,8 @@ void main() {
       expect(top.sequence, reTaps + 1);
       // On, it says what it does now.
       expect(words('on'), findsOneWidget);
-      expect(
-        find.descendant(of: toggle, matching: find.text('Live first')),
-        findsOneWidget,
-      );
+      expect(says('Live events shown first'), findsOneWidget);
+      expectNoWords();
       expect(words('off'), findsNothing);
       expect(find.bySemanticsLabel('Live events shown first'), findsOneWidget);
 
@@ -478,10 +488,7 @@ void main() {
       await tester.pump(const Duration(milliseconds: 600));
       expect(container.read(homeEventsLiveFirstProvider), isFalse);
       expect(_rows(tester), ['a', 'b', 'c']);
-      expect(
-        find.descendant(of: toggle, matching: find.text('See 1 live')),
-        findsOneWidget,
-      );
+      expect(says('Show the live event first'), findsOneWidget);
       await _unmount(tester);
     });
 
@@ -546,10 +553,8 @@ void main() {
         final rect = tester.getRect(toggle);
         expect(rect.left, greaterThanOrEqualTo(0));
         expect(rect.right, lessThanOrEqualTo(320));
-        expect(
-          find.descendant(of: toggle, matching: find.text('See 3 live')),
-          findsOneWidget,
-        );
+        expect(says('Show the 3 live events first'), findsOneWidget);
+        expectNoWords();
         await _unmount(tester);
       });
     }

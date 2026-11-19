@@ -723,7 +723,7 @@ void main() {
         findsOneWidget,
       );
       // Two boards in play; the one listed in two sections counts once.
-      expect(find.text('See 2 live'), findsOneWidget);
+      expect(find.text('See 2 live'), findsNothing);
       expect(
         find.bySemanticsLabel('Show the 2 live games first'),
         findsOneWidget,
@@ -776,10 +776,8 @@ void main() {
         find.byKey(const ValueKey('live_first_capsule_on')),
         findsOneWidget,
       );
-      expect(find.text(LiveFirstCapsule.onLabel), findsOneWidget);
       // It only moves the live games up, every finished one stays listed:
       // never "Live only", and a second tap restores the usual order.
-      expect(find.text(LiveFirstCapsule.liveOnlyLabel), findsNothing);
       expect(
         tester.widget<LiveFirstCapsule>(find.byType(LiveFirstCapsule)).mode,
         LiveFirstMode.reorder,
@@ -821,7 +819,7 @@ void main() {
         await tester.pump(const Duration(milliseconds: 16));
         expect(tester.getRect(searchFab), withCapsule);
       }
-      expect(find.text('See 1 live'), findsOneWidget);
+      expect(find.bySemanticsLabel('Show the live game first'), findsOneWidget);
       // Its right edge lines up with the button's.
       expect(
         tester.getRect(find.byType(LiveFirstCapsule)).right,

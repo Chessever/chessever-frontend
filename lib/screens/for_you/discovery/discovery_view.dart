@@ -1,3 +1,4 @@
+import 'package:chessever2/screens/collections/collections_screen.dart';
 import 'package:chessever2/screens/feed/feed_screen.dart';
 import 'package:chessever2/screens/for_you/discovery/discovery_share.dart';
 import 'package:chessever2/screens/feed/news/feed_news.dart';
@@ -140,7 +141,21 @@ class _DiscoveryViewState extends ConsumerState<DiscoveryView> {
                           onTap: () => TodaysMiniaturesSection.open(context),
                         ),
                       ),
-                      right: const SizedBox.shrink(),
+                      // The catalog's books and collections, one tap from
+                      // Discovery as from Profile and Search.
+                      right: DiscoveryTileShare(
+                        component: DiscoveryShareDestination.collections,
+                        child: HubTile(
+                          key: const ValueKey('discovery_collections_tile'),
+                          dotId: 'discovery.tile.collections',
+                          title: 'Collections',
+                          caption: 'Curated games and books',
+                          artwork: const HubSceneBackdrop(
+                            scene: HubScene.collections,
+                          ),
+                          onTap: () => CollectionsScreen.open(context),
+                        ),
+                      ),
                     ),
                   ],
                 ),

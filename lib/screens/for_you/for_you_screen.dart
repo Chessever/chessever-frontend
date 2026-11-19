@@ -358,16 +358,11 @@ void showEventFilters(BuildContext context, WidgetRef ref) {
 /// * The event filter (formats, Elo, ECO), always, at the bottom: the
 ///   page's main, regular button. It narrows this feed, and its count says
 ///   how many filters are on. It never moves.
-/// * Live first above it, the small capsule, in words ([LiveFirstCapsule]):
-///   "See 3 live" while events are in play, counting exactly the events a
-///   press lifts ([todayLiveEventCountProvider]), "See live" until that
-///   count is known, "Live first" while on. It is there while an event is in
-///   play, while the count is not known, or while it is on
-///   ([showsHomeLiveFirst]), so a flag left on can always be turned off.
-///   Turned on, the live events lead Today and Today goes back to its top.
-///
-/// The capsule grows leftward from the shared edge, so the filter stays put
-/// on the gutter while the capsule comes and goes or springs to a new width.
+/// * Live first above it, the small broadcast icon ([LiveFirstCapsule]).
+///   Its tooltip and accessibility label count the events a press lifts
+///   ([todayLiveEventCountProvider]). It stays available while events are
+///   live, while the count is unknown, or while the toggle is on. Turning
+///   it on puts live events first and scrolls Today to the top.
 class ForYouTodayFabs extends HookConsumerWidget {
   const ForYouTodayFabs({super.key});
 

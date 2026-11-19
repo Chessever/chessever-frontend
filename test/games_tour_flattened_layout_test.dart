@@ -512,6 +512,43 @@ void main() {
       },
     );
 
+    test(
+      'Total Chess grid puts the live game left and the next game right',
+      () {
+        final stage = _round('knockout-stage-6PTzCQFL', RoundStatus.live);
+        final day = DateTime.utc(2026, 11, 19);
+        GamesTourModel game(int number, {bool moved = false}) => _game(
+          'game-$number',
+          tourId: '6PTzCQFL',
+          slug: 'game-$number-blitz',
+          boardNr: 1,
+          gameDay: day,
+          lastMoveTime: moved ? day.add(const Duration(hours: 8)) : day,
+          lastMove: moved ? 'e2e4' : null,
+        );
+
+        // The broadcast publishes all three boards with a scheduled game day.
+        // The live feed may see the first move ahead of the loaded Games row.
+        for (final fromLiveFeed in [true, false]) {
+          final layout = _layout(
+            rounds: [stage],
+            gamesByRound: {
+              stage.id: [game(3), game(2), game(1, moved: !fromLiveFeed)],
+            },
+            mode: GamesListViewMode.chessBoardGrid,
+            inPlayGameIds: fromLiveFeed ? {'game-1'} : {},
+          );
+          final row = layout.entries.whereType<GamesTourGameRowEntry>().single;
+          expect(row.game1.gameId, 'game-1');
+          expect(row.game2?.gameId, 'game-2');
+          expect(layout.orderedGames.map((game) => game.gameId), [
+            'game-1',
+            'game-2',
+          ]);
+        }
+      },
+    );
+
     test('matches played side by side keep board order between games', () {
       final stage = _round('knockout-stage-semifinals', RoundStatus.live);
       final day = DateTime.utc(2026, 11, 17, 14);
@@ -1331,6 +1368,7 @@ GamesTourFlattenedLayout _layout({
   bool isSearchMode = false,
   Map<String, List<GamesTourModel>> fullGamesByRound = const {},
   List<Map<String, dynamic>> matchSchedule = const [],
+  Set<String> inPlayGameIds = const {},
 }) => buildGamesTourFlattenedLayout(
   rounds: rounds,
   gamesByRound: gamesByRound,
@@ -1343,6 +1381,7 @@ GamesTourFlattenedLayout _layout({
   isSearchMode: isSearchMode,
   fullGamesByRound: fullGamesByRound,
   matchSchedulesByTourId: {'fqCjSUpE': matchSchedule},
+  inPlayGameIds: inPlayGameIds,
 );
 
 GamesAppBarModel _round(String id, RoundStatus status, {DateTime? startsAt}) =>
@@ -1357,6 +1396,7 @@ GamesTourModel _game(
   String tourId = 'tour',
   String? roundId,
   DateTime? lastMoveTime,
+  DateTime? gameDay,
   String? lastMove,
   int? boardNr,
 }) {
@@ -1386,6 +1426,7 @@ GamesTourModel _game(
     tourId: tourId,
     boardNr: boardNr,
     lastMoveTime: lastMoveTime,
+    gameDay: gameDay,
     lastMove: lastMove,
   );
 }

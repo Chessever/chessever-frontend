@@ -10,7 +10,8 @@ enum DiscoveryShareDestination {
   likes('Likes'),
   news('News'),
   reports('Reports'),
-  miniatures('Miniatures');
+  miniatures('Miniatures'),
+  collections('Collections');
 
   const DiscoveryShareDestination(this.title);
 

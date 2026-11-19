@@ -162,6 +162,10 @@ GamesTourFlattenedLayout buildGamesTourFlattenedLayout({
   // from here; [gamesByRound] then only decides which rows show.
   Map<String, List<GamesTourModel>> fullGamesByRound = const {},
   Map<String, List<Map<String, dynamic>>> matchSchedulesByTourId = const {},
+  // The server's games in play (`get_live_game_ids`). The list's rows keep
+  // the moves they loaded with, so a knockout game that began since reads as
+  // a 0-move shell; this keeps it first in its match, left in the grid.
+  Set<String> inPlayGameIds = const <String>{},
 }) {
   final entries = <GamesTourLayoutEntry>[];
   final orderedGames = <GamesTourModel>[];
@@ -196,6 +200,7 @@ GamesTourFlattenedLayout buildGamesTourFlattenedLayout({
     final sequentialRounds = isKnockoutRound
         ? _totalChessRoundVisibility(
             fullRoundGames.isEmpty ? roundGames : fullRoundGames,
+            inPlayGameIds: inPlayGameIds,
           )
         : null;
     final matchPlayKeys =
@@ -231,54 +236,72 @@ GamesTourFlattenedLayout buildGamesTourFlattenedLayout({
               ownRoundStartsById: ownRoundStartsById,
             ),
     };
-    final matches =
-        !isKnockoutRound
-            ? const <String, List<GamesTourModel>>{}
-            : matchPlayKeys.isEmpty
-            ? _orderMatchesByRecencyDesc(
-              KnockoutMatchDetector.groupByMatches(roundGames),
-              roundStartTimesById,
-            )
-            : KnockoutMatchDetector.orderMatchPlayMatches(
-              <String, List<GamesTourModel>>{
-                for (final entry
-                    in KnockoutMatchDetector.groupByMatches(
-                      fullRoundGames,
-                    ).entries)
-                  if (entry.value.any(isVisible))
-                    entry.key:
-                        matchPlayKeys.contains(entry.key)
-                            ? KnockoutMatchDetector.orderMatchPlayGamesChronologically(
-                              entry.value,
-                            )
-                            : entry.value.where(isVisible).toList(),
-              },
-              ownRoundStartsById: ownRoundStartsById,
-              scheduledStartsByMatchKey: matchStarts,
-              matchPlayKeys: matchPlayKeys,
-              legacyRecency:
-                  (games) => matchupRecency(games, roundStartTimesById),
-            );
-    // Boards inside a matchup render latest-first (live on top). The
-    // chronological grouping in `matches` is kept for the match headers,
-    // whose player naming and score orientation key off game 1.
+    final matches = !isKnockoutRound
+        ? const <String, List<GamesTourModel>>{}
+        : matchPlayKeys.isEmpty
+        ? _orderMatchesByRecencyDesc(
+            KnockoutMatchDetector.groupByMatches(roundGames),
+            roundStartTimesById,
+            inPlayGameIds: inPlayGameIds,
+          )
+        : KnockoutMatchDetector.orderMatchPlayMatches(
+            <String, List<GamesTourModel>>{
+              for (final entry in KnockoutMatchDetector.groupByMatches(
+                fullRoundGames,
+              ).entries)
+                if (entry.value.any(isVisible))
+                  entry.key: matchPlayKeys.contains(entry.key)
+                      ? KnockoutMatchDetector.orderMatchPlayGamesChronologically(
+                          entry.value,
+                        )
+                      : entry.value.where(isVisible).toList(),
+            },
+            ownRoundStartsById: ownRoundStartsById,
+            scheduledStartsByMatchKey: matchStarts,
+            matchPlayKeys: matchPlayKeys,
+            legacyRecency: (games) =>
+                matchupRecency(games, roundStartTimesById),
+          );
+    // The chronological grouping in `matches` still supplies the headers.
     final displayMatches = <String, List<GamesTourModel>>{};
     for (final entry in matches.entries) {
       final ordered = matchPlayKeys.contains(entry.key)
           ? KnockoutMatchDetector.orderMatchPlayGamesForDisplay(
               entry.value,
             ).where(isVisible).toList()
-          : KnockoutMatchDetector.orderMatchGamesLatestFirst(entry.value);
+          : KnockoutMatchDetector.orderMatchGamesLatestFirst(
+              entry.value,
+              inPlayGameIds: inPlayGameIds,
+            );
       if (sequentialRounds == null) {
         displayMatches[entry.key] = ordered;
         continue;
       }
-      final (visible, leading) = sequentialRounds;
+      final (playedRounds, nextRound, betweenRounds) = sequentialRounds;
+      final nextGame = ordered
+          .where((game) => game.roundId == nextRound)
+          .firstOrNull;
+      final played = ordered
+          .where((game) => playedRounds.contains(game.roundId))
+          .toList();
+      // In the two-board grid, preview the next published game beside the
+      // one being played. Between rounds the next game leads as usual.
+      final showNextBesideLive =
+          !betweenRounds &&
+          isGrid &&
+          played.isNotEmpty &&
+          KnockoutMatchDetector.isKnockoutGameLive(
+            played.first,
+            inPlayGameIds: inPlayGameIds,
+          );
       displayMatches[entry.key] = [
-        ...ordered.where((game) => game.roundId == leading),
-        ...ordered.where(
-          (game) => game.roundId != leading && visible.contains(game.roundId),
-        ),
+        if (betweenRounds && nextGame != null) nextGame,
+        if (showNextBesideLive && nextGame != null) ...[
+          played.first,
+          nextGame,
+          ...played.skip(1),
+        ] else
+          ...played,
       ];
     }
     if (isKnockoutRound) {
@@ -435,9 +458,13 @@ GamesTourFlattenedLayout buildGamesTourFlattenedLayout({
 
 final _totalChessGameNumber = RegExp(r'^game-(\d+)(?:-|$)');
 
-/// These feeds publish both days' pairings up front. Wait for the entire
-/// source round to finish, even when a reader has filtered to one matchup.
-(Set<String>, String?)? _totalChessRoundVisibility(List<GamesTourModel> games) {
+/// Played rounds and the next published round in a Total Chess stage.
+/// Whether the stage is between rounds depends on every board, including
+/// those hidden by search.
+(Set<String>, String?, bool)? _totalChessRoundVisibility(
+  List<GamesTourModel> games, {
+  Set<String> inPlayGameIds = const <String>{},
+}) {
   if (games.isEmpty ||
       !const {'qEXour3L', '6PTzCQFL'}.contains(games.first.tourId)) {
     return null;
@@ -460,26 +487,23 @@ final _totalChessGameNumber = RegExp(r'^game-(\d+)(?:-|$)');
       game.isDoubleForfeit || game.effectiveGameStatus.isFinished;
   final played = knownRounds
       .where(
-        (id) => byRound[id]!.any((game) =>
-            game.isDoubleForfeit ||
-            KnockoutMatchDetector.knockoutGameStarted(game)),
+        (id) => byRound[id]!.any(
+          (game) =>
+              game.isDoubleForfeit ||
+              KnockoutMatchDetector.knockoutGameStarted(
+                game,
+                inPlayGameIds: inPlayGameIds,
+              ),
+        ),
       )
       .toList();
-  final latest = played.lastOrNull;
-  final latestSlot = slots[latest] ?? 0;
-  final allFinished = played.every(
-    (id) => byRound[id]!.every(isFinished),
-  );
-  final next = allFinished
-      ? knownRounds.where((id) => slots[id]! > latestSlot).firstOrNull
-      : null;
+  final latestSlot = slots[played.lastOrNull] ?? 0;
+  final allFinished = played.every((id) => byRound[id]!.every(isFinished));
+  final next = knownRounds.where((id) => slots[id]! > latestSlot).firstOrNull;
   return (
-    {
-      ...played,
-      if (next != null) next,
-      ...byRound.keys.where((id) => !slots.containsKey(id)),
-    },
-    next ?? latest,
+    {...played, ...byRound.keys.where((id) => !slots.containsKey(id))},
+    next,
+    allFinished,
   );
 }
 
@@ -506,15 +530,21 @@ final _totalChessGameNumber = RegExp(r'^game-(\d+)(?:-|$)');
 /// headers, index arithmetic) shares one order.
 Map<String, List<GamesTourModel>> _orderMatchesByRecencyDesc(
   Map<String, List<GamesTourModel>> matches,
-  Map<String, DateTime?> roundStartTimesById,
-) {
+  Map<String, DateTime?> roundStartTimesById, {
+  required Set<String> inPlayGameIds,
+}) {
   if (matches.length <= 1) return matches;
 
   // Live means a board with a move that is not finished: 0-move boards
   // published ahead of their day are not play.
   final hasLiveBoardByKey = <String, bool>{
     for (final entry in matches.entries)
-      entry.key: entry.value.any(KnockoutMatchDetector.isKnockoutGameLive),
+      entry.key: entry.value.any(
+        (game) => KnockoutMatchDetector.isKnockoutGameLive(
+          game,
+          inPlayGameIds: inPlayGameIds,
+        ),
+      ),
   };
   int firstBoard(List<GamesTourModel> games) {
     var lowest = 1 << 30;

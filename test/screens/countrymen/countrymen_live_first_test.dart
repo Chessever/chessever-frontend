@@ -346,7 +346,7 @@ Finder get _back => find.byType(PageBackButton);
 
 /// What Live first reads with [count] games in play, off.
 String _liveLabel(int count) =>
-    LiveFirstCapsule.labelFor(on: false, liveCount: count);
+    LiveFirstCapsule.semanticsLabelFor(on: false, liveCount: count);
 
 /// Lets springs and routes finish without waiting on a caret's blink, which
 /// never settles while the search field has focus.
@@ -632,7 +632,7 @@ void main() {
       await _pumpScreen(tester, anyLive: true);
 
       // No count known: it reads "Live now".
-      expect(find.text(LiveFirstCapsule.unknownLabel), findsOneWidget);
+      expect(find.bySemanticsLabel('Show live games first'), findsOneWidget);
       await tester.tap(_liveFirst);
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 300));
@@ -683,7 +683,7 @@ void main() {
         tester.getRect(_liveFirst).bottom,
         lessThan(tester.getRect(_searchFab).top),
       );
-      expect(find.text(_liveLabel(1)), findsOneWidget);
+      expect(find.bySemanticsLabel(_liveLabel(1)), findsOneWidget);
       expect(tester.widget<LiveFirstCapsule>(_liveFirst).liveCount, 1);
       await tester.tap(_liveFirst);
       await _settle(tester);
@@ -699,7 +699,7 @@ void main() {
       await _settle(tester);
       expect(container.read(provider), isFalse);
       expect(_liveFirst, findsOneWidget);
-      expect(find.text(_liveLabel(1)), findsOneWidget);
+      expect(find.bySemanticsLabel(_liveLabel(1)), findsOneWidget);
     });
 
     testWidgets('the list keeps clear of the whole button stack over the '
@@ -846,7 +846,7 @@ void main() {
       final list = scrollable(tester);
       expect(cards(), findsNWidgets(2));
       // Live first, in words: how many are live on the list.
-      expect(find.text(_liveLabel(1)), findsOneWidget);
+      expect(find.bySemanticsLabel(_liveLabel(1)), findsOneWidget);
       expect(tester.widget<LiveFirstCapsule>(_liveFirst).liveCount, 1);
 
       await _openSearch(tester);
@@ -881,7 +881,7 @@ void main() {
       expect(find.byType(CircularProgressIndicator), findsNothing);
       expect(scrollable(tester), same(list));
       expect(cards(), findsNWidgets(2));
-      expect(find.text(_liveLabel(1)), findsOneWidget);
+      expect(find.bySemanticsLabel(_liveLabel(1)), findsOneWidget);
       expect(_games.clears, 1);
 
       // The live card's own timers run out once it is gone.
@@ -1379,7 +1379,7 @@ void main() {
       );
       _games.rows['later'] = _game('later', lastMoveTime: now, ongoing: true);
 
-      expect(find.text(_liveLabel(2)), findsOneWidget);
+      expect(find.bySemanticsLabel(_liveLabel(2)), findsOneWidget);
       await tester.tap(_liveFirst);
       await _settle(tester);
 
@@ -1401,18 +1401,19 @@ void main() {
       await _dropLiveCards(tester);
     });
 
-    testWidgets('until the server answers: "See live", floated by the rows', (
-      tester,
-    ) async {
-      await _pumpScreen(
-        tester,
-        viewMode: GamesListViewMode.chessBoardGrid,
-        games: [_game('live', lastMoveTime: DateTime.now(), ongoing: true)],
-        serverAnswered: false,
-      );
-      expect(find.text(LiveFirstCapsule.unknownLabel), findsOneWidget);
-      await _dropLiveCards(tester);
-    });
+    testWidgets(
+      'announces Live first without a count while the server answers',
+      (tester) async {
+        await _pumpScreen(
+          tester,
+          viewMode: GamesListViewMode.chessBoardGrid,
+          games: [_game('live', lastMoveTime: DateTime.now(), ongoing: true)],
+          serverAnswered: false,
+        );
+        expect(find.bySemanticsLabel('Show live games first'), findsOneWidget);
+        await _dropLiveCards(tester);
+      },
+    );
 
     testWidgets('covered by a board the count waits, and asks again on the '
         'way back', (tester) async {

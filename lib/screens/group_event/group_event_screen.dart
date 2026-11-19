@@ -369,8 +369,7 @@ class GroupEventScreen extends HookConsumerWidget {
       backgroundColor: context.colors.background,
       // Live first floats in the thumb's reach (Trello #1420), while an
       // event is in play, while its count is not known yet, or while it is
-      // on, and steps away with the bar as the list scrolls. Anchored by its
-      // trailing edge, so it grows and shrinks away from the gutter.
+      // on, and steps away with the bar as the list scrolls.
       floatingActionButton: SlidingFabs(
         controller: chrome,
         child: InkFabStack(
@@ -1058,16 +1057,16 @@ class _SegmentedSwitcher extends ConsumerWidget {
 /// The key of the Events lists' Live first button.
 const String kHomeLiveFirstButtonKey = 'events_live_first_button';
 
-/// Live first on the Events lists (Trello #1420), in words
-/// ([LiveFirstCapsule]), floating where the thumb rests: "See 3 live" while
-/// events are in play, counting exactly the events a press lifts (Current's
-/// events in play under its filters, [eventsLiveEventCountProvider]), "See
-/// live" until that count is known, and one tap lists the live events
-/// first, from any segment ([pressHomeEventsLiveFirst]); on, it reads "Live
-/// first". It only reorders ([LiveFirstMode.reorder]): every event stays
-/// listed. It is there while an event is in play, while the count is not
-/// known, or while it is on ([showsHomeLiveFirst]), so a flag left on can
-/// always be turned off. The small capsule, as over every list's buttons.
+/// Live first on the Events lists (Trello #1420), the live mark on a glass
+/// disc ([LiveFirstCapsule]) floating where the thumb rests. Its tooltip and
+/// what is read aloud count exactly the events a press lifts (Current's
+/// events in play under its filters, [eventsLiveEventCountProvider]),
+/// leaving the number out until it is known; one tap lists the live events
+/// first, from any segment ([pressHomeEventsLiveFirst]). It only reorders
+/// ([LiveFirstMode.reorder]): every event stays listed. It is there while an
+/// event is in play, while the count is not known, or while it is on
+/// ([showsHomeLiveFirst]), so a flag left on can always be turned off. The
+/// page's only floating button, so the regular disc.
 /// [onTurnedOn] runs once it has come on.
 class EventsLiveFirstFab extends ConsumerWidget {
   const EventsLiveFirstFab({super.key, this.onTurnedOn});
@@ -1083,6 +1082,7 @@ class EventsLiveFirstFab extends ConsumerWidget {
     }
     return LiveFirstCapsule(
       subject: 'events',
+      size: InkFabSize.regular,
       on: on,
       liveCount: liveCount,
       onTap: () {

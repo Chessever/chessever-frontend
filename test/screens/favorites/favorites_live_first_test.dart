@@ -65,7 +65,7 @@ Finder get _back => find.byTooltip('Back');
 
 /// What Live first reads with [count] games in play, off.
 String _liveLabel(int count) =>
-    LiveFirstCapsule.labelFor(on: false, liveCount: count);
+    LiveFirstCapsule.semanticsLabelFor(on: false, liveCount: count);
 
 void main() {
   group('Favorites header and floating buttons (Trello #1420)', () {
@@ -379,7 +379,7 @@ void main() {
       final harness = await _pumpScreen(tester, anyLive: true);
 
       // No count known: it reads "Live now".
-      expect(find.text(LiveFirstCapsule.unknownLabel), findsOneWidget);
+      expect(find.bySemanticsLabel('Show live games first'), findsOneWidget);
       await tester.tap(find.byKey(_liveFirstKey));
       await tester.pump();
 
@@ -607,7 +607,7 @@ void main() {
       final list = scrollable();
       expect(cards(), findsNWidgets(2));
       // Live first counts what is live on the list.
-      expect(find.text(_liveLabel(1)), findsOneWidget);
+      expect(find.bySemanticsLabel(_liveLabel(1)), findsOneWidget);
 
       await _openSearch(tester);
       expect(find.byType(CircularProgressIndicator), findsNothing);
@@ -648,7 +648,7 @@ void main() {
       expect(find.byType(CircularProgressIndicator), findsNothing);
       expect(scrollable(), same(list));
       expect(cards(), findsNWidgets(2));
-      expect(find.text(_liveLabel(1)), findsOneWidget);
+      expect(find.bySemanticsLabel(_liveLabel(1)), findsOneWidget);
 
       // The live card's own timers run out once it is gone.
       await tester.pumpWidget(const SizedBox.shrink());
@@ -845,7 +845,7 @@ void main() {
       );
 
       expect(find.byKey(_liveFirstKey), findsOneWidget);
-      expect(find.text(_liveLabel(1)), findsOneWidget);
+      expect(find.bySemanticsLabel(_liveLabel(1)), findsOneWidget);
       // Above the search, never over it.
       expect(
         tester.getRect(find.byKey(_liveFirstKey)).bottom,
@@ -871,7 +871,7 @@ void main() {
       await _settle(tester);
       expect(container.read(provider), isFalse);
       // Still a game in play, so it stays to be pressed again.
-      expect(find.text(_liveLabel(1)), findsOneWidget);
+      expect(find.bySemanticsLabel(_liveLabel(1)), findsOneWidget);
     });
 
     testWidgets('the list keeps clear of the whole button stack over the '
@@ -1031,7 +1031,7 @@ void main() {
         lastMoveTime: today,
       );
 
-      expect(find.text(_liveLabel(3)), findsOneWidget);
+      expect(find.bySemanticsLabel(_liveLabel(3)), findsOneWidget);
       await tester.tap(find.byKey(_liveFirstKey));
       await _settle(tester);
 
@@ -1057,7 +1057,7 @@ void main() {
         games: [done, live],
         serverLive: const {'live', 'done'},
       );
-      expect(find.text(_liveLabel(1)), findsOneWidget);
+      expect(find.bySemanticsLabel(_liveLabel(1)), findsOneWidget);
       await _dropLiveCards(tester);
     });
 
@@ -1075,20 +1075,21 @@ void main() {
       await _dropLiveCards(tester);
     });
 
-    testWidgets('until the server answers: "See live", floated by the rows', (
-      tester,
-    ) async {
-      await _pumpScreen(
-        tester,
-        initialMode: FavoritesScreenMode.games,
-        // The grid's cards: no swipe hint reading the device database.
-        viewMode: GamesListViewMode.chessBoardGrid,
-        games: [done, live],
-        serverAnswered: false,
-      );
-      expect(find.text(LiveFirstCapsule.unknownLabel), findsOneWidget);
-      await _dropLiveCards(tester);
-    });
+    testWidgets(
+      'announces Live first without a count while the server answers',
+      (tester) async {
+        await _pumpScreen(
+          tester,
+          initialMode: FavoritesScreenMode.games,
+          // The grid's cards: no swipe hint reading the device database.
+          viewMode: GamesListViewMode.chessBoardGrid,
+          games: [done, live],
+          serverAnswered: false,
+        );
+        expect(find.bySemanticsLabel('Show live games first'), findsOneWidget);
+        await _dropLiveCards(tester);
+      },
+    );
 
     testWidgets('covered by a board the count waits, and asks again on the '
         'way back', (tester) async {

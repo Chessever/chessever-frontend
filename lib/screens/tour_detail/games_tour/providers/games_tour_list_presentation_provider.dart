@@ -1,5 +1,6 @@
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_app_bar_view_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/event_live_game_ids.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_app_bar_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_list_view_mode_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_display_rounds.dart';
@@ -72,6 +73,14 @@ final gamesTourListPresentationProvider =
                   const <String, DateTime?>{})
               : const <String, DateTime?>{};
       final displayRounds = ref.watch(gamesTourDisplayRoundsProvider);
+      // A knockout game that began after the rows loaded still reads as a
+      // 0-move shell in them (refreshes carry results, not moves). The
+      // server's games in play keep it first in its match. The Games tab's
+      // Live first capsule already runs this poll; nothing new is fetched.
+      final inPlayGameIds = grouped.isKnockoutTournament
+          ? watchEventServerLiveIds(ref.watch, grouped.liveScopes) ??
+                const <String>{}
+          : const <String>{};
       final layout = buildGamesTourFlattenedLayout(
         rounds: displayRounds,
         gamesByRound: grouped.gamesByRound,
@@ -98,6 +107,7 @@ final gamesTourListPresentationProvider =
           for (final tourModel in tourDetail?.tours ?? const [])
             tourModel.tour.id: tourModel.tour.players,
         },
+        inPlayGameIds: inPlayGameIds,
       );
 
       return GamesTourListPresentation(

@@ -4,11 +4,12 @@ import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/glass_surface.dart';
 import 'package:chessever2/widgets/ink_fab.dart';
 import 'package:chessever2/widgets/live_first_capsule.dart';
+import 'package:chessever2/widgets/live_glyph.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-/// The page around one capsule: what it passes in, changeable mid-test the
+/// The page around one button: what it passes in, changeable mid-test the
 /// way a page's live count and Live first state change under it.
 class _Host {
   _Host(this.on, this.liveCount);
@@ -22,7 +23,7 @@ class _Host {
   void setCount(int? value) => _setState(() => liveCount = value);
 }
 
-/// Hosts one capsule. When [onTap] is null the capsule toggles itself, the
+/// Hosts one button. When [onTap] is null the button toggles itself, the
 /// way a page wires it to its Live first state.
 Future<_Host> _pump(
   WidgetTester tester, {
@@ -31,7 +32,6 @@ Future<_Host> _pump(
   String subject = 'games',
   ThemeData? theme,
   bool reduceMotion = false,
-  double textScale = 1,
   Size view = const Size(393, 852),
   InkFabSize size = InkFabSize.small,
   LiveFirstMode mode = LiveFirstMode.reorder,
@@ -48,10 +48,9 @@ Future<_Host> _pump(
         builder: (context) {
           ResponsiveHelper.init(context);
           return MediaQuery(
-            data: MediaQuery.of(context).copyWith(
-              disableAnimations: reduceMotion,
-              textScaler: TextScaler.linear(textScale),
-            ),
+            data: MediaQuery.of(
+              context,
+            ).copyWith(disableAnimations: reduceMotion),
             child: Scaffold(
               body: Center(
                 child: StatefulBuilder(
@@ -80,151 +79,31 @@ Future<_Host> _pump(
   return host;
 }
 
-Finder get _capsule => find.byType(LiveFirstCapsule);
+Finder get _button => find.byType(LiveFirstCapsule);
 Finder get _glass =>
-    find.descendant(of: _capsule, matching: find.byType(GlassSurface));
-Finder get _offWords => find.byKey(const ValueKey('live_first_capsule_off'));
-Finder get _onWords => find.byKey(const ValueKey('live_first_capsule_on'));
+    find.descendant(of: _button, matching: find.byType(GlassSurface));
+Finder get _glyph =>
+    find.descendant(of: _button, matching: find.byType(LiveGlyph));
 
-double _settledWidth(WidgetTester tester, String label) =>
-    LiveFirstCapsule.widthFor(
-      tester.element(_capsule),
-      label,
-      InkFabSize.small,
-    );
+LiveGlyph _glyphOf(WidgetTester tester) => tester.widget<LiveGlyph>(_glyph);
 
-/// How strongly [words] are drawn right now: 0 when not built at all.
-double _opacityOf(WidgetTester tester, Finder words) {
-  if (words.evaluate().isEmpty) return 0;
-  return tester
-      .widget<Opacity>(find.ancestor(of: words, matching: find.byType(Opacity)))
-      .opacity;
-}
-
-/// Plays whatever the capsule is springing toward one 60Hz frame at a time,
-/// from the frame that first draws the change to the one it rests on, and
-/// checks on every frame that any words drawn at all end well inside the
-/// glass (the rounded rim is at most ~2pt deep at the words' height; ask for
-/// 4). Returns how many frames it took.
-Future<int> _expectWordsInsideGlassEveryFrame(
-  WidgetTester tester,
-  String reason,
-) async {
-  var frames = 0;
-  do {
-    await tester.pump(const Duration(milliseconds: 16));
-    frames++;
-    final glass = tester.getRect(_glass);
-    final k = glass.height / 44;
-    for (final words in [_offWords, _onWords]) {
-      if (_opacityOf(tester, words) == 0) continue;
-      final rect = tester.getRect(words);
-      expect(
-        rect.right,
-        lessThanOrEqualTo(glass.right - 4 * k + 0.01),
-        reason: '$reason: frame $frames, words past the rim',
-      );
-      expect(
-        rect.left,
-        greaterThan(glass.left),
-        reason: '$reason: frame $frames, words before the rim',
-      );
-    }
-  } while (tester.binding.hasScheduledFrame && frames < 120);
-  expect(frames, lessThan(120), reason: '$reason: never settled');
-  return frames;
+/// Nothing of the button is set in type: no count, no label.
+void _expectNoWords(WidgetTester tester) {
+  expect(
+    find.descendant(of: _button, matching: find.byType(Text)),
+    findsNothing,
+  );
+  expect(
+    find.descendant(of: _button, matching: find.byType(RichText)),
+    findsNothing,
+  );
 }
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
-  // The app's own Inter, so widths and the gaps a spring opens are the ones a
-  // phone draws, not the test font's square glyphs.
-  setUpAll(() async {
-    final font = FontLoader('InterDisplay');
-    for (final weight in ['Regular', 'Medium', 'Bold']) {
-      font.addFont(rootBundle.load('assets/fonts/Inter-$weight.otf'));
-    }
-    await font.load();
-  });
 
-  group('words', () {
-    test('off is a verb and the live count, or "See live" when unknown', () {
-      expect(LiveFirstCapsule.labelFor(on: false, liveCount: 3), 'See 3 live');
-      expect(LiveFirstCapsule.labelFor(on: false, liveCount: 1), 'See 1 live');
-      expect(
-        LiveFirstCapsule.labelFor(on: false, liveCount: 42),
-        'See 42 live',
-      );
-      expect(LiveFirstCapsule.labelFor(on: false), 'See live');
-      expect(LiveFirstCapsule.labelFor(on: false, liveCount: 0), 'See live');
-      expect(LiveFirstCapsule.labelFor(on: false, liveCount: -2), 'See live');
-      // Off reads the same whatever on would do.
-      expect(
-        LiveFirstCapsule.labelFor(
-          on: false,
-          liveCount: 3,
-          mode: LiveFirstMode.liveOnly,
-        ),
-        'See 3 live',
-      );
-    });
-
-    test('on names the order in force: Live first, or Live only', () {
-      expect(LiveFirstCapsule.labelFor(on: true, liveCount: 3), 'Live first');
-      expect(LiveFirstCapsule.labelFor(on: true), 'Live first');
-      expect(
-        LiveFirstCapsule.labelFor(
-          on: true,
-          liveCount: 3,
-          mode: LiveFirstMode.liveOnly,
-        ),
-        'Live only',
-      );
-      expect(LiveFirstCapsule.onLabelFor(LiveFirstMode.reorder), 'Live first');
-      expect(LiveFirstCapsule.onLabelFor(LiveFirstMode.liveOnly), 'Live only');
-    });
-
-    test('a huge count is capped so the capsule stays a capsule', () {
-      expect(LiveFirstCapsule.countText(999), '999');
-      expect(LiveFirstCapsule.countText(1000), '999+');
-      expect(
-        LiveFirstCapsule.labelFor(on: false, liveCount: 12045),
-        'See 999+ live',
-      );
-    });
-
-    test('no em dash anywhere a reader can see or hear', () {
-      final strings = [
-        LiveFirstCapsule.onLabel,
-        LiveFirstCapsule.liveOnlyLabel,
-        LiveFirstCapsule.unknownLabel,
-        LiveFirstCapsule.labelFor(on: false, liveCount: 7),
-        for (final mode in LiveFirstMode.values)
-          for (final on in [false, true])
-            for (final count in [null, 1, 5])
-              for (final subject in ['games', 'events']) ...[
-                LiveFirstCapsule.semanticsLabelFor(
-                  on: on,
-                  liveCount: count,
-                  subject: subject,
-                  mode: mode,
-                ),
-                ?LiveFirstCapsule.semanticsHintFor(
-                  on: on,
-                  subject: subject,
-                  mode: mode,
-                ),
-              ],
-      ];
-      for (final s in strings) {
-        expect(s.contains('\u2014'), isFalse, reason: s);
-        expect(s.contains('\u2013'), isFalse, reason: s);
-      }
-    });
-  });
-
-  group('semantics', () {
-    test('say what a tap does, per subject and count', () {
+  group('what it says', () {
+    test('off, what a tap does, per subject and count', () {
       expect(
         LiveFirstCapsule.semanticsLabelFor(on: false, liveCount: 3),
         'Show the 3 live games first',
@@ -235,6 +114,10 @@ void main() {
       );
       expect(
         LiveFirstCapsule.semanticsLabelFor(on: false),
+        'Show live games first',
+      );
+      expect(
+        LiveFirstCapsule.semanticsLabelFor(on: false, liveCount: 0),
         'Show live games first',
       );
       expect(
@@ -253,11 +136,14 @@ void main() {
         ),
         'Show the live event first',
       );
-      // The real count is read aloud even when the drawn one is capped.
+      // The real count, however large: nothing is drawn, so nothing caps it.
       expect(
         LiveFirstCapsule.semanticsLabelFor(on: false, liveCount: 1200),
         'Show the 1200 live games first',
       );
+    });
+
+    test('on, what is in force, and how to undo it', () {
       expect(
         LiveFirstCapsule.semanticsLabelFor(on: true, liveCount: 3),
         'Live games shown first',
@@ -300,13 +186,39 @@ void main() {
       expect(LiveFirstCapsule.semanticsHintFor(on: false, mode: only), isNull);
     });
 
-    testWidgets('the node is one toggle button with the right words', (
-      tester,
-    ) async {
+    test('no em dash anywhere a reader can hear', () {
+      final strings = [
+        for (final mode in LiveFirstMode.values)
+          for (final on in [false, true])
+            for (final count in [null, 1, 5])
+              for (final subject in ['games', 'events']) ...[
+                LiveFirstCapsule.semanticsLabelFor(
+                  on: on,
+                  liveCount: count,
+                  subject: subject,
+                  mode: mode,
+                ),
+                ?LiveFirstCapsule.semanticsHintFor(
+                  on: on,
+                  subject: subject,
+                  mode: mode,
+                ),
+              ],
+      ];
+      for (final s in strings) {
+        expect(s.contains('—'), isFalse, reason: s);
+        expect(s.contains('–'), isFalse, reason: s);
+      }
+    });
+  });
+
+  group('semantics and tooltip', () {
+    testWidgets('one toggle button with the right words, the tooltip saying '
+        'the same', (tester) async {
       final handle = tester.ensureSemantics();
       await _pump(tester, liveCount: 3);
       expect(
-        tester.getSemantics(_capsule),
+        tester.getSemantics(_button),
         isSemantics(
           label: 'Show the 3 live games first',
           isButton: true,
@@ -317,11 +229,12 @@ void main() {
           hasTapAction: true,
         ),
       );
+      expect(find.byTooltip('Show the 3 live games first'), findsOneWidget);
 
-      await tester.tap(_capsule);
+      await tester.tap(_button);
       await tester.pumpAndSettle();
       expect(
-        tester.getSemantics(_capsule),
+        tester.getSemantics(_button),
         isSemantics(
           label: 'Live games shown first',
           hint: 'Double tap to restore the usual order',
@@ -331,8 +244,30 @@ void main() {
           hasTapAction: true,
         ),
       );
-      // The drawn words are not read a second time.
-      expect(find.bySemanticsLabel('Live first'), findsNothing);
+      expect(find.byTooltip('Live games shown first'), findsOneWidget);
+      // The tooltip is not read a second time.
+      expect(
+        find.bySemanticsLabel('Show the 3 live games first'),
+        findsNothing,
+      );
+      handle.dispose();
+    });
+
+    testWidgets('a new count is read and shown, never drawn', (tester) async {
+      final handle = tester.ensureSemantics();
+      final host = await _pump(tester, liveCount: 9);
+      final size = tester.getSize(_glass);
+      host.setCount(1200);
+      await tester.pump();
+      expect(
+        tester.getSemantics(_button),
+        isSemantics(label: 'Show the 1200 live games first'),
+      );
+      expect(find.byTooltip('Show the 1200 live games first'), findsOneWidget);
+      // The disc does not change for a number.
+      expect(tester.getSize(_glass), size);
+      expect(tester.binding.hasScheduledFrame, isFalse);
+      _expectNoWords(tester);
       handle.dispose();
     });
 
@@ -340,24 +275,22 @@ void main() {
       final handle = tester.ensureSemantics();
       await _pump(tester, liveCount: 4, subject: 'events', on: true);
       expect(
-        tester.getSemantics(_capsule),
+        tester.getSemantics(_button),
         isSemantics(
           label: 'Live events shown first',
           hint: 'Double tap to restore the usual order',
           isToggled: true,
         ),
       );
+      expect(find.byTooltip('Live events shown first'), findsOneWidget);
       handle.dispose();
     });
 
-    testWidgets('Live only reads as hiding, on screen and aloud', (
-      tester,
-    ) async {
+    testWidgets('Live only reads as hiding', (tester) async {
       final handle = tester.ensureSemantics();
       await _pump(tester, liveCount: 3, mode: LiveFirstMode.liveOnly);
-      expect(find.text('See 3 live'), findsOneWidget);
       expect(
-        tester.getSemantics(_capsule),
+        tester.getSemantics(_button),
         isSemantics(
           label: 'Show only the 3 live games',
           isButton: true,
@@ -365,24 +298,18 @@ void main() {
           isToggled: false,
         ),
       );
-      await tester.tap(_capsule);
+      await tester.tap(_button);
       await tester.pumpAndSettle();
-      expect(find.text('Live only'), findsOneWidget);
-      expect(find.text('Live first'), findsNothing);
       expect(
-        tester.getSemantics(_capsule),
+        tester.getSemantics(_button),
         isSemantics(
           label: 'Only live games shown',
           hint: 'Double tap to show all games',
           isToggled: true,
         ),
       );
-      // It settles at the width of its own words.
-      expect(
-        tester.getSize(_capsule).width,
-        _settledWidth(tester, 'Live only'),
-      );
-      expect(_opacityOf(tester, _onWords), 1.0);
+      expect(find.byTooltip('Only live games shown'), findsOneWidget);
+      _expectNoWords(tester);
       handle.dispose();
     });
 
@@ -400,87 +327,108 @@ void main() {
   });
 
   group('drawn', () {
-    testWidgets(
-      'off shows a still dot, a verb and the count; on shows Live first',
-      (tester) async {
-        await _pump(tester, liveCount: 3);
-        expect(find.text('See 3 live'), findsOneWidget);
-        expect(find.text('Live first'), findsNothing);
-        // At rest the label is at full strength: never left half faded.
-        expect(
-          find.ancestor(of: _offWords, matching: find.byType(Opacity)),
-          findsOneWidget,
-        );
-        expect(
-          tester
-              .widget<Opacity>(
-                find.ancestor(of: _offWords, matching: find.byType(Opacity)),
-              )
-              .opacity,
-          1.0,
-        );
-        // No tint on the glass while off.
-        expect(tester.widget<GlassSurface>(_glass).tint, isNull);
-
-        await _pump(tester, liveCount: 3, on: true);
-        expect(find.text('Live first'), findsOneWidget);
-        expect(find.text('See 3 live'), findsNothing);
-        expect(tester.widget<GlassSurface>(_glass).tint, isNotNull);
-      },
-    );
-
-    testWidgets('an unknown count reads See live', (tester) async {
-      await _pump(tester, liveCount: null);
-      expect(find.text('See live'), findsOneWidget);
+    testWidgets('icon only: no count and no words, on or off, known or not', (
+      tester,
+    ) async {
+      for (final on in [false, true]) {
+        for (final count in [null, 0, 1, 11, 1200]) {
+          await _pump(tester, on: on, liveCount: count);
+          expect(_glyph, findsOneWidget);
+          _expectNoWords(tester);
+          expect(find.textContaining('live'), findsNothing);
+          if (count != null) {
+            expect(find.textContaining('$count'), findsNothing);
+          }
+        }
+      }
     });
 
-    testWidgets('the count is set in tabular figures', (tester) async {
-      await _pump(tester, liveCount: 18);
-      final style = tester.widget<Text>(find.text('See 18 live')).style!;
-      expect(style.fontFeatures, contains(const FontFeature.tabularFigures()));
+    testWidgets('off: arcs in the glass ink, the dot in the live colour, '
+        'clear glass', (tester) async {
+      await _pump(tester, liveCount: 3);
+      final context = tester.element(_button);
+      final glyph = _glyphOf(tester);
+      expect(glyph.key, LiveFirstCapsule.offGlyphKey);
+      expect(glyph.waveColor, GlassStyle.of(context).ink);
+      expect(glyph.dotColor, context.colors.accentText);
+      expect(glyph.spread, 0);
+      expect(tester.widget<GlassSurface>(_glass).tint, isNull);
     });
 
-    testWidgets('the dot is still: nothing animates at rest', (tester) async {
+    testWidgets('on: the glass takes the tonal blue and the whole mark '
+        'wears it', (tester) async {
+      await _pump(tester, liveCount: 3, on: true);
+      final context = tester.element(_button);
+      final accent = context.colors.accentText;
+      final glyph = _glyphOf(tester);
+      expect(glyph.key, LiveFirstCapsule.onGlyphKey);
+      expect(glyph.waveColor, accent);
+      expect(glyph.dotColor, accent);
+      expect(glyph.spread, moreOrLessEquals(0, epsilon: 1e-9));
+      expect(
+        tester.widget<GlassSurface>(_glass).tint,
+        accent.withValues(alpha: LiveFirstCapsule.onTintAlpha),
+      );
+    });
+
+    testWidgets('still at rest: no pulse, nothing animates', (tester) async {
       await _pump(tester, liveCount: 5);
+      await tester.pump(const Duration(seconds: 2));
+      expect(tester.binding.hasScheduledFrame, isFalse);
+      await _pump(tester, liveCount: 5, on: true);
       await tester.pump(const Duration(seconds: 2));
       expect(tester.binding.hasScheduledFrame, isFalse);
     });
 
-    testWidgets('it settles at the width of its words', (tester) async {
-      await _pump(tester, liveCount: 3);
-      expect(
-        tester.getSize(_capsule).width,
-        _settledWidth(tester, 'See 3 live'),
-      );
-      expect(
-        tester.getSize(_capsule).width,
-        greaterThanOrEqualTo(InkFabSize.small.side),
-      );
-    });
-
-    testWidgets('words and mark sit inside the glass, centred on it', (
-      tester,
-    ) async {
-      for (final on in [false, true]) {
-        await _pump(tester, liveCount: 3, on: on);
-        final glass = tester.getRect(_glass);
-        final words = tester.getRect(on ? _onWords : _offWords);
-        expect(words.left, greaterThan(glass.left));
-        expect(words.right, lessThanOrEqualTo(glass.right - 12));
-        expect(words.top, greaterThanOrEqualTo(glass.top));
-        expect(words.bottom, lessThanOrEqualTo(glass.bottom));
-        expect(words.center.dy, moreOrLessEquals(glass.center.dy, epsilon: .5));
-        final mark = tester.getRect(
-          find.descendant(of: _glass, matching: find.byType(CustomPaint)).last,
+    for (final size in InkFabSize.values) {
+      testWidgets('the ${size.name} disc is the floating button\'s, the mark '
+          'at its share and dead centre', (tester) async {
+        await _pump(tester, size: size);
+        expect(tester.getSize(_glass), Size.square(size.disc));
+        expect(tester.getSize(_button), Size.square(size.side));
+        final glyph = tester.getRect(_glyph);
+        expect(
+          glyph.width,
+          moreOrLessEquals(size.disc * InkFab.glyphFraction, epsilon: 1e-6),
         );
-        expect(mark.center.dy, moreOrLessEquals(glass.center.dy, epsilon: .5));
-        expect(mark.left, greaterThan(glass.left + 8));
-      }
+        expect(glyph.height, moreOrLessEquals(glyph.width, epsilon: 1e-6));
+        final glass = tester.getRect(_glass);
+        expect(
+          glyph.center.dx,
+          moreOrLessEquals(glass.center.dx, epsilon: 1e-6),
+        );
+        expect(
+          glyph.center.dy,
+          moreOrLessEquals(glass.center.dy, epsilon: 1e-6),
+        );
+      });
+    }
+
+    test('the mark is symmetric and stays inside its grid', () {
+      const half = LiveGlyphPainter.grid / 2;
+      const rim = LiveGlyphPainter.outerRadius + LiveGlyphPainter.stroke / 2;
+      expect(rim, lessThan(half));
+      expect(
+        rim + LiveGlyphPainter.outerPush,
+        lessThan(half + 0.5),
+        reason: 'the push stays well inside the disc',
+      );
+      // Dot, gap, arc, gap, arc: the two gaps are equal.
+      const innerGap =
+          LiveGlyphPainter.innerRadius -
+          LiveGlyphPainter.stroke / 2 -
+          LiveGlyphPainter.dotRadius;
+      const outerGap =
+          LiveGlyphPainter.outerRadius -
+          LiveGlyphPainter.innerRadius -
+          LiveGlyphPainter.stroke;
+      expect(innerGap, moreOrLessEquals(outerGap));
+      expect(innerGap, greaterThan(0));
     });
   });
 
   group('tap', () {
-    testWidgets('toggles, ticks the selection haptic, and springs the width', (
+    testWidgets('toggles, ticks the selection haptic, and springs the colour', (
       tester,
     ) async {
       final calls = <MethodCall>[];
@@ -497,12 +445,14 @@ void main() {
           null,
         ),
       );
-      await _pump(tester, liveCount: 3);
-      final off = _settledWidth(tester, 'See 3 live');
-      final on = _settledWidth(tester, 'Live first');
-      expect(on, isNot(off));
+      final host = await _pump(tester, liveCount: 3);
+      final context = tester.element(_button);
+      final ink = GlassStyle.of(context).ink;
+      final accent = context.colors.accentText;
+      final disc = tester.getSize(_glass);
 
-      await tester.tap(_capsule);
+      await tester.tap(_button);
+      expect(host.on, isTrue);
       expect(
         calls.where(
           (c) =>
@@ -512,181 +462,58 @@ void main() {
         hasLength(1),
       );
 
-      // Mid-spring: on the way, not jumped.
+      // Mid-spring: on the way, not jumped, and the arcs out a little.
       await tester.pump();
-      await tester.pump(const Duration(milliseconds: 48));
-      final mid = tester.getSize(_capsule).width;
-      expect(mid, isNot(moreOrLessEquals(off)));
-      expect(mid, isNot(moreOrLessEquals(on)));
+      await tester.pump(const Duration(milliseconds: 80));
+      final mid = _glyphOf(tester);
+      expect(mid.waveColor, isNot(ink));
+      expect(mid.waveColor, isNot(accent));
+      expect(mid.spread, greaterThan(0));
+      expect(tester.widget<GlassSurface>(_glass).tint, isNotNull);
 
       await tester.pumpAndSettle();
-      expect(tester.getSize(_capsule).width, on);
-      expect(find.text('Live first'), findsOneWidget);
-      expect(find.text('See 3 live'), findsNothing);
+      expect(_glyphOf(tester).waveColor, accent);
+      expect(_glyphOf(tester).spread, moreOrLessEquals(0, epsilon: 1e-9));
+      // The disc never changes size for its state.
+      expect(tester.getSize(_glass), disc);
 
-      await tester.tap(_capsule);
+      await tester.tap(_button);
       await tester.pumpAndSettle();
-      expect(tester.getSize(_capsule).width, off);
-      expect(find.text('See 3 live'), findsOneWidget);
-      expect(find.text('Live first'), findsNothing);
-    });
-
-    testWidgets('a new count springs the width too', (tester) async {
-      final host = await _pump(tester, liveCount: 9);
-      final nine = tester.getSize(_capsule).width;
-      host.setCount(120);
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 48));
-      final mid = tester.getSize(_capsule).width;
-      await tester.pumpAndSettle();
-      final settled = tester.getSize(_capsule).width;
-      expect(settled, greaterThan(nine));
-      expect(mid, greaterThan(nine));
-      expect(mid, lessThan(settled));
-      expect(find.text('See 120 live'), findsOneWidget);
-      expect(_opacityOf(tester, _offWords), 1.0);
-    });
-
-    for (final scale in [1.0, 1.3]) {
-      testWidgets('words never reach past the glass while it springs, '
-          'text at ${scale}x', (tester) async {
-        final host = await _pump(tester, liveCount: 9, textScale: scale);
-
-        // A count that gains digits: the new words wait until there is room.
-        host.setCount(999);
-        await _expectWordsInsideGlassEveryFrame(tester, '9 to 999 at $scale');
-        expect(find.text('See 999 live'), findsOneWidget);
-        expect(_opacityOf(tester, _offWords), 1.0);
-        expect(
-          tester.getSize(_capsule).width,
-          _settledWidth(tester, 'See 999 live'),
-        );
-
-        host.setCount(1000);
-        await _expectWordsInsideGlassEveryFrame(
-          tester,
-          '999 to 999+ at $scale',
-        );
-        host.setCount(9);
-        await _expectWordsInsideGlassEveryFrame(tester, '999+ to 9 at $scale');
-        host.setCount(12045);
-        await _expectWordsInsideGlassEveryFrame(tester, '9 to 999+ at $scale');
-        expect(find.text('See 999+ live'), findsOneWidget);
-        expect(_opacityOf(tester, _offWords), 1.0);
-
-        // On and off from the widest count, both ways.
-        host.setOn(true);
-        await _expectWordsInsideGlassEveryFrame(tester, 'off 999+ to on');
-        expect(_opacityOf(tester, _onWords), 1.0);
-        host.setOn(false);
-        await _expectWordsInsideGlassEveryFrame(tester, 'on to off 999+');
-        expect(_opacityOf(tester, _offWords), 1.0);
-
-        // And from the narrowest, with the count unknown.
-        host.setCount(null);
-        await _expectWordsInsideGlassEveryFrame(tester, '999+ to See live');
-        host.setOn(true);
-        await _expectWordsInsideGlassEveryFrame(tester, 'See live to on');
-        host.setCount(4);
-        await _expectWordsInsideGlassEveryFrame(tester, 'count under on');
-        host.setOn(false);
-        await _expectWordsInsideGlassEveryFrame(tester, 'on to See 4 live');
-
-        // A turn back mid-spring is followed from wherever it is.
-        host.setCount(9);
-        await tester.pump(const Duration(milliseconds: 16));
-        host.setCount(999);
-        await tester.pump(const Duration(milliseconds: 16));
-        host.setOn(true);
-        await _expectWordsInsideGlassEveryFrame(tester, 'interrupted');
-        expect(_opacityOf(tester, _onWords), 1.0);
-      });
-    }
-
-    testWidgets(
-      'a count gaining a digit dims only briefly, then reads in full',
-      (tester) async {
-        final host = await _pump(tester, liveCount: 9);
-        host.setCount(10);
-        // The frame that draws the change still shows the words, since a digit
-        // is narrower than the room the trailing padding keeps.
-        await tester.pump();
-        expect(_opacityOf(tester, _offWords), greaterThan(0));
-        var frames = 1;
-        while (_opacityOf(tester, _offWords) < 1 && frames < 30) {
-          await tester.pump(const Duration(milliseconds: 16));
-          frames++;
-        }
-        expect(frames, lessThanOrEqualTo(6), reason: 'back in full by ~100ms');
-        await tester.pumpAndSettle();
-        expect(find.text('See 10 live'), findsOneWidget);
-      },
-    );
-
-    testWidgets('with reduced motion a new count snaps, words whole at once', (
-      tester,
-    ) async {
-      final host = await _pump(tester, liveCount: 9, reduceMotion: true);
-      host.setCount(999);
-      await tester.pump();
-      expect(
-        tester.getSize(_capsule).width,
-        _settledWidth(tester, 'See 999 live'),
-      );
-      expect(_opacityOf(tester, _offWords), 1.0);
-      // Nothing moves after the snap.
-      await tester.pump(const Duration(milliseconds: 16));
-      expect(
-        tester.getSize(_capsule).width,
-        _settledWidth(tester, 'See 999 live'),
-      );
-      expect(_opacityOf(tester, _offWords), 1.0);
-      expect(tester.binding.hasScheduledFrame, isFalse);
+      expect(host.on, isFalse);
+      expect(_glyphOf(tester).waveColor, ink);
+      expect(_glyphOf(tester).spread, 0);
+      expect(tester.widget<GlassSurface>(_glass).tint, isNull);
     });
 
     testWidgets('reduced motion snaps: settled on the very next frame', (
       tester,
     ) async {
       await _pump(tester, liveCount: 3, reduceMotion: true);
-      final on = _settledWidth(tester, 'Live first');
-      await tester.tap(_capsule);
+      final accent = tester.element(_button).colors.accentText;
+      await tester.tap(_button);
       await tester.pump();
-      expect(tester.getSize(_capsule).width, on);
-      expect(find.text('Live first'), findsOneWidget);
-      expect(find.text('See 3 live'), findsNothing);
+      expect(_glyphOf(tester).waveColor, accent);
+      expect(_glyphOf(tester).spread, moreOrLessEquals(0, epsilon: 1e-9));
       expect(
-        tester
-            .widget<Opacity>(
-              find.ancestor(of: _onWords, matching: find.byType(Opacity)),
-            )
-            .opacity,
-        1.0,
+        tester.widget<GlassSurface>(_glass).tint,
+        accent.withValues(alpha: LiveFirstCapsule.onTintAlpha),
       );
       // Let the press's minimum hold run out: nothing moves after the snap.
       await tester.pumpAndSettle();
-      expect(tester.getSize(_capsule).width, on);
-      expect(find.text('Live first'), findsOneWidget);
+      expect(_glyphOf(tester).waveColor, accent);
     });
 
-    testWidgets('a 42pt capsule still answers a 44pt target', (tester) async {
+    testWidgets('a 42pt disc still answers a 44pt target', (tester) async {
       // A 360x780 phone draws the small floating button at 42.
       var taps = 0;
       await _pump(tester, view: const Size(360, 780), onTap: () => taps++);
       expect(InkFabSize.small.disc, 42);
-      expect(tester.getSize(_capsule).height, 44);
-      expect(tester.getSize(_glass).height, 42);
+      expect(tester.getSize(_button), const Size.square(44));
+      expect(tester.getSize(_glass), const Size.square(42));
       // Half a point outside the glass, still inside the target.
-      await tester.tapAt(tester.getTopLeft(_capsule) + const Offset(20, 0.5));
+      await tester.tapAt(tester.getTopLeft(_button) + const Offset(22, 0.5));
       await tester.pump(const Duration(milliseconds: 100));
       expect(taps, 1);
-    });
-
-    testWidgets('the regular size matches the main floating button', (
-      tester,
-    ) async {
-      await _pump(tester, size: InkFabSize.regular);
-      expect(tester.getSize(_glass).height, InkFabSize.regular.disc);
-      expect(tester.getSize(_capsule).height, InkFabSize.regular.side);
     });
   });
 
@@ -704,25 +531,25 @@ void main() {
 
     for (final light in [false, true]) {
       final name = light ? 'light' : 'dark';
-      testWidgets('words clear AA and the mark clears 3:1 in $name', (
+      testWidgets('the arcs and the dot clear 3:1 in $name, off and on', (
         tester,
       ) async {
         final theme = light ? AppTheme.lightTheme : AppTheme.darkTheme;
         for (final on in [false, true]) {
           await _pump(tester, liveCount: 3, on: on, theme: theme);
-          final context = tester.element(_capsule);
+          final context = tester.element(_button);
           final tint = tester.widget<GlassSurface>(_glass).tint;
-          final words = tester.widget<Text>(on ? _onWords : _offWords);
+          final glyph = _glyphOf(tester);
           for (final backdrop in backdrops(context, tint)) {
             expect(
-              wcagContrast(words.style!.color!, backdrop),
-              greaterThanOrEqualTo(4.5),
-              reason: '$name, on: $on, words',
+              wcagContrast(glyph.waveColor, backdrop),
+              greaterThanOrEqualTo(3),
+              reason: '$name, on: $on, arcs',
             );
             expect(
-              wcagContrast(context.colors.accentText, backdrop),
+              wcagContrast(glyph.dotColor, backdrop),
               greaterThanOrEqualTo(3),
-              reason: '$name, on: $on, mark',
+              reason: '$name, on: $on, dot',
             );
           }
         }

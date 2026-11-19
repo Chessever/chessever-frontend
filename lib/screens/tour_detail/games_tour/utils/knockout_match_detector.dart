@@ -214,18 +214,34 @@ class KnockoutMatchDetector {
   static bool isMatchPlayGameLive(GamesTourModel game) =>
       !game.effectiveGameStatus.isFinished && matchPlayGameHasMoves(game);
 
-  /// Whether a board of a (non match-play) knockout has been played: it has
-  /// a move or a move time. Stages published up front (Total Chess: Games
-  /// 1-14 on day one) hold 0-move `*` boards with neither; those are future
-  /// games, never live ones.
-  static bool knockoutGameStarted(GamesTourModel game) =>
+  /// Whether a board of a legacy knockout has been played. The live feed
+  /// can report the first move before the Games list refreshes its row.
+  static bool knockoutGameStarted(
+    GamesTourModel game, {
+    Set<String> inPlayGameIds = const {},
+  }) =>
       game.effectiveGameStatus.isFinished ||
-      game.lastMoveTime != null ||
-      matchPlayGameHasMoves(game);
+      _hasKnockoutMove(game, inPlayGameIds: inPlayGameIds);
 
   /// A knockout board in play: started and not finished.
-  static bool isKnockoutGameLive(GamesTourModel game) =>
-      !game.effectiveGameStatus.isFinished && knockoutGameStarted(game);
+  static bool isKnockoutGameLive(
+    GamesTourModel game, {
+    Set<String> inPlayGameIds = const {},
+  }) =>
+      !game.effectiveGameStatus.isFinished &&
+      _hasKnockoutMove(game, inPlayGameIds: inPlayGameIds);
+
+  static bool _hasKnockoutMove(
+    GamesTourModel game, {
+    required Set<String> inPlayGameIds,
+  }) {
+    if (inPlayGameIds.contains(game.gameId) || matchPlayGameHasMoves(game)) {
+      return true;
+    }
+    // fromGame uses the scheduled day when the feed has no last_move_time.
+    final moved = game.lastMoveTime;
+    return moved != null && moved != game.gameDay && moved != game.dateStart;
+  }
 
   /// Total chronological order of one match's games (game 1 first).
   ///
@@ -657,11 +673,11 @@ class KnockoutMatchDetector {
   /// finished boards latest-played first, then boards not started yet in
   /// game order (the next one first).
   ///
-  /// A board is in play only once it was started ([knockoutGameStarted]).
+  /// A board is in play only once it was started ([isKnockoutGameLive]).
   /// Organizers publish every round of a stage up front as 0-move `*`
-  /// boards (Total Chess: Games 1-14 on day one); counting those as live
-  /// put tomorrow's games above the game being played and the finished
-  /// games under all of them.
+  /// boards (Total Chess: Games 1-14 on day one), each row dated; counting
+  /// those as live put the next game left of the game being played in the
+  /// board grid, and the finished games under all of them.
   ///
   /// Board numbers do not exist in a knockout (the same two players meet
   /// again and again) and on matchup-labeled feeds every game shares one
@@ -670,20 +686,20 @@ class KnockoutMatchDetector {
   /// reversed as the undated fallback, descending append board number when
   /// source metadata ties, and gameId keeping the order total.
   static List<GamesTourModel> orderMatchGamesLatestFirst(
-    List<GamesTourModel> games,
-  ) {
+    List<GamesTourModel> games, {
+    Set<String> inPlayGameIds = const {},
+  }) {
     if (games.length < 2) return games;
     // effectiveGameStatus parses the FEN for clock-flagged boards; resolve it
     // once per game instead of once per comparison.
     final sortKeyByGameId = <String, ({int tier, DateTime? playedAt})>{
       for (final game in games)
         game.gameId: (
-          tier:
-              game.effectiveGameStatus.isFinished
-                  ? 1
-                  : knockoutGameStarted(game)
-                  ? 0
-                  : 2,
+          tier: game.effectiveGameStatus.isFinished
+              ? 1
+              : _hasKnockoutMove(game, inPlayGameIds: inPlayGameIds)
+              ? 0
+              : 2,
           playedAt: game.lastMoveTime ?? game.bucketDate,
         ),
     };
