@@ -26,7 +26,8 @@ import 'package:chessever2/screens/tour_detail/games_tour/providers/live_rounds_
 import 'package:chessever2/screens/tour_detail/games_tour/providers/live_tour_id_provider.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
-import 'package:chessever2/widgets/live_first_mark.dart';
+import 'package:chessever2/widgets/glass_surface.dart';
+import 'package:chessever2/widgets/live_first_capsule.dart';
 import 'package:chessever2/widgets/search/recent_searches_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -34,9 +35,9 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 /// Trello #1420, the For You tab (labelled Home): Live first floats over
-/// Today while an event is live, on the flag the Events tab uses, and lists
-/// the Today feed's live events first, including ones below the pages it has
-/// loaded.
+/// Today while an event is live (or while it is on), in words that count the
+/// live events, on the flag the Events tab uses, and lists the Today feed's
+/// live events first, including ones below the pages it has loaded.
 void main() {
   setUpAll(() async {
     TestWidgetsFlutterBinding.ensureInitialized();
@@ -232,6 +233,14 @@ void main() {
 
   group('Today button', () {
     final toggle = find.byKey(const ValueKey(kForYouLiveFirstButtonKey));
+    final filter = find.byKey(const ValueKey(kForYouFilterButtonKey));
+    Finder words(String state) => find.descendant(
+      of: toggle,
+      matching: find.byKey(ValueKey('live_first_capsule_$state')),
+    );
+    Rect glassOf(WidgetTester tester, Finder button) => tester.getRect(
+      find.descendant(of: button, matching: find.byType(GlassSurface)).first,
+    );
 
     testWidgets('with nothing live there is no button to press', (
       tester,
@@ -239,48 +248,119 @@ void main() {
       final container = await _pumpHome(tester, liveIds: const []);
 
       expect(toggle, findsNothing);
+      expect(find.byType(LiveFirstCapsule), findsNothing);
+      expect(filter, findsOneWidget);
       expect(container.read(homeEventsLiveFirstProvider), isFalse);
       expect(_rows(tester), ['a', 'b', 'c']);
       await _unmount(tester);
     });
 
-    testWidgets('floats the Live mark in the thumb\'s reach', (tester) async {
-      await _pumpHome(tester, liveIds: const ['c']);
+    testWidgets('says in words how many events are live, in the thumb\'s '
+        'reach', (tester) async {
+      await _pumpHome(tester, liveIds: const ['a', 'c']);
 
-      expect(toggle, findsOneWidget);
+      expect(tester.widget(toggle), isA<LiveFirstCapsule>());
       expect(
-        find.descendant(of: toggle, matching: find.byType(LiveFirstMark)),
+        find.descendant(of: toggle, matching: find.text('See 2 live')),
         findsOneWidget,
       );
-      expect(find.bySemanticsLabel('Show live events first'), findsOneWidget);
+      expect(words('on'), findsNothing);
+      expect(
+        find.bySemanticsLabel('Show the 2 live events first'),
+        findsOneWidget,
+      );
       // In the lower half, where the thumb rests, not in a top bar.
       expect(tester.getCenter(toggle).dy, greaterThan(852 / 2));
       await _unmount(tester);
     });
 
-    testWidgets('with an event live it lists it first on Today', (
+    testWidgets('one live event reads "See 1 live"', (tester) async {
+      await _pumpHome(tester, liveIds: const ['c']);
+
+      expect(
+        find.descendant(of: toggle, matching: find.text('See 1 live')),
+        findsOneWidget,
+      );
+      expect(
+        find.bySemanticsLabel('Show the live event first'),
+        findsOneWidget,
+      );
+      await _unmount(tester);
+    });
+
+    testWidgets('comes in above the filter, which stays put on the gutter', (
       tester,
     ) async {
+      final live = StreamController<List<String>>();
+      addTearDown(live.close);
+      live.add(const []);
+      await _pumpHome(tester, liveStream: live.stream);
+      expect(toggle, findsNothing);
+      final rest = tester.getRect(filter);
+
+      live.add(const ['c']);
+      await tester.pump();
+      await tester.pump();
+
+      expect(toggle, findsOneWidget);
+      expect(tester.getRect(filter), rest);
+      // Stacked above it, as tall as it, rims on one trailing edge.
+      expect(tester.getRect(toggle).bottom, lessThan(rest.top));
+      final capsule = glassOf(tester, toggle);
+      final disc = glassOf(tester, filter);
+      expect(capsule.right, moreOrLessEquals(disc.right, epsilon: 0.01));
+      expect(capsule.height, moreOrLessEquals(disc.height, epsilon: 0.01));
+
+      // Turned on, it springs to its new words leftward; the filter holds.
+      await tester.tap(toggle);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 120));
+      expect(tester.getRect(filter), rest);
+      expect(tester.getRect(toggle).right, rest.right);
+      await tester.pump(const Duration(milliseconds: 600));
+      expect(tester.getRect(filter), rest);
+      expect(
+        glassOf(tester, toggle).right,
+        moreOrLessEquals(disc.right, epsilon: 0.01),
+      );
+      await _unmount(tester);
+    });
+
+    testWidgets('with an event live it lists it first on Today and goes to '
+        'its top', (tester) async {
       final container = await _pumpHome(tester, liveIds: const ['c']);
       expect(_rows(tester), ['a', 'b', 'c']);
+      final reTaps = container.read(bottomNavBarReTapRequestProvider).sequence;
 
       await tester.tap(toggle);
       await tester.pump();
-      await tester.pump(const Duration(milliseconds: 400));
+      await tester.pump(const Duration(milliseconds: 600));
 
       expect(container.read(homeEventsLiveFirstProvider), isTrue);
       expect(find.text(kNoLiveEventsRightNowMessage), findsNothing);
       expect(_rows(tester), ['c', 'a', 'b']);
+      final top = container.read(bottomNavBarReTapRequestProvider);
+      expect(top.item, BottomNavBarItem.forYou);
+      expect(top.sequence, reTaps + 1);
+      // On, it says what it does now.
+      expect(words('on'), findsOneWidget);
       expect(
-        find.bySemanticsLabel('Live events are shown first'),
+        find.descendant(of: toggle, matching: find.text('Live first')),
         findsOneWidget,
       );
+      expect(words('off'), findsNothing);
+      expect(find.bySemanticsLabel('Live events shown first'), findsOneWidget);
 
-      // Off again with one more tap, in the order it had.
+      // Off again with one more tap, in the order it had, the count back.
       await tester.tap(toggle);
       await tester.pump();
+      await tester.pump(const Duration(milliseconds: 600));
       expect(container.read(homeEventsLiveFirstProvider), isFalse);
       expect(_rows(tester), ['a', 'b', 'c']);
+      expect(
+        find.descendant(of: toggle, matching: find.text('See 1 live')),
+        findsOneWidget,
+      );
       await _unmount(tester);
     });
 
@@ -289,12 +369,28 @@ void main() {
 
       container.read(homeEventsLiveFirstProvider.notifier).state = true;
       await tester.pump();
+      await tester.pump(const Duration(milliseconds: 600));
 
-      expect(
-        find.bySemanticsLabel('Live events are shown first'),
-        findsOneWidget,
-      );
+      expect(find.bySemanticsLabel('Live events shown first'), findsOneWidget);
+      expect(words('on'), findsOneWidget);
       expect(_rows(tester), ['c', 'a', 'b']);
+      await _unmount(tester);
+    });
+
+    testWidgets('stays while on with nothing live, so it can be turned off', (
+      tester,
+    ) async {
+      final container = await _pumpHome(tester, liveIds: const []);
+      container.read(homeEventsLiveFirstProvider.notifier).state = true;
+      await tester.pump();
+
+      expect(words('on'), findsOneWidget);
+      await tester.tap(toggle);
+      await tester.pump();
+
+      expect(container.read(homeEventsLiveFirstProvider), isFalse);
+      expect(toggle, findsNothing);
+      expect(find.text(kNoLiveEventsRightNowMessage), findsNothing);
       await _unmount(tester);
     });
 
@@ -303,18 +399,39 @@ void main() {
       // Home has no search field any more: the filter for this feed is a
       // floating button of its own.
       final container = await _pumpHome(tester, liveIds: const []);
-      final filter = find.byKey(const ValueKey(kForYouFilterButtonKey));
       expect(filter, findsOneWidget);
       expect(find.bySemanticsLabel('Filters'), findsOneWidget);
 
-      container.read(eventAppliedFilterProvider.notifier).state =
-          defaultFilterPopupState.copyWith(
-            eloRange: const RangeValues(2600, kFilterMaxElo),
-          );
+      container
+          .read(eventAppliedFilterProvider.notifier)
+          .state = defaultFilterPopupState.copyWith(
+        eloRange: const RangeValues(2600, kFilterMaxElo),
+      );
       await tester.pump();
       expect(find.bySemanticsLabel('Filters, 1 applied'), findsOneWidget);
       await _unmount(tester);
     });
+
+    for (final textScale in const [1.0, 2.0]) {
+      testWidgets('fits a 320pt phone at ${textScale}x text', (tester) async {
+        await _pumpHome(
+          tester,
+          liveIds: const ['a', 'b', 'c'],
+          size: const Size(320, 640),
+          textScale: textScale,
+        );
+
+        expect(tester.takeException(), isNull);
+        final rect = tester.getRect(toggle);
+        expect(rect.left, greaterThanOrEqualTo(0));
+        expect(rect.right, lessThanOrEqualTo(320));
+        expect(
+          find.descendant(of: toggle, matching: find.text('See 3 live')),
+          findsOneWidget,
+        );
+        await _unmount(tester);
+      });
+    }
   });
 }
 
@@ -398,7 +515,8 @@ Future<void> _settle(bool Function() done) async {
 /// drawing the feed's event ids in order.
 Future<ProviderContainer> _pumpHome(
   WidgetTester tester, {
-  required List<String> liveIds,
+  List<String> liveIds = const [],
+  Stream<List<String>>? liveStream,
   ForYouTab tab = ForYouTab.today,
   Size size = const Size(393, 852),
   double textScale = 1,
@@ -414,6 +532,7 @@ Future<ProviderContainer> _pumpHome(
       ..._overrides(
         _Feed([_gb('a', 2900), _gb('b', 2800), _gb('c', 2700)]),
         liveIds,
+        liveStream,
       ),
       recentSearchStorageProvider.overrideWithValue(_MemoryRecentSearches()),
       currentUserProvider.overrideWithValue(

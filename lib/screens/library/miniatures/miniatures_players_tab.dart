@@ -1,5 +1,4 @@
-import 'dart:async';
-
+import 'package:chessever2/screens/favorites/widgets/games_list_refetch_line.dart';
 import 'package:chessever2/screens/library/miniatures/miniature_player_scorecard_screen.dart';
 import 'package:chessever2/screens/library/miniatures/miniatures_mode_provider.dart';
 import 'package:chessever2/screens/library/miniatures/widgets/miniature_players_filter_dialog.dart';
@@ -15,11 +14,11 @@ import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/scroll_cache.dart';
 import 'package:chessever2/widgets/figma_player_card.dart';
-import 'package:chessever2/screens/tour_detail/widgets/event_search_bar.dart'
-    show EventSearchBarFrame;
 import 'package:chessever2/widgets/ink_fab.dart' show InkFabSize;
+import 'package:chessever2/widgets/list_search_scroll_memory.dart';
 import 'package:chessever2/widgets/scroll_to_top_bus.dart';
-import 'package:chessever2/widgets/simple_search_bar.dart';
+import 'package:chessever2/widgets/search_mode/search_mode.dart';
+import 'package:chessever2/widgets/search_no_matches.dart';
 import 'package:chessever2/widgets/skeleton_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -28,9 +27,13 @@ import 'package:skeletonizer/skeletonizer.dart';
 /// High-ELO player leaderboard for Miniatures → Players, ranked the same way as
 /// For You → Favorites → Players (Supabase `chess_players`, rating desc).
 /// Same [FigmaPlayerCard] shell (rank + avatar + name/rating, miniature W-L in
-/// the score slot). The search and the title filters open from the screen's
-/// floating search button ([MiniaturePlayersSearchField]). Tapping opens the
-/// player profile.
+/// the score slot). The search opens from the screen's floating search button
+/// ([applyMiniaturePlayersSearch]), the title filters from its header
+/// ([openMiniaturePlayersFilters]). Tapping opens the player profile.
+///
+/// A search is this same ranking, narrowed: while it is read the rows on
+/// screen stay under a quiet line, and the reader's place comes back with
+/// the full ranking.
 class MiniaturesPlayersTab extends ConsumerStatefulWidget {
   const MiniaturesPlayersTab({super.key});
 
@@ -45,6 +48,12 @@ class _MiniaturesPlayersTabState extends ConsumerState<MiniaturesPlayersTab>
 
   /// Latched true the first time this tab becomes the selected one.
   bool _activated = false;
+
+  /// The ranking as it last settled, shown while a new search or filter
+  /// reads its first page: the provider starts each one empty.
+  ({MiniaturePlayersState state, MiniaturePlayersQuery query})? _settled;
+
+  final ListSearchScrollMemory _place = ListSearchScrollMemory();
 
   @override
   bool get wantKeepAlive => true;
@@ -92,12 +101,23 @@ class _MiniaturesPlayersTabState extends ConsumerState<MiniaturesPlayersTab>
         MiniaturesScreenMode.players;
     if (!_activated) return const SizedBox.shrink();
 
-    final state = ref.watch(miniaturePlayersPaginatedProvider);
-    final query = ref.watch(miniaturePlayersQueryProvider);
+    final live = ref.watch(miniaturePlayersPaginatedProvider);
+    final liveQuery = ref.watch(miniaturePlayersQueryProvider);
     final horizontalPadding = ResponsiveHelper.adaptive(
       phone: 16.w,
       tablet: 24.w,
     );
+
+    // Each search and filter is a new ranking read from its first page;
+    // until it lands the rows on screen stay. Only a first read, with
+    // nothing on screen yet, draws the skeleton.
+    final reading = live.isLoading && live.items.isEmpty;
+    if (!reading) _settled = (state: live, query: liveQuery);
+    final shown = reading ? _settled : (state: live, query: liveQuery);
+    final held = reading && shown != null;
+    final state = shown?.state ?? live;
+    final query = shown?.query ?? liveQuery;
+    _place.follow(_scrollController, shown?.query.search);
 
     Widget content = RefreshIndicator(
       onRefresh: () async {
@@ -114,13 +134,30 @@ class _MiniaturesPlayersTabState extends ConsumerState<MiniaturesPlayersTab>
         ),
         slivers: [
           SliverToBoxAdapter(child: SizedBox(height: 4.h)),
-          _buildContentSliver(state, query, horizontalPadding),
-          // Clear of the floating search button at the list's end.
-          SliverToBoxAdapter(
-            child: SizedBox(height: 24.h + InkFabSize.regular.side),
+          _buildContentSliver(state, query, horizontalPadding, held: held),
+          // Clear of the floating search button at the list's end (its
+          // square, and the margin that lifts it over the home indicator);
+          // the button's room gives way on the search's own timeline while
+          // nothing floats there.
+          SearchModeListEnd.sliver(
+            base: 24.h + MediaQuery.viewPaddingOf(context).bottom,
+            buttons: InkFabSize.regular.side + kFloatingActionButtonMargin,
           ),
         ],
       ),
+    );
+
+    // The Games lists' quiet line, in their gutters, over the list's top.
+    content = Stack(
+      children: [
+        content,
+        Positioned(
+          top: 0,
+          left: 0,
+          right: 0,
+          child: GamesListRefetchLine(active: held),
+        ),
+      ],
     );
 
     if (ResponsiveHelper.isTablet) {
@@ -137,11 +174,14 @@ class _MiniaturesPlayersTabState extends ConsumerState<MiniaturesPlayersTab>
     return content;
   }
 
+  /// The rows of [state]. [held] while it is the ranking a new read
+  /// replaces once its first page lands.
   Widget _buildContentSliver(
     MiniaturePlayersState state,
     MiniaturePlayersQuery query,
-    double horizontalPadding,
-  ) {
+    double horizontalPadding, {
+    required bool held,
+  }) {
     if (state.isLoading && state.items.isEmpty) {
       return SliverPadding(
         padding: EdgeInsets.fromLTRB(
@@ -159,11 +199,31 @@ class _MiniaturesPlayersTabState extends ConsumerState<MiniaturesPlayersTab>
       );
     }
 
+    final words = query.search?.trim() ?? '';
+    final filtered = query.titles.isNotEmpty;
+    if (state.items.isEmpty &&
+        state.error == null &&
+        (filtered || words.isNotEmpty)) {
+      // Narrowed to nothing: the lists' one no-hits state, where the first
+      // row would have been. Its action clears what it names (and plays the
+      // tap's haptic itself): the titles, keeping an open search's words,
+      // or the words, which the open field follows.
+      return SearchNoMatches.sliver(
+        query: words,
+        subject: 'players',
+        filtered: filtered,
+        onClear: () {
+          if (filtered) {
+            final notifier = ref.read(miniaturePlayersQueryProvider.notifier);
+            notifier.state = notifier.state.copyWith(titles: const {});
+          } else {
+            applyMiniaturePlayersSearch(ref, '');
+          }
+        },
+      );
+    }
+
     if (state.items.isEmpty) {
-      final hasQuery =
-          query.titles.isNotEmpty ||
-          (query.search ?? '').isNotEmpty ||
-          query.hasActiveFilters;
       return SliverFillRemaining(
         hasScrollBody: false,
         child: Center(
@@ -183,8 +243,6 @@ class _MiniaturesPlayersTabState extends ConsumerState<MiniaturesPlayersTab>
                 Text(
                   state.error != null
                       ? 'Could not load players'
-                      : hasQuery
-                      ? 'No players match this filter'
                       : 'No players yet',
                   textAlign: TextAlign.center,
                   style: AppTypography.textSmMedium.copyWith(
@@ -215,7 +273,8 @@ class _MiniaturesPlayersTabState extends ConsumerState<MiniaturesPlayersTab>
       );
     }
 
-    final showFooter = state.isLoading || !state.hasMore;
+    // The read in flight shows as the line over the list's top.
+    final showFooter = !held && (state.isLoading || !state.hasMore);
     return SliverPadding(
       padding: EdgeInsets.fromLTRB(
         horizontalPadding,
@@ -275,104 +334,43 @@ class _MiniaturesPlayersTabState extends ConsumerState<MiniaturesPlayersTab>
   }
 }
 
+/// Narrows the Players ranking to [query], trimmed; empty clears the search.
+/// The query is the ranking's own ([miniaturePlayersQueryProvider]), so it
+/// narrows under the screen's search header as the reader types. An equal
+/// query (a trailing space) leaves the ranking, and its read, alone.
+void applyMiniaturePlayersSearch(WidgetRef ref, String query) {
+  final trimmed = query.trim();
+  final current = ref.read(miniaturePlayersQueryProvider);
+  final next = current.copyWith(
+    search: trimmed.isEmpty ? null : trimmed,
+    clearSearch: trimmed.isEmpty,
+  );
+  if (next == current) return;
+  ref.read(miniaturePlayersQueryProvider.notifier).state = next;
+}
+
+/// The Players ranking's title filters, from the screen's header or its
+/// search.
+Future<void> openMiniaturePlayersFilters(
+  BuildContext context,
+  WidgetRef ref,
+) async {
+  HapticFeedbackService.buttonPress();
+  final result = await showMiniaturePlayersFilterDialog(
+    context: context,
+    currentQuery: ref.read(miniaturePlayersQueryProvider),
+  );
+  if (result != null && context.mounted) {
+    ref.read(miniaturePlayersQueryProvider.notifier).state = result;
+  }
+}
+
 /// One leaderboard row. W-L comes from gamebase, one name search per player, so
 /// it is resolved by the row that is actually on screen rather than up front for
 /// the whole page — the list paints as soon as the ELO ranking is in, and the
 /// score slot holds its width under a shimmer until its own lookup lands.
 /// Already-resolved players (a scroll back, a second visit) read straight off
 /// the session cache and paint their record on the first frame.
-/// The Players list's search, typed in the Miniatures screen's search
-/// header, with the title filters behind its glyph. It writes the list's own
-/// query ([miniaturePlayersQueryProvider]), so the ranking narrows under it.
-class MiniaturePlayersSearchField extends ConsumerStatefulWidget {
-  const MiniaturePlayersSearchField({super.key, required this.focusNode});
-
-  final FocusNode focusNode;
-
-  @override
-  ConsumerState<MiniaturePlayersSearchField> createState() =>
-      _MiniaturePlayersSearchFieldState();
-}
-
-class _MiniaturePlayersSearchFieldState
-    extends ConsumerState<MiniaturePlayersSearchField> {
-  // Opens on what the ranking is narrowed to, so reopening shows it.
-  late final TextEditingController _controller = TextEditingController(
-    text: ref.read(miniaturePlayersQueryProvider).search ?? '',
-  );
-  Timer? _debounce;
-  static const Duration _debounceDuration = Duration(milliseconds: 350);
-
-  @override
-  void dispose() {
-    _debounce?.cancel();
-    _controller.dispose();
-    super.dispose();
-  }
-
-  void _apply(String query) {
-    final trimmed = query.trim();
-    final current = ref.read(miniaturePlayersQueryProvider);
-    final next = current.copyWith(
-      search: trimmed.isEmpty ? null : trimmed,
-      clearSearch: trimmed.isEmpty,
-    );
-    // An equal query (e.g. a trailing space) must not rebuild the list.
-    if (next == current) return;
-    ref.read(miniaturePlayersQueryProvider.notifier).state = next;
-  }
-
-  void _changed(String query) {
-    _debounce?.cancel();
-    _debounce = Timer(_debounceDuration, () {
-      if (mounted) _apply(query);
-    });
-  }
-
-  void _clear() {
-    _debounce?.cancel();
-    _controller.clear();
-    widget.focusNode.unfocus();
-    _apply('');
-  }
-
-  Future<void> _openFilters() async {
-    HapticFeedbackService.buttonPress();
-    widget.focusNode.unfocus();
-    final result = await showMiniaturePlayersFilterDialog(
-      context: context,
-      currentQuery: ref.read(miniaturePlayersQueryProvider),
-    );
-    if (result != null && mounted) {
-      ref.read(miniaturePlayersQueryProvider.notifier).state = result;
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final applied = ref.watch(
-      miniaturePlayersQueryProvider.select((q) => q.activeFilterCount),
-    );
-    return EventSearchBarFrame(
-      compact: true,
-      child: SimpleSearchBar(
-        controller: _controller,
-        focusNode: widget.focusNode,
-        // Built only as the search opens: the cursor goes straight in.
-        autofocus: true,
-        hintText: 'Search players',
-        textFieldKey: const ValueKey('miniatures_players_search'),
-        filterButtonKey: const ValueKey('miniatures_players_filters'),
-        compactFilter: true,
-        filterBadgeCount: applied,
-        onChanged: _changed,
-        onOpenFilter: _openFilters,
-        onCloseTap: _clear,
-      ),
-    );
-  }
-}
-
 class _MiniaturePlayerRow extends ConsumerWidget {
   const _MiniaturePlayerRow({
     super.key,

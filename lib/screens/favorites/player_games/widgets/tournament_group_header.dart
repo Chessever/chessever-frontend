@@ -59,12 +59,12 @@ class TournamentGroupHeader extends ConsumerWidget {
                 fit: BoxFit.cover,
                 // Decode at the rendered size, not the original broadcast
                 // resolution — keeps scroll FPS up in the player-games list.
-                cacheWidth:
-                    (56 * MediaQuery.devicePixelRatioOf(context)).toInt(),
-                cacheHeight:
-                    (56 * MediaQuery.devicePixelRatioOf(context)).toInt(),
-                errorBuilder:
-                    (context, error, stackTrace) => _buildPlaceholderImage(context),
+                cacheWidth: (56 * MediaQuery.devicePixelRatioOf(context))
+                    .toInt(),
+                cacheHeight: (56 * MediaQuery.devicePixelRatioOf(context))
+                    .toInt(),
+                errorBuilder: (context, error, stackTrace) =>
+                    _buildPlaceholderImage(context),
                 loadingBuilder: (context, child, loadingProgress) {
                   if (loadingProgress == null) return child;
                   return _buildPlaceholderImage(context);
@@ -97,7 +97,9 @@ class TournamentGroupHeader extends ConsumerWidget {
                     Text(
                       '${tournamentGroup.games.length} game${tournamentGroup.games.length == 1 ? '' : 's'}',
                       style: AppTypography.textXsRegular.copyWith(
-                        color: context.colors.textPrimary.withValues(alpha: 0.7),
+                        color: context.colors.textPrimary.withValues(
+                          alpha: 0.7,
+                        ),
                       ),
                     ),
 

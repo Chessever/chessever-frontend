@@ -77,8 +77,8 @@ class SpaceAutoTile extends ConsumerWidget {
     VoidCallback open,
   ) {
     final openRow = LibraryMenuAction(
-      icon: Icons.north_east_rounded,
-      label: 'Open',
+      icon: Icons.open_in_new_rounded,
+      label: spaceOpenLabel(item.shortcut.kind),
       onSelected: open,
     );
     final folder = item.folder;

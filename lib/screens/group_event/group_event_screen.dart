@@ -31,6 +31,8 @@ import 'package:chessever2/widgets/search/enhanced_rounded_search_bar.dart';
 import 'package:chessever2/widgets/skeleton_widget.dart';
 import 'package:chessever2/widgets/stable_height_slot.dart';
 import 'package:chessever2/widgets/ink_fab.dart';
+import 'package:chessever2/widgets/live_first_capsule.dart';
+import 'package:chessever2/widgets/page_spring.dart';
 import 'package:chessever2/widgets/scroll_chrome.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
@@ -190,7 +192,10 @@ class GroupEventScreen extends HookConsumerWidget {
     final currentScrollController = useScrollController();
     final upcomingScrollController = useScrollController();
     final searchScrollController = useScrollController();
-    final isAnimating = useRef(false);
+    // Category changes still moving the pages: the pages passed on the way
+    // pick no category. A count, as a category tapped mid-flight turns the
+    // spring toward it and the guard holds until the last one lands.
+    final pagingFlights = useRef(0);
     final focusNode = useFocusNode();
     final chrome = useScrollChromeController();
 
@@ -269,14 +274,12 @@ class GroupEventScreen extends HookConsumerWidget {
       if (newIndex >= 0 &&
           pageController.hasClients &&
           pageController.page?.round() != newIndex) {
-        isAnimating.value = true;
-        pageController
-            .animateToPage(
-              newIndex,
-              duration: const Duration(milliseconds: 100),
-              curve: Curves.easeInOut,
-            )
-            .then((_) => isAnimating.value = false);
+        pagingFlights.value++;
+        PageSpring.to(
+          pageController,
+          newIndex,
+          context: context,
+        ).then((_) => pagingFlights.value--);
       }
       return null;
     }, [activeCategory, visibleCategories]);
@@ -371,9 +374,9 @@ class GroupEventScreen extends HookConsumerWidget {
                             // every frame.
                             child: SizedBox(
                               width: double.infinity,
-                              // Live first rides inside the field, beside the filter
-                              // glyph, on every segment. Inside, not beside: the bar's
-                              // geometry is the reference every home tab matches.
+                              // The bar's geometry is the reference every home tab
+                              // matches. Live first floats over the list as its own
+                              // capsule (EventsLiveFirstFab), not in the field.
                               child: EnhancedRoundedSearchBar(
                                 focusNode: focusNode,
                                 controller: searchController,
@@ -614,7 +617,7 @@ class GroupEventScreen extends HookConsumerWidget {
                             controller: pageController,
                             itemCount: visibleCategories.length,
                             onPageChanged: (index) {
-                              if (!isAnimating.value &&
+                              if (pagingFlights.value == 0 &&
                                   index < visibleCategories.length) {
                                 final newCategory = visibleCategories[index];
                                 ref
@@ -871,11 +874,12 @@ class GroupEventScreen extends HookConsumerWidget {
               ),
             ),
           ),
-          // Live first floats in the thumb's reach (Trello #1420), only
-          // while an event is in play, and steps away with the bar as the
-          // list scrolls.
-          Positioned(
-            right: 16,
+          // Live first floats in the thumb's reach (Trello #1420), while an
+          // event is in play or while it is on, and steps away with the bar
+          // as the list scrolls. Anchored by its trailing edge, so it grows
+          // and shrinks away from the gutter.
+          PositionedDirectional(
+            end: 16,
             bottom: 16 + MediaQuery.viewPaddingOf(context).bottom,
             child: SlidingFabs(
               controller: chrome,
@@ -1003,10 +1007,14 @@ class _SegmentedSwitcher extends ConsumerWidget {
 /// The key of the Events lists' Live first button.
 const String kHomeLiveFirstButtonKey = 'events_live_first_button';
 
-/// Live first on the Events lists (Trello #1420), wearing the web's Live
-/// mark, floating where the thumb rests: one tap lists the live events
-/// first, from any segment ([pressHomeEventsLiveFirst]). Only there while
-/// an event is in play. [onTurnedOn] runs once it has come on.
+/// Live first on the Events lists (Trello #1420), in words
+/// ([LiveFirstCapsule]), floating where the thumb rests: "See 3 live" while
+/// events are in play, and one tap lists the live events first, from any
+/// segment ([pressHomeEventsLiveFirst]); on, it reads "Live first". It only
+/// reorders ([LiveFirstMode.reorder]): every event stays listed. It is there
+/// while an event is in play or while it is on ([showsHomeLiveFirst]), so a
+/// flag left on can always be turned off. [onTurnedOn] runs once it has come
+/// on.
 class EventsLiveFirstFab extends ConsumerWidget {
   const EventsLiveFirstFab({super.key, this.onTurnedOn});
 
@@ -1015,15 +1023,16 @@ class EventsLiveFirstFab extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final on = ref.watch(homeEventsLiveFirstProvider);
-    // With nothing live it has nothing to do, so it is not there to press.
-    // A flag left on only orders Current, the same order with nothing live.
-    if (!ref.watch(homeAnyLiveEventProvider)) {
+    final liveCount = ref.watch(homeLiveEventCountProvider);
+    if (!showsHomeLiveFirst(liveCount: liveCount, on: on)) {
       return const SizedBox.shrink();
     }
-    return LiveFirstInkFab(
+    // The page's only floating button, so the regular height.
+    return LiveFirstCapsule(
       subject: 'events',
       size: InkFabSize.regular,
       on: on,
+      liveCount: liveCount,
       onTap: () {
         if (pressHomeEventsLiveFirst(context: context, ref: ref)) {
           onTurnedOn?.call();

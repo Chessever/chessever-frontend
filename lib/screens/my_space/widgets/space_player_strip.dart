@@ -308,7 +308,7 @@ class SpacePlayerFace extends ConsumerWidget {
           actions: (menuContext) => [
             LibraryMenuAction(
               icon: Icons.open_in_new_rounded,
-              label: 'Open',
+              label: spaceOpenLabel(s.kind),
               onSelected: () => _open(context, ref),
             ),
             menuAction?.call(menuContext) ??

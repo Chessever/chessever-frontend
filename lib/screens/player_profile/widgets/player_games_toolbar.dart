@@ -6,10 +6,11 @@ import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/number_format_utils.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
-import 'package:chessever2/utils/svg_asset.dart';
+import 'package:chessever2/widgets/quick_list_toggles.dart';
+import 'package:chessever2/widgets/search_mode/search_mode.dart';
 import 'package:chessever2/widgets/simple_search_bar.dart' show SpringHintWord;
+import 'package:chessever2/widgets/search_no_matches.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_svg/flutter_svg.dart';
 
 /// What a line of text [line] tall gains at the reader's text size. Nothing
 /// at the default size, so every height below is its designed one there.
@@ -157,10 +158,9 @@ class _PlayerGamesSearchBarState extends State<PlayerGamesSearchBar> {
   Widget _buildRotatingSearchHint() {
     // Pass an empty word during the fade-out phase so SpringHintWord animates
     // the final entry out instead of disappearing in a single frame.
-    final word =
-        _hintCycleFadingOut
-            ? ''
-            : _rotatingHints[_hintIndex % _rotatingHints.length];
+    final word = _hintCycleFadingOut
+        ? ''
+        : _rotatingHints[_hintIndex % _rotatingHints.length];
     final style = AppTypography.textSmRegular.copyWith(
       color: context.colors.textSecondary,
     );
@@ -178,7 +178,9 @@ class _PlayerGamesSearchBarState extends State<PlayerGamesSearchBar> {
               overflow: TextOverflow.clip,
             ),
           ),
-          Flexible(child: SpringHintWord(word: word, style: style)),
+          Flexible(
+            child: SpringHintWord(word: word, style: style),
+          ),
         ],
       ),
     );
@@ -282,16 +284,14 @@ class _PlayerGamesSearchBarState extends State<PlayerGamesSearchBar> {
                 width: searchBarHeight,
                 height: searchBarHeight,
                 decoration: BoxDecoration(
-                  color:
-                      hasActiveFilters
-                          ? const Color(0xFFEF4444).withValues(alpha: 0.15)
-                          : context.colors.background,
+                  color: hasActiveFilters
+                      ? const Color(0xFFEF4444).withValues(alpha: 0.15)
+                      : context.colors.background,
                   borderRadius: BorderRadius.circular(12.br),
                   border: Border.all(
-                    color:
-                        hasActiveFilters
-                            ? const Color(0xFFEF4444).withValues(alpha: 0.5)
-                            : context.colors.surfaceRecessed,
+                    color: hasActiveFilters
+                        ? const Color(0xFFEF4444).withValues(alpha: 0.5)
+                        : context.colors.surfaceRecessed,
                   ),
                 ),
                 child: Stack(
@@ -300,12 +300,11 @@ class _PlayerGamesSearchBarState extends State<PlayerGamesSearchBar> {
                     Icon(
                       Icons.tune_rounded,
                       size: 20.sp,
-                      color:
-                          hasActiveFilters
-                              ? (context.isLightTheme
-                                  ? context.colors.danger
-                                  : const Color(0xFFEF4444))
-                              : context.colors.textSecondary,
+                      color: hasActiveFilters
+                          ? (context.isLightTheme
+                                ? context.colors.danger
+                                : const Color(0xFFEF4444))
+                          : context.colors.textSecondary,
                     ),
                     if (hasActiveFilters)
                       Positioned(
@@ -315,23 +314,21 @@ class _PlayerGamesSearchBarState extends State<PlayerGamesSearchBar> {
                           width: 14.w,
                           height: 14.h,
                           decoration: BoxDecoration(
-                            color:
-                                context.isLightTheme
-                                    ? context.colors.danger
-                                    : const Color(0xFFEF4444),
+                            color: context.isLightTheme
+                                ? context.colors.danger
+                                : const Color(0xFFEF4444),
                             shape: BoxShape.circle,
                           ),
                           child: Center(
                             child: Text(
                               '$activeFilterCount',
                               style: AppTypography.textXsBold.copyWith(
-                                color:
-                                    context.isLightTheme
-                                        ? labelOnFill(
-                                          context,
-                                          context.colors.danger,
-                                        )
-                                        : context.colors.textPrimary,
+                                color: context.isLightTheme
+                                    ? labelOnFill(
+                                        context,
+                                        context.colors.danger,
+                                      )
+                                    : context.colors.textPrimary,
                                 fontSize: 9.sp,
                                 height: 1,
                               ),
@@ -359,14 +356,140 @@ class _PlayerGamesSearchBarState extends State<PlayerGamesSearchBar> {
                   borderRadius: BorderRadius.circular(12.br),
                   border: Border.all(color: context.colors.surfaceRecessed),
                 ),
+                // Every Games list's board-view mark ([BoardViewGlyph]).
                 child: Center(
-                  child: SvgPicture.asset(
-                    SvgAsset.chase_grid,
-                    width: 20.sp,
-                    height: 20.sp,
-                    colorFilter: ColorFilter.mode(
-                      context.colors.textSecondary,
-                      BlendMode.srcIn,
+                  child: IconTheme(
+                    data: IconThemeData(
+                      size: 20.sp,
+                      color: context.colors.textSecondary,
+                    ),
+                    child: const BoardViewGlyph(),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// The line over a player's games on the profile: how many games the list
+/// holds, what narrows it (with a way to clear that), the layout and the
+/// filters, as the list toolbars elsewhere draw them (bare glyphs, the one
+/// filter count).
+///
+/// It is the Games tab's own line, so it stays when the tab is searched (the
+/// list under the search is the tab's, controls included), and it is always
+/// there, one height, so nothing over the list moves when a filter or a
+/// query starts narrowing it.
+class PlayerGamesListToolbar extends StatelessWidget {
+  const PlayerGamesListToolbar({
+    super.key,
+    required this.gameCount,
+    required this.filterCount,
+    required this.onClearFilters,
+    required this.onOpenFilters,
+    required this.onToggleLayout,
+    required this.inset,
+    this.morePending = false,
+    this.filterButtonKey,
+    this.controlsInSearchHeader = false,
+  });
+
+  /// The page's search header carries the board view and Filters while its
+  /// search is open: here they step aside with the page's header (their
+  /// room kept, so the count line never moves).
+  final bool controlsInSearchHeader;
+
+  /// The games the list holds for its filters and search; null while its
+  /// first page loads.
+  final int? gameCount;
+
+  /// More pages wait beyond [gameCount] and their total is not known.
+  final bool morePending;
+
+  /// What the filter sheet narrows (the result included), not the search.
+  final int filterCount;
+  final VoidCallback onClearFilters;
+  final VoidCallback onOpenFilters;
+  final VoidCallback onToggleLayout;
+
+  /// The list's side margin: the words start on it and the last glyph ends
+  /// on it.
+  final double inset;
+  final Key? filterButtonKey;
+
+  /// The glyphs' 44pt targets reach this far past their 20pt glyphs.
+  static const double _reach = 12;
+
+  /// The line's height: the glyphs' targets, grown with larger text.
+  static double heightOf(BuildContext context) =>
+      44 + _textGrowth(context, 20.f);
+
+  /// "1.2K games", "60+ games", "1 game".
+  static String countLabel(int count, {bool morePending = false}) {
+    final more = morePending ? '+' : '';
+    final noun = count == 1 && !morePending ? 'game' : 'games';
+    return '${formatCompactCount(count)}$more $noun';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.colors;
+    const figures = [FontFeature.tabularFigures()];
+    final muted = AppTypography.textSmRegular.copyWith(
+      color: colors.textSecondary,
+      fontFeatures: figures,
+    );
+    final count = gameCount;
+    final games = count == null
+        ? null
+        : countLabel(count, morePending: morePending);
+
+    final Widget summary;
+    if (filterCount > 0) {
+      final filters = '$filterCount filter${filterCount == 1 ? '' : 's'}';
+      summary = Row(
+        children: [
+          Flexible(
+            child: Text.rich(
+              TextSpan(
+                children: [
+                  TextSpan(
+                    text: filters,
+                    style: AppTypography.textSmMedium.copyWith(
+                      color: colors.textPrimary,
+                      fontFeatures: figures,
+                    ),
+                  ),
+                  if (games != null) TextSpan(text: ' · $games', style: muted),
+                ],
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          Semantics(
+            button: true,
+            label: 'Clear filters',
+            excludeSemantics: true,
+            onTap: onClearFilters,
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: onClearFilters,
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(minHeight: 44),
+                child: Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 10.w),
+                  child: Center(
+                    widthFactor: 1,
+                    child: Text(
+                      'Clear',
+                      style: AppTypography.textSmMedium.copyWith(
+                        color: colors.accentText,
+                      ),
                     ),
                   ),
                 ),
@@ -374,6 +497,60 @@ class _PlayerGamesSearchBarState extends State<PlayerGamesSearchBar> {
             ),
           ),
         ],
+      );
+    } else {
+      summary = Text(
+        games ?? '',
+        style: muted,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+      );
+    }
+
+    return SizedBox(
+      height: heightOf(context),
+      child: Padding(
+        padding: EdgeInsetsDirectional.only(
+          start: inset,
+          end: math.max(0.0, inset - _reach),
+        ),
+        child: Row(
+          children: [
+            Expanded(child: summary),
+            _controls(context),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+extension on PlayerGamesListToolbar {
+  Widget _controls(BuildContext context) {
+    final Widget controls = Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        BoardViewToggleButton(onTap: onToggleLayout),
+        SearchModeFilterButton(
+          key: filterButtonKey,
+          count: filterCount,
+          onTap: onOpenFilters,
+        ),
+      ],
+    );
+    final scope = controlsInSearchHeader
+        ? SearchModeScope.maybeOf(context)
+        : null;
+    if (scope == null) return controls;
+    final away = scope.isSearching;
+    return IgnorePointer(
+      ignoring: away,
+      child: ExcludeSemantics(
+        excluding: away,
+        child: FadeTransition(
+          opacity: scope.pageHeaderOpacity,
+          child: controls,
+        ),
       ),
     );
   }
@@ -405,8 +582,9 @@ class PlayerGamesActiveFiltersChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     // Used as text on its own 10% tint: paper needs the deeper danger ink.
-    final filterRedColor =
-        context.isLightTheme ? context.colors.danger : const Color(0xFFEF4444);
+    final filterRedColor = context.isLightTheme
+        ? context.colors.danger
+        : const Color(0xFFEF4444);
     return GestureDetector(
       onTap: onClear,
       child: Container(
@@ -457,57 +635,27 @@ class PlayerGamesActiveFiltersChip extends StatelessWidget {
   }
 }
 
-/// What the list shows when filters or a search leave no game.
+/// What the list shows when filters or a search leave no game: the one
+/// no-hits state every Games list shows ([SearchNoMatches]), on the list's
+/// gutter where its first row would have been.
+///
+/// [query] is echoed back ('No matches for "carl"'). [filtered]: the
+/// filter sheet narrows the list too, so the action clears the filters
+/// ("Clear filters"); otherwise it clears the words ("Clear search").
+/// [onClear] does what the action says and plays no haptic of its own.
 class PlayerGamesNoMatches extends StatelessWidget {
-  const PlayerGamesNoMatches({super.key, required this.onClear});
+  const PlayerGamesNoMatches({
+    super.key,
+    this.query,
+    this.filtered = false,
+    required this.onClear,
+  });
 
+  final String? query;
+  final bool filtered;
   final VoidCallback onClear;
 
   @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(
-            Icons.filter_alt_off_outlined,
-            size: 56.sp,
-            color: context.textInk(0.4),
-          ),
-          SizedBox(height: 12.h),
-          Text(
-            'No matching games',
-            style: AppTypography.textMdMedium.copyWith(
-              color: context.colors.textPrimary.withValues(alpha: 0.85),
-            ),
-          ),
-          SizedBox(height: 6.h),
-          Text(
-            'Try adjusting your filters',
-            style: AppTypography.textSmRegular.copyWith(
-              color: context.textInk(0.55),
-            ),
-            textAlign: TextAlign.center,
-          ),
-          SizedBox(height: 20.h),
-          GestureDetector(
-            onTap: onClear,
-            child: Container(
-              padding: EdgeInsets.symmetric(horizontal: 20.w, vertical: 10.h),
-              decoration: BoxDecoration(
-                color: context.colors.textPrimary.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(8.br),
-              ),
-              child: Text(
-                'Clear Filters',
-                style: AppTypography.textSmMedium.copyWith(
-                  color: context.colors.textPrimary,
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
+  Widget build(BuildContext context) =>
+      SearchNoMatches(query: query, filtered: filtered, onClear: onClear);
 }

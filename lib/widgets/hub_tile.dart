@@ -479,14 +479,18 @@ class LikesHeartGlyph extends StatelessWidget {
   }
 }
 
-/// Press feedback for a hub tile: it settles to 0.97 under the finger on a
-/// spring and springs back on release, so the tap is felt before the route
-/// pushes. No scale under reduced motion.
+/// Press feedback for a hub tile: it settles to [pressedScale] under the
+/// finger on a spring and springs back on release, so the tap is felt before
+/// the route pushes. The same depth as every other My Space card's press
+/// (`TappableScale`'s 0.96). No scale under reduced motion.
 class HubTilePress extends StatefulWidget {
   const HubTilePress({super.key, required this.onTap, required this.child});
 
   final VoidCallback onTap;
   final Widget child;
+
+  /// How far a held tile settles.
+  static const double pressedScale = 0.96;
 
   @override
   State<HubTilePress> createState() => _HubTilePressState();
@@ -511,7 +515,7 @@ class _HubTilePressState extends State<HubTilePress> {
       onTap: widget.onTap,
       child: SingleMotionBuilder(
         motion: const CupertinoMotion.snappy(),
-        value: _pressed && !reduce ? 0.97 : 1.0,
+        value: _pressed && !reduce ? HubTilePress.pressedScale : 1.0,
         builder: (context, value, child) {
           // A spring only asymptotes to 1; settle on exact identity so the
           // artwork is never resampled a hair soft at rest.

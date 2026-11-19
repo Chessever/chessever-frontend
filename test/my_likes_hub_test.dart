@@ -245,12 +245,14 @@ void main() {
     await tester.tap(_fab);
     await _frames(tester);
     // The field takes the header and the tabs' place, cursor in it, over the
-    // same list; nothing floats while searching.
+    // same list; nothing floats while searching. The header waits under the
+    // field (kept as it was left) and the button the glass left stays laid
+    // out for it to come back to, both out of reach.
     expect(_field, findsOneWidget);
     expect(tester.widget<TextField>(_field).focusNode!.hasFocus, isTrue);
-    expect(find.text('Players'), findsNothing);
+    expect(find.text('Players').hitTestable(), findsNothing);
     expect(find.text('No matching games'), findsOneWidget);
-    expect(_fab, findsNothing);
+    expect(_fab.hitTestable(), findsNothing);
     // The filters the old row carried sit beside the field.
     expect(_filters.hitTestable(), findsOneWidget);
 
@@ -271,8 +273,8 @@ void main() {
     await tester.tap(_close);
     await _frames(tester);
     expect(_field, findsNothing);
-    expect(find.text('Players'), findsOneWidget);
-    expect(_fab, findsOneWidget);
+    expect(find.text('Players').hitTestable(), findsOneWidget);
+    expect(_fab.hitTestable(), findsOneWidget);
     expect(container.read(myLikesFilterProvider).searchQuery, '');
     expect(tester.takeException(), isNull);
   });
@@ -349,6 +351,28 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('Filters in the header, with the search closed, keep a '
+      'picked player', (tester) async {
+    final container = await _pumpHub(tester);
+    await tester.tap(find.text('Players'));
+    await _frames(tester);
+    await tester.tap(find.text('Carlsen, Magnus'));
+    await _frames(tester);
+    expect(_field, findsNothing);
+
+    await tester.tap(find.byKey(const ValueKey('event_view_filters')));
+    await _frames(tester);
+    expect(find.byType(GameFilterDialog), findsOneWidget);
+    expect(
+      container.read(myLikesFilterProvider).searchQuery,
+      'Carlsen, Magnus',
+    );
+    await tester.binding.handlePopRoute();
+    await _frames(tester);
+    expect(find.text('Games of Carlsen, Magnus'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('typing in the search lets go of the picked player', (
     tester,
   ) async {
@@ -378,10 +402,18 @@ void main() {
   testWidgets('the list ends clear of the search button over the home '
       'indicator', (tester) async {
     await _pumpHub(tester, bottomInset: 34);
-    final end = find.byKey(
-      const ValueKey('my_likes_list_end'),
-      skipOffstage: false,
-    );
+    // The room itself (the keyed end may be a sliver around it).
+    final end = find
+        .descendant(
+          of: find.byKey(
+            const ValueKey('my_likes_list_end'),
+            skipOffstage: false,
+          ),
+          matching: find.byType(SizedBox, skipOffstage: false),
+          matchRoot: true,
+          skipOffstage: false,
+        )
+        .first;
     // From the button's top to the screen's bottom: what the list's end
     // must clear once it is scrolled all the way up.
     final covered = 844 - tester.getTopLeft(_fab).dy;

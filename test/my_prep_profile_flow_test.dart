@@ -56,6 +56,10 @@ import 'package:chessever2/widgets/card_context_menu.dart'
 import 'package:chessever2/widgets/figma_player_card.dart';
 import 'package:chessever2/widgets/popover_add_fab.dart';
 import 'package:chessever2/widgets/scroll_to_top_button.dart';
+import 'package:chessever2/widgets/search_mode/search_mode.dart'
+    show SearchCountBadge;
+import 'package:chessever2/widgets/quick_list_toggles.dart'
+    show BoardViewToggleButton;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:smooth_sheets/smooth_sheets.dart';
@@ -2231,14 +2235,43 @@ void main() {
     final fab = find.byKey(const ValueKey('prep_library_search_fab'));
     expect(fab.hitTestable(), findsOneWidget);
 
-    // The layout the row switched moved to the header's menu.
+    // The list's own line, as on a player's profile: its count, its layout
+    // and its filters, the one filter count on their glyph.
+    final filters = find.byKey(const ValueKey('prep_library_games_filters'));
+    expect(find.byType(PlayerGamesListToolbar), findsOneWidget);
+    expect(find.text('3 games'), findsOneWidget);
+    expect(filters.hitTestable(), findsOneWidget);
+    expect(find.byTooltip(BoardViewToggleButton.label), findsOneWidget);
+    // The header's menu keeps what acts on the games listed.
     await tester.tap(find.byType(CardMoreButton));
     await tester.pumpAndSettle();
-    expect(find.text('Show as grid'), findsOneWidget);
     expect(find.text('Save these 3 games to Library'), findsOneWidget);
+    expect(find.text('Filter games'), findsNothing);
+    expect(find.text('Show as grid'), findsNothing);
     await tester.binding.handlePopRoute();
     await tester.pumpAndSettle();
-    expect(find.text('Show as grid'), findsNothing);
+    expect(find.text('Save these 3 games to Library'), findsNothing);
+
+    // Filters that leave nothing to save take the menu away but keep its
+    // place, so the title holds still.
+    final title = tester.getCenter(find.text('Combined'));
+    tester
+        .widget<PrepGamesTab>(find.byType(PrepGamesTab))
+        .onFilterChanged(const PrepFilter(speed: PrepTimeControl.rapid));
+    await tester.pumpAndSettle();
+    expect(find.text('No matching games'), findsOneWidget);
+    expect(find.byType(CardMoreButton), findsNothing);
+    expect(tester.getCenter(find.text('Combined')), title);
+    tester
+        .widget<PrepGamesTab>(find.byType(PrepGamesTab))
+        .onFilterChanged(const PrepFilter());
+    await tester.pumpAndSettle();
+    expect(find.byType(CardMoreButton), findsOneWidget);
+    expect(tester.getCenter(find.text('Combined')), title);
+
+    // The chevron the search header shows is the page's own, in place.
+    final back = tester.getCenter(find.byTooltip('Back'));
+    final list = tester.state(find.byType(PrepGamesTab));
 
     // The search opens in the header's place, the cursor in its field, and
     // the same list narrows under it as the reader types.
@@ -2247,22 +2280,56 @@ void main() {
     final field = find.byKey(const ValueKey('prep_library_games_search'));
     expect(field, findsOneWidget);
     expect(tester.widget<TextField>(field).focusNode!.hasFocus, isTrue);
-    expect(find.text('Combined'), findsNothing);
-    expect(fab, findsNothing);
+    expect(find.text('Combined').hitTestable(), findsNothing);
+    // The button stays for the glass to fly back into, out of reach.
+    expect(fab.hitTestable(), findsNothing);
+    expect(tester.getCenter(find.byTooltip('Close search')), back);
+    final line = tester.getRect(find.byType(PlayerGamesListToolbar));
     await tester.enterText(field, 'najdorf');
     await tester.pump();
-    expect(find.textContaining('1 filter active · 1 games'), findsOneWidget);
+    // The field says what is searched: no summary row pushes in over the
+    // list, which is the same list, narrowed; its line counts the hits
+    // where it stood.
+    expect(find.textContaining('filter active'), findsNothing);
+    expect(
+      find.text('Loaded all 1 games', skipOffstage: false),
+      findsOneWidget,
+    );
+    expect(find.text('1 game'), findsOneWidget);
+    expect(tester.getRect(find.byType(PlayerGamesListToolbar)), line);
+    expect(tester.state(find.byType(PrepGamesTab)), same(list));
 
-    // The filters sit beside the field as a bare glyph.
-    final filters = find.byKey(const ValueKey('prep_library_games_filters'));
-    expect(filters.hitTestable(), findsOneWidget);
-    await tester.tap(filters);
+    // While searching the Filters stand at the search header's end, as on
+    // every searched list; the list's line keeps its count.
+    final searchFilters = find.byKey(const ValueKey('prep_search_filters'));
+    expect(filters.hitTestable(), findsNothing);
+    expect(searchFilters.hitTestable(), findsOneWidget);
+    await tester.tap(searchFilters);
     await tester.pumpAndSettle();
     expect(find.byType(GameFilterDialog), findsOneWidget);
     await tester.binding.handlePopRoute();
     await tester.pumpAndSettle();
     expect(find.byType(GameFilterDialog), findsNothing);
     expect(field, findsOneWidget);
+
+    // A search that finds nothing leaves the menu nothing to act on: it
+    // goes (never an empty menu) and comes back with the games.
+    await tester.enterText(field, 'nobody plays this');
+    await tester.pump();
+    expect(find.text('No matches for "nobody plays this"'), findsOneWidget);
+    // The list tells its count after the frame that built it.
+    await tester.pump();
+    expect(find.byType(CardMoreButton), findsNothing);
+    await tester.tap(find.byKey(const ValueKey('search_no_matches_clear')));
+    await tester.pumpAndSettle();
+    expect(field, findsOneWidget);
+    expect(find.byType(CardMoreButton), findsOneWidget);
+    expect(
+      find.text('Loaded all 3 games', skipOffstage: false),
+      findsOneWidget,
+    );
+    await tester.enterText(field, 'najdorf');
+    await tester.pump();
 
     // System back leaves the search, not the database, and clears it.
     await tester.binding.handlePopRoute();
@@ -2280,7 +2347,10 @@ void main() {
     await tester.pumpAndSettle();
     await tester.enterText(field, 'fan');
     await tester.pump();
-    expect(find.textContaining('1 filter active · 1 games'), findsOneWidget);
+    expect(
+      find.text('Loaded all 1 games', skipOffstage: false),
+      findsOneWidget,
+    );
     await tester.tap(find.byKey(const ValueKey('prep_library_search_close')));
     await tester.pumpAndSettle();
     expect(field, findsNothing);
@@ -2289,6 +2359,9 @@ void main() {
       find.text('Loaded all 3 games', skipOffstage: false),
       findsOneWidget,
     );
+    // Opened and closed twice, the list is the one it always was.
+    expect(tester.state(find.byType(PrepGamesTab)), same(list));
+    expect(tester.getCenter(find.byTooltip('Back')), back);
 
     // With the search closed, back leaves the database.
     await tester.binding.handlePopRoute();
@@ -2463,6 +2536,8 @@ void main() {
               playerIsWhite: true,
             ),
         ];
+        // The empty source's games are read until the test lets them land.
+        final emptyRead = Completer<void>();
         await pump(
           tester,
           const PrepProfileScreen(profileId: 'p'),
@@ -2474,12 +2549,13 @@ void main() {
             prepAnalysisProvider.overrideWith(
               (ref, id) async => PrepAnalysis(profileId: id, games: games),
             ),
-            prepSourceAnalysisProvider.overrideWith(
-              (ref, scope) async => PrepAnalysis(
+            prepSourceAnalysisProvider.overrideWith((ref, scope) async {
+              if (scope.accountKey == empty.key) await emptyRead.future;
+              return PrepAnalysis(
                 profileId: scope.profileId,
                 games: scope.accountKey == empty.key ? [] : [games.first],
-              ),
-            ),
+              );
+            }),
           ],
         );
         await tester.pumpAndSettle();
@@ -2514,28 +2590,79 @@ void main() {
         expect(tab.filter.speed, PrepTimeControl.rapid);
         // Once Games is open its tab has nothing left to announce.
         expect(find.text('Games 1'), findsNothing);
-        // Games searches from its floating button, which counts the filter
-        // About chose; the search and the filters open in the header's
-        // place, and the list's top is the list's own.
+        // Games searches from its floating button, which carries no count:
+        // the list's own line counts the filter About chose, and while the
+        // search is open the search header's Filters count it, at the
+        // header's end.
         expect(find.byTooltip('Filter and sort games'), findsNothing);
+        final filters = find.byKey(const ValueKey('prep_games_filters'));
+        final searchFilters = find.byKey(const ValueKey('prep_search_filters'));
+        expect(filters.hitTestable(), findsOneWidget);
+        expect(find.text('1 filter · 1 game'), findsOneWidget);
         final fab = find.byKey(const ValueKey('prep_search_fab'));
         expect(fab.hitTestable(), findsOneWidget);
+        expect(
+          find.descendant(of: fab, matching: find.byType(SearchCountBadge)),
+          findsNothing,
+        );
+        final list = tester.state(find.byType(PrepGamesTab));
+        final back = tester.getCenter(find.byTooltip('Back'));
         await tester.tap(fab);
         await tester.pumpAndSettle();
-        final filters = find.byKey(const ValueKey('prep_games_filters'));
-        expect(filters.hitTestable(), findsOneWidget);
+        expect(filters.hitTestable(), findsNothing);
+        expect(searchFilters.hitTestable(), findsOneWidget);
+        expect(
+          find.descendant(
+            of: searchFilters,
+            matching: find.byType(SearchCountBadge),
+          ),
+          findsOneWidget,
+        );
+        // The chevron is the page's own, where it was, over the Games tab's
+        // own list, narrowed as the reader types and given back whole.
+        expect(tester.getCenter(find.byTooltip('Close search')), back);
+        final field = find.byKey(const ValueKey('prep_games_search'));
+        await tester.enterText(field, 'nobody plays this');
+        await tester.pump();
+        // The words echoed; the filter narrows too, so its action clears
+        // the filters.
+        expect(find.text('No matches for "nobody plays this"'), findsOneWidget);
+        expect(find.text('Clear filters'), findsOneWidget);
+        expect(searchFilters.hitTestable(), findsOneWidget);
+        await tester.enterText(field, '');
+        await tester.pump();
+        expect(find.text('1 filter · 1 game'), findsOneWidget);
+        expect(tester.state(find.byType(PrepGamesTab)), same(list));
 
-        await tester.tap(filters);
+        await tester.tap(searchFilters);
         await tester.pumpAndSettle();
         await tester.tap(find.text('All attached sources').last);
         await tester.pumpAndSettle();
         await tester.tap(find.text('Chess.com · NoGames').last);
         await tester.pumpAndSettle();
+        // Choosing a source while searching keeps the list on screen while
+        // that source's games are read: the same list, under the Games
+        // lists' quiet line, never the page's "Reading games…" message.
+        final quietLine = find.byKey(const ValueKey('games_list_refetch_line'));
         await tester.tap(find.text('Apply'));
+        for (var i = 0; i < 16; i++) {
+          await tester.pump(const Duration(milliseconds: 50));
+          expect(find.text('Reading games…'), findsNothing);
+          expect(tester.state(find.byType(PrepGamesTab)), same(list));
+        }
+        expect(field, findsOneWidget);
+        expect(quietLine, findsOneWidget);
+        expect(
+          find.text('Loaded all 1 games', skipOffstage: false),
+          findsOneWidget,
+        );
+        emptyRead.complete();
         await tester.pumpAndSettle();
+        expect(quietLine, findsNothing);
+        expect(tester.state(find.byType(PrepGamesTab)), same(list));
         expect(find.text('No matching games'), findsOneWidget);
-        expect(filters.hitTestable(), findsOneWidget);
-        await tester.tap(filters);
+        expect(searchFilters.hitTestable(), findsOneWidget);
+        await tester.tap(searchFilters);
         await tester.pumpAndSettle();
         await tester.tap(find.text('Reset'));
         await tester.pumpAndSettle();
@@ -2543,10 +2670,14 @@ void main() {
           tester.widget<PrepGamesTab>(find.byType(PrepGamesTab)).games,
           hasLength(3),
         );
-        // Back closes the search, back on Games with its tabs.
+        // Back closes the search, back on Games with its tabs; the
+        // filters stay where they were, on the list's own line.
         await tester.tap(find.byKey(const ValueKey('prep_search_close')));
         await tester.pumpAndSettle();
-        expect(filters, findsNothing);
+        expect(field, findsNothing);
+        expect(find.text('Games').hitTestable(), findsOneWidget);
+        expect(filters.hitTestable(), findsOneWidget);
+        expect(tester.getCenter(find.byTooltip('Back')), back);
 
         await tester.tap(find.text('About'));
         await tester.pumpAndSettle();

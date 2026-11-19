@@ -2,26 +2,23 @@ import 'dart:async';
 
 import 'package:chessever2/screens/tour_detail/combined/combined_category.dart';
 import 'package:chessever2/screens/tour_detail/combined/combined_games_provider.dart';
-import 'package:chessever2/screens/tour_detail/games_tour/models/games_app_bar_view_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/game_display_mode_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_app_bar_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_grouped_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_list_presentation_provider.dart';
-import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_screen_mode_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_screen_provider.dart';
-import 'package:chessever2/screens/tour_detail/games_tour/providers/knockout_tournament_state_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/match_expansion_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/round_expansion_provider.dart';
-import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/game_filter/game_filter_model.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 // The event Games tab's list controls (Trello #1420): Live first (a floating
-// button while something is live) and Collapse all (a row in the event ⋮
-// menu). The rules are the same for the single-category list and for
-// Combined alike.
+// capsule while something is live or while it is on; it reorders, never
+// hides, so it reads `LiveFirstMode.reorder`) and Collapse all (a row in the
+// event ⋮ menu). The rules are the same for the single-category list and
+// for Combined alike.
 
 /// `ref.read` of a widget or a [ProviderContainer].
 typedef EventProviderReader = T Function<T>(ProviderListenable<T> provider);
@@ -111,30 +108,27 @@ final eventGamesAnyLiveProvider = Provider.autoDispose<bool>((ref) {
   return _anyLive(ref.watch(gamesTourGroupedProvider).gamesByRound.values);
 });
 
-/// Live first is on in the event's Games list, the list has loaded, and no
-/// game in it is in play. Here Live first hides the finished games, so left
-/// on it would keep them hidden behind a button that is no longer shown; the
-/// screen turns it off. Never true while the list is still loading, whose
-/// empty first frame is not "nothing live".
-final eventGamesLiveFirstStrandedProvider = Provider.autoDispose<bool>((ref) {
-  if (!ref.watch(eventGamesLiveFirstProvider)) return false;
-  final loaded = ref.watch(combinedCategorySelectedProvider)
-      ? !ref.watch(
-          combinedGamesPresentationProvider.select(
-            (presentation) => presentation.source.isLoading,
-          ),
-        )
-      : ref.watch(
-          gamesTourScreenProvider.select(
-            (screen) => screen.hasValue && !screen.isLoading,
-          ),
-        );
-  return loaded && !ref.watch(eventGamesAnyLiveProvider);
+/// How many games are in play in the event's Games list (single category or
+/// Combined), each board once however many sections list it: the count Live
+/// first shows ("See 3 live").
+final eventGamesLiveCountProvider = Provider.autoDispose<int>((ref) {
+  if (ref.watch(combinedCategorySelectedProvider)) {
+    return _liveCount(
+      ref.watch(combinedGamesPresentationProvider).gamesByRound.values,
+    );
+  }
+  return _liveCount(ref.watch(gamesTourGroupedProvider).gamesByRound.values);
 });
 
 bool _anyLive(Iterable<List<GamesTourModel>> rounds) => rounds.any(
   (games) => games.any((game) => GameFilterHelper.isLiveNow(game)),
 );
+
+int _liveCount(Iterable<List<GamesTourModel>> rounds) => {
+  for (final games in rounds)
+    for (final game in games)
+      if (GameFilterHelper.isLiveNow(game)) game.gameId,
+}.length;
 
 /// The round (and knockout match) sections Collapse all acts on.
 @immutable
@@ -184,9 +178,9 @@ class EventGamesSections {
 /// The Games list's foldable sections, kept current as rounds and games land.
 ///
 /// None during a search: the list then shows every hit open under inert
-/// headers, so folding would change nothing on screen and only resurface
-/// once the search is cleared. The team matchup list is the exception; it
-/// keeps folding through a search, and so does the button.
+/// headers (the board list and the team matchup list alike), so folding
+/// would change nothing on screen and only resurface once the search is
+/// cleared.
 final eventGamesSectionsProvider = Provider.autoDispose<EventGamesSections>((
   ref,
 ) {
@@ -202,9 +196,7 @@ final eventGamesSectionsProvider = Provider.autoDispose<EventGamesSections>((
   if (!screen.hasValue) {
     return EventGamesSections.none;
   }
-  if (screen.requireValue.isSearchMode && !_showsTeamMatchups(ref)) {
-    return EventGamesSections.none;
-  }
+  if (screen.requireValue.isSearchMode) return EventGamesSections.none;
   final roundIds = [
     for (final round in ref.watch(gamesTourDisplayRoundsProvider)) round.id,
   ];
@@ -227,23 +219,6 @@ final eventGamesSectionsProvider = Provider.autoDispose<EventGamesSections>((
     foldMatchKeys: appBar.getVisibleMatchKeys(foldRoundIds),
   );
 });
-
-/// Whether the Games tab paints the team matchup list rather than the board
-/// list; the same choice as `GamesTourScreen`, which keeps the board list
-/// for knockout stages on tablets.
-bool _showsTeamMatchups(Ref ref) {
-  if (ref.watch(gamesTourScreenModeProvider).valueOrNull !=
-      GamesTourScreenMode.groupEvent) {
-    return false;
-  }
-  final rounds =
-      ref.watch(gamesAppBarProvider).valueOrNull?.gamesAppBarModels ??
-      const <GamesAppBarModel>[];
-  final hasKnockoutStages = rounds.any(
-    (round) => round.id.startsWith('$kKnockoutStagePrefix-'),
-  );
-  return !(hasKnockoutStages && ResponsiveHelper.isTablet);
-}
 
 /// Whether every round and knockout match in the list is folded. An empty
 /// list is not: there is nothing to open.

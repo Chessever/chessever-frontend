@@ -13,9 +13,12 @@ import 'package:chessever2/screens/group_event/providers/group_event_screen_prov
 import 'package:chessever2/screens/group_event/providers/home_live_first_provider.dart';
 import 'package:chessever2/screens/group_event/providers/live_group_broadcast_id_provider.dart';
 import 'package:chessever2/screens/group_event/providers/sorting_all_event_provider.dart';
+import 'package:chessever2/screens/group_event/widget/filter_popup/filter_popup_provider.dart';
+import 'package:chessever2/screens/group_event/widget/filter_popup/filter_popup_state.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
-import 'package:chessever2/widgets/live_first_mark.dart';
+import 'package:chessever2/widgets/ink_fab.dart';
+import 'package:chessever2/widgets/live_first_capsule.dart';
 import 'package:chessever2/widgets/search/recent_searches_provider.dart';
 import 'package:chessever2/widgets/simple_search_bar.dart';
 import 'package:flutter/material.dart';
@@ -23,9 +26,10 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-/// Trello #1420, home: Live first rides in the Events search field on every
-/// segment, lists Current's live events first, and says so when nothing is
-/// live. The field's filter glyph lost its tile.
+/// Trello #1420, home: Live first floats over the Events lists on every
+/// segment, in words that count the live events, lists Current's live events
+/// first, and says why when there is nothing to lift. The field's filter
+/// glyph lost its tile.
 void main() {
   setUpAll(() async {
     TestWidgetsFlutterBinding.ensureInitialized();
@@ -221,35 +225,58 @@ void main() {
 
   group('Events button', () {
     final toggle = find.byKey(const ValueKey(kHomeLiveFirstButtonKey));
+    Finder words(String state) => find.descendant(
+      of: toggle,
+      matching: find.byKey(ValueKey('live_first_capsule_$state')),
+    );
 
     testWidgets('with nothing live there is no button to press', (
       tester,
     ) async {
       final container = await _pumpEvents(tester, liveIds: const []);
 
-      expect(find.byType(LiveFirstMark), findsNothing);
-      expect(find.bySemanticsLabel('Show live events first'), findsNothing);
+      expect(find.byType(LiveFirstCapsule), findsNothing);
+      expect(find.bySemanticsLabel(RegExp('live events? first')), findsNothing);
       expect(container.read(homeEventsLiveFirstProvider), isFalse);
       // Nothing left inside the search field but the search.
       expect(
         find.descendant(
           of: find.byKey(const ValueKey('simple-search-field-surface')),
-          matching: find.byType(LiveFirstMark),
+          matching: find.byType(LiveFirstCapsule),
         ),
         findsNothing,
       );
       await _unmount(tester);
     });
 
-    testWidgets('floats the Live mark in the thumb\'s reach', (tester) async {
-      await _pumpEvents(tester, liveIds: const ['gb_live']);
+    testWidgets('says in words how many events are live, in the thumb\'s '
+        'reach', (tester) async {
+      await _pumpEvents(tester, liveIds: const ['gb_live', 'gb_b', 'gb_c']);
 
       expect(
-        find.descendant(of: toggle, matching: find.byType(LiveFirstMark)),
+        find.descendant(of: toggle, matching: find.byType(LiveFirstCapsule)),
         findsOneWidget,
       );
-      expect(find.bySemanticsLabel('Show live events first'), findsOneWidget);
-      expect(tester.getCenter(toggle).dy, greaterThan(852 / 2));
+      expect(
+        find.descendant(
+          of: toggle,
+          matching: find.text(
+            LiveFirstCapsule.labelFor(on: false, liveCount: 3),
+          ),
+        ),
+        findsOneWidget,
+      );
+      expect(words('on'), findsNothing);
+      expect(
+        find.bySemanticsLabel('Show the 3 live events first'),
+        findsOneWidget,
+      );
+      final rect = tester.getRect(toggle);
+      expect(rect.center.dy, greaterThan(852 / 2));
+      // The page's only floating button: the regular one's height, its
+      // trailing edge on the floating buttons' gutter.
+      expect(rect.height, InkFabSize.regular.side);
+      expect(rect.right, 393 - 16);
       await _unmount(tester);
     });
 
@@ -262,10 +289,19 @@ void main() {
         category: GroupEventCategory.past,
       );
       expect(find.text('events:past'), findsOneWidget);
+      expect(
+        find.descendant(
+          of: toggle,
+          matching: find.text(
+            LiveFirstCapsule.labelFor(on: false, liveCount: 1),
+          ),
+        ),
+        findsOneWidget,
+      );
 
-      await tester.tap(find.bySemanticsLabel('Show live events first'));
+      await tester.tap(find.bySemanticsLabel('Show the live event first'));
       await tester.pump();
-      await tester.pump(const Duration(milliseconds: 300));
+      await tester.pump(const Duration(milliseconds: 600));
 
       expect(container.read(homeEventsLiveFirstProvider), isTrue);
       expect(
@@ -274,21 +310,88 @@ void main() {
       );
       expect(find.text('events:current'), findsOneWidget);
       expect(find.text(kNoLiveEventsRightNowMessage), findsNothing);
+      // On, it says what it does now.
+      expect(words('on'), findsOneWidget);
+      expect(words('off'), findsNothing);
       expect(
-        find.bySemanticsLabel('Live events are shown first'),
+        find.descendant(of: toggle, matching: find.text('Live first')),
         findsOneWidget,
       );
+      expect(find.bySemanticsLabel('Live events shown first'), findsOneWidget);
 
       // Off again with one more tap, and Current stays open.
-      await tester.tap(find.bySemanticsLabel('Live events are shown first'));
+      await tester.tap(find.bySemanticsLabel('Live events shown first'));
       await tester.pump();
+      await tester.pump(const Duration(milliseconds: 600));
       expect(container.read(homeEventsLiveFirstProvider), isFalse);
       expect(
         container.read(selectedGroupCategoryProvider),
         GroupEventCategory.current,
       );
+      expect(
+        find.descendant(
+          of: toggle,
+          matching: find.text(
+            LiveFirstCapsule.labelFor(on: false, liveCount: 1),
+          ),
+        ),
+        findsOneWidget,
+      );
       await _unmount(tester);
     });
+
+    testWidgets('stays while on with nothing live, so it can be turned off', (
+      tester,
+    ) async {
+      final container = await _pumpEvents(tester, liveIds: const []);
+      container.read(homeEventsLiveFirstProvider.notifier).state = true;
+      await tester.pump();
+
+      expect(words('on'), findsOneWidget);
+      await tester.tap(toggle);
+      await tester.pump();
+
+      expect(container.read(homeEventsLiveFirstProvider), isFalse);
+      expect(find.byType(LiveFirstCapsule), findsNothing);
+      expect(find.text(kNoLiveEventsRightNowMessage), findsNothing);
+      await _unmount(tester);
+    });
+
+    for (final narrowed in const [false, true]) {
+      testWidgets('a live event Current does not list says '
+          '${narrowed ? 'the filters keep it out' : 'nothing is live'}', (
+        tester,
+      ) async {
+        final container = await _pumpEvents(
+          tester,
+          liveIds: const ['gb_live'],
+          filters: narrowed
+              ? defaultFilterPopupState.copyWith(formatsAndStates: {'Blitz'})
+              : null,
+        );
+        // Current on screen, loaded, and without the live event.
+        final list = container.listen(groupEventScreenProvider, (_, __) {});
+        addTearDown(list.close);
+        for (var i = 0; i < 40 && !list.read().hasValue; i++) {
+          await tester.pump(const Duration(milliseconds: 10));
+        }
+        expect(list.read().requireValue, isEmpty);
+
+        await tester.tap(toggle);
+        await tester.pump();
+
+        expect(container.read(homeEventsLiveFirstProvider), isFalse);
+        expect(
+          find.text(kNoLiveEventsMatchFiltersMessage),
+          narrowed ? findsOneWidget : findsNothing,
+        );
+        expect(
+          find.text(kNoLiveEventsRightNowMessage),
+          narrowed ? findsNothing : findsOneWidget,
+        );
+        await _unmount(tester);
+      });
+    }
 
     for (final textScale in const [1.0, 2.0]) {
       testWidgets('fits a 320pt phone at ${textScale}x text', (tester) async {
@@ -300,11 +403,79 @@ void main() {
         );
 
         expect(tester.takeException(), isNull);
-        final mark = tester.getRect(toggle);
-        expect(mark.right, lessThanOrEqualTo(320));
+        final rect = tester.getRect(toggle);
+        expect(rect.left, greaterThanOrEqualTo(0));
+        expect(rect.right, lessThanOrEqualTo(320));
+        expect(
+          find.descendant(
+            of: toggle,
+            matching: find.text(
+              LiveFirstCapsule.labelFor(on: false, liveCount: 1),
+            ),
+          ),
+          findsOneWidget,
+        );
         await _unmount(tester);
       });
     }
+  });
+
+  group('home Live first helpers', () {
+    test('counts the events in play, by the strict stream first', () async {
+      final container = ProviderContainer(
+        overrides: [
+          liveGroupBroadcastIdsProvider.overrideWith(
+            (ref) => Stream.value(const ['a', 'b', 'c']),
+          ),
+        ],
+      );
+      addTearDown(container.dispose);
+      final count = container.listen(homeLiveEventCountProvider, (_, __) {});
+      addTearDown(count.close);
+      // Before the stream answers, the events list's copy counts.
+      container.read(liveBroadcastIdsProvider.notifier).state = const ['m'];
+      expect(container.read(homeLiveEventCountProvider), 1);
+      await container.read(liveGroupBroadcastIdsProvider.future);
+      expect(container.read(homeLiveEventCountProvider), 3);
+    });
+
+    test('the button is there while something is live or while on', () {
+      expect(showsHomeLiveFirst(liveCount: 0, on: false), isFalse);
+      expect(showsHomeLiveFirst(liveCount: 2, on: false), isTrue);
+      expect(showsHomeLiveFirst(liveCount: 0, on: true), isTrue);
+    });
+
+    test('a press that finds nothing says why', () {
+      final blitz = defaultFilterPopupState.copyWith(
+        formatsAndStates: {'Blitz'},
+      );
+      // Nothing in play: nothing is live, filters or not.
+      expect(
+        noLiveEventsMessage(liveIds: const {}, filters: blitz),
+        kNoLiveEventsRightNowMessage,
+      );
+      // In play but kept out by the filters: say so, not "nothing live".
+      expect(
+        noLiveEventsMessage(liveIds: const {'x'}, filters: blitz),
+        kNoLiveEventsMatchFiltersMessage,
+      );
+      expect(
+        noLiveEventsMessage(
+          liveIds: const {'x'},
+          filters: defaultFilterPopupState.copyWith(
+            eloRange: const RangeValues(2600, kFilterMaxElo),
+          ),
+        ),
+        kNoLiveEventsMatchFiltersMessage,
+      );
+      expect(
+        noLiveEventsMessage(
+          liveIds: const {'x'},
+          filters: defaultFilterPopupState,
+        ),
+        kNoLiveEventsRightNowMessage,
+      );
+    });
   });
 
   group('Search field filter glyph', () {
@@ -396,6 +567,7 @@ Future<ProviderContainer> _pumpEvents(
   WidgetTester tester, {
   required List<String> liveIds,
   GroupEventCategory category = GroupEventCategory.current,
+  FilterPopupState? filters,
   Size size = const Size(393, 852),
   double textScale = 1,
 }) async {
@@ -427,6 +599,9 @@ Future<ProviderContainer> _pumpEvents(
   );
   addTearDown(container.dispose);
   container.read(selectedGroupCategoryProvider.notifier).state = category;
+  if (filters != null) {
+    container.read(eventAppliedFilterProvider.notifier).state = filters;
+  }
   final live = container.listen(liveGroupBroadcastIdsProvider, (_, __) {});
   addTearDown(live.close);
 

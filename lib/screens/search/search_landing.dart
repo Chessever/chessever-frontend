@@ -10,31 +10,28 @@ import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart'
 import 'package:chessever2/screens/group_event/providers/group_event_screen_provider.dart';
 import 'package:chessever2/screens/group_event/providers/home_live_first_provider.dart';
 import 'package:chessever2/screens/group_event/providers/live_group_broadcast_id_provider.dart';
-import 'package:chessever2/theme/app_colors.dart';
-import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/transient_request_retry.dart';
 import 'package:chessever2/widgets/search/opening_search_suggestion.dart';
 import 'package:flutter/foundation.dart';
-import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 // What the Search tab lists before anything is typed, under the recent
-// searches: the events in play, the strongest players and the main openings.
-// Every row is a real destination and opens exactly what the same search
-// result opens. A section with nothing in it is not shown.
-
-/// How far a Search tab row's content sits in from the page's gutter: rows,
-/// headings, the opening cards and the tab's own gutter sum all use this one
-/// value. `.w` and `.sp` scale apart off the 393pt base (short phones, the
-/// tablet branch), so mixing them put the rows a couple of points off the
-/// field's edge.
-double get searchPageRowInset => 12.w;
+// searches: the events in play, the strongest players, the main openings,
+// the built-in smart events and the events coming up. Each is drawn in the
+// card the app already draws it in elsewhere and opens exactly what the
+// same search result opens. A section with nothing in it is not shown.
 
 /// At most this many events under Live now.
-const int searchLandingLiveLimit = 8;
+const int searchLandingLiveLimit = 5;
 
-/// How many players Top players lists.
-const int searchLandingPlayerCount = 5;
+/// How many players Top players lists: one full grid of player cards.
+const int searchLandingPlayerCount = 4;
+
+/// At most this many events under Coming up.
+const int searchLandingUpcomingLimit = 5;
+
+/// At most this many recent searches lead the landing.
+const int searchLandingRecentLimit = 4;
 
 /// The openings the landing offers, each the first result its search gives.
 ///
@@ -54,8 +51,9 @@ const List<String> searchLandingOpeningQueries = [
 ];
 
 /// The events in play, as one value-equal key (sorted ids, one per line), so
-/// Live now looks again only when the set really changes.
-final _searchLiveIdsKeyProvider = Provider.autoDispose<String>((ref) {
+/// Live now (and a recent event's LIVE line) looks again only when the set
+/// really changes.
+final searchLiveIdsKeyProvider = Provider.autoDispose<String>((ref) {
   final ids = homeLiveEventIds(
     strict: ref.watch(liveGroupBroadcastIdsProvider).valueOrNull,
     mirror: ref.watch(liveBroadcastIdsProvider),
@@ -117,7 +115,7 @@ class SearchLiveNowNotifier extends AutoDisposeNotifier<SearchLiveNow> {
 
   @override
   SearchLiveNow build() {
-    final key = ref.watch(_searchLiveIdsKeyProvider);
+    final key = ref.watch(searchLiveIdsKeyProvider);
     if (key.isEmpty) return SearchLiveNow.none;
     final liveIds = key.split('\n').toSet();
     final feed = ref.read(searchLandingFeedEventsProvider);
@@ -283,189 +281,94 @@ List<OpeningSearchSuggestion> resolveSearchLandingOpenings(
   ];
 }
 
-/// One landing row, built like a recent search row so the page reads as one
-/// list: a glyph, the name, a quiet second line. 48pt tall at the least.
-///
-/// To assistive technology it is one button, read as [semanticsLabel] (else
-/// the name and the second line), that activates [onTap] like a touch does.
-class SearchLandingRow extends StatelessWidget {
-  const SearchLandingRow({
-    super.key,
-    required this.leading,
-    required this.title,
-    required this.subtitle,
-    required this.onTap,
-    this.semanticsLabel,
-  });
+/// How many of the strongest upcoming events the tab reads: twice what
+/// Coming up lists, so one that starts while the tab is open leaves the
+/// next strongest to take its place without another read.
+const int searchUpcomingReadLimit = searchLandingUpcomingLimit * 2;
 
-  final Widget leading;
-  final String title;
-  final String subtitle;
-  final VoidCallback onTap;
-  final String? semanticsLabel;
+/// How long one read of the upcoming view stands: arriving on the tab after
+/// this reads it again (`SearchTabScreen`).
+const Duration searchUpcomingMaxAge = Duration(minutes: 15);
 
-  @override
-  Widget build(BuildContext context) {
-    return Semantics(
-      button: true,
-      label:
-          semanticsLabel ??
-          [title, if (subtitle.isNotEmpty) subtitle].join(', '),
-      // The InkWell's own node is excluded with the text, so the tap is
-      // declared here or the button could not be activated.
-      onTap: onTap,
-      excludeSemantics: true,
-      child: InkWell(
-        onTap: onTap,
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(minHeight: 48),
-          child: Padding(
-            padding: EdgeInsets.symmetric(
-              horizontal: searchPageRowInset,
-              vertical: 6.h,
-            ),
-            child: Row(
-              children: [
-                SizedBox.square(
-                  dimension: 17.ic,
-                  child: Center(child: leading),
-                ),
-                SizedBox(width: 10.w),
-                Expanded(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        title,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          color: context.colors.textPrimary,
-                          fontSize: 12.sp,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                      if (subtitle.isNotEmpty)
-                        Text(
-                          subtitle,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            color: context.colors.textSecondary,
-                            fontSize: 10.sp,
-                            fontFeatures: const [FontFeature.tabularFigures()],
-                          ),
-                        ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
+/// The strongest events not started yet, as the upcoming view orders them
+/// (strongest first), named ones only. Read once and kept while the Search
+/// tab lives; the tab reads it again when one of them starts or the read
+/// grows old. What Coming up lists is [searchComingUpProvider].
+final searchUpcomingProvider =
+    FutureProvider.autoDispose<List<GroupEventCardModel>>((ref) async {
+      final repository = ref.read(groupBroadcastRepositoryProvider);
+      final broadcasts = await retryTransientRead(
+        () => repository.getUpcomingGroupBroadcasts(
+          limit: searchUpcomingReadLimit,
         ),
-      ),
+      );
+      return [
+        for (final broadcast in broadcasts)
+          GroupEventCardModel.fromGroupBroadcast(broadcast, const []),
+      ];
+    });
+
+/// Coming up as it stands now: [searchUpcomingEvents] over the last read and
+/// today's live set, so an event never shows under Live now and Coming up
+/// at once. Null until the first read lands.
+final searchComingUpProvider = Provider.autoDispose<List<GroupEventCardModel>?>(
+  (ref) {
+    final read = ref.watch(searchUpcomingProvider).valueOrNull;
+    if (read == null) return null;
+    final key = ref.watch(searchLiveIdsKeyProvider);
+    return searchUpcomingEvents(
+      read,
+      liveIds: key.isEmpty ? const <String>[] : key.split('\n'),
     );
+  },
+);
+
+/// Whether [event] is in [liveIds] (by id, or by name for the few events
+/// configured that way).
+bool searchEventIsLive(GroupEventCardModel event, Iterable<String> liveIds) {
+  for (final id in liveIds) {
+    if (id == event.id || id == event.title) return true;
   }
+  return false;
 }
 
-/// Room for [count] landing rows still on their way, so they arrive into it
-/// instead of pushing what is below down under a finger. Each slot is a
-/// real row's build, never painted, so it is exactly a row tall at any text
-/// size; the first carries one small spinner.
-class SearchLandingPendingRows extends StatelessWidget {
-  const SearchLandingPendingRows({super.key, required this.count});
-
-  final int count;
-
-  static void _inert() {}
-
-  @override
-  Widget build(BuildContext context) {
-    const slot = Visibility(
-      visible: false,
-      maintainSize: true,
-      maintainAnimation: true,
-      maintainState: true,
-      child: SearchLandingRow(
-        leading: SizedBox.shrink(),
-        title: ' ',
-        subtitle: ' ',
-        onTap: _inert,
-      ),
-    );
-    return ExcludeSemantics(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          for (var i = 0; i < count; i++)
-            if (i == 0)
-              Stack(
-                alignment: Alignment.center,
-                children: [
-                  slot,
-                  SizedBox.square(
-                    dimension: 18.ic,
-                    child: const CircularProgressIndicator(strokeWidth: 2),
-                  ),
-                ],
-              )
-            else
-              slot,
-        ],
-      ),
-    );
+/// Of [events] (strongest first), the first [searchLandingUpcomingLimit]
+/// that have a name and have not started by [now] (nor gone live early by
+/// [liveIds]), each once, then soonest first (undated last, then by name).
+/// Each reads as it stands now ([GroupEventCardModel.withLiveIds]).
+@visibleForTesting
+List<GroupEventCardModel> searchUpcomingEvents(
+  Iterable<GroupEventCardModel> events, {
+  List<String> liveIds = const <String>[],
+  DateTime? now,
+}) {
+  final at = now ?? DateTime.now();
+  final byId = <String, GroupEventCardModel>{};
+  for (final event in events) {
+    if (byId.length == searchLandingUpcomingLimit) break;
+    if (event.id.trim().isEmpty || event.title.trim().isEmpty) continue;
+    if (searchEventIsLive(event, liveIds)) continue;
+    final start = event.startDate;
+    if (start != null && !at.isBefore(start)) continue;
+    byId.putIfAbsent(event.id, () => event.withLiveIds(liveIds));
   }
+  return byId.values.toList()..sort((a, b) {
+    final start = switch ((a.startDate, b.startDate)) {
+      (final x?, final y?) => x.compareTo(y),
+      (null, null) => 0,
+      (null, _) => 1,
+      (_, null) => -1,
+    };
+    if (start != 0) return start;
+    return a.title.toLowerCase().compareTo(b.title.toLowerCase());
+  });
 }
 
-/// A Top players row's mark: its place in the ranking, set like the second
-/// line's figures.
-class SearchLandingRank extends StatelessWidget {
-  const SearchLandingRank(this.rank, {super.key});
-
-  final int rank;
-
-  @override
-  Widget build(BuildContext context) {
-    return Text(
-      '$rank',
-      maxLines: 1,
-      textAlign: TextAlign.center,
-      style: TextStyle(
-        color: context.colors.textSecondary,
-        fontSize: 12.sp,
-        fontWeight: FontWeight.w600,
-        fontFeatures: const [FontFeature.tabularFigures()],
-      ),
-    );
-  }
-}
-
-/// A live event's second line: its time control and average rating.
-String searchLiveEventSubtitle(GroupEventCardModel event) => [
-  if (event.timeControl.trim().isNotEmpty) event.timeControl.trim(),
-  if (event.maxAvgElo > 0) 'Ø ${event.maxAvgElo}',
-].join(' · ');
-
-/// What a live event's row reads as to assistive technology.
-String searchLiveEventSemantics(GroupEventCardModel event) => [
-  '${event.title}, live',
-  if (event.timeControl.trim().isNotEmpty) event.timeControl.trim(),
-  if (event.maxAvgElo > 0) 'average rating ${event.maxAvgElo}',
-].join(', ');
-
-/// A player's second line, as a recent player search writes it.
-String searchPlayerSubtitle(SearchPlayer player) => [
-  if (player.title?.isNotEmpty == true) player.title!,
-  if (player.rating != null) '${player.rating}',
-  if (player.fed?.isNotEmpty == true) player.fed!,
-].join(' · ');
-
-/// What a Top players row reads as to assistive technology.
-String searchTopPlayerSemantics(SearchPlayer player, int rank) => [
-  player.name,
-  'number $rank',
-  if (player.title?.isNotEmpty == true) player.title!,
-  if (player.rating != null) 'rating ${player.rating}',
-  if (player.fed?.isNotEmpty == true) player.fed!,
-].join(', ');
+/// A recent event as it stands now: the snapshot recorded with the search,
+/// its status read again from today's live set and its dates
+/// ([GroupEventCardModel.withLiveIds]), so a search saved while the event
+/// was live never reads LIVE after it ends.
+GroupEventCardModel searchRecentEvent(
+  GroupEventCardModel saved,
+  List<String> liveIds,
+) => saved.withLiveIds(liveIds);

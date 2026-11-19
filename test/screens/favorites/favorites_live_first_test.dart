@@ -1,59 +1,120 @@
+import 'dart:async';
+import 'dart:math' as math;
+
 import 'package:chessever2/e2e/e2e_ids.dart';
 import 'package:chessever2/main.dart' show routeObserver;
+import 'package:chessever2/providers/engine_settings_provider.dart';
 import 'package:chessever2/providers/game_list_live_first_provider.dart';
 import 'package:chessever2/screens/favorites/favorite_players_provider.dart';
 import 'package:chessever2/screens/favorites/favorites_tab_screen.dart';
 import 'package:chessever2/screens/favorites/player_games/provider/favorites_combined_games_provider.dart';
 import 'package:chessever2/screens/favorites/provider/favorites_mode_provider.dart';
 import 'package:chessever2/screens/favorites/tabs/favorites_games_tab.dart';
+import 'package:chessever2/screens/favorites/tabs/favorites_list_tab.dart';
+import 'package:chessever2/screens/favorites/tabs/favorites_players_tab.dart';
+import 'package:chessever2/screens/standings/player_standing_model.dart';
+import 'package:chessever2/providers/favorite_players_provider.dart';
+import 'package:chessever2/repository/favorites/models/favorite_player.dart';
+import 'package:chessever2/widgets/search_no_matches.dart';
+import 'package:chessever2/screens/favorites/widgets/games_list_refetch_line.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/event_no_spoilers_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_list_view_mode_provider.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/grid_game_card_wrapper_widget.dart';
 import 'package:chessever2/services/discovery_dots/discovery_dots_provider.dart';
 import 'package:chessever2/theme/app_theme.dart';
+import 'package:chessever2/utils/date_time_provider.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/game_filter/game_filter_model.dart';
+import 'package:chessever2/widgets/home_top_bar.dart' show PageTitle;
+import 'package:chessever2/widgets/live_first_capsule.dart';
 import 'package:chessever2/widgets/quick_list_toggles.dart';
 import 'package:chessever2/widgets/scroll_chrome.dart';
+import 'package:chessever2/widgets/search_mode/search_mode.dart';
 import 'package:chessever2/widgets/segmented_switcher.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show FontLoader, rootBundle;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 const _liveFirstOff = 'Show live games first';
-const _liveFirstOn = 'Live games are shown first';
 const _classicalOff = 'Show classical games only';
 const _classicalOn = 'Showing classical games only';
-const _filters = 'Filters';
 const _boardView = 'Change board view';
 const _search = 'Search games';
+const _searchFavorites = 'Search favorites';
+const _searchPlayers = 'Search players';
 const _closeSearch = 'Close search';
+const _liveFirstKey = ValueKey<String>('favorites_live_first_fab');
 const _filterKey = ValueKey<String>(E2eIds.favoritesGamesFilterButton);
 const _searchKey = ValueKey<String>(E2eIds.favoritesGamesSearchField);
 
+/// The full-page search header (built only while the search is open).
+Finder get _searchHeader => find.byType(SearchModeHeader);
+
+/// [finder] inside the search header.
+Finder _inSearch(Finder finder) =>
+    find.descendant(of: _searchHeader, matching: finder);
+
+/// The title row's back button (the search header's is "Close search").
+Finder get _back => find.byTooltip('Back');
+
+/// What Live first reads with [count] games in play, off.
+String _liveLabel(int count) =>
+    LiveFirstCapsule.labelFor(on: false, liveCount: count);
+
 void main() {
   group('Favorites header and floating buttons (Trello #1420)', () {
-    testWidgets('Games keeps only the board view beside the centred title; '
-        'the search and the list controls leave the top', (tester) async {
+    testWidgets('Games ends the title row with its toolbar; back sits where '
+        'the search header puts its chevron', (tester) async {
       final harness = await _pumpScreen(tester);
 
-      final back = tester.getCenter(find.byTooltip('Back'));
-      final board = find.byTooltip(_boardView);
-      expect(board, findsOneWidget);
-      expect(tester.getCenter(board).dy, closeTo(back.dy, 1));
+      final back = tester.getRect(_back);
+      // The canonical back: a 48pt target at the leading inset, right under
+      // the status bar's inset (+4).
+      expect(back.left, closeTo(SearchHeaderMetrics.leadingInset, 0.01));
+      expect(back.width, SearchHeaderMetrics.backTarget);
+      expect(back.top, closeTo(4, 0.5));
+      // The heart and title are centred on the screen, in the pushed
+      // page's title voice, moved toward back only as far as the toolbar's
+      // room asks (the test font draws every glyph a full em wide; the
+      // app's own type centres it: see the last group).
+      final title = tester.getRect(find.byType(PageTitle));
+      final boardLeft = tester.getRect(find.byTooltip(_boardView)).left;
+      expect(
+        title.center.dx,
+        closeTo(math.min(393 / 2, boardLeft - 4 - title.width / 2), 1),
+      );
+      expect(title.left, greaterThan(back.right));
+      expect(
+        tester.widget<Text>(_titleText()).style?.fontWeight,
+        PageTitle.style(tester.element(_titleText())).fontWeight,
+      );
+
+      // Board view, Classical and Filters, in that order, on back's line.
+      final board = tester.getRect(find.byTooltip(_boardView));
+      final classical = tester.getRect(find.byTooltip(_classicalOff));
+      final filters = tester.getRect(find.byKey(_filterKey));
+      for (final rect in [board, classical, filters]) {
+        expect(rect.center.dy, closeTo(back.center.dy, 1));
+        expect(rect.width, greaterThanOrEqualTo(44));
+      }
+      expect(title.right, lessThanOrEqualTo(board.left));
+      expect(board.right, lessThanOrEqualTo(classical.left));
+      expect(classical.right, lessThanOrEqualTo(filters.left));
       // The same board-view mark as Countrymen.
       expect(
-        find.descendant(of: board, matching: find.byType(BoardViewGlyph)),
+        find.descendant(
+          of: find.byTooltip(_boardView),
+          matching: find.byType(BoardViewGlyph),
+        ),
         findsOneWidget,
       );
-      _expectTitleCentred(tester);
 
-      // Nothing is live, so Live first does not float; Classical and Filters
-      // wait in the search; no field sits on the page.
-      for (final label in [_liveFirstOff, _classicalOff, _filters]) {
-        expect(find.byTooltip(label), findsNothing, reason: label);
-      }
+      // Nothing is live, so Live first does not float; no field sits on the
+      // page.
+      expect(find.byKey(_liveFirstKey), findsNothing);
       expect(find.byKey(_searchKey), findsNothing);
-      expect(find.byKey(_filterKey), findsNothing);
 
       // The search floats in the thumb's reach.
       final search = tester.getRect(find.byTooltip(_search));
@@ -97,67 +158,96 @@ void main() {
       );
 
       expect(find.byTooltip(_boardView), findsNothing);
+      expect(find.byKey(_filterKey), findsNothing);
       expect(find.byTooltip(_search), findsNothing);
+      // The page floats its own list's search instead.
+      expect(find.byTooltip(_searchFavorites), findsOneWidget);
       // Nothing watched the games list, so no games fetch started.
       expect(harness.created, isEmpty);
     });
 
-    testWidgets('other pages keep the centred title with nothing floating', (
-      tester,
-    ) async {
+    testWidgets('other pages keep the title in place and float their own '
+        'search', (tester) async {
       final harness = await _pumpScreen(tester);
+      Rect title() => tester.getRect(find.byType(PageTitle));
+      final titleOnGames = title();
+      final searchOnGames = tester.getRect(find.byTooltip(_search));
 
       harness.container.read(selectedFavoritesModeProvider.notifier).state =
           FavoritesScreenMode.players;
       await tester.pump();
 
       expect(find.byTooltip(_boardView), findsNothing);
+      expect(find.byKey(_filterKey), findsNothing);
       expect(find.byTooltip(_search), findsNothing);
-      _expectTitleCentred(tester);
+      // The same search button, at the same spot, searching this list.
+      expect(
+        tester.getRect(find.byTooltip(_searchPlayers)),
+        rectMoreOrLessEquals(searchOnGames, epsilon: 0.5),
+      );
+      expect(
+        find.byKey(const ValueKey(E2eIds.favoritesSearchFab)),
+        findsOneWidget,
+      );
+      // The title never moves when the page changes.
+      expect(title(), rectMoreOrLessEquals(titleOnGames, epsilon: 0.01));
     });
 
-    testWidgets('the search opens in place: back, the field, Classical and '
-        'Filters over the same Games list, and back closes it', (tester) async {
+    testWidgets('the search opens in place: the chevron, Classical and '
+        'Filters stay put, the field takes the title\'s place over the same '
+        'Games list, and back closes it', (tester) async {
       final harness = await _pumpScreen(tester);
+      final back = tester.getRect(_back);
+      final toolbar = [
+        tester.getRect(find.byTooltip(_classicalOff)),
+        tester.getRect(find.byKey(_filterKey)),
+      ];
+      final list = tester.element(find.byType(FavoritesGamesTab));
 
       await _openSearch(tester);
 
       final field = find.byKey(_searchKey);
       expect(field, findsOneWidget);
       expect(tester.widget<TextField>(field).focusNode!.hasFocus, isTrue);
-      // The header is the search row alone: no title, no tabs, nothing
-      // floating.
-      expect(_titleText(), findsNothing);
-      expect(find.byType(SegmentedSwitcher), findsNothing);
-      expect(find.byTooltip(_search), findsNothing);
-      expect(find.byType(FavoritesGamesTab), findsOneWidget);
-      // One row, left to right: back, field, Classical, Filters.
+      // The title row and the tabs are out of reach; nothing floats.
+      expect(_titleText().hitTestable(), findsNothing);
+      expect(find.byType(SegmentedSwitcher).hitTestable(), findsNothing);
+      expect(find.byTooltip(_search).hitTestable(), findsNothing);
+      // The same Games list, never rebuilt from scratch.
+      expect(tester.element(find.byType(FavoritesGamesTab)), same(list));
+      // The chevron and the toolbar did not move.
       final close = tester.getRect(find.byTooltip(_closeSearch));
+      expect(close, rectMoreOrLessEquals(back, epsilon: 0.5));
+      final searchToolbar = [
+        tester.getRect(_inSearch(find.byTooltip(_classicalOff))),
+        tester.getRect(_inSearch(find.byKey(_filterKey))),
+      ];
+      // The board view gives way to the field with the title.
+      expect(_inSearch(find.byTooltip(_boardView)), findsNothing);
+      for (var i = 0; i < toolbar.length; i++) {
+        expect(
+          searchToolbar[i],
+          rectMoreOrLessEquals(toolbar[i], epsilon: 0.5),
+        );
+      }
       final fieldRect = tester.getRect(field);
-      final classical = tester.getRect(find.byTooltip(_classicalOff));
-      final filters = tester.getRect(find.byKey(_filterKey));
-      for (final rect in [fieldRect, classical, filters]) {
-        expect(rect.center.dy, closeTo(close.center.dy, 1));
-      }
+      expect(fieldRect.center.dy, closeTo(close.center.dy, 1));
       expect(close.right, lessThanOrEqualTo(fieldRect.left));
-      expect(fieldRect.right, lessThanOrEqualTo(classical.left));
-      expect(classical.right, lessThanOrEqualTo(filters.left));
-      for (final rect in [close, classical, filters]) {
-        expect(rect.width, greaterThanOrEqualTo(44));
-        expect(rect.height, greaterThanOrEqualTo(44));
-      }
+      expect(fieldRect.right, lessThanOrEqualTo(searchToolbar.first.left));
 
       await tester.enterText(field, 'Carlsen');
       await tester.pump(const Duration(milliseconds: 450));
       expect(harness.notifier.searches, ['Carlsen']);
 
       await tester.tap(find.byTooltip(_closeSearch));
+      // The query goes with the tap, not after the morph.
+      expect(harness.notifier.clears, 1);
       await _settle(tester);
 
       expect(find.byKey(_searchKey), findsNothing);
-      expect(_titleText(), findsOneWidget);
-      expect(find.byType(SegmentedSwitcher), findsOneWidget);
-      expect(find.byTooltip(_search), findsOneWidget);
+      expect(_titleText().hitTestable(), findsOneWidget);
+      expect(find.byType(SegmentedSwitcher).hitTestable(), findsOneWidget);
+      expect(find.byTooltip(_search).hitTestable(), findsOneWidget);
       expect(harness.notifier.clears, 1);
       expect(harness.created, hasLength(1));
     });
@@ -165,20 +255,25 @@ void main() {
     testWidgets('system back closes the search, not Favorites', (tester) async {
       final harness = await _pumpScreen(tester);
       await _openSearch(tester);
+      await tester.enterText(find.byKey(_searchKey), 'Najdorf');
+      await tester.pump(const Duration(milliseconds: 450));
 
       await tester.binding.handlePopRoute();
       await _settle(tester);
 
       expect(find.byType(FavoritesTabScreen), findsOneWidget);
       expect(find.byKey(_searchKey), findsNothing);
-      expect(_titleText(), findsOneWidget);
+      expect(_titleText().hitTestable(), findsOneWidget);
       expect(harness.notifier.clears, 1);
+      expect(
+        harness.container.read(favoritesCombinedGamesProvider).searchQuery,
+        isEmpty,
+      );
     });
 
-    testWidgets('Classical in the search turns the server filter to '
-        'classical and back', (tester) async {
+    testWidgets('Classical turns the server filter to classical and back, '
+        'from the title row as from the search', (tester) async {
       final harness = await _pumpScreen(tester);
-      await _openSearch(tester);
 
       await tester.tap(find.byTooltip(_classicalOff));
       await tester.pump();
@@ -196,38 +291,41 @@ void main() {
       );
       expect(find.byTooltip(_classicalOn), findsOneWidget);
       expect(_toggledState(tester, _classicalOn), isTrue);
-      // It is a real filter, so the Filters badge counts it.
+      // It is a real filter, so the Filters count shows it.
       expect(
         find.descendant(of: find.byKey(_filterKey), matching: find.text('1')),
         findsOneWidget,
       );
 
-      await tester.tap(find.byTooltip(_classicalOn));
+      await _openSearch(tester);
+      await tester.tap(_inSearch(find.byTooltip(_classicalOn)));
       await tester.pump();
 
       expect(
         harness.notifier.applied.last.timeControl,
         GameTimeControlFilter.all,
       );
-      expect(find.byTooltip(_classicalOff), findsOneWidget);
-      expect(_toggledState(tester, _classicalOff), isFalse);
+      expect(_inSearch(find.byTooltip(_classicalOff)), findsOneWidget);
       expect(
-        find.descendant(of: find.byKey(_filterKey), matching: find.text('1')),
+        find.descendant(
+          of: _inSearch(find.byKey(_filterKey)),
+          matching: find.text('1'),
+        ),
         findsNothing,
       );
     });
 
     testWidgets('Classical stays applied once the search closes, counted on '
-        'the floating search', (tester) async {
+        'the title row\'s Filters', (tester) async {
       final harness = await _pumpScreen(tester);
-      Finder searchBadge(String count) => find.descendant(
-        of: find.byTooltip(_search),
+      Finder filtersCount(String count) => find.descendant(
+        of: find.byKey(_filterKey).hitTestable(),
         matching: find.text(count),
       );
-      expect(searchBadge('1'), findsNothing);
+      expect(filtersCount('1'), findsNothing);
 
       await _openSearch(tester);
-      await tester.tap(find.byTooltip(_classicalOff));
+      await tester.tap(_inSearch(find.byTooltip(_classicalOff)));
       await tester.pump();
       await tester.tap(find.byTooltip(_closeSearch));
       await _settle(tester);
@@ -240,20 +338,17 @@ void main() {
             .timeControl,
         GameTimeControlFilter.classical,
       );
-      expect(searchBadge('1'), findsOneWidget);
-
-      await _openSearch(tester);
-      await tester.tap(find.byTooltip(_classicalOn));
-      await tester.pump();
-      await tester.tap(find.byTooltip(_closeSearch));
-      await _settle(tester);
-      expect(searchBadge('1'), findsNothing);
+      expect(filtersCount('1'), findsOneWidget);
+      // One count, on the Filters glyph: the search button carries none.
+      expect(
+        find.descendant(of: find.byTooltip(_search), matching: find.text('1')),
+        findsNothing,
+      );
     });
 
-    testWidgets('Filters in the search opens the dialog and Apply lands on '
-        'the same notifier with its badge', (tester) async {
+    testWidgets('Filters opens the dialog and Apply lands on the same '
+        'notifier with its count', (tester) async {
       final harness = await _pumpScreen(tester);
-      await _openSearch(tester);
 
       await tester.tap(find.byKey(_filterKey));
       await _settle(tester);
@@ -279,7 +374,9 @@ void main() {
       // Floated by a game that has since finished: the press finds none.
       final harness = await _pumpScreen(tester, anyLive: true);
 
-      await tester.tap(find.byTooltip(_liveFirstOff));
+      // No count known: it reads "Live now".
+      expect(find.text(LiveFirstCapsule.unknownLabel), findsOneWidget);
+      await tester.tap(find.byKey(_liveFirstKey));
       await tester.pump();
 
       expect(find.text(kNoLiveGamesRightNowMessage), findsOneWidget);
@@ -294,33 +391,47 @@ void main() {
       await tester.pump(const Duration(seconds: 6));
     });
 
-    testWidgets('with nothing live there is no Live first, even left on', (
-      tester,
-    ) async {
-      // Left on from earlier, with no game in play now: the button has
-      // nothing to do on this list, so it is not on screen (Trello #1420).
-      await _pumpScreen(tester, liveFirst: true);
+    testWidgets('with nothing live, Live first shows only while it is on, '
+        'so it can be turned off', (tester) async {
+      // Left on from earlier, with no game in play now: it stays on screen,
+      // reading "Live first", until it is turned off.
+      final harness = await _pumpScreen(tester, liveFirst: true);
 
-      expect(find.byTooltip(_liveFirstOn), findsNothing);
-      expect(find.byTooltip(_liveFirstOff), findsNothing);
+      expect(find.byKey(_liveFirstKey), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('live_first_capsule_on')),
+        findsOneWidget,
+      );
       // The search still floats where the thumb rests.
       expect(find.byTooltip(_search), findsOneWidget);
+
+      await tester.tap(find.byKey(_liveFirstKey));
+      await _settle(tester);
+      expect(
+        harness.container.read(
+          gameListLiveFirstProvider(GameListLiveFirstSurface.favorites),
+        ),
+        isFalse,
+      );
+      // Off with nothing live: nothing left for it to do.
+      expect(find.byKey(_liveFirstKey), findsNothing);
     });
 
     testWidgets('fits a 320pt phone at the largest text size', (tester) async {
       await _pumpScreen(tester, size: const Size(320, 640), textScale: 1.5);
 
       expect(tester.takeException(), isNull);
+      final filters = tester.getRect(find.byKey(_filterKey));
+      expect(filters.right, lessThanOrEqualTo(320));
       final board = tester.getRect(find.byTooltip(_boardView));
-      expect(board.right, lessThanOrEqualTo(320));
       expect(tester.getRect(_titleText()).right, lessThanOrEqualTo(board.left));
 
       await _openSearch(tester);
       expect(tester.takeException(), isNull);
       for (final target in [
         find.byTooltip(_closeSearch),
-        find.byTooltip(_classicalOff),
-        find.byKey(_filterKey),
+        _inSearch(find.byTooltip(_classicalOff)),
+        _inSearch(find.byKey(_filterKey)),
       ]) {
         final rect = tester.getRect(target);
         expect(rect.left, greaterThanOrEqualTo(0));
@@ -333,10 +444,357 @@ void main() {
     });
   });
 
-  group('Favorites Live first button with games', () {
-    testWidgets('floats only while a game is in play, and turns on and off', (
+  group('Favorites search on every tab (Trello #1420)', () {
+    final carlsen = _standing('Carlsen, Magnus', 1503014, 2833);
+    final nakamura = _standing('Nakamura, Hikaru', 2016192, 2802);
+
+    testWidgets('the Favorites list floats its own search: the field narrows '
+        'the followed players as typed, and closing brings them all back', (
       tester,
     ) async {
+      final harness = await _pumpScreen(
+        tester,
+        initialMode: FavoritesScreenMode.favorites,
+        favorites: [carlsen, nakamura],
+        overrides: [playerPhotoProvider.overrideWith((ref, id) async => null)],
+      );
+      final back = tester.getRect(_back);
+      expect(find.text('Carlsen, Magnus'), findsOneWidget);
+      // No field on the list itself.
+      expect(find.byType(TextField), findsNothing);
+      final fab = find.byKey(const ValueKey(E2eIds.favoritesSearchFab));
+      expect(fab, findsOneWidget);
+      expect(find.byTooltip(_searchFavorites), findsOneWidget);
+
+      await tester.tap(fab);
+      await _settle(tester);
+
+      final field = find.byKey(const ValueKey('favorites_list_search_field'));
+      expect(field, findsOneWidget);
+      // The same header: the chevron where back was, nothing of the Games
+      // toolbar beside the field.
+      expect(
+        tester.getRect(find.byTooltip(_closeSearch)),
+        rectMoreOrLessEquals(back, epsilon: 0.5),
+      );
+      expect(_inSearch(find.byType(SearchModeFilterButton)), findsNothing);
+
+      await tester.enterText(field, 'naka');
+      await tester.pump();
+      // As typed, no debounce: the list is on the device.
+      expect(harness.container.read(favoritesListSearchQueryProvider), 'naka');
+      expect(find.text('Nakamura, Hikaru'), findsOneWidget);
+      expect(find.text('Carlsen, Magnus'), findsNothing);
+      // The Games list was never read: no games fetch started.
+      expect(harness.created, isEmpty);
+
+      await tester.tap(find.byTooltip(_closeSearch));
+      await _settle(tester);
+      expect(find.byType(TextField), findsNothing);
+      expect(harness.container.read(favoritesListSearchQueryProvider), isEmpty);
+      expect(find.text('Carlsen, Magnus'), findsOneWidget);
+      expect(find.text('Nakamura, Hikaru'), findsOneWidget);
+      expect(harness.created, isEmpty);
+    });
+
+    testWidgets('Rankings sends the settled query to the world ranking, says '
+        'when nothing matches, and closing clears it', (tester) async {
+      final world = _FakeWorldPlayers([carlsen, nakamura])
+        ..all.addAll([carlsen, nakamura]);
+      final harness = await _pumpScreen(
+        tester,
+        initialMode: FavoritesScreenMode.players,
+        overrides: [
+          worldPlayersSearchProvider.overrideWith((ref) => world),
+          favoritePlayersProviderNew.overrideWith(_NoFollowedPlayers.new),
+          playerPhotoProvider.overrideWith((ref, id) async => null),
+        ],
+      );
+      expect(find.byType(TextField), findsNothing);
+      // Active / All lead the ranking's one filter rail.
+      expect(
+        tester.getCenter(find.text('Active')).dy,
+        closeTo(
+          tester
+              .getCenter(find.byKey(const ValueKey('ranking-category-overall')))
+              .dy,
+          0.5,
+        ),
+      );
+
+      await tester.tap(find.byTooltip(_searchPlayers));
+      await _settle(tester);
+      final field = find.byKey(
+        const ValueKey('favorites_players_search_field'),
+      );
+      await tester.enterText(field, 'zzz');
+      await tester.pump(const Duration(milliseconds: 450));
+      await tester.pump();
+      expect(world.searches, ['zzz']);
+      expect(
+        tester
+            .widget<Text>(find.byKey(const ValueKey('search_no_matches_title')))
+            .data,
+        SearchNoMatches.titleFor(query: 'zzz', subject: 'players'),
+      );
+
+      // Its one way back empties the field; the search stays open.
+      await tester.tap(find.byKey(const ValueKey('search_no_matches_clear')));
+      await tester.pump();
+      expect(world.searches.last, '');
+      expect(field, findsOneWidget);
+      expect(find.text('Carlsen, Magnus'), findsOneWidget);
+
+      await tester.enterText(field, 'carl');
+      await tester.pump(const Duration(milliseconds: 450));
+      await tester.tap(find.byTooltip(_closeSearch));
+      await _settle(tester);
+      expect(world.searches.last, '');
+      expect(find.byType(TextField), findsNothing);
+      expect(harness.created, isEmpty);
+    });
+
+    testWidgets('a search holds its tab: the pages do not swipe while it is '
+        'open', (tester) async {
+      await _pumpScreen(
+        tester,
+        initialMode: FavoritesScreenMode.favorites,
+        favorites: [carlsen],
+        overrides: [playerPhotoProvider.overrideWith((ref, id) async => null)],
+      );
+      await tester.tap(find.byTooltip(_searchFavorites));
+      await _settle(tester);
+
+      await tester.drag(find.byType(PageView), const Offset(-300, 0));
+      await _settle(tester);
+      expect(
+        find.byKey(const ValueKey('favorites_list_search_field')),
+        findsOneWidget,
+      );
+      expect(find.text('Carlsen, Magnus'), findsOneWidget);
+    });
+  });
+
+  group('Favorites search keeps the Games list (continuity)', () {
+    testWidgets('opening and closing the search keeps the list: no spinner, '
+        'no remount, a quiet line while a query loads', (tester) async {
+      final today = DateTime.now();
+      final done = _game('done', status: GameStatus.whiteWins, gameDay: today);
+      final live = _game(
+        'live',
+        status: GameStatus.ongoing,
+        gameDay: today,
+        lastMoveTime: today,
+      );
+      // The grid's cards: the same list in any view mode.
+      final harness = await _pumpScreen(
+        tester,
+        games: [done, live],
+        viewMode: GamesListViewMode.chessBoardGrid,
+      );
+      final notifier = harness.notifier;
+      Finder cards() => find.byType(GridGameCardWrapperWidget);
+      ScrollableState scrollable() => tester.state<ScrollableState>(
+        find.descendant(
+          of: find.byType(CustomScrollView),
+          matching: find.byType(Scrollable),
+        ),
+      );
+      final list = scrollable();
+      expect(cards(), findsNWidgets(2));
+      // Live first counts what is live on the list.
+      expect(find.text(_liveLabel(1)), findsOneWidget);
+
+      await _openSearch(tester);
+      expect(find.byType(CircularProgressIndicator), findsNothing);
+      expect(scrollable(), same(list));
+      expect(cards(), findsNWidgets(2));
+      // Nothing floats while searching, so the list keeps no room for it.
+      final listBottom = tester.getBottomLeft(cards().last).dy;
+
+      final pending = Completer<List<GamesTourModel>>();
+      notifier.nextSearch = pending;
+      await tester.enterText(find.byKey(_searchKey), 'Carlsen');
+      await tester.pump(const Duration(milliseconds: 450));
+      await tester.pump(const Duration(milliseconds: 300));
+      // The query is on its way: the list stays, a quiet line over it.
+      expect(notifier.searches, ['Carlsen']);
+      expect(find.byType(CircularProgressIndicator), findsNothing);
+      expect(cards(), findsNWidgets(2));
+      expect(
+        find.byKey(const ValueKey('games_list_refetch_line')),
+        findsOneWidget,
+      );
+
+      pending.complete([done]);
+      await _settle(tester);
+      expect(cards(), findsOneWidget);
+      expect(scrollable(), same(list));
+      expect(
+        find.byKey(const ValueKey('games_list_refetch_line')),
+        findsNothing,
+      );
+      expect(tester.getBottomLeft(cards().last).dy, lessThan(listBottom + 1));
+
+      await tester.tap(find.byTooltip(_closeSearch));
+      await tester.pump();
+      // The list it replaced is back in the same frame, as it was.
+      expect(cards(), findsNWidgets(2));
+      await _settle(tester);
+      expect(find.byType(CircularProgressIndicator), findsNothing);
+      expect(scrollable(), same(list));
+      expect(cards(), findsNWidgets(2));
+      expect(find.text(_liveLabel(1)), findsOneWidget);
+
+      // The live card's own timers run out once it is gone.
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump(const Duration(minutes: 1));
+    });
+
+    testWidgets('opening and closing the search at the end of the list keeps '
+        'every card where it was, with or without hits between', (
+      tester,
+    ) async {
+      final today = DateTime.now();
+      final games = [
+        for (var i = 0; i < 10; i++)
+          _game('g$i', status: GameStatus.whiteWins, gameDay: today),
+      ];
+      final harness = await _pumpScreen(
+        tester,
+        games: games,
+        viewMode: GamesListViewMode.chessBoardGrid,
+      );
+      ScrollableState scrollable() => tester.state<ScrollableState>(
+        find.descendant(
+          of: find.byType(CustomScrollView),
+          matching: find.byType(Scrollable),
+        ),
+      );
+      final position = scrollable().position;
+      position.jumpTo(position.maxScrollExtent);
+      await _settle(tester);
+      final end = position.pixels;
+      expect(end, greaterThan(0));
+      final last = find.byKey(const ValueKey('fav_grid_game_g9'));
+      final placed = tester.getTopLeft(last).dy;
+      final listContext = tester.element(find.byType(FavoritesGamesTab));
+      final room = FavoritesGamesFabs.reach(listContext);
+      final timeline = SearchModeScope.maybeOf(listContext)!.timeline;
+
+      // Every frame of the morph: the header springs, and the list's end
+      // gives up the floating buttons' room on the morph's own timeline
+      // (SearchModeListEnd). At the very end of the list every card moves
+      // exactly as far as that room, with the morph: no jump on the tap, no
+      // jump as hits land, no bounce off the list's end.
+      Future<void> expectWithMorph(Future<void> Function() action) async {
+        await action();
+        for (var i = 0; i < 14; i++) {
+          await tester.pump(const Duration(milliseconds: 50));
+          expect(
+            tester.getTopLeft(last).dy,
+            closeTo(placed + room * timeline.value, 0.5),
+          );
+        }
+      }
+
+      await expectWithMorph(() => tester.tap(find.byTooltip(_search)));
+      expect(find.byKey(_searchKey), findsOneWidget);
+      // Open, the room is gone: the last card sits that much lower.
+      expect(tester.getTopLeft(last).dy, closeTo(placed + room, 0.5));
+      await expectWithMorph(() => tester.tap(find.byTooltip(_closeSearch)));
+      await _settle(tester);
+      expect(position.pixels, closeTo(end, 0.01));
+      expect(tester.getTopLeft(last).dy, closeTo(placed, 0.01));
+
+      // Hits between: they start at their top, and the list comes back to
+      // its end in the frame it comes back.
+      await _openSearch(tester);
+      harness.notifier.nextSearch = Completer<List<GamesTourModel>>()
+        ..complete([games.first]);
+      await tester.enterText(find.byKey(_searchKey), 'Carlsen');
+      await tester.pump(const Duration(milliseconds: 450));
+      await _settle(tester);
+      expect(find.byType(GridGameCardWrapperWidget), findsOneWidget);
+      expect(position.pixels, 0);
+      await expectWithMorph(() => tester.tap(find.byTooltip(_closeSearch)));
+      await _settle(tester);
+      expect(position.pixels, closeTo(end, 0.01));
+      expect(scrollable().position, same(position));
+    });
+
+    testWidgets('a search from an empty list keeps it on screen while the '
+        'query loads: never the full-page spinner', (tester) async {
+      final harness = await _pumpScreen(tester);
+      const refetchLine = ValueKey('games_list_refetch_line');
+      expect(find.text('No games found'), findsOneWidget);
+
+      await _openSearch(tester);
+      final pending = Completer<List<GamesTourModel>>();
+      harness.notifier.nextSearch = pending;
+      await tester.enterText(find.byKey(_searchKey), 'Carlsen');
+      await tester.pump(const Duration(milliseconds: 450));
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(harness.notifier.searches, ['Carlsen']);
+      expect(find.text('Loading games...'), findsNothing);
+      expect(find.byType(CircularProgressIndicator), findsNothing);
+      expect(find.text('No games found'), findsOneWidget);
+      expect(find.byKey(refetchLine), findsOneWidget);
+
+      pending.complete(const []);
+      await _settle(tester);
+      expect(find.text('No games found'), findsNothing);
+      expect(find.byKey(refetchLine), findsNothing);
+    });
+
+    testWidgets('while searching, only the search header\'s Filters carries '
+        'the test id', (tester) async {
+      await _pumpScreen(tester);
+      expect(find.byKey(_filterKey), findsOneWidget);
+
+      await _openSearch(tester);
+      expect(find.byKey(_filterKey), findsOneWidget);
+      expect(_inSearch(find.byKey(_filterKey)), findsOneWidget);
+
+      await tester.tap(find.byTooltip(_closeSearch));
+      await _settle(tester);
+      expect(find.byKey(_filterKey), findsOneWidget);
+      expect(_inSearch(find.byKey(_filterKey)), findsNothing);
+    });
+
+    testWidgets('a day folded on the list opens for the search and is folded '
+        'again after it', (tester) async {
+      final today = DateTime.now();
+      final done = _game('done', status: GameStatus.whiteWins, gameDay: today);
+      final harness = await _pumpScreen(
+        tester,
+        games: [done],
+        viewMode: GamesListViewMode.chessBoardGrid,
+      );
+      Finder cards() => find.byType(GridGameCardWrapperWidget);
+
+      await tester.tap(find.textContaining('Today'));
+      await tester.pump();
+      expect(cards(), findsNothing);
+
+      await _openSearch(tester);
+      harness.notifier.nextSearch = Completer<List<GamesTourModel>>()
+        ..complete([done]);
+      await tester.enterText(find.byKey(_searchKey), 'Carlsen');
+      await tester.pump(const Duration(milliseconds: 450));
+      await _settle(tester);
+      // The hit is not hidden behind the plain list's fold.
+      expect(cards(), findsOneWidget);
+
+      await tester.tap(find.byTooltip(_closeSearch));
+      await _settle(tester);
+      expect(cards(), findsNothing);
+    });
+  });
+
+  group('Favorites Live first button with games', () {
+    testWidgets('floats only while a game is in play, says how many, and '
+        'turns on and off', (tester) async {
       final container = ProviderContainer(
         overrides: [
           favoritesCombinedGamesProvider.overrideWith(
@@ -361,7 +819,6 @@ void main() {
         ],
       );
       addTearDown(container.dispose);
-      var searches = 0;
       await tester.pumpWidget(
         UncontrolledProviderScope(
           container: container,
@@ -370,10 +827,8 @@ void main() {
             home: Builder(
               builder: (context) {
                 ResponsiveHelper.init(context);
-                return Scaffold(
-                  floatingActionButton: FavoritesGamesFabs(
-                    onSearch: () => searches++,
-                  ),
+                return const Scaffold(
+                  floatingActionButton: FavoritesGamesFabs(),
                 );
               },
             ),
@@ -384,21 +839,34 @@ void main() {
         GameListLiveFirstSurface.favorites,
       );
 
-      expect(find.byTooltip(_liveFirstOff), findsOneWidget);
-      await tester.tap(find.byTooltip(_liveFirstOff));
-      await tester.pump();
+      expect(find.byKey(_liveFirstKey), findsOneWidget);
+      expect(find.text(_liveLabel(1)), findsOneWidget);
+      // Above the search, never over it.
+      expect(
+        tester.getRect(find.byKey(_liveFirstKey)).bottom,
+        lessThan(tester.getRect(find.byTooltip(_search)).top),
+      );
+
+      await tester.tap(find.byKey(_liveFirstKey));
+      await _settle(tester);
       expect(container.read(provider), isTrue);
       expect(find.text(kNoLiveGamesRightNowMessage), findsNothing);
-      expect(_toggledState(tester, _liveFirstOn), isTrue);
+      expect(
+        find.byKey(const ValueKey('live_first_capsule_on')),
+        findsOneWidget,
+      );
+      expect(
+        tester
+            .widget<LiveFirstCapsule>(find.byType(LiveFirstCapsule))
+            .liveCount,
+        1,
+      );
 
-      await tester.tap(find.byTooltip(_liveFirstOn));
-      await tester.pump();
+      await tester.tap(find.byKey(_liveFirstKey));
+      await _settle(tester);
       expect(container.read(provider), isFalse);
       // Still a game in play, so it stays to be pressed again.
-      expect(find.byTooltip(_liveFirstOff), findsOneWidget);
-
-      await tester.tap(find.byTooltip(_search));
-      expect(searches, 1);
+      expect(find.text(_liveLabel(1)), findsOneWidget);
     });
 
     testWidgets('the list keeps clear of the whole button stack over the '
@@ -427,10 +895,10 @@ void main() {
             home: Builder(
               builder: (context) {
                 ResponsiveHelper.init(context);
-                return Scaffold(
+                return const Scaffold(
                   // Where the Games list sits: the Scaffold's body.
-                  body: const SizedBox.expand(key: ValueKey('list')),
-                  floatingActionButton: FavoritesGamesFabs(onSearch: () {}),
+                  body: SizedBox.expand(key: ValueKey('list')),
+                  floatingActionButton: FavoritesGamesFabs(),
                 );
               },
             ),
@@ -438,7 +906,7 @@ void main() {
         ),
       );
 
-      final top = tester.getRect(find.byTooltip(_liveFirstOff)).top;
+      final top = tester.getRect(find.byKey(_liveFirstKey)).top;
       final reach = FavoritesGamesFabs.reach(
         tester.element(find.byKey(const ValueKey('list'))),
       );
@@ -477,6 +945,59 @@ void main() {
       expect(_ids(grouped['0000-00-00']!), ['undated']);
     });
   });
+
+  testWidgets('the quiet line is drawn only while a list is being replaced', (
+    tester,
+  ) async {
+    Future<void> pump(bool active) => tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.darkTheme,
+        home: Builder(
+          builder: (context) {
+            ResponsiveHelper.init(context);
+            return Scaffold(body: GamesListRefetchLine(active: active));
+          },
+        ),
+      ),
+    );
+    const line = ValueKey('games_list_refetch_line');
+    await pump(false);
+    expect(find.byKey(line), findsNothing);
+    await pump(true);
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(find.byKey(line), findsOneWidget);
+    await pump(false);
+    await tester.pump(const Duration(milliseconds: 600));
+    expect(find.byKey(line), findsNothing);
+  });
+
+  // Last: the app's own type stays loaded for the rest of the file.
+  group('Favorites title in the app\'s type', () {
+    setUpAll(() async {
+      final inter = FontLoader('InterDisplay');
+      for (final weight in const ['Regular', 'Medium', 'Bold']) {
+        inter.addFont(rootBundle.load('assets/fonts/Inter-$weight.otf'));
+      }
+      await inter.load();
+    });
+
+    testWidgets('sits centred on a 393pt phone on every page, toolbar or '
+        'not', (tester) async {
+      final harness = await _pumpScreen(tester);
+      Rect title() => tester.getRect(find.byType(PageTitle));
+      expect(title().center.dx, closeTo(393 / 2, 1));
+
+      for (final mode in [
+        FavoritesScreenMode.favorites,
+        FavoritesScreenMode.players,
+      ]) {
+        harness.container.read(selectedFavoritesModeProvider.notifier).state =
+            mode;
+        await tester.pump();
+        expect(title().center.dx, closeTo(393 / 2, 1), reason: '$mode');
+      }
+    });
+  });
 }
 
 /// Opens the Games page's full-page search from its floating button.
@@ -494,23 +1015,10 @@ Future<void> _settle(WidgetTester tester) async {
   }
 }
 
-/// The heart and "Favorites" sit dead centre across the screen.
-void _expectTitleCentred(WidgetTester tester) {
-  final screenWidth = tester.getSize(find.byType(FavoritesTabScreen)).width;
-  final heartAndTitle = tester.getRect(
-    find.ancestor(of: _titleText(), matching: find.byType(Row)).first,
-  );
-  expect(heartAndTitle.center.dx, closeTo(screenWidth / 2, 1));
-}
-
+/// The page title's words ("Favorites" is also a tab's name).
 Finder _titleText() => find.descendant(
-  of: find.byType(FavoritesTabScreen),
-  matching: find.byWidgetPredicate(
-    (widget) =>
-        widget is Text &&
-        widget.data == 'Favorites' &&
-        widget.softWrap == false,
-  ),
+  of: find.byType(PageTitle),
+  matching: find.text('Favorites'),
 );
 
 bool? _toggledState(WidgetTester tester, String label) {
@@ -542,6 +1050,10 @@ Future<_Harness> _pumpScreen(
   FavoritesScreenMode? initialMode,
   bool liveFirst = false,
   bool? anyLive,
+  List<GamesTourModel> games = const [],
+  GamesListViewMode viewMode = GamesListViewMode.gamesCard,
+  List<PlayerStandingModel> favorites = const [],
+  List<Override> overrides = const [],
 }) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1;
@@ -554,17 +1066,26 @@ Future<_Harness> _pumpScreen(
   final container = ProviderContainer(
     overrides: [
       discoveryDotsSourceProvider.overrideWithValue(_NoDiscoveryDots()),
-      favoritePlayersNotifierProvider.overrideWith(_NoFavoritePlayers.new),
-      gamesListViewModeProvider.overrideWithValue(GamesListViewMode.gamesCard),
+      favoritePlayersNotifierProvider.overrideWith(
+        () => _NoFavoritePlayers(favorites),
+      ),
+      gamesListViewModeProvider.overrideWithValue(viewMode),
+      engineSettingsProviderNew.overrideWith(_NoEngine.new),
+      eventNoSpoilersProvider.overrideWith(
+        (ref, tourId) => _NoSpoilers(ref: ref, tourId: tourId),
+      ),
+      // One reading of the clock: no ticking timer left behind.
+      dateTimeProvider.overrideWith((ref) => Stream.value(DateTime.now())),
       favoritesCombinedGamesProvider.overrideWith((ref) {
         final notifier = _FakeFavoritesGames(
-          FavoritesCombinedGamesState(hasMore: false),
+          FavoritesCombinedGamesState(hasMore: false, games: games),
         );
         created.add(notifier);
         return notifier;
       }),
       if (anyLive != null)
         favoritesGamesAnyLiveProvider.overrideWith((ref) => anyLive),
+      ...overrides,
     ],
   );
   addTearDown(container.dispose);
@@ -604,6 +1125,10 @@ Future<_Harness> _pumpScreen(
   return _Harness(container, created);
 }
 
+/// Records filters and searches instead of querying Supabase, and answers a
+/// search the way the real notifier does: the list on screen stays until the
+/// hits land ([nextSearch], at once by default), and closing the search puts
+/// the plain list back as it was.
 class _FakeFavoritesGames extends StateNotifier<FavoritesCombinedGamesState>
     implements FavoritesCombinedGamesNotifier {
   _FakeFavoritesGames(super.state);
@@ -611,6 +1136,12 @@ class _FakeFavoritesGames extends StateNotifier<FavoritesCombinedGamesState>
   final List<GameFilter> applied = [];
   final List<String> searches = [];
   int clears = 0;
+
+  /// The answer to the next search; null answers at once with no games.
+  Completer<List<GamesTourModel>>? nextSearch;
+
+  FavoritesCombinedGamesState? _beforeSearch;
+  String _query = '';
 
   @override
   Future<void> applyFilter(GameFilter newFilter) async {
@@ -620,14 +1151,28 @@ class _FakeFavoritesGames extends StateNotifier<FavoritesCombinedGamesState>
 
   @override
   Future<void> searchGames(String query) async {
-    searches.add(query);
-    state = state.copyWith(searchQuery: query.trim());
+    final trimmed = query.trim();
+    searches.add(trimmed);
+    if (_query.isEmpty) _beforeSearch = state;
+    _query = trimmed;
+    final answer = nextSearch;
+    nextSearch = null;
+    state = state.copyWith(isLoading: true, isReplacing: true);
+    final hits = answer == null
+        ? const <GamesTourModel>[]
+        : await answer.future;
+    if (!mounted || _query != trimmed) return;
+    state = state.copyWith(isLoading: false, games: hits, searchQuery: trimmed);
   }
 
   @override
   Future<void> clearSearch() async {
+    if (_query.isEmpty && !state.isSearching) return;
     clears++;
-    state = state.copyWith(searchQuery: '');
+    _query = '';
+    final before = _beforeSearch;
+    _beforeSearch = null;
+    state = before ?? state.copyWith(searchQuery: '', isLoading: false);
   }
 
   @override
@@ -640,11 +1185,79 @@ class _FakeFavoritesGames extends StateNotifier<FavoritesCombinedGamesState>
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
+/// The cards' engine settings, without the device database or Supabase.
+class _NoEngine extends EngineSettingsNotifierNew {
+  @override
+  Future<EngineSettings> build() async =>
+      const EngineSettings(showEngineAnalysis: false, showEngineGauge: false);
+}
+
+/// The cards' spoiler setting, without the device database.
+class _NoSpoilers extends EventNoSpoilersController {
+  _NoSpoilers({required super.ref, required super.tourId});
+
+  @override
+  Future<void> load() async {
+    state = const EventNoSpoilersState(isLoading: false);
+  }
+}
+
 class _NoFavoritePlayers extends FavoritePlayersNotifier {
+  _NoFavoritePlayers([this.players = const []]);
+
+  final List<PlayerStandingModel> players;
+
   @override
   Future<FavoritePlayersState> build() async =>
-      const FavoritePlayersState(players: []);
+      FavoritePlayersState(players: players);
 }
+
+/// The world ranking with no Supabase: it records the searches the page
+/// sends it, and answers [searchQuery] with no player.
+class _FakeWorldPlayers extends StateNotifier<WorldPlayersSearchState>
+    implements WorldPlayersSearchNotifier {
+  _FakeWorldPlayers(List<PlayerStandingModel> players)
+    : super(WorldPlayersSearchState(players: players, hasMore: false));
+
+  final List<PlayerStandingModel> all = [];
+  final List<String> searches = [];
+
+  @override
+  Future<void> search(String query) async {
+    final trimmed = query.trim();
+    searches.add(trimmed);
+    state = WorldPlayersSearchState(
+      players: trimmed.isEmpty ? all : const [],
+      hasMore: false,
+      searchQuery: trimmed,
+    );
+  }
+
+  @override
+  Future<void> clearSearch() => search('');
+
+  @override
+  Future<void> loadMore() async {}
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+class _NoFollowedPlayers extends FavoritePlayersNotifierNew {
+  @override
+  Future<List<FavoritePlayer>> build() async => const [];
+}
+
+PlayerStandingModel _standing(String name, int fideId, int rating) =>
+    PlayerStandingModel(
+      countryCode: 'NO',
+      title: 'GM',
+      name: name,
+      score: rating,
+      scoreChange: 0,
+      matchScore: null,
+      fideId: fideId,
+    );
 
 class _NoDiscoveryDots implements DiscoveryDotsSource {
   @override

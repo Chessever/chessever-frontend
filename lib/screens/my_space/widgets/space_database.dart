@@ -27,8 +27,10 @@ import 'package:chessever2/screens/group_event/smart_event/smart_event_screen.da
 import 'package:chessever2/screens/library/providers/library_folders_provider.dart'
     show kMiniaturesFolder;
 import 'package:chessever2/screens/library/widgets/library_context_menu.dart';
+import 'package:chessever2/repository/supabase/group_broadcast/group_broadcast.dart';
 import 'package:chessever2/screens/my_space/actions/space_menu_action.dart';
 import 'package:chessever2/screens/my_space/actions/space_player_actions.dart';
+import 'package:chessever2/screens/my_space/actions/space_prep_actions.dart';
 import 'package:chessever2/screens/my_space/library/space_library_bridge.dart';
 import 'package:chessever2/screens/my_space/models/space_shortcut.dart';
 import 'package:chessever2/screens/my_prep/models/prep_models.dart';
@@ -46,6 +48,7 @@ import 'package:chessever2/screens/my_space/providers/space_players_provider.dar
 import 'package:chessever2/screens/my_space/providers/space_shortcuts_provider.dart';
 import 'package:chessever2/screens/my_space/providers/space_home_card_size_provider.dart';
 import 'package:chessever2/screens/my_space/widgets/pixel_art.dart';
+import 'package:chessever2/screens/my_space/widgets/space_edit_fade.dart';
 import 'package:chessever2/screens/my_space/widgets/space_edit_grid.dart';
 import 'package:chessever2/utils/scroll_cache.dart';
 import 'package:chessever2/screens/my_space/widgets/space_opening_card.dart';
@@ -476,6 +479,7 @@ class _SavedEvents {
           loading = true;
           break;
         }
+        broadcasts.addAll(read.valueOrNull ?? const <GroupBroadcast>[]);
         models.addAll(ref.watch(spaceEventCardModelsProvider(ids)));
       }
       chunks.add(page);
@@ -501,6 +505,10 @@ class _SavedEvents {
   late final bool hasMore;
   bool loading = false;
   final Map<String, GroupEventCardModel> models = {};
+
+  /// The broadcasts read for the shown events: what a tap opens from, as
+  /// the Events lists do, with no read before the push.
+  final List<GroupBroadcast> broadcasts = [];
   late final Set<String> _liveIds;
   final Map<String, AsyncValue<SpaceLiveEventGames>> _boards = {};
   final Map<String, SpaceIds> _readOf = {};
@@ -590,7 +598,8 @@ Widget _savedEventCard(
             size: 20.ic,
             color: context.colors.iconSecondary,
           ),
-    onTap: () => openSpaceShortcut(context, ref, s),
+    onTap: () =>
+        openSpaceShortcut(context, ref, s, knownBroadcasts: saved.broadcasts),
   );
 }
 
@@ -1512,17 +1521,25 @@ class _OpeningsBody extends StatelessWidget {
 // ------------------------------------------------------------------ rows
 
 /// A saved database or link as its row, with a live second line (a
-/// database's count) and the database's own hold actions.
+/// database's count) and the database's own hold actions. [editing] is See
+/// all's Edit (no chevron, no star); [editingInPlace] the home's, where the
+/// row keeps everything in place and only its star fades.
 Widget _savedRow(
   WidgetRef ref,
   SpaceShortcut s, {
   required bool library,
   required List<LibraryFolder> folders,
   bool editing = false,
+  bool editingInPlace = false,
   bool stacked = false,
 }) {
   if (s.kind == SpaceShortcutKind.prepProfile) {
-    return SpaceSavedRow(shortcut: s, stacked: stacked, disclosure: !editing);
+    return SpaceSavedRow(
+      shortcut: s,
+      stacked: stacked,
+      disclosure: !editing,
+      editing: editingInPlace,
+    );
   }
   if (!library) {
     final host = Uri.tryParse(s.targetId)?.host;
@@ -1671,15 +1688,20 @@ class _SavedSmartEvent extends ConsumerWidget {
   const _SavedSmartEvent({
     required this.shortcut,
     this.disclosure = true,
+    this.editingInPlace = false,
     this.stacked = false,
   });
 
   final SpaceShortcut shortcut;
   final bool stacked;
 
-  /// The card's star, where an event card has its own; off in Edit, where a
-  /// tap selects.
+  /// The card's star, where an event card has its own; off in See all's
+  /// Edit, where a tap selects.
   final bool disclosure;
+
+  /// The home's Edit: the card keeps its place and its star fades out where
+  /// it stands (AGENTS.md: Edit mode hides it).
+  final bool editingInPlace;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -1721,8 +1743,10 @@ class _SavedSmartEvent extends ConsumerWidget {
       // The smart event's star is its push subscription (Trello #1411):
       // starring turns on its pushes (`queue_smart_event_digests`),
       // unstarring stops them. The card stays in My Space either way. Edit
-      // mode (no disclosure) hides it, where a tap selects.
+      // hides it, where a tap selects: See all's Edit (no disclosure) leaves
+      // the slot empty, the home's fades it out in place.
       starRequest: disclosure ? request : null,
+      editing: editingInPlace,
       onTap: () => openSpaceShortcut(context, ref, shortcut),
     );
   }
@@ -1929,8 +1953,9 @@ class SpaceHomeGrid extends ConsumerWidget {
         ? ref.watch(spaceLibraryFoldersProvider).folders
         : const <LibraryFolder>[];
 
-    // The page's own cards, as the page draws them: Edit only lays its
-    // circles over them, so nothing inside a card changes either.
+    // The page's own cards, as the page draws them: Edit lays its circles
+    // over them and fades their stars out where they stand (a tap selects
+    // in Edit), so nothing inside a card moves.
     Widget card(SpaceShortcut pin) {
       switch (pin.section) {
         case SpaceSection.events:
@@ -1944,7 +1969,11 @@ class SpaceHomeGrid extends ConsumerWidget {
         case SpaceSection.openings:
           return SpaceOpeningCard(shortcut: pin);
         case SpaceSection.smartEvents:
-          return _SavedSmartEvent(shortcut: pin, stacked: small(pin.key));
+          return _SavedSmartEvent(
+            shortcut: pin,
+            stacked: small(pin.key),
+            editingInPlace: editing,
+          );
         case SpaceSection.library:
         case SpaceSection.links:
         case SpaceSection.likes:
@@ -1953,6 +1982,7 @@ class SpaceHomeGrid extends ConsumerWidget {
             pin,
             library: pin.section == SpaceSection.library,
             folders: folders,
+            editingInPlace: editing,
             stacked: small(pin.key),
           );
         case SpaceSection.players:
@@ -2316,6 +2346,14 @@ class _SpaceSaveToggleState extends ConsumerState<SpaceSaveToggle> {
 /// the card surface, a plate where an event keeps its photo (here the
 /// thing's pixel object), its name and a second line ([meta], else what it
 /// is). People never take this row: a saved player is a face.
+///
+/// It presses, holds and speaks like the thing's card elsewhere: the event
+/// card's press and card-tap haptic, and the hold menu its source page
+/// offers, with "Remove from My Space" where that page has its My Space row
+/// and nothing that deletes or unsubscribes the source. A database holds
+/// into the Library card's rows, a Prep profile into the Prep page's
+/// ([spacePrepProfileMenu]). A screen reader hears one button with the
+/// menu as its long-press action.
 class SpaceSavedRow extends ConsumerWidget {
   const SpaceSavedRow({
     super.key,
@@ -2323,21 +2361,27 @@ class SpaceSavedRow extends ConsumerWidget {
     this.meta,
     this.menuActions,
     this.disclosure = true,
+    this.editing = false,
     this.stacked = false,
   });
 
   final SpaceShortcut shortcut;
   final bool stacked;
 
-  /// The chevron that says a tap opens the thing. Off in Edit, where a tap
-  /// selects.
+  /// The chevron (or a Prep profile's star) that ends the row. Off in See
+  /// all's Edit, where a tap selects.
   final bool disclosure;
+
+  /// The home's Edit, where a tap selects and every card stays in place: a
+  /// Prep profile's star keeps its slot but fades out ([SpaceEditFade]).
+  final bool editing;
 
   /// The second line, live (a database's count); the saved kind and
   /// subtitle when null.
   final Widget? meta;
 
-  /// The thing's own long-press actions, before Open and My Space.
+  /// The thing's own long-press actions, before its My Space row (and, on a
+  /// kind whose source card has one, after its Open row).
   final List<LibraryMenuAction> Function(BuildContext context)? menuActions;
 
   /// What the row says the thing is, when the saved subtitle does not.
@@ -2390,9 +2434,44 @@ class SpaceSavedRow extends ConsumerWidget {
         : '$kind · $subtitle';
   }
 
+  /// A tap on the card: the card-tap haptic, then the open.
   void _open(BuildContext context, WidgetRef ref) {
     HapticFeedbackService.cardTap();
-    openSpaceShortcut(context, ref, shortcut);
+    _go(context, ref);
+  }
+
+  /// The open alone, for the menu's Open row and a tap on the lifted copy
+  /// (the menu raises its own haptic), as an event card's are.
+  void _go(BuildContext context, WidgetRef ref) =>
+      unawaited(openSpaceShortcut(context, ref, shortcut));
+
+  /// Whether the thing's card on its source page opens with a tap alone,
+  /// its menu holding no Open row: a Library database, a Prep profile.
+  static bool _sourceHasNoOpenRow(SpaceShortcutKind kind) =>
+      kind == SpaceShortcutKind.folder ||
+      kind == SpaceShortcutKind.miniatures ||
+      kind == SpaceShortcutKind.prepProfile;
+
+  /// The hold menu, built as it opens.
+  List<LibraryMenuAction> _menu(
+    BuildContext context,
+    BuildContext menuContext,
+    WidgetRef ref,
+    PrepProfile? prep,
+  ) {
+    if (shortcut.kind == SpaceShortcutKind.prepProfile) {
+      return spacePrepProfileMenu(menuContext, ref, shortcut, prep);
+    }
+    return [
+      if (!_sourceHasNoOpenRow(shortcut.kind))
+        LibraryMenuAction(
+          icon: Icons.open_in_new_rounded,
+          label: spaceOpenLabel(shortcut.kind),
+          onSelected: () => _go(context, ref),
+        ),
+      ...?menuActions?.call(menuContext),
+      spaceMenuAction(context: menuContext, ref: ref, draft: shortcut),
+    ];
   }
 
   /// The thing's pixel object; a collection's own cover when it has one.
@@ -2463,11 +2542,14 @@ class SpaceSavedRow extends ConsumerWidget {
         'kind': shortcut.params['collectionKind'],
       });
       // In My Space the card ends in a chevron, not the collection's star:
-      // nothing in My Space adds or removes a favorite.
+      // nothing in My Space adds or removes a favorite. The card opens its
+      // collection itself and reports every open (a tap, a screen reader's,
+      // its menu's Open, the lifted copy), each recorded here.
       return CollectionCard(
         collection: collection,
         stacked: stacked,
         showStar: false,
+        onOpened: () => unawaited(markSpaceShortcutOpened(ref, shortcut)),
       );
     }
     final colors = context.colors;
@@ -2562,7 +2644,10 @@ class SpaceSavedRow extends ConsumerWidget {
           children: [
             SizedBox(width: 4.w),
             if (starrable)
-              PrepWatchStar(profileId: prep.id, onUnstar: unstar)
+              SpaceEditFade(
+                hidden: editing,
+                child: PrepWatchStar(profileId: prep.id, onUnstar: unstar),
+              )
             else if (disclosure) ...[
               Icon(
                 Icons.chevron_right_rounded,
@@ -2576,14 +2661,15 @@ class SpaceSavedRow extends ConsumerWidget {
       ),
     );
 
-    final own = menuActions;
+    // The row speaks as one button: its text is its label, the press its
+    // tap, the hold its long-press (the menu, with Remove from My Space),
+    // and its star a custom action. Only the card's own text is excluded, so
+    // the press and the hold still reach a screen reader.
     return Semantics(
+      container: true,
       button: true,
       label: '${prep?.name ?? shortcut.title}, $saved',
-      excludeSemantics: true,
-      onTap: () => _open(context, ref),
-      // The row speaks as one button, so its star is an action of it.
-      customSemanticsActions: starrable
+      customSemanticsActions: starrable && !editing
           ? {
               CustomSemanticsAction(
                 label: prep.watching ? 'Unstar' : 'Star',
@@ -2594,17 +2680,9 @@ class SpaceSavedRow extends ConsumerWidget {
       child: TappableScale(
         onTap: () => _open(context, ref),
         child: CardContextMenu(
-          onPreviewTap: () => _open(context, ref),
-          actions: (menuContext) => [
-            LibraryMenuAction(
-              icon: Icons.open_in_new_rounded,
-              label: 'Open',
-              onSelected: () => _open(context, ref),
-            ),
-            ...?own?.call(menuContext),
-            spaceMenuAction(context: menuContext, ref: ref, draft: shortcut),
-          ],
-          child: card,
+          onPreviewTap: () => _go(context, ref),
+          actions: (menuContext) => _menu(context, menuContext, ref, prep),
+          child: ExcludeSemantics(child: card),
         ),
       ),
     );

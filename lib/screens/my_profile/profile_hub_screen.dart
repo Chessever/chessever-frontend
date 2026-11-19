@@ -29,6 +29,7 @@ import 'package:chessever2/widgets/discovery_dot.dart';
 import 'package:chessever2/services/discovery_dots/discovery_dot.dart';
 import 'package:chessever2/widgets/hamburger_menu/hamburger_menu.dart';
 import 'package:chessever2/widgets/hamburger_menu/hamburger_menu_dialogs.dart';
+import 'package:chessever2/widgets/home_top_bar.dart';
 import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
 import 'package:chessever2/widgets/profile_avatar_editor.dart';
 import 'package:chessever2/widgets/svg_widget.dart';
@@ -37,6 +38,7 @@ import 'package:chessever2/widgets/press_spring.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:motor/motor.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 /// Pushes the Events lists (Current, Upcoming, Past and search), which left
@@ -52,19 +54,30 @@ Route<void> eventsScreenRoute() => MaterialPageRoute<void>(
       const Scaffold(resizeToAvoidBottomInset: false, body: GroupEventScreen()),
 );
 
+/// Scroll-to-top on re-tap settles on a spring, with no overshoot past the
+/// top edge (the same one Home's re-tap rides).
+const CupertinoMotion _scrollTopMotion = CupertinoMotion.smooth(
+  duration: Duration(milliseconds: 360),
+);
+final Curve _scrollTopCurve = _scrollTopMotion.toCurve;
+
 /// The Profile tab: the reader, then everything the sidebar used to hold
 /// and the two sections that left the bottom bar (Events, Collections).
 ///
-/// One quiet page in My Profile's language: the reader at the top, then
-/// rows of stacked surface slabs in three runs (places to go, the app, the
-/// account), each with a bare mark. The bottom bar steps away as it scrolls.
+/// One quiet page in My Profile's language under the bar every root wears
+/// ([HomeTopBarFrame], its name set as every root's is): the reader at the
+/// top, then rows of stacked surface slabs in three runs (places to go, the
+/// app, the account), each with a bare mark, on the bar's own gutter. The
+/// bars step away as it scrolls, and back.
 class ProfileHubScreen extends HookConsumerWidget {
   const ProfileHubScreen({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final colors = context.colors;
-    final side = ResponsiveHelper.adaptive(phone: 16.w, tablet: 32.0);
+    // The bar's gutter: the slabs line up with the search field's edges and
+    // Home's tabs.
+    final side = HomeTopBarMetrics.horizontalPadding;
     final inbox = ref.watch(inboxAvailableProvider);
     final botvinnik = ref.watch(botvinnikTabAvailableProvider);
     final unread = ref.watch(inboxHasUnreadProvider);
@@ -79,8 +92,8 @@ class ProfileHubScreen extends HookConsumerWidget {
       if (scroll.hasClients) {
         scroll.animateTo(
           0,
-          duration: const Duration(milliseconds: 320),
-          curve: Curves.easeOutCubic,
+          duration: _scrollTopMotion.duration,
+          curve: _scrollTopCurve,
         );
       }
     });
@@ -196,30 +209,43 @@ class ProfileHubScreen extends HookConsumerWidget {
       color: colors.background,
       child: Center(
         child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 600),
-          // The status bar's inset stays page, as on Home and Search: rows
+          constraints: BoxConstraints(
+            maxWidth: ResponsiveHelper.contentMaxWidth,
+          ),
+          // The status bar's inset stays page, as on every root: rows
           // scroll away below it, never under the clock.
-          child: Padding(
-            padding: EdgeInsets.only(
-              top: MediaQuery.viewPaddingOf(context).top,
-            ),
-            child: ListView(
-              controller: scroll,
-              padding: EdgeInsets.fromLTRB(side, 20.h, side, 32.h),
-              children: [
-                const _ReaderHeader(),
-                SizedBox(height: 20.h),
-                const _PlanSlab(),
-                SizedBox(height: 28.h),
-                _Run(children: places),
-                SizedBox(height: 28.h),
-                _Run(children: app),
-                SizedBox(height: 28.h),
-                const _Run(children: [_RestoreRow(), _SignOutRow()]),
-                SizedBox(height: 28.h),
-                const _VersionLine(),
-              ],
-            ),
+          child: Column(
+            children: [
+              const HomeTopBarFrame(
+                child: HomeTopBarTitleRow(title: HomeTopBarTitle('Profile')),
+              ),
+              Expanded(
+                child: ListView(
+                  controller: scroll,
+                  // Every root's lead-in: the reader lands on the line
+                  // Home's first card does.
+                  padding: EdgeInsets.fromLTRB(
+                    side,
+                    HomeTopBarMetrics.contentGap,
+                    side,
+                    32.h,
+                  ),
+                  children: [
+                    const _ReaderHeader(),
+                    SizedBox(height: 20.h),
+                    const _PlanSlab(),
+                    SizedBox(height: 28.h),
+                    _Run(children: places),
+                    SizedBox(height: 28.h),
+                    _Run(children: app),
+                    SizedBox(height: 28.h),
+                    const _Run(children: [_RestoreRow(), _SignOutRow()]),
+                    SizedBox(height: 28.h),
+                    const _VersionLine(),
+                  ],
+                ),
+              ),
+            ],
           ),
         ),
       ),

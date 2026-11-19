@@ -14,16 +14,18 @@ import 'package:chessever2/screens/tour_detail/games_tour/views/games_tour_scree
     show NoGamesPlaceholder;
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/games_list_view.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/round_header_widget.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/widgets/search_list_resume.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_mode_provider.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_screen_provider.dart';
+import 'package:chessever2/screens/tour_detail/widgets/event_games_no_matches.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/time_utils.dart';
 import 'package:chessever2/utils/user_error_message.dart';
+import 'package:chessever2/widgets/page_spring.dart';
 import 'package:chessever2/widgets/scroll_to_top_bus.dart';
-import 'package:chessever2/widgets/search/gameSearch/game_search_overlay.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
@@ -53,17 +55,54 @@ class _CombinedGamesScreenState extends ConsumerState<CombinedGamesScreen>
   static const Duration _scheduleRefreshInterval = Duration(seconds: 20);
   DateTime? _scheduleRefreshedAt;
 
+  /// The reader's place in every category while a search's hits stand in
+  /// for them, handed back as the search ends.
+  final SearchListResume _resume = SearchListResume();
+
+  /// The query whose hits are on screen, to tell new hits from a rebuild.
+  String? _hitsQuery;
+
   @override
   bool get wantKeepAlive => true;
 
   @override
   void onScrollToTopRequested() {
     if (!_scrollController.isAttached) return;
+    if (MediaQuery.disableAnimationsOf(context)) {
+      _scrollController.jumpTo(index: 0);
+      return;
+    }
+    // On the tabs' spring, as every other list's way back to its top.
+    final spring = SpringCurve.of(PageSpring.motion);
     _scrollController.scrollTo(
       index: 0,
-      duration: const Duration(milliseconds: 300),
-      curve: Curves.easeOutCubic,
+      duration: spring.duration,
+      curve: spring,
     );
+  }
+
+  /// Where the list built now starts, and each query's hits read from their
+  /// top (the list is kept while the reader types, filtered in place).
+  ListResumePoint? _startFor(CombinedGamesPresentation presentation) {
+    final start = _resume.resolve(
+      searching: presentation.isSearchMode,
+      positions: _positionsListener,
+    );
+    if (start != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _resume.consumed());
+    }
+    final query = presentation.isSearchMode ? presentation.searchQuery : null;
+    final newHits = query != null && _hitsQuery != null && query != _hitsQuery;
+    _hitsQuery = query;
+    if (newHits) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || !_scrollController.isAttached) return;
+        if (ListResumePoint.capture(_positionsListener) != null) {
+          _scrollController.jumpTo(index: 0);
+        }
+      });
+    }
+    return start;
   }
 
   void _refreshScheduleIfStale() {
@@ -123,6 +162,7 @@ class _CombinedGamesScreenState extends ConsumerState<CombinedGamesScreen>
     );
 
     if (presentation.isLoading) return const TourLoadingWidget();
+    final startAt = _startFor(presentation);
 
     if (presentation.layout.itemCount == 0) {
       return RefreshIndicator(
@@ -146,7 +186,10 @@ class _CombinedGamesScreenState extends ConsumerState<CombinedGamesScreen>
       displacement: 60.h,
       strokeWidth: 3.w,
       child: GamesListView(
+        // The hits and every category are two lists: the hits start at their
+        // top, every category comes back where the reader left it.
         key: ValueKey('combined_games_${viewMode.name}_search_$isSearchMode'),
+        startAt: startAt,
         gamesByRound: presentation.gamesByRound,
         gamesData: GamesScreenModel(
           gamesTourModels: presentation.layout.orderedGames,
@@ -183,7 +226,7 @@ class _CombinedGamesScreenState extends ConsumerState<CombinedGamesScreen>
     CombinedGamesPresentation presentation,
   ) {
     if (presentation.isSearchMode) {
-      return EmptySearchWidget(query: presentation.searchQuery);
+      return EventGamesNoMatches(query: presentation.searchQuery);
     }
     final error = presentation.error;
     if (error != null) {

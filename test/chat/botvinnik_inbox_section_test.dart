@@ -12,6 +12,7 @@ import 'package:chessever2/screens/inbox/inbox_screen.dart';
 import 'package:chessever2/services/attention_policy.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/widgets/home_top_bar.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -172,8 +173,14 @@ void main() {
           expect(find.byType(ChatAssistantBubble), findsNWidgets(2));
           final notice = find.byType(ChatAssistantBubble).first;
           final response = find.byType(ChatAssistantBubble).last;
-          expect(tester.getTopLeft(notice).dx, 16);
-          expect(tester.getSize(notice).width, width - 32);
+          // Every root's gutter: the first message starts on the line
+          // every other root's first content does.
+          final gutter = HomeTopBarMetrics.horizontalPadding;
+          expect(tester.getTopLeft(notice).dx, closeTo(gutter, 0.01));
+          expect(
+            tester.getSize(notice).width,
+            closeTo(width - 2 * gutter, 0.01),
+          );
           expect(tester.getTopLeft(response).dx, tester.getTopLeft(notice).dx);
           expect(tester.getSize(response).width, tester.getSize(notice).width);
           final title = find.text('Did you try ChessEver desktop?');

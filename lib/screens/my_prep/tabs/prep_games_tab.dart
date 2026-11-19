@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:chessever2/screens/chessboard/analysis/chess_game.dart';
 import 'package:chessever2/screens/chessboard/chess_board_screen_new.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
+import 'package:chessever2/screens/favorites/widgets/games_list_refetch_line.dart';
 import 'package:chessever2/screens/library/widgets/add_to_folder_sheet.dart';
 import 'package:chessever2/screens/library/widgets/gamebase_search_game_card.dart';
 import 'package:chessever2/screens/library/widgets/import_pgn_to_folder_sheet.dart';
@@ -37,7 +38,10 @@ import 'package:chessever2/screens/my_prep/widgets/prep_filter_dialog.dart';
 import 'package:chessever2/widgets/game_filter/game_filter_model.dart';
 import 'package:chessever2/widgets/game_filter/game_filter_dialog.dart';
 import 'package:chessever2/widgets/ink_fab.dart' show InkFabSize;
+import 'package:chessever2/widgets/list_search_scroll_memory.dart';
 import 'package:chessever2/widgets/scroll_to_top_button.dart';
+import 'package:chessever2/widgets/quick_list_toggles.dart';
+import 'package:chessever2/widgets/search_mode/search_mode.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart' show HitTestResult;
 import 'package:flutter/material.dart';
@@ -78,12 +82,39 @@ final prepGameCardProvider = Provider.autoDispose
     });
 
 /// Lets the screen around a [PrepGamesTab] act on the games it shows: the
-/// tab's own row holds search, filters and layout only, as a profile's does.
+/// tab's own line holds the count, filters and layout only, as a profile's
+/// does.
 class PrepGamesController {
   _PrepGamesTabState? _tab;
 
   /// How many games the filters and the search leave on screen.
   int get shown => _tab?._visible.length ?? 0;
+
+  /// [shown] as the list last laid it out, to listen to: what acts on the
+  /// games listed (a header's menu) follows it and never offers an empty
+  /// menu. Null before the list's first build; told after the frame that
+  /// built the list, since a header builds before the list under it.
+  ValueListenable<int?> get shownCount => _shownCount;
+  final ValueNotifier<int?> _shownCount = ValueNotifier<int?>(null);
+  int? _reported;
+  bool _reportPending = false;
+  bool _disposed = false;
+
+  void _report(int count) {
+    _reported = count;
+    if (_disposed || _reportPending || _shownCount.value == count) return;
+    _reportPending = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _reportPending = false;
+      if (!_disposed) _shownCount.value = _reported;
+    });
+  }
+
+  /// Lets go of [shownCount]'s listeners, with the screen that made it.
+  void dispose() {
+    _disposed = true;
+    _shownCount.dispose();
+  }
 
   /// Whether the reader is picking games one by one.
   bool get selecting => _tab?._selecting ?? false;
@@ -94,9 +125,9 @@ class PrepGamesController {
   /// Turns the list into a pick list, as a profile's "Choose games manually".
   void chooseGames() => _tab?._startSelecting();
 
-  /// Opens the list's filters, for a screen that carries the tab's search
-  /// in its own header ([PrepGamesTab.search]).
-  Future<void> showFilters() async => _tab?._showFilters();
+  /// The list's filter sheet: the screen's search header opens the same one
+  /// as the list's line.
+  void openFilters() => _tab?._openListFilters();
 
   /// Takes the list back to its top. With the search in the screen's header
   /// ([PrepGamesTab.search]) the list has no up arrow, and the status bar
@@ -104,6 +135,39 @@ class PrepGamesController {
   /// reader a gesture that calls this (its Games tab tapped again, its title
   /// tapped), or on Android a long list has no way back up.
   void scrollToTop() => _tab?._scrollToTop();
+}
+
+/// A Prep Games list's controls in its screen's search header, as every
+/// Games search header ends: the board view, then Filters (counted) on the
+/// gutter. While the search is open they stand here, and the list's line
+/// keeps only its count.
+class PrepGamesSearchControls extends ConsumerWidget {
+  const PrepGamesSearchControls({
+    super.key,
+    required this.filterCount,
+    required this.games,
+  });
+
+  final int filterCount;
+  final PrepGamesController games;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // The switcher gives the tap feedback.
+        BoardViewToggleButton(
+          onTap: () => ref.read(gamesListViewModeSwitcher).toggleViewMode(),
+        ),
+        SearchModeFilterButton(
+          key: const ValueKey('prep_search_filters'),
+          count: filterCount,
+          onTap: games.openFilters,
+        ),
+      ],
+    );
+  }
 }
 
 /// The menu rows for the games a [PrepGamesTab] shows right now; none while
@@ -145,6 +209,9 @@ class PrepGamesTab extends ConsumerStatefulWidget {
     required this.onFilterChanged,
     this.controller,
     this.search,
+    this.onClearSearch,
+    this.filterButtonKey,
+    this.busy = false,
   });
 
   final PrepAnalysis analysis;
@@ -154,12 +221,28 @@ class PrepGamesTab extends ConsumerStatefulWidget {
   final ValueChanged<PrepFilter> onFilterChanged;
   final PrepGamesController? controller;
 
-  /// The search, when the screen around the tab types it in its own header
-  /// (opened from a floating search button): the list narrows to what it
-  /// holds, and the tab's floating row keeps only what acts on the list
-  /// (picking, the filters' summary). Null, the row carries the field, the
-  /// filters, the layout toggle and the up arrow itself.
-  final TextEditingController? search;
+  /// The query, when the screen around the tab types it in its own header
+  /// (opened from a floating search button): the list narrows to it as it
+  /// is typed. Over the list then floats the line a player profile's Games
+  /// tab wears ([PlayerGamesListToolbar]): how many games it holds, what
+  /// the filters narrow (with a way to clear them), the layout and the
+  /// filters. It is the list's own line, one height whatever it says, so it
+  /// stays as the search opens and closes and nothing moves while typing.
+  /// Null, the row carries the field, the filters, the layout toggle and
+  /// the up arrow itself.
+  final ValueListenable<String>? search;
+
+  /// Empties the screen's field ([search]): what "no matches" clears along
+  /// with the filters.
+  final VoidCallback? onClearSearch;
+
+  /// The list line's Filters, for a screen that carries [search].
+  final Key? filterButtonKey;
+
+  /// The games listed are the last ones while the screen reads others (a
+  /// newly chosen source's): they stay, under the Games lists' quiet line,
+  /// rather than giving way to a message.
+  final bool busy;
 
   @override
   ConsumerState<PrepGamesTab> createState() => _PrepGamesTabState();
@@ -171,19 +254,28 @@ class _PrepGamesTabState extends ConsumerState<PrepGamesTab>
   final _ownSearch = TextEditingController();
   final _searchFocus = FocusNode();
 
-  TextEditingController get _search => widget.search ?? _ownSearch;
+  /// What the list is narrowed to: the screen's query, or the row's field.
+  String get _queryText => widget.search?.value ?? _ownSearch.text;
 
-  /// The query the list last narrowed to: a screen's field also notifies
-  /// for cursor moves, which change nothing here.
+  /// The query the list last narrowed to.
   String _query = '';
 
   void _searchChanged() {
-    final query = _search.text;
+    final query = _queryText;
     if (query == _query || !mounted) return;
     setState(() => _query = query);
   }
 
   final Set<String> _collapsed = {};
+
+  /// Sections folded while a search's hits are listed. Every section opens
+  /// with the hits, so none hides behind a fold made before searching; the
+  /// folds in [_collapsed] come back with the full list.
+  final Set<String> _searchCollapsed = {};
+  bool _listedHits = false;
+  Set<String> get _folds => _listedHits ? _searchCollapsed : _collapsed;
+
+  final ListSearchScrollMemory _place = ListSearchScrollMemory();
 
   /// How many games a save or an export is reading; null when idle.
   int? _working;
@@ -209,7 +301,7 @@ class _PrepGamesTabState extends ConsumerState<PrepGamesTab>
     super.initState();
     widget.controller?._tab = this;
     widget.search?.addListener(_searchChanged);
-    _query = _search.text;
+    _query = _queryText;
     WidgetsBinding.instance.addObserver(this);
   }
 
@@ -219,7 +311,7 @@ class _PrepGamesTabState extends ConsumerState<PrepGamesTab>
     if (!identical(old.search, widget.search)) {
       old.search?.removeListener(_searchChanged);
       widget.search?.addListener(_searchChanged);
-      _query = _search.text;
+      _query = _queryText;
     }
     // A fresh read of the index is new games: earlier picks name none of them.
     if (!identical(old.analysis, widget.analysis)) _selected.clear();
@@ -287,7 +379,7 @@ class _PrepGamesTabState extends ConsumerState<PrepGamesTab>
       _sorts = sorts;
       _sorted = prepSortGames(widget.games, sorts);
     }
-    final query = _search.text.trim().toLowerCase();
+    final query = _queryText.trim().toLowerCase();
     if (identical(_searchInput, _sorted) && _searched == query) return _found;
     _searchInput = _sorted;
     _searched = query;
@@ -365,17 +457,52 @@ class _PrepGamesTabState extends ConsumerState<PrepGamesTab>
   void _toggle(String key) {
     HapticFeedbackService.selection();
     setState(() {
-      if (!_collapsed.add(key)) _collapsed.remove(key);
+      final folds = _folds;
+      if (!folds.add(key)) folds.remove(key);
     });
   }
 
   void _clear() {
     HapticFeedbackService.buttonPress();
-    _search.clear();
-    // The field may be the screen's, in its search header.
-    FocusScope.of(context).unfocus();
+    if (widget.search == null) {
+      _ownSearch.clear();
+      _searchFocus.unfocus();
+    } else {
+      // The field is the screen's, in its search header.
+      widget.onClearSearch?.call();
+      FocusScope.of(context).unfocus();
+    }
     if (widget.filter.isActive) widget.onFilterChanged(const PrepFilter());
     setState(() {});
+  }
+
+  /// "No matches"' action, which plays the tap's haptic itself: the
+  /// filters when they narrow the list (an open search keeps its words),
+  /// else the words.
+  void _clearNoMatches() {
+    if (widget.filter.activeCount > 0) {
+      widget.onFilterChanged(const PrepFilter());
+    } else if (widget.search == null) {
+      _ownSearch.clear();
+      setState(() {});
+    } else {
+      // The field is the screen's, in its search header.
+      widget.onClearSearch?.call();
+    }
+  }
+
+  /// The line's Clear: only what the filters set; an open search keeps its
+  /// words.
+  void _clearFilters() {
+    HapticFeedbackService.buttonPress();
+    widget.onFilterChanged(const PrepFilter());
+  }
+
+  /// The line's Filters. The keyboard of a search typed in the screen's
+  /// header steps aside for the sheet; the field stays as typed.
+  void _openListFilters() {
+    FocusManager.instance.primaryFocus?.unfocus();
+    _showFilters();
   }
 
   void _startSelecting() {
@@ -579,16 +706,30 @@ class _PrepGamesTabState extends ConsumerState<PrepGamesTab>
     final gutter = ResponsiveHelper.adaptive(phone: 16.w, tablet: 24.w);
     final mode = ref.watch(gamesListViewModeProvider);
     final list = _visible;
+    widget.controller?._report(list.length);
     final sections = _sectionsOf(list);
     final profile = widget.profile;
-    final searching = _search.text.trim().isNotEmpty;
-    final narrowed = widget.filter.isActive || searching;
-    final filterCount = widget.filter.activeCount + (searching ? 1 : 0);
-    final working = _working;
-    final picked = _selecting ? _picked.length : 0;
+    final searching = _queryText.trim().isNotEmpty;
     // The tab's own search row, unless the screen carries the search.
     final ownRow = widget.search == null;
-    final floating = ownRow || _selecting || working != null || narrowed;
+    // Filters or a search leave fewer than every game.
+    final narrowed = widget.filter.isActive || searching;
+    // The own row's strip counts its search as one more filter. In the
+    // screen's header the field itself says what is searched, so the list's
+    // line counts the filters only.
+    final filterCount =
+        widget.filter.activeCount + (ownRow && searching ? 1 : 0);
+    final working = _working;
+    final picked = _selecting ? _picked.length : 0;
+
+    // Every section opens while hits are listed; the reader's folds and
+    // place in the full list come back with it.
+    if (searching != _listedHits) {
+      _listedHits = searching;
+      _searchCollapsed.clear();
+    }
+    _place.follow(_scroll, _queryText);
+    final folds = _folds;
 
     // Cheap row descriptors; the cards themselves are built as they show.
     final rows = <_Row>[];
@@ -604,7 +745,7 @@ class _PrepGamesTabState extends ConsumerState<PrepGamesTab>
     );
     var hint = mode == GamesListViewMode.gamesCard;
     for (final section in sections) {
-      final collapsed = _collapsed.contains(section.key);
+      final collapsed = folds.contains(section.key);
       if (headed) rows.add(_HeaderRow(section, first: rows.isEmpty));
       if (headed && collapsed) continue;
       final games = section.games;
@@ -645,7 +786,7 @@ class _PrepGamesTabState extends ConsumerState<PrepGamesTab>
         child: section.title == null
             ? _RunHeader(
                 section: section,
-                isCollapsed: _collapsed.contains(section.key),
+                isCollapsed: folds.contains(section.key),
                 onToggle: () => _toggle(section.key),
               )
             : PlayerGamesEventSection(
@@ -656,7 +797,7 @@ class _PrepGamesTabState extends ConsumerState<PrepGamesTab>
                 site: section.event.site,
                 gameCount: section.games.length,
                 playerScore: section.score,
-                isCollapsed: _collapsed.contains(section.key),
+                isCollapsed: folds.contains(section.key),
                 onToggleCollapsed: () => _toggle(section.key),
               ),
       ),
@@ -700,114 +841,130 @@ class _PrepGamesTabState extends ConsumerState<PrepGamesTab>
         // bottom of it; the same height is the least this one takes, so the
         // two sit alike in every state. It grows past that when its rows
         // need more (a second line, larger text), so no control is cut off.
-        // With the search in the screen's header, it holds only what acts
-        // on the list, and is not there while nothing does.
-        if (!floating)
-          SliverToBoxAdapter(child: SizedBox(height: 4.h))
-        else
-          SliverFloatingHeader(
-            child: Container(
-              color: colors.background,
-              constraints: BoxConstraints(
-                minHeight:
-                    (ownRow
-                        ? PlayerGamesSearchBar.heightOf(context) + 10.h
-                        : 6.h) +
-                    (narrowed
-                        ? PlayerGamesActiveFiltersChip.heightOf(context)
-                        : 0) +
-                    (_selecting
-                        ? PlayerGamesSelectionToolbar.heightOf(context)
-                        : 0),
-              ),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  if (!ownRow)
-                    SizedBox(height: 6.h)
-                  else
-                    Padding(
-                      padding: EdgeInsets.fromLTRB(gutter, 2.h, gutter, 4.h),
-                      child: PlayerGamesSearchBar(
-                        controller: _search,
-                        focusNode: _searchFocus,
-                        onChanged: (_) => setState(() {}),
-                        onClear: () {
-                          HapticFeedbackService.buttonPress();
-                          _search.clear();
-                          _searchFocus.unfocus();
-                          setState(() {});
-                        },
-                        onFilterTap: _showFilters,
-                        onLayoutToggle: () => ref
-                            .read(gamesListViewModeSwitcher)
-                            .toggleViewMode(),
-                        hasQuery: searching,
-                        hasActiveFilters: narrowed,
-                        activeFilterCount: filterCount,
-                      ),
+        // With the search in the screen's header, its last row is the
+        // profile's list line: there in every state, one height, so the
+        // list under it never moves as a search or a filter narrows it.
+        SliverFloatingHeader(
+          child: Container(
+            color: colors.background,
+            constraints: BoxConstraints(
+              minHeight:
+                  (ownRow
+                      ? PlayerGamesSearchBar.heightOf(context) +
+                            10.h +
+                            (narrowed
+                                ? PlayerGamesActiveFiltersChip.heightOf(context)
+                                : 0)
+                      : PlayerGamesListToolbar.heightOf(context)) +
+                  (_selecting
+                      ? PlayerGamesSelectionToolbar.heightOf(context) +
+                            (ownRow ? 0 : 4.h)
+                      : 0),
+            ),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                if (ownRow)
+                  Padding(
+                    padding: EdgeInsets.fromLTRB(gutter, 2.h, gutter, 4.h),
+                    child: PlayerGamesSearchBar(
+                      controller: _ownSearch,
+                      focusNode: _searchFocus,
+                      onChanged: (_) => setState(() {}),
+                      onClear: () {
+                        HapticFeedbackService.buttonPress();
+                        _ownSearch.clear();
+                        _searchFocus.unfocus();
+                        setState(() {});
+                      },
+                      onFilterTap: _showFilters,
+                      onLayoutToggle: () =>
+                          ref.read(gamesListViewModeSwitcher).toggleViewMode(),
+                      hasQuery: searching,
+                      hasActiveFilters: narrowed,
+                      activeFilterCount: filterCount,
                     ),
-                  if (_selecting)
-                    Padding(
-                      padding: EdgeInsets.fromLTRB(
-                        gutter,
-                        0,
-                        gutter,
-                        narrowed ? 4.h : 6.h,
-                      ),
-                      child: PlayerGamesSelectionToolbar(
-                        selectedCount: picked,
-                        subtitle: narrowed
-                            ? 'Selection follows current filters and search'
-                            : 'Tap games manually or use quick select',
-                        selectAllLabel: narrowed
-                            ? 'Select filtered'
-                            : 'Select all (${formatCompactCount(list.length)})',
-                        onSelectAll: list.isEmpty ? null : _pickAll,
-                        onAddSelected: _addPicked,
-                        onClose: _stopSelecting,
-                      ),
+                  ),
+                if (_selecting)
+                  Padding(
+                    padding: EdgeInsets.fromLTRB(
+                      gutter,
+                      0,
+                      gutter,
+                      narrowed || !ownRow ? 4.h : 6.h,
                     ),
-                  if (working != null)
-                    Padding(
-                      padding: EdgeInsets.symmetric(vertical: 4.h),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          SizedBox.square(
-                            dimension: 12.sp,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: colors.textSecondary,
-                            ),
+                    child: PlayerGamesSelectionToolbar(
+                      selectedCount: picked,
+                      subtitle: narrowed
+                          ? 'Selection follows current filters and search'
+                          : 'Tap games manually or use quick select',
+                      selectAllLabel: narrowed
+                          ? 'Select filtered'
+                          : 'Select all (${formatCompactCount(list.length)})',
+                      onSelectAll: list.isEmpty ? null : _pickAll,
+                      onAddSelected: _addPicked,
+                      onClose: _stopSelecting,
+                    ),
+                  ),
+                if (working != null)
+                  Padding(
+                    padding: EdgeInsets.symmetric(vertical: 4.h),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        SizedBox.square(
+                          dimension: 12.sp,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: colors.textSecondary,
                           ),
-                          SizedBox(width: 8.w),
-                          Text(
-                            'Preparing $working games…',
-                            style: AppTypography.textXsRegular.copyWith(
-                              color: colors.textSecondary,
-                            ),
+                        ),
+                        SizedBox(width: 8.w),
+                        Text(
+                          'Preparing $working games…',
+                          style: AppTypography.textXsRegular.copyWith(
+                            color: colors.textSecondary,
                           ),
-                        ],
-                      ),
+                        ),
+                      ],
                     ),
-                  if (narrowed)
-                    Padding(
-                      padding: EdgeInsets.symmetric(horizontal: gutter),
-                      child: PlayerGamesActiveFiltersChip(
-                        activeFilterCount: filterCount,
-                        gameCount: list.length,
-                        onClear: _clear,
-                      ),
+                  ),
+                if (ownRow && narrowed)
+                  Padding(
+                    padding: EdgeInsets.symmetric(horizontal: gutter),
+                    child: PlayerGamesActiveFiltersChip(
+                      activeFilterCount: filterCount,
+                      gameCount: list.length,
+                      onClear: _clear,
                     ),
-                ],
-              ),
+                  ),
+                if (!ownRow)
+                  PlayerGamesListToolbar(
+                    inset: gutter,
+                    gameCount: list.length,
+                    filterCount: filterCount,
+                    filterButtonKey: widget.filterButtonKey,
+                    // The screen's search header carries the board view
+                    // and Filters while its search is open.
+                    controlsInSearchHeader: true,
+                    onClearFilters: _clearFilters,
+                    onOpenFilters: _openListFilters,
+                    // The switcher gives the tap feedback.
+                    onToggleLayout: () =>
+                        ref.read(gamesListViewModeSwitcher).toggleViewMode(),
+                  ),
+              ],
             ),
           ),
+        ),
+        // Where the first row would have been, as every Games list says it.
         if (list.isEmpty)
-          SliverFillRemaining(
-            hasScrollBody: false,
-            child: PlayerGamesNoMatches(onClear: _clear),
+          SliverToBoxAdapter(
+            child: PlayerGamesNoMatches(
+              query: _queryText,
+              filtered: widget.filter.activeCount > 0,
+              onClear: _clearNoMatches,
+            ),
           )
         else
           SliverPadding(
@@ -830,11 +987,15 @@ class _PrepGamesTabState extends ConsumerState<PrepGamesTab>
               ),
             ),
           ),
-        // Clear of the screen's floating search button at the list's end.
-        SliverToBoxAdapter(
-          child: SizedBox(
-            height: 24.h + (ownRow ? 0 : InkFabSize.regular.side),
-          ),
+        // Clear of the screen's floating search button at the list's end
+        // (its square, and the margin that lifts it over the home
+        // indicator); the button's room gives way on the search's own
+        // timeline while nothing floats.
+        SearchModeListEnd.sliver(
+          base: 24.h + MediaQuery.viewPaddingOf(context).bottom,
+          buttons: ownRow
+              ? 0
+              : InkFabSize.regular.side + kFloatingActionButtonMargin,
         ),
       ],
     );
@@ -859,6 +1020,14 @@ class _PrepGamesTabState extends ConsumerState<PrepGamesTab>
             right: 0,
             child: ScrollToTopButton(scrollController: _scroll),
           ),
+        // Other games are on their way: the Games lists' quiet line, in
+        // their gutters, over the list's top.
+        Positioned(
+          top: 0,
+          left: 0,
+          right: 0,
+          child: GamesListRefetchLine(active: widget.busy),
+        ),
       ],
     );
   }

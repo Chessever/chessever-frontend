@@ -195,6 +195,17 @@ final gamesPinprovider = StateNotifierProvider.autoDispose
       return _GamesPinController(ref: ref, tourId: tourId);
     });
 
+/// Every event's pins held at [state], with nothing loaded and nothing
+/// followed: for tests of what reads the pins (the Games screen model), which
+/// would otherwise start the store's disk reads, favorites and auto-pin scan.
+@visibleForTesting
+Override gamesPinProviderOverride([
+  GamesPinState state = const GamesPinState(),
+]) => gamesPinprovider.overrideWith(
+  (ref, tourId) =>
+      _GamesPinController.seeded(ref: ref, tourId: tourId, state: state),
+);
+
 /// Upper bound on one auto-pin resolution pass. It reads local preferences,
 /// favorites and the resolved country, none of which may stall the pin
 /// snapshot indefinitely.
@@ -210,6 +221,12 @@ class _GamesPinController extends StateNotifier<GamesPinState> {
     _listenToAutoPinPreferences();
     if (_pinLoadInFlight == null) loadPinnedGames();
   }
+
+  _GamesPinController.seeded({
+    required this.ref,
+    required this.tourId,
+    required GamesPinState state,
+  }) : super(state);
 
   final Ref ref;
   final String tourId;

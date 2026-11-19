@@ -201,10 +201,13 @@ class SpaceLibraryCountText extends ConsumerWidget {
   }
 }
 
-/// Non-removal Library actions for [folder]. Deletion and unsubscribe belong
-/// to Library; My Space only removes its own shortcut. Built-in collections
-/// have nothing to manage. Everything the actions need is taken up front: they
-/// run after the menu closes, when the tile may already be gone.
+/// Non-removal Library actions for [folder], in the Library card's own order
+/// and wording (`FolderCard`): Publish first, then Share (or Copy Link and
+/// Stop Sharing once shared), then Rename. The card's My Space row follows
+/// them, where Library has it. Deletion and unsubscribe belong to Library; My
+/// Space only removes its own shortcut. Built-in and subscribed collections
+/// have nothing to manage. Everything the actions need is taken up front:
+/// they run after the menu closes, when the tile may already be gone.
 List<LibraryMenuAction> spaceLibraryFolderActions(
   BuildContext context,
   WidgetRef ref,
@@ -275,6 +278,7 @@ List<LibraryMenuAction> spaceLibraryFolderActions(
   final shareToken = folder.shareToken;
   if (shareToken != null) {
     return [
+      publication,
       LibraryMenuAction(
         icon: Icons.copy_rounded,
         label: 'Copy Link',
@@ -304,12 +308,12 @@ List<LibraryMenuAction> spaceLibraryFolderActions(
           }
         },
       ),
-      publication,
       rename,
     ];
   }
 
   return [
+    publication,
     LibraryMenuAction(
       icon: Icons.ios_share_rounded,
       label: 'Share',
@@ -333,7 +337,6 @@ List<LibraryMenuAction> spaceLibraryFolderActions(
               }
             },
     ),
-    publication,
     rename,
   ];
 }

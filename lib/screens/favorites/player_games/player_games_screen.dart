@@ -45,10 +45,9 @@ class _PlayerGamesScreenState extends ConsumerState<PlayerGamesScreen> {
     _scrollController.addListener(_onScroll);
 
     // Create player identifier
-    _playerIdentifier =
-        widget.fideId != null && widget.fideId!.isNotEmpty
-            ? PlayerIdentifier.fromFideId(widget.fideId!, widget.playerName)
-            : PlayerIdentifier.fromName(widget.playerName);
+    _playerIdentifier = widget.fideId != null && widget.fideId!.isNotEmpty
+        ? PlayerIdentifier.fromFideId(widget.fideId!, widget.playerName)
+        : PlayerIdentifier.fromName(widget.playerName);
   }
 
   @override
@@ -76,10 +75,9 @@ class _PlayerGamesScreenState extends ConsumerState<PlayerGamesScreen> {
       body: Center(
         child: ConstrainedBox(
           constraints: BoxConstraints(
-            maxWidth:
-                ResponsiveHelper.isTablet
-                    ? ResponsiveHelper.contentMaxWidth
-                    : double.infinity,
+            maxWidth: ResponsiveHelper.isTablet
+                ? ResponsiveHelper.contentMaxWidth
+                : double.infinity,
           ),
           child: Column(
             children: [
@@ -365,33 +363,32 @@ class _PlayerGamesScreenState extends ConsumerState<PlayerGamesScreen> {
       child: ListView.builder(
         padding: EdgeInsets.symmetric(horizontal: 20.sp),
         itemCount: 3,
-        itemBuilder:
-            (context, index) => Column(
-              children: [
-                Container(
-                  height: 70.h,
+        itemBuilder: (context, index) => Column(
+          children: [
+            Container(
+              height: 70.h,
+              decoration: BoxDecoration(
+                color: context.colors.surface,
+                borderRadius: BorderRadius.circular(8.br),
+              ),
+            ),
+            SizedBox(height: 12.h),
+            ...List.generate(
+              2,
+              (i) => Padding(
+                padding: EdgeInsets.only(bottom: 12.sp),
+                child: Container(
+                  height: 84.h,
                   decoration: BoxDecoration(
                     color: context.colors.surface,
-                    borderRadius: BorderRadius.circular(8.br),
+                    borderRadius: BorderRadius.circular(12.br),
                   ),
                 ),
-                SizedBox(height: 12.h),
-                ...List.generate(
-                  2,
-                  (i) => Padding(
-                    padding: EdgeInsets.only(bottom: 12.sp),
-                    child: Container(
-                      height: 84.h,
-                      decoration: BoxDecoration(
-                        color: context.colors.surface,
-                        borderRadius: BorderRadius.circular(12.br),
-                      ),
-                    ),
-                  ),
-                ),
-                SizedBox(height: 20.h),
-              ],
+              ),
             ),
+            SizedBox(height: 20.h),
+          ],
+        ),
       ),
     );
   }

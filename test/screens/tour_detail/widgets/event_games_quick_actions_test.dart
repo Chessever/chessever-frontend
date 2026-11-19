@@ -44,9 +44,12 @@ GamesTourModel _game(
   lastMoveTime: DateTime.now().toUtc(),
 );
 
-GroupedGamesData _grouped(List<GamesTourModel> games) => GroupedGamesData(
+GroupedGamesData _grouped(
+  List<GamesTourModel> games, {
+  Map<String, List<GamesTourModel>>? byRound,
+}) => GroupedGamesData(
   filteredRounds: const [],
-  gamesByRound: {'round-1': games},
+  gamesByRound: byRound ?? {'round-1': games},
   isKnockoutTournament: false,
   isMultiStageKnockout: false,
   isLoading: false,
@@ -110,6 +113,7 @@ class _GamesScreen extends GamesTourScreenProvider {
 
 List<Override> _singleCategory({
   required List<GamesTourModel> games,
+  Map<String, List<GamesTourModel>>? byRound,
   bool isSearchMode = false,
   String? searchQuery,
   EventGamesSections? sections,
@@ -123,7 +127,7 @@ List<Override> _singleCategory({
       searchQuery: searchQuery,
     ),
   ),
-  gamesTourGroupedProvider.overrideWithValue(_grouped(games)),
+  gamesTourGroupedProvider.overrideWithValue(_grouped(games, byRound: byRound)),
   eventGamesSectionsProvider.overrideWithValue(
     sections ??
         const EventGamesSections(
@@ -517,65 +521,6 @@ void main() {
     });
   });
 
-  group('eventGamesLiveFirstStrandedProvider', () {
-    // Here Live first hides the finished games; with nothing live and its
-    // button gone, the screen turns it off (2026-11-18).
-    test(
-      'on, loaded, nothing in play: stranded, and pressing turns it off',
-      () async {
-        final container = ProviderContainer(
-          overrides: _singleCategory(
-            games: [_game('a', live: false), _game('b', live: true)],
-          ),
-        );
-        addTearDown(container.dispose);
-        final screen =
-            container.read(gamesTourScreenProvider.notifier) as _GamesScreen;
-        pressEventGamesLiveFirst(container.read);
-        await pumpEventQueue();
-        expect(container.read(eventGamesLiveFirstProvider), isTrue);
-        // A game in play: the button has work to do.
-        expect(container.read(eventGamesLiveFirstStrandedProvider), isFalse);
-
-        // The last live game ends.
-        container.updateOverrides(
-          _singleCategory(
-            games: [_game('a', live: false), _game('b', live: false)],
-          ),
-        );
-        expect(container.read(eventGamesLiveFirstStrandedProvider), isTrue);
-        expect(
-          pressEventGamesLiveFirst(container.read),
-          EventLiveFirstPress.turnedOff,
-        );
-        await pumpEventQueue();
-        expect(screen.calls.last, 'showAllGames');
-      },
-    );
-
-    test('never while the list is still loading', () {
-      final container = ProviderContainer(
-        overrides: [
-          ..._singleCategory(games: const []),
-          gamesTourScreenProvider.overrideWith(
-            (ref) => GamesTourScreenProvider.loading(ref: ref),
-          ),
-          eventGamesLiveFirstProvider.overrideWithValue(true),
-        ],
-      );
-      addTearDown(container.dispose);
-      expect(container.read(eventGamesLiveFirstStrandedProvider), isFalse);
-    });
-
-    test('off: never stranded', () {
-      final container = ProviderContainer(
-        overrides: _singleCategory(games: [_game('a', live: false)]),
-      );
-      addTearDown(container.dispose);
-      expect(container.read(eventGamesLiveFirstStrandedProvider), isFalse);
-    });
-  });
-
   group('eventGamesAnyLiveProvider', () {
     // Live first floats over Games only while this holds (Trello #1420).
     test('one category: true while a game is in play', () {
@@ -616,6 +561,49 @@ void main() {
       );
       addTearDown(quiet.dispose);
       expect(quiet.read(eventGamesAnyLiveProvider), isFalse);
+    });
+  });
+
+  group('eventGamesLiveCountProvider', () {
+    // What Live first reads out ("3 live").
+    test('one category: each board in play once, however many sections '
+        'list it', () {
+      final live = _game('a', live: true);
+      final container = ProviderContainer(
+        overrides: _singleCategory(
+          games: [live, _game('b', live: true), _game('c', live: false)],
+          byRound: {
+            'round-1': [live, _game('b', live: true), _game('c', live: false)],
+            // A knockout match lists its board again under its stage.
+            'round-2': [live],
+          },
+        ),
+      );
+      addTearDown(container.dispose);
+      expect(container.read(eventGamesLiveCountProvider), 2);
+    });
+
+    test('one category: a game that went quiet yesterday is not counted', () {
+      final stale = _game('a', live: true).copyWith(
+        lastMoveTime: DateTime.now().toUtc().subtract(const Duration(days: 2)),
+      );
+      final container = ProviderContainer(
+        overrides: _singleCategory(games: [stale, _game('b', live: false)]),
+      );
+      addTearDown(container.dispose);
+      expect(container.read(eventGamesLiveCountProvider), 0);
+    });
+
+    test('Combined: every merged category\'s boards in play', () {
+      final container = ProviderContainer(
+        overrides: _combined([
+          _game('a', tourId: 'open', live: true),
+          _game('b', tourId: 'women', live: true),
+          _game('c', tourId: 'women', live: false),
+        ]),
+      );
+      addTearDown(container.dispose);
+      expect(container.read(eventGamesLiveCountProvider), 2);
     });
   });
 }

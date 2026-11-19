@@ -55,6 +55,17 @@ final gamesTourScreenProvider =
 // Can use this in future to maintain the state across the app
 final showFinishedGamesProvider = StateProvider<bool>((ref) => true);
 
+/// A text search of the event's games is running. The list keeps what it
+/// shows (every game, or the last hits) until the new hits land, and the
+/// search shows a quiet line meanwhile instead of wiping the list.
+///
+/// Reset whenever the screen model is rebuilt: a search still running in a
+/// notifier that is gone never lands.
+final gamesTourSearchPendingProvider = StateProvider<bool>((ref) {
+  ref.watch(gamesTourScreenProvider.notifier);
+  return false;
+});
+
 @visibleForTesting
 bool shouldInitializeGamesScreen({
   required GamesScreenModel? currentScreen,
@@ -179,6 +190,18 @@ class GamesTourScreenProvider
   /// after that, behind a closed field or over newer hits; a list computed
   /// before a search's hits arrived must not replace them.
   int _searchGeneration = 0;
+
+  /// The list as it stood when a search's hits replaced it. Closing the
+  /// search puts it back at once (the list returns exactly where the reader
+  /// left it, with nothing to wait for), then refreshes it from every game.
+  GamesScreenModel? _beforeSearch;
+
+  /// Says whether a text search is running ([gamesTourSearchPendingProvider]).
+  void _setSearchPending(bool pending) {
+    if (!mounted) return;
+    final controller = ref.read(gamesTourSearchPendingProvider.notifier);
+    if (controller.state != pending) controller.state = pending;
+  }
 
   Future<void> _setupListeners() async {
     // The display-mode provider lives outside this notifier so it survives
@@ -456,7 +479,25 @@ class GamesTourScreenProvider
     if (aboutTourModel == null) return;
     // Ends any search still running, so its hits cannot land after this.
     _searchGeneration++;
+    _setSearchPending(false);
     final pins = ref.read(gamesPinprovider(aboutTourModel!.id)).allPins;
+    final before = _beforeSearch;
+    _beforeSearch = null;
+    final current = state.valueOrNull;
+    if (before != null && current != null && current.isSearchMode) {
+      // The list the hits replaced, back in the same frame; the recompute
+      // below brings in whatever changed while the search was open.
+      state = AsyncValue.data(
+        GamesScreenModel(
+          gamesTourModels: before.gamesTourModels,
+          pinnedGamedIs: pins,
+          isSearchMode: false,
+          gameDisplayMode: ref.read(
+            gameDisplayModeProvider(aboutTourModel!.id),
+          ),
+        ),
+      );
+    }
     _recompute(
       isSearchModeOverride: false,
       searchQueryOverride: null,
@@ -753,6 +794,9 @@ class GamesTourScreenProvider
         clearSearch();
         return;
       }
+      // The list stays as it is until the hits land; the page says the
+      // search is running.
+      _setSearchPending(true);
 
       // Current pins for correct pin UI in search mode
       final pinnedIds = ref.read(gamesPinprovider(aboutTourModel!.id)).allPins;
@@ -812,6 +856,9 @@ class GamesTourScreenProvider
       if (!mounted || searchGeneration != _searchGeneration) return;
       // The hits are on screen now; a list computed before them is stale.
       _searchGeneration++;
+      final replaced = state.valueOrNull;
+      if (replaced != null && !replaced.isSearchMode) _beforeSearch = replaced;
+      _setSearchPending(false);
       state = AsyncValue.data(
         GamesScreenModel(
           gamesTourModels: models,
@@ -824,6 +871,7 @@ class GamesTourScreenProvider
       );
     } catch (e, st) {
       if (mounted && searchGeneration == _searchGeneration) {
+        _setSearchPending(false);
         state = AsyncValue.error(e, st);
       }
     }
@@ -831,7 +879,24 @@ class GamesTourScreenProvider
 
   Future<void> refreshGames() async {
     if (aboutTourModel == null) return;
+    final current = state.valueOrNull;
+    final query = current != null && current.isSearchMode
+        ? (current.searchQuery ?? '').trim()
+        : '';
     try {
+      if (query.isNotEmpty) {
+        // Pulled while searching: the search stays. The hits stay on screen
+        // while the games refresh, then the query runs again over them,
+        // unless the reader has typed (or closed) meanwhile.
+        final generation = _searchGeneration;
+        await ref
+            .read(gamesTourProvider(aboutTourModel!.id).notifier)
+            .refreshGames();
+        if (mounted && generation == _searchGeneration) {
+          await searchGamesEnhanced(query);
+        }
+        return;
+      }
       clearSearch();
       await ref
           .read(gamesTourProvider(aboutTourModel!.id).notifier)

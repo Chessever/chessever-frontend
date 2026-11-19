@@ -168,24 +168,18 @@ void main() {
           final selected = item == BottomNavBarItem.forYou;
           final ink = selected ? colors.textPrimary : colors.textSecondary;
 
-          // The mark over its name, both in the slot's ink: the name says
-          // what the slot is (the avatar reads as Profile), weight says
-          // which one is open.
-          final label = tester.widget<Text>(
-            find.descendant(
-              of: slot,
-              matching: find.text(namesBottomNavBarIcons[item]!),
-            ),
-          );
-          expect(label.style!.color, ink);
-          expect(
-            label.style!.fontWeight,
-            selected ? FontWeight.w700 : FontWeight.w500,
-          );
+          // Marks only: no names drawn. Profile's mark is the avatar, which
+          // may draw the reader's initial; that is the picture, not a label.
+          if (item != BottomNavBarItem.profile) {
+            expect(
+              find.descendant(of: slot, matching: find.byType(Text)),
+              findsNothing,
+            );
+          }
           expect(
             _contrast(ink, colors.background),
             greaterThanOrEqualTo(4.5),
-            reason: '${item.name} label',
+            reason: '${item.name} mark',
           );
 
           if (item == BottomNavBarItem.forYou) {
@@ -261,6 +255,25 @@ void main() {
         await gesture.up();
         await tester.pumpAndSettle();
         expect(scale(), closeTo(1, 0.002));
+
+        // Anywhere in the slot is a press, not only the mark's pixels: its
+        // top corner and the strip at its foot both take it down.
+        final box = tester.getRect(slot);
+        for (final point in [
+          box.topLeft + const Offset(4, 4),
+          box.bottomCenter - const Offset(0, 4),
+        ]) {
+          final held = await tester.startGesture(point);
+          await tester.pump();
+          await tester.pump(const Duration(milliseconds: 250));
+          expect(
+            scale(),
+            closeTo(BottomNavBarWidget.pressedScale, 0.01),
+            reason: '$point',
+          );
+          await held.up();
+          await tester.pumpAndSettle();
+        }
       },
     );
 

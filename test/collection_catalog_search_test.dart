@@ -87,18 +87,23 @@ void main() {
     CollectionSearchQuery query,
     Future<CatalogBatch<String>> Function(int) load,
   ) => MaterialApp(
-    home: Scaffold(
-      body: CollectionCatalogList<String>(
-        query: query,
-        load: load,
-        identity: (s) => s,
-        indexedItemBuilder: (s, index) => SizedBox(
-          height: 100,
-          child: Text(s, key: ValueKey('rank_${index + 1}')),
-        ),
-        padding: EdgeInsets.zero,
-        emptyMessage: 'Empty',
-      ),
+    home: Builder(
+      builder: (context) {
+        ResponsiveHelper.init(context);
+        return Scaffold(
+          body: CollectionCatalogList<String>(
+            query: query,
+            load: load,
+            identity: (s) => s,
+            indexedItemBuilder: (s, index) => SizedBox(
+              height: 100,
+              child: Text(s, key: ValueKey('rank_${index + 1}')),
+            ),
+            padding: EdgeInsets.zero,
+            emptyMessage: 'Empty',
+          ),
+        );
+      },
     ),
   );
 
@@ -122,6 +127,36 @@ void main() {
     expect(find.text('New result'), findsOneWidget);
     expect(find.text('Stale result'), findsNothing);
     expect(offsets, [0]);
+  });
+  testWidgets('a new query loads over the rows on screen, in the same list, '
+      'and one that fails says so instead of keeping them', (tester) async {
+    await tester.pumpWidget(
+      list(
+        const CollectionSearchQuery(),
+        (_) async => const CatalogBatch(['Old row'], 1),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final scrollable = find.byType(Scrollable);
+    final state = tester.state<ScrollableState>(scrollable);
+    final next = Completer<CatalogBatch<String>>();
+    await tester.pumpWidget(
+      list(const CollectionSearchQuery(text: 'new'), (_) => next.future),
+    );
+    await tester.pump(const Duration(milliseconds: 120));
+    expect(find.text('Old row'), findsOneWidget);
+    expect(find.byType(CircularProgressIndicator), findsNothing);
+    expect(
+      find.byKey(const ValueKey('games_list_refetch_line')),
+      findsOneWidget,
+    );
+    expect(tester.state<ScrollableState>(scrollable), same(state));
+
+    next.completeError(StateError('offline'));
+    await tester.pumpAndSettle();
+    expect(find.text('Old row'), findsNothing);
+    expect(find.text('Try again'), findsOneWidget);
+    expect(tester.state<ScrollableState>(scrollable), same(state));
   });
   testWidgets('failed next page retains rows and retries the same offset', (
     tester,
@@ -313,7 +348,10 @@ void main() {
     );
     await tester.tap(find.text('Filters'));
     await tester.pumpAndSettle();
-    expect(find.byKey(const ValueKey('collection_result_filter')), findsNothing);
+    expect(
+      find.byKey(const ValueKey('collection_result_filter')),
+      findsNothing,
+    );
     expect(find.text('Result'), findsNothing);
     expect(find.text('½-½'), findsNothing);
     await tester.ensureVisible(find.text('Apply Filters'));

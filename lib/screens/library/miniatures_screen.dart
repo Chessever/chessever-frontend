@@ -1,6 +1,3 @@
-import 'dart:math' as math;
-
-import 'package:chessever2/screens/group_event/widget/appbar_icons_widget.dart';
 import 'package:chessever2/screens/library/miniatures/miniatures_share.dart';
 import 'package:chessever2/screens/library/miniatures/miniatures_about_tab.dart';
 import 'package:chessever2/screens/library/miniatures/miniatures_games_tab.dart';
@@ -14,14 +11,16 @@ import 'package:chessever2/screens/tour_detail/games_tour/providers/games_list_v
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
-import 'package:chessever2/utils/svg_asset.dart';
 import 'package:chessever2/widgets/ink_fab.dart';
 import 'package:chessever2/widgets/screen_wrapper.dart';
-import 'package:chessever2/widgets/destination_title.dart';
+import 'package:chessever2/widgets/home_top_bar.dart' show PageTitle;
+import 'package:chessever2/widgets/page_back_row.dart';
+import 'package:chessever2/widgets/quick_list_toggles.dart';
 import 'package:chessever2/widgets/scroll_chrome.dart';
 import 'package:chessever2/widgets/scroll_to_top_bus.dart';
-import 'package:chessever2/widgets/search_page_header.dart';
+import 'package:chessever2/widgets/search_mode/search_mode.dart';
 import 'package:chessever2/widgets/segmented_switcher.dart';
+import 'package:chessever2/widgets/page_spring.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -33,8 +32,10 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 /// Opening any game requires a subscription or rewarded Premium access.
 ///
 /// The header and the tabs scroll away with the lists and come back as they
-/// scroll up. Games and Players search from a floating button that opens the
-/// tab's search in the header's place, filters behind the field's glyph.
+/// scroll up. Games and Players search from a floating button whose glass
+/// becomes the field in the header's place ([SearchModeHost]), over the same
+/// tab, narrowed. Their filters sit at the header's end in both states, so
+/// the glyph holds still as the header turns into the search.
 class MiniaturesScreen extends ConsumerStatefulWidget {
   const MiniaturesScreen({super.key});
 
@@ -54,42 +55,40 @@ class _MiniaturesScreenState extends ConsumerState<MiniaturesScreen>
   );
 
   /// The tab's full-page search: its field in the header's place, the same
-  /// tab under it, filtered, with nothing else around it.
-  bool _searching = false;
-  final FocusNode _searchFocus = FocusNode();
+  /// tab under it, narrowed, with nothing else around it.
+  final SearchModeController _search = SearchModeController();
 
-  void _holdChromeWhileTyping() => _chrome.held = _searchFocus.hasFocus;
-
-  void _openSearch() {
-    if (_searching) return;
-    setState(() => _searching = true);
-    _chrome.show();
-  }
-
-  /// Back from the search clears what the tab searched for; its filters
-  /// stay, counted on the search button.
-  void _closeSearch() {
-    if (!_searching) return;
-    _searchFocus.unfocus();
+  /// The query, typed in the search header, for the tab it was opened on.
+  void _onQuery(String query) {
     switch (ref.read(selectedMiniaturesModeProvider)) {
       case MiniaturesScreenMode.games:
-        final filter = ref.read(miniaturesFilterProvider);
-        if (filter.search != null) {
-          ref.read(miniaturesFilterProvider.notifier).state = filter.copyWith(
-            clearSearch: true,
-          );
-        }
+        applyMiniaturesGamesSearch(ref, query);
       case MiniaturesScreenMode.players:
-        final query = ref.read(miniaturePlayersQueryProvider);
-        if (query.search != null) {
-          ref.read(miniaturePlayersQueryProvider.notifier).state = query
-              .copyWith(clearSearch: true);
-        }
+        applyMiniaturePlayersSearch(ref, query);
       case MiniaturesScreenMode.about:
         break;
     }
-    setState(() => _searching = false);
-    _chrome.show();
+  }
+
+  /// Back from the search clears what the tab searched for; its filters
+  /// stay, counted on the header's Filters (the header is in view whenever
+  /// the search button is, so the button carries no count).
+  void _onClose() {
+    applyMiniaturesGamesSearch(ref, '');
+    applyMiniaturePlayersSearch(ref, '');
+  }
+
+  Future<void> _openFilters(MiniaturesScreenMode mode) async {
+    // The keyboard steps aside for the sheet; the field stays as typed.
+    _search.focusNode.unfocus();
+    switch (mode) {
+      case MiniaturesScreenMode.games:
+        await openMiniaturesGamesFilters(context, ref);
+      case MiniaturesScreenMode.players:
+        await openMiniaturePlayersFilters(context, ref);
+      case MiniaturesScreenMode.about:
+        break;
+    }
   }
 
   @override
@@ -110,7 +109,6 @@ class _MiniaturesScreenState extends ConsumerState<MiniaturesScreen>
       miniaturePlayersPaginatedProvider,
       (_, __) {},
     );
-    _searchFocus.addListener(_holdChromeWhileTyping);
   }
 
   @override
@@ -118,9 +116,7 @@ class _MiniaturesScreenState extends ConsumerState<MiniaturesScreen>
     _playersWarmup?.close();
     _pageController.dispose();
     _scrollToTopBus.dispose();
-    _searchFocus
-      ..removeListener(_holdChromeWhileTyping)
-      ..dispose();
+    _search.dispose();
     _chrome.dispose();
     super.dispose();
   }
@@ -136,11 +132,7 @@ class _MiniaturesScreenState extends ConsumerState<MiniaturesScreen>
     HapticFeedbackService.selection();
     _chrome.show();
     ref.read(selectedMiniaturesModeProvider.notifier).state = target;
-    _pageController.animateToPage(
-      index,
-      duration: const Duration(milliseconds: 300),
-      curve: Curves.easeInOut,
-    );
+    _pageController.springTo(index, context: context);
   }
 
   void _handlePageChanged(int index) {
@@ -153,93 +145,113 @@ class _MiniaturesScreenState extends ConsumerState<MiniaturesScreen>
   @override
   Widget build(BuildContext context) {
     final selectedMode = ref.watch(selectedMiniaturesModeProvider);
-    final horizontalPadding = ResponsiveHelper.adaptive(
-      phone: 20.sp,
-      tablet: 32.sp,
+    // "Clear search" on an empty list empties the tab's search: the open
+    // field follows, so it never names a search the list no longer runs.
+    void followCleared(MiniaturesScreenMode mode, String? next) {
+      if (next == null &&
+          _search.isSearching &&
+          ref.read(selectedMiniaturesModeProvider) == mode &&
+          _search.text.text.trim().isNotEmpty) {
+        _search.text.clear();
+      }
+    }
+
+    ref.listen<String?>(
+      miniaturesFilterProvider.select((f) => f.search),
+      (_, next) => followCleared(MiniaturesScreenMode.games, next),
+    );
+    ref.listen<String?>(
+      miniaturePlayersQueryProvider.select((q) => q.search),
+      (_, next) => followCleared(MiniaturesScreenMode.players, next),
     );
 
-    final bars = _searching
-        ? SearchPageHeader(
-            closeKey: const ValueKey('miniatures_search_close'),
-            onClose: _closeSearch,
-            field: selectedMode == MiniaturesScreenMode.players
-                ? MiniaturePlayersSearchField(focusNode: _searchFocus)
-                : MiniaturesGamesSearchField(focusNode: _searchFocus),
-          )
-        : Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              _buildHeader(selectedMode),
-              SizedBox(height: 12.h),
-              Padding(
-                padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
-                child: Builder(
-                  builder: (tabContext) => SegmentedSwitcher(
-                    longPressFor: (index) =>
-                        () => showMiniaturesShareMenu(
-                          tabContext,
-                          MiniaturesScreenMode.values[index],
-                        ),
-                    longPressHint: (_) => 'Share tab',
-                    dotScope: 'miniatures.tab',
-                    backgroundColor: context.colors.popup,
-                    selectedBackgroundColor: context.colors.popup,
-                    options: miniaturesModeNames.values.toList(),
-                    currentSelection: MiniaturesScreenMode.values.indexOf(
-                      selectedMode,
+    final players = selectedMode == MiniaturesScreenMode.players;
+    final header = SizedBox(
+      width: double.infinity,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _buildHeader(selectedMode),
+          SizedBox(height: 8.h),
+          Padding(
+            padding: EdgeInsets.symmetric(
+              horizontal: SearchHeaderMetrics.gutter,
+            ),
+            child: Builder(
+              builder: (tabContext) => SegmentedSwitcher(
+                longPressFor: (index) =>
+                    () => showMiniaturesShareMenu(
+                      tabContext,
+                      MiniaturesScreenMode.values[index],
                     ),
-                    onSelectionChanged: _handleTabSelection,
-                    notifyOnReselect: true,
-                  ),
+                longPressHint: (_) => 'Share tab',
+                dotScope: 'miniatures.tab',
+                backgroundColor: context.colors.popup,
+                selectedBackgroundColor: context.colors.popup,
+                options: miniaturesModeNames.values.toList(),
+                currentSelection: MiniaturesScreenMode.values.indexOf(
+                  selectedMode,
                 ),
+                onSelectionChanged: _handleTabSelection,
+                notifyOnReselect: true,
               ),
-            ],
-          );
+            ),
+          ),
+          SizedBox(height: SearchHeaderMetrics.bottomGap),
+        ],
+      ),
+    );
+    final filters = _filterButton(selectedMode, inSearch: true);
+    final search = SearchModeHeader(
+      hintText: players ? 'Search players' : 'Search player, event or opening',
+      textFieldKey: ValueKey(
+        players ? 'miniatures_players_search' : 'miniatures_games_search',
+      ),
+      closeKey: const ValueKey('miniatures_search_close'),
+      trailing: [?filters],
+    );
 
-    return PopScope(
-      // Back from the search closes it, back to the tab it searched.
-      canPop: !_searching,
-      onPopInvokedWithResult: (didPop, _) {
-        if (!didPop) _closeSearch();
-      },
+    return SearchModeHost(
+      controller: _search,
+      chrome: _chrome,
+      debounce: const Duration(milliseconds: 350),
+      onQuery: _onQuery,
+      onClose: _onClose,
       child: Scaffold(
         backgroundColor: context.colors.background,
         floatingActionButton: SlidingFabs(
           controller: _chrome,
-          child: _MiniaturesSearchFab(
-            mode: selectedMode,
-            searching: _searching,
-            onSearch: _openSearch,
-          ),
+          child: _MiniaturesSearchFab(mode: selectedMode),
         ),
         body: ScreenWrapper(
           child: Column(
             children: [
               // The status bar's inset stays put: the bars fold up to it,
               // never into it.
-              SizedBox(height: MediaQuery.viewPaddingOf(context).top + 8.h),
+              SizedBox(height: MediaQuery.viewPaddingOf(context).top + 4.h),
               CollapsingChrome(
                 controller: _chrome,
-                child: SizedBox(width: double.infinity, child: bars),
+                child: SearchModeHeaderSlot(header: header, search: search),
               ),
               Expanded(
                 child: ScrollChromeRegion(
                   controller: _chrome,
                   child: ScrollToTopScope(
                     bus: _scrollToTopBus,
-                    child: PageView(
-                      controller: _pageController,
-                      onPageChanged: _handlePageChanged,
-                      // Searching holds the tab: the search belongs to it.
-                      physics: _searching
-                          ? const NeverScrollableScrollPhysics()
-                          : null,
-                      // Order must track MiniaturesScreenMode.
-                      children: const [
-                        MiniaturesAboutTab(),
-                        MiniaturesGamesTab(),
-                        MiniaturesPlayersTab(),
-                      ],
+                    child: ListenableBuilder(
+                      listenable: _search,
+                      builder: (context, _) => PageView(
+                        controller: _pageController,
+                        onPageChanged: _handlePageChanged,
+                        // Searching holds the tab: the search belongs to it.
+                        physics: _search.pagePhysics(),
+                        // Order must track MiniaturesScreenMode.
+                        children: const [
+                          MiniaturesAboutTab(),
+                          MiniaturesGamesTab(),
+                          MiniaturesPlayersTab(),
+                        ],
+                      ),
                     ),
                   ),
                 ),
@@ -251,63 +263,61 @@ class _MiniaturesScreenState extends ConsumerState<MiniaturesScreen>
     );
   }
 
-  Widget _buildHeader(MiniaturesScreenMode mode) {
-    return SizedBox(
-      height: 44.h,
-      child: Stack(
-        alignment: Alignment.center,
-        children: [
-          Align(
-            alignment: Alignment.centerLeft,
-            child: IconButton(
-              onPressed: () => Navigator.of(context).pop(),
-              icon: Icon(
-                Icons.arrow_back_ios_new_rounded,
-                size: 18.sp,
-                color: context.colors.textPrimary,
-              ),
-            ),
-          ),
-          // Icon and title travel as one centred lockup. The horizontal
-          // padding keeps that lockup clear of the back button and of the
-          // two buttons on the right on the narrowest phones instead of
-          // letting them overlap.
-          Padding(
-            padding: EdgeInsets.symmetric(
-              horizontal:
-                  math.max(AppBarIconSurface.minTapTarget, 32.w) +
-                  kMinInteractiveDimension +
-                  4,
-            ),
-            child: const DestinationTitle(
-              title: 'Miniatures',
-              icon: Icon(Icons.bolt_rounded),
-            ),
-          ),
-          Align(
-            alignment: Alignment.centerRight,
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                // The Games list's layout, in the header as on an event's
-                // Games tab: the list's top is the list's own.
-                if (mode == MiniaturesScreenMode.games)
-                  Semantics(
-                    label: 'Toggle chessboard view',
-                    child: AppBarIcons(
-                      image: SvgAsset.chase_grid,
-                      boxed: false,
-                      // The switcher gives its own tap feedback.
-                      onTap: () =>
-                          ref.read(gamesListViewModeSwitcher).toggleViewMode(),
-                    ),
-                  ),
-                _buildSpaceButton(),
-              ],
-            ),
-          ),
-        ],
+  /// The tab's Filters with the filters on it counted, or null on About.
+  /// The same glyph ends the header and the search header, on the gutter,
+  /// and holds still there as the search opens and closes.
+  Widget? _filterButton(MiniaturesScreenMode mode, {bool inSearch = false}) {
+    final button = _filterGlyph(mode, inSearch: inSearch);
+    return button == null
+        ? null
+        : SearchModeShared(id: SearchModeFilterButton, child: button);
+  }
+
+  Widget? _filterGlyph(MiniaturesScreenMode mode, {required bool inSearch}) {
+    return switch (mode) {
+      MiniaturesScreenMode.about => null,
+      MiniaturesScreenMode.games => SearchModeFilterButton(
+        key: inSearch ? const ValueKey('miniatures_games_filters') : null,
+        label: 'Filter games',
+        count: ref.watch(
+          miniaturesFilterProvider.select((f) => f.dialogActiveCount),
+        ),
+        onTap: () => _openFilters(mode),
       ),
+      MiniaturesScreenMode.players => SearchModeFilterButton(
+        key: inSearch ? const ValueKey('miniatures_players_filters') : null,
+        label: 'Filter players',
+        count: ref.watch(
+          miniaturePlayersQueryProvider.select((q) => q.activeFilterCount),
+        ),
+        onTap: () => _openFilters(mode),
+      ),
+    };
+  }
+
+  /// The back row: the chevron where the search header's is, the title
+  /// lockup, and the tab's controls ending on the gutter with its Filters.
+  Widget _buildHeader(MiniaturesScreenMode mode) {
+    final filters = _filterButton(mode);
+    final controls = <Widget>[
+      // The Games list's layout, in the header as on an event's Games tab:
+      // the list's top is the list's own.
+      if (mode == MiniaturesScreenMode.games)
+        // Every Games list's own board-view button; the switcher gives the
+        // tap feedback.
+        BoardViewToggleButton(
+          onTap: () => ref.read(gamesListViewModeSwitcher).toggleViewMode(),
+        ),
+      _buildSpaceButton(),
+      ?filters,
+    ];
+    return PageBackRow(
+      // Named as every pushed page is: the one title voice, its bare mark.
+      title: const PageTitle('Miniatures', mark: Icon(Icons.bolt_rounded)),
+      // Three controls on Games: the most any tab shows, so the title sits
+      // at one place on every tab.
+      reservedEnd: 3 * _kControl,
+      actions: controls,
     );
   }
 
@@ -323,53 +333,48 @@ class _MiniaturesScreenState extends ConsumerState<MiniaturesScreen>
     if (!inSpace && !draft.canAddToMySpace) return const SizedBox.shrink();
     return IconButton(
       tooltip: inSpace ? 'Remove from My Space' : 'Add to My Space',
+      padding: EdgeInsets.zero,
+      constraints: const BoxConstraints.tightFor(
+        width: _kControl,
+        height: _kControl,
+      ),
       onPressed: () =>
           toggleSpaceShortcut(context: context, ref: ref, draft: draft),
       icon: Icon(
         inSpace
             ? Icons.dashboard_customize
             : Icons.dashboard_customize_outlined,
-        size: 18.sp,
+        size: 20.ic,
         color: context.colors.textPrimary,
       ),
     );
   }
 }
 
+/// A header control's square target: a 20pt glyph in it, as the toolbar
+/// and the search header draw theirs.
+const double _kControl = 44;
+
 /// The floating search over the tab in view: Games and Players each search
-/// their own list, counting the filters on it; About has nothing to search.
-/// Searching, nothing floats.
-class _MiniaturesSearchFab extends ConsumerWidget {
-  const _MiniaturesSearchFab({
-    required this.mode,
-    required this.searching,
-    required this.onSearch,
-  });
+/// their own list; About has nothing to search. Their Filters stand in the
+/// header, counted there, so the button carries no count of its own. It
+/// stays while searching: the search's glass flies back into it.
+class _MiniaturesSearchFab extends StatelessWidget {
+  const _MiniaturesSearchFab({required this.mode});
 
   final MiniaturesScreenMode mode;
-  final bool searching;
-  final VoidCallback onSearch;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    if (searching) return const SizedBox.shrink();
+  Widget build(BuildContext context) {
     return switch (mode) {
       MiniaturesScreenMode.about => const SizedBox.shrink(),
-      MiniaturesScreenMode.games => SearchInkFab(
-        key: const ValueKey('miniatures_search_fab'),
+      MiniaturesScreenMode.games => const SearchInkFab(
+        key: ValueKey('miniatures_search_fab'),
         label: 'Search games',
-        badgeCount: ref.watch(
-          miniaturesFilterProvider.select((f) => f.dialogActiveCount),
-        ),
-        onTap: onSearch,
       ),
-      MiniaturesScreenMode.players => SearchInkFab(
-        key: const ValueKey('miniatures_search_fab'),
+      MiniaturesScreenMode.players => const SearchInkFab(
+        key: ValueKey('miniatures_search_fab'),
         label: 'Search players',
-        badgeCount: ref.watch(
-          miniaturePlayersQueryProvider.select((q) => q.activeFilterCount),
-        ),
-        onTap: onSearch,
       ),
     };
   }

@@ -1,6 +1,7 @@
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/ink_fab.dart';
+import 'package:chessever2/widgets/live_first_capsule.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -22,7 +23,13 @@ void main() {
             ResponsiveHelper.init(context);
             return Scaffold(
               body: Center(
-                child: LiveFirstInkFab(on: false, onTap: () => taps++),
+                child: InkFab(
+                  label: 'Filters',
+                  size: InkFabSize.small,
+                  onTap: () => taps++,
+                  glyph: (color, size) =>
+                      Icon(Icons.tune_rounded, size: size, color: color),
+                ),
               ),
             );
           },
@@ -73,5 +80,50 @@ void main() {
       tester.getSize(find.byType(InkFab)),
       Size.square(InkFabSize.regular.disc),
     );
+  });
+
+  testWidgets('a stack keeps its buttons on one right edge: a wider one '
+      'above grows leftward, never pulling the search off its corner', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(393, 852);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    Widget page({required int live}) => MaterialApp(
+      theme: AppTheme.darkTheme,
+      home: Builder(
+        builder: (context) {
+          ResponsiveHelper.init(context);
+          return Scaffold(
+            floatingActionButton: InkFabStack(
+              children: [
+                LiveFirstCapsule(on: false, liveCount: live, onTap: () {}),
+                const SearchInkFab(key: ValueKey('search'), label: 'Search'),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+    final search = find.byKey(const ValueKey('search'));
+    final capsule = find.byType(LiveFirstCapsule);
+
+    await tester.pumpWidget(page(live: 3));
+    await tester.pumpAndSettle();
+    final corner = tester.getTopRight(search);
+    expect(
+      tester.getSize(capsule).width,
+      greaterThan(tester.getSize(search).width),
+    );
+    expect(tester.getTopRight(capsule).dx, closeTo(corner.dx, 0.01));
+
+    // A count with more digits: the capsule widens, the search stays put.
+    await tester.pumpWidget(page(live: 120));
+    await tester.pumpAndSettle();
+    expect(
+      tester.getTopRight(search),
+      offsetMoreOrLessEquals(corner, epsilon: 0.01),
+    );
+    expect(tester.getTopRight(capsule).dx, closeTo(corner.dx, 0.01));
   });
 }

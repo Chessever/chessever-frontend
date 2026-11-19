@@ -24,6 +24,7 @@ class CollectionPlateRow extends StatelessWidget {
     this.tally,
     this.note,
     this.onTap,
+    this.onPreviewTap,
     this.menuActions,
     this.trailing,
     this.stats,
@@ -62,6 +63,9 @@ class CollectionPlateRow extends StatelessWidget {
   final String? tally;
   final String? note;
   final VoidCallback? onTap;
+
+  /// A tap on the focus menu's lifted copy; [onTap] by default.
+  final VoidCallback? onPreviewTap;
   final CardMenuActionsBuilder? menuActions;
 
   @override
@@ -236,7 +240,11 @@ class CollectionPlateRow extends StatelessWidget {
     }
     final actions = menuActions;
     if (actions != null) {
-      card = CardContextMenu(onPreviewTap: tap, actions: actions, child: card);
+      card = CardContextMenu(
+        onPreviewTap: onPreviewTap ?? tap,
+        actions: actions,
+        child: card,
+      );
     }
     return Semantics(
       button: true,

@@ -1,19 +1,30 @@
+import 'dart:async';
+
 import 'package:chessever2/providers/country_dropdown_provider.dart';
+import 'package:chessever2/providers/engine_settings_provider.dart';
 import 'package:chessever2/providers/game_list_live_first_provider.dart';
 import 'package:chessever2/screens/countrymen/countrymen_tab_screen.dart';
 import 'package:chessever2/screens/countrymen/provider/countrymen_combined_games_provider.dart';
 import 'package:chessever2/screens/countrymen/provider/countrymen_mode_provider.dart';
 import 'package:chessever2/screens/countrymen/tabs/countrymen_events_tab.dart';
 import 'package:chessever2/screens/countrymen/tabs/countrymen_games_tab.dart';
+import 'package:chessever2/screens/countrymen/tabs/countrymen_players_tab.dart';
+import 'package:chessever2/widgets/search_no_matches.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/event_no_spoilers_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_list_view_mode_provider.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/grid_game_card_wrapper_widget.dart';
+import 'package:chessever2/services/discovery_dots/discovery_dots_provider.dart';
 import 'package:chessever2/theme/app_theme.dart';
+import 'package:chessever2/utils/date_time_provider.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/country_dropdown.dart';
 import 'package:chessever2/widgets/game_filter/game_filter_model.dart';
 import 'package:chessever2/widgets/ink_fab.dart';
+import 'package:chessever2/widgets/live_first_capsule.dart';
 import 'package:chessever2/widgets/quick_list_toggles.dart';
 import 'package:chessever2/widgets/scroll_chrome.dart';
+import 'package:chessever2/widgets/search_mode/search_mode.dart';
 import 'package:chessever2/widgets/segmented_switcher.dart';
 import 'package:country_picker/country_picker.dart';
 import 'package:flutter/material.dart';
@@ -22,7 +33,10 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
-/// Records filters and searches instead of refetching from Supabase.
+/// Records filters and searches instead of refetching from Supabase, and
+/// answers a search the way the real notifier does: the list on screen stays
+/// until the hits land ([nextSearch], at once by default), and closing the
+/// search puts the plain list back as it was.
 class _FakeGames extends StateNotifier<CountrymenCombinedGamesState>
     implements CountrymenCombinedGamesNotifier {
   _FakeGames({List<GamesTourModel> games = const []})
@@ -38,6 +52,12 @@ class _FakeGames extends StateNotifier<CountrymenCombinedGamesState>
   final List<String> searches = [];
   int clears = 0;
 
+  /// The answer to the next search; null answers at once with no games.
+  Completer<List<GamesTourModel>>? nextSearch;
+
+  CountrymenCombinedGamesState? _beforeSearch;
+  String _query = '';
+
   @override
   Future<void> applyFilter(GameFilter filter) async {
     applied.add(filter);
@@ -46,18 +66,35 @@ class _FakeGames extends StateNotifier<CountrymenCombinedGamesState>
 
   @override
   Future<void> searchGames(String query) async {
+    final trimmed = query.trim();
     searches.add(query);
-    state = state.copyWith(searchQuery: query.trim());
+    if (_query.isEmpty) _beforeSearch = state;
+    _query = trimmed;
+    final answer = nextSearch;
+    nextSearch = null;
+    state = state.copyWith(isLoading: true, isReplacing: true);
+    final hits = answer == null
+        ? const <GamesTourModel>[]
+        : await answer.future;
+    if (!mounted || _query != trimmed) return;
+    state = state.copyWith(isLoading: false, games: hits, searchQuery: trimmed);
   }
 
+  /// Counts searches actually ended, as the real one only acts on one.
   @override
   Future<void> clearSearch() async {
+    if (_query.isEmpty && !state.isSearching) return;
     clears++;
-    state = state.copyWith(searchQuery: '');
+    _query = '';
+    final before = _beforeSearch;
+    _beforeSearch = null;
+    state = before != null && before.filter == state.filter
+        ? before
+        : state.copyWith(searchQuery: '', isLoading: false);
   }
 
   @override
-  Future<void> refreshGames() async {}
+  Future<void> refreshGames({bool keepList = true}) async {}
 
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
@@ -66,6 +103,24 @@ class _FakeGames extends StateNotifier<CountrymenCombinedGamesState>
 class _FakeEvents extends StateNotifier<CountrymenEventsState>
     implements CountrymenEventsNotifier {
   _FakeEvents() : super(const CountrymenEventsState(hasMore: false));
+
+  /// Every query the page sent, '' for a cleared one.
+  final List<String> searches = [];
+
+  @override
+  Future<void> search(String query) async {
+    searches.add(query.trim());
+    state = CountrymenEventsState(hasMore: false, searchQuery: query.trim());
+  }
+
+  @override
+  Future<void> clearSearch() async {
+    if (!state.isSearching) return;
+    await search('');
+  }
+
+  @override
+  Future<void> loadMore() async {}
 
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
@@ -93,11 +148,43 @@ class _FakeCountry extends StateNotifier<AsyncValue<Country>>
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
+/// The cards' engine settings, without the device database or Supabase.
+class _NoEngine extends EngineSettingsNotifierNew {
+  @override
+  Future<EngineSettings> build() async =>
+      const EngineSettings(showEngineAnalysis: false, showEngineGauge: false);
+}
+
+/// The cards' spoiler setting, without the device database.
+class _NoSpoilers extends EventNoSpoilersController {
+  _NoSpoilers({required super.ref, required super.tourId});
+
+  @override
+  Future<void> load() async {
+    state = const EventNoSpoilersState(isLoading: false);
+  }
+}
+
+class _NoDiscoveryDots implements DiscoveryDotsSource {
+  @override
+  Future<String> initialize() async => '';
+
+  @override
+  Future<String> fetch() async => '';
+
+  @override
+  Stream<String> get updates => const Stream<String>.empty();
+}
+
 final Country _norway = CountryService().findByCode('NO')!;
 final Country _germany = CountryService().findByCode('DE')!;
 final Country _unitedStates = CountryService().findByCode('US')!;
 
 late _FakeGames _games;
+late _FakeEvents _events;
+
+/// The search words of every country ranking page asked for.
+final List<String> _rankingQueries = [];
 late _FakeCountry _country;
 late ProviderContainer _container;
 
@@ -109,6 +196,8 @@ Future<void> _pumpScreen(
   Country? temporary,
   Country? pinned,
   bool? anyLive,
+  List<GamesTourModel> games = const [],
+  GamesListViewMode viewMode = GamesListViewMode.gamesCard,
 }) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1.0;
@@ -123,20 +212,39 @@ Future<void> _pumpScreen(
     ProviderScope(
       overrides: [
         countrymenCombinedGamesProvider.overrideWith(
-          (ref) => _games = _FakeGames(),
+          (ref) => _games = _FakeGames(games: games),
         ),
-        countrymenEventsProvider.overrideWith((ref) => _FakeEvents()),
+        countrymenEventsProvider.overrideWith((ref) => _events = _FakeEvents()),
+        // The real ranking, served without Supabase.
+        countryRankingsFetcherProvider.overrideWithValue(({
+          required countryCode,
+          required filters,
+          required searchQuery,
+          required limit,
+          required offset,
+        }) async {
+          _rankingQueries.add(searchQuery);
+          return const [];
+        }),
         countryDropdownProvider.overrideWith(
           (ref) => _country = _FakeCountry(persisted),
         ),
         temporaryCountryProvider.overrideWith((ref) => temporary),
         effectiveCountryProvider.overrideWithValue(AsyncValue.data(shown)),
         selectedCountrymenModeProvider.overrideWith((ref) => mode),
-        gamesListViewModeProvider.overrideWithValue(
-          GamesListViewMode.gamesCard,
-        ),
+        gamesListViewModeProvider.overrideWithValue(viewMode),
         if (anyLive != null)
           countrymenGamesAnyLiveProvider.overrideWith((ref) => anyLive),
+        // What the cards read, without Supabase or the device database.
+        if (games.isNotEmpty) ...[
+          discoveryDotsSourceProvider.overrideWithValue(_NoDiscoveryDots()),
+          engineSettingsProviderNew.overrideWith(_NoEngine.new),
+          eventNoSpoilersProvider.overrideWith(
+            (ref, tourId) => _NoSpoilers(ref: ref, tourId: tourId),
+          ),
+          // One reading of the clock: no ticking timer left behind.
+          dateTimeProvider.overrideWith((ref) => Stream.value(DateTime.now())),
+        ],
       ],
       child: MaterialApp(
         theme: AppTheme.darkTheme,
@@ -163,13 +271,25 @@ Finder _control(String label) => find.byWidgetPredicate(
   (widget) => widget is QuickToggleIconButton && widget.label == label,
 );
 
-Finder get _liveFirst => find.byType(LiveFirstInkFab);
+/// The full-page search header (built only while the search is open).
+Finder get _searchHeader => find.byType(SearchModeHeader);
+
+/// [finder] inside the search header.
+Finder _inSearch(Finder finder) =>
+    find.descendant(of: _searchHeader, matching: finder);
+
+Finder get _liveFirst => find.byType(LiveFirstCapsule);
 Finder get _classical => find.byType(ClassicalToggleButton);
-Finder get _filters => _control('Filters');
+Finder get _filters => find.byType(SearchModeFilterButton);
 Finder get _boardView => _control('Change board view');
 Finder get _searchFab => find.byType(SearchInkFab);
-Finder get _searchField => find.byType(CountrymenGamesSearchField);
+Finder get _searchField => _inSearch(find.byType(TextField));
 Finder get _closeSearch => find.byTooltip('Close search');
+Finder get _back => find.byType(PageBackButton);
+
+/// What Live first reads with [count] games in play, off.
+String _liveLabel(int count) =>
+    LiveFirstCapsule.labelFor(on: false, liveCount: count);
 
 /// Lets springs and routes finish without waiting on a caret's blink, which
 /// never settles while the search field has focus.
@@ -260,26 +380,38 @@ GamesTourModel _game(
 
 void main() {
   group('Countrymen Games header and floating buttons (Trello #1420)', () {
-    testWidgets('the app bar keeps only the board view beside the picker; '
-        'the search and the list controls leave the top', (tester) async {
+    testWidgets('the app bar ends with the toolbar beside the picker; back '
+        'sits where the search header puts its chevron', (tester) async {
       await _pumpScreen(tester);
+
+      final back = tester.getRect(_back);
+      // The canonical back: a 48pt target at the leading inset, right under
+      // the status bar's inset (+4).
+      expect(back.left, closeTo(SearchHeaderMetrics.leadingInset, 0.01));
+      expect(back.width, SearchHeaderMetrics.backTarget);
+      expect(back.top, closeTo(4, 0.5));
 
       final picker = tester.getRect(find.byType(CountryDropdown));
       final board = tester.getRect(_boardView);
-      expect(board.center.dy, closeTo(picker.center.dy, 1));
+      final classical = tester.getRect(_classical);
+      final filters = tester.getRect(_filters);
+      for (final rect in [picker, board, classical, filters]) {
+        expect(rect.center.dy, closeTo(back.center.dy, 1));
+      }
+      expect(back.right, lessThanOrEqualTo(picker.left));
       expect(picker.right, lessThanOrEqualTo(board.left));
-      expect(board.right, lessThanOrEqualTo(393));
+      expect(board.right, lessThanOrEqualTo(classical.left));
+      expect(classical.right, lessThanOrEqualTo(filters.left));
+      expect(filters.right, lessThanOrEqualTo(393));
       // The same board-view mark as Favorites.
       expect(
         find.descendant(of: _boardView, matching: find.byType(BoardViewGlyph)),
         findsOneWidget,
       );
 
-      // Nothing is live, so Live first does not float; Classical and Filters
-      // wait in the search; no field sits on the page.
-      for (final control in [_liveFirst, _classical, _filters]) {
-        expect(control, findsNothing);
-      }
+      // Nothing is live, so Live first does not float; no field sits on the
+      // page.
+      expect(_liveFirst, findsNothing);
       expect(find.byType(TextField), findsNothing);
 
       // The search floats in the thumb's reach.
@@ -309,46 +441,57 @@ void main() {
       expect(find.byType(SegmentedSwitcher), findsOneWidget);
     });
 
-    testWidgets('the search opens in place: back, the field, Classical and '
-        'Filters over the same Games list, and back closes it', (tester) async {
+    testWidgets('the search opens in place: the chevron, Classical and '
+        'Filters stay put, the field takes the country\'s place over the same '
+        'Games list, and back closes it', (tester) async {
       await _pumpScreen(tester);
-      await _openSearch(tester);
-
-      final field = find.descendant(
-        of: _searchField,
-        matching: find.byType(TextField),
-      );
-      expect(field, findsOneWidget);
-      expect(tester.widget<TextField>(field).focusNode!.hasFocus, isTrue);
-      // The header is the search row alone: no picker, no tabs, nothing
-      // floating.
-      expect(find.byType(CountryDropdown), findsNothing);
-      expect(find.byType(SegmentedSwitcher), findsNothing);
-      expect(_searchFab, findsNothing);
-      expect(find.byType(CountrymenGamesTab), findsOneWidget);
-      // One row, left to right: back, field, Classical, Filters.
-      final close = tester.getRect(_closeSearch);
-      final fieldRect = tester.getRect(field);
+      final back = tester.getRect(_back);
       final classical = tester.getRect(_classical);
       final filters = tester.getRect(_filters);
-      for (final rect in [fieldRect, classical, filters]) {
-        expect(rect.center.dy, closeTo(close.center.dy, 1));
-      }
+      final list = tester.element(find.byType(CountrymenGamesTab));
+
+      await _openSearch(tester);
+
+      final field = _searchField;
+      expect(field, findsOneWidget);
+      expect(tester.widget<TextField>(field).focusNode!.hasFocus, isTrue);
+      // The app bar and the tabs are out of reach; nothing floats.
+      expect(find.byType(CountryDropdown).hitTestable(), findsNothing);
+      expect(find.byType(SegmentedSwitcher).hitTestable(), findsNothing);
+      expect(_searchFab.hitTestable(), findsNothing);
+      // The same Games list, never rebuilt from scratch.
+      expect(tester.element(find.byType(CountrymenGamesTab)), same(list));
+      // The chevron, Classical and Filters did not move; the board view gave
+      // way to the field.
+      final close = tester.getRect(_closeSearch);
+      expect(close, rectMoreOrLessEquals(back, epsilon: 0.5));
+      expect(
+        tester.getRect(_inSearch(_classical)),
+        rectMoreOrLessEquals(classical, epsilon: 0.5),
+      );
+      expect(
+        tester.getRect(_inSearch(_filters)),
+        rectMoreOrLessEquals(filters, epsilon: 0.5),
+      );
+      expect(_inSearch(_boardView), findsNothing);
+      final fieldRect = tester.getRect(field);
+      expect(fieldRect.center.dy, closeTo(close.center.dy, 1));
       expect(close.right, lessThanOrEqualTo(fieldRect.left));
       expect(fieldRect.right, lessThanOrEqualTo(classical.left));
-      expect(classical.right, lessThanOrEqualTo(filters.left));
 
       await tester.enterText(field, 'Carlsen');
       await tester.pump(const Duration(milliseconds: 450));
       expect(_games.searches, ['Carlsen']);
 
       await tester.tap(_closeSearch);
+      // The query goes with the tap, not after the morph.
+      expect(_games.clears, 1);
       await _settle(tester);
 
-      expect(_searchField, findsNothing);
-      expect(find.byType(CountryDropdown), findsOneWidget);
-      expect(find.byType(SegmentedSwitcher), findsOneWidget);
-      expect(_searchFab, findsOneWidget);
+      expect(_searchHeader, findsNothing);
+      expect(find.byType(CountryDropdown).hitTestable(), findsOneWidget);
+      expect(find.byType(SegmentedSwitcher).hitTestable(), findsOneWidget);
+      expect(_searchFab.hitTestable(), findsOneWidget);
       expect(_games.clears, 1);
     });
 
@@ -357,44 +500,46 @@ void main() {
     ) async {
       await _pumpScreen(tester);
       await _openSearch(tester);
+      await tester.enterText(_searchField, 'Najdorf');
+      await tester.pump(const Duration(milliseconds: 450));
 
       await tester.binding.handlePopRoute();
       await _settle(tester);
 
       expect(find.byType(CountrymenTabScreen), findsOneWidget);
-      expect(_searchField, findsNothing);
-      expect(find.byType(CountryDropdown), findsOneWidget);
+      expect(_searchHeader, findsNothing);
+      expect(find.byType(CountryDropdown).hitTestable(), findsOneWidget);
       expect(_games.clears, 1);
     });
 
-    testWidgets('Classical in the search toggles the server-side '
-        'time-control filter', (tester) async {
+    testWidgets('Classical toggles the server-side time-control filter, from '
+        'the app bar as from the search', (tester) async {
       await _pumpScreen(tester);
-      await _openSearch(tester);
 
       await tester.tap(_classical);
       await tester.pump();
       expect(_games.applied.last.timeControl, GameTimeControlFilter.classical);
       expect(tester.widget<ClassicalToggleButton>(_classical).pressed, isTrue);
       // The time control is an active filter, so the Filters glyph counts it.
-      final filters = tester.widget<QuickToggleIconButton>(_filters);
-      expect(filters.selected, isTrue);
-      expect(filters.badgeCount, 1);
+      expect(tester.widget<SearchModeFilterButton>(_filters).count, 1);
 
-      await tester.tap(_classical);
+      await _openSearch(tester);
+      await tester.tap(_inSearch(_classical));
       await tester.pump();
       expect(_games.applied.last.timeControl, GameTimeControlFilter.all);
-      expect(tester.widget<ClassicalToggleButton>(_classical).pressed, isFalse);
+      expect(
+        tester.widget<ClassicalToggleButton>(_inSearch(_classical)).pressed,
+        isFalse,
+      );
       expect(_games.applied, hasLength(2));
     });
 
     testWidgets('Classical stays applied once the search closes, counted on '
-        'the floating search', (tester) async {
+        'the app bar\'s Filters', (tester) async {
       await _pumpScreen(tester);
-      expect(tester.widget<SearchInkFab>(_searchFab).badgeCount, 0);
 
       await _openSearch(tester);
-      await tester.tap(_classical);
+      await tester.tap(_inSearch(_classical));
       await tester.pump();
       await tester.tap(_closeSearch);
       await _settle(tester);
@@ -404,27 +549,21 @@ void main() {
         _container.read(countrymenCombinedGamesProvider).filter.timeControl,
         GameTimeControlFilter.classical,
       );
-      expect(tester.widget<SearchInkFab>(_searchFab).badgeCount, 1);
+      expect(tester.widget<SearchModeFilterButton>(_filters).count, 1);
       expect(
-        find.descendant(of: _searchFab, matching: find.text('1')),
+        find.descendant(of: _filters, matching: find.text('1')),
         findsOneWidget,
       );
-
-      await _openSearch(tester);
-      await tester.tap(_classical);
-      await tester.pump();
-      await tester.tap(_closeSearch);
-      await _settle(tester);
+      // One count, on the Filters glyph: the search button carries none.
       expect(tester.widget<SearchInkFab>(_searchFab).badgeCount, 0);
     });
 
-    testWidgets('Filters in the search opens the games filter', (tester) async {
+    testWidgets('Filters opens the games filter, in the app bar as in the '
+        'search', (tester) async {
       await _pumpScreen(tester);
-      await _openSearch(tester);
 
       await tester.tap(_filters);
       await _settle(tester);
-
       expect(find.text('Apply Filters'), findsOneWidget);
     });
 
@@ -433,6 +572,8 @@ void main() {
       // Floated by a game that has since finished: the press finds none.
       await _pumpScreen(tester, anyLive: true);
 
+      // No count known: it reads "Live now".
+      expect(find.text(LiveFirstCapsule.unknownLabel), findsOneWidget);
       await tester.tap(_liveFirst);
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 300));
@@ -440,11 +581,11 @@ void main() {
       expect(find.text(kNoLiveGamesRightNowMessage), findsOneWidget);
       expect(kNoLiveGamesRightNowMessage, 'No live games right now');
       expect(_liveFirstOn(), isFalse);
-      expect(tester.widget<LiveFirstInkFab>(_liveFirst).on, isFalse);
+      expect(tester.widget<LiveFirstCapsule>(_liveFirst).on, isFalse);
     });
 
     testWidgets('Live first floats only while a game is in play, above the '
-        'search, and turns on and off', (tester) async {
+        'search, says how many, and turns on and off', (tester) async {
       final container = ProviderContainer(
         overrides: [
           countrymenCombinedGamesProvider.overrideWith(
@@ -458,7 +599,6 @@ void main() {
         ],
       );
       addTearDown(container.dispose);
-      var searches = 0;
       await tester.pumpWidget(
         UncontrolledProviderScope(
           container: container,
@@ -467,10 +607,8 @@ void main() {
             home: Builder(
               builder: (context) {
                 ResponsiveHelper.init(context);
-                return Scaffold(
-                  floatingActionButton: CountrymenGamesFabs(
-                    onSearch: () => searches++,
-                  ),
+                return const Scaffold(
+                  floatingActionButton: CountrymenGamesFabs(),
                 );
               },
             ),
@@ -485,19 +623,23 @@ void main() {
         tester.getRect(_liveFirst).bottom,
         lessThan(tester.getRect(_searchFab).top),
       );
+      expect(find.text(_liveLabel(1)), findsOneWidget);
+      expect(tester.widget<LiveFirstCapsule>(_liveFirst).liveCount, 1);
       await tester.tap(_liveFirst);
-      await tester.pump();
+      await _settle(tester);
       expect(container.read(provider), isTrue);
       expect(find.text(kNoLiveGamesRightNowMessage), findsNothing);
-      expect(tester.widget<LiveFirstInkFab>(_liveFirst).on, isTrue);
+      expect(tester.widget<LiveFirstCapsule>(_liveFirst).on, isTrue);
+      expect(
+        find.byKey(const ValueKey('live_first_capsule_on')),
+        findsOneWidget,
+      );
 
       await tester.tap(_liveFirst);
-      await tester.pump();
+      await _settle(tester);
       expect(container.read(provider), isFalse);
       expect(_liveFirst, findsOneWidget);
-
-      await tester.tap(_searchFab);
-      expect(searches, 1);
+      expect(find.text(_liveLabel(1)), findsOneWidget);
     });
 
     testWidgets('the list keeps clear of the whole button stack over the '
@@ -522,10 +664,10 @@ void main() {
             home: Builder(
               builder: (context) {
                 ResponsiveHelper.init(context);
-                return Scaffold(
+                return const Scaffold(
                   // Where the Games list sits: the Scaffold's body.
-                  body: const SizedBox.expand(key: ValueKey('list')),
-                  floatingActionButton: CountrymenGamesFabs(onSearch: () {}),
+                  body: SizedBox.expand(key: ValueKey('list')),
+                  floatingActionButton: CountrymenGamesFabs(),
                 );
               },
             ),
@@ -540,20 +682,15 @@ void main() {
       expect(852 - top, closeTo(reach, 0.01));
     });
 
-    testWidgets('Events mode carries none of the Games controls', (
-      tester,
-    ) async {
+    testWidgets('Events mode carries none of the Games controls, and floats '
+        'its own search', (tester) async {
       await _pumpScreen(tester, mode: CountrymenScreenMode.events);
 
-      for (final control in [
-        _liveFirst,
-        _classical,
-        _filters,
-        _boardView,
-        _searchFab,
-      ]) {
+      for (final control in [_liveFirst, _classical, _filters, _boardView]) {
         expect(control, findsNothing);
       }
+      expect(_searchFab, findsOneWidget);
+      expect(find.byTooltip('Search events'), findsOneWidget);
       expect(find.byType(CountryDropdown), findsOneWidget);
 
       // The picker hugs its flag and name instead of stretching across the
@@ -565,10 +702,11 @@ void main() {
     for (final (label, size, scale, pinInMenu) in [
       ('320 wide', const Size(320, 568), 1.0, true),
       ('320 wide, large text', const Size(320, 568), 1.5, true),
-      ('375 wide', const Size(375, 667), 1.0, false),
-      ('393 wide, large text', const Size(393, 852), 1.5, false),
+      ('375 wide', const Size(375, 667), 1.0, true),
+      ('393 wide, large text', const Size(393, 852), 1.5, true),
+      ('540 wide', const Size(540, 900), 1.0, false),
     ]) {
-      testWidgets('fits a $label phone with a temporary country', (
+      testWidgets('fits a $label screen with a temporary country', (
         tester,
       ) async {
         await _pumpScreen(
@@ -581,7 +719,7 @@ void main() {
         expect(tester.takeException(), isNull);
         expect(_boardView, findsOneWidget);
         final board = tester.getRect(_boardView);
-        expect(board.right, lessThanOrEqualTo(size.width));
+        expect(tester.getRect(_filters).right, lessThanOrEqualTo(size.width));
 
         if (!pinInMenu) {
           // Room beside the name: the Pin stays in the row.
@@ -589,7 +727,8 @@ void main() {
           expect(pin.right, lessThanOrEqualTo(board.left));
           return;
         }
-        // No room for a Pin beside the name: the country menu leads with it.
+        // No room for a Pin beside the name and the toolbar: the country
+        // menu leads with it.
         expect(find.bySemanticsLabel(_pinGermany), findsNothing);
         await _openCountryMenu(tester);
         expect(tester.takeException(), isNull);
@@ -608,7 +747,11 @@ void main() {
       await _openSearch(tester);
 
       expect(tester.takeException(), isNull);
-      for (final target in [_closeSearch, _classical, _filters]) {
+      for (final target in [
+        _closeSearch,
+        _inSearch(_classical),
+        _inSearch(_filters),
+      ]) {
         final rect = tester.getRect(target);
         expect(rect.left, greaterThanOrEqualTo(0));
         expect(rect.right, lessThanOrEqualTo(320));
@@ -617,29 +760,386 @@ void main() {
     });
   });
 
+  group('Countrymen search keeps the Games list (continuity)', () {
+    Finder cards() => find.byType(GridGameCardWrapperWidget);
+    ScrollableState scrollable(WidgetTester tester) =>
+        tester.state<ScrollableState>(
+          find.descendant(
+            of: find.byType(CustomScrollView),
+            matching: find.byType(Scrollable),
+          ),
+        );
+    const refetchLine = ValueKey('games_list_refetch_line');
+
+    testWidgets('opening and closing the search keeps the list: no spinner, '
+        'no remount, a quiet line while a query loads, and Live first counts '
+        'the games in play', (tester) async {
+      final now = DateTime.now();
+      final done = _game('done', lastMoveTime: now);
+      final live = _game('live', lastMoveTime: now, ongoing: true);
+      // The grid's cards: the same list in any view mode.
+      await _pumpScreen(
+        tester,
+        games: [done, live],
+        viewMode: GamesListViewMode.chessBoardGrid,
+      );
+      final list = scrollable(tester);
+      expect(cards(), findsNWidgets(2));
+      // Live first, in words: how many are live on the list.
+      expect(find.text(_liveLabel(1)), findsOneWidget);
+      expect(tester.widget<LiveFirstCapsule>(_liveFirst).liveCount, 1);
+
+      await _openSearch(tester);
+      expect(find.byType(CircularProgressIndicator), findsNothing);
+      expect(scrollable(tester), same(list));
+      expect(cards(), findsNWidgets(2));
+
+      final pending = Completer<List<GamesTourModel>>();
+      _games.nextSearch = pending;
+      await tester.enterText(_searchField, 'Carlsen');
+      await tester.pump(const Duration(milliseconds: 450));
+      await tester.pump(const Duration(milliseconds: 300));
+      // The query is on its way: the list stays, a quiet line over it.
+      expect(_games.searches, ['Carlsen']);
+      expect(find.byType(CircularProgressIndicator), findsNothing);
+      expect(cards(), findsNWidgets(2));
+      expect(find.byKey(refetchLine), findsOneWidget);
+
+      pending.complete([done]);
+      await _settle(tester);
+      expect(cards(), findsOneWidget);
+      expect(scrollable(tester), same(list));
+      expect(find.byKey(refetchLine), findsNothing);
+
+      await tester.tap(_closeSearch);
+      await tester.pump();
+      // The query goes with the tap, once, and the list it replaced is back
+      // in the same frame, as it was.
+      expect(_games.clears, 1);
+      expect(cards(), findsNWidgets(2));
+      await _settle(tester);
+      expect(find.byType(CircularProgressIndicator), findsNothing);
+      expect(scrollable(tester), same(list));
+      expect(cards(), findsNWidgets(2));
+      expect(find.text(_liveLabel(1)), findsOneWidget);
+      expect(_games.clears, 1);
+
+      // The live card's own timers run out once it is gone.
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump(const Duration(minutes: 1));
+    });
+
+    testWidgets('the hits start at their top, and closing puts the list back '
+        'where it was left, in the frame the list comes back', (tester) async {
+      final now = DateTime.now();
+      final games = [
+        for (var i = 0; i < 24; i++) _game('g$i', lastMoveTime: now),
+      ];
+      await _pumpScreen(
+        tester,
+        games: games,
+        viewMode: GamesListViewMode.chessBoardGrid,
+      );
+      final position = scrollable(tester).position;
+      position.jumpTo(320);
+      await tester.pump();
+      // Where a card sits in the list (the header above it springs between
+      // its two heights, so the list's own top is the reference).
+      final card = find.byKey(const ValueKey('cmen_grid_game_g4'));
+      double inList() =>
+          tester.getTopLeft(card).dy -
+          tester.getTopLeft(find.byType(CustomScrollView)).dy;
+      final placed = inList();
+
+      await _openSearch(tester);
+      // Opening moves nothing.
+      expect(position.pixels, closeTo(320, 0.5));
+      _games.nextSearch = Completer<List<GamesTourModel>>()
+        ..complete([games.first]);
+      await tester.enterText(_searchField, 'Carlsen');
+      await tester.pump(const Duration(milliseconds: 450));
+      await tester.pump();
+      expect(cards(), findsOneWidget);
+      expect(position.pixels, 0);
+
+      await tester.tap(_closeSearch);
+      await tester.pump();
+      // One frame: the whole list, laid out at the reader's place (not at
+      // the hits' top first, then moved).
+      expect(position.pixels, closeTo(320, 0.5));
+      expect(inList(), closeTo(placed, 0.5));
+      await _settle(tester);
+      expect(position.pixels, closeTo(320, 0.5));
+      expect(scrollable(tester).position, same(position));
+    });
+
+    testWidgets('opening and closing the search at the end of the list keeps '
+        'every card where it was, with or without hits between', (
+      tester,
+    ) async {
+      final now = DateTime.now();
+      final games = [
+        for (var i = 0; i < 10; i++) _game('g$i', lastMoveTime: now),
+      ];
+      await _pumpScreen(
+        tester,
+        games: games,
+        viewMode: GamesListViewMode.chessBoardGrid,
+      );
+      final position = scrollable(tester).position;
+      position.jumpTo(position.maxScrollExtent);
+      await _settle(tester);
+      final end = position.pixels;
+      expect(end, greaterThan(0));
+      final last = find.byKey(const ValueKey('cmen_grid_game_g9'));
+      final placed = tester.getTopLeft(last).dy;
+      final listContext = tester.element(find.byType(CountrymenGamesTab));
+      final room = CountrymenGamesFabs.reach(listContext);
+      final timeline = SearchModeScope.maybeOf(listContext)!.timeline;
+
+      // Every frame of the morph: the header springs, and the list's end
+      // gives up the floating buttons' room on the morph's own timeline
+      // (SearchModeListEnd). At the very end of the list every card moves
+      // exactly as far as that room, with the morph: no jump on the tap, no
+      // jump as hits land, no bounce off the list's end.
+      Future<void> expectWithMorph(Future<void> Function() action) async {
+        await action();
+        for (var i = 0; i < 14; i++) {
+          await tester.pump(const Duration(milliseconds: 50));
+          expect(
+            tester.getTopLeft(last).dy,
+            closeTo(placed + room * timeline.value, 0.5),
+          );
+        }
+      }
+
+      await expectWithMorph(() => tester.tap(_searchFab));
+      expect(_searchField, findsOneWidget);
+      // Open, the room is gone: the last card sits that much lower.
+      expect(tester.getTopLeft(last).dy, closeTo(placed + room, 0.5));
+      await expectWithMorph(() => tester.tap(_closeSearch));
+      await _settle(tester);
+      expect(position.pixels, closeTo(end, 0.01));
+      expect(tester.getTopLeft(last).dy, closeTo(placed, 0.01));
+
+      // Hits between: they start at their top, and the list comes back to
+      // its end in the frame it comes back.
+      await _openSearch(tester);
+      _games.nextSearch = Completer<List<GamesTourModel>>()
+        ..complete([games.first]);
+      await tester.enterText(_searchField, 'Carlsen');
+      await tester.pump(const Duration(milliseconds: 450));
+      await _settle(tester);
+      expect(cards(), findsOneWidget);
+      expect(position.pixels, 0);
+      await expectWithMorph(() => tester.tap(_closeSearch));
+      await _settle(tester);
+      expect(position.pixels, closeTo(end, 0.01));
+      expect(scrollable(tester).position, same(position));
+    });
+
+    testWidgets('a search from an empty list keeps it on screen while the '
+        'query loads: never the full-page spinner', (tester) async {
+      await _pumpScreen(tester);
+      expect(find.text('No games found'), findsOneWidget);
+
+      await _openSearch(tester);
+      final pending = Completer<List<GamesTourModel>>();
+      _games.nextSearch = pending;
+      await tester.enterText(_searchField, 'Carlsen');
+      await tester.pump(const Duration(milliseconds: 450));
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(_games.searches, ['Carlsen']);
+      expect(find.text('Loading games...'), findsNothing);
+      expect(find.byType(CircularProgressIndicator), findsNothing);
+      expect(find.text('No games found'), findsOneWidget);
+      expect(find.byKey(refetchLine), findsOneWidget);
+
+      pending.complete(const []);
+      await _settle(tester);
+      // The one no-matches line every Games list shows, echoing the words.
+      expect(
+        tester
+            .widget<Text>(find.byKey(const ValueKey('search_no_matches_title')))
+            .data,
+        SearchNoMatches.titleFor(query: 'Carlsen'),
+      );
+      expect(find.byKey(refetchLine), findsNothing);
+
+      // Its way back empties the field; the search stays open.
+      await tester.tap(find.byKey(const ValueKey('search_no_matches_clear')));
+      await tester.pump();
+      expect(_searchField, findsOneWidget);
+      expect(tester.widget<TextField>(_searchField).controller!.text, isEmpty);
+      expect(_games.clears, 1);
+    });
+
+    testWidgets('a day folded on the list opens for the search and is folded '
+        'again after it', (tester) async {
+      final done = _game('done', lastMoveTime: DateTime.now());
+      await _pumpScreen(
+        tester,
+        games: [done],
+        viewMode: GamesListViewMode.chessBoardGrid,
+      );
+
+      await tester.tap(find.textContaining('Today'));
+      await tester.pump();
+      expect(cards(), findsNothing);
+
+      await _openSearch(tester);
+      _games.nextSearch = Completer<List<GamesTourModel>>()..complete([done]);
+      await tester.enterText(_searchField, 'Carlsen');
+      await tester.pump(const Duration(milliseconds: 450));
+      await _settle(tester);
+      // The hit is not hidden behind the plain list's fold.
+      expect(cards(), findsOneWidget);
+
+      await tester.tap(_closeSearch);
+      await _settle(tester);
+      expect(cards(), findsNothing);
+    });
+
+    testWidgets('with nothing live, Live first shows only while it is on, '
+        'so it can be turned off', (tester) async {
+      await _pumpScreen(tester);
+      expect(_liveFirst, findsNothing);
+
+      _container
+              .read(
+                gameListLiveFirstProvider(
+                  GameListLiveFirstSurface.countrymen,
+                ).notifier,
+              )
+              .state =
+          true;
+      await tester.pump();
+      expect(_liveFirst, findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('live_first_capsule_on')),
+        findsOneWidget,
+      );
+
+      await tester.tap(_liveFirst);
+      await _settle(tester);
+      expect(_liveFirstOn(), isFalse);
+      expect(_liveFirst, findsNothing);
+    });
+  });
+
+  group('Countrymen search on every tab (Trello #1420)', () {
+    testWidgets('Events searches its own list from the same button and '
+        'header, and closing clears it', (tester) async {
+      await _pumpScreen(tester, mode: CountrymenScreenMode.events);
+      final back = tester.getRect(_back);
+      // No field on the list itself.
+      expect(find.byType(TextField), findsNothing);
+
+      await _openSearch(tester);
+      expect(_searchField, findsOneWidget);
+      expect(
+        tester.getRect(_closeSearch),
+        rectMoreOrLessEquals(back, epsilon: 0.5),
+      );
+      // Nothing of the Games toolbar beside the field.
+      expect(_inSearch(_classical), findsNothing);
+      expect(_inSearch(_filters), findsNothing);
+
+      await tester.enterText(_searchField, 'Norway Chess');
+      await tester.pump(const Duration(milliseconds: 450));
+      await tester.pump();
+      expect(_events.searches, ['Norway Chess']);
+      expect(
+        tester
+            .widget<Text>(find.byKey(const ValueKey('search_no_matches_title')))
+            .data,
+        SearchNoMatches.titleFor(query: 'Norway Chess', subject: 'events'),
+      );
+
+      await tester.tap(_closeSearch);
+      await _settle(tester);
+      expect(_events.searches.last, '');
+      expect(_searchField, findsNothing);
+      // The Games list was never searched.
+      expect(_games.searches, isEmpty);
+      expect(_games.clears, 0);
+    });
+
+    testWidgets('Rankings sends the query to the country ranking', (
+      tester,
+    ) async {
+      _rankingQueries.clear();
+      await _pumpScreen(tester, mode: CountrymenScreenMode.players);
+      expect(find.byTooltip('Search players'), findsOneWidget);
+      // The first page, unsearched.
+      expect(_rankingQueries, ['']);
+
+      await _openSearch(tester);
+      await tester.enterText(_searchField, 'Carlsen');
+      await tester.pump(const Duration(milliseconds: 450));
+      await _settle(tester);
+      expect(_rankingQueries.last, 'Carlsen');
+
+      await tester.tap(_closeSearch);
+      await _settle(tester);
+      expect(_rankingQueries.last, '');
+      expect(_games.searches, isEmpty);
+    });
+  });
+
   group('Countrymen app bar semantics', () {
     testWidgets('every control offers a tap to assistive tech', (tester) async {
       final semantics = tester.ensureSemantics();
-      await _pumpScreen(tester, temporary: _germany);
+      // Wide enough for the Pin beside the name and the toolbar.
+      await _pumpScreen(
+        tester,
+        size: const Size(540, 900),
+        temporary: _germany,
+      );
 
-      void expectTappable(List<String> labels) {
+      void expectTappable(List<String> labels, {Finder? within}) {
         for (final label in labels) {
+          final byLabel = find.bySemanticsLabel(label);
           final data = tester
-              .getSemantics(find.bySemanticsLabel(label))
+              .getSemantics(
+                within == null
+                    ? byLabel
+                    : find.descendant(of: within, matching: byLabel),
+              )
               .getSemanticsData();
           expect(data.hasAction(SemanticsAction.tap), isTrue, reason: label);
         }
       }
 
+      // Back is the canonical PageBackButton: an IconButton, whose tooltip
+      // is its accessible name.
+      expect(
+        tester
+            .getSemantics(
+              find
+                  .descendant(
+                    of: find.byType(PageBackButton),
+                    matching: find.byTooltip('Back'),
+                  )
+                  .first,
+            )
+            .getSemanticsData()
+            .hasAction(SemanticsAction.tap),
+        isTrue,
+      );
       expectTappable([
-        'Back',
         BoardViewToggleButton.label,
+        'Show classical games only',
+        'Filters',
         _pinGermany,
         'Search games',
       ]);
 
       await _openSearch(tester);
-      expectTappable(['Show classical games only', 'Filters']);
+      expectTappable([
+        'Show classical games only',
+        'Filters',
+      ], within: _searchHeader);
       // An IconButton's tooltip is its accessible name.
       expect(
         tester
@@ -713,7 +1213,6 @@ void main() {
     });
 
     for (final (label, mode, size) in [
-      ('a 393pt Games row', CountrymenScreenMode.games, const Size(393, 852)),
       ('a wide Games row', CountrymenScreenMode.games, const Size(540, 900)),
       ('Events mode', CountrymenScreenMode.events, const Size(393, 852)),
       (

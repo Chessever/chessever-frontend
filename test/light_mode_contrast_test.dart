@@ -7,7 +7,7 @@ import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/theme/theme_provider.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/search/gameSearch/enhanced_game_search_widget.dart';
-import 'package:chessever2/widgets/search/gameSearch/game_search_overlay.dart';
+import 'package:chessever2/widgets/search_no_matches.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -316,16 +316,22 @@ void main() {
     }
 
     testWidgets('empty games search state reads on paper', (tester) async {
-      await pumpThemed(tester, const EmptySearchWidget(query: 'zzz'));
-      await tester.pump(const Duration(milliseconds: 700));
+      // The one no-hits line every Games list shows, drawn whole from its
+      // first frame: no pump needed for it to read.
+      await pumpThemed(tester, SearchNoMatches(query: 'zzz', onClear: () {}));
       final bg = AppTheme.lightTheme.scaffoldBackgroundColor;
-      for (final text in tester.widgetList<Text>(find.byType(Text))) {
-        expectReadable(text.style!.color!, bg,
-            what: 'empty-state "${text.data}"');
+      final texts = tester.widgetList<Text>(find.byType(Text)).toList();
+      expect(texts.map((t) => t.data), [
+        'No matches for "zzz"',
+        'Clear search',
+      ]);
+      for (final text in texts) {
+        expectReadable(
+          text.style!.color!,
+          bg,
+          what: 'empty-state "${text.data}"',
+        );
       }
-      final icon = tester.widget<Icon>(find.byIcon(Icons.search_off));
-      expectReadable(icon.color!, bg,
-          min: kLargeOrUi, what: 'empty-state glyph');
     });
   });
 

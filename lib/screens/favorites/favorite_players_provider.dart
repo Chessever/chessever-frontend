@@ -48,8 +48,8 @@ class FavoritePlayersNotifier
         return FavoritePlayersState(players: cached, isLoading: false);
       }
 
-      final favoritePlayers =
-          await _favoritesService.fetchFavoritePlayersFromSupabase();
+      final favoritePlayers = await _favoritesService
+          .fetchFavoritePlayersFromSupabase();
       return FavoritePlayersState(players: favoritePlayers, isLoading: false);
     } catch (e, stack) {
       debugPrint('Error: $e');
@@ -60,8 +60,8 @@ class FavoritePlayersNotifier
 
   Future<void> _refreshFromSupabase() async {
     try {
-      final favoritePlayers =
-          await _favoritesService.fetchFavoritePlayersFromSupabase();
+      final favoritePlayers = await _favoritesService
+          .fetchFavoritePlayersFromSupabase();
       state = AsyncValue.data(
         FavoritePlayersState(players: favoritePlayers, isLoading: false),
       );
@@ -77,8 +77,9 @@ class FavoritePlayersNotifier
     if (currentState == null) return;
 
     // STEP 1: Optimistic update - update UI immediately
-    final updatedPlayers =
-        currentState.players.where((p) => p.name != player.name).toList();
+    final updatedPlayers = currentState.players
+        .where((p) => p.name != player.name)
+        .toList();
     state = AsyncValue.data(currentState.copyWith(players: updatedPlayers));
 
     try {
@@ -167,13 +168,11 @@ class FavoritePlayersNotifier
         currentState.copyWith(players: currentState.players),
       );
     } else {
-      final filteredPlayers =
-          currentState.players
-              .where(
-                (player) =>
-                    player.name.toLowerCase().contains(query.toLowerCase()),
-              )
-              .toList();
+      final filteredPlayers = currentState.players
+          .where(
+            (player) => player.name.toLowerCase().contains(query.toLowerCase()),
+          )
+          .toList();
       state = AsyncValue.data(currentState.copyWith(players: filteredPlayers));
     }
   }
@@ -213,10 +212,11 @@ class FavoritePlayersNotifier
   }
 }
 
-final favoritePlayersNotifierProvider = AsyncNotifierProvider.autoDispose<
-  FavoritePlayersNotifier,
-  FavoritePlayersState
->(() => FavoritePlayersNotifier());
+final favoritePlayersNotifierProvider =
+    AsyncNotifierProvider.autoDispose<
+      FavoritePlayersNotifier,
+      FavoritePlayersState
+    >(() => FavoritePlayersNotifier());
 
 final filteredFavoritePlayersProvider = Provider.family
     .autoDispose<List<PlayerStandingModel>, String>((ref, query) {

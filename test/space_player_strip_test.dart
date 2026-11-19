@@ -193,7 +193,7 @@ void main() {
 
     await tester.longPress(find.byType(SpacePlayerFace));
     await tester.pump(const Duration(milliseconds: 600));
-    expect(find.text('Open'), findsOneWidget);
+    expect(find.text('Open profile'), findsOneWidget);
     expect(find.text('Add to My Space'), findsNothing);
     await tester.pump(const Duration(seconds: 2));
   });

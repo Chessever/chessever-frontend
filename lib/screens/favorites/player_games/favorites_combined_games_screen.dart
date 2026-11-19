@@ -226,41 +226,41 @@ class _FavoritesCombinedGamesScreenState
 
     // Filter by selected players if any are selected
     if (_selectedPlayerIds.isNotEmpty) {
-      final selectedFavorites =
-          favorites.where((f) => _selectedPlayerIds.contains(f.id)).toList();
+      final selectedFavorites = favorites
+          .where((f) => _selectedPlayerIds.contains(f.id))
+          .toList();
 
       // Stale selection (favorite removed while chip still tracked) — skip
       // filtering rather than nuking the list to an empty state. Pruning of
       // the underlying Set happens out-of-band via post-frame callback.
       if (selectedFavorites.isEmpty) return filtered;
 
-      filtered =
-          filtered.where((game) {
-            for (final favorite in selectedFavorites) {
-              // 1. Try FIDE ID match first (most reliable)
-              if (favorite.fideId != null && favorite.fideId!.isNotEmpty) {
-                final favFideId = int.tryParse(favorite.fideId!);
-                if (favFideId != null) {
-                  final whiteId = game.whitePlayer.fideId;
-                  final blackId = game.blackPlayer.fideId;
-                  if (whiteId == favFideId || blackId == favFideId) {
-                    return true;
-                  }
-                }
-              }
-
-              // 2. Fall back to name matching
-              final favName = _normalizeNameForMatch(favorite.playerName);
-              final whiteName = _normalizeNameForMatch(game.whitePlayer.name);
-              final blackName = _normalizeNameForMatch(game.blackPlayer.name);
-
-              if (_namesMatch(favName, whiteName) ||
-                  _namesMatch(favName, blackName)) {
+      filtered = filtered.where((game) {
+        for (final favorite in selectedFavorites) {
+          // 1. Try FIDE ID match first (most reliable)
+          if (favorite.fideId != null && favorite.fideId!.isNotEmpty) {
+            final favFideId = int.tryParse(favorite.fideId!);
+            if (favFideId != null) {
+              final whiteId = game.whitePlayer.fideId;
+              final blackId = game.blackPlayer.fideId;
+              if (whiteId == favFideId || blackId == favFideId) {
                 return true;
               }
             }
-            return false;
-          }).toList();
+          }
+
+          // 2. Fall back to name matching
+          final favName = _normalizeNameForMatch(favorite.playerName);
+          final whiteName = _normalizeNameForMatch(game.whitePlayer.name);
+          final blackName = _normalizeNameForMatch(game.blackPlayer.name);
+
+          if (_namesMatch(favName, whiteName) ||
+              _namesMatch(favName, blackName)) {
+            return true;
+          }
+        }
+        return false;
+      }).toList();
     }
 
     return filtered;
@@ -392,10 +392,9 @@ class _FavoritesCombinedGamesScreenState
       body: Center(
         child: ConstrainedBox(
           constraints: BoxConstraints(
-            maxWidth:
-                ResponsiveHelper.isTablet
-                    ? ResponsiveHelper.contentMaxWidth
-                    : double.infinity,
+            maxWidth: ResponsiveHelper.isTablet
+                ? ResponsiveHelper.contentMaxWidth
+                : double.infinity,
           ),
           child: RefreshIndicator(
             onRefresh: () async {
@@ -542,10 +541,9 @@ class _FavoritesCombinedGamesScreenState
                   Icon(
                     Icons.tune_rounded,
                     size: 22.ic,
-                    color:
-                        hasActiveFilters
-                            ? context.colors.textPrimary
-                            : context.colors.textSecondary,
+                    color: hasActiveFilters
+                        ? context.colors.textPrimary
+                        : context.colors.textSecondary,
                   ),
                   // Badge showing active filter count
                   if (hasActiveFilters)
@@ -737,16 +735,14 @@ class _FavoritesCombinedGamesScreenState
                     vertical: 8.h,
                   ),
                   decoration: BoxDecoration(
-                    color:
-                        isSelected
-                            ? const Color(0xFFEF4444)
-                            : context.colors.surfaceRecessed,
+                    color: isSelected
+                        ? const Color(0xFFEF4444)
+                        : context.colors.surfaceRecessed,
                     borderRadius: BorderRadius.circular(16.br),
                     border: Border.all(
-                      color:
-                          isSelected
-                              ? const Color(0xFFEF4444)
-                              : context.colors.divider,
+                      color: isSelected
+                          ? const Color(0xFFEF4444)
+                          : context.colors.divider,
                       width: 1,
                     ),
                   ),
@@ -764,12 +760,12 @@ class _FavoritesCombinedGamesScreenState
                         displayName,
                         style: TextStyle(
                           fontSize: 13.sp,
-                          fontWeight:
-                              isSelected ? FontWeight.w600 : FontWeight.w500,
-                          color:
-                              isSelected
-                                  ? kWhiteColor
-                                  : context.colors.textPrimary,
+                          fontWeight: isSelected
+                              ? FontWeight.w600
+                              : FontWeight.w500,
+                          color: isSelected
+                              ? kWhiteColor
+                              : context.colors.textPrimary,
                         ),
                       ),
                     ],
@@ -850,36 +846,35 @@ class _FavoritesCombinedGamesScreenState
             return Padding(
               padding: EdgeInsets.symmetric(vertical: 24.h),
               child: Center(
-                child:
-                    state.isLoading
-                        ? Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            SizedBox(
-                              width: 24.w,
-                              height: 24.h,
-                              child: CircularProgressIndicator(
-                                color: context.colors.textPrimary,
-                                strokeWidth: 2,
-                              ),
+                child: state.isLoading
+                    ? Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          SizedBox(
+                            width: 24.w,
+                            height: 24.h,
+                            child: CircularProgressIndicator(
+                              color: context.colors.textPrimary,
+                              strokeWidth: 2,
                             ),
-                            SizedBox(height: 8.h),
-                            Text(
-                              'Loading more games...',
-                              style: AppTypography.textXsRegular.copyWith(
-                                color: context.colors.textTertiary,
-                              ),
-                            ),
-                          ],
-                        )
-                        : state.hasMore
-                        ? const SizedBox.shrink()
-                        : Text(
-                          'No more games',
-                          style: AppTypography.textXsRegular.copyWith(
-                            color: const Color(0xFF52525B),
                           ),
+                          SizedBox(height: 8.h),
+                          Text(
+                            'Loading more games...',
+                            style: AppTypography.textXsRegular.copyWith(
+                              color: context.colors.textTertiary,
+                            ),
+                          ),
+                        ],
+                      )
+                    : state.hasMore
+                    ? const SizedBox.shrink()
+                    : Text(
+                        'No more games',
+                        style: AppTypography.textXsRegular.copyWith(
+                          color: const Color(0xFF52525B),
                         ),
+                      ),
               ),
             );
           }
@@ -974,11 +969,9 @@ class _FavoritesCombinedGamesScreenState
           ),
           SizedBox(height: 24.h),
           TextButton(
-            onPressed:
-                () =>
-                    ref
-                        .read(favoritesCombinedGamesProvider.notifier)
-                        .refreshGames(),
+            onPressed: () => ref
+                .read(favoritesCombinedGamesProvider.notifier)
+                .refreshGames(),
             style: TextButton.styleFrom(
               backgroundColor: context.colors.textPrimary.withValues(
                 alpha: 0.1,

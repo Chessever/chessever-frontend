@@ -8,6 +8,7 @@ import 'package:chessever2/widgets/svg_widget.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/widgets/search/search_motion.dart';
+import 'package:chessever2/widgets/search_mode/search_mode.dart';
 import 'package:motor/motor.dart';
 
 class SimpleSearchBar extends StatefulWidget {
@@ -225,6 +226,12 @@ class _SimpleSearchBarState extends State<SimpleSearchBar> {
     );
   }
 
+  /// Inside a search header the leading magnifier is handed to the search
+  /// morph ([SearchFieldHandoff]): measured, and left to the glass's own
+  /// magnifier while that one flies in or out of its place.
+  Widget _magnifier(BuildContext context, Widget icon) =>
+      SearchFieldHandoff.maybeOf(context)?.magnifier(icon) ?? icon;
+
   @override
   Widget build(BuildContext context) {
     final rotatingHint = _buildRotatingHint();
@@ -238,15 +245,17 @@ class _SimpleSearchBarState extends State<SimpleSearchBar> {
           // which is decorative motion competing with the field morph — and a
           // rotating glyph is the one thing in this row the eye cannot help
           // tracking. The colour lift says "focused" without the pirouette.
-          _FocusTint(
-            focusNode: widget.focusNode,
-            builder:
-                (context, color) => SvgWidget(
-                  SvgAsset.searchIcon,
-                  height: 20.h,
-                  width: 20.w,
-                  colorFilter: ColorFilter.mode(color, BlendMode.srcIn),
-                ),
+          _magnifier(
+            context,
+            _FocusTint(
+              focusNode: widget.focusNode,
+              builder: (context, color) => SvgWidget(
+                SvgAsset.searchIcon,
+                height: 20.h,
+                width: 20.w,
+                colorFilter: ColorFilter.mode(color, BlendMode.srcIn),
+              ),
+            ),
           ),
           SizedBox(width: 8.w),
           Expanded(
@@ -354,28 +363,20 @@ class _SimpleSearchBarState extends State<SimpleSearchBar> {
                               ),
                             ),
                           ),
+                        // The app's one filter count (the search
+                        // button's and the search header's), ringed by the
+                        // field it sits in: the one search field's fill
+                        // (HomeSearchFieldSurface) at rest.
                         if (widget.filterBadgeCount > 0)
                           Positioned(
-                            right: -4.w,
-                            top: -4.h,
-                            child: Container(
-                              padding: EdgeInsets.all(4.w),
-                              decoration: const BoxDecoration(
-                                color: Color(0xFFEF4444),
-                                shape: BoxShape.circle,
-                              ),
-                              constraints: BoxConstraints(
-                                minWidth: 16.w,
-                                minHeight: 16.h,
-                              ),
-                              child: Text(
-                                '${widget.filterBadgeCount}',
-                                style: AppTypography.textXsBold.copyWith(
-                                  color: context.colors.textPrimary,
-                                  fontSize: 10.sp,
-                                  height: 1,
-                                ),
-                                textAlign: TextAlign.center,
+                            right: -7,
+                            top: -7,
+                            child: SearchCountBadge(
+                              count: widget.filterBadgeCount,
+                              diameter: 16,
+                              ringColor: HomeSearchFieldSurface.fillOf(
+                                context,
+                                0,
                               ),
                             ),
                           ),
@@ -410,16 +411,12 @@ class _FocusTint extends StatelessWidget {
     final active = context.colors.brand;
     return ListenableBuilder(
       listenable: focusNode,
-      builder:
-          (context, _) => ParkedMotionBuilder(
-            value: focusNode.hasFocus ? 1.0 : 0.0,
-            motion: SearchMotion.accent,
-            builder:
-                (context, t, __) => builder(
-                  context,
-                  Color.lerp(resting, active, t.clamp(0.0, 1.0))!,
-                ),
-          ),
+      builder: (context, _) => ParkedMotionBuilder(
+        value: focusNode.hasFocus ? 1.0 : 0.0,
+        motion: SearchMotion.accent,
+        builder: (context, t, __) =>
+            builder(context, Color.lerp(resting, active, t.clamp(0.0, 1.0))!),
+      ),
     );
   }
 }

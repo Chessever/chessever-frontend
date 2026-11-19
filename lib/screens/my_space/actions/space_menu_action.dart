@@ -12,6 +12,41 @@ import 'package:chessever2/widgets/app_snack.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
+/// The two marks the My Space row wears: filled while the target is in My
+/// Space, outlined while it is not.
+const List<IconData> kSpaceMenuIcons = [
+  Icons.dashboard_customize,
+  Icons.dashboard_customize_outlined,
+];
+
+/// Whether [action] is a My Space row ([spaceMenuAction] or a labelled one),
+/// so a surface reusing another page's menu can put its own pin's row in
+/// that row's place.
+bool isSpaceMenuAction(LibraryMenuAction action) =>
+    kSpaceMenuIcons.contains(action.icon);
+
+/// What a card's open row says, on every My Space card: "Open" and what it
+/// opens, the event card's own wording ("Open event").
+String spaceOpenLabel(SpaceShortcutKind kind) => switch (kind) {
+  SpaceShortcutKind.player => 'Open profile',
+  SpaceShortcutKind.playerGames => 'Open games',
+  SpaceShortcutKind.playerOpenings => 'Open openings',
+  SpaceShortcutKind.event => 'Open event',
+  SpaceShortcutKind.round => 'Open round',
+  SpaceShortcutKind.game => 'Open game',
+  SpaceShortcutKind.position => 'Open position',
+  SpaceShortcutKind.opening => 'Open opening',
+  SpaceShortcutKind.folder => 'Open database',
+  SpaceShortcutKind.smartEvent => 'Open smart event',
+  SpaceShortcutKind.countrymen => 'Open Countrymen',
+  SpaceShortcutKind.miniatures => 'Open Miniatures',
+  SpaceShortcutKind.likes => 'Open Likes',
+  SpaceShortcutKind.streak => 'Open streak card',
+  SpaceShortcutKind.link => 'Open link',
+  SpaceShortcutKind.collection => 'Open collection',
+  SpaceShortcutKind.prepProfile => 'Open in Prep',
+};
+
 /// The one "Add to My Space" / "Remove from My Space" row every long-press
 /// menu in the app appends. Callers only describe the target; this helper
 /// owns dedupe, persistence, haptics and the confirmation snack.

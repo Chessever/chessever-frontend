@@ -13,6 +13,7 @@ import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/card_context_menu.dart';
 import 'package:chessever2/widgets/app_snack.dart';
+import 'package:chessever2/widgets/home_top_bar.dart' show PageTitle;
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -39,7 +40,8 @@ class PrepSourcesScreen extends ConsumerWidget {
         backgroundColor: colors.background,
         foregroundColor: colors.textPrimary,
         centerTitle: true,
-        title: Text('Sources', style: AppTypography.textMdBold),
+        // Named as every pushed page is.
+        title: const PageTitle('Sources'),
         actions: [
           if (profile != null)
             PopupMenuButton<PrepSource>(

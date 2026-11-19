@@ -2,9 +2,15 @@ import 'package:chessever2/providers/favorite_events_provider.dart';
 import 'package:chessever2/providers/notification_preferences_provider.dart';
 import 'package:chessever2/repository/favorites/models/favorite_event.dart';
 import 'package:chessever2/screens/group_event/smart_event/smart_aggregate_event_provider.dart';
+import 'package:chessever2/screens/group_event/smart_event/smart_event_screen.dart'
+    show smartEventSpaceDraft;
+import 'package:chessever2/screens/my_space/models/space_shortcut.dart';
+import 'package:chessever2/screens/my_space/providers/space_auto_provider.dart';
+import 'package:chessever2/screens/my_space/providers/space_shortcuts_provider.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/event_card/smart_event_card.dart';
+import 'package:chessever2/widgets/card_context_menu.dart';
 import 'package:chessever2/widgets/event_card/smart_event_star.dart';
 import 'package:chessever2/widgets/game_filter/game_filter_model.dart';
 import 'package:chessever2/widgets/star_notifications.dart';
@@ -83,6 +89,21 @@ class _Favorites extends FavoriteEventsNotifier {
   }
 }
 
+/// My Space in memory.
+class _Space extends SpaceShortcutsNotifier {
+  _Space(this.seed);
+
+  final List<SpaceShortcut> seed;
+
+  @override
+  Future<List<SpaceShortcut>> build() async => seed;
+}
+
+class _Hidden extends SpaceHiddenAutoKeys {
+  @override
+  Set<String> build() => const {};
+}
+
 class _Prefs extends NotificationPreferencesNotifier {
   @override
   Future<NotificationPreferences> build() async =>
@@ -131,6 +152,10 @@ Future<_Favorites> _pump(
   WidgetTester tester, {
   SmartEventRequest? starRequest,
   List<FavoriteEvent> favorites = const [],
+  bool editing = false,
+  SpaceShortcut? spaceDraft,
+  VoidCallback? onTap,
+  List<SpaceShortcut> pins = const [],
 }) async {
   final store = _Favorites(favorites);
   await tester.pumpWidget(
@@ -138,6 +163,8 @@ Future<_Favorites> _pump(
       overrides: [
         favoriteEventsProvider.overrideWith(() => store),
         notificationPreferencesProvider.overrideWith(_Prefs.new),
+        spaceShortcutsProvider.overrideWith(() => _Space(pins)),
+        spaceHiddenAutoKeysProvider.overrideWith(_Hidden.new),
       ],
       child: MaterialApp(
         theme: AppTheme.darkTheme,
@@ -152,7 +179,9 @@ Future<_Favorites> _pump(
                 avgElo: 2728,
                 formatsAndStates: const {'standard'},
                 starRequest: starRequest,
-                onTap: () {},
+                editing: editing,
+                spaceDraft: spaceDraft,
+                onTap: onTap ?? () {},
               ),
             );
           },
@@ -195,6 +224,80 @@ void main() {
 
     await _pump(tester, starRequest: _request());
     expect(tester.getSize(find.byType(SmartEventCard)), withChevron);
+  });
+
+  testWidgets('in My Space\'s Edit the star keeps its place, faded out, and '
+      'a tap on it stars nothing', (tester) async {
+    final request = _request();
+    await _pump(tester, starRequest: request);
+    final rest = tester.getSize(find.byType(SmartEventCard));
+    final title = tester.getRect(find.text('GM Games'));
+
+    final store = await _pump(tester, starRequest: request, editing: true);
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(_star, findsOneWidget);
+    expect(
+      tester
+          .widget<Opacity>(
+            find.ancestor(of: _star, matching: find.byType(Opacity)).first,
+          )
+          .opacity,
+      0,
+    );
+    expect(tester.getSize(find.byType(SmartEventCard)), rest);
+    expect(tester.getRect(find.text('GM Games')), title);
+
+    await tester.tap(_star, warnIfMissed: false);
+    await _settle(tester);
+    expect(store.added, isEmpty);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('a hold lifts the card as an event card lifts: the shared '
+      'focus menu, the card hidden under its copy, Open smart event first', (
+    tester,
+  ) async {
+    final request = _request();
+    final draft = smartEventSpaceDraft(request);
+    var opens = 0;
+    await _pump(
+      tester,
+      starRequest: request,
+      spaceDraft: draft,
+      onTap: () => opens++,
+    );
+    final card = find.byType(SmartEventCard);
+    expect(
+      find.descendant(of: card, matching: find.byType(CardContextMenu)),
+      findsOneWidget,
+    );
+
+    await tester.longPress(card);
+    await tester.pump(const Duration(milliseconds: 600));
+    expect(find.text('Open smart event'), findsOneWidget);
+    expect(find.text('Add to My Space'), findsOneWidget);
+    expect(
+      tester
+          .widget<Visibility>(
+            find
+                .descendant(
+                  of: find.byType(CardContextMenu),
+                  matching: find.byType(Visibility),
+                )
+                .first,
+          )
+          .visible,
+      isFalse,
+    );
+    expect(
+      tester.getTopLeft(find.text('Open smart event')).dy,
+      lessThan(tester.getTopLeft(find.text('Add to My Space')).dy),
+    );
+
+    await tester.tap(find.text('Open smart event'));
+    await _settle(tester);
+    expect(opens, 1);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('starring saves the smart event subscribed, and asks nothing', (
@@ -286,6 +389,9 @@ void main() {
     expect(fromPush?.criteriaKey, request.criteriaKey);
     expect(fromPush?.favoriteEventId, request.favoriteEventId);
 
-    expect(smartEventRequestFromPushData({'type': 'smart_event_games'}), isNull);
+    expect(
+      smartEventRequestFromPushData({'type': 'smart_event_games'}),
+      isNull,
+    );
   });
 }

@@ -17,8 +17,10 @@ import 'package:chessever2/screens/tour_detail/games_tour/widgets/games_tour_con
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/round_header_widget.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/match_header_widget.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/widgets/search_list_resume.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_screen_provider.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_screen_provider.dart';
+import 'package:chessever2/screens/tour_detail/widgets/event_games_list_end.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/scroll_cache.dart';
 import 'package:chessever2/widgets/positioned_list_scrollbar.dart';
@@ -45,6 +47,7 @@ class GamesListView extends ConsumerWidget {
     this.roundHeaderBuilder,
     this.onPinToggle,
     this.navigationListPolicy,
+    this.startAt,
   });
 
   final Map<String, List<GamesTourModel>> gamesByRound;
@@ -73,6 +76,11 @@ class GamesListView extends ConsumerWidget {
   /// Which games the board screen pages through. Defaults to the policy the
   /// selected tour's list implies.
   final BoardNavigationListPolicy? navigationListPolicy;
+
+  /// Where a list built afresh starts: the reader's place before a search,
+  /// once the search has gone (`SearchListResume`). Null starts at the top.
+  /// A list already on screen keeps its own place.
+  final ListResumePoint? startAt;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -121,6 +129,7 @@ class GamesListView extends ConsumerWidget {
     if (itemCount == 0) {
       return const SizedBox.shrink();
     }
+    final start = startAt?.clampedTo(itemCount);
 
     // Tablet-optimized horizontal padding
     final horizontalPadding = ResponsiveHelper.adaptive(
@@ -151,9 +160,15 @@ class GamesListView extends ConsumerWidget {
           return ScrollablePositionedList.builder(
             itemScrollController: itemScrollController,
             itemPositionsListener: itemPositionsListener,
-            itemCount: itemCount,
+            // The rows, then where the list ends ([EventGamesListEnd]).
+            itemCount: itemCount + 1,
+            initialScrollIndex: start?.index ?? 0,
+            initialAlignment: start?.alignment ?? 0,
             minCacheExtent: listCacheExtentPixels(context),
             itemBuilder: (context, index) {
+              // Clear of the floating buttons, giving way with them as the
+              // search opens, as every Games list ends.
+              if (index == itemCount) return const EventGamesListEnd();
               final lookup = layout.entryAt(index);
 
               if (lookup == null) {
@@ -346,11 +361,11 @@ class GamesListView extends ConsumerWidget {
 
               return const SizedBox.shrink();
             },
+            // The bottom is the last row's: [EventGamesListEnd].
             padding: EdgeInsets.only(
               left: horizontalPadding,
               right: horizontalPadding,
               top: 8.sp,
-              bottom: MediaQuery.viewPaddingOf(context).bottom + 8.sp,
             ),
           );
         },

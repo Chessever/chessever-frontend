@@ -7,6 +7,7 @@ import 'package:chessever2/screens/group_event/widget/filter_popup/group_event_f
 import 'package:chessever2/screens/library/widgets/library_context_menu.dart';
 import 'package:chessever2/screens/my_space/actions/space_menu_action.dart';
 import 'package:chessever2/screens/my_space/models/space_shortcut.dart';
+import 'package:chessever2/screens/my_space/widgets/space_edit_fade.dart';
 import 'package:chessever2/screens/my_space/widgets/space_tile_content.dart'
     show spaceText;
 import 'package:chessever2/theme/app_colors.dart';
@@ -15,6 +16,7 @@ import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/app_button.dart';
+import 'package:chessever2/widgets/card_context_menu.dart';
 import 'package:chessever2/widgets/game_filter/rating_tier_filter.dart';
 import 'package:chessever2/widgets/event_card/smart_event_deck.dart';
 import 'package:chessever2/widgets/event_card/smart_event_star.dart';
@@ -43,6 +45,11 @@ const List<EventFormat> _kFormats = [
 ///
 /// Title, then "3 events · Ø 2728", then the builder's one-line summary of
 /// the criteria, or the event card's LIVE while a member event is live.
+///
+/// It handles like an event card: a tap presses it ([TappableScale]) with the
+/// card-tap haptic, and with a [spaceDraft] a hold lifts it into the shared
+/// focus menu ([CardContextMenu]), from the side the finger pressed and with
+/// the card itself hidden under its lifted copy.
 class SmartEventCard extends StatelessWidget {
   const SmartEventCard({
     required this.tierLabel,
@@ -63,6 +70,9 @@ class SmartEventCard extends StatelessWidget {
     this.disclosure = true,
     this.starRequest,
     this.stacked = false,
+    this.editing = false,
+    this.deckEvents,
+    this.metaText,
     super.key,
   });
 
@@ -74,6 +84,15 @@ class SmartEventCard extends StatelessWidget {
 
   /// Number of current events folded into this smart event.
   final int liveCount;
+
+  /// The plate's deck thickness: [liveCount] by default. A smart event that
+  /// cannot count its events (an opening) gives a neutral one, so its plate
+  /// never claims a crowd it does not have.
+  final int? deckEvents;
+
+  /// Replaces the count line ("3 events · Ø 2728") with what the smart event
+  /// covers when it is not a number of events (an opening's "ECO B20-B99").
+  final String? metaText;
 
   /// Average rating across the gathered events (0 hides the Ø figure).
   final int avgElo;
@@ -91,9 +110,9 @@ class SmartEventCard extends StatelessWidget {
   final Color accentColor;
   final VoidCallback? onTap;
 
-  /// When set, a long press lifts the card into the shared focus menu with
-  /// Open and the My Space row for this smart event (see
-  /// `smartEventSpaceDraft`).
+  /// When set (with [onTap]), a long press lifts the card into the shared
+  /// focus menu with "Open smart event" and the My Space row for this smart
+  /// event (see `smartEventSpaceDraft`).
   final SpaceShortcut? spaceDraft;
 
   /// Kept for callers that asked for a still card; every card is still now.
@@ -116,11 +135,17 @@ class SmartEventCard extends StatelessWidget {
   final bool disclosure;
 
   /// When set, the card ends in this smart event's star instead of the
-  /// chevron, as an event card does in the Events lists, and its focus menu
-  /// gains the notifications row. My Space, the only place smart event cards
-  /// appear, sets it (Trello #1225), but not in Edit, where a tap selects.
+  /// chevron, as an event card does in the Events lists. The star is the
+  /// smart event's push subscription (Trello #1411), so the menu has no
+  /// notifications row of its own. My Space sets it (Trello #1225).
   final SmartEventRequest? starRequest;
   final bool stacked;
+
+  /// My Space's Edit, where a tap selects the card: the star keeps its place
+  /// (the card never reflows) but fades out and takes no taps
+  /// ([SpaceEditFade]). [disclosure] off instead leaves the trailing slot
+  /// empty.
+  final bool editing;
 
   static double _imageWidth(BuildContext context) {
     double w = 108.w;
@@ -133,34 +158,34 @@ class SmartEventCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final card = _buildCard(context);
-    if (onTap == null) return card;
+    final open = onTap;
+    if (open == null) return card;
 
     final draft = spaceDraft;
+    // The hold sits inside the press, as on an event card: the menu measures
+    // the card as painted, mid-press, and the copy lifts from that size.
     return TappableScale(
       onTap: () {
         HapticFeedbackService.cardTap();
-        onTap!();
+        open();
       },
       child: draft == null
           ? card
           : Consumer(
               child: card,
-              builder: (context, ref, child) => GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onLongPress: () => showLibraryContextMenu(
-                  context: context,
-                  previewBuilder: _buildCard,
-                  onPreviewTap: onTap,
-                  actions: [
-                    LibraryMenuAction(
-                      icon: Icons.open_in_new_rounded,
-                      label: 'Open smart event',
-                      onSelected: onTap!,
-                    ),
-                    spaceMenuAction(context: context, ref: ref, draft: draft),
-                  ],
-                ),
-                child: child,
+              builder: (context, ref, child) => CardContextMenu(
+                // The copy is the card as drawn, inert in the menu.
+                previewBuilder: _buildCard,
+                onPreviewTap: open,
+                actions: (menuContext) => [
+                  LibraryMenuAction(
+                    icon: Icons.open_in_new_rounded,
+                    label: spaceOpenLabel(SpaceShortcutKind.smartEvent),
+                    onSelected: open,
+                  ),
+                  spaceMenuAction(context: menuContext, ref: ref, draft: draft),
+                ],
+                child: child!,
               ),
             ),
     );
@@ -201,7 +226,7 @@ class SmartEventCard extends StatelessWidget {
             height: imageH,
             minElo: minElo,
             formatsAndStates: formatsAndStates,
-            events: liveCount,
+            events: deckEvents ?? liveCount,
             seed: smartDeckSeed([
               tierLabel,
               titleSuffix,
@@ -227,12 +252,23 @@ class SmartEventCard extends StatelessWidget {
                 ),
               ),
               SizedBox(height: 4.h),
-              _MetaLine(
-                count: liveCount,
-                avgElo: avgElo,
-                countSingular: countSingular,
-                countPlural: countPlural,
-              ),
+              if (metaText case final meta?)
+                Text(
+                  meta,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppTypography.textXsMedium.copyWith(
+                    color: colors.textPrimaryMuted,
+                    fontFeatures: const [FontFeature.tabularFigures()],
+                  ),
+                )
+              else
+                _MetaLine(
+                  count: liveCount,
+                  avgElo: avgElo,
+                  countSingular: countSingular,
+                  countPlural: countPlural,
+                ),
               _ThirdLine(
                 live: live,
                 text: summary ?? caption ?? _fallbackCaption,
@@ -240,7 +276,10 @@ class SmartEventCard extends StatelessWidget {
             ],
           ),
           trailing: starRequest != null
-              ? SmartEventStar(request: starRequest!)
+              ? SpaceEditFade(
+                  hidden: editing,
+                  child: SmartEventStar(request: starRequest!),
+                )
               : disclosure
               ? Row(
                   mainAxisSize: MainAxisSize.min,

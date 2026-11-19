@@ -82,9 +82,14 @@ class E2eIds {
   static const openingExplorerEngineLines = 'e2e_opening_explorer_engine_lines';
   static const saveAnalysisSheet = 'e2e_save_analysis_sheet';
   static const scorecardRoot = 'e2e_scorecard_root';
+
+  /// Favorites' floating search button, on whichever tab is showing: the
+  /// search field opens from it.
+  static const favoritesSearchFab = 'e2e_favorites_search_fab';
   static const favoritesGamesSearchField = 'e2e_favorites_games_search_field';
   static const favoritesGamesFilterButton = 'e2e_favorites_games_filter_button';
   static const playerGamesSearchField = 'e2e_player_games_search_field';
+
   /// The player Games tab's search button (the field opens from it).
   static const playerGamesSearchFab = 'player_games_search_fab';
   static const playerGamesFilterButton = 'e2e_player_games_filter_button';

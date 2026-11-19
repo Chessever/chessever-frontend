@@ -1,19 +1,19 @@
 import 'package:chessever2/theme/app_colors.dart';
-import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/discovery_dot.dart';
 import 'package:chessever2/widgets/press_spring.dart';
 import 'package:flutter/material.dart';
 
-/// A phone navigation target: the section's mark over its name.
+/// A phone navigation target: the section's mark alone, large, in a slot
+/// that answers anywhere in its column.
 ///
-/// The whole slot answers, from the bar's top edge down through the strip
-/// above the home indicator ([bottomInset]), so a thumb landing anywhere in
-/// the column gets the tab. A press takes the mark and name down at once,
-/// under the finger; letting go springs them back with a little overshoot,
-/// and a tab change ticks the selection haptic. No ripple: the slot itself
-/// moving is the feedback.
+/// The whole slot is the target, from the bar's top edge down through the
+/// strip above the home indicator ([bottomInset]). A press anywhere in it
+/// takes the mark down under the finger ([PressSpring]); letting go springs
+/// it back with a little overshoot, and a tab change ticks the selection
+/// haptic. The name is announced, never drawn: the marks carry the bar, and
+/// Profile is the reader's own avatar.
 class BottomNavBarWidget extends StatefulWidget {
   const BottomNavBarWidget({
     required this.isSelected,
@@ -22,6 +22,7 @@ class BottomNavBarWidget extends StatefulWidget {
     required this.title,
     required this.width,
     this.bottomInset = 0,
+    this.semanticsValue,
     this.onLongPress,
     this.dotId,
     super.key,
@@ -34,22 +35,30 @@ class BottomNavBarWidget extends StatefulWidget {
   /// The slot's mark, drawn in the ink it is handed at the size it is
   /// handed.
   final Widget Function(Color ink, double side) glyph;
+
+  /// The section's name, for assistive technology.
   final String title;
   final double width;
 
   /// The device's bottom safe area, which the slot takes into its own hit
-  /// area instead of leaving a dead strip under the names.
+  /// area instead of leaving a dead strip under the marks.
   final double bottomInset;
+
+  /// Extra state read after the name ("Unread Inbox messages" on Profile).
+  final String? semanticsValue;
 
   /// Discovery-dot anchor id, so the admin console can point at this tab.
   final String? dotId;
 
   /// The mark's side: square on every phone (`20.h` by `20.w` went 15 by 18
   /// on short ones).
-  static double get iconSide => 26.ic.clamp(24.0, 28.0);
+  static double get iconSide => 28.ic.clamp(26.0, 30.0);
 
-  /// How far a press takes the mark and name down.
-  static const pressedScale = 0.9;
+  /// How far a press takes the mark down.
+  static const pressedScale = 0.86;
+
+  /// The bar's height above the safe area.
+  static const barHeight = 56.0;
 
   @override
   State<BottomNavBarWidget> createState() => _BottomNavBarWidgetState();
@@ -67,75 +76,48 @@ class _BottomNavBarWidgetState extends State<BottomNavBarWidget> {
     final selected = widget.isSelected;
     final ink = selected ? colors.textPrimary : colors.textSecondary;
     final iconSide = BottomNavBarWidget.iconSide;
+    final inset = widget.bottomInset;
 
-    return MergeSemantics(
-      child: Semantics(
-        button: true,
-        selected: selected,
-        label: widget.title,
+    return Semantics(
+      button: true,
+      selected: selected,
+      label: widget.title,
+      value: widget.semanticsValue,
+      onLongPress: widget.onLongPress,
+      onLongPressHint: widget.onLongPress == null
+          ? null
+          : 'Make ${widget.title} the start screen',
+      excludeSemantics: true,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: _tap,
         onLongPress: widget.onLongPress,
-        onLongPressHint: widget.onLongPress == null
-            ? null
-            : 'Make ${widget.title} the start screen',
-        child: GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTap: _tap,
-          onLongPress: widget.onLongPress,
-          child: SizedBox(
-            width: widget.width,
-            child: Padding(
-              padding: EdgeInsets.only(bottom: widget.bottomInset),
-              child: PressSpring(
-                pressedScale: BottomNavBarWidget.pressedScale,
-                // The mark over its name: the name says what the slot is
-                // (the reader's avatar reads as "Profile"), the weight and
-                // ink say which one is open.
-                child: Padding(
-                  padding: const EdgeInsets.only(top: 8, bottom: 6),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      DiscoveryDotAnchor(
-                        id: widget.dotId,
-                        selected: selected,
-                        alignment: Alignment.center,
-                        // Off the mark's top-right shoulder, clear of it.
-                        offset: Offset(iconSide / 2 + 4, -(iconSide / 2 + 2)),
-                        child: SizedBox(
-                          height: iconSide + 6,
-                          // The slot is named by its title; the mark (the
-                          // reader's initials on Profile) would only
-                          // repeat it.
-                          child: Center(
-                            child: ExcludeSemantics(
-                              child: widget.glyph(ink, iconSide),
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 3),
-                      // Announced once, by the slot's own label.
-                      MediaQuery.withClampedTextScaling(
-                        maxScaleFactor: 1.3,
-                        child: Text(
-                          semanticsLabel: '',
-                          widget.title,
-                          maxLines: 1,
-                          overflow: TextOverflow.fade,
-                          softWrap: false,
-                          style: AppTypography.textXsMedium.copyWith(
-                            color: ink,
-                            fontSize: 12,
-                            height: 1.2,
-                            letterSpacing: 0.1,
-                            fontWeight: selected
-                                ? FontWeight.w700
-                                : FontWeight.w500,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
+        child: SizedBox(
+          width: widget.width,
+          // The press covers the whole slot, inset strip included; only the
+          // mark scales, about its own centre.
+          child: PressSpring(
+            pressedScale: BottomNavBarWidget.pressedScale,
+            builder: (context, press, child) {
+              final scale = 1 - (1 - BottomNavBarWidget.pressedScale) * press;
+              return Padding(
+                padding: EdgeInsets.only(bottom: inset),
+                child: Transform.scale(
+                  scale: (scale - 1).abs() < 0.001 ? 1.0 : scale,
+                  child: child,
+                ),
+              );
+            },
+            child: Center(
+              child: DiscoveryDotAnchor(
+                id: widget.dotId,
+                selected: selected,
+                alignment: Alignment.center,
+                // Off the mark's top-right shoulder, clear of it.
+                offset: navMarkShoulder(iconSide),
+                child: SizedBox.square(
+                  dimension: iconSide + 6,
+                  child: Center(child: widget.glyph(ink, iconSide)),
                 ),
               ),
             ),
@@ -145,3 +127,9 @@ class _BottomNavBarWidgetState extends State<BottomNavBarWidget> {
     );
   }
 }
+
+/// Where a slot's dot sits from its mark's centre: the top-right shoulder.
+/// The discovery dot and Profile's unread-Inbox dot share it, so the two
+/// never sit side by side.
+Offset navMarkShoulder(double iconSide) =>
+    Offset(iconSide / 2 + 4, -(iconSide / 2 + 2));

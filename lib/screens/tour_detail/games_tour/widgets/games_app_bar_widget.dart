@@ -7,7 +7,8 @@ import 'package:chessever2/screens/tour_detail/widgets/tournament_menu_button.da
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
-import 'package:chessever2/utils/svg_asset.dart';
+import 'package:chessever2/widgets/quick_list_toggles.dart';
+import 'package:chessever2/widgets/search_mode/search_mode.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_screen_provider.dart';
@@ -25,16 +26,10 @@ class GamesAppBarWidget extends ConsumerWidget {
 
         return Row(
           children: [
-            SizedBox(width: 16.w),
-            Semantics(
-              label: 'Back button',
-              child: IconButton(
-                iconSize: 24.ic,
-                padding: EdgeInsets.zero,
-                onPressed: () => Navigator.of(context).pop(),
-                icon: Icon(Icons.arrow_back_ios_new_outlined, size: 24.ic),
-              ),
-            ),
+            // The back sits where the search header's chevron does, so
+            // nothing moves as the Games search opens or closes.
+            SizedBox(width: SearchHeaderMetrics.leadingInset),
+            const PageBackButton(),
             if (hasTours) ...[
               Expanded(
                 child: Padding(
@@ -50,15 +45,11 @@ class GamesAppBarWidget extends ConsumerWidget {
               ),
               // Bare glyphs (Trello #1420): no tile behind the view toggle
               // or the ⋮. Each sits where its tile used to, on a 44pt target.
-              Semantics(
-                label: 'Toggle chessboard view',
-                child: AppBarIcons(
-                  image: SvgAsset.chase_grid,
-                  boxed: false,
-                  onTap: () {
-                    ref.read(gamesListViewModeSwitcher).toggleViewMode();
-                  },
-                ),
+              // The view toggle is every Games list's own board-view button;
+              // the switcher gives the tap feedback.
+              BoardViewToggleButton(
+                onTap: () =>
+                    ref.read(gamesListViewModeSwitcher).toggleViewMode(),
               ),
               SizedBox(width: math.max(0, 18.w - 2 * reach)),
               Semantics(
@@ -71,13 +62,14 @@ class GamesAppBarWidget extends ConsumerWidget {
         );
       },
       loading: () => const SizedBox.shrink(),
-      error:
-          (e, _) => Center(
-            child: Text(
-              'Error loading tours',
-              style: AppTypography.textXsRegular.copyWith(color: context.colors.textPrimaryMuted),
-            ),
+      error: (e, _) => Center(
+        child: Text(
+          'Error loading tours',
+          style: AppTypography.textXsRegular.copyWith(
+            color: context.colors.textPrimaryMuted,
           ),
+        ),
+      ),
     );
   }
 }

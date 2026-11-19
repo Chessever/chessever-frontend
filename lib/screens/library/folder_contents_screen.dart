@@ -40,13 +40,18 @@ import 'package:chessever2/widgets/alert_dialog/alert_modal.dart';
 import 'package:chessever2/widgets/app_snack.dart';
 import 'package:chessever2/widgets/board_navigation_icon.dart';
 import 'package:chessever2/widgets/game_filter/game_filter.dart';
-import 'package:chessever2/widgets/game_filter/game_search_filter_bar.dart';
+import 'package:chessever2/screens/favorites/widgets/tab_search_fab.dart';
+import 'package:chessever2/widgets/home_top_bar.dart' show PageTitle;
+import 'package:chessever2/widgets/ink_fab.dart' show SearchInkFab;
+import 'package:chessever2/widgets/page_back_row.dart';
+import 'package:chessever2/widgets/scroll_chrome.dart';
+import 'package:chessever2/widgets/search_mode/search_mode.dart';
+import 'package:chessever2/widgets/search_no_matches.dart';
 import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:chessever2/widgets/screen_wrapper.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_animate/flutter_animate.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
@@ -62,12 +67,22 @@ class FolderContentsScreen extends ConsumerStatefulWidget {
       _FolderContentsScreenState();
 }
 
-class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
+class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen>
+    with SingleTickerProviderStateMixin {
   late final ScrollController _scrollController;
-  late final TextEditingController _searchController;
-  late final FocusNode _searchFocusNode;
   final Set<String> _removingIds = {};
-  Timer? _searchDebounce;
+
+  /// The header and the search button scroll away with the list and come
+  /// back as it scrolls up, as on every other list.
+  late final ScrollChromeController _chrome = ScrollChromeController(
+    vsync: this,
+  );
+
+  /// The full-page search (Trello #1420): the floating button's glass
+  /// becomes the field in the header's place, over the same list, which the
+  /// query narrows server-side. The host ([SearchModeHost]) runs the morph,
+  /// back, focus and the query.
+  final SearchModeController _search = SearchModeController();
   // Overrides widget.folder.name after an in-place rename so the header
   // reflects the new name without needing to pop/reopen.
   String? _overrideFolderName;
@@ -105,21 +120,15 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
   void initState() {
     super.initState();
     _scrollController = ScrollController()..addListener(_onScroll);
-    _searchController = TextEditingController()
-      ..addListener(() {
-        if (mounted) setState(() {});
-      });
-    _searchFocusNode = FocusNode();
     // No explicit reset needed: the provider is keyed by folder+filter+search
     // and auto-disposes on pop, so opening the folder loads a fresh page 0.
   }
 
   @override
   void dispose() {
-    _searchDebounce?.cancel();
     _scrollController.dispose();
-    _searchController.dispose();
-    _searchFocusNode.dispose();
+    _search.dispose();
+    _chrome.dispose();
     super.dispose();
   }
 
@@ -135,23 +144,8 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
     }
   }
 
-  void _onSearchChanged(String value) {
-    _searchDebounce?.cancel();
-    _searchDebounce = Timer(const Duration(milliseconds: 250), () {
-      if (!mounted) return;
-      ref
-          .read(folderFilterProvider(_folderFilterKey).notifier)
-          .searchGames(value);
-    });
-  }
-
-  void _clearSearch() {
-    HapticFeedbackService.light();
-    _searchDebounce?.cancel();
-    _searchController.clear();
-    _searchFocusNode.unfocus();
-    ref.read(folderFilterProvider(_folderFilterKey).notifier).clearSearch();
-  }
+  FolderFilterNotifier get _folderFilter =>
+      ref.read(folderFilterProvider(_folderFilterKey).notifier);
 
   void _openBoard() {
     HapticFeedbackService.medium();
@@ -590,23 +584,73 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
     // Search is applied server-side; this is only for child-folder filtering
     // and empty-state messaging.
     final query = filterState.searchQuery.trim().toLowerCase();
+    final searchLabel = _isDatabase ? 'Search games' : 'Search folders';
 
-    return Scaffold(
-      key: e2eKey(E2eIds.folderContentsRoot),
-      backgroundColor: context.colors.background,
-      body: ScreenWrapper(
-        child: Center(
-          child: ConstrainedBox(
-            constraints: BoxConstraints(
-              maxWidth: ResponsiveHelper.isTablet
-                  ? ResponsiveHelper.contentMaxWidth
-                  : double.infinity,
-            ),
-            child: Column(
-              children: [
-                _buildTopArea(context, bookAsync),
-                Expanded(child: _buildSavedGames(bookAsync, query)),
-              ],
+    return SearchModeHost(
+      controller: _search,
+      chrome: _chrome,
+      debounce: const Duration(milliseconds: 250),
+      // The query runs server-side over the whole folder, an emptied field
+      // at once; closing the search drops it, and the filters and tags stay.
+      onQuery: (query) => _folderFilter.searchGames(query),
+      onClose: () => _folderFilter.clearSearch(),
+      child: Scaffold(
+        key: e2eKey(E2eIds.folderContentsRoot),
+        backgroundColor: context.colors.background,
+        // The search floats in the thumb's reach, as on every list. It stays
+        // mounted while searching: the host hides it, and the glass flies
+        // back into it as the search closes.
+        floatingActionButton: SlidingFabs(
+          controller: _chrome,
+          child: SearchInkFab(
+            key: const ValueKey('folder_search_fab'),
+            label: searchLabel,
+          ),
+        ),
+        body: ScreenWrapper(
+          child: Center(
+            child: ConstrainedBox(
+              constraints: BoxConstraints(
+                maxWidth: ResponsiveHelper.isTablet
+                    ? ResponsiveHelper.contentMaxWidth
+                    : double.infinity,
+              ),
+              child: Column(
+                children: [
+                  // The status bar's inset stays put: the header folds up to
+                  // it, never into it.
+                  SizedBox(height: MediaQuery.viewPaddingOf(context).top + 4.h),
+                  CollapsingChrome(
+                    controller: _chrome,
+                    child: SearchModeHeaderSlot(
+                      header: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          _buildHeader(context, bookAsync, filterState),
+                          SizedBox(height: SearchHeaderMetrics.bottomGap),
+                        ],
+                      ),
+                      // The chevron and Filters stay where the header has
+                      // them; the title and the other actions give way to
+                      // the field.
+                      search: SearchModeHeader(
+                        hintText: searchLabel,
+                        textFieldKey: const ValueKey('folder_search_field'),
+                        closeKey: const ValueKey('folder_search_close'),
+                        trailing: [
+                          if (_isDatabase) _buildFiltersButton(filterState),
+                        ],
+                      ),
+                    ),
+                  ),
+                  Expanded(
+                    child: ScrollChromeRegion(
+                      controller: _chrome,
+                      child: _buildSavedGames(bookAsync, query),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ),
@@ -614,44 +658,31 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
     );
   }
 
-  Widget _buildTopArea(
-    BuildContext context,
-    AsyncValue<PaginatedBookState> bookAsync,
-  ) {
-    final topPadding = MediaQuery.viewPaddingOf(context).top;
-
-    return Container(
-      padding: EdgeInsets.only(top: topPadding + 8.h, bottom: 6.h),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [
-            context.colors.background,
-            context.colors.background.withValues(alpha: 0),
-          ],
-        ),
-      ),
-      child: Column(
-        children: [
-          _buildHeader(context, bookAsync),
-          _buildSearchBar(),
-          if (_isDatabase) _buildTagQuickFilters(),
-        ],
+  /// The database's Filters, counted (filters and sorts together): ending
+  /// the header, and the search header at the same spot, where it holds
+  /// still as the search opens and closes.
+  Widget _buildFiltersButton(FolderFilterState filterState) {
+    final filter = filterState.filter;
+    return SearchModeShared(
+      id: SearchModeFilterButton,
+      child: SearchModeFilterButton(
+        label: 'Filter games',
+        count: filter.activeFilterCount + filter.activeSortCount,
+        onTap: _showFilterDialog,
       ),
     );
   }
 
+  /// The chevron where the search header puts its own, the folder's name
+  /// centred in the pushed page's title voice ([PageTitle]), and its
+  /// actions ending on the gutter: the board, Add, the rarer actions in one
+  /// menu, and on a database its Filters, which the search header keeps at
+  /// the same spot.
   Widget _buildHeader(
     BuildContext context,
     AsyncValue<PaginatedBookState> bookAsync,
+    FolderFilterState filterState,
   ) {
-    final horizontalPadding = ResponsiveHelper.adaptive(
-      phone: 8.w,
-      tablet: 16.w,
-    );
-    final totalCount = _isDatabase ? bookAsync.valueOrNull?.totalCount : null;
-
     final bool showExport =
         _isDatabase && (bookAsync.valueOrNull?.totalCount ?? 0) > 0;
     final bool showRename = !_isSubscribed;
@@ -679,112 +710,81 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
           onSelected: () => openLibraryBookEditor(context, widget.folder),
         ),
     ];
+    const target = BoxConstraints.tightFor(width: 44, height: 44);
 
-    return Padding(
-      padding: EdgeInsets.fromLTRB(
-        horizontalPadding,
-        0,
-        horizontalPadding,
-        8.h,
-      ),
-      child: Row(
-        children: [
+    return PageBackRow(
+      title: PageTitle(_currentFolderName),
+      actions: [
+        if (_isDatabase)
           IconButton(
-            tooltip: 'Back',
-            onPressed: () => Navigator.of(context).pop(),
-            constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
+            key: e2eKey(E2eIds.databaseBoardButton),
+            onPressed: _openBoard,
+            tooltip: 'Open Board',
+            padding: EdgeInsets.zero,
+            constraints: target,
+            icon: BoardNavigationIcon(
+              size: 20.sp,
+              semanticsLabel: 'Open Board',
+            ),
+          ),
+        if (showAdd)
+          IconButton(
+            onPressed: _handlePlusButton,
+            tooltip: 'Add games',
+            padding: EdgeInsets.zero,
+            constraints: target,
             icon: Icon(
-              Icons.arrow_back_ios_new_rounded,
+              Icons.add_rounded,
               color: context.colors.textPrimary,
-              size: 20.ic,
+              size: 24.ic,
             ),
           ),
-          Expanded(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  _currentFolderName,
-                  textAlign: TextAlign.center,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: AppTypography.textMdBold.copyWith(
-                    color: context.colors.textPrimary,
-                    height: 1.25,
-                  ),
-                ),
-                if (totalCount != null)
-                  Text(
-                    totalCount == 1 ? '1 game' : '$totalCount games',
-                    style: AppTypography.textXsRegular.copyWith(
-                      color: context.colors.textSecondary,
-                    ),
-                  ),
-              ],
-            ),
+        if (moreActions.isNotEmpty)
+          CardMoreButton(
+            key: const ValueKey('folder_more_actions'),
+            tooltip: 'More actions',
+            vertical: true,
+            color: context.colors.textPrimary,
+            size: 22.ic,
+            actions: (_) => moreActions,
           ),
-          if (_isDatabase)
-            IconButton(
-              key: e2eKey(E2eIds.databaseBoardButton),
-              onPressed: _openBoard,
-              tooltip: 'Open Board',
-              constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
-              icon: BoardNavigationIcon(
-                size: 20.sp,
-                semanticsLabel: 'Open Board',
-              ),
-            ),
-          if (showAdd)
-            IconButton(
-              onPressed: _handlePlusButton,
-              tooltip: 'Add games',
-              constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
-              icon: Icon(
-                Icons.add_rounded,
-                color: context.colors.textPrimary,
-                size: 26.ic,
-              ),
-            ),
-          if (moreActions.isNotEmpty)
-            CardMoreButton(
-              key: const ValueKey('folder_more_actions'),
-              tooltip: 'More actions',
-              vertical: true,
-              color: context.colors.textPrimary,
-              size: 22.ic,
-              actions: (_) => moreActions,
-            ),
-          // Build Tree is off here: opening trees belong to My Prep, where they
-          // track one player's preparation. Restore with the imports above.
-          // if (_isDatabase && (bookAsync.valueOrNull?.totalCount ?? 0) > 0) ...[
-          //   SizedBox(width: 2.w),
-          //   BuildTreeButton(
-          //     compact: true,
-          //     target: LibraryFolderTreeTarget(
-          //       repository: ref.read(libraryRepositoryProvider),
-          //       folder: widget.folder,
-          //     ),
-          //   ),
-          // ],
-        ],
-      ),
+        // Build Tree is off here: opening trees belong to My Prep, where
+        // they track one player's preparation. It would join these actions
+        // as a `BuildTreeButton(compact: true, target:
+        // LibraryFolderTreeTarget(...))` while the database holds games.
+        if (_isDatabase) _buildFiltersButton(filterState),
+      ],
     );
   }
 
-  Widget _buildSearchBar() {
-    final filterState = ref.watch(folderFilterProvider(_folderFilterKey));
-
-    return Padding(
-      padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 8.h),
-      child: GameSearchFilterBar(
-        controller: _searchController,
-        focusNode: _searchFocusNode,
-        currentFilter: filterState.filter,
-        hintText: 'Search games...',
-        onChanged: _onSearchChanged,
-        onClear: _clearSearch,
-        onFilterTap: _showFilterDialog,
-      ),
+  /// The top of the list: on a database, how many games it holds (or how
+  /// many match the search and filters), and its tag filters, which stay
+  /// with the list while it is searched.
+  Widget _buildListHead(AsyncValue<PaginatedBookState> bookAsync) {
+    if (!_isDatabase) return SizedBox(height: 8.h);
+    final totalCount = bookAsync.valueOrNull?.totalCount;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (totalCount != null)
+          Padding(
+            padding: EdgeInsetsDirectional.fromSTEB(
+              SearchHeaderMetrics.gutter,
+              4.h,
+              SearchHeaderMetrics.gutter,
+              4.h,
+            ),
+            child: Text(
+              totalCount == 1 ? '1 game' : '$totalCount games',
+              style: AppTypography.textXsRegular.copyWith(
+                color: context.colors.textSecondary,
+                fontFeatures: const [FontFeature.tabularFigures()],
+              ),
+            ),
+          ),
+        _buildTagQuickFilters(),
+      ],
     );
   }
 
@@ -912,16 +912,21 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
           if (filteredAnalyses.isEmpty &&
               filteredFolders.isEmpty &&
               (query.isNotEmpty || hasActiveFilters || hasActiveTag)) {
-            return _buildEmptySearchState();
+            return _buildEmptySearchState(bookAsync, filterState);
           }
 
           // Filtering/sorting is server-side now, so the loading tail works
           // even with an active filter/search (the server paginates matches).
           final showLoadingTail = bookState.hasMore;
+          final gutter = 16.w;
+          // The head (count and tags), then the rows, then the room the
+          // floating search needs at the end.
           final itemCount =
+              1 +
               filteredFolders.length +
               filteredAnalyses.length +
-              (showLoadingTail ? 1 : 0);
+              (showLoadingTail ? 1 : 0) +
+              1;
 
           // Folder-wide tag → game-count map. Captured here so each card can
           // sort its chips so the dominant tag in the database renders first.
@@ -931,14 +936,30 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
 
           return ListView.builder(
             controller: _scrollController,
-            padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 12.h),
+            padding: EdgeInsets.zero,
             itemCount: itemCount,
-            itemBuilder: (context, index) {
+            itemBuilder: (context, rawIndex) {
+              // 0. The count and the tag filters, edge to edge.
+              if (rawIndex == 0) {
+                return Padding(
+                  padding: EdgeInsets.only(bottom: 8.h),
+                  child: _buildListHead(bookAsync),
+                );
+              }
+              // Last. Clear of the floating search button; the room gives
+              // way on the search's own timeline while it is open.
+              if (rawIndex == itemCount - 1) {
+                return SearchModeListEnd(
+                  base: 12.h,
+                  buttons: TabSearchFab.reach(context),
+                );
+              }
+              final index = rawIndex - 1;
               // 1. Show child nodes first
               if (index < filteredFolders.length) {
                 final folder = filteredFolders[index];
                 return Padding(
-                  padding: EdgeInsets.only(bottom: 8.h),
+                  padding: EdgeInsets.fromLTRB(gutter, 0, gutter, 8.h),
                   child: FolderCard(folder: folder, isExpanded: true),
                 );
               }
@@ -951,7 +972,7 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
                 // Subscribed: read-only cards (no swipe-to-remove)
                 if (_isSubscribed) {
                   return Padding(
-                    padding: EdgeInsets.only(bottom: 12.h),
+                    padding: EdgeInsets.fromLTRB(gutter, 0, gutter, 12.h),
                     child: BookSavedGameCard(
                       analysis: analysis,
                       tagCounts: folderTagCounts,
@@ -965,12 +986,12 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
                         );
                       },
                     ),
-                  ).animate().fadeIn();
+                  );
                 }
 
                 // Owned: swipe-to-remove enabled
                 return Padding(
-                  padding: EdgeInsets.only(bottom: 12.h),
+                  padding: EdgeInsets.fromLTRB(gutter, 0, gutter, 12.h),
                   child: SwipeActionCard(
                     dismissKey: ValueKey(analysis.id),
                     backgroundColor: context.isLightTheme
@@ -997,7 +1018,7 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
                       },
                     ),
                   ),
-                ).animate().fadeIn();
+                );
               }
 
               // 3. Loading indicator at the bottom
@@ -1066,41 +1087,36 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
     );
   }
 
-  Widget _buildEmptySearchState() {
-    final state = ref.read(folderFilterProvider(_folderFilterKey));
-    final hasActiveFilters = state.filter.hasActiveFilters;
-    final hasActiveTag = state.selectedTags.isNotEmpty;
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(
-            hasActiveFilters || hasActiveTag
-                ? Icons.filter_alt_off_outlined
-                : Icons.search_off_rounded,
-            size: 64.sp,
-            color: context.colors.textPrimary.withValues(alpha: 0.1),
-          ),
-          SizedBox(height: 16.h),
-          Text(
-            hasActiveFilters || hasActiveTag
-                ? 'No matching games'
-                : 'No matches found',
-            style: AppTypography.textMdMedium.copyWith(
-              color: context.colors.textPrimary,
-            ),
-          ),
-          SizedBox(height: 8.h),
-          Text(
-            hasActiveFilters || hasActiveTag
-                ? 'Try adjusting your search or filters'
-                : 'Try a different search term',
-            style: AppTypography.textSmRegular.copyWith(
-              color: context.textInk(0.5),
-            ),
-          ),
-        ],
-      ),
+  /// The search, the filters or the tags leave nothing: the one no-matches
+  /// line every searched list shows, where the first row would be, under
+  /// the count and the tags (still there to turn off), with the way back.
+  Widget _buildEmptySearchState(
+    AsyncValue<PaginatedBookState> bookAsync,
+    FolderFilterState filterState,
+  ) {
+    final filtered =
+        filterState.filter.hasActiveFilters ||
+        filterState.selectedTags.isNotEmpty;
+    return ListView(
+      padding: EdgeInsets.zero,
+      physics: const AlwaysScrollableScrollPhysics(),
+      children: [
+        _buildListHead(bookAsync),
+        SearchNoMatches(
+          query: filterState.searchQuery,
+          subject: _isDatabase ? 'games' : 'folders',
+          filtered: filtered,
+          // Filters and tags go together; otherwise the words go and the
+          // search stays open to type again. The action plays its haptic.
+          onClear: filtered
+              ? () {
+                  _folderFilter
+                    ..clearFilter()
+                    ..clearTags();
+                }
+              : _search.text.clear,
+        ),
+      ],
     );
   }
 }

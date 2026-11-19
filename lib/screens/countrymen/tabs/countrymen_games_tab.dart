@@ -9,6 +9,8 @@ import 'package:chessever2/screens/chessboard/provider/game_pgn_stream_provider.
 import 'package:chessever2/screens/chessboard/widgets/chess_board_from_fen_new.dart';
 import 'package:chessever2/screens/countrymen/provider/countrymen_combined_games_provider.dart';
 import 'package:chessever2/screens/favorites/widgets/collection_inks.dart';
+import 'package:chessever2/screens/favorites/widgets/games_list_refetch_line.dart';
+import 'package:chessever2/screens/favorites/widgets/settling_scroll_controller.dart';
 import 'package:chessever2/screens/library/widgets/add_to_folder_sheet.dart';
 import 'package:chessever2/screens/library/widgets/live_gamebase_search_game_card.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
@@ -17,8 +19,6 @@ import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_p
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/game_card_wrapper_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/grid_game_card_wrapper_widget.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/live_game_card_provider.dart';
-import 'package:chessever2/screens/tour_detail/widgets/event_search_bar.dart'
-    show EventSearchBarFrame;
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/widgets/paywall/premium_game_access.dart';
 import 'package:chessever2/utils/app_typography.dart';
@@ -28,13 +28,15 @@ import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/game_filter/game_filter.dart';
 import 'package:chessever2/widgets/ink_fab.dart';
+import 'package:chessever2/widgets/live_first_capsule.dart';
 import 'package:chessever2/widgets/quick_list_toggles.dart';
-import 'package:chessever2/widgets/simple_search_bar.dart';
+import 'package:chessever2/widgets/search_mode/search_mode.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:chessever2/widgets/scroll_to_top_bus.dart';
+import 'package:chessever2/widgets/search_no_matches.dart';
 import 'package:intl/intl.dart';
 
 /// Track animated game IDs for Countrymen to prevent re-animation
@@ -112,25 +114,50 @@ Future<void> showCountrymenGameFilterDialog(
   await ref.read(countrymenCombinedGamesProvider.notifier).applyFilter(result);
 }
 
-/// Whether a game in the Countrymen Games list is in play. Live first floats
-/// over the list only while this holds (Trello #1420):
-/// with nothing live it has nothing to do.
-final countrymenGamesAnyLiveProvider = Provider.autoDispose<bool>(
+/// How many games in the Countrymen Games list are in play, counted from the
+/// list already loaded (Live first reads it aloud and on its capsule).
+final countrymenGamesLiveCountProvider = Provider.autoDispose<int>(
   (ref) => ref.watch(
     countrymenCombinedGamesProvider.select(
-      (state) => state.filteredGames.any(GameFilterHelper.isLiveNow),
+      (state) => state.filteredGames.where(GameFilterHelper.isLiveNow).length,
     ),
   ),
 );
 
-/// The Games list's filters, bare glyphs after the field in its full-page
-/// search header (Trello #1420): Classical only and Filters. Live first
-/// floats over the list instead, and the board view stays in the app bar.
+/// Whether a game in the Countrymen Games list is in play. Live first floats
+/// over the list only while this holds (Trello #1420):
+/// with nothing live it has nothing to do.
+final countrymenGamesAnyLiveProvider = Provider.autoDispose<bool>(
+  (ref) => ref.watch(countrymenGamesLiveCountProvider) > 0,
+);
+
+/// The Games list's toolbar: board view, Classical only and Filters, bare
+/// glyphs, ending the app bar. The full-page search header ends with the same
+/// row less the board view ([withBoardView] false): Classical and Filters
+/// stay at the same spot in both, and the board view gives way to the field
+/// along with the title, leaving the field room to type in on any phone.
 ///
-/// It watches the same auto-dispose games provider as [CountrymenGamesTab],
-/// so the filter dialog's route cannot drop the notifier it applies to.
-class CountrymenGamesSearchControls extends ConsumerWidget {
-  const CountrymenGamesSearchControls({super.key});
+/// It watches the same auto-dispose games provider as the Games tab, so the
+/// filter dialog's route cannot drop the notifier it applies to.
+class CountrymenGamesToolbar extends ConsumerWidget {
+  const CountrymenGamesToolbar({super.key, this.withBoardView = true});
+
+  /// Leads with the board view (the page's header); the search header's
+  /// row leaves it out.
+  final bool withBoardView;
+
+  /// What the search matches, cycled once after "Search" in its field.
+  static const List<String> searchHints = ['player', 'opening', 'ECO code'];
+
+  /// The full row's width: three 44pt targets.
+  static const double width = 3 * SearchModeFilterButton.target;
+
+  /// The search header's row: Classical and Filters, held still through the
+  /// morph where the page's header has them ([SearchModeShared]).
+  static const Widget inSearch = SearchModeShared(
+    id: CountrymenGamesToolbar,
+    child: CountrymenGamesToolbar(withBoardView: false),
+  );
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -139,7 +166,7 @@ class CountrymenGamesSearchControls extends ConsumerWidget {
     );
     final classicalOnly = filter.timeControl == GameTimeControlFilter.classical;
 
-    return Row(
+    final shared = Row(
       mainAxisSize: MainAxisSize.min,
       children: [
         ClassicalToggleButton(
@@ -162,25 +189,34 @@ class CountrymenGamesSearchControls extends ConsumerWidget {
             );
           },
         ),
-        QuickToggleIconButton(
-          label: 'Filters',
-          selected: filter.hasActiveFilters,
-          badgeCount: filter.activeFilterCount,
+        SearchModeFilterButton(
+          count: filter.activeFilterCount,
           onTap: () => showCountrymenGameFilterDialog(context, ref),
-          child: const Icon(Icons.tune_rounded),
         ),
+      ],
+    );
+    if (!withBoardView) return shared;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        BoardViewToggleButton(
+          onTap: () => ref.read(gamesListViewModeSwitcher).toggleViewMode(),
+        ),
+        SearchModeShared(id: CountrymenGamesToolbar, child: shared),
       ],
     );
   }
 }
 
 /// The Games page's floating buttons (Trello #1420): the search and, above
-/// it only while a game is in play, Live first. Pressed with
-/// nothing in play, Live first stays off and says so.
+/// it while a game is in play (or while it is on), Live first, saying how
+/// many are live. Pressed with nothing in play, Live first stays off and
+/// says so; turned on, the list goes up to the games in play.
+///
+/// Under the screen's [SearchModeHost] the search hands its tap to the host,
+/// which flies the search button's glass into the field and back.
 class CountrymenGamesFabs extends ConsumerWidget {
-  const CountrymenGamesFabs({super.key, required this.onSearch});
-
-  final VoidCallback onSearch;
+  const CountrymenGamesFabs({super.key});
 
   static const _surface = GameListLiveFirstSurface.countrymen;
 
@@ -202,23 +238,22 @@ class CountrymenGamesFabs extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final liveFirst = ref.watch(gameListLiveFirstProvider(_surface));
     final anyLive = ref.watch(countrymenGamesAnyLiveProvider);
-    // Classical and Filters live in the search but stay applied after it
-    // closes: their count on the search is the list's only sign of them.
-    final applied = ref.watch(
-      countrymenCombinedGamesProvider.select(
-        (state) => state.filter.activeFilterCount,
-      ),
+    final liveCount = ref.watch(countrymenGamesLiveCountProvider);
+    // Just after a search closes the list may still hold its hits: what is
+    // live among them says nothing of the whole list.
+    final holdsHits = ref.watch(
+      countrymenCombinedGamesProvider.select((state) => state.isSearching),
     );
     return InkFabStack(
       children: [
-        // Only while a game is in play (Trello #1420): with nothing live
-        // the button has nothing to do, so it is not on screen. Left on, the
-        // flag only orders the list, which with nothing live is the same
-        // order.
-        if (anyLive)
-          LiveFirstInkFab(
+        // Only while a game is in play (Trello #1420), or while it is on, so
+        // a Live first left on can always be seen and turned off. With
+        // nothing live and nothing to undo it is not on screen.
+        if ((anyLive || liveFirst) && !holdsHits)
+          LiveFirstCapsule(
             key: const ValueKey('countrymen_live_first_fab'),
             on: liveFirst,
+            liveCount: liveCount,
             onTap: () => pressGameListLiveFirst(
               context: context,
               ref: ref,
@@ -226,89 +261,11 @@ class CountrymenGamesFabs extends ConsumerWidget {
               games: ref.read(countrymenCombinedGamesProvider).filteredGames,
             ),
           ),
-        SearchInkFab(
-          key: const ValueKey('countrymen_search_fab'),
+        const SearchInkFab(
+          key: ValueKey('countrymen_search_fab'),
           label: 'Search games',
-          badgeCount: applied,
-          onTap: onSearch,
         ),
       ],
-    );
-  }
-}
-
-/// The Games list's search field, in its full-page search header. A short
-/// pause after typing runs the search on the server, and the Games list under
-/// the header shows the hits.
-class CountrymenGamesSearchField extends ConsumerStatefulWidget {
-  const CountrymenGamesSearchField({
-    super.key,
-    required this.focusNode,
-    this.autofocus = true,
-  });
-
-  /// The screen's node, so it can hold the chrome while the keyboard is up.
-  final FocusNode focusNode;
-
-  /// Puts the cursor in the field as the search opens.
-  final bool autofocus;
-
-  @override
-  ConsumerState<CountrymenGamesSearchField> createState() =>
-      _CountrymenGamesSearchFieldState();
-}
-
-class _CountrymenGamesSearchFieldState
-    extends ConsumerState<CountrymenGamesSearchField> {
-  late final TextEditingController _controller;
-  Timer? _debounce;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = TextEditingController(
-      text: ref.read(countrymenCombinedGamesProvider).searchQuery,
-    );
-  }
-
-  @override
-  void dispose() {
-    _debounce?.cancel();
-    _controller.dispose();
-    super.dispose();
-  }
-
-  void _onChanged(String value) {
-    _debounce?.cancel();
-    _debounce = Timer(const Duration(milliseconds: 400), () {
-      if (!mounted) return;
-      unawaited(
-        ref.read(countrymenCombinedGamesProvider.notifier).searchGames(value),
-      );
-    });
-  }
-
-  void _onCleared() {
-    HapticFeedback.lightImpact();
-    _debounce?.cancel();
-    _controller.clear();
-    widget.focusNode.unfocus();
-    unawaited(ref.read(countrymenCombinedGamesProvider.notifier).clearSearch());
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return EventSearchBarFrame(
-      compact: true,
-      child: SimpleSearchBar(
-        controller: _controller,
-        focusNode: widget.focusNode,
-        autofocus: widget.autofocus,
-        hintText: 'Search games',
-        onChanged: _onChanged,
-        onCloseTap: _onCleared,
-        onOpenFilter: null,
-      ),
     );
   }
 }
@@ -326,7 +283,8 @@ class _CountrymenGamesTabState extends ConsumerState<CountrymenGamesTab>
         RouteAware,
         AutomaticKeepAliveClientMixin,
         ScrollToTopListenerMixin {
-  final ScrollController _scrollController = ScrollController();
+  /// Lands a search's place changes in the frame the games change in.
+  final SettlingScrollController _scrollController = SettlingScrollController();
 
   @override
   void onScrollToTopRequested() {
@@ -346,8 +304,29 @@ class _CountrymenGamesTabState extends ConsumerState<CountrymenGamesTab>
   // the ScrollController and provider state survive returning from the board.
   bool get _isActiveOnScreen => _routeIsCurrent;
 
-  /// Track expanded state for date sections
+  /// Days folded on the plain list.
   final Set<String> _collapsedDates = {};
+
+  /// Days folded among a search's hits. Every day opens as hits land, so
+  /// none hides behind a fold; the plain list's folds come back with it.
+  final Set<String> _searchCollapsedDates = {};
+
+  /// The page's search is open over this list.
+  bool _searchOpen = false;
+
+  /// The list on screen is a search's hits.
+  bool _showingHits = false;
+
+  /// Where the plain list was when the search opened (or where the reader
+  /// took it since, when the hits land): it comes back there as the search
+  /// closes, whatever the hits or the header did to the scroll meanwhile.
+  double? _offsetBeforeSearch;
+
+  /// Ends [SettlingScrollController.holdAt] once the header has sprung.
+  Timer? _holdTimer;
+
+  /// A filter or country change is on its way: its list starts at the top.
+  bool _toTopOnLanding = false;
 
   @override
   bool get wantKeepAlive => true;
@@ -365,6 +344,7 @@ class _CountrymenGamesTabState extends ConsumerState<CountrymenGamesTab>
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
+    _followSearch(SearchModeScope.maybeOf(context)?.isSearching ?? false);
     if (_routeSubscribed) return;
     final route = ModalRoute.of(context);
     if (route == null) return;
@@ -382,6 +362,7 @@ class _CountrymenGamesTabState extends ConsumerState<CountrymenGamesTab>
     ForegroundTaskScheduler.cancel('countrymen_games_resume_$hashCode');
     _scrollController.removeListener(_onScroll);
     _scrollIdleTimer?.cancel();
+    _holdTimer?.cancel();
     _setLiveCardsPausedForScroll(false);
     _scrollController.dispose();
     super.dispose();
@@ -534,17 +515,113 @@ class _CountrymenGamesTabState extends ConsumerState<CountrymenGamesTab>
 
   void _toggleDateSection(String dateKey) {
     HapticFeedback.lightImpact();
+    final folds = ref.read(countrymenCombinedGamesProvider).isSearching
+        ? _searchCollapsedDates
+        : _collapsedDates;
     setState(() {
-      if (_collapsedDates.contains(dateKey)) {
-        _collapsedDates.remove(dateKey);
-      } else {
-        _collapsedDates.add(dateKey);
-      }
+      if (!folds.remove(dateKey)) folds.add(dateKey);
     });
     // After collapsing sections, check if we need to load more content
     // This handles the case where collapsing reduces content height
     // and the user is suddenly at/near the end of the list
     _checkScrollAfterLayoutChange();
+  }
+
+  /// Keeps the reader's place as the list is replaced under them: a
+  /// search's hits start at the top, the plain list comes back where it was
+  /// left, a new filter's or country's list starts at the top. Nothing moves
+  /// while a fetch is still on its way; the list it replaces stays put.
+  void _onGamesChanged(
+    CountrymenCombinedGamesState? previous,
+    CountrymenCombinedGamesState next,
+  ) {
+    if (previous == null) return;
+    if (previous.searchQuery != next.searchQuery) {
+      _toTopOnLanding = false;
+      _showingHits = next.isSearching;
+      if (next.isSearching) {
+        if (!previous.isSearching) {
+          // Kept as the search opened, unless the reader has moved the
+          // plain list since: then where they left it.
+          _offsetBeforeSearch ??= _scrollController.hasClients
+              ? _scrollController.offset
+              : null;
+        }
+        _searchCollapsedDates.clear();
+        _settleListAt(0);
+      } else {
+        // The plain list as it was left comes back to its place; one
+        // fetched again starts at its top.
+        final back = previous.isReplacing ? null : _offsetBeforeSearch;
+        // While the search stays open (its field emptied), its close puts
+        // the list there again: the header's height changes under it.
+        if (!_searchOpen) _offsetBeforeSearch = null;
+        _settleListAt(back ?? 0);
+      }
+      return;
+    }
+    if (previous.filter != next.filter ||
+        previous.countryCode != next.countryCode) {
+      _toTopOnLanding = true;
+      // Another list: the place kept for the old one means nothing to it.
+      if (!_showingHits) _offsetBeforeSearch = null;
+    }
+    if (_toTopOnLanding && previous.isLoading && !next.isLoading) {
+      _toTopOnLanding = false;
+      _settleListAt(0);
+    }
+  }
+
+  /// Moves the list to [offset] in the layout that puts its new rows on
+  /// screen, before that frame paints: no frame shows them at the old place.
+  void _settleListAt(double offset) => _scrollController.settleAt(offset);
+
+  /// The page's search opened or closed over this list. The list stays
+  /// mounted either way; only its place is kept. Opening keeps where the
+  /// reader is; closing on the plain list puts it back there, held while
+  /// the header springs back so its end does not bounce. Hits still on
+  /// screen as it closes give way to the plain list fetched again, which
+  /// starts at its top.
+  void _followSearch(bool open) {
+    if (open == _searchOpen) return;
+    _searchOpen = open;
+    if (open) {
+      final offset = _scrollController.hasClients
+          ? _scrollController.offset
+          : null;
+      _offsetBeforeSearch = offset;
+      if (offset != null) _holdThroughMorph(offset);
+      return;
+    }
+    final back = _offsetBeforeSearch;
+    _offsetBeforeSearch = null;
+    if (back == null || _showingHits) return;
+    _holdThroughMorph(back);
+  }
+
+  /// The header's spring, with room to settle: the list holds its place
+  /// this long after the search opens or closes.
+  static const Duration _morphHold = Duration(milliseconds: 600);
+
+  void _holdThroughMorph(double offset) {
+    _scrollController.holdAt(offset);
+    _holdTimer?.cancel();
+    _holdTimer = Timer(_morphHold, () {
+      _holdTimer = null;
+      _scrollController.release();
+    });
+  }
+
+  /// The reader moved the plain list while the search is open (before any
+  /// hits): the list stays where they leave it.
+  bool _onScrollStart(ScrollStartNotification notification) {
+    if (notification.depth == 0 &&
+        notification.dragDetails != null &&
+        _searchOpen &&
+        !_showingHits) {
+      _offsetBeforeSearch = null;
+    }
+    return false;
   }
 
   /// Check if we need to load more content after a layout change
@@ -590,6 +667,17 @@ class _CountrymenGamesTabState extends ConsumerState<CountrymenGamesTab>
     }
 
     final state = ref.watch(countrymenCombinedGamesProvider);
+    ref.listen(countrymenCombinedGamesProvider, _onGamesChanged);
+    // Live first brings the games in play to the top of each day; the list
+    // goes up to them.
+    ref.listen<bool>(
+      gameListLiveFirstProvider(GameListLiveFirstSurface.countrymen),
+      (previous, next) {
+        if (next && previous != true) {
+          animateScrollControllerToTop(_scrollController);
+        }
+      },
+    );
     final viewMode = ref.watch(gamesListViewModeProvider);
     final liveFirst = ref.watch(
       gameListLiveFirstProvider(GameListLiveFirstSurface.countrymen),
@@ -603,29 +691,34 @@ class _CountrymenGamesTabState extends ConsumerState<CountrymenGamesTab>
       },
       color: context.colors.textPrimary,
       backgroundColor: context.colors.surface,
-      child: CustomScrollView(
-        key: PageStorageKey<String>('countrymen_games_list_${viewMode.index}'),
-        controller: _scrollController,
-        scrollCacheExtent: kListScrollCacheExtent,
-        physics: const AlwaysScrollableScrollPhysics(
-          parent: BouncingScrollPhysics(),
-        ),
-        slivers: [
-          // Content. The search field lives in the screen's full-page search
-          // header (Trello #1420), above this same list.
-          SliverLayoutBuilder(
-            builder: (context, constraints) => _buildContentSliver(
-              state,
-              viewMode,
-              streamEnabled,
-              constraints.crossAxisExtent,
-              liveFirst: liveFirst,
-            ),
+      child: NotificationListener<ScrollStartNotification>(
+        onNotification: _onScrollStart,
+        child: CustomScrollView(
+          key: PageStorageKey<String>(
+            'countrymen_games_list_${viewMode.index}',
           ),
+          controller: _scrollController,
+          scrollCacheExtent: kListScrollCacheExtent,
+          physics: const AlwaysScrollableScrollPhysics(
+            parent: BouncingScrollPhysics(),
+          ),
+          slivers: [
+            // Content. The search field lives in the screen's full-page
+            // search header (Trello #1420), above this same list.
+            SliverLayoutBuilder(
+              builder: (context, constraints) => _buildContentSliver(
+                state,
+                viewMode,
+                streamEnabled,
+                constraints.crossAxisExtent,
+                liveFirst: liveFirst,
+              ),
+            ),
 
-          // Bottom padding
-          SliverToBoxAdapter(child: SizedBox(height: 24.h)),
-        ],
+            // Bottom padding
+            SliverToBoxAdapter(child: SizedBox(height: 24.h)),
+          ],
+        ),
       ),
     );
 
@@ -639,10 +732,32 @@ class _CountrymenGamesTabState extends ConsumerState<CountrymenGamesTab>
     return Center(
       child: ConstrainedBox(
         constraints: BoxConstraints(maxWidth: ResponsiveHelper.contentMaxWidth),
-        child: SizedBox.expand(child: content),
+        child: SizedBox.expand(
+          child: Stack(
+            children: [
+              Positioned.fill(child: content),
+              // A search, its close or a filter on its way: the list it
+              // replaces stays, with this quiet line over its top.
+              Positioned(
+                top: 0,
+                left: 0,
+                right: 0,
+                child: GamesListRefetchLine(
+                  active: state.isReplacing && !_showsFirstLoad(state),
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
+
+  /// Nothing listed yet and nothing to keep on screen: the first load's
+  /// spinner. An answer already on screen (no games, or no hits) stays
+  /// while a search or a filter replaces it, under the quiet line.
+  static bool _showsFirstLoad(CountrymenCombinedGamesState state) =>
+      state.isLoading && state.games.isEmpty && !state.isReplacing;
 
   Widget _buildContentSliver(
     CountrymenCombinedGamesState state,
@@ -651,7 +766,7 @@ class _CountrymenGamesTabState extends ConsumerState<CountrymenGamesTab>
     double availableWidth, {
     required bool liveFirst,
   }) {
-    if (state.isLoading && state.games.isEmpty) {
+    if (_showsFirstLoad(state)) {
       return SliverFillRemaining(
         hasScrollBody: false,
         child: _buildLoadingState(),
@@ -667,16 +782,10 @@ class _CountrymenGamesTabState extends ConsumerState<CountrymenGamesTab>
 
     if (state.games.isEmpty) {
       if (state.filter.hasActiveFilters) {
-        return SliverFillRemaining(
-          hasScrollBody: false,
-          child: _buildNoFilterResultsState(),
-        );
+        return _buildNoFilterResultsSliver(state);
       }
       if (state.isSearching) {
-        return SliverFillRemaining(
-          hasScrollBody: false,
-          child: _buildNoSearchResultsState(),
-        );
+        return _buildNoSearchResultsSliver(state);
       }
       return SliverFillRemaining(
         hasScrollBody: false,
@@ -689,10 +798,7 @@ class _CountrymenGamesTabState extends ConsumerState<CountrymenGamesTab>
 
     // Show empty state if filter excludes all games
     if (filteredGames.isEmpty && state.filter.hasActiveFilters) {
-      return SliverFillRemaining(
-        hasScrollBody: false,
-        child: _buildNoFilterResultsState(),
-      );
+      return _buildNoFilterResultsSliver(state);
     }
 
     // Group games by date; with Live first, each day lists its live games
@@ -727,10 +833,11 @@ class _CountrymenGamesTabState extends ConsumerState<CountrymenGamesTab>
       pinnedGamedIs: const [],
     );
 
+    final folds = state.isSearching ? _searchCollapsedDates : _collapsedDates;
     for (final entry in gamesByDate.entries) {
       final dateKey = entry.key;
       final dateGames = entry.value;
-      final isCollapsed = _collapsedDates.contains(dateKey);
+      final isCollapsed = folds.contains(dateKey);
 
       // Date header
       listEntries.add(
@@ -811,8 +918,9 @@ class _CountrymenGamesTabState extends ConsumerState<CountrymenGamesTab>
       }
     }
 
-    // Loading indicator for auto-scroll loading
-    if (state.isLoading && state.games.isNotEmpty) {
+    // Loading indicator for auto-scroll loading (a list being replaced has
+    // its quiet line at the top instead).
+    if (state.isLoading && !state.isReplacing && state.games.isNotEmpty) {
       listEntries.add(const _CountrymenFooterEntry.loading());
     } else if (state.hasMore && state.games.isNotEmpty) {
       // Spacer to ensure scroll triggers auto-load
@@ -825,28 +933,38 @@ class _CountrymenGamesTabState extends ConsumerState<CountrymenGamesTab>
       phone: 16.w,
       tablet: 24.w,
     );
-    return SliverPadding(
-      // The last game ends clear of the floating buttons over the list.
-      padding: EdgeInsets.fromLTRB(
-        horizontalPadding,
-        8.h,
-        horizontalPadding,
-        8.h + CountrymenGamesFabs.reach(context),
-      ),
-      sliver: SliverList(
-        delegate: SliverChildBuilderDelegate(
-          (context, index) => _buildListEntry(
-            listEntries[index],
-            games: games,
-            gamesData: gamesData,
-            gameIdToIndex: gameIdToIndex,
-            viewMode: viewMode,
-            streamEnabled: streamEnabled,
+    return SliverMainAxisGroup(
+      slivers: [
+        SliverPadding(
+          padding: EdgeInsets.fromLTRB(
+            horizontalPadding,
+            8.h,
+            horizontalPadding,
+            0,
           ),
-          childCount: listEntries.length,
-          addAutomaticKeepAlives: false,
+          sliver: SliverList(
+            delegate: SliverChildBuilderDelegate(
+              (context, index) => _buildListEntry(
+                listEntries[index],
+                games: games,
+                gamesData: gamesData,
+                gameIdToIndex: gameIdToIndex,
+                viewMode: viewMode,
+                streamEnabled: streamEnabled,
+              ),
+              childCount: listEntries.length,
+              addAutomaticKeepAlives: false,
+            ),
+          ),
         ),
-      ),
+        // The last game ends clear of the floating buttons over the list.
+        // They step away while the search is open: the room gives way on
+        // the search's own timeline, as on every Games list.
+        SearchModeListEnd.sliver(
+          base: 8.h,
+          buttons: CountrymenGamesFabs.reach(context),
+        ),
+      ],
     );
   }
 
@@ -1080,7 +1198,7 @@ class _CountrymenGamesTabState extends ConsumerState<CountrymenGamesTab>
           ),
         ],
       ),
-    ).animate().fadeIn(duration: 300.ms);
+    );
   }
 
   Widget _buildEmptyState() {
@@ -1112,87 +1230,29 @@ class _CountrymenGamesTabState extends ConsumerState<CountrymenGamesTab>
           ),
         ],
       ),
-    ).animate().fadeIn(duration: 300.ms).scale(begin: const Offset(0.95, 0.95));
+    );
   }
 
-  Widget _buildNoSearchResultsState() {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(
-            Icons.search_off_outlined,
-            size: 56.sp,
-            color: context.textInk(0.4),
-          ),
-          SizedBox(height: 12.h),
-          Text(
-            'No results',
-            style: AppTypography.textMdMedium.copyWith(
-              color: context.colors.textPrimary.withValues(alpha: 0.85),
-            ),
-          ),
-          SizedBox(height: 6.h),
-          Text(
-            'Try a different search term',
-            style: AppTypography.textSmRegular.copyWith(
-              color: context.textInk(0.55),
-            ),
-            textAlign: TextAlign.center,
-          ),
-        ],
-      ),
-    ).animate().fadeIn(duration: 300.ms);
+  /// The search's words match no game: the one no-matches line every Games
+  /// list shows, where the first game would be, with the way back to every
+  /// game (the field empties; the search stays open to type again).
+  Widget _buildNoSearchResultsSliver(CountrymenCombinedGamesState state) {
+    final search = SearchModeScope.maybeOf(context)?.controller;
+    return SearchNoMatches.sliver(
+      query: state.searchQuery,
+      onClear: search?.text.clear,
+    );
   }
 
-  Widget _buildNoFilterResultsState() {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(
-            Icons.filter_alt_off_outlined,
-            size: 56.sp,
-            color: context.textInk(0.4),
-          ),
-          SizedBox(height: 12.h),
-          Text(
-            'No matching games',
-            style: AppTypography.textMdMedium.copyWith(
-              color: context.colors.textPrimary.withValues(alpha: 0.85),
-            ),
-          ),
-          SizedBox(height: 6.h),
-          Text(
-            'Try adjusting your filters',
-            style: AppTypography.textSmRegular.copyWith(
-              color: context.textInk(0.55),
-            ),
-            textAlign: TextAlign.center,
-          ),
-          SizedBox(height: 20.h),
-          GestureDetector(
-            onTap: () {
-              HapticFeedback.mediumImpact();
-              ref.read(countrymenCombinedGamesProvider.notifier).clearFilter();
-            },
-            child: Container(
-              padding: EdgeInsets.symmetric(horizontal: 20.w, vertical: 10.h),
-              decoration: BoxDecoration(
-                color: context.colors.textPrimary.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(8.br),
-              ),
-              child: Text(
-                'Clear Filters',
-                style: AppTypography.textSmMedium.copyWith(
-                  color: context.colors.textPrimary,
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    ).animate().fadeIn(duration: 300.ms);
+  /// The filters (with the search's words, if any) leave no game: the same
+  /// line, its action clearing the filters. It plays the button haptic.
+  Widget _buildNoFilterResultsSliver(CountrymenCombinedGamesState state) {
+    return SearchNoMatches.sliver(
+      query: state.isSearching ? state.searchQuery : null,
+      filtered: true,
+      onClear: () =>
+          ref.read(countrymenCombinedGamesProvider.notifier).clearFilter(),
+    );
   }
 
   void _showAddToFolderSheet(BuildContext context, GamesTourModel game) {
@@ -1455,12 +1515,10 @@ class _CountrymenLiveBoardGameCardState
     // Use global set to track animations - survives tab switches and rebuilds
     if (!_countrymenAnimatedGameIds.contains(gameId)) {
       _countrymenAnimatedGameIds.add(gameId);
+      // It slides into place, drawn from its first frame: a card is never
+      // hidden behind its entrance.
       return card
-          .animate()
-          .fadeIn(
-            duration: 200.ms,
-            delay: Duration(milliseconds: (widget.listIndex % 10) * 30),
-          )
+          .animate(delay: Duration(milliseconds: (widget.listIndex % 10) * 30))
           .slideY(begin: 0.05, end: 0, duration: 200.ms, curve: Curves.easeOut);
     }
 

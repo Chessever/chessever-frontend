@@ -10,6 +10,7 @@ import 'package:chessever2/screens/tour_detail/games_tour/widgets/games_tour_con
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
 import 'package:flutter/rendering.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:flutter/widgets.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_list_view_mode_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_app_bar_view_model.dart';
@@ -138,10 +139,31 @@ class _GamesTourScrollActivityDetectorState
         notification is ScrollUpdateNotification ||
         notification is OverscrollNotification ||
         notification is UserScrollNotification) {
-      _markScrolling();
+      _markScrollingWhenAllowed();
     }
 
     return false;
+  }
+
+  bool _markPending = false;
+
+  /// [_markScrolling], or right after this frame when the list started
+  /// moving inside the frame's own layout, where no provider may change. It
+  /// does when the room at its end changes under a reader at the very end
+  /// (the search's morph eases it away and back): the list settles onto its
+  /// new end from inside that layout.
+  void _markScrollingWhenAllowed() {
+    final binding = SchedulerBinding.instance;
+    if (binding.schedulerPhase != SchedulerPhase.persistentCallbacks) {
+      _markScrolling();
+      return;
+    }
+    if (_markPending) return;
+    _markPending = true;
+    binding.addPostFrameCallback((_) {
+      _markPending = false;
+      if (mounted) _markScrolling();
+    });
   }
 
   void _markScrolling() {
@@ -326,8 +348,9 @@ class _GamesTourScrollProvider extends StateNotifier<ItemScrollController> {
       if (positions.isEmpty) return;
 
       // Find the topmost visible item (considering items that are at least partially visible).
-      final topItem =
-          positions.where((pos) => pos.itemLeadingEdge < 0.3).firstOrNull;
+      final topItem = positions
+          .where((pos) => pos.itemLeadingEdge < 0.3)
+          .firstOrNull;
       if (topItem == null) return;
 
       final gameId = _getGameIdFromItemIndex(topItem.index);
@@ -382,10 +405,9 @@ class _GamesTourScrollProvider extends StateNotifier<ItemScrollController> {
 
     // Only update if round actually changed and it wasn't a user selection
     if (currentSelected != roundId && !wasUserSelected) {
-      final targetRound =
-          gamesAppBarData.gamesAppBarModels
-              .where((round) => round.id == roundId)
-              .firstOrNull;
+      final targetRound = gamesAppBarData.gamesAppBarModels
+          .where((round) => round.id == roundId)
+          .firstOrNull;
       if (targetRound != null) {
         _ref.read(gamesAppBarProvider.notifier).selectSilently(targetRound);
       }

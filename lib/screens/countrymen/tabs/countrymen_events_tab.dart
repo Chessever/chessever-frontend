@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:chessever2/providers/country_dropdown_provider.dart';
 import 'package:chessever2/screens/favorites/widgets/collection_inks.dart';
+import 'package:chessever2/screens/favorites/widgets/tab_search_fab.dart';
 import 'package:chessever2/screens/group_event/providers/live_group_broadcast_id_provider.dart';
 import 'package:chessever2/repository/supabase/group_broadcast/group_broadcast.dart';
 import 'package:chessever2/repository/supabase/group_broadcast/group_tour_repository.dart';
@@ -14,10 +15,10 @@ import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/user_error_message.dart';
 import 'package:chessever2/widgets/event_card/event_card.dart';
 import 'package:chessever2/widgets/scroll_to_top_bus.dart';
-import 'package:chessever2/widgets/search/gameSearch/enhanced_game_search_widget.dart';
+import 'package:chessever2/widgets/search_mode/search_mode.dart';
+import 'package:chessever2/widgets/search_no_matches.dart';
 import 'package:chessever2/widgets/paywall/past_event_access.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -198,10 +199,6 @@ class _CountrymenEventsTabState extends ConsumerState<CountrymenEventsTab>
     animateScrollControllerToTop(_scrollController);
   }
 
-  final TextEditingController _searchController = TextEditingController();
-  final FocusNode _searchFocusNode = FocusNode();
-  Timer? _debounceTimer;
-
   @override
   bool get wantKeepAlive => true;
 
@@ -213,11 +210,8 @@ class _CountrymenEventsTabState extends ConsumerState<CountrymenEventsTab>
 
   @override
   void dispose() {
-    _debounceTimer?.cancel();
     _scrollController.removeListener(_onScroll);
     _scrollController.dispose();
-    _searchController.dispose();
-    _searchFocusNode.dispose();
     super.dispose();
   }
 
@@ -228,30 +222,11 @@ class _CountrymenEventsTabState extends ConsumerState<CountrymenEventsTab>
     }
   }
 
-  void _onSearchChanged(String value) {
-    _debounceTimer?.cancel();
-    _debounceTimer = Timer(const Duration(milliseconds: 400), () {
-      ref.read(countrymenEventsProvider.notifier).search(value);
-    });
-  }
-
-  void _clearSearch() {
-    HapticFeedback.lightImpact();
-    _debounceTimer?.cancel();
-    _searchController.clear();
-    _searchFocusNode.unfocus();
-    ref.read(countrymenEventsProvider.notifier).clearSearch();
-  }
-
   @override
   Widget build(BuildContext context) {
     super.build(context);
 
     final state = ref.watch(countrymenEventsProvider);
-    final horizontalPadding = ResponsiveHelper.adaptive(
-      phone: 16.w,
-      tablet: 24.w,
-    );
 
     final content = RefreshIndicator(
       onRefresh: () async {
@@ -266,30 +241,17 @@ class _CountrymenEventsTabState extends ConsumerState<CountrymenEventsTab>
           parent: BouncingScrollPhysics(),
         ),
         slivers: [
-          // Search bar (scrolls with content)
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: EdgeInsets.fromLTRB(
-                horizontalPadding,
-                12.h,
-                horizontalPadding,
-                8.h,
-              ),
-              child: SearchBarWidget(
-                hintText: 'Search',
-                margin: 0.sp,
-                autoFocus: false,
-                controller: _searchController,
-                focusNode: _searchFocusNode,
-                onChanged: _onSearchChanged,
-                onClose: _clearSearch,
-              ),
-            ),
-          ),
+          // The search is the page's, from its floating button (Trello
+          // #1420): the list starts right under the header.
+          SliverToBoxAdapter(child: SizedBox(height: 4.h)),
           // Content
           _buildContentSliver(state),
-          // Bottom padding
-          SliverToBoxAdapter(child: SizedBox(height: 24.h)),
+          // The last card ends clear of the floating search button; the
+          // room gives way on the search's own timeline while it is open.
+          SearchModeListEnd.sliver(
+            base: 24.h,
+            buttons: TabSearchFab.reach(context),
+          ),
         ],
       ),
     );
@@ -326,9 +288,13 @@ class _CountrymenEventsTabState extends ConsumerState<CountrymenEventsTab>
 
     if (state.events.isEmpty) {
       if (state.isSearching) {
-        return SliverFillRemaining(
-          hasScrollBody: false,
-          child: _buildNoSearchResultsState(),
+        // The search's words matched no event: said once, where the first
+        // card would be, with the way back to every event.
+        final search = SearchModeScope.maybeOf(context)?.controller;
+        return SearchNoMatches.sliver(
+          query: state.searchQuery,
+          subject: 'events',
+          onClear: search?.text.clear,
         );
       }
       return SliverFillRemaining(
@@ -560,35 +526,5 @@ class _CountrymenEventsTabState extends ConsumerState<CountrymenEventsTab>
         ],
       ),
     ).animate().fadeIn(duration: 300.ms).scale(begin: const Offset(0.95, 0.95));
-  }
-
-  Widget _buildNoSearchResultsState() {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(
-            Icons.search_off_outlined,
-            size: 56.sp,
-            color: context.textInk(0.4),
-          ),
-          SizedBox(height: 12.h),
-          Text(
-            'No results',
-            style: AppTypography.textMdMedium.copyWith(
-              color: context.colors.textPrimary.withValues(alpha: 0.85),
-            ),
-          ),
-          SizedBox(height: 6.h),
-          Text(
-            'Try a different search term',
-            style: AppTypography.textSmRegular.copyWith(
-              color: context.textInk(0.55),
-            ),
-            textAlign: TextAlign.center,
-          ),
-        ],
-      ),
-    ).animate().fadeIn(duration: 300.ms);
   }
 }

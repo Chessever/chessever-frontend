@@ -1,13 +1,12 @@
 import 'package:chessever2/screens/collections/collection_author_screen.dart';
 import 'package:chessever2/screens/collections/opening_event_card.dart'
-    show collectionOpeningName, OpeningEventCard;
-import 'package:chessever2/screens/tour_detail/widgets/event_search_bar.dart'
-    show EventSearchBarFrame;
+    show collectionOpeningName;
 import 'package:chessever2/screens/collections/collection_catalog_views.dart';
 import 'package:chessever2/screens/collections/collection_counts_refresher.dart';
 import 'package:chessever2/repository/gamebase/collections/collection_search_query.dart';
 import 'package:chessever2/screens/collections/collection_search_filters.dart';
-import 'package:chessever2/widgets/simple_search_bar.dart';
+import 'package:chessever2/widgets/search_mode/search_mode.dart';
+import 'package:chessever2/widgets/search_no_matches.dart';
 import 'dart:async';
 import 'dart:math' as math;
 import 'package:chessever2/e2e/e2e_ids.dart';
@@ -57,6 +56,7 @@ import 'package:chessever2/widgets/hub_tile.dart';
 import 'package:chessever2/widgets/card_context_menu.dart';
 import 'package:chessever2/widgets/skeleton_widget.dart';
 import 'package:chessever2/widgets/star_notifications.dart';
+import 'package:chessever2/widgets/quick_list_toggles.dart';
 // import 'package:chessever2/screens/library/game_tree/library_game_tree_targets.dart';
 // import 'package:chessever2/widgets/game_tree/build_tree_button.dart';
 // import 'package:chessever2/widgets/paywall/premium_game_access.dart';
@@ -83,24 +83,15 @@ class CollectionsScreen extends ConsumerStatefulWidget {
 }
 
 class _CollectionsScreenState extends ConsumerState<CollectionsScreen> {
-  final _search = TextEditingController();
-  final _focus = FocusNode();
-  Timer? _debounce;
+  /// The catalog's search, typed in the header's place once its floating
+  /// button opens it.
+  final SearchModeController _search = SearchModeController();
   CollectionSearchQuery _query = const CollectionSearchQuery();
   bool get embedded => widget.embedded;
   @override
   void dispose() {
-    _debounce?.cancel();
     _search.dispose();
-    _focus.dispose();
     super.dispose();
-  }
-
-  void _searchChanged(String value) {
-    _debounce?.cancel();
-    _debounce = Timer(const Duration(milliseconds: 300), () {
-      if (mounted) setState(() => _query = _query.withText(value));
-    });
   }
 
   void _rememberTab(int index) {
@@ -108,10 +99,28 @@ class _CollectionsScreenState extends ConsumerState<CollectionsScreen> {
         CollectionsTab.values[index];
   }
 
+  void _searchFor(String text) {
+    final next = _query.withText(text);
+    if (next != _query) setState(() => _query = next);
+  }
+
+  /// A catalog's no-hits line's way back: the words when the query has
+  /// any (the field empties, heard as typed), else the filters.
+  void _clearNarrowing() {
+    if (_query.text.trim().isNotEmpty) {
+      _search.text.clear();
+      // A field emptied while the search is closed reaches no listener.
+      _searchFor('');
+      return;
+    }
+    setState(() => _query = const CollectionSearchQuery());
+  }
+
   Future<void> _filters() async {
-    _focus.unfocus();
-    _debounce?.cancel();
-    setState(() => _query = _query.withText(_search.text));
+    _search.focusNode.unfocus();
+    // What was typed counts before the sheet, not once the typing pause
+    // ends.
+    _searchFor(_search.query);
     final result = await showCollectionSearchFilters(
       context,
       _query,
@@ -127,45 +136,31 @@ class _CollectionsScreenState extends ConsumerState<CollectionsScreen> {
     return CollectionCountsRefresher(child: _shell(context, query));
   }
 
-  /// Empties the field and the query's text; filters stay, and the search
-  /// button counts them.
-  void _clearSearchText() {
-    _debounce?.cancel();
-    _search.clear();
-    setState(() => _query = _query.withText(''));
-  }
-
   Widget _shell(BuildContext context, CollectionSearchQuery query) {
     return EventViewShell(
       dotScope: 'collections.tab',
       key: e2eKey(E2eIds.collectionsRoot),
       title: 'Collections',
       // The catalog's search floats over Collections and Authors and opens
-      // in the header's place; About has nothing to search.
+      // in the header's place; About has nothing to search. Its filters
+      // stand beside the field, and in the header with the search closed.
       search: EventViewSearch(
+        controller: _search,
         label: 'Search collections',
-        focusNode: _focus,
+        hintText: 'Search collections',
+        textFieldKey: const ValueKey('collections_search'),
+        filterKey: const ValueKey('collections_filters'),
         tabs: {CollectionsTab.collections.index, CollectionsTab.authors.index},
         badgeCount: _query.filterCount,
-        onClose: _clearSearchText,
-        field: EventSearchBarFrame(
-          compact: true,
-          child: SimpleSearchBar(
-            controller: _search,
-            focusNode: _focus,
-            hintText: 'Search collections',
-            textFieldKey: const ValueKey('collections_search'),
-            filterButtonKey: const ValueKey('collections_filters'),
-            compactFilter: true,
-            onChanged: _searchChanged,
-            onOpenFilter: _filters,
-            filterBadgeCount: _query.filterCount,
-            onCloseTap: () {
-              _clearSearchText();
-              _focus.unfocus();
-            },
-          ),
-        ),
+        onFilters: _filters,
+        onQuery: _searchFor,
+        // An emptied field empties the query at once, words the filter
+        // sheet took early included.
+        onChanged: (text) {
+          if (text.trim().isEmpty) _searchFor('');
+        },
+        // Filters stay, counted on their glyph.
+        onClose: () => _searchFor(''),
       ),
       // Opening discovery is paused; retain its catalog and wiring below.
       // tabs: const ['Openings', 'Collections', 'Authors'],
@@ -187,10 +182,10 @@ class _CollectionsScreenState extends ConsumerState<CollectionsScreen> {
         //   bottomPadding: embedded ? 72 : 0,
         // ),
         0 => _CollectionsAboutPage(bottomPadding: embedded ? 72 : 0),
-        // The catalogs end clear of the floating search button (and, in
-        // the tab bar's shell, of the bar).
-        1 => CollectionBooksCatalog(query: query, bottomPadding: 72),
-        _ => CollectionAuthorsCatalog(query: query, bottomPadding: 72),
+        // Each catalog is searched in place, and ends clear of the floating
+        // search button while it is there (CollectionCatalogList).
+        1 => CollectionBooksCatalog(query: query, onClear: _clearNarrowing),
+        _ => CollectionAuthorsCatalog(query: query, onClear: _clearNarrowing),
       },
     );
   }
@@ -392,10 +387,16 @@ class CollectionCard extends ConsumerWidget {
     this.opening,
     this.stacked = false,
     this.showStar = true,
+    this.onOpened,
   });
 
   final Collection collection;
   final bool stacked;
+
+  /// Every open of the collection, however it came: a tap, a screen
+  /// reader's tap, the menu's Open, the lifted copy. My Space records its
+  /// opens here.
+  final VoidCallback? onOpened;
 
   /// False in My Space, where the card ends in a chevron: its star is the
   /// collection's favorite, and My Space never adds or removes one.
@@ -448,13 +449,21 @@ class CollectionCard extends ConsumerWidget {
           ].join(' · ');
     final caption = note ?? named;
 
-    void open() {
-      HapticFeedbackService.cardTap();
+    void push() {
+      onOpened?.call();
       Navigator.of(context).push(
         MaterialPageRoute<void>(
           builder: (_) => CollectionScreen(collection: c, opening: opening),
         ),
       );
+    }
+
+    // A tap on the card plays the card-tap haptic; the menu's Open row
+    // already plays the menu's own, and the lifted copy none, as on every
+    // card with a focus menu.
+    void open() {
+      HapticFeedbackService.cardTap();
+      push();
     }
 
     return CollectionPlateRow(
@@ -503,6 +512,7 @@ class CollectionCard extends ConsumerWidget {
         ?caption,
       ].join(', '),
       onTap: open,
+      onPreviewTap: push,
       trailing: showStar
           ? _CollectionStar(collection: c, count: isBook ? stars : null)
           : Row(
@@ -521,7 +531,7 @@ class CollectionCard extends ConsumerWidget {
         LibraryMenuAction(
           icon: Icons.open_in_new_rounded,
           label: 'Open',
-          onSelected: open,
+          onSelected: push,
         ),
         if (buildCollectionShareUrl(c.slug) != null)
           LibraryMenuAction(
@@ -781,8 +791,8 @@ class _CollectionScreenState extends ConsumerState<CollectionScreen> {
 
   final EventViewController _tabs = EventViewController();
 
-  /// The page's search: book-wide for a book (its results replace the
-  /// tabs), the Games list's own for an event collection.
+  /// The page's search, run by the shell's search mode: it narrows the tab
+  /// it opens on in place (a book's Games or Players, an event's Games).
   final _gameSearch = _CollectionGamesSearchState();
 
   // A book opens on the compact tournament list, even if another screen was
@@ -835,18 +845,6 @@ class _CollectionScreenState extends ConsumerState<CollectionScreen> {
         builder: (_) => _CollectionScopedGamesScreen(
           collection: widget.collection,
           player: player,
-        ),
-      ),
-    );
-  }
-
-  void _showOpeningGames(Collection collection, CollectionOpening opening) {
-    HapticFeedbackService.cardTap();
-    Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) => _CollectionScopedGamesScreen(
-          collection: collection,
-          opening: opening,
         ),
       ),
     );
@@ -961,32 +959,26 @@ class _CollectionScreenState extends ConsumerState<CollectionScreen> {
       initialTab: _initialTab,
       controller: _tabs,
       // The search floats over the lists it covers and opens in the header's
-      // place: a book's covers its games and players at once, an event's
-      // filters its Games list.
+      // place, over the same list filtered as the reader types: a book's
+      // searches its Games and its Players, an event's its Games.
       search: EventViewSearch(
+        controller: _gameSearch.mode,
         label: _isBook ? 'Search collection' : 'Search games',
-        focusNode: _gameSearch.focus,
+        hintText: _isBook ? 'Search collection' : 'Search collection games',
+        textFieldKey: const ValueKey('collection_games_search'),
+        filterKey: const ValueKey('collection_games_filters'),
         tabs: {_gamesTab, if (_isBook) _playersTab},
         badgeCount: _gameSearch.filterBadgeCount(_opening),
-        onClose: _gameSearch.clear,
-        field: _CollectionGamesSearchBar(
-          state: _gameSearch,
+        debounce: const Duration(milliseconds: 200),
+        onQuery: _gameSearch.typed,
+        onChanged: _gameSearch.edited,
+        onClose: _gameSearch.closed,
+        onFilters: () => _gameSearch.openFilters(
+          context,
           opening: _opening,
           onClearOpening: () => setState(() => _opening = null),
-          hintText: _isBook ? 'Search collection' : 'Search collection games',
         ),
       ),
-      contentOverride: _isBook && _gameSearch.query.isActive
-          ? _BookSearchResults(
-              slug: slug,
-              query: _gameSearch.query,
-              opening: _opening,
-              viewMode: _gamesViewMode,
-              onOpening: (opening) => _showOpeningGames(c, opening),
-              onPlayer: _showPlayer,
-              onGame: _openGame,
-            )
-          : null,
       actions: [
         // Build Tree is off here: opening trees belong to My Prep, where they
         // track one player's preparation. Restore with the imports above.
@@ -1007,57 +999,59 @@ class _CollectionScreenState extends ConsumerState<CollectionScreen> {
         //   ),
         //   SizedBox(width: 6.w),
         // ],
-        Semantics(
-          label: 'Toggle chessboard view',
-          child: AppBarIcons(
-            image: SvgAsset.chase_grid,
-            onTap: _toggleGamesView,
-          ),
-        ),
-        SizedBox(width: 18.w),
+        // Bare glyphs, as on an event's Games header: no tile behind the
+        // view toggle or the menu.
+        _CollectionViewToggle(onTap: _toggleGamesView),
+        SizedBox(width: EventViewShell.headerGlyphGap),
         Builder(
-          builder: (menuContext) => AppBarIcons(
-            image: SvgAsset.threeDots,
-            onTap: () {
-              HapticFeedbackService.cardTap();
-              unawaited(
-                showLibraryContextMenu(
-                  context: menuContext,
-                  actions: [
-                    if (buildCollectionShareUrl(c.slug) != null)
+          builder: (menuContext) => Semantics(
+            container: true,
+            button: true,
+            label: 'More options',
+            child: AppBarIcons(
+              image: SvgAsset.threeDots,
+              boxed: false,
+              onTap: () {
+                HapticFeedbackService.cardTap();
+                unawaited(
+                  showLibraryContextMenu(
+                    context: menuContext,
+                    actions: [
+                      if (buildCollectionShareUrl(c.slug) != null)
+                        LibraryMenuAction(
+                          icon: Icons.ios_share_rounded,
+                          label: 'Share',
+                          onSelected: () => shareCollection(menuContext, c),
+                        ),
                       LibraryMenuAction(
-                        icon: Icons.ios_share_rounded,
-                        label: 'Share',
-                        onSelected: () => shareCollection(menuContext, c),
+                        icon: starred
+                            ? Icons.star_rounded
+                            : Icons.star_outline_rounded,
+                        label: starred ? 'Unstar' : 'Star',
+                        onSelected: () => toggleCollectionFavorite(
+                          context: context,
+                          collection: c,
+                        ),
                       ),
-                    LibraryMenuAction(
-                      icon: starred
-                          ? Icons.star_rounded
-                          : Icons.star_outline_rounded,
-                      label: starred ? 'Unstar' : 'Star',
-                      onSelected: () => toggleCollectionFavorite(
+                      starNotificationsMenuAction(
                         context: context,
-                        collection: c,
+                        favorite: collectionFavorite(
+                          ref.read(favoriteEventsProvider).valueOrNull ??
+                              const <FavoriteEvent>[],
+                          c,
+                        ),
+                        surface: 'collection',
                       ),
-                    ),
-                    starNotificationsMenuAction(
-                      context: context,
-                      favorite: collectionFavorite(
-                        ref.read(favoriteEventsProvider).valueOrNull ??
-                            const <FavoriteEvent>[],
-                        c,
+                      spaceMenuAction(
+                        context: menuContext,
+                        ref: ref,
+                        draft: collectionSpaceDraft(c),
                       ),
-                      surface: 'collection',
-                    ),
-                    spaceMenuAction(
-                      context: menuContext,
-                      ref: ref,
-                      draft: collectionSpaceDraft(c),
-                    ),
-                  ],
-                ),
-              );
-            },
+                    ],
+                  ),
+                );
+              },
+            ),
           ),
         ),
       ],
@@ -1086,6 +1080,9 @@ class _CollectionScreenState extends ConsumerState<CollectionScreen> {
             onShowPlayers: _isBook ? null : () => _showRelated('Players'),
           ),
           1 => contents.when(
+            // A refresh keeps the list on screen rather than flashing the
+            // skeleton over it.
+            skipLoadingOnReload: true,
             data: (data) => _GamesPage(
               slug: slug,
               searchState: _gameSearch,
@@ -1125,11 +1122,19 @@ class _CollectionScreenState extends ConsumerState<CollectionScreen> {
             ),
           ),
           _ => players.when(
-            data: (list) => _PlayersPage(
-              players: list,
-              numbered: _isBook,
-              onPick: _showPlayer,
-            ),
+            skipLoadingOnReload: true,
+            // A book's players are searched in place; an event's Players
+            // has no search.
+            data: (list) => _isBook
+                ? _SearchedPlayers(
+                    slug: slug,
+                    players: list,
+                    query: _gameSearch.query,
+                    opening: _opening,
+                    onPick: _showPlayer,
+                    onClear: _gameSearch.clearNarrowing,
+                  )
+                : _PlayersPage(players: list, onPick: _showPlayer),
             loading: () => const _CardsSkeleton(),
             error: (error, _) => _Notice(
               text: _collectionMetadataError(error, players: true),
@@ -1886,33 +1891,36 @@ class _CollectionScopedGamesScreenState
   }
 
   GamesListViewMode _mode = GamesListViewMode.gamesCard;
+
+  void _toggleView() {
+    HapticFeedbackService.buttonPress();
+    setState(
+      () => _mode = GamesListViewMode
+          .values[(_mode.index + 1) % GamesListViewMode.values.length],
+    );
+  }
+
   @override
   Widget build(BuildContext context) => EventViewShell(
     title: widget.player?.name ?? collectionOpeningName(widget.opening!),
     tabs: const ['Games'],
     tabStripOverride: const SizedBox.shrink(),
     search: EventViewSearch(
+      controller: _search.mode,
       label: 'Search games',
-      focusNode: _search.focus,
+      hintText: 'Search collection games',
+      textFieldKey: const ValueKey('collection_games_search'),
+      filterKey: const ValueKey('collection_games_filters'),
       badgeCount: _search.filterBadgeCount(widget.opening),
-      onClose: _search.clear,
-      field: _CollectionGamesSearchBar(state: _search, opening: widget.opening),
+      debounce: const Duration(milliseconds: 200),
+      onQuery: _search.typed,
+      onChanged: _search.edited,
+      onClose: _search.closed,
+      onFilters: () => _search.openFilters(context, opening: widget.opening),
     ),
-    actions: [
-      IconButton(
-        tooltip: 'Change games layout',
-        icon: Icon(
-          _mode == GamesListViewMode.gamesCard
-              ? Icons.grid_view_rounded
-              : Icons.view_list_rounded,
-        ),
-        onPressed: () => setState(
-          () => _mode = GamesListViewMode
-              .values[(_mode.index + 1) % GamesListViewMode.values.length],
-        ),
-      ),
-    ],
-    pageBuilder: (_, __) => _GamesPage(
+    // The list's layout, as every Games header toggles it.
+    actions: [_CollectionViewToggle(onTap: _toggleView)],
+    pageBuilder: (_, _) => _GamesPage(
       slug: widget.collection.slug,
       searchState: _search,
       contents: const CollectionContents(sections: [], games: []),
@@ -1927,213 +1935,160 @@ class _CollectionScopedGamesScreenState
   );
 }
 
-/// One book-scoped result list, using the same cards as the original tabs.
-class _BookSearchResults extends ConsumerWidget {
-  const _BookSearchResults({
+/// The list's layout toggle in a collection's header: every Games list's
+/// own board-view button ([BoardViewToggleButton]), a button node of its own
+/// so a screen reader does not fold it into the title.
+class _CollectionViewToggle extends StatelessWidget {
+  const _CollectionViewToggle({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) =>
+      Semantics(container: true, child: BoardViewToggleButton(onTap: onTap));
+}
+
+/// A book's players searched in place: the Players list itself, narrowed to
+/// the names that match what is typed and, with filters on, to the players
+/// of the games those filters keep. Each keeps the rank it has in the full
+/// list. While the filtered games load, the last list stays on screen under
+/// a quiet progress line.
+class _SearchedPlayers extends ConsumerStatefulWidget {
+  const _SearchedPlayers({
     required this.slug,
+    required this.players,
     required this.query,
     required this.opening,
-    required this.viewMode,
-    required this.onOpening,
-    required this.onPlayer,
-    required this.onGame,
+    required this.onPick,
+    this.onClear,
   });
 
   final String slug;
+  final List<CollectionPlayer> players;
   final CollectionSearchQuery query;
   final CollectionOpening? opening;
-  final GamesListViewMode viewMode;
-  final ValueChanged<CollectionOpening> onOpening;
-  final ValueChanged<CollectionPlayer> onPlayer;
-  final void Function(List<GamesTourModel>, int) onGame;
+  final ValueChanged<CollectionPlayer> onPick;
+
+  /// Clears what leaves no player: the words, else the filters.
+  final VoidCallback? onClear;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final effective = query.eco.isEmpty && opening != null
-        ? CollectionSearchQuery(
-            text: query.text,
-            eco: opening!.eco,
-            result: query.result,
-            year: query.year,
-            minYear: query.minYear,
-            maxYear: query.maxYear,
-            annotated: query.annotated,
-            sort: query.sort,
-          )
-        : query;
-    final gameKey = (slug: slug, query: effective, player: null as String?);
-    final games = ref.watch(collectionFilteredContentsProvider(gameKey));
-    // Game filters constrain openings and players too, without requiring their
-    // names to occur in a game's PGN text. Each section matches text itself.
-    final scopeQuery = effective.withText('');
-    final scopeKey = (slug: slug, query: scopeQuery, player: null as String?);
+  ConsumerState<_SearchedPlayers> createState() => _SearchedPlayersState();
+}
+
+class _SearchedPlayersState extends ConsumerState<_SearchedPlayers> {
+  final EventViewSearchPlace _place = EventViewSearchPlace();
+
+  /// The scoped games last drawn from, kept while the next scope loads.
+  List<CollectionGame>? _lastScope;
+
+  @override
+  void didUpdateWidget(_SearchedPlayers oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.query != widget.query) {
+      _place.queryChanged(context, widget.query.text);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final query = widget.query;
+    final opening = widget.opening;
+    final full = widget.players;
+    if (!query.isActive) {
+      _lastScope = null;
+      _place.settle(context);
+      return EventViewSearchList(
+        busy: false,
+        child: _PlayersPage(
+          players: full,
+          numbered: true,
+          onPick: widget.onPick,
+        ),
+      );
+    }
+    // The filters, the opening the page opened on included, without the
+    // words: the players must play in the games they keep.
+    final scopeQuery = CollectionSearchQuery(
+      text: '',
+      eco: query.eco.isEmpty ? (opening?.eco ?? '') : query.eco,
+      result: query.result,
+      year: query.year,
+      minYear: query.minYear,
+      maxYear: query.maxYear,
+      annotated: query.annotated,
+      sort: query.sort,
+    );
+    final scopeKey = (
+      slug: widget.slug,
+      query: scopeQuery,
+      player: null as String?,
+    );
     final scope = scopeQuery.isActive
         ? ref.watch(collectionFilteredContentsProvider(scopeKey))
         : null;
-    final openings = ref.watch(collectionOpeningsProvider(slug));
-    final players = ref.watch(collectionPlayersProvider(slug));
-    final text = query.text.trim().toLowerCase();
-    bool matches(String value) => value.toLowerCase().contains(text);
-    final scopedGames = scope?.valueOrNull?.games;
-    final openingItems = [
-      for (final item in openings.valueOrNull ?? const <CollectionOpening>[])
-        if ((matches(item.eco) || matches(collectionOpeningName(item))) &&
-            (scope == null ||
-                scopedGames?.any((game) => game.card.eco == item.eco) == true))
-          item,
-    ];
-    final playerItems = [
-      for (final item in players.valueOrNull ?? const <CollectionPlayer>[])
-        if (matches('${item.title ?? ''} ${item.name} ${item.fed ?? ''}') &&
-            (scope == null ||
-                scopedGames?.any(
-                      (game) =>
-                          game.card.involves(item.key) ||
-                          item.aliasKeys.any(game.card.involves),
-                    ) ==
-                    true))
-          item,
-    ];
-    final gameItems = games.valueOrNull?.games ?? const <CollectionGame>[];
-    final ordered = [for (final game in gameItems) game.game];
-    final perRow = viewMode == GamesListViewMode.chessBoardGrid ? 2 : 1;
-    Widget heading(String title, int count) => Padding(
-      padding: EdgeInsets.fromLTRB(16.sp, 16.sp, 16.sp, 12.sp),
-      child: Text(
-        '$title ($count)',
-        style: AppTypography.textSmMedium.copyWith(
-          color: context.colors.textPrimary,
+    if (scope != null && scope.hasError && !scope.isLoading) {
+      return _Notice(
+        text: _collectionErrorText(
+          scope.error,
+          fallback: "Couldn't load the players.",
         ),
-      ),
-    );
-    Widget status(AsyncValue<Object?> value, String empty, VoidCallback retry) {
-      if (value.isLoading) {
-        return Padding(
-          padding: EdgeInsets.all(16.sp),
-          child: const Center(child: CircularProgressIndicator()),
-        );
-      }
-      return Padding(
-        padding: EdgeInsets.symmetric(horizontal: 16.sp, vertical: 8.sp),
-        child: value.hasError
-            ? Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    userFacingError(
-                      value.error!,
-                      fallback: "Couldn't load results.",
-                    ),
-                  ),
-                  TextButton(onPressed: retry, child: const Text('Try again')),
-                ],
-              )
-            : Text(
-                empty,
-                style: AppTypography.textSmRegular.copyWith(
-                  color: context.colors.textSecondary,
-                ),
-              ),
+        actionLabel: 'Try again',
+        onAction: () =>
+            ref.invalidate(collectionFilteredContentsProvider(scopeKey)),
       );
     }
-
-    final openingStatus = scope != null && (scope.isLoading || scope.hasError)
-        ? scope
-        : openings;
-    final playerStatus = scope != null && (scope.isLoading || scope.hasError)
-        ? scope
-        : players;
-    void retryScope() {
-      ref.invalidate(collectionFilteredContentsProvider(scopeKey));
+    final busy = scope != null && scope.isLoading;
+    final fresh = scope?.valueOrNull?.games;
+    if (fresh != null && !busy) _lastScope = fresh;
+    final games = scope == null ? null : (busy ? _lastScope : fresh);
+    final words = query.text.trim().toLowerCase();
+    final shown = <CollectionPlayer>[];
+    final ranks = <int>[];
+    for (var i = 0; i < full.length; i++) {
+      final player = full[i];
+      final named =
+          words.isEmpty ||
+          '${player.title ?? ''} ${player.name} ${player.fed ?? ''}'
+              .toLowerCase()
+              .contains(words);
+      final plays =
+          games == null ||
+          games.any(
+            (game) =>
+                game.card.involves(player.key) ||
+                player.aliasKeys.any(game.card.involves),
+          );
+      if (named && plays) {
+        shown.add(player);
+        ranks.add(i + 1);
+      }
     }
-
-    return CustomScrollView(
-      key: const ValueKey('book_search_results'),
-      slivers: [
-        SliverToBoxAdapter(child: heading('Openings', openingItems.length)),
-        if (openingItems.isEmpty)
-          SliverToBoxAdapter(
-            child: status(openingStatus, 'No openings match this search.', () {
-              ref.invalidate(collectionOpeningsProvider(slug));
-              retryScope();
-            }),
-          ),
-        SliverList.builder(
-          itemCount: openingItems.length,
-          itemBuilder: (_, index) {
-            final item = openingItems[index];
-            return Padding(
-              padding: EdgeInsets.fromLTRB(16.sp, 0, 16.sp, 8.sp),
-              child: OpeningEventCard(
-                key: ValueKey('book_search_opening_${item.eco}'),
-                name: collectionOpeningName(item),
-                eco: item.eco,
-                fen: item.fen,
-                gameCount: item.gameCount,
-                useEventImageFrame: true,
-                onTap: () => onOpening(item),
-              ),
-            );
-          },
+    if (!busy) _place.settle(context);
+    return EventViewSearchList(
+      busy: busy,
+      child: _PlayersPage(
+        players: shown,
+        ranks: ranks,
+        numbered: true,
+        noMatches: _SearchNoHits(
+          key: const ValueKey('collection_players_no_matches'),
+          query: query.text,
+          subject: 'players',
+          filtered: query.text.trim().isEmpty,
+          onClear: widget.onClear,
         ),
-        SliverToBoxAdapter(child: heading('Games', ordered.length)),
-        if (ordered.isEmpty)
-          SliverToBoxAdapter(
-            child: status(
-              games,
-              'No games match this search.',
-              () => ref.invalidate(collectionFilteredContentsProvider(gameKey)),
-            ),
-          ),
-        SliverList.builder(
-          itemCount: (ordered.length / perRow).ceil(),
-          itemBuilder: (_, index) => Padding(
-            padding: EdgeInsets.only(bottom: 12.sp),
-            child: DiscoveryGameList(
-              games: ordered,
-              start: index * perRow,
-              limit: perRow,
-              viewMode: viewMode,
-              streamEnabled: false,
-              onOpen: (_, local) => onGame(ordered, local),
-              menuActionsFor: (_, local) =>
-                  _collectionGameActions(() => onGame(ordered, local)),
-            ),
-          ),
-        ),
-        SliverToBoxAdapter(child: heading('Players', playerItems.length)),
-        if (playerItems.isEmpty)
-          SliverToBoxAdapter(
-            child: status(playerStatus, 'No players match this search.', () {
-              ref.invalidate(collectionPlayersProvider(slug));
-              retryScope();
-            }),
-          ),
-        SliverList.builder(
-          itemCount: playerItems.length,
-          itemBuilder: (_, index) => Padding(
-            padding: EdgeInsets.fromLTRB(16.sp, 0, 16.sp, 8.sp),
-            child: _CollectionPlayerRow(
-              player: playerItems[index],
-              rank: index + 1,
-              onPick: onPlayer,
-            ),
-          ),
-        ),
-        SliverToBoxAdapter(
-          child: SizedBox(
-            height: 24.sp + MediaQuery.viewPaddingOf(context).bottom,
-          ),
-        ),
-      ],
+        onPick: widget.onPick,
+      ),
     );
   }
 }
 
+/// A collection page's search: the words typed in its header's field (held
+/// by [mode], which the shell's search mode runs) and the filters, as one
+/// query the lists under it read.
 class _CollectionGamesSearchState extends ChangeNotifier {
-  final controller = TextEditingController();
-  final focus = FocusNode();
-  Timer? _debounce;
+  final SearchModeController mode = SearchModeController();
   CollectionSearchQuery query = const CollectionSearchQuery();
 
   void setQuery(CollectionSearchQuery value) {
@@ -2142,56 +2097,50 @@ class _CollectionGamesSearchState extends ChangeNotifier {
     notifyListeners();
   }
 
-  void changed(String text) {
-    _debounce?.cancel();
-    _debounce = Timer(
-      const Duration(milliseconds: 200),
-      () => setQuery(query.withText(text)),
-    );
+  /// The words once typing settles; '' as the field empties.
+  void typed(String text) => setQuery(query.withText(text));
+
+  /// Every keystroke: an emptied field empties the query at once, words
+  /// the filter sheet took before the typing pause ended included.
+  void edited(String text) {
+    if (text.trim().isEmpty) typed('');
   }
 
-  void flush() {
-    _debounce?.cancel();
-    setQuery(query.withText(controller.text));
-  }
+  /// The search closed: the words go, the filters stay (counted on their
+  /// glyph).
+  void closed() => typed('');
 
-  void clear() {
-    _debounce?.cancel();
-    controller.clear();
-    focus.unfocus();
-    setQuery(query.withText(''));
+  /// Words narrow the list, so its no-hits line offers to clear them
+  /// rather than the filters.
+  bool get hasWords => query.text.trim().isNotEmpty;
+
+  /// The no-hits line's way back: the words when there are any (the field
+  /// empties, and the list hears it as typed), else the filters.
+  void clearNarrowing() {
+    if (hasWords) {
+      mode.text.clear();
+      // A field emptied while the search is closed reaches no listener.
+      typed('');
+      return;
+    }
+    setQuery(const CollectionSearchQuery());
   }
 
   /// The filters on, counting an opening the page was opened on as one.
   int filterBadgeCount(CollectionOpening? opening) =>
       query.filterCount + (query.eco.isEmpty && opening != null ? 1 : 0);
 
-  @override
-  void dispose() {
-    _debounce?.cancel();
-    controller.dispose();
-    focus.dispose();
-    super.dispose();
-  }
-}
-
-class _CollectionGamesSearchBar extends StatelessWidget {
-  const _CollectionGamesSearchBar({
-    required this.state,
-    this.opening,
-    this.onClearOpening,
-    this.hintText = 'Search collection games',
-  });
-  final String hintText;
-  final _CollectionGamesSearchState state;
-  final CollectionOpening? opening;
-  final VoidCallback? onClearOpening;
-
-  Future<void> _filters(BuildContext context) async {
-    state.focus.unfocus();
-    state.flush();
+  /// The filter sheet over what is searched now: the words typed so far
+  /// (not once the typing pause ends) and the [opening] the page opened
+  /// on, which [onClearOpening] lets go of once another is picked.
+  Future<void> openFilters(
+    BuildContext context, {
+    CollectionOpening? opening,
+    VoidCallback? onClearOpening,
+  }) async {
+    mode.focusNode.unfocus();
+    typed(mode.query);
     final incomingEco = opening?.eco ?? '';
-    final query = state.query;
     final current = query.eco.isEmpty && incomingEco.isNotEmpty
         ? CollectionSearchQuery(
             text: query.text,
@@ -2209,31 +2158,15 @@ class _CollectionGamesSearchBar extends StatelessWidget {
       if (incomingEco.isNotEmpty && result.eco != incomingEco) {
         onClearOpening?.call();
       }
-      state.setQuery(result);
+      setQuery(result);
     }
   }
 
   @override
-  Widget build(BuildContext context) => AnimatedBuilder(
-    animation: state,
-    builder: (context, _) => EventSearchBarFrame(
-      // In the page's search header, whose row sets the spacing: slim, and
-      // with no gutter of its own.
-      compact: true,
-      child: SimpleSearchBar(
-        controller: state.controller,
-        compactFilter: true,
-        focusNode: state.focus,
-        hintText: hintText,
-        textFieldKey: const ValueKey('collection_games_search'),
-        filterButtonKey: const ValueKey('collection_games_filters'),
-        filterBadgeCount: state.filterBadgeCount(opening),
-        onChanged: state.changed,
-        onOpenFilter: () => _filters(context),
-        onCloseTap: state.clear,
-      ),
-    ),
-  );
+  void dispose() {
+    mode.dispose();
+    super.dispose();
+  }
 }
 
 class _GamesPage extends ConsumerStatefulWidget {
@@ -2272,10 +2205,22 @@ class _GamesPage extends ConsumerStatefulWidget {
 
 class _GamesPageState extends ConsumerState<_GamesPage>
     with AutomaticKeepAliveClientMixin {
+  /// Sections the reader folded.
   final Set<String> _collapsed = {};
+
+  /// Sections folded while words are searched: every one opens as a search
+  /// starts, so its hits are in view, and the reader's own folds come back
+  /// once the words are gone.
+  final Set<String> _searchCollapsed = {};
   String _selected = 'all';
   _CollectionGamesSearchState get _searchState => widget.searchState;
   CollectionSearchQuery get _query => _searchState.query;
+  bool get _searchingWords => _query.text.trim().isNotEmpty;
+  Set<String> get _folds => _searchingWords ? _searchCollapsed : _collapsed;
+
+  /// The last list drawn, kept on screen while the next query loads.
+  CollectionContents? _shown;
+  final EventViewSearchPlace _place = EventViewSearchPlace();
 
   @override
   void initState() {
@@ -2284,12 +2229,9 @@ class _GamesPageState extends ConsumerState<_GamesPage>
   }
 
   void _queryChanged() {
+    if (!_searchingWords) _searchCollapsed.clear();
+    _place.queryChanged(context, _query.text);
     setState(() {});
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      final scroll = PrimaryScrollController.maybeOf(context);
-      if (scroll != null && scroll.hasClients) scroll.jumpTo(0);
-    });
   }
 
   @override
@@ -2328,26 +2270,59 @@ class _GamesPageState extends ConsumerState<_GamesPage>
         : null;
     // The search is typed in the screen's search header; the list is all
     // this page draws.
-    if (filtered == null) return _body(widget.contents);
-    return filtered.when(
-      skipLoadingOnReload: false,
-      data: _body,
-      loading: () => const _CardsSkeleton(),
-      error: (error, _) => _Notice(
-        text: _collectionErrorText(error, fallback: "Couldn't load the games."),
-        actionLabel: 'Try again',
-        onAction: () => ref.invalidate(collectionFilteredContentsProvider(key)),
-      ),
-    );
+    if (filtered == null) return _show(widget.contents);
+    final data = filtered.valueOrNull;
+    if (!filtered.isLoading) {
+      if (filtered.hasError) {
+        return EventViewSearchList(
+          busy: false,
+          child: _Notice(
+            text: _collectionErrorText(
+              filtered.error,
+              fallback: "Couldn't load the games.",
+            ),
+            actionLabel: 'Try again',
+            onAction: () =>
+                ref.invalidate(collectionFilteredContentsProvider(key)),
+          ),
+        );
+      }
+      if (data != null) return _show(data);
+    }
+    // The next query is on its way: the last list stays where it is, the
+    // line along its top says so. Only a first load has nothing to keep.
+    final last = _shown;
+    if (last == null) return const _CardsSkeleton();
+    return EventViewSearchList(busy: true, child: _body(last));
   }
+
+  /// [contents], the answer to the query asked: drawn, kept for the next
+  /// query to load over, and the list put in its place for it.
+  Widget _show(CollectionContents contents) {
+    _shown = contents;
+    _place.settle(context);
+    return EventViewSearchList(busy: false, child: _body(contents));
+  }
+
+  /// The space after the last row, clear of the home indicator. The list's
+  /// last child keeps it clear of the floating search button
+  /// ([EventViewSearchButtonGap]).
+  double _listEnd(BuildContext context) =>
+      24.sp + MediaQuery.viewPaddingOf(context).bottom;
 
   Widget _body(CollectionContents contents) {
     final opening = widget.opening;
+    if (contents.games.isEmpty && _query.isActive) {
+      return _SearchNoHits(
+        key: const ValueKey('collection_games_no_matches'),
+        query: _query.text,
+        filtered: !_searchState.hasWords,
+        onClear: _searchState.clearNarrowing,
+      );
+    }
     if (contents.games.isEmpty) {
       return _Notice(
-        text: _query.isActive
-            ? 'No games match this search.'
-            : opening == null
+        text: opening == null
             ? 'No games in this collection yet.'
             : 'No games study ${opening.eco} in this collection yet.',
         actionLabel: opening == null || widget.onClearOpening == null
@@ -2364,6 +2339,8 @@ class _GamesPageState extends ConsumerState<_GamesPage>
   /// One sequence for both the list and board previous/next: the latest game
   /// first, or the server's order once the reader picks a sort.
   Widget _flatBody(CollectionContents contents) {
+    // Hits keep the list's own order, so a search reads as the same list
+    // narrowed: newest first, or the server's once the reader picks a sort.
     final games = _query.sort == 'default'
         ? collectionGamesNewestFirst(contents.games)
         : contents.games;
@@ -2372,14 +2349,13 @@ class _GamesPageState extends ConsumerState<_GamesPage>
     final opening = widget.opening;
     final showOpeningLine = opening != null && widget.onClearOpening != null;
     final lead = showOpeningLine ? 1 : 0;
+    final count = lead + (ordered.length / perRow).ceil();
     return ListView.builder(
       key: const PageStorageKey('collection_games'),
-      padding: EdgeInsets.only(
-        top: 12.sp,
-        bottom: 24.sp + MediaQuery.viewPaddingOf(context).bottom,
-      ),
-      itemCount: lead + (ordered.length / perRow).ceil(),
+      padding: EdgeInsets.only(top: 12.sp, bottom: _listEnd(context)),
+      itemCount: count + 1,
       itemBuilder: (context, index) {
+        if (index == count) return const EventViewSearchButtonGap();
         if (showOpeningLine && index == 0) {
           return _PlayerLine(
             name: '${opening.eco} · ${opening.name ?? 'Opening'}',
@@ -2451,7 +2427,7 @@ class _GamesPageState extends ConsumerState<_GamesPage>
         continue;
       }
       rows.add((group: index, start: null));
-      if (_collapsed.contains(section?.id)) {
+      if (_folds.contains(section?.id)) {
         if (section?.kind == CollectionSectionKind.part) {
           hiddenParents.add(section!.id);
         }
@@ -2461,14 +2437,13 @@ class _GamesPageState extends ConsumerState<_GamesPage>
         rows.add((group: index, start: start));
       }
     }
+    final count = lead + (selectedGroups.isEmpty ? 1 : rows.length);
     return ListView.builder(
       key: const PageStorageKey('collection_games'),
-      padding: EdgeInsets.only(
-        top: 12.sp,
-        bottom: 24.sp + MediaQuery.viewPaddingOf(context).bottom,
-      ),
-      itemCount: lead + (selectedGroups.isEmpty ? 1 : rows.length),
+      padding: EdgeInsets.only(top: 12.sp, bottom: _listEnd(context)),
+      itemCount: count + 1,
       itemBuilder: (context, i) {
+        if (i == count) return const EventViewSearchButtonGap();
         if (widget.showSelector && i == 0) {
           return Padding(
             padding: EdgeInsets.fromLTRB(_headerInset, 0, _headerInset, 8.sp),
@@ -2489,13 +2464,13 @@ class _GamesPageState extends ConsumerState<_GamesPage>
                 ],
                 onChanged: (id) => setState(() {
                   _selected = id;
-                  _collapsed.remove(id);
+                  _folds.remove(id);
                   final parent = groups
                       .where((g) => g.section?.id == id)
                       .firstOrNull
                       ?.section
                       ?.parentId;
-                  if (parent != null) _collapsed.remove(parent);
+                  if (parent != null) _folds.remove(parent);
                 }),
               ),
             ),
@@ -2514,13 +2489,17 @@ class _GamesPageState extends ConsumerState<_GamesPage>
           return _PlayerLine(name: picked.name, onClear: widget.onClearPlayer);
         }
         if (selectedGroups.isEmpty) {
+          if (_query.isActive) {
+            return SearchNoMatches(
+              key: const ValueKey('collection_games_no_matches'),
+              query: _query.text,
+              filtered: !_searchState.hasWords,
+              onClear: _searchState.clearNarrowing,
+            );
+          }
           return Padding(
             padding: EdgeInsets.all(24.sp),
-            child: Text(
-              _query.isActive
-                  ? 'No games match this search.'
-                  : 'No games in this chapter or round.',
-            ),
+            child: const Text('No games in this chapter or round.'),
           );
         }
         final row = rows[i - lead];
@@ -2528,7 +2507,7 @@ class _GamesPageState extends ConsumerState<_GamesPage>
         final start = row.start;
         if (start == null) {
           final section = group.section;
-          final expanded = !_collapsed.contains(section?.id);
+          final expanded = !_folds.contains(section?.id);
           return Padding(
             padding: EdgeInsets.fromLTRB(
               16.sp,
@@ -2556,8 +2535,8 @@ class _GamesPageState extends ConsumerState<_GamesPage>
                       : DateFormat('d MMM yyyy').format(section!.startsOn!),
                   isExpanded: expanded,
                   onToggle: () => setState(() {
-                    if (!_collapsed.add(section?.id ?? 'unsorted')) {
-                      _collapsed.remove(section?.id ?? 'unsorted');
+                    if (!_folds.add(section?.id ?? 'unsorted')) {
+                      _folds.remove(section?.id ?? 'unsorted');
                     }
                   }),
                 ),
@@ -2680,17 +2659,27 @@ class _PlayersPage extends StatelessWidget {
     required this.players,
     required this.onPick,
     this.numbered = false,
+    this.ranks,
+    this.noMatches,
   });
 
   final bool numbered;
 
   final List<CollectionPlayer> players;
+
+  /// Each player's rank when [numbered], for a list narrowed from the full
+  /// one (a search): their place in that. Null counts from one.
+  final List<int>? ranks;
+
+  /// Shown instead of the empty list's notice when a search left no player.
+  final Widget? noMatches;
   final ValueChanged<CollectionPlayer> onPick;
 
   @override
   Widget build(BuildContext context) {
     if (players.isEmpty) {
-      return const _Notice(text: 'No players in this collection yet.');
+      return noMatches ??
+          const _Notice(text: 'No players in this collection yet.');
     }
     return ListView.separated(
       padding: EdgeInsets.fromLTRB(
@@ -2699,14 +2688,20 @@ class _PlayersPage extends StatelessWidget {
         16.sp,
         24.sp + MediaQuery.viewPaddingOf(context).bottom,
       ),
-      itemCount: players.length,
-      separatorBuilder: (_, __) => SizedBox(height: 8.sp),
-      itemBuilder: (context, i) => _CollectionPlayerRow(
-        key: ValueKey<String>('collection_player_${players[i].key}'),
-        player: players[i],
-        rank: numbered ? i + 1 : null,
-        onPick: onPick,
-      ),
+      // Last, the room the floating search button needs while it floats
+      // over this tab.
+      itemCount: players.length + 1,
+      separatorBuilder: (_, i) => i < players.length - 1
+          ? SizedBox(height: 8.sp)
+          : const SizedBox.shrink(),
+      itemBuilder: (context, i) => i == players.length
+          ? const EventViewSearchButtonGap()
+          : _CollectionPlayerRow(
+              key: ValueKey<String>('collection_player_${players[i].key}'),
+              player: players[i],
+              rank: numbered ? (ranks?[i] ?? i + 1) : null,
+              onPick: onPick,
+            ),
     );
   }
 }
@@ -2847,6 +2842,39 @@ class _CollectionGameMark extends StatelessWidget {
       ),
     );
   }
+}
+
+/// A search (or its filters) that leaves a tab's list empty: the one
+/// no-hits line every searched list shows ([SearchNoMatches]), on the
+/// list's gutter where its first row would be. It stays a scrollable list,
+/// so the pull and the header's scroll-away keep working over it.
+class _SearchNoHits extends StatelessWidget {
+  const _SearchNoHits({
+    super.key,
+    required this.query,
+    this.subject = 'games',
+    this.filtered = false,
+    this.onClear,
+  });
+
+  final String query;
+  final String subject;
+  final bool filtered;
+  final VoidCallback? onClear;
+
+  @override
+  Widget build(BuildContext context) => ListView(
+    physics: const AlwaysScrollableScrollPhysics(),
+    padding: EdgeInsets.zero,
+    children: [
+      SearchNoMatches(
+        query: query,
+        subject: subject,
+        filtered: filtered,
+        onClear: onClear,
+      ),
+    ],
+  );
 }
 
 class _Notice extends StatelessWidget {

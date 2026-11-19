@@ -60,7 +60,7 @@ final SpringMotion _kFollow = _spring(520, 38);
 /// One tile in a My Space rail, with its whole gesture vocabulary:
 ///
 /// * tap opens it,
-/// * press scales it to 0.97,
+/// * press scales it to 0.96, as every other card and tile does,
 /// * grab and slide sideways lifts it to 1.04 and carries it to a new place;
 ///   its neighbours make room as it goes and it springs into the slot it is
 ///   dropped on (in the "See all" grid, up and down too once held, or at
@@ -351,7 +351,7 @@ class _SpaceTileState extends State<SpaceTile>
     _pressTimer?.cancel();
     _pressTimer = Timer(const Duration(milliseconds: 70), () {
       if (_pressed && !_live && !_menuOpen && !_flying && !_dragging) {
-        _to('s', 0.97, initial: 1);
+        _to('s', 0.96, initial: 1);
       }
     });
   }

@@ -24,28 +24,30 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 /// Maximum number of player cards to display
 const int _maxPlayerCards = 4;
 
-/// Up to [_maxPlayerCards] distinct players from [results], in the search's
-/// own order (relevance, then Elo).
+/// Up to [limit] (by default [_maxPlayerCards]) distinct players from
+/// [results], in the search's own order (relevance, then Elo).
 ///
 /// Taken from the results the screen is already showing, never from a shared
 /// query: Home and Events each search independently, so cards read off a
 /// global query showed the other tab's players (or none at all on Home).
-List<SearchPlayer> topSearchedPlayers(EnhancedSearchResult results) {
+List<SearchPlayer> topSearchedPlayers(
+  EnhancedSearchResult results, {
+  int limit = _maxPlayerCards,
+}) {
   // Different people with the same display name must remain distinct.
   final seen = <String>{};
   final uniquePlayers = <SearchPlayer>[];
   for (final result in results.playerResults) {
     final player = result.player;
     if (player == null) continue;
-    final identity =
-        player.fideId != null && player.fideId! > 0
-            ? 'fide:${player.fideId}'
-            : (player.memorialSourceIdentity?.trim().isNotEmpty ?? false)
-            ? 'memorial:${player.memorialSourceIdentity!.trim().toLowerCase()}'
-            : 'name:${player.name.toLowerCase().trim()}';
+    final identity = player.fideId != null && player.fideId! > 0
+        ? 'fide:${player.fideId}'
+        : (player.memorialSourceIdentity?.trim().isNotEmpty ?? false)
+        ? 'memorial:${player.memorialSourceIdentity!.trim().toLowerCase()}'
+        : 'name:${player.name.toLowerCase().trim()}';
     if (seen.add(identity)) {
       uniquePlayers.add(player);
-      if (uniquePlayers.length >= _maxPlayerCards) break;
+      if (uniquePlayers.length >= limit) break;
     }
   }
   return uniquePlayers;
@@ -54,10 +56,30 @@ List<SearchPlayer> topSearchedPlayers(EnhancedSearchResult results) {
 /// Player search cards displayed at the top of search results.
 /// Shows up to 4 player cards in a grid layout with profile photos and country flags.
 class PlayerSearchCards extends StatelessWidget {
-  const PlayerSearchCards({super.key, required this.players});
+  const PlayerSearchCards({
+    super.key,
+    required this.players,
+    this.onOpen,
+    this.animateIn = true,
+    this.bottomPadding,
+  });
 
   /// From [topSearchedPlayers] on the results being shown.
   final List<SearchPlayer> players;
+
+  /// Under the cards; 16 by default, the Events page's gap to its list. A
+  /// page that spaces its own sections passes 0.
+  final double? bottomPadding;
+
+  /// Opens a card's player in place of the profile push here: the card
+  /// still gives its own tap haptic, then hands the player over (the Search
+  /// tab records the pick, then opens the same profile). Its long-press
+  /// Open row runs the same path.
+  final ValueChanged<SearchPlayer>? onOpen;
+
+  /// The Events page's entrance (a short fade and slide in). Off, the cards
+  /// are fully there on their first frame and never wait on an animation.
+  final bool animateIn;
 
   @override
   Widget build(BuildContext context) {
@@ -65,29 +87,30 @@ class PlayerSearchCards extends StatelessWidget {
       return const SizedBox.shrink();
     }
 
-    return Padding(
-      padding: EdgeInsets.only(bottom: 16.sp),
+    final grid = Padding(
+      padding: EdgeInsets.only(bottom: bottomPadding ?? 16.sp),
       child: _buildPlayerGrid(players),
-    ).animate().fadeIn(duration: 300.ms).slideY(begin: -0.05, end: 0);
+    );
+    if (!animateIn) return grid;
+    return grid.animate().fadeIn(duration: 300.ms).slideY(begin: -0.05, end: 0);
   }
+
+  Widget _card(SearchPlayer player, {required bool isCompact}) =>
+      _PlayerSearchCard(player: player, isCompact: isCompact, onOpen: onOpen);
 
   Widget _buildPlayerGrid(List<SearchPlayer> players) {
     if (players.length == 1) {
       // Single player: full-width card
-      return _PlayerSearchCard(player: players.first, isCompact: false);
+      return _card(players.first, isCompact: false);
     }
 
     if (players.length == 2) {
       // Two players: single row
       return Row(
         children: [
-          Expanded(
-            child: _PlayerSearchCard(player: players[0], isCompact: true),
-          ),
+          Expanded(child: _card(players[0], isCompact: true)),
           SizedBox(width: 12.sp),
-          Expanded(
-            child: _PlayerSearchCard(player: players[1], isCompact: true),
-          ),
+          Expanded(child: _card(players[1], isCompact: true)),
         ],
       );
     }
@@ -97,26 +120,18 @@ class PlayerSearchCards extends StatelessWidget {
       children: [
         Row(
           children: [
-            Expanded(
-              child: _PlayerSearchCard(player: players[0], isCompact: true),
-            ),
+            Expanded(child: _card(players[0], isCompact: true)),
             SizedBox(width: 12.sp),
-            Expanded(
-              child: _PlayerSearchCard(player: players[1], isCompact: true),
-            ),
+            Expanded(child: _card(players[1], isCompact: true)),
           ],
         ),
         SizedBox(height: 12.sp),
         Row(
           children: [
-            Expanded(
-              child: _PlayerSearchCard(player: players[2], isCompact: true),
-            ),
+            Expanded(child: _card(players[2], isCompact: true)),
             SizedBox(width: 12.sp),
             if (players.length > 3)
-              Expanded(
-                child: _PlayerSearchCard(player: players[3], isCompact: true),
-              )
+              Expanded(child: _card(players[3], isCompact: true))
             else
               const Expanded(child: SizedBox()), // Empty space for 3 players
           ],
@@ -127,29 +142,38 @@ class PlayerSearchCards extends StatelessWidget {
 }
 
 class _PlayerSearchCard extends ConsumerWidget {
-  const _PlayerSearchCard({required this.player, this.isCompact = false});
+  const _PlayerSearchCard({
+    required this.player,
+    this.isCompact = false,
+    this.onOpen,
+  });
 
   final SearchPlayer player;
   final bool isCompact;
+  final ValueChanged<SearchPlayer>? onOpen;
 
   void _navigateToProfile(BuildContext context) {
     // Navigate to player profile - works with or without fideId
     // Players without fideId will have games fetched by name instead
     HapticFeedbackService.buttonPress();
+    final open = onOpen;
+    if (open != null) {
+      open(player);
+      return;
+    }
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder:
-            (_) => PlayerProfileScreen(
-              fideId: player.fideId,
-              playerName: player.name,
-              title: player.title,
-              federation: player.fed,
-              rating: player.rating,
-              gamebasePlayerId: player.gamebasePlayerId,
-              memorialSourceIdentity: player.memorialSourceIdentity,
-              memorialRouteId: player.memorialRouteId,
-            ),
+        builder: (_) => PlayerProfileScreen(
+          fideId: player.fideId,
+          playerName: player.name,
+          title: player.title,
+          federation: player.fed,
+          rating: player.rating,
+          gamebasePlayerId: player.gamebasePlayerId,
+          memorialSourceIdentity: player.memorialSourceIdentity,
+          memorialRouteId: player.memorialRouteId,
+        ),
       ),
     );
   }
@@ -161,22 +185,21 @@ class _PlayerSearchCard extends ConsumerWidget {
     // menu's), so the pressed card stays legible above the blur.
     return CardContextMenu(
       onPreviewTap: () => _navigateToProfile(context),
-      actions:
-          (cardContext) => playerMenuActions(
-            cardContext,
-            ref,
-            playerName: player.name,
-            fideId: player.fideId,
-            title: player.title,
-            federation: player.fed,
-            rating: player.rating,
-            gamebasePlayerId: player.gamebasePlayerId,
-            memorialSourceIdentity: player.memorialSourceIdentity,
-            memorialRouteId: player.memorialRouteId,
-            onOpen: () {
-              if (context.mounted) _navigateToProfile(context);
-            },
-          ),
+      actions: (cardContext) => playerMenuActions(
+        cardContext,
+        ref,
+        playerName: player.name,
+        fideId: player.fideId,
+        title: player.title,
+        federation: player.fed,
+        rating: player.rating,
+        gamebasePlayerId: player.gamebasePlayerId,
+        memorialSourceIdentity: player.memorialSourceIdentity,
+        memorialRouteId: player.memorialRouteId,
+        onOpen: () {
+          if (context.mounted) _navigateToProfile(context);
+        },
+      ),
       child: _buildCard(context),
     );
   }
@@ -268,13 +291,14 @@ class _PlayerSearchCard extends ConsumerWidget {
                     // Player name
                     Text(
                       _formatPlayerName(player.name),
-                      style: (isCompact
-                              ? AppTypography.textMdBold
-                              : AppTypography.textLgBold)
-                          .copyWith(
-                            color: context.colors.textPrimary,
-                            letterSpacing: 0.3,
-                          ),
+                      style:
+                          (isCompact
+                                  ? AppTypography.textMdBold
+                                  : AppTypography.textLgBold)
+                              .copyWith(
+                                color: context.colors.textPrimary,
+                                letterSpacing: 0.3,
+                              ),
                       maxLines: isCompact ? 1 : 2,
                       overflow: TextOverflow.ellipsis,
                     ),
@@ -379,19 +403,20 @@ class _FlagBackground extends StatelessWidget {
 }
 
 /// Provider to cache player photo URLs
-final _searchPlayerPhotoUrlProvider = FutureProvider.family.autoDispose<
-  String?,
-  ({int? fideId, String playerName, String? memorialSourceIdentity})
->((ref, request) async {
-  final memorialUrl = memorialPlayerPhotoUrl(
-    playerName: request.playerName,
-    sourceIdentity: request.memorialSourceIdentity,
-  );
-  final fideId = request.fideId;
-  if (fideId == null) return memorialUrl;
-  return await FidePhotoService.getPhotoUrlOrNull(fideId.toString()) ??
-      memorialUrl;
-});
+final _searchPlayerPhotoUrlProvider = FutureProvider.family
+    .autoDispose<
+      String?,
+      ({int? fideId, String playerName, String? memorialSourceIdentity})
+    >((ref, request) async {
+      final memorialUrl = memorialPlayerPhotoUrl(
+        playerName: request.playerName,
+        sourceIdentity: request.memorialSourceIdentity,
+      );
+      final fideId = request.fideId;
+      if (fideId == null) return memorialUrl;
+      return await FidePhotoService.getPhotoUrlOrNull(fideId.toString()) ??
+          memorialUrl;
+    });
 
 /// Player photo overlay positioned on the right side of the card
 class _PlayerPhotoOverlay extends ConsumerWidget {
@@ -420,24 +445,23 @@ class _PlayerPhotoOverlay extends ConsumerWidget {
           return AspectRatio(
             aspectRatio: 0.8,
             child: ShaderMask(
-              shaderCallback:
-                  (bounds) => LinearGradient(
-                    begin: Alignment.centerRight,
-                    end: Alignment.centerLeft,
-                    colors: [
-                      Colors.white,
-                      Colors.white.withValues(alpha: 0.85),
-                      Colors.white.withValues(alpha: 0.3),
-                      Colors.transparent,
-                    ],
-                    stops: const [0.0, 0.25, 0.55, 1.0],
-                  ).createShader(bounds),
+              shaderCallback: (bounds) => LinearGradient(
+                begin: Alignment.centerRight,
+                end: Alignment.centerLeft,
+                colors: [
+                  Colors.white,
+                  Colors.white.withValues(alpha: 0.85),
+                  Colors.white.withValues(alpha: 0.3),
+                  Colors.transparent,
+                ],
+                stops: const [0.0, 0.25, 0.55, 1.0],
+              ).createShader(bounds),
               blendMode: BlendMode.dstIn,
               child: CachedNetworkImage(
                 imageUrl: photoUrl,
                 fit: BoxFit.cover,
-                memCacheWidth:
-                    (200 * MediaQuery.devicePixelRatioOf(context)).toInt(),
+                memCacheWidth: (200 * MediaQuery.devicePixelRatioOf(context))
+                    .toInt(),
                 placeholder: (_, _) => _buildPlaceholder(context),
                 errorWidget: (_, _, _) => _buildPlaceholder(context),
               ),

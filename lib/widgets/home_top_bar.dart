@@ -8,17 +8,28 @@ import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/discovery_dot.dart';
 import 'package:chessever2/widgets/search/search_motion.dart';
+import 'package:chessever2/widgets/scroll_chrome.dart';
 import 'package:chessever2/widgets/user_avatar.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
-/// The one top bar every home tab (Events, Feed, For You, Library) wears.
+/// The one top bar every root (Home, Feed, Botvinnik, Search, Profile)
+/// wears, and the pages that borrow its geometry.
 ///
-/// Each tab owns only its content slot (a search field, a title) and its
-/// trailing controls. Everything they share is fixed here, so switching tabs
-/// never moves or resizes it: the inset from the status bar, the side
-/// gutter, the profile avatar (size, ring, tap target) and the gap after it.
+/// Each root owns only its content slot (its page tabs, a title, the search
+/// field) and its side controls. Everything they share is fixed here, so
+/// switching tabs never moves or resizes the bar, and the page under it
+/// always starts at the same line ([headerExtent]):
+///
+/// ```text
+///   status bar          viewPadding.top     stays put
+///   topGap              24.h                ┐
+///   row                 rowExtent           │ the band: steps away on
+///   bottomGap           12.h                ┘ scroll, and back
+///   page                from headerExtent
+///   first content       contentGap into the page's scroll
+/// ```
 ///
 /// Every value is Events' shipped bar, which is the reference.
 class HomeTopBarMetrics {
@@ -34,9 +45,40 @@ class HomeTopBarMetrics {
   static double get horizontalPadding =>
       ResponsiveHelper.adaptive(phone: 20.sp, tablet: 32.sp);
 
-  /// From the top of the screen to the top of the bar.
+  /// From the bottom of the status bar to the top of the bar's row.
+  static double get topGap => 24.h;
+
+  /// From the top of the screen to the top of the bar's row.
   static double topInset(BuildContext context) =>
-      MediaQuery.viewPaddingOf(context).top + 24.h;
+      MediaQuery.viewPaddingOf(context).top + topGap;
+
+  /// From the bottom of the bar's row to the top of the page under it.
+  static double get bottomGap => 12.h;
+
+  /// The row's height on every root: the taller of the search field at the
+  /// ambient text size ([fieldExtent]) and a control ([controlExtent]). The
+  /// row's content is centred on it, so every root's title, tabs and field
+  /// sit on one centre line.
+  static double rowExtent(BuildContext context) =>
+      math.max(fieldExtent(context), controlExtent);
+
+  /// The part of a root's bar that steps away on scroll: [topGap], the row
+  /// and [bottomGap]. The status bar's inset above it stays.
+  static double bandExtent(BuildContext context) =>
+      topGap + rowExtent(context) + bottomGap;
+
+  /// From the top of the screen to where every root's page starts: the
+  /// status bar's inset and the band.
+  static double headerExtent(BuildContext context) =>
+      MediaQuery.viewPaddingOf(context).top + bandExtent(context);
+
+  /// From the top of a root's page to its first content, as the page's
+  /// own scroll padding (so the content still scrolls up to the bar): the
+  /// lead-in Home's pages (My Space, Today, Discovery) open on, and Profile
+  /// and Search with them. One lead-in, so the first card lands on the same
+  /// line on every root. Feed is the exception by design: a post is one
+  /// framed page, composed by its own layout, not a list.
+  static double get contentGap => 16.sp;
 
   /// The search field at rest: `SimpleSearchBar`'s 4.sp vertical padding
   /// around Events' filter tile (8.sp padding, 20.h glyph).
@@ -85,11 +127,40 @@ class HomeTopBarMetrics {
   /// stops at. The search field's text is not chrome: it follows the system
   /// text size, and the row grows with it on every tab ([fieldExtent]).
   static const double maxTextScale = 1.4;
+
+  /// The one title voice: every root's name on its bar (Feed, Botvinnik,
+  /// Profile, Home's selected tab) and every pushed page's centred name
+  /// ([PageTitle]). Body ink, the medium size, bold. A page pushed from a
+  /// root keeps the root's voice, so moving between them never changes how
+  /// a page is named.
+  static TextStyle titleStyle(BuildContext context) => AppTypography
+      .textMdMedium
+      .copyWith(color: context.colors.textPrimary, fontWeight: FontWeight.w700);
 }
 
-/// Positions a home bar row: [HomeTopBarMetrics.topInset] below the top of
-/// the screen, [HomeTopBarMetrics.horizontalPadding] in from each side,
-/// centred at the tablet content width.
+/// A root's bar: the status bar's inset, then the band
+/// ([HomeTopBarMetrics.bandExtent]) holding [child] as the row, its content
+/// centred on [HomeTopBarMetrics.rowExtent], [HomeTopBarMetrics.
+/// horizontalPadding] in from each side, centred at the tablet content
+/// width. It ends exactly at [HomeTopBarMetrics.headerExtent], where the
+/// page under it starts, so a root needs nothing else:
+///
+/// ```dart
+/// Column(children: [
+///   HomeTopBarFrame(child: title, field or tabs),
+///   Expanded(child: page),
+/// ])
+/// ```
+///
+/// Under a [ScrollChromeScope] (a root in the home shell) the band steps
+/// away with the shell's chrome as the page scrolls, and back, folding up to
+/// the status bar and never into it. Inside a [CollapsingChrome] that the
+/// host already wraps it in, it leaves with that instead and folds nothing
+/// itself.
+///
+/// [statusBar] off is the older form for a host that keeps the status bar's
+/// inset (and any folding) itself: only [HomeTopBarMetrics.topGap] above the
+/// row, nothing under it, and the row as tall as its content.
 ///
 /// [trailingOpticalInset] pulls the right gutter in for a row whose last
 /// control is a glyph centred in a wider tap target, so the glyph's own edge
@@ -104,7 +175,16 @@ class HomeTopBarFrame extends StatelessWidget {
     required this.child,
     this.trailingOpticalInset = 0,
     this.statusBar = true,
-  });
+  }) : _band = true;
+
+  /// The bar as pages that are not roots placed it before the roots shared
+  /// one band ([HomeTopBar]): [HomeTopBarMetrics.topInset] above the row,
+  /// nothing under it, the row as tall as its content, never folding.
+  const HomeTopBarFrame._plain({
+    required this.child,
+    this.trailingOpticalInset = 0,
+  }) : statusBar = true,
+       _band = false;
 
   final Widget child;
   final double trailingOpticalInset;
@@ -113,30 +193,209 @@ class HomeTopBarFrame extends StatelessWidget {
   /// scrolls away folds up to the status bar, never into it.
   final bool statusBar;
 
+  /// The root's band: the status bar's strip, the row on its centre line,
+  /// the gap under it, folding with the shell's chrome.
+  final bool _band;
+
   @override
   Widget build(BuildContext context) {
     final side = HomeTopBarMetrics.horizontalPadding;
-    return _TapTargetScope(
-      child: Align(
-        alignment: Alignment.topCenter,
-        child: ConstrainedBox(
-          constraints: BoxConstraints(
-            maxWidth: ResponsiveHelper.contentMaxWidth,
-          ),
-          child: Padding(
-            padding: EdgeInsets.fromLTRB(
-              side,
-              statusBar
-                  ? HomeTopBarMetrics.topInset(context)
-                  : HomeTopBarMetrics.topInset(context) -
-                        MediaQuery.viewPaddingOf(context).top,
-              side - trailingOpticalInset,
-              0,
+    if (!_band) {
+      return _TapTargetScope(
+        child: Align(
+          alignment: Alignment.topCenter,
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxWidth: ResponsiveHelper.contentMaxWidth,
             ),
-            child: child,
+            child: Padding(
+              padding: EdgeInsets.fromLTRB(
+                side,
+                HomeTopBarMetrics.topInset(context),
+                side - trailingOpticalInset,
+                0,
+              ),
+              child: child,
+            ),
           ),
         ),
+      );
+    }
+    final Widget row = statusBar
+        ? ConstrainedBox(
+            constraints: BoxConstraints(
+              minHeight: HomeTopBarMetrics.rowExtent(context),
+            ),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: SizedBox(width: double.infinity, child: child),
+            ),
+          )
+        : child;
+    final Widget band = Align(
+      alignment: Alignment.topCenter,
+      child: ConstrainedBox(
+        constraints: BoxConstraints(maxWidth: ResponsiveHelper.contentMaxWidth),
+        child: Padding(
+          padding: EdgeInsets.fromLTRB(
+            side,
+            HomeTopBarMetrics.topGap,
+            side - trailingOpticalInset,
+            statusBar ? HomeTopBarMetrics.bottomGap : 0,
+          ),
+          child: row,
+        ),
       ),
+    );
+    if (!statusBar) return _TapTargetScope(child: band);
+    final chrome = ScrollChromeScope.maybeOf(context);
+    return _TapTargetScope(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          SizedBox(height: MediaQuery.viewPaddingOf(context).top),
+          if (chrome == null || CollapsingChrome.encloses(context))
+            band
+          else
+            CollapsingChrome(controller: chrome, child: band),
+        ],
+      ),
+    );
+  }
+}
+
+/// A root's title, in the one style every root's bar sets its name in
+/// (Feed, Botvinnik, Profile): Home's selected page tab, so the words on the
+/// bar read as one family as the reader moves between tabs. It stops growing
+/// at [HomeTopBarMetrics.maxTextScale], like the rest of the bar's chrome.
+class HomeTopBarTitle extends StatelessWidget {
+  const HomeTopBarTitle(this.title, {super.key});
+
+  final String title;
+
+  /// The title's type: [HomeTopBarMetrics.titleStyle].
+  static TextStyle style(BuildContext context) =>
+      HomeTopBarMetrics.titleStyle(context);
+
+  @override
+  Widget build(BuildContext context) {
+    return MediaQuery.withClampedTextScaling(
+      maxScaleFactor: HomeTopBarMetrics.maxTextScale,
+      child: Semantics(
+        header: true,
+        child: Text(
+          title,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          textAlign: TextAlign.center,
+          style: style(context),
+        ),
+      ),
+    );
+  }
+}
+
+/// A pushed page's name in the roots' title voice
+/// ([HomeTopBarMetrics.titleStyle]), with an optional bare [mark] before it:
+/// the same words, size and weight a root sets its name in, so a page
+/// pushed from a root is named the way the root is.
+///
+/// It is as wide as its words (and mark) and centres them in itself; the row
+/// it sits in centres it on the screen (a page's back row, or
+/// [HomeTopBarTitleRow]). Long names end in an ellipsis on one line, and the
+/// words stop growing at [HomeTopBarMetrics.maxTextScale] like the rest of
+/// the bar's chrome. Read as a heading.
+class PageTitle extends StatelessWidget {
+  const PageTitle(this.title, {super.key, this.mark});
+
+  final String title;
+
+  /// A destination's own glyph before the name, drawn bare (no tile behind
+  /// it) at [markSize] in the icon ink. Not read aloud: the name is.
+  final Widget? mark;
+
+  /// The mark's square.
+  static double get markSize => 22.sp;
+
+  /// The words' type: [HomeTopBarMetrics.titleStyle].
+  static TextStyle style(BuildContext context) =>
+      HomeTopBarMetrics.titleStyle(context);
+
+  @override
+  Widget build(BuildContext context) {
+    final words = Text(
+      title,
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+      textAlign: TextAlign.center,
+      style: style(context),
+    );
+    final glyph = mark;
+    return MediaQuery.withClampedTextScaling(
+      maxScaleFactor: HomeTopBarMetrics.maxTextScale,
+      child: Semantics(
+        header: true,
+        child: glyph == null
+            ? words
+            : Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  ExcludeSemantics(
+                    child: IconTheme(
+                      data: IconThemeData(
+                        size: markSize,
+                        color: context.colors.iconPrimary,
+                      ),
+                      child: SizedBox.square(dimension: markSize, child: glyph),
+                    ),
+                  ),
+                  SizedBox(width: 8.w),
+                  Flexible(child: words),
+                ],
+              ),
+      ),
+    );
+  }
+}
+
+/// A root's row with its [title] centred on the bar, whatever stands at
+/// either side: [leading] on the start gutter, [trailing] on the end one.
+/// The title is centred on the screen, not between the controls, so it sits
+/// in the same place on every root.
+class HomeTopBarTitleRow extends StatelessWidget {
+  const HomeTopBarTitleRow({
+    super.key,
+    required this.title,
+    this.leading,
+    this.trailing = const <Widget>[],
+  });
+
+  /// Usually a [HomeTopBarTitle], or a button around one.
+  final Widget title;
+  final Widget? leading;
+  final List<Widget> trailing;
+
+  /// Kept clear of the title on each side, for the controls: a 44pt target
+  /// and the gap after it.
+  static double get sideReserve => 56.w;
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      alignment: Alignment.center,
+      children: [
+        HomeTopBarRow(
+          showAvatar: false,
+          leading: leading,
+          content: const SizedBox.shrink(),
+          trailing: trailing,
+        ),
+        Padding(
+          padding: EdgeInsets.symmetric(horizontal: sideReserve),
+          child: Center(heightFactor: 1, child: title),
+        ),
+      ],
     );
   }
 }
@@ -305,10 +564,12 @@ class HomeTopBarRow extends StatelessWidget {
   }
 }
 
-/// A [HomeTopBarRow] in its [HomeTopBarFrame], for tabs whose bar is not the
-/// Events search bar. A null [onOpenSidebar] means there is no sidebar to
-/// open (the screen is outside the home shell), so no avatar is offered
-/// rather than a dead control.
+/// A [HomeTopBarRow] on the bar's inset and gutter, for a page that is not a
+/// root (the Library pushed from My Space): placed as such pages always
+/// were, under [HomeTopBarMetrics.topInset], with nothing added under the
+/// row and no folding. Roots wear [HomeTopBarFrame]. A null [onOpenSidebar]
+/// means there is no sidebar to open (the screen is outside the home shell),
+/// so no avatar is offered rather than a dead control.
 class HomeTopBar extends StatelessWidget {
   const HomeTopBar({
     super.key,
@@ -333,7 +594,7 @@ class HomeTopBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return HomeTopBarFrame(
+    return HomeTopBarFrame._plain(
       trailingOpticalInset: trailingOpticalInset,
       child: HomeTopBarRow(
         content: content,
@@ -391,13 +652,19 @@ class HomeTopBarBackButton extends StatelessWidget {
   }
 }
 
-/// The search field's surface in a home bar, at [lift] 0 (resting) to 1
-/// (focused).
+/// The app's one search field look, at [lift] 0 (resting) to 1 (focused):
+/// the Search tab's and Events' field in the home bar, the Library's, and
+/// every Games tab's search header (`EventSearchBarFrame`, which the search
+/// morph's glass lands on).
 ///
-/// Tonal elevation with a self-coloured edge: the fill steps a hair toward
-/// the ink and the stroke is that same surface lifted further, so focus reads
-/// as a lit lip rather than a drawn outline. Works in both themes because
-/// `textPrimary` flips.
+/// Tonal elevation with a self-coloured edge: the fill ([fillOf]) is the
+/// page's surface stepping a hair toward the ink, and the stroke ([edgeOf])
+/// is that same surface lifted further, so focus reads as a lit lip rather
+/// than a drawn outline. Works in both themes because `textPrimary` flips.
+///
+/// It stands at least [heightOf] tall (the home bar's field, its text
+/// following the system size), so a field with a filter glyph and one
+/// without are the same field; `SimpleSearchBar` centres its row in it.
 class HomeSearchFieldSurface extends StatelessWidget {
   const HomeSearchFieldSurface({
     super.key,
@@ -408,23 +675,50 @@ class HomeSearchFieldSurface extends StatelessWidget {
   final double lift;
   final Widget child;
 
+  /// The field's corners.
+  static double get radius => 12.br;
+
+  /// The field's height: [HomeTopBarMetrics.fieldExtent].
+  static double heightOf(BuildContext context) =>
+      HomeTopBarMetrics.fieldExtent(context);
+
+  /// The fill at [lift]: the page's surface, a hair toward the ink as the
+  /// field takes focus.
+  static Color fillOf(BuildContext context, double lift) {
+    final colors = context.colors;
+    return Color.lerp(
+      colors.surface,
+      colors.textPrimary,
+      0.04 * lift.clamp(0.0, 1.0),
+    )!;
+  }
+
+  /// The 1pt edge at [lift], drawn inside the field: the fill lifted
+  /// further. At rest it is the fill's own colour, so no line shows.
+  static Color edgeOf(BuildContext context, double lift) {
+    final t = lift.clamp(0.0, 1.0);
+    return Color.lerp(
+      fillOf(context, t),
+      context.colors.textPrimary,
+      0.16 * t,
+    )!;
+  }
+
   @override
   Widget build(BuildContext context) {
-    final t = lift.clamp(0.0, 1.0);
-    final colors = context.colors;
-    final fill = Color.lerp(colors.surface, colors.textPrimary, 0.04 * t)!;
     return DecoratedBox(
       key: const ValueKey('simple-search-field-surface'),
       decoration: BoxDecoration(
-        color: fill,
-        borderRadius: BorderRadius.circular(12.br),
-        border: Border.all(
-          color: Color.lerp(fill, colors.textPrimary, 0.16 * t)!,
-        ),
+        color: fillOf(context, lift),
+        borderRadius: BorderRadius.circular(radius),
+        border: Border.all(color: edgeOf(context, lift)),
       ),
       // DecoratedBox does not inset for its border, so the stroke costs no
       // layout and the field cannot jump by a pixel when it lights up.
-      child: child,
+      child: ConstrainedBox(
+        constraints: BoxConstraints(minHeight: heightOf(context)),
+        child: child,
+      ),
     );
   }
 }

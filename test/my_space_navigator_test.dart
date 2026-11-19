@@ -1,4 +1,31 @@
+import 'dart:async';
+
+import 'package:chessever2/repository/authentication/auth_repository.dart';
+import 'package:chessever2/repository/authentication/model/auth_state.dart';
+import 'package:chessever2/repository/supabase/group_broadcast/group_broadcast.dart';
+import 'package:chessever2/repository/supabase/group_broadcast/group_tour_repository.dart';
+import 'package:chessever2/repository/supabase/tour/tour.dart';
+import 'package:chessever2/repository/supabase/tour/tour_repository.dart';
+import 'package:chessever2/screens/for_you/open_for_you_event.dart'
+    show ForYouEventSource;
+import 'package:chessever2/screens/group_event/providers/group_event_screen_provider.dart'
+    show tournamentNavigationProvider, TournamentNavigationController;
+import 'package:chessever2/screens/group_event/providers/live_group_broadcast_id_provider.dart'
+    show liveGroupBroadcastIdsProvider;
+import 'package:chessever2/screens/player_profile/player_profile_data_source.dart';
+import 'package:chessever2/screens/player_profile/provider/player_profile_provider.dart'
+    show PlayerProfileEventCardRequest;
+import 'package:chessever2/screens/player_profile/widgets/player_profile_resolved_event_card.dart'
+    show playerProfileFallbackEventSpaceDraft;
+import 'package:chessever2/screens/tour_detail/provider/tour_detail_mode_provider.dart';
+import 'package:chessever2/screens/tour_detail/provider/tour_detail_repo_provider.dart';
+import 'package:chessever2/services/deep_link_service.dart';
+import 'package:chessever2/services/rewarded_premium/rewarded_access_provider.dart';
+import 'package:flutter/material.dart';
+import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:chessever2/screens/countrymen/countrymen_tab_screen.dart';
+import 'package:chessever2/screens/group_event/group_event_screen.dart'
+    show GroupEventCategory;
 import 'package:chessever2/screens/library/providers/library_folders_provider.dart'
     show kTwicBookId;
 import 'package:chessever2/screens/my_space/actions/space_share.dart';
@@ -12,7 +39,13 @@ import 'package:chessever2/widgets/event_card/event_context_menu.dart'
 import 'package:chessever2/widgets/space_shortcut_drafts.dart';
 import 'package:chessever2/widgets/search/search_overlay_widget.dart'
     show searchEventSpaceDraft;
+import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/widgets/paywall/past_event_access.dart'
+    show currentEventMembershipProvider, pastEventMembershipProvider;
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 SpaceShortcut _s(
   SpaceShortcutKind kind,
@@ -28,6 +61,310 @@ SpaceShortcut _s(
 );
 
 void main() {
+  // A free reader's past-event gate raises the real Premium prompt, which
+  // asks Supabase who is signed in (nobody: the sign-in step).
+  setUpAll(() async {
+    SharedPreferences.setMockInitialValues({});
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(
+          const MethodChannel('com.llfbandit.app_links/events'),
+          (_) async => null,
+        );
+    await Supabase.initialize(
+      url: 'https://fixture.invalid',
+      publishableKey: 'fixture-publishable-key',
+    );
+  });
+
+  group('a saved event opens as the Events lists open it', () {
+    final now = DateTime.now();
+    GroupBroadcast broadcast(DateTime start, DateTime end) => GroupBroadcast(
+      id: 'gb-1',
+      createdAt: start,
+      name: 'Norway Chess',
+      search: const [],
+      dateStart: start,
+      dateEnd: end,
+    );
+    final finished = broadcast(
+      now.subtract(const Duration(days: 40)),
+      now.subtract(const Duration(days: 30)),
+    );
+    final running = broadcast(
+      now.subtract(const Duration(days: 2)),
+      now.add(const Duration(days: 5)),
+    );
+    final upcoming = broadcast(
+      now.add(const Duration(days: 5)),
+      now.add(const Duration(days: 12)),
+    );
+
+    test('a finished event asks as a Past card does', () {
+      expect(
+        spaceEventOpenCategory(finished, const []),
+        GroupEventCategory.past,
+      );
+    });
+
+    test('only a live one opens as a Current card does', () {
+      expect(
+        spaceEventOpenCategory(running, const ['gb-1']),
+        GroupEventCategory.current,
+      );
+      // The live feed outranks finished dates, as on the card.
+      expect(
+        spaceEventOpenCategory(finished, const ['gb-1']),
+        GroupEventCategory.current,
+      );
+    });
+
+    test('a running or upcoming one asks as a search hit does: the server '
+        'decides Past, not the card\'s dates', () {
+      expect(
+        spaceEventOpenCategory(running, const []),
+        GroupEventCategory.search,
+      );
+      expect(
+        spaceEventOpenCategory(upcoming, const []),
+        GroupEventCategory.search,
+      );
+    });
+  });
+
+  group('a saved event opens from the broadcast its card holds', () {
+    final now = DateTime.now();
+    final norway = GroupBroadcast(
+      id: 'gb-1',
+      createdAt: now,
+      name: 'Norway Chess',
+      search: const [],
+      dateStart: now.subtract(const Duration(days: 2)),
+      dateEnd: now.add(const Duration(days: 5)),
+    );
+    final card = GroupEventCardModel.fromGroupBroadcast(norway, const []);
+
+    test('when the pin names that broadcast', () {
+      // The Events list card's own pin, and an older one naming its group.
+      expect(spaceEventInHand(eventSpaceDraft(card), [norway]), same(norway));
+      expect(
+        spaceEventInHand(
+          _s(
+            SpaceShortcutKind.event,
+            'tour-9',
+            params: {'groupBroadcastId': 'gb-1'},
+          ),
+          [norway],
+        ),
+        same(norway),
+      );
+    });
+
+    test('never for a pin saved on a category, nor one keyed by a tour id', () {
+      // Saved from inside the event, on its Women category.
+      expect(
+        spaceEventInHand(
+          _s(
+            SpaceShortcutKind.event,
+            'gb-1',
+            params: {'groupBroadcastId': 'gb-1', 'tourId': 'tour-9'},
+          ),
+          [norway],
+        ),
+        isNull,
+      );
+      // A player profile's fallback event card keys its pin by the tour.
+      final fallback = playerProfileFallbackEventSpaceDraft(
+        request: const PlayerProfileEventCardRequest(
+          dataSource: PlayerProfileDataSource.supabase,
+          tourId: 'tour-9',
+          tourName: 'Norway Chess Women',
+        ),
+        card: card,
+      );
+      expect(fallback.targetId, 'tour-9');
+      expect(spaceEventInHand(fallback, [norway]), isNull);
+    });
+
+    test('nor before the card has read its broadcast', () {
+      expect(spaceEventInHand(eventSpaceDraft(card), const []), isNull);
+    });
+  });
+
+  group('tapping a saved event', () {
+    final now = DateTime.now();
+    final running = GroupBroadcast(
+      id: 'gb-1',
+      createdAt: now,
+      name: 'Norway Chess',
+      search: const [],
+      dateStart: now.subtract(const Duration(days: 2)),
+      dateEnd: now.add(const Duration(days: 5)),
+    );
+    final finished = GroupBroadcast(
+      id: 'gb-2',
+      createdAt: now,
+      name: 'Tata Steel',
+      search: const [],
+      dateStart: now.subtract(const Duration(days: 40)),
+      dateEnd: now.subtract(const Duration(days: 30)),
+    );
+
+    testWidgets('a running event its card holds pushes from it at once, '
+        'logged from My Space', (tester) async {
+      final pin = eventSpaceDraft(
+        GroupEventCardModel.fromGroupBroadcast(running, const []),
+      );
+      final host = await _EventHost.pump(tester, [pin], [running]);
+      await host.open(tester, pin, known: [running, finished]);
+
+      final call = host.opens.single;
+      expect(call.id, 'gb-1');
+      // Gated as a search hit (Premium passes at once).
+      expect(call.category, GroupEventCategory.search);
+      expect(call.known, [same(running)]);
+      expect(call.source, ForYouEventSource.mySpace.analyticsLabel);
+      expect(call.source, 'forYouMySpace');
+      // Nothing asked of the network before the push.
+      expect(host.groups.requested, isEmpty);
+      expect(host.tours.requested, isEmpty);
+      expect(host.pushed, ['/tournament_detail_screen']);
+      expect(host.read(selectedBroadcastModelProvider), same(running));
+      expect(host.store.opened, [pin.id]);
+    });
+
+    testWidgets('a finished one asks as a Past card does', (tester) async {
+      final pin = eventSpaceDraft(
+        GroupEventCardModel.fromGroupBroadcast(finished, const []),
+      );
+      final host = await _EventHost.pump(tester, [pin], [finished]);
+      await host.open(tester, pin, known: [finished]);
+
+      expect(host.opens.single.category, GroupEventCategory.past);
+      expect(host.groups.requested, isEmpty);
+      expect(host.pushed, ['/tournament_detail_screen']);
+    });
+
+    testWidgets('a free reader is asked for Premium when the server lists the '
+        'event as past, though its dates say it is running', (tester) async {
+      final pin = eventSpaceDraft(
+        GroupEventCardModel.fromGroupBroadcast(running, const []),
+      );
+      final pastAsked = <String>[];
+      final host = await _EventHost.pump(
+        tester,
+        [pin],
+        [running],
+        premium: false,
+        overrides: [
+          pastEventMembershipProvider.overrideWith((_, id) async {
+            pastAsked.add(id);
+            return id == 'gb-1';
+          }),
+          currentEventMembershipProvider.overrideWith((_, _) async => false),
+        ],
+      );
+      await host.open(tester, pin, known: [running]);
+
+      expect(host.opens.single.category, GroupEventCategory.search);
+      // The server's Past list was asked, and it answered past.
+      expect(pastAsked, ['gb-1']);
+      expect(find.text('Sign in to get Premium'), findsOneWidget);
+      expect(host.pushed, isEmpty);
+      expect(host.read(selectedBroadcastModelProvider), isNull);
+
+      // Backing out of the paywall opens nothing and is not a dead shortcut.
+      Navigator.of(tester.element(find.text('Sign in to get Premium'))).pop();
+      await _settle(tester);
+      expect(host.pushed, isEmpty);
+      expect(find.text('This shortcut can no longer open'), findsNothing);
+      // Nothing asked of the network for the event itself.
+      expect(host.groups.requested, isEmpty);
+    });
+
+    testWidgets('a free reader opens a running event the server does not '
+        'list as past at once', (tester) async {
+      final pin = eventSpaceDraft(
+        GroupEventCardModel.fromGroupBroadcast(running, const []),
+      );
+      final pastAsked = <String>[];
+      final host = await _EventHost.pump(
+        tester,
+        [pin],
+        [running],
+        premium: false,
+        overrides: [
+          pastEventMembershipProvider.overrideWith((_, id) async {
+            pastAsked.add(id);
+            return false;
+          }),
+          currentEventMembershipProvider.overrideWith((_, _) async => false),
+        ],
+      );
+      await host.open(tester, pin, known: [running]);
+
+      expect(pastAsked, ['gb-1']);
+      expect(find.text('Sign in to get Premium'), findsNothing);
+      expect(host.pushed, ['/tournament_detail_screen']);
+      expect(host.read(selectedBroadcastModelProvider), same(running));
+    });
+
+    testWidgets('a pin keyed by a tour id reopens on that category', (
+      tester,
+    ) async {
+      final pin = playerProfileFallbackEventSpaceDraft(
+        request: const PlayerProfileEventCardRequest(
+          dataSource: PlayerProfileDataSource.supabase,
+          tourId: 'tour-9',
+          tourName: 'Norway Chess Women',
+        ),
+        card: GroupEventCardModel.fromGroupBroadcast(running, const []),
+      );
+      final host = await _EventHost.pump(tester, [pin], [running]);
+      // Its group's broadcast is in hand, read by the group's id.
+      await host.open(tester, pin, known: [running]);
+
+      expect(host.opens, isEmpty);
+      expect(host.tours.requested, ['tour-9']);
+      expect(host.groups.requested, ['gb-1']);
+      expect(host.selection.saved, [('gb-1', 'tour-9')]);
+      expect(host.pushed, ['/tournament_detail_screen']);
+      expect(host.read(selectedBroadcastModelProvider)?.id, 'gb-1');
+    });
+
+    testWidgets('a pin saved on a category reopens on it, broadcast in hand '
+        'or not', (tester) async {
+      final pin = SpaceShortcut(
+        id: 'women',
+        kind: SpaceShortcutKind.event,
+        targetId: 'gb-1',
+        title: 'Norway Chess',
+        params: const {'groupBroadcastId': 'gb-1', 'tourId': 'tour-9'},
+      );
+      final host = await _EventHost.pump(tester, [pin], [running]);
+      await host.open(tester, pin, known: [running]);
+
+      expect(host.opens, isEmpty);
+      expect(host.selection.saved, [('gb-1', 'tour-9')]);
+      expect(host.pushed, ['/tournament_detail_screen']);
+    });
+
+    testWidgets('one whose broadcast is not read yet still opens, through the '
+        'resolver', (tester) async {
+      final pin = eventSpaceDraft(
+        GroupEventCardModel.fromGroupBroadcast(running, const []),
+      );
+      final host = await _EventHost.pump(tester, [pin], [running]);
+      await host.open(tester, pin, known: const []);
+
+      expect(host.opens, isEmpty);
+      // Probed as a tour id first, then opened as the group it is.
+      expect(host.tours.requested, ['gb-1']);
+      expect(host.groups.requested, ['gb-1']);
+      expect(host.selection.saved, isEmpty);
+      expect(host.pushed, ['/tournament_detail_screen']);
+    });
+  });
+
   group('ChessEver Database event folders', () {
     test('open the database filtered to the pinned event', () {
       expect(
@@ -458,4 +795,240 @@ void main() {
       expect(spaceShortcutLine(_s(SpaceShortcutKind.game, 'g')), isNull);
     });
   });
+}
+
+// ------------------------------------------------------------ event opens
+
+/// The pins in memory; every open recorded.
+class _Store extends SpaceShortcutsNotifier {
+  _Store(this.seed);
+
+  final List<SpaceShortcut> seed;
+  final opened = <String>[];
+
+  @override
+  Future<List<SpaceShortcut>> build() async => seed;
+
+  @override
+  Future<void> markOpened(String id) async => opened.add(id);
+}
+
+class _Authenticated extends AuthController {
+  @override
+  Future<AppAuthState> build() async =>
+      const AppAuthState(status: AppAuthStatus.authenticated);
+}
+
+/// One tour, 'tour-9', the Women category of 'gb-1'.
+class _Tours implements TourRepository {
+  final requested = <String>[];
+
+  @override
+  Future<List<Tour>> getToursByIds(List<String> ids) async {
+    requested.addAll(ids);
+    return [
+      if (ids.contains('tour-9'))
+        Tour(
+          id: 'tour-9',
+          name: 'Norway Chess Women',
+          slug: 'norway-chess-women',
+          info: TourInfo(),
+          createdAt: DateTime(2026, 5, 26),
+          url: '',
+          tier: 0,
+          dates: [],
+          players: [],
+          groupBroadcastId: 'gb-1',
+        ),
+    ];
+  }
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+class _Groups implements GroupBroadcastRepository {
+  _Groups(this.byId);
+
+  final Map<String, GroupBroadcast> byId;
+  final requested = <String>[];
+
+  @override
+  Future<GroupBroadcast> getGroupBroadcastById(String id) async {
+    requested.add(id);
+    final broadcast = byId[id];
+    if (broadcast == null) throw StateError('No rows found');
+    return broadcast;
+  }
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+class _Selection implements TourDetailRepo {
+  final saved = <(String, String)>[];
+
+  @override
+  Future<void> saveSelectedTourId({
+    required String groupEventId,
+    required String tourId,
+  }) async {
+    saved.add((groupEventId, tourId));
+  }
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+typedef _Open = ({
+  String id,
+  GroupEventCategory category,
+  List<GroupBroadcast> known,
+  String? source,
+});
+
+/// The Events lists' own opener, every call noted before it runs.
+class _Navigation extends TournamentNavigationController {
+  _Navigation(super.ref, this.calls);
+
+  final List<_Open> calls;
+
+  @override
+  Future<void> openTournament({
+    required BuildContext context,
+    required String id,
+    required GroupEventCategory category,
+    Iterable<GroupBroadcast> knownBroadcasts = const <GroupBroadcast>[],
+    String? analyticsSource,
+  }) {
+    calls.add((
+      id: id,
+      category: category,
+      known: knownBroadcasts.toList(),
+      source: analyticsSource,
+    ));
+    return super.openTournament(
+      context: context,
+      id: id,
+      category: category,
+      knownBroadcasts: knownBroadcasts,
+      analyticsSource: analyticsSource,
+    );
+  }
+}
+
+/// My Space as far as an event's open needs it: the real Events opener and
+/// the real shared-link resolver over fake repositories.
+class _EventHost {
+  _EventHost._(this.store, this.groups);
+
+  final _Store store;
+  final _Groups groups;
+  final tours = _Tours();
+  final selection = _Selection();
+  final pushed = <String>[];
+  final navigatorKey = GlobalKey<NavigatorState>();
+
+  /// Every open the Events lists' opener was asked for.
+  final opens = <_Open>[];
+  late BuildContext _context;
+  late WidgetRef _ref;
+  late ProviderSubscription<Object?> _auth;
+
+  T read<T>(ProviderListenable<T> provider) =>
+      ProviderScope.containerOf(navigatorKey.currentContext!).read(provider);
+
+  /// [premium] is the reader's access; a free reader's gate asks for
+  /// Premium where the Events lists' gate would. [overrides] come last.
+  static Future<_EventHost> pump(
+    WidgetTester tester,
+    List<SpaceShortcut> pins,
+    List<GroupBroadcast> broadcasts, {
+    bool premium = true,
+    List<Override> overrides = const [],
+  }) async {
+    // Inside the test's zone, so the app-ready gate opens in it too.
+    DeepLinkService.instance.detachNotificationRouter();
+    DeepLinkService.instance.dispose();
+    addTearDown(DeepLinkService.instance.detachNotificationRouter);
+    addTearDown(DeepLinkService.instance.dispose);
+    final host = _EventHost._(
+      _Store(pins),
+      _Groups({for (final b in broadcasts) b.id: b}),
+    );
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          authStateProvider.overrideWith(_Authenticated.new),
+          tourRepositoryProvider.overrideWithValue(host.tours),
+          groupBroadcastRepositoryProvider.overrideWithValue(host.groups),
+          tourDetailRepoProvider.overrideWithValue(host.selection),
+          premiumAccessProvider.overrideWithValue(premium),
+          liveGroupBroadcastIdsProvider.overrideWith(
+            (ref) => Stream.value(const <String>[]),
+          ),
+          tournamentNavigationProvider.overrideWith(
+            (ref) => _Navigation(ref, host.opens),
+          ),
+          spaceShortcutsProvider.overrideWith(() => host.store),
+          ...overrides,
+        ],
+        child: MaterialApp(
+          navigatorKey: host.navigatorKey,
+          initialRoute: '/',
+          onGenerateRoute: (settings) {
+            host.pushed.add(settings.name ?? '');
+            return MaterialPageRoute<void>(
+              settings: settings,
+              builder: (_) => Consumer(
+                builder: (context, ref, _) {
+                  if (settings.name == '/') {
+                    // The Premium prompt sizes itself off the screen.
+                    ResponsiveHelper.init(context);
+                    host._context = context;
+                    host._ref = ref;
+                    ref.watch(spaceShortcutsProvider);
+                  }
+                  return const SizedBox.shrink();
+                },
+              ),
+            );
+          },
+        ),
+      ),
+    );
+    host._auth = ProviderScope.containerOf(
+      host.navigatorKey.currentContext!,
+    ).listen(authStateProvider, (_, _) {});
+    addTearDown(host._auth.close);
+    await tester.pump();
+    DeepLinkService.instance.attachNotificationRouter(
+      host.navigatorKey,
+      host._ref,
+    );
+    DeepLinkService.notifyAppReady();
+    host.pushed.clear();
+    return host;
+  }
+
+  Future<void> open(
+    WidgetTester tester,
+    SpaceShortcut pin, {
+    required List<GroupBroadcast> known,
+  }) async {
+    unawaited(openSpaceShortcut(_context, _ref, pin, knownBroadcasts: known));
+    await _settle(tester);
+  }
+}
+
+/// Lets real async work (the Premium prompt's) land between frames, then
+/// settles.
+Future<void> _settle(WidgetTester tester) async {
+  for (var n = 0; n < 6; n++) {
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 25)),
+    );
+    await tester.pump(const Duration(milliseconds: 160));
+  }
+  await tester.pumpAndSettle();
 }

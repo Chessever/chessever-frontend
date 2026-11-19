@@ -323,6 +323,8 @@ void main() {
         await pushNamedRoute($, '/favorites_screen');
         await expectVisible($, E2eIds.favoritesRoot);
         await $('Games').tap();
+        // The field opens from the floating search button.
+        await openGamesSearch($, e2eKey(E2eIds.favoritesSearchFab));
         await expectVisible($, E2eIds.favoritesGamesSearchField);
         await searchFor(
           $,

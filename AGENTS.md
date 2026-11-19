@@ -259,12 +259,45 @@ Trello #1387.
   star gone 72 My Space smart event cards had 4 stars and no new star in five
   days. Starring and unstarring there go through `toggleSmartEventFavorite`,
   the one path behind every smart event star; unstarring stops its pushes and
-  keeps the card. Edit mode hides it. Do not remove it again as "a favorite".
+  keeps the card. Edit mode hides it, on the home too: the star fades out in
+  its place (`SpaceEditFade`), so the card never reflows. Do not remove it
+  again as "a favorite".
 - Prep player cards end in the Prep star, which is not a favorite: it only
   turns that profile's new-game pushes on or off (`PrepProfile.watching`).
   It never follows, favorites or unfavorites the player; the heart does
   that. Unstarring a Prep card in My Space stops the pushes and takes the card
-  out of My Space (one Undo restores both); the profile stays in Prep.
+  out of My Space (one Undo restores both); the profile stays in Prep. Edit
+  hides the Prep star the same way as a smart event's.
+- **A My Space card holds and taps like the same thing elsewhere.** Every
+  card long-presses into the shared focus menu (`CardContextMenu`) and fires
+  the card-tap haptic on a tap. Saved cards and Likes press as an event card
+  does (`TappableScale`, 0.96), a Prep profile too (its Prep page card has
+  no press); the page's Prep and Library tiles press as every hub tile does
+  (`HubTilePress`, 0.97). A database holds into Library's
+  `FolderCard` rows (`spaceLibraryFolderActions`) and a Prep profile into the
+  Prep page's `prepProfileMenu` (`spacePrepProfileMenu`), in that page's
+  order, with `Remove from My Space` in place of the My Space row, nothing
+  destructive and no Open row the source card lacks. Open rows My Space
+  builds say what they open (`spaceOpenLabel`, the event card's "Open
+  event"). The page's own cards (Prep, Library, Likes) offer Open and Share.
+  A collection card is the catalog's own `CollectionCard`, menu and haptics
+  included.
+- **A saved event opens as the Events lists open it** when its card holds
+  the broadcast (`openTournament` from that broadcast, never read again,
+  'Tournament Opened' labelled `forYouMySpace`). The server decides Past
+  (`group_broadcasts_past`), the card only knows its dates, so
+  `spaceEventOpenCategory` gates it as a Current card only when live, as a
+  Past card when its dates are over, and as a search hit otherwise (the
+  server's Past list first). Never gate a running-by-dates event as Current:
+  a free reader would open a past event with no paywall. A pin saved
+  on a category (`tourId`), one keyed by a tour id (a player profile's
+  fallback event card) and one whose broadcast is not read yet go through
+  the shared-link resolver (`DeepLinkService.openEventForShortcut`), which
+  reopens the saved category and logs no 'Tournament Opened'.
+- Opens are recorded (`markOpened`) through `openSpaceShortcut`. A
+  collection opens itself and reports every open (a direct tap, a screen
+  reader's tap, its menu's Open row, a tap on its lifted copy) through
+  `CollectionCard.onOpened`, which My Space records (`space_database.dart`).
 - Prep profiles are stored on the device (`prep/profiles.json`); pins and
   stars are on the account. A Prep pin therefore carries the profile's
   sources (`params.profile`, `prepPinRecipe`), and `prepSpaceSyncProvider`

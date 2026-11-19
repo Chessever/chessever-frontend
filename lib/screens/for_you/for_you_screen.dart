@@ -14,13 +14,12 @@ import 'package:chessever2/screens/home/start_screen.dart';
 import 'package:chessever2/screens/home/widget/bottom_nav_bar.dart';
 import 'package:chessever2/screens/my_space/my_space_view.dart';
 import 'package:chessever2/theme/app_colors.dart';
-import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
-import 'package:chessever2/utils/text_scale.dart';
 import 'package:chessever2/widgets/alert_dialog/alert_modal.dart';
 import 'package:chessever2/widgets/home_top_bar.dart';
 import 'package:chessever2/widgets/ink_fab.dart';
+import 'package:chessever2/widgets/live_first_capsule.dart';
 import 'package:chessever2/widgets/press_spring.dart';
 import 'package:chessever2/widgets/scroll_chrome.dart';
 import 'package:flutter/material.dart';
@@ -61,10 +60,13 @@ final Curve _scrollTopCurve = _scrollTopMotion.toCurve;
 
 /// The For You section (Home): My Space | Today | Discovery.
 ///
-/// Its only chrome is the segment strip, which scrolls away with the page
-/// and back. Search and the reader's profile have tabs of their own; Today's
-/// Live first and filter float over it ([ForYouTodayFabs]). The picked tab
-/// holds for the session; a launch opens on Today.
+/// Its only chrome is the page tabs, set in the bar every root wears
+/// ([HomeTopBarFrame]): the same inset, height, gutter and centre line as
+/// Feed's, Botvinnik's, Search's and Profile's, with the pages starting at
+/// the same line under it. The band scrolls away with the page and back.
+/// Search and the reader's profile have tabs of their own; Today's Live
+/// first and filter float over it ([ForYouTodayFabs]). The picked tab holds
+/// for the session; a launch opens on Today.
 class ForYouScreen extends HookConsumerWidget {
   const ForYouScreen({super.key, this.pageBuilder});
 
@@ -230,19 +232,15 @@ class ForYouScreen extends HookConsumerWidget {
             crossAxisAlignment: CrossAxisAlignment.center,
             mainAxisSize: MainAxisSize.min,
             children: [
-              // The status bar's inset stays; the strip under it scrolls away
-              // with the page and back (X-style). No avatar and no search
-              // field: Profile and Search have tabs of their own.
-              SizedBox(height: MediaQuery.viewPaddingOf(context).top),
-              // The header: the brand mark, then the pages as tabs with an
-              // indicator that rides the swipe. It scrolls away with the page
-              // and back (X-style).
-              _MaybeCollapsing(
+              // The header: the pages as tabs with an indicator that rides
+              // the swipe, in the bar every root wears. The status bar's
+              // inset stays; the band under it scrolls away with the page and
+              // back (X-style). No avatar and no search field: Profile and
+              // Search have tabs of their own.
+              HomeTopBarFrame(
                 child: _ForYouHeader(
                   pageController: pageController,
                   selectedIndex: selectedIndex,
-                  onMarkTap: () =>
-                      scrollToTop(controllerForIndex(selectedIndex)),
                   onHold: (index) => unawaited(
                     makeStartScreenDefault(
                       context,
@@ -355,11 +353,16 @@ void showEventFilters(BuildContext context, WidgetRef ref) {
 /// Today's floating buttons, in the thumb's reach where the search field and
 /// Botvinnik used to be (Trello #1420):
 ///
-/// * Live first, only while an event is in play. With nothing live it has
-///   nothing to do, so it is not there to be pressed; a flag left on only
-///   orders the feed, which with nothing live is the same order.
-/// * The event filter (formats, Elo, ECO), always: it narrows this feed, and
-///   its count says how many filters are on.
+/// * The event filter (formats, Elo, ECO), always, at the bottom: it narrows
+///   this feed, and its count says how many filters are on. It never moves.
+/// * Live first above it, in words ([LiveFirstCapsule]): "Show 3 live
+///   first" while events are in play, "Live first" while on. It is there while an event
+///   is in play or while it is on ([showsHomeLiveFirst]), so a flag left on
+///   can always be turned off. Turned on, the live events lead Today and
+///   Today goes back to its top.
+///
+/// The two share their trailing edge, so the filter stays put on the gutter
+/// while the capsule comes and goes or springs to a new width.
 class ForYouTodayFabs extends HookConsumerWidget {
   const ForYouTodayFabs({super.key});
 
@@ -369,75 +372,73 @@ class ForYouTodayFabs extends HookConsumerWidget {
     // until it is answered are ignored.
     final pressing = useRef(false);
     final liveFirst = ref.watch(homeEventsLiveFirstProvider);
-    final anyLive = ref.watch(homeAnyLiveEventProvider);
+    final liveCount = ref.watch(homeLiveEventCountProvider);
     final filters = eventFilterCount(ref.watch(eventAppliedFilterProvider));
-    return InkFabStack(
+    const size = InkFabSize.small;
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.end,
       children: [
+        if (showsHomeLiveFirst(liveCount: liveCount, on: liveFirst)) ...[
+          Padding(
+            // The disc is drawn inside its touch square; this puts the
+            // capsule's rim on the disc's, not on the square's.
+            padding: EdgeInsetsDirectional.only(
+              end: (size.side - size.disc) / 2,
+            ),
+            child: LiveFirstCapsule(
+              key: const ValueKey(kForYouLiveFirstButtonKey),
+              subject: 'events',
+              size: size,
+              on: liveFirst,
+              liveCount: liveCount,
+              onTap: () async {
+                if (pressing.value) return;
+                pressing.value = true;
+                try {
+                  if (await pressForYouLiveFirst(context: context, ref: ref)) {
+                    // The live events now lead Today: show its top.
+                    ref
+                        .read(bottomNavBarReTapRequestProvider.notifier)
+                        .request(BottomNavBarItem.forYou);
+                  }
+                } finally {
+                  pressing.value = false;
+                }
+              },
+            ),
+          ),
+          // The floating buttons' own step ([InkFabStack]).
+          const SizedBox(height: 12),
+        ],
         InkFab(
           key: const ValueKey(kForYouFilterButtonKey),
           label: 'Filters',
-          size: InkFabSize.small,
+          size: size,
           badgeCount: filters,
           onTap: () => showEventFilters(context, ref),
           glyph: (color, size) =>
               Icon(Icons.tune_rounded, size: size, color: color),
         ),
-        if (anyLive)
-          LiveFirstInkFab(
-            key: const ValueKey(kForYouLiveFirstButtonKey),
-            subject: 'events',
-            size: InkFabSize.regular,
-            on: liveFirst,
-            onTap: () async {
-              if (pressing.value) return;
-              pressing.value = true;
-              try {
-                if (await pressForYouLiveFirst(context: context, ref: ref)) {
-                  // The live events now lead Today: show its top.
-                  ref
-                      .read(bottomNavBarReTapRequestProvider.notifier)
-                      .request(BottomNavBarItem.forYou);
-                }
-              } finally {
-                pressing.value = false;
-              }
-            },
-          ),
       ],
     );
   }
 }
 
-/// The segment strip, folding away with the shell's chrome when there is
-/// one (in tests the screen can stand alone).
-class _MaybeCollapsing extends StatelessWidget {
-  const _MaybeCollapsing({required this.child});
-
-  final Widget child;
-
-  @override
-  Widget build(BuildContext context) {
-    final chrome = ScrollChromeScope.maybeOf(context);
-    if (chrome == null) return child;
-    return CollapsingChrome(controller: chrome, child: child);
-  }
-}
-
-/// Home's header: the ChessEver mark, then My Space | Today | Discovery as
-/// text tabs.
+/// Home's header: My Space | Today | Discovery as text tabs, nothing else,
+/// filling the bar's row ([HomeTopBarFrame] holds the gutters).
 ///
-/// The mark is the page's name (a tap takes the page back to its top, as a
-/// logo does on X); the tabs are full-width text, the selected one in body
-/// ink and weight with a short rounded bar under it in the brand's tonal
-/// blue. The bar rides the pages' own position, so it travels with a swipe
-/// under the finger rather than jumping when the swipe lands.
+/// The selected tab is set as every root's title is ([HomeTopBarTitle]),
+/// with a short rounded bar under it in the brand's tonal blue. The bar
+/// rides the pages' own position, so it travels with a swipe under the
+/// finger rather than jumping when the swipe lands. Tapping the selected tab
+/// takes its page back to the top.
 class _ForYouHeader extends StatelessWidget {
   const _ForYouHeader({
     required this.pageController,
     required this.selectedIndex,
     required this.onSelected,
     required this.onHold,
-    required this.onMarkTap,
   });
 
   final PageController pageController;
@@ -446,65 +447,26 @@ class _ForYouHeader extends StatelessWidget {
 
   /// A held tab title.
   final ValueChanged<int> onHold;
-  final VoidCallback onMarkTap;
 
   @override
   Widget build(BuildContext context) {
-    final side = HomeTopBarMetrics.horizontalPadding;
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        SizedBox(height: 6.h),
-        Semantics(
-          button: true,
-          label: 'ChessEver, back to the top',
-          excludeSemantics: true,
-          child: GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: () {
-              HapticFeedbackService.navigation();
-              onMarkTap();
-            },
-            child: SizedBox(
-              height: 44,
-              width: 88,
-              child: PressSpring(
-                pressedScale: 0.86,
-                child: Center(
-                  child: Image.asset(
-                    kHomeMarkAsset,
-                    width: 26,
-                    height: 26,
-                    filterQuality: FilterQuality.medium,
-                    cacheWidth: (26 * MediaQuery.devicePixelRatioOf(context))
-                        .round(),
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ),
-        Padding(
-          padding: EdgeInsets.symmetric(horizontal: side),
-          child: ForYouPageTabs(
-            pageController: pageController,
-            selectedIndex: selectedIndex,
-            labels: [for (final tab in ForYouTab.values) tab.label],
-            onSelected: onSelected,
-            onHold: onHold,
-          ),
-        ),
-      ],
+    return ForYouPageTabs(
+      pageController: pageController,
+      selectedIndex: selectedIndex,
+      labels: [for (final tab in ForYouTab.values) tab.label],
+      onSelected: onSelected,
+      onHold: onHold,
     );
   }
 }
 
-/// The ChessEver mark Home wears at its top.
-const String kHomeMarkAsset = 'assets/pngs/chessever-mark.png';
-
-/// Equal-width text tabs with an indicator that follows [pageController].
+/// Equal-width text tabs with an indicator that follows [pageController],
+/// as tall as the bar's row ([HomeTopBarMetrics.rowExtent]) so each label
+/// sits on the centre line every root's title sits on, and the indicator
+/// rests on the row's foot.
 class ForYouPageTabs extends StatelessWidget {
   const ForYouPageTabs({
+    super.key,
     required this.pageController,
     required this.selectedIndex,
     required this.labels,
@@ -518,7 +480,6 @@ class ForYouPageTabs extends StatelessWidget {
   final ValueChanged<int> onSelected;
   final ValueChanged<int> onHold;
 
-  static const double _height = 46;
   static const double _barHeight = 3;
 
   /// Where the pages are, as a tab index: fractional mid-swipe.
@@ -541,12 +502,15 @@ class ForYouPageTabs extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = context.colors;
     // One line at any text size: scaled down rather than wrapped, so a long
-    // label at a large text scale never breaks the row.
-    final style = AppTypography.textMdMedium;
+    // label at a large text scale never breaks the row. The selected label
+    // is a root title ([HomeTopBarTitle]); the others step back in ink and
+    // weight only.
+    final style = HomeTopBarTitle.style(context);
+    final height = HomeTopBarMetrics.rowExtent(context);
     return MediaQuery.withClampedTextScaling(
-      maxScaleFactor: 1.6,
+      maxScaleFactor: HomeTopBarMetrics.maxTextScale,
       child: SizedBox(
-        height: context.textExtent(_height),
+        height: height,
         child: LayoutBuilder(
           builder: (context, constraints) {
             final slot = constraints.maxWidth / labels.length;

@@ -5,6 +5,7 @@ import 'package:chessever2/chat/chat_assistant_bubble.dart';
 import 'package:chessever2/screens/inbox/inbox_provider.dart';
 import 'package:chessever2/screens/inbox/inbox_screen.dart';
 import 'package:chessever2/services/editorial_link_service.dart';
+import 'package:chessever2/widgets/home_top_bar.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -152,7 +153,14 @@ class _BotvinnikInboxTimelineState extends ConsumerState<BotvinnikInboxTimeline>
           key: ValueKey(('botvinnik-timeline', _owner)),
           controller: _scroll,
           keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-          padding: const EdgeInsets.fromLTRB(16, 20, 16, 24),
+          // Every root's gutter and lead-in: the first message starts on the
+          // line every other root's first content does.
+          padding: EdgeInsets.fromLTRB(
+            HomeTopBarMetrics.horizontalPadding,
+            HomeTopBarMetrics.contentGap,
+            HomeTopBarMetrics.horizontalPadding,
+            24,
+          ),
           itemCount: messages.length + widget.conversationItemCount,
           itemBuilder: (context, index) {
             if (index >= messages.length) {

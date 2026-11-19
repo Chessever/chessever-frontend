@@ -56,11 +56,16 @@ import 'package:chessever2/widgets/screenshot_share_nudge.dart';
 import 'package:chessever2/widgets/scroll_to_top_bus.dart';
 import 'package:chessever2/widgets/ink_fab.dart';
 import 'package:chessever2/widgets/scroll_chrome.dart';
+import 'package:chessever2/widgets/search_mode/search_mode.dart';
 import 'package:chessever2/widgets/segmented_switcher.dart';
 import 'package:chessever2/widgets/svg_widget.dart';
 import 'package:chessever2/screens/gamebase/gamebase_explorer_screen.dart';
 import 'package:chessever2/screens/gamebase/providers/gamebase_explorer_state.dart';
 import 'package:chessever2/screens/gamebase/providers/gamebase_providers.dart';
+import 'package:chessever2/screens/favorites/widgets/games_list_refetch_line.dart';
+import 'package:chessever2/widgets/page_spring.dart';
+import 'package:chessever2/widgets/home_top_bar.dart'
+    show HomeTopBarMetrics, PageTitle;
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:motor/motor.dart';
@@ -152,30 +157,18 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
   );
 
   /// The Games tab's full-page search (Trello #1420): the field in the
-  /// header's place, the same tab under it, filtered, with nothing else
-  /// around it. Opened from the floating search.
-  bool _searching = false;
-  final FocusNode _searchFocus = FocusNode();
+  /// header's place over the same tab, list and toolbar untouched, filtered
+  /// as the reader types. Opened from the floating search; the host owns the
+  /// morph, back, focus and the query's life.
+  final SearchModeController _search = SearchModeController();
 
-  void _openSearch() {
-    if (_searching) return;
-    setState(() => _searching = true);
-    _chrome.show();
-  }
+  /// The rotating second word of the search hint ("Search event").
+  static const List<String> _searchHintWords = ['event', 'opponent', 'opening'];
 
-  /// Leaves the search with the query cleared; the filters stay, as the
-  /// strip over the list says.
-  void _closeSearch() {
-    if (!_searching) return;
-    _searchFocus.unfocus();
-    ref
-        .read(playerProfileGamesKeyProvider(_gamesKey).notifier)
-        .setSearchQuery('');
-    setState(() => _searching = false);
-    _chrome.show();
-  }
-
-  void _holdChromeWhileTyping() => _chrome.held = _searchFocus.hasFocus;
+  /// Hands a settled query to the Games list (TWIC asks the server).
+  void _applySearchQuery(String query) => ref
+      .read(playerProfileGamesKeyProvider(_gamesKey).notifier)
+      .setSearchQuery(query);
 
   /// The Games tab's list, as the tab itself keys it.
   PlayerProfileKey get _gamesKey => PlayerProfileKey(
@@ -237,15 +230,15 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
     // can be there on the first frame. Reading also warms the wall.
     final streakFideId = _streakFideId;
     if (streakFideId != null) {
-      _streakLineAboveTabs =
-          ref.read(playerLiveStreaksProvider(streakFideId)).isNotEmpty;
+      _streakLineAboveTabs = ref
+          .read(playerLiveStreaksProvider(streakFideId))
+          .isNotEmpty;
     }
     final storedTab = ref.read(selectedPlayerProfileTabProvider);
     final requestedTab = widget.initialTab ?? storedTab;
-    final initialTab =
-        _availableTabs.contains(requestedTab)
-            ? requestedTab
-            : PlayerProfileTab.about;
+    final initialTab = _availableTabs.contains(requestedTab)
+        ? requestedTab
+        : PlayerProfileTab.about;
     if (initialTab != storedTab) {
       _pendingInitialTab = initialTab;
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -268,7 +261,6 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
         curve: Curves.easeInOut,
       ),
     );
-    _searchFocus.addListener(_holdChromeWhileTyping);
   }
 
   @override
@@ -276,9 +268,7 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
     _pageController.dispose();
     _favoriteAnimationController.dispose();
     _scrollToTopBus.dispose();
-    _searchFocus
-      ..removeListener(_holdChromeWhileTyping)
-      ..dispose();
+    _search.dispose();
     _chrome.dispose();
     super.dispose();
   }
@@ -302,11 +292,7 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
     if (nextTab == PlayerProfileTab.games && _gamesTabCueCount != null) {
       setState(() => _gamesTabCueCount = null);
     }
-    _pageController.animateToPage(
-      index,
-      duration: const Duration(milliseconds: 300),
-      curve: Curves.easeInOut,
-    );
+    _pageController.springTo(index, context: context);
   }
 
   void _handlePageChanged(int index) {
@@ -383,10 +369,9 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
     if (gamesTabCueCount != null || eco == GameEcoFilter.all) {
       if (!mounted) return;
       setState(() {
-        _gamesTabCueCount =
-            gamesTabCueCount != null && gamesTabCueCount > 0
-                ? gamesTabCueCount
-                : null;
+        _gamesTabCueCount = gamesTabCueCount != null && gamesTabCueCount > 0
+            ? gamesTabCueCount
+            : null;
       });
     }
 
@@ -428,10 +413,9 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
   }
 
   GamebasePlayer _buildExplorerFallbackPlayer(String id) {
-    final cached =
-        memorialSourceIdentityFromTreeScope(id) == null
-            ? ref.read(playerByIdProvider(id)).valueOrNull
-            : null;
+    final cached = memorialSourceIdentityFromTreeScope(id) == null
+        ? ref.read(playerByIdProvider(id)).valueOrNull
+        : null;
     if (cached != null) return cached;
 
     final activePlayerKey = PlayerProfileKey(
@@ -441,38 +425,34 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
       gamebasePlayerId: _currentGamebasePlayerId,
       memorialSourceIdentity: widget.memorialSourceIdentity,
     );
-    final activeProfile =
-        ref.read(playerProfileDataKeyProvider(activePlayerKey)).valueOrNull;
-    final fallbackChessPlayer =
-        _isMemorial
-            ? null
-            : ref.read(chessPlayerByFideIdProvider(widget.fideId)).valueOrNull;
+    final activeProfile = ref
+        .read(playerProfileDataKeyProvider(activePlayerKey))
+        .valueOrNull;
+    final fallbackChessPlayer = _isMemorial
+        ? null
+        : ref.read(chessPlayerByFideIdProvider(widget.fideId)).valueOrNull;
 
-    final name =
-        (activeProfile?.name.trim().isNotEmpty ?? false)
-            ? activeProfile!.name.trim()
-            : ((fallbackChessPlayer?.name.trim().isNotEmpty ?? false)
-                ? fallbackChessPlayer!.name.trim()
-                : widget.playerName);
+    final name = (activeProfile?.name.trim().isNotEmpty ?? false)
+        ? activeProfile!.name.trim()
+        : ((fallbackChessPlayer?.name.trim().isNotEmpty ?? false)
+              ? fallbackChessPlayer!.name.trim()
+              : widget.playerName);
 
-    final fed =
-        (activeProfile?.federation?.trim().isNotEmpty ?? false)
-            ? activeProfile!.federation!.trim()
-            : ((widget.federation?.trim().isNotEmpty ?? false)
-                ? widget.federation!.trim()
-                : (fallbackChessPlayer?.country?.trim() ?? ''));
+    final fed = (activeProfile?.federation?.trim().isNotEmpty ?? false)
+        ? activeProfile!.federation!.trim()
+        : ((widget.federation?.trim().isNotEmpty ?? false)
+              ? widget.federation!.trim()
+              : (fallbackChessPlayer?.country?.trim() ?? ''));
 
-    final fideId =
-        (activeProfile?.fideId ?? 0) > 0
-            ? activeProfile!.fideId.toString()
-            : (widget.fideId?.toString() ?? '');
+    final fideId = (activeProfile?.fideId ?? 0) > 0
+        ? activeProfile!.fideId.toString()
+        : (widget.fideId?.toString() ?? '');
 
-    final title =
-        (activeProfile?.title?.trim().isNotEmpty ?? false)
-            ? activeProfile!.title?.trim()
-            : ((widget.title?.trim().isNotEmpty ?? false)
-                ? widget.title?.trim()
-                : fallbackChessPlayer?.title?.trim());
+    final title = (activeProfile?.title?.trim().isNotEmpty ?? false)
+        ? activeProfile!.title?.trim()
+        : ((widget.title?.trim().isNotEmpty ?? false)
+              ? widget.title?.trim()
+              : fallbackChessPlayer?.title?.trim());
 
     return GamebasePlayer(
       id: id,
@@ -512,20 +492,20 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
       gamebasePlayerId: _currentGamebasePlayerId,
       memorialSourceIdentity: widget.memorialSourceIdentity,
     );
-    final gameFilter =
-        ref.read(playerProfileGamesKeyProvider(playerKey)).filter;
+    final gameFilter = ref
+        .read(playerProfileGamesKeyProvider(playerKey))
+        .filter;
     final GamebaseFilters? explorerFilters =
         gameFilter.hasExplorerMappableFilters
-            ? gameFilter.toGamebaseFilters()
-            : null;
+        ? gameFilter.toGamebaseFilters()
+        : null;
 
     Navigator.of(context).push(
       MaterialPageRoute(
-        builder:
-            (_) => GamebaseExplorerScreen.scoped(
-              initialPlayer: initialPlayer,
-              initialFilters: explorerFilters,
-            ),
+        builder: (_) => GamebaseExplorerScreen.scoped(
+          initialPlayer: initialPlayer,
+          initialFilters: explorerFilters,
+        ),
       ),
     );
 
@@ -544,15 +524,14 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
     final currentlyFavorited = ref
         .read(favoritePlayersProviderNew)
         .maybeWhen(
-          data:
-              (players) => players.any(
-                (player) => favoritePlayerMatchesIdentity(
-                  player,
-                  fideId: fideIdStr,
-                  playerName: widget.playerName,
-                  memorialSourceIdentity: widget.memorialSourceIdentity,
-                ),
-              ),
+          data: (players) => players.any(
+            (player) => favoritePlayerMatchesIdentity(
+              player,
+              fideId: fideIdStr,
+              playerName: widget.playerName,
+              memorialSourceIdentity: widget.memorialSourceIdentity,
+            ),
+          ),
           orElse: () => false,
         );
     if (!currentlyFavorited) {
@@ -621,24 +600,21 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
         playerProfileDataKeyProvider(playerKey).future,
       );
       final memorialIdentity = widget.memorialSourceIdentity?.trim();
-      final memorialOverview =
-          memorialIdentity?.isNotEmpty == true
-              ? await ref.read(
-                memorialPlayerOverviewProvider(memorialIdentity!).future,
-              )
-              : null;
-      final shareName =
-          activeProfile?.name.trim().isNotEmpty == true
-              ? activeProfile!.name
-              : effectiveName;
+      final memorialOverview = memorialIdentity?.isNotEmpty == true
+          ? await ref.read(
+              memorialPlayerOverviewProvider(memorialIdentity!).future,
+            )
+          : null;
+      final shareName = activeProfile?.name.trim().isNotEmpty == true
+          ? activeProfile!.name
+          : effectiveName;
       final displayShareName = formatPlayerDisplayName(shareName);
       final shareTitle = activeProfile?.title ?? effectiveTitle;
       final shareFederation =
           activeProfile?.federation ?? effectiveFederation ?? '';
-      final shareFideId =
-          (activeProfile?.fideId ?? 0) > 0
-              ? activeProfile!.fideId
-              : widget.fideId;
+      final shareFideId = (activeProfile?.fideId ?? 0) > 0
+          ? activeProfile!.fideId
+          : widget.fideId;
 
       PlayerAnalytics? analytics;
       try {
@@ -659,31 +635,26 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
       }
 
       final nameParts = shareName.split(',');
-      final initials =
-          nameParts.length > 1
-              ? '${nameParts[0].trim().isNotEmpty ? nameParts[0].trim()[0] : ''}'
-                  '${nameParts[1].trim().isNotEmpty ? nameParts[1].trim()[0] : ''}'
-              : shareName.trim().isNotEmpty
-              ? shareName.trim().substring(
-                0,
-                math.min(2, shareName.trim().length),
-              )
-              : '';
+      final initials = nameParts.length > 1
+          ? '${nameParts[0].trim().isNotEmpty ? nameParts[0].trim()[0] : ''}'
+                '${nameParts[1].trim().isNotEmpty ? nameParts[1].trim()[0] : ''}'
+          : shareName.trim().isNotEmpty
+          ? shareName.trim().substring(0, math.min(2, shareName.trim().length))
+          : '';
       final standardRating = activeProfile?.classicalRating ?? widget.rating;
       final memorialPhotoUrl = memorialPlayerPhotoUrl(
         playerName: shareName,
         sourceIdentity: memorialIdentity,
       );
-      final photoFuture =
-          memorialIdentity?.isNotEmpty == true
-              ? Future<String?>.value(memorialPhotoUrl)
-              : FidePhotoService.getPhotoUrlOrNull(shareFideId?.toString());
+      final photoFuture = memorialIdentity?.isNotEmpty == true
+          ? Future<String?>.value(memorialPhotoUrl)
+          : FidePhotoService.getPhotoUrlOrNull(shareFideId?.toString());
       final birthYear = memorialOverview?.player.birthDate?.split('-').first;
       final deathYear = memorialOverview?.player.deathDate?.split('-').first;
       final lifespan =
           birthYear?.isNotEmpty == true && deathYear?.isNotEmpty == true
-              ? '$birthYear - $deathYear'
-              : null;
+          ? '$birthYear - $deathYear'
+          : null;
       if (!mounted) return;
       final logicalWidth = math.min(MediaQuery.of(context).size.width, 430.0);
 
@@ -748,16 +719,15 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
             sharePositionOrigin: const Rect.fromLTWH(0, 0, 1, 1),
           );
         },
-        onShareLink:
-            shareUrl == null
-                ? null
-                : () async {
-                  await Share.share(
-                    shareUrl,
-                    subject: displayShareName,
-                    sharePositionOrigin: const Rect.fromLTWH(0, 0, 1, 1),
-                  );
-                },
+        onShareLink: shareUrl == null
+            ? null
+            : () async {
+                await Share.share(
+                  shareUrl,
+                  subject: displayShareName,
+                  sharePositionOrigin: const Rect.fromLTWH(0, 0, 1, 1),
+                );
+              },
       );
     } catch (error) {
       debugPrint('Failed to share player profile: $error');
@@ -790,30 +760,27 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
       playerProfileDataKeyProvider(activePlayerKey),
     );
     final activeProfile = activeProfileAsync.valueOrNull;
-    final fallbackChessPlayer =
-        _isMemorial
-            ? null
-            : ref.watch(chessPlayerByFideIdProvider(widget.fideId)).valueOrNull;
-    final effectiveName =
-        (activeProfile?.name.trim().isNotEmpty ?? false)
-            ? activeProfile!.name
-            : ((fallbackChessPlayer?.name.trim().isNotEmpty ?? false)
-                ? fallbackChessPlayer!.name
-                : widget.playerName);
-    final effectiveTitle =
-        (activeProfile?.title?.trim().isNotEmpty ?? false)
-            ? activeProfile!.title
-            : ((widget.title?.trim().isNotEmpty ?? false)
-                ? widget.title
-                : ((fallbackChessPlayer?.title?.trim().isNotEmpty ?? false)
+    final fallbackChessPlayer = _isMemorial
+        ? null
+        : ref.watch(chessPlayerByFideIdProvider(widget.fideId)).valueOrNull;
+    final effectiveName = (activeProfile?.name.trim().isNotEmpty ?? false)
+        ? activeProfile!.name
+        : ((fallbackChessPlayer?.name.trim().isNotEmpty ?? false)
+              ? fallbackChessPlayer!.name
+              : widget.playerName);
+    final effectiveTitle = (activeProfile?.title?.trim().isNotEmpty ?? false)
+        ? activeProfile!.title
+        : ((widget.title?.trim().isNotEmpty ?? false)
+              ? widget.title
+              : ((fallbackChessPlayer?.title?.trim().isNotEmpty ?? false)
                     ? fallbackChessPlayer!.title
                     : widget.title));
     final effectiveFederation =
         (activeProfile?.federation?.trim().isNotEmpty ?? false)
-            ? activeProfile!.federation
-            : ((widget.federation?.trim().isNotEmpty ?? false)
-                ? widget.federation
-                : ((fallbackChessPlayer?.country?.trim().isNotEmpty ?? false)
+        ? activeProfile!.federation
+        : ((widget.federation?.trim().isNotEmpty ?? false)
+              ? widget.federation
+              : ((fallbackChessPlayer?.country?.trim().isNotEmpty ?? false)
                     ? fallbackChessPlayer!.country
                     : widget.federation));
     final twicLookupKey = PlayerProfileKey(
@@ -889,32 +856,51 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
     final isTwicLoading = gamesState.isLoading || isTwicStatsLoading;
     final streakFideId = _streakFideId;
 
-    final searching = _searching && selectedTab == PlayerProfileTab.games;
+    // The search belongs to the Games tab: leaving it (another profile
+    // route moved the shared tab) closes it.
+    ref.listen<PlayerProfileTab>(selectedPlayerProfileTabProvider, (_, next) {
+      if (next != PlayerProfileTab.games && _search.isSearching) {
+        _search.close();
+      }
+    });
+    // The list cleared its search itself (No matching games, Clear Filters):
+    // the field follows.
+    ref.listen<String>(
+      playerProfileGamesKeyProvider(playerKey).select((s) => s.searchQuery),
+      (_, next) {
+        if (next.isEmpty &&
+            _search.isSearching &&
+            _search.text.text.isNotEmpty) {
+          _search.text.clear();
+        }
+      },
+    );
+
     final scaffold = Scaffold(
       key: e2eKey(E2eIds.playerProfileRoot),
       backgroundColor: context.colors.background,
       // Games' search, in the thumb's reach where the search row above the
-      // list used to be (Trello #1420), wearing the count of what narrows
-      // the list. Botvinnik has its own tab now. Searching, nothing floats.
+      // list used to be (Trello #1420). Filters, counted, sit on the list's
+      // toolbar, which is in view whenever this button is (both come back
+      // as the list scrolls up), and in the search header while searching:
+      // so the button carries no count of its own. Kept while searching:
+      // the host hides it and flies the glass back into it as the search
+      // closes.
       floatingActionButton: SlidingFabs(
         controller: _chrome,
-        child:
-            selectedTab == PlayerProfileTab.games && !searching
-                ? SearchInkFab(
-                  key: e2eKey(E2eIds.playerGamesSearchFab),
-                  label: 'Search games',
-                  badgeCount: gamesState.activeFilterCount,
-                  onTap: _openSearch,
-                )
-                : const SizedBox.shrink(),
+        child: selectedTab == PlayerProfileTab.games
+            ? SearchInkFab(
+                key: e2eKey(E2eIds.playerGamesSearchFab),
+                label: 'Search games',
+              )
+            : const SizedBox.shrink(),
       ),
       body: Center(
         child: ConstrainedBox(
           constraints: BoxConstraints(
-            maxWidth:
-                ResponsiveHelper.isTablet
-                    ? ResponsiveHelper.contentMaxWidth
-                    : double.infinity,
+            maxWidth: ResponsiveHelper.isTablet
+                ? ResponsiveHelper.contentMaxWidth
+                : double.infinity,
           ),
           child: Column(
             children: [
@@ -928,67 +914,78 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    if (searching)
-                      PlayerGamesSearchHeader(
-                        playerKey: _gamesKey,
-                        focusNode: _searchFocus,
-                        onClose: _closeSearch,
-                      )
-                    else ...[
-                      // App bar
-                      _buildAppBar(
-                        context,
-                        isFavorite,
-                        effectiveFederation: effectiveFederation,
-                        effectiveName: effectiveName,
-                        effectiveTitle: effectiveTitle,
-                        hasPlayerExplorer: hasPlayerExplorer,
+                    // The profile's header and the Games search take turns
+                    // here; the chevron holds its spot between them.
+                    SearchModeHeaderSlot(
+                      header: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          _buildAppBar(
+                            context,
+                            isFavorite,
+                            effectiveFederation: effectiveFederation,
+                            effectiveName: effectiveName,
+                            effectiveTitle: effectiveTitle,
+                            hasPlayerExplorer: hasPlayerExplorer,
+                          ),
+
+                          // Live streaks, one line under the name, only when
+                          // the line was there on the first frame (see
+                          // [_streakLineAboveTabs]).
+                          if (streakFideId != null &&
+                              _streakLineAboveTabs == true)
+                            _ProfileStreakRow(
+                              fideId: streakFideId,
+                              playerName: effectiveName,
+                            ),
+
+                          SizedBox(height: 8.h),
+
+                          _buildTabSwitcher(selectedTab),
+
+                          // A live streak that arrives after first paint
+                          // opens here, under the tabs, so the tab bar never
+                          // moves.
+                          if (streakFideId != null &&
+                              _streakLineAboveTabs == false)
+                            _ProfileStreakRow(
+                              fideId: streakFideId,
+                              playerName: effectiveName,
+                              growIn: true,
+                            ),
+                          if (hasPlayerExplorer &&
+                              selectedTab == PlayerProfileTab.about)
+                            _buildStudyOpeningRow(),
+                          if (selectedTab == PlayerProfileTab.games)
+                            _buildGamesActionButtons(
+                              showStudyOpening: hasPlayerExplorer,
+                              playerKey: activePlayerKey,
+                              hasActiveFilter: hasActiveFilter,
+                              knownTotalCount:
+                                  twicSummaryAsync.valueOrNull?.totalGames,
+                            ),
+                        ],
                       ),
+                      search: SearchModeHeader(
+                        hintText: 'Search',
+                        rotatingHints: _searchHintWords,
+                        textFieldKey: e2eKey(E2eIds.playerGamesSearchField),
+                        closeKey: const ValueKey('player_games_search_close'),
+                        // The list's board view and Filters, as every Games
+                        // search header ends; its toolbar keeps the count.
+                        trailing: [
+                          PlayerGamesSearchControls(playerKey: activePlayerKey),
+                        ],
+                      ),
+                    ),
 
-                      // Live streaks, one line under the name, only when the
-                      // line was there on the first frame (see
-                      // [_streakLineAboveTabs]).
-                      if (streakFideId != null && _streakLineAboveTabs == true)
-                        _ProfileStreakRow(
-                          fideId: streakFideId,
-                          playerName: effectiveName,
-                        ),
-
-                      SizedBox(height: 8.h),
-
-                      // Tab switcher
-                      _buildTabSwitcher(selectedTab),
-                    ],
-
-                    // Filter/loading indicator bar, adjacent to the tabs and
-                    // under the search, where a TWIC query shows it working.
+                    // Filter and loading line, right over the list under
+                    // either header: where a TWIC query shows it working
+                    // while the list it replaces stays on screen.
                     _buildIndicatorBar(
                       hasActiveFilter: hasActiveFilter,
                       isTwicLoading: isTwicLoading,
                     ),
-
-                    if (!searching) ...[
-                      // A live streak that arrives after first paint opens
-                      // here, under the tabs, so the tab bar never moves.
-                      if (streakFideId != null &&
-                          _streakLineAboveTabs == false)
-                        _ProfileStreakRow(
-                          fideId: streakFideId,
-                          playerName: effectiveName,
-                          growIn: true,
-                        ),
-                      if (hasPlayerExplorer &&
-                          selectedTab == PlayerProfileTab.about)
-                        _buildStudyOpeningRow(),
-                      if (selectedTab == PlayerProfileTab.games)
-                        _buildGamesActionButtons(
-                          showStudyOpening: hasPlayerExplorer,
-                          playerKey: activePlayerKey,
-                          hasActiveFilter: hasActiveFilter,
-                          knownTotalCount:
-                              twicSummaryAsync.valueOrNull?.totalGames,
-                        ),
-                    ],
                   ],
                 ),
               ),
@@ -997,10 +994,12 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
               Expanded(
                 child: ScrollChromeRegion(
                   controller: _chrome,
-                  child: _buildTabContent(
-                    searching: searching,
-                    effectiveTitle: effectiveTitle,
-                    effectiveFederation: effectiveFederation,
+                  child: ListenableBuilder(
+                    listenable: _search,
+                    builder: (context, _) => _buildTabContent(
+                      effectiveTitle: effectiveTitle,
+                      effectiveFederation: effectiveFederation,
+                    ),
                   ),
                 ),
               ),
@@ -1010,21 +1009,24 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
       ),
     );
 
-    return PopScope(
-      // Back from the search closes it, back to the Games tab it searched.
-      canPop: !searching,
-      onPopInvokedWithResult: (didPop, _) {
-        if (!didPop) _closeSearch();
-      },
-      // Screenshot → open the branded profile share preview (same flow as
-      // tapping the player name in the app bar).
-      child: ScreenshotShareNudge(
-        onShare:
-            () => _shareProfile(
-              effectiveName: effectiveName,
-              effectiveTitle: effectiveTitle,
-              effectiveFederation: effectiveFederation,
-            ),
+    // Screenshot → open the branded profile share preview (same flow as
+    // tapping the player name in the app bar).
+    return ScreenshotShareNudge(
+      onShare: () => _shareProfile(
+        effectiveName: effectiveName,
+        effectiveTitle: effectiveTitle,
+        effectiveFederation: effectiveFederation,
+      ),
+      // Owns the search's back too: back closes it, back to the Games tab.
+      child: SearchModeHost(
+        controller: _search,
+        chrome: _chrome,
+        // TWIC searches on the server: one query per pause, not per key.
+        debounce: const Duration(milliseconds: 400),
+        onQuery: _applySearchQuery,
+        // The query goes with the search; the filters stay, as the list's
+        // toolbar says.
+        onClose: () => _applySearchQuery(''),
         child: scaffold,
       ),
     );
@@ -1038,10 +1040,10 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
     required String? effectiveTitle,
     required bool hasPlayerExplorer,
   }) {
-    final horizontalPadding = ResponsiveHelper.adaptive(
-      phone: 16.w,
-      tablet: 24.w,
-    );
+    // The back target starts where the search header's does.
+    final horizontalPadding = SearchHeaderMetrics.leadingInset;
+    // Named as every pushed page is ([PageTitle]): the one title voice, a
+    // heading, its words growing no further than the bar's chrome.
     final identity = Row(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -1060,19 +1062,16 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
             overflow: TextOverflow.ellipsis,
             text: TextSpan(
               children: [
-                if (effectiveTitle != null &&
-                    effectiveTitle.trim().isNotEmpty)
+                if (effectiveTitle != null && effectiveTitle.trim().isNotEmpty)
                   TextSpan(
                     text: '${effectiveTitle.trim()} ',
-                    style: AppTypography.textMdBold.copyWith(
-                      color: context.colors.titleAccent,
-                    ),
+                    style: PageTitle.style(
+                      context,
+                    ).copyWith(color: context.colors.titleAccent),
                   ),
                 TextSpan(
                   text: formatPlayerDisplayName(effectiveName),
-                  style: AppTypography.textMdBold.copyWith(
-                    color: context.colors.textPrimary,
-                  ),
+                  style: PageTitle.style(context),
                 ),
               ],
             ),
@@ -1084,17 +1083,8 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
       padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
       child: Row(
         children: [
-          // Back button
-          IconButton(
-            iconSize: 24.ic,
-            padding: EdgeInsets.zero,
-            onPressed: () => Navigator.of(context).pop(),
-            icon: Icon(
-              Icons.arrow_back_ios_new_outlined,
-              size: 24.ic,
-              color: context.colors.textPrimary,
-            ),
-          ),
+          // The way back, glyph for glyph where the search's chevron sits.
+          const PageBackButton(),
 
           // Flag, title, and natural display name. Tapping the identity opens
           // the same share preview as screenshot detection. Unknown
@@ -1103,12 +1093,11 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
             child: Center(
               child: PlayerNameShareTarget(
                 playerName: effectiveName,
-                onShare:
-                    () => _shareProfile(
-                      effectiveName: effectiveName,
-                      effectiveTitle: effectiveTitle,
-                      effectiveFederation: effectiveFederation,
-                    ),
+                onShare: () => _shareProfile(
+                  effectiveName: effectiveName,
+                  effectiveTitle: effectiveTitle,
+                  effectiveFederation: effectiveFederation,
+                ),
                 coachmarkMessage:
                     'Tap the player’s name to share this profile.',
                 // Long-press on the name opens the shared focus menu with
@@ -1118,29 +1107,28 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
                 // slot for one, and the detector adds no box, so the bar
                 // lays out exactly as it always has.
                 child: Builder(
-                  builder:
-                      (nameContext) => GestureDetector(
-                        onLongPressStart:
-                            (details) => CardContextMenu.open(
-                              nameContext,
-                              // A screen reader's long-press reports no
-                              // position.
-                              origin:
-                                  details.globalPosition == Offset.zero
-                                      ? null
-                                      : details.globalPosition,
-                              actions:
-                                  (menuContext) => _profileMenuActions(
-                                    menuContext,
-                                    isFavorite: isFavorite,
-                                    effectiveName: effectiveName,
-                                    effectiveTitle: effectiveTitle,
-                                    effectiveFederation: effectiveFederation,
-                                    hasPlayerExplorer: hasPlayerExplorer,
-                                  ),
-                            ),
-                        child: identity,
+                  builder: (nameContext) => GestureDetector(
+                    onLongPressStart: (details) => CardContextMenu.open(
+                      nameContext,
+                      // A screen reader's long-press reports no
+                      // position.
+                      origin: details.globalPosition == Offset.zero
+                          ? null
+                          : details.globalPosition,
+                      actions: (menuContext) => _profileMenuActions(
+                        menuContext,
+                        isFavorite: isFavorite,
+                        effectiveName: effectiveName,
+                        effectiveTitle: effectiveTitle,
+                        effectiveFederation: effectiveFederation,
+                        hasPlayerExplorer: hasPlayerExplorer,
                       ),
+                    ),
+                    child: MediaQuery.withClampedTextScaling(
+                      maxScaleFactor: HomeTopBarMetrics.maxTextScale,
+                      child: Semantics(header: true, child: identity),
+                    ),
+                  ),
                 ),
               ),
             ),
@@ -1196,18 +1184,16 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
       LibraryMenuAction(
         icon: Icons.ios_share_rounded,
         label: 'Share profile',
-        onSelected:
-            () => _shareProfile(
-              effectiveName: effectiveName,
-              effectiveTitle: effectiveTitle,
-              effectiveFederation: effectiveFederation,
-            ),
+        onSelected: () => _shareProfile(
+          effectiveName: effectiveName,
+          effectiveTitle: effectiveTitle,
+          effectiveFederation: effectiveFederation,
+        ),
       ),
       LibraryMenuAction(
-        icon:
-            isFavorite
-                ? Icons.favorite_rounded
-                : Icons.favorite_border_rounded,
+        icon: isFavorite
+            ? Icons.favorite_rounded
+            : Icons.favorite_border_rounded,
         label: isFavorite ? 'Remove from favorites' : 'Add to favorites',
         onSelected: _toggleFavorite,
       ),
@@ -1254,36 +1240,38 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
             ? memorialTreeScopeKey(widget.memorialSourceIdentity!.trim())
             : null);
     final profileDraft = playerDraft();
-    final treeDraft =
-        hasPlayerExplorer && explorerScope != null
-            ? SpaceShortcut.draft(
-              kind: SpaceShortcutKind.playerOpenings,
-              targetId: targetId,
-              title: profileDraft.title,
-              subtitle: 'Opening tree',
-              params: {
-                ...profileDraft.params,
-                'gamebasePlayerId': explorerScope,
-                'color': 'all',
-              },
-            )
-            : null;
+    final treeDraft = hasPlayerExplorer && explorerScope != null
+        ? SpaceShortcut.draft(
+            kind: SpaceShortcutKind.playerOpenings,
+            targetId: targetId,
+            title: profileDraft.title,
+            subtitle: 'Opening tree',
+            params: {
+              ...profileDraft.params,
+              'gamebasePlayerId': explorerScope,
+              'color': 'all',
+            },
+          )
+        : null;
 
     // The live streak card, opening on the player's hottest class.
-    final streakFideId =
-        _isMemorial || !FeatureFlags.streaks ? null : widget.fideId;
+    final streakFideId = _isMemorial || !FeatureFlags.streaks
+        ? null
+        : widget.fideId;
     SpaceShortcut? streakDraft;
     if (streakFideId != null && streakFideId > 0) {
-      final hottest =
-          ref.read(playerLiveStreaksProvider(streakFideId)).firstOrNull;
+      final hottest = ref
+          .read(playerLiveStreaksProvider(streakFideId))
+          .firstOrNull;
       final fed = effectiveFederation?.trim();
       final title = effectiveTitle?.trim();
       streakDraft = SpaceShortcut.draft(
         kind: SpaceShortcutKind.streak,
         targetId: streakFideId.toString(),
         title: widget.playerName.trim(),
-        subtitle:
-            hottest == null ? 'Streak' : '${hottest.timeClass.label} streak',
+        subtitle: hottest == null
+            ? 'Streak'
+            : '${hottest.timeClass.label} streak',
         params: {
           'fideId': streakFideId,
           'playerName': widget.playerName.trim(),
@@ -1358,6 +1346,7 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
                 child: SingleMotionBuilder(
                   motion: const CupertinoMotion.snappy(),
                   value: hasActiveFilter ? 1.0 : 0.0,
+                  active: !MediaQuery.disableAnimationsOf(context),
                   builder: (context, barProgress, _) {
                     if (barProgress < 0.01) return const SizedBox.shrink();
                     return Container(
@@ -1377,25 +1366,17 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
                   },
                 ),
               ),
-              // TWIC loading indicator
+              // A TWIC query on its way: the Games lists' quiet line
+              // (muted ink, in the gutters, no track), as every Games list
+              // reads a pending search.
               Positioned.fill(
-                child: SingleMotionBuilder(
-                  motion: const CupertinoMotion.snappy(),
-                  value: isTwicLoading ? 1.0 : 0.0,
-                  builder: (context, loadingProgress, _) {
-                    if (loadingProgress < 0.01) return const SizedBox.shrink();
-                    return Opacity(
-                      opacity: loadingProgress.clamp(0.0, 1.0),
-                      child: LinearProgressIndicator(
-                        backgroundColor: kPrimaryColor.withValues(alpha: 0.12),
-                        valueColor: AlwaysStoppedAnimation<Color>(
-                          context.isLightTheme
-                              ? context.colors.accentText
-                              : kPrimaryColor.withValues(alpha: 0.92),
-                        ),
-                      ),
-                    );
-                  },
+                // Its own thickness, top-aligned in the strip, whatever the
+                // strip's scaled height: never a min above the max.
+                child: OverflowBox(
+                  alignment: Alignment.topCenter,
+                  minHeight: 0,
+                  maxHeight: GamesListRefetchLine.thickness,
+                  child: GamesListRefetchLine(active: isTwicLoading),
                 ),
               ),
             ],
@@ -1406,7 +1387,6 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
   }
 
   Widget _buildTabContent({
-    required bool searching,
     String? effectiveTitle,
     String? effectiveFederation,
   }) {
@@ -1415,7 +1395,7 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
       child: PageView.builder(
         controller: _pageController,
         // Searching holds the Games tab: the search belongs to it.
-        physics: searching ? const NeverScrollableScrollPhysics() : null,
+        physics: _search.pagePhysics(),
         itemCount: _availableTabs.length,
         onPageChanged: _handlePageChanged,
         itemBuilder: (context, index) {
@@ -1496,6 +1476,7 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
       child: SingleMotionBuilder(
         motion: const CupertinoMotion.bouncy(),
         value: showStudyOpening ? 1.0 : 0.0,
+        active: !MediaQuery.disableAnimationsOf(context),
         builder: (context, t, _) {
           // t: 1 = both cards visible (TWIC), 0 = only save-to-library.
           // Clamp aggressively — bouncy spring overshoots, and any NaN/inf
@@ -1518,10 +1499,9 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
                         child: _ActionCard(
                           icon: Icons.account_tree_outlined,
                           title: 'Build Tree',
-                          subtitle:
-                              hasActiveFilter
-                                  ? 'Filtered games'
-                                  : 'Repertoire view',
+                          subtitle: hasActiveFilter
+                              ? 'Filtered games'
+                              : 'Repertoire view',
                           isHighlighted: hasActiveFilter,
                           onTap: _openExplorer,
                         ),
@@ -1537,8 +1517,9 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
                 child: _ActionCard(
                   icon: Icons.library_add_outlined,
                   title: 'Save to Library',
-                  subtitle:
-                      hasActiveFilter ? 'Filtered games' : 'Games collection',
+                  subtitle: hasActiveFilter
+                      ? 'Filtered games'
+                      : 'Games collection',
                   isHighlighted: hasActiveFilter,
                   onTap: () {
                     showSaveToLibrarySheet(
@@ -1551,12 +1532,13 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
                           _availableTabs.indexOf(PlayerProfileTab.games),
                         );
                         ref
-                            .read(
-                              playerGamesSelectionModeProvider(
-                                playerKey,
-                              ).notifier,
-                            )
-                            .state = true;
+                                .read(
+                                  playerGamesSelectionModeProvider(
+                                    playerKey,
+                                  ).notifier,
+                                )
+                                .state =
+                            true;
                       },
                     );
                   },
@@ -1604,12 +1586,11 @@ class _ProfileStreakRowState extends ConsumerState<_ProfileStreakRow> {
     HapticFeedbackService.light();
     Navigator.of(context).push(
       MaterialPageRoute<void>(
-        builder:
-            (_) => StreakPlayerScreen(
-              fideId: widget.fideId,
-              initialClass: timeClass,
-              fallbackName: formatPlayerDisplayName(widget.playerName),
-            ),
+        builder: (_) => StreakPlayerScreen(
+          fideId: widget.fideId,
+          initialClass: timeClass,
+          fallbackName: formatPlayerDisplayName(widget.playerName),
+        ),
       ),
     );
   }
@@ -1655,6 +1636,7 @@ class _ProfileStreakRowState extends ConsumerState<_ProfileStreakRow> {
     return SingleMotionBuilder(
       motion: const CupertinoMotion.snappy(),
       value: line == null ? 0.0 : 1.0,
+      active: !MediaQuery.disableAnimationsOf(context),
       builder: (context, t, child) {
         if (child == null || t <= 0) return const SizedBox.shrink();
         // Springs only approach 1; snap the rest so no pixel row is shaved.
@@ -1677,10 +1659,9 @@ class _ProfileStreakRowState extends ConsumerState<_ProfileStreakRow> {
         '${top.currentStreak} ${top.timeClass.label.toLowerCase()} '
         'wins in a row';
     final others = live.skip(1).toList(growable: false);
-    final also =
-        others.isEmpty
-            ? ''
-            : ' · also ${others.map((r) => '${r.currentStreak} in ${r.timeClass.label.toLowerCase()}').join(', ')}';
+    final also = others.isEmpty
+        ? ''
+        : ' · also ${others.map((r) => '${r.currentStreak} in ${r.timeClass.label.toLowerCase()}').join(', ')}';
     final horizontalPadding = ResponsiveHelper.adaptive(
       phone: 20.sp,
       tablet: 32.sp,
@@ -1709,11 +1690,11 @@ class _ProfileStreakRowState extends ConsumerState<_ProfileStreakRow> {
             child: SingleMotionBuilder(
               motion: const CupertinoMotion.snappy(),
               value: _pressed ? 1.0 : 0.0,
-              builder:
-                  (context, press, child) => Opacity(
-                    opacity: (1 - 0.4 * press).clamp(0.0, 1.0),
-                    child: child,
-                  ),
+              active: !MediaQuery.disableAnimationsOf(context),
+              builder: (context, press, child) => Opacity(
+                opacity: (1 - 0.4 * press).clamp(0.0, 1.0),
+                child: child,
+              ),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
@@ -1790,6 +1771,7 @@ class _StudyOpeningPillState extends State<_StudyOpeningPill> {
       child: SingleMotionBuilder(
         motion: const CupertinoMotion.snappy(),
         value: _pressed ? 1.0 : 0.0,
+        active: !MediaQuery.disableAnimationsOf(context),
         builder: (context, pressProgress, _) {
           return Transform.scale(
             scale: 1.0 - 0.02 * pressProgress,
@@ -1868,32 +1850,31 @@ class _ActionCardState extends State<_ActionCard> {
       child: SingleMotionBuilder(
         motion: const CupertinoMotion.snappy(),
         value: _pressed ? 1.0 : 0.0,
+        active: !MediaQuery.disableAnimationsOf(context),
         builder: (context, pressProgress, _) {
           return Transform.scale(
             scale: 1.0 - 0.03 * pressProgress,
             child: SingleMotionBuilder(
               motion: const CupertinoMotion.snappy(),
               value: widget.isHighlighted ? 1.0 : 0.0,
+              active: !MediaQuery.disableAnimationsOf(context),
               builder: (context, h, _) {
                 // Idle: solid dark card. Highlighted: red-tinted.
-                final bg =
-                    Color.lerp(
-                      context.colors.surface,
-                      _filterRed.withValues(alpha: 0.10),
-                      h,
-                    )!;
-                final iconBg =
-                    Color.lerp(
-                      context.colors.textPrimary.withValues(alpha: 0.08),
-                      _filterRed.withValues(alpha: 0.18),
-                      h,
-                    )!;
-                final iconColor =
-                    Color.lerp(
-                      context.colors.textPrimary.withValues(alpha: 0.85),
-                      context.isLightTheme ? context.colors.danger : _filterRed,
-                      h,
-                    )!;
+                final bg = Color.lerp(
+                  context.colors.surface,
+                  _filterRed.withValues(alpha: 0.10),
+                  h,
+                )!;
+                final iconBg = Color.lerp(
+                  context.colors.textPrimary.withValues(alpha: 0.08),
+                  _filterRed.withValues(alpha: 0.18),
+                  h,
+                )!;
+                final iconColor = Color.lerp(
+                  context.colors.textPrimary.withValues(alpha: 0.85),
+                  context.isLightTheme ? context.colors.danger : _filterRed,
+                  h,
+                )!;
                 return Container(
                   height: 62.h * context.textGrowth,
                   padding: EdgeInsets.symmetric(
@@ -1975,14 +1956,13 @@ class _ActionCardState extends State<_ActionCard> {
                                       style: AppTypography.textXsRegular
                                           .copyWith(
                                             height: 1.15,
-                                            color:
-                                                widget.isHighlighted
-                                                    ? (context.isLightTheme
-                                                        ? context.colors.danger
-                                                        : _filterRed.withValues(
+                                            color: widget.isHighlighted
+                                                ? (context.isLightTheme
+                                                      ? context.colors.danger
+                                                      : _filterRed.withValues(
                                                           alpha: 0.9,
                                                         ))
-                                                    : context.textInk(0.5),
+                                                : context.textInk(0.5),
                                           ),
                                     ),
                                   ],

@@ -66,8 +66,7 @@ class _RankingChip extends StatelessWidget {
     // chips use 8.w / 12.h. When expandLabelWhenSelected is on, only the
     // *selected* chip is treated as labeled for padding so unselected time
     // controls keep the same footprint as before.
-    final labelVisible =
-        showLabel || (expandLabelWhenSelected && isSelected);
+    final labelVisible = showLabel || (expandLabelWhenSelected && isSelected);
 
     return Semantics(
       label: label,
@@ -86,8 +85,9 @@ class _RankingChip extends StatelessWidget {
             duration: const Duration(milliseconds: 150),
             padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 8.h),
             decoration: BoxDecoration(
-              color:
-                  isSelected ? kPrimaryColor : context.colors.surfaceRecessed,
+              color: isSelected
+                  ? kPrimaryColor
+                  : context.colors.surfaceRecessed,
               borderRadius: BorderRadius.circular(16.br),
               border: Border.all(
                 color: isSelected ? kPrimaryColor : context.colors.divider,
@@ -129,12 +129,12 @@ class _RankingChip extends StatelessWidget {
                           softWrap: false,
                           overflow: TextOverflow.ellipsis,
                           style: AppTypography.textXsMedium.copyWith(
-                            color:
-                                isSelected
-                                    ? kBlackColor
-                                    : context.colors.textPrimary,
-                            fontWeight:
-                                isSelected ? FontWeight.w600 : FontWeight.w500,
+                            color: isSelected
+                                ? kBlackColor
+                                : context.colors.textPrimary,
+                            fontWeight: isSelected
+                                ? FontWeight.w600
+                                : FontWeight.w500,
                           ),
                         ),
                       ],
@@ -146,12 +146,12 @@ class _RankingChip extends StatelessWidget {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: AppTypography.textXsMedium.copyWith(
-                      color:
-                          isSelected
-                              ? kBlackColor
-                              : context.colors.textPrimary,
-                      fontWeight:
-                          isSelected ? FontWeight.w600 : FontWeight.w500,
+                      color: isSelected
+                          ? kBlackColor
+                          : context.colors.textPrimary,
+                      fontWeight: isSelected
+                          ? FontWeight.w600
+                          : FontWeight.w500,
                     ),
                   ),
               ],
@@ -194,18 +194,17 @@ class _ChipStrip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ShaderMask(
-      shaderCallback:
-          (bounds) => const LinearGradient(
-            begin: Alignment.centerLeft,
-            end: Alignment.centerRight,
-            colors: [
-              Colors.transparent,
-              Colors.white,
-              Colors.white,
-              Colors.transparent,
-            ],
-            stops: [0.0, 0.03, 0.97, 1.0],
-          ).createShader(bounds),
+      shaderCallback: (bounds) => const LinearGradient(
+        begin: Alignment.centerLeft,
+        end: Alignment.centerRight,
+        colors: [
+          Colors.transparent,
+          Colors.white,
+          Colors.white,
+          Colors.transparent,
+        ],
+        stops: [0.0, 0.03, 0.97, 1.0],
+      ).createShader(bounds),
       blendMode: BlendMode.dstIn,
       child: SingleChildScrollView(
         scrollDirection: Axis.horizontal,
@@ -224,7 +223,8 @@ class _ChipStrip extends StatelessWidget {
   }
 }
 
-/// Active / All scope. Compact enough to sit beside the search field.
+/// Active / All scope: two compact chips, leading the filter rail or on a
+/// line of their own above it.
 class RankingActivityControl extends StatelessWidget {
   const RankingActivityControl({
     super.key,
@@ -241,7 +241,8 @@ class RankingActivityControl extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       children: [
         for (final activity in RankingActivity.values) ...[
-          if (activity != RankingActivity.values.first) SizedBox(width: _chipGap),
+          if (activity != RankingActivity.values.first)
+            SizedBox(width: _chipGap),
           _RankingChip(
             key: ValueKey('ranking-activity-${activity.name}'),
             label: activity == RankingActivity.active ? 'Active' : 'All',
@@ -260,12 +261,18 @@ class RankingFilterControls extends StatelessWidget {
     required this.filters,
     required this.onChanged,
     this.showActivity = true,
+    this.activityInRail = false,
     this.horizontalInset,
   });
 
   final RankingFilters filters;
   final ValueChanged<RankingFilters> onChanged;
   final bool showActivity;
+
+  /// Active / All lead the one scrolling rail, before the time controls,
+  /// instead of standing on a line of their own above it: every ranking
+  /// filter on one line, with the list right under it.
+  final bool activityInRail;
 
   /// Gutter the chips rest against, so a host with a wider content margin
   /// (tablet) keeps the strip on the same edge as its cards instead of
@@ -275,23 +282,23 @@ class RankingFilterControls extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final inset = horizontalInset ?? _stripInset;
+    final activity = RankingActivityControl(
+      value: filters.activity,
+      onChanged: (value) => onChanged(filters.copyWith(activity: value)),
+    );
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        if (showActivity) ...[
+        if (showActivity && !activityInRail)
           Padding(
             padding: EdgeInsets.symmetric(horizontal: inset),
-            child: RankingActivityControl(
-              value: filters.activity,
-              onChanged:
-                  (value) => onChanged(filters.copyWith(activity: value)),
-            ),
+            child: activity,
           ),
-        ],
         _ChipStrip(
           inset: inset,
           children: [
+            if (showActivity && activityInRail) activity,
             _ChipGroup(
               children: [
                 for (final timeControl in RankingTimeControl.values)
@@ -304,10 +311,8 @@ class RankingFilterControls extends StatelessWidget {
                     showLabel: false,
                     expandLabelWhenSelected: true,
                     isSelected: timeControl == filters.timeControl,
-                    onTap:
-                        () => onChanged(
-                          filters.copyWith(timeControl: timeControl),
-                        ),
+                    onTap: () =>
+                        onChanged(filters.copyWith(timeControl: timeControl)),
                   ),
               ],
             ),
@@ -320,9 +325,8 @@ class RankingFilterControls extends StatelessWidget {
                     ),
                     label: category.label,
                     isSelected: category == filters.category,
-                    onTap:
-                        () =>
-                            onChanged(filters.copyWith(category: category)),
+                    onTap: () =>
+                        onChanged(filters.copyWith(category: category)),
                   ),
               ],
             ),

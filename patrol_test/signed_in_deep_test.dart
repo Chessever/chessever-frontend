@@ -8,6 +8,7 @@ import 'package:chessever2/screens/player_profile/provider/player_profile_provid
 import 'package:chessever2/screens/premium_games/providers/premium_games_provider.dart';
 import 'package:chessever2/screens/premium_games/widgets/twic_game_card.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card.dart';
+import 'package:flutter/foundation.dart' show ValueKey;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:patrol/patrol.dart';
@@ -360,6 +361,8 @@ void main() {
         await pushNamedRoute($, '/favorites_screen');
         await expectVisible($, E2eIds.favoritesRoot);
         await $('Games').tap();
+        // The field opens from the floating search button.
+        await openGamesSearch($, e2eKey(E2eIds.favoritesSearchFab));
         await searchFor(
           $,
           fieldId: E2eIds.favoritesGamesSearchField,
@@ -388,7 +391,10 @@ void main() {
         );
         await byId($, E2eIds.favoritesGamesFilterButton).tap();
         await $('Reset').tap();
-        await $('Players').tap();
+        // The search holds its tab: close it before turning to another.
+        await $(const ValueKey('games_search_close')).tap();
+        await $.pumpAndTrySettle(timeout: const Duration(seconds: 8));
+        await $('Rankings').tap();
         providerContainer().read(selectedFavoritesModeProvider.notifier).state =
             FavoritesScreenMode.games;
         await popRoute($);

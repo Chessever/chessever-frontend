@@ -1,4 +1,5 @@
 import 'package:chessever2/widgets/app_button.dart';
+import 'package:chessever2/widgets/card_context_menu.dart';
 import 'dart:async';
 
 import 'package:chessever2/providers/auth_state_provider.dart';
@@ -3006,17 +3007,25 @@ void main() {
     await _pumpSpace(
       tester,
       [smart, collection],
+      withAddFab: true,
       extra: [
         _noSmartMembers,
         collectionsProvider.overrideWith((ref) async => []),
       ],
     );
     await tester.pump(const Duration(milliseconds: 100));
-    expect(
-      find.descendant(of: card, matching: find.byType(SmartEventStar)),
-      findsOneWidget,
+    final homeStar = find.descendant(
+      of: card,
+      matching: find.byType(SmartEventStar),
     );
+    expect(homeStar, findsOneWidget);
     expect(chevrons(card), findsNothing);
+    double starOpacity() => tester
+        .widget<Opacity>(
+          find.ancestor(of: homeStar, matching: find.byType(Opacity)).first,
+        )
+        .opacity;
+    expect(starOpacity(), 1);
     // A collection's star is its favorite, which My Space never changes: its
     // card ends in a chevron (38.4.0).
     expect(
@@ -3029,6 +3038,16 @@ void main() {
       findsNothing,
     );
     expect(chevrons(find.byType(CollectionCard)), findsOneWidget);
+
+    // The home's Edit hides the star where it stands: it fades out and
+    // takes no taps, and the card keeps its size, so nothing on it moves.
+    final rest = tester.getRect(card);
+    await _openHomeEdit(tester);
+    expect(homeStar, findsOneWidget);
+    expect(starOpacity(), 0);
+    expect(tester.getRect(card), rest);
+    await _saveHomeEdit(tester);
+    expect(starOpacity(), 1);
     await _drain(tester);
 
     await _openSeeAll(
@@ -3162,6 +3181,60 @@ void main() {
     },
   );
 
+  testWidgets('every saved card on the home presses as an event card does '
+      '(0.96), and holds into the shared focus menu', (tester) async {
+    final smart = _pin(_smartDraft(2700), 'se1', 3);
+    final collection = _pin(
+      SpaceShortcut.draft(
+        kind: SpaceShortcutKind.collection,
+        targetId: 'c',
+        title: 'Annotated games',
+        params: {
+          'slug': 'annotated-games',
+          'collectionKind': 'event',
+          'gameCount': 12,
+        },
+      ),
+      'c',
+      2,
+    );
+    await _pumpSpace(
+      tester,
+      [_pin(eventSpaceDraft(_feed[0]), 'e0', 20), smart, collection, _folder],
+      extra: [
+        _noSmartMembers,
+        collectionsProvider.overrideWith((ref) async => []),
+      ],
+    );
+    await tester.pump(const Duration(milliseconds: 100));
+    for (final card in [
+      find.byType(EventCard),
+      find.byType(SmartEventCard),
+      find.byType(CollectionCard),
+      find.byType(SpaceSavedRow).last,
+      find.byKey(const ValueKey<String>('my_space_likes_card')),
+    ]) {
+      expect(card, findsWidgets, reason: '$card');
+      final press = tester.widget<TappableScale>(
+        find.descendant(of: card, matching: find.byType(TappableScale)).first,
+      );
+      expect(press.scaleDown, 0.96, reason: '$card');
+    }
+    // The page's own cards hold into the same menu as the saved ones.
+    for (final key in ['my_space_my_prep_tile', 'my_space_library_tile']) {
+      expect(
+        find.ancestor(
+          of: find.byKey(ValueKey(key)),
+          matching: find.byType(CardContextMenu),
+        ),
+        findsOneWidget,
+        reason: key,
+      );
+    }
+    expect(tester.takeException(), isNull);
+    await _drain(tester);
+  });
+
   testWidgets('holding a saved row offers Remove from My Space, and takes '
       'it out', (tester) async {
     await _pumpSpace(tester, [_folder]);
@@ -3169,6 +3242,10 @@ void main() {
     await tester.longPress(find.text('Najdorf prep'));
     await tester.pump(const Duration(milliseconds: 600));
     expect(find.text('Remove from My Space'), findsOneWidget);
+    // A Library database opens with a tap alone: its menu has no Open row
+    // there, so none here either.
+    expect(find.text('Open'), findsNothing);
+    expect(find.text('Open database'), findsNothing);
     await tester.tap(find.text('Remove from My Space'));
     // The menu lets go of its lifted copy, then the row leaves.
     for (var i = 0; i < 10; i++) {

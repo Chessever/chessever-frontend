@@ -5,6 +5,8 @@ import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart'
 import 'package:chessever2/screens/group_event/providers/group_event_screen_provider.dart';
 import 'package:chessever2/screens/group_event/providers/live_group_broadcast_id_provider.dart';
 import 'package:chessever2/screens/group_event/providers/sorting_all_event_provider.dart';
+import 'package:chessever2/screens/group_event/widget/filter_popup/filter_popup_provider.dart';
+import 'package:chessever2/screens/group_event/widget/filter_popup/filter_popup_state.dart';
 import 'package:chessever2/widgets/app_snack.dart';
 import 'package:flutter/widgets.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -21,6 +23,28 @@ final homeEventsLiveFirstProvider = StateProvider<bool>((ref) => false);
 
 /// Snack shown when Live first is pressed while no event is in play.
 const String kNoLiveEventsRightNowMessage = 'No live events right now';
+
+/// Snack shown when Live first is pressed while events are in play but the
+/// list's filters keep every one of them out. The button counts the events
+/// in play, so "2 live" must not be answered with "No live events".
+const String kNoLiveEventsMatchFiltersMessage =
+    'No live events match your filters';
+
+/// What a press of Live first that found nothing to lift says: that nothing
+/// is live, or, with events in play ([liveIds]) and [filters] narrowing the
+/// list, that the filters keep them out.
+String noLiveEventsMessage({
+  required Set<String> liveIds,
+  required FilterPopupState filters,
+}) {
+  final narrowed =
+      filters.formatsAndStates.isNotEmpty ||
+      filters.hasEloFilter ||
+      !filters.eco.isAll;
+  return liveIds.isNotEmpty && narrowed
+      ? kNoLiveEventsMatchFiltersMessage
+      : kNoLiveEventsRightNowMessage;
+}
 
 /// Whether [event] is live, by the test its card uses for the LIVE label:
 /// its own category, or the strict live-ids stream, which can lead the
@@ -93,9 +117,10 @@ bool anyLiveEvent({
 /// on.
 ///
 /// Turning it off always works. Turning it on needs an event in play: with
-/// none, it stays off and a snack says there are no live events right now,
-/// so the tap is never a silent no-op. Turned on from Past or Upcoming, it
-/// opens Current, the list it orders.
+/// none, it stays off and a snack says there are no live events right now
+/// (or, with events in play that the filters keep out of Current, that none
+/// match the filters), so the tap is never a silent no-op. Turned on from
+/// Past or Upcoming, it opens Current, the list it orders.
 bool pressHomeEventsLiveFirst({
   required BuildContext context,
   required WidgetRef ref,
@@ -118,7 +143,13 @@ bool pressHomeEventsLiveFirst({
       ? ref.read(groupEventScreenProvider).valueOrNull
       : null;
   if (!anyLiveEvent(liveIds: liveIds, currentEvents: currentEvents)) {
-    showAppSnack(context, kNoLiveEventsRightNowMessage);
+    showAppSnack(
+      context,
+      noLiveEventsMessage(
+        liveIds: liveIds,
+        filters: ref.read(currentPastAppliedFilterProvider),
+      ),
+    );
     return false;
   }
   flag.state = true;
@@ -134,9 +165,10 @@ bool pressHomeEventsLiveFirst({
 ///
 /// The same flag as the Events bar ([homeEventsLiveFirstProvider]), with the
 /// same rules over the Today feed: off always works; on needs an event in
-/// play, else it stays off and a snack says so. The feed pages its events in,
-/// so one in play can sit below the loaded pages; when no loaded event is
-/// live but some event is, the feed fetches those first
+/// play that the feed's filters let through, else it stays off and a snack
+/// says which of the two is missing ([noLiveEventsMessage]). The feed pages
+/// its events in, so one in play can sit below the loaded pages; when no
+/// loaded event is live but some event is, the feed fetches those first
 /// ([ForYouNotifier.hasLiveEvent]) and the press waits for that answer.
 Future<bool> pressForYouLiveFirst({
   required BuildContext context,
@@ -151,7 +183,16 @@ Future<bool> pressForYouLiveFirst({
   final hasLive = await feed.hasLiveEvent();
   if (!context.mounted) return false;
   if (!hasLive) {
-    showAppSnack(context, kNoLiveEventsRightNowMessage);
+    showAppSnack(
+      context,
+      noLiveEventsMessage(
+        liveIds: homeLiveEventIds(
+          strict: ref.read(liveGroupBroadcastIdsProvider).valueOrNull,
+          mirror: ref.read(liveBroadcastIdsProvider),
+        ),
+        filters: ref.read(forYouAppliedFilterProvider),
+      ),
+    );
     return false;
   }
   // Already turned on while the feed was asked (the Events bar).
@@ -160,13 +201,18 @@ Future<bool> pressForYouLiveFirst({
   return true;
 }
 
-/// Whether any event is in play right now, by the strict live-ids stream
-/// (else the events list's copy of it). The Home Live first button only
-/// shows while this holds (Trello #1420): with nothing live it has nothing
-/// to do.
-final homeAnyLiveEventProvider = Provider.autoDispose<bool>((ref) {
+/// How many events are in play right now, by the strict live-ids stream
+/// (else the events list's copy of it): the count the home Live first
+/// capsules read out ("Show 3 live first"). One number for both home tabs,
+/// as they share one flag.
+final homeLiveEventCountProvider = Provider.autoDispose<int>((ref) {
   return homeLiveEventIds(
     strict: ref.watch(liveGroupBroadcastIdsProvider).valueOrNull,
     mirror: ref.watch(liveBroadcastIdsProvider),
-  ).isNotEmpty;
+  ).length;
 });
+
+/// Whether the home Live first button is there: while an event is in play,
+/// and while it is on, so a flag left on can always be turned off.
+bool showsHomeLiveFirst({required int liveCount, required bool on}) =>
+    on || liveCount > 0;

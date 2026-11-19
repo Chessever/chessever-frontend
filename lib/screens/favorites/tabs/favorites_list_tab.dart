@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:chessever2/providers/favorite_players_provider.dart';
 import 'package:chessever2/screens/favorites/favorite_players_provider.dart';
 import 'package:chessever2/screens/favorites/widgets/favorite_player_search_suggestion.dart';
+import 'package:chessever2/screens/favorites/widgets/tab_search_fab.dart';
 import 'package:chessever2/screens/library/widgets/library_context_menu.dart';
 import 'package:chessever2/screens/standings/player_standing_model.dart';
 import 'package:chessever2/screens/player_profile/player_profile_screen.dart';
@@ -18,7 +19,7 @@ import 'package:chessever2/widgets/alert_dialog/alert_modal.dart';
 import 'package:chessever2/widgets/app_snack.dart';
 import 'package:chessever2/widgets/figma_player_card.dart';
 import 'package:chessever2/widgets/scroll_to_top_bus.dart';
-import 'package:chessever2/widgets/search/gameSearch/enhanced_game_search_widget.dart';
+import 'package:chessever2/widgets/search_mode/search_mode.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -26,6 +27,14 @@ import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/widgets/auth/auth_upgrade_sheet.dart';
 import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
+
+/// What the page's search asks of the followed players, as typed. The
+/// screen's [SearchModeHost] writes it while the search was opened on this
+/// tab, and empties it as the search closes; the list narrows on every
+/// keystroke, since it only filters the players already on the device.
+final favoritesListSearchQueryProvider = StateProvider.autoDispose<String>(
+  (ref) => '',
+);
 
 class FavoritesListTab extends ConsumerStatefulWidget {
   const FavoritesListTab({super.key});
@@ -43,29 +52,21 @@ class _FavoritesListTabState extends ConsumerState<FavoritesListTab>
     animateScrollControllerToTop(_scrollController);
   }
 
-  final TextEditingController _searchController = TextEditingController();
-  final FocusNode _focusNode = FocusNode();
-
   @override
   bool get wantKeepAlive => true;
 
   @override
   void dispose() {
     _scrollController.dispose();
-    _searchController.dispose();
-    _focusNode.dispose();
     super.dispose();
-  }
-
-  void _clearSearch() {
-    _searchController.clear();
-    _focusNode.unfocus();
-    setState(() {});
   }
 
   @override
   Widget build(BuildContext context) {
     super.build(context);
+    // The page's search (its floating button) narrows this list; there is
+    // no field of its own on the list (Trello #1420).
+    final query = ref.watch(favoritesListSearchQueryProvider).trim();
 
     // No scroll-to-top button (Trello #1420): tapping the tab again already
     // scrolls up.
@@ -74,9 +75,13 @@ class _FavoritesListTabState extends ConsumerState<FavoritesListTab>
         .when(
           data: (favoritesState) {
             final filteredPlayers = ref.read(
-              filteredFavoritePlayersProvider(_searchController.text),
+              filteredFavoritePlayersProvider(query),
             );
-            return _buildContent(filteredPlayers, favoritesState.players);
+            return _buildContent(
+              filteredPlayers,
+              favoritesState.players,
+              query,
+            );
           },
           loading: () => Center(
             child: CircularProgressIndicator(color: context.colors.textPrimary),
@@ -88,6 +93,7 @@ class _FavoritesListTabState extends ConsumerState<FavoritesListTab>
   Widget _buildContent(
     List<PlayerStandingModel> filteredPlayers,
     List<PlayerStandingModel> allFavorites,
+    String query,
   ) {
     return Center(
       child: ConstrainedBox(
@@ -108,32 +114,17 @@ class _FavoritesListTabState extends ConsumerState<FavoritesListTab>
               parent: BouncingScrollPhysics(),
             ),
             slivers: [
-              // Search bar
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: EdgeInsets.fromLTRB(16.w, 12.h, 16.w, 8.h),
-                  child: AnimatedBuilder(
-                    animation: _searchController,
-                    builder: (context, _) {
-                      return SearchBarWidget(
-                        hintText: 'Search',
-                        margin: 0.sp,
-                        autoFocus: false,
-                        controller: _searchController,
-                        focusNode: _focusNode,
-                        onChanged: (_) => setState(() {}),
-                        onClose: _clearSearch,
-                      );
-                    },
-                  ),
-                ),
-              ),
+              SliverToBoxAdapter(child: SizedBox(height: 8.h)),
 
               // Content
-              _buildPlayersSliver(filteredPlayers, allFavorites),
+              _buildPlayersSliver(filteredPlayers, allFavorites, query),
 
-              // Bottom padding
-              SliverToBoxAdapter(child: SizedBox(height: 24.h)),
+              // The last row ends clear of the floating search button; the
+              // room gives way on the search's own timeline while it is open.
+              SearchModeListEnd.sliver(
+                base: 24.h,
+                buttons: TabSearchFab.reach(context),
+              ),
             ],
           ),
         ),
@@ -144,15 +135,16 @@ class _FavoritesListTabState extends ConsumerState<FavoritesListTab>
   Widget _buildPlayersSliver(
     List<PlayerStandingModel> players,
     List<PlayerStandingModel> allFavorites,
+    String query,
   ) {
     if (players.isEmpty) {
-      if (_searchController.text.isNotEmpty) {
+      if (query.isNotEmpty) {
         // A Favorites search only ever matches the few players already
         // followed, so a miss is the clearest signal of who the user wants.
         // Offer them from the global database instead of a dead end.
         return SliverToBoxAdapter(
           child: FavoritePlayerSearchSuggestion(
-            query: _searchController.text,
+            query: query,
             favorites: allFavorites,
             surface: FavoritePlayerSearchSurface.favorites,
             onAdd: _addFavoritePlayer,

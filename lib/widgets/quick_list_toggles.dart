@@ -2,7 +2,6 @@ import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/svg_asset.dart';
-import 'package:chessever2/widgets/live_first_mark.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
@@ -114,40 +113,6 @@ class QuickToggleIconButton extends StatelessWidget {
           ),
         ),
       ),
-    );
-  }
-}
-
-/// One-tap Live first, wearing the web's Live mark ([LiveFirstMark]).
-class LiveFirstToggleButton extends StatelessWidget {
-  const LiveFirstToggleButton({
-    super.key,
-    required this.pressed,
-    required this.onTap,
-    this.subject = 'games',
-    this.restingColor,
-  });
-
-  final bool pressed;
-  final VoidCallback? onTap;
-
-  /// What the list holds, for the label: `games` or `events`.
-  final String subject;
-
-  /// See [QuickToggleIconButton.restingColor].
-  final Color? restingColor;
-
-  @override
-  Widget build(BuildContext context) {
-    return QuickToggleIconButton(
-      label: pressed
-          ? 'Live $subject are shown first'
-          : 'Show live $subject first',
-      selected: pressed,
-      toggled: pressed,
-      onTap: onTap,
-      restingColor: restingColor,
-      child: const LiveFirstMark(),
     );
   }
 }

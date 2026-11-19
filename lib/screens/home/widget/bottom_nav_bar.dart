@@ -11,6 +11,7 @@ import 'package:chessever2/screens/home/start_screen.dart';
 import 'package:chessever2/screens/home/widget/bottom_nav_bar_widget.dart';
 import 'package:chessever2/screens/inbox/inbox_provider.dart';
 import 'package:chessever2/screens/inbox/inbox_unread_dot.dart';
+import 'package:chessever2/services/discovery_dots/discovery_dots_provider.dart';
 import 'package:chessever2/services/analytics/analytics_service.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/app_typography.dart';
@@ -140,7 +141,7 @@ Widget bottomNavBarGlyph(
     BottomNavBarItem.botvinnik => svg(SvgAsset.botvinnikNavIcon),
     BottomNavBarItem.search => svg(SvgAsset.searchNavIcon),
     BottomNavBarItem.profile => _NavAvatar(
-      side: side + 6,
+      side: side + 4,
       ink: ink,
       selected: selected,
     ),
@@ -188,10 +189,22 @@ class _NavAvatar extends ConsumerWidget {
     // when a guest links an account (same id), and this one does not.
     final url = ref.watch(profileAvatarUrlProvider)?.trim();
     final initial = guest ? '' : _initial(name);
-    final dot = unread
+    // The slot's discovery dot sits on the same shoulder; both say
+    // "something new behind Profile", so one dot is drawn, never two side by
+    // side.
+    final discoveryLit = ref.watch(
+      discoveryDotsProvider.select(
+        (state) =>
+            state.lit.contains(bottomNavBarDotIds[BottomNavBarItem.profile]),
+      ),
+    );
+    // Centred on the slot's shoulder ([navMarkShoulder]) from this avatar's
+    // centre: the 8pt dot's centre sits 2 right of the avatar's top-right
+    // corner, level with it.
+    final dot = unread && !discoveryLit
         ? const Positioned(
-            top: -1,
-            right: -1,
+            top: -4,
+            right: -6,
             child: InboxUnreadDot(key: ValueKey('nav-profile-inbox-dot')),
           )
         : null;
@@ -222,7 +235,9 @@ class _NavAvatar extends ConsumerWidget {
     // no name to take an initial from.
     final disc = DecoratedBox(
       decoration: BoxDecoration(
-        color: ink.withValues(alpha: 0.18),
+        // 0.14 keeps the initial at AA on the disc in both themes,
+        // selected or not (4.67:1 at worst, light unselected).
+        color: ink.withValues(alpha: 0.14),
         shape: BoxShape.circle,
       ),
       child: initial.isEmpty
@@ -372,7 +387,8 @@ Future<void> writeDefaultBottomTab(BottomNavBarItem item) async {
   await prefs?.setString(defaultBottomTabPrefsKey, item.name);
 }
 
-/// The phone's bottom bar: one slot per section, its mark over its name.
+/// The phone's bottom bar: one large mark per section, no names drawn (each
+/// slot announces its own).
 class BottomNavBar extends ConsumerWidget {
   const BottomNavBar({super.key});
 
@@ -380,6 +396,7 @@ class BottomNavBar extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final selected = ref.watch(selectedBottomNavBarItemProvider);
     final items = ref.watch(visibleBottomNavItemsProvider);
+    final unread = ref.watch(inboxHasUnreadProvider);
     // Aspect-specific: `MediaQuery.of` subscribes this bar to viewInsets too,
     // so it rebuilt on every frame of the software keyboard sliding in.
     final bottomPadding = MediaQuery.viewPaddingOf(context).bottom;
@@ -394,34 +411,36 @@ class BottomNavBar extends ConsumerWidget {
       ),
       // Each slot takes the device's bottom safe area into its own target,
       // so the whole column under a tab answers.
-      // The slots stretch to the bar's height, so no strip of it is dead.
-      child: ConstrainedBox(
-        constraints: BoxConstraints(minHeight: 60 + bottomPadding),
-        child: IntrinsicHeight(
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              for (final item in items)
-                BottomNavBarWidget(
-                  key: bottomNavBarItemKey(item),
-                  width: width / items.length,
-                  bottomInset: bottomPadding,
-                  isSelected: selected == item,
-                  dotId: bottomNavBarDotIds[item],
-                  onTap: () => selectBottomNavBarItem(ref, item),
-                  glyph: (ink, side) => bottomNavBarGlyph(
-                    item,
-                    ink: ink,
-                    side: side,
-                    selected: selected == item,
-                  ),
-                  title: namesBottomNavBarIcons[item]!,
-                  onLongPress: () => unawaited(
-                    makeStartScreenDefault(context, ref, section: item),
-                  ),
+      // A fixed bar: every slot is its full height, safe area included, so
+      // no strip of it is dead.
+      child: SizedBox(
+        height: BottomNavBarWidget.barHeight + bottomPadding,
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            for (final item in items)
+              BottomNavBarWidget(
+                key: bottomNavBarItemKey(item),
+                width: width / items.length,
+                bottomInset: bottomPadding,
+                semanticsValue: item == BottomNavBarItem.profile && unread
+                    ? 'Unread Inbox messages'
+                    : null,
+                isSelected: selected == item,
+                dotId: bottomNavBarDotIds[item],
+                onTap: () => selectBottomNavBarItem(ref, item),
+                glyph: (ink, side) => bottomNavBarGlyph(
+                  item,
+                  ink: ink,
+                  side: side,
+                  selected: selected == item,
                 ),
-            ],
-          ),
+                title: namesBottomNavBarIcons[item]!,
+                onLongPress: () => unawaited(
+                  makeStartScreenDefault(context, ref, section: item),
+                ),
+              ),
+          ],
         ),
       ),
     );

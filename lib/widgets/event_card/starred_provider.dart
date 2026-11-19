@@ -24,7 +24,7 @@ class _StarredRepository extends StateNotifier<List<String>> {
           .read(starredRepository)
           .getStar(tournamentKey);
       state = starredList;
-    } catch (error, _) {
+    } catch (_) {
       rethrow;
     }
   }
@@ -40,7 +40,7 @@ class _StarredRepository extends StateNotifier<List<String>> {
 
       await ref.read(starredRepository).toggleStar(tournamentKey, value);
       state = currentSaved;
-    } catch (error, _) {
+    } catch (_) {
       rethrow;
     }
   }
@@ -48,7 +48,7 @@ class _StarredRepository extends StateNotifier<List<String>> {
   Future<List<String>> getStarred(String key) async {
     try {
       return state;
-    } catch (error, _) {
+    } catch (_) {
       rethrow;
     }
   }

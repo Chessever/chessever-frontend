@@ -28,10 +28,11 @@ import 'package:chessever2/utils/twic_player_enrichment.dart';
 final playerGamesSelectionModeProvider =
     StateProvider.family<bool, PlayerProfileKey>((ref, key) => false);
 
-final memorialPlayerOverviewProvider = FutureProvider.family.autoDispose<
-  MemorialPlayerOverview?,
-  String
->((ref, sourceIdentity) => loadBundledMemorialPlayerOverview(sourceIdentity));
+final memorialPlayerOverviewProvider = FutureProvider.family
+    .autoDispose<MemorialPlayerOverview?, String>(
+      (ref, sourceIdentity) =>
+          loadBundledMemorialPlayerOverview(sourceIdentity),
+    );
 
 /// Key to identify a player - can use either fideId OR playerName
 /// This allows viewing player profiles even without a FIDE ID
@@ -308,12 +309,11 @@ final playerProfileDataProvider = FutureProvider.family
 
 Future<PlayerProfileData?> _fetchPlayerProfileData(int fideId) async {
   try {
-    final response =
-        await Supabase.instance.client
-            .from('chess_players')
-            .select()
-            .eq('fideid', fideId)
-            .maybeSingle();
+    final response = await Supabase.instance.client
+        .from('chess_players')
+        .select()
+        .eq('fideid', fideId)
+        .maybeSingle();
 
     if (response == null) return null;
 
@@ -382,11 +382,10 @@ final playerGamesDataProvider = FutureProvider.family
           limit: 500,
         );
 
-        final allGames =
-            games
-                .map((game) => GamesTourModel.fromGame(game))
-                .where((game) => !_isVariantEvent(game.tourSlug))
-                .toList();
+        final allGames = games
+            .map((game) => GamesTourModel.fromGame(game))
+            .where((game) => !_isVariantEvent(game.tourSlug))
+            .toList();
 
         allGames.sort(comparePlayerProfileGamesNewestFirst);
 
@@ -424,59 +423,62 @@ bool _isVariantEvent(String? tourSlug) {
 }
 
 /// Provider to fetch games for a player using PlayerProfileKey (supports both fideId and name lookup)
-final playerGamesDataKeyProvider = FutureProvider.family.autoDispose<
-  List<GamesTourModel>,
-  PlayerProfileKey
->((ref, playerKey) async {
-  try {
-    if (playerKey.source == PlayerProfileDataSource.twic) {
-      final pid = await ref.watch(twicPlayerIdProvider(playerKey).future);
-      if (pid != null && pid.isNotEmpty) {
-        try {
-          return await _getTwicGamesViaDedicatedEndpoint(ref, playerId: pid);
-        } on DioException catch (e) {
-          if (e.response?.statusCode != 404) rethrow;
+final playerGamesDataKeyProvider = FutureProvider.family
+    .autoDispose<List<GamesTourModel>, PlayerProfileKey>((
+      ref,
+      playerKey,
+    ) async {
+      try {
+        if (playerKey.source == PlayerProfileDataSource.twic) {
+          final pid = await ref.watch(twicPlayerIdProvider(playerKey).future);
+          if (pid != null && pid.isNotEmpty) {
+            try {
+              return await _getTwicGamesViaDedicatedEndpoint(
+                ref,
+                playerId: pid,
+              );
+            } on DioException catch (e) {
+              if (e.response?.statusCode != 404) rethrow;
+            }
+          }
+          final memorialIdentity = playerKey.memorialSourceIdentity?.trim();
+          if (memorialIdentity != null && memorialIdentity.isNotEmpty) {
+            return await _getTwicGamesViaDedicatedEndpoint(
+              ref,
+              memorialSourceIdentity: memorialIdentity,
+            );
+          }
+          return await _getTwicGamesFromGamebase(ref, playerKey);
         }
-      }
-      final memorialIdentity = playerKey.memorialSourceIdentity?.trim();
-      if (memorialIdentity != null && memorialIdentity.isNotEmpty) {
-        return await _getTwicGamesViaDedicatedEndpoint(
-          ref,
-          memorialSourceIdentity: memorialIdentity,
-        );
-      }
-      return await _getTwicGamesFromGamebase(ref, playerKey);
-    }
 
-    final gameRepo = ref.read(gameRepositoryProvider);
-    List<Games> games;
+        final gameRepo = ref.read(gameRepositoryProvider);
+        List<Games> games;
 
-    if (playerKey.hasFideId) {
-      games = await gameRepo.getGamesByFideId(
-        playerKey.fideId.toString(),
-        limit: 500,
-      );
-    } else {
-      games = await gameRepo.getGamesByPlayerName(
-        playerKey.playerName,
-        limit: 500,
-      );
-    }
+        if (playerKey.hasFideId) {
+          games = await gameRepo.getGamesByFideId(
+            playerKey.fideId.toString(),
+            limit: 500,
+          );
+        } else {
+          games = await gameRepo.getGamesByPlayerName(
+            playerKey.playerName,
+            limit: 500,
+          );
+        }
 
-    final allGames =
-        games
+        final allGames = games
             .map((game) => GamesTourModel.fromGame(game))
             .where((game) => !_isVariantEvent(game.tourSlug))
             .toList();
 
-    allGames.sort(comparePlayerProfileGamesNewestFirst);
+        allGames.sort(comparePlayerProfileGamesNewestFirst);
 
-    return allGames;
-  } catch (e) {
-    debugPrint('[playerGamesDataKeyProvider] Error: $e');
-    return [];
-  }
-});
+        return allGames;
+      } catch (e) {
+        debugPrint('[playerGamesDataKeyProvider] Error: $e');
+        return [];
+      }
+    });
 
 String _normalizeGamebaseName(String name) {
   return name
@@ -532,16 +534,17 @@ GamebasePlayer? pickBestTwicPlayerMatchForProfile(
 ) {
   if (players.isEmpty) return null;
 
-  final ranked = [...players]..sort((a, b) {
-    final byScore = _twicPlayerMatchScore(
-      b,
-      playerKey,
-    ).compareTo(_twicPlayerMatchScore(a, playerKey));
-    if (byScore != 0) return byScore;
-    final byRating = (b.highestRating ?? 0).compareTo(a.highestRating ?? 0);
-    if (byRating != 0) return byRating;
-    return a.name.compareTo(b.name);
-  });
+  final ranked = [...players]
+    ..sort((a, b) {
+      final byScore = _twicPlayerMatchScore(
+        b,
+        playerKey,
+      ).compareTo(_twicPlayerMatchScore(a, playerKey));
+      if (byScore != 0) return byScore;
+      final byRating = (b.highestRating ?? 0).compareTo(a.highestRating ?? 0);
+      if (byRating != 0) return byRating;
+      return a.name.compareTo(b.name);
+    });
 
   final best = ranked.first;
   if (_twicPlayerMatchScore(best, playerKey) <= 0) return null;
@@ -650,10 +653,9 @@ final twicProfileSummaryProvider = FutureProvider.family
 
       try {
         final memorialIdentity = playerKey.memorialSourceIdentity?.trim();
-        final playerId =
-            memorialIdentity != null && memorialIdentity.isNotEmpty
-                ? null
-                : await ref.watch(twicPlayerIdProvider(playerKey).future);
+        final playerId = memorialIdentity != null && memorialIdentity.isNotEmpty
+            ? null
+            : await ref.watch(twicPlayerIdProvider(playerKey).future);
         if ((playerId == null || playerId.isEmpty) &&
             (memorialIdentity == null || memorialIdentity.isEmpty)) {
           return null;
@@ -664,16 +666,16 @@ final twicProfileSummaryProvider = FutureProvider.family
         try {
           final gamesResponse =
               memorialIdentity != null && memorialIdentity.isNotEmpty
-                  ? await repo.getMemorialPlayerGames(
-                    sourceIdentity: memorialIdentity,
-                    pageNumber: 0,
-                    pageSize: 1,
-                  )
-                  : await repo.getPlayerGames(
-                    playerId: playerId!,
-                    pageNumber: 0,
-                    pageSize: 1,
-                  );
+              ? await repo.getMemorialPlayerGames(
+                  sourceIdentity: memorialIdentity,
+                  pageNumber: 0,
+                  pageSize: 1,
+                )
+              : await repo.getPlayerGames(
+                  playerId: playerId!,
+                  pageNumber: 0,
+                  pageSize: 1,
+                );
           totalGames = extractTwicPlayerGamesTotalCount(gamesResponse);
         } catch (_) {
           // Fall through to stats.
@@ -730,18 +732,17 @@ Future<List<GamesTourModel>> _getTwicGamesViaDedicatedEndpoint(
 
   var page = 0;
   while (true) {
-    final response =
-        playerId != null && playerId.isNotEmpty
-            ? await repo.getPlayerGames(
-              playerId: playerId,
-              pageNumber: page,
-              pageSize: 100,
-            )
-            : await repo.getMemorialPlayerGames(
-              sourceIdentity: memorialSourceIdentity!,
-              pageNumber: page,
-              pageSize: 100,
-            );
+    final response = playerId != null && playerId.isNotEmpty
+        ? await repo.getPlayerGames(
+            playerId: playerId,
+            pageNumber: page,
+            pageSize: 100,
+          )
+        : await repo.getMemorialPlayerGames(
+            sourceIdentity: memorialSourceIdentity!,
+            pageNumber: page,
+            pageSize: 100,
+          );
 
     final data = response['data'];
     if (data is List) {
@@ -764,10 +765,9 @@ Future<List<GamesTourModel>> _getTwicGamesViaDedicatedEndpoint(
         final safeId = (id != null && id.isNotEmpty) ? id : 'unknown';
         final result = row['result']?.toString() ?? '*';
         final timeControl = row['timeControl']?.toString();
-        final date =
-            row['date'] != null
-                ? DateTime.tryParse(row['date'].toString())
-                : null;
+        final date = row['date'] != null
+            ? DateTime.tryParse(row['date'].toString())
+            : null;
         final eco = row['eco']?.toString();
         final opening = row['opening']?.toString();
         final variation = row['variation']?.toString();
@@ -830,20 +830,18 @@ Future<List<GamesTourModel>> _getTwicGamesViaDedicatedEndpoint(
           roundId: playerProfileRoundLabel(row, fallback: 'twic_profile'),
           roundSlug: playerProfileRoundLabel(
             row,
-            fallback:
-                (eco != null && eco.trim().isNotEmpty)
-                    ? eco.trim()
-                    : (timeControl ?? ''),
+            fallback: (eco != null && eco.trim().isNotEmpty)
+                ? eco.trim()
+                : (timeControl ?? ''),
           ),
           tourId: tourId.isNotEmpty ? tourId : canonicalEvent,
           tourSlug: canonicalEvent,
           pgn: pgn,
           lastMoveTime: date,
           eco: (eco != null && eco.trim().isNotEmpty) ? eco.trim() : null,
-          openingName:
-              (opening != null && opening.trim().isNotEmpty)
-                  ? opening.trim()
-                  : null,
+          openingName: (opening != null && opening.trim().isNotEmpty)
+              ? opening.trim()
+              : null,
           timeControl: timeControl,
         );
       })
@@ -898,10 +896,9 @@ Future<List<GamesTourModel>> _getTwicGamesFromGamebase(
   // Use surname only for the search query to avoid 400 errors from commas
   // in FIDE-format names ("Surname, Firstname"). Post-filtering by playerId
   // or fideId ensures accurate results.
-  final searchQuery =
-      playerName.contains(',')
-          ? playerName.split(',').first.trim()
-          : playerName;
+  final searchQuery = playerName.contains(',')
+      ? playerName.split(',').first.trim()
+      : playerName;
 
   final playerId = playerKey.gamebasePlayerId?.trim();
   final fideIdStr = playerKey.hasFideId ? playerKey.fideId.toString() : null;
@@ -1046,20 +1043,18 @@ Future<List<GamesTourModel>> _getTwicGamesFromGamebase(
           roundId: playerProfileRoundLabel(row, fallback: 'twic_profile'),
           roundSlug: playerProfileRoundLabel(
             row,
-            fallback:
-                (eco != null && eco.trim().isNotEmpty)
-                    ? eco.trim()
-                    : (timeControl ?? ''),
+            fallback: (eco != null && eco.trim().isNotEmpty)
+                ? eco.trim()
+                : (timeControl ?? ''),
           ),
           tourId: tourId.isNotEmpty ? tourId : canonicalEvent,
           tourSlug: canonicalEvent,
           pgn: pgn,
           lastMoveTime: date,
           eco: (eco != null && eco.trim().isNotEmpty) ? eco.trim() : null,
-          openingName:
-              (opening != null && opening.trim().isNotEmpty)
-                  ? opening.trim()
-                  : null,
+          openingName: (opening != null && opening.trim().isNotEmpty)
+              ? opening.trim()
+              : null,
           timeControl: timeControl,
         );
       })
@@ -1222,10 +1217,9 @@ class PlayerAnalytics {
       // Keep the two missing-ECO sentinels apart: '?' is a real stored value
       // that the ECO filter can match, a null one is not.
       final eco = game.eco ?? OpeningStatistic.missingEcoLabel;
-      final openingName =
-          (game.openingName == null || game.openingName == '?')
-              ? null
-              : game.openingName;
+      final openingName = (game.openingName == null || game.openingName == '?')
+          ? null
+          : game.openingName;
 
       // Determine if target player is white or black
       // First try fideId matching, then fall back to name matching
@@ -1338,27 +1332,28 @@ class PlayerAnalytics {
     List<OpeningStatistic> buildOpeningStats(
       Map<String, Map<String, dynamic>> map,
     ) {
-      final stats =
-          map.values.map((data) {
-            return OpeningStatistic(
-              eco: data['eco'] as String,
-              openingName: data['openingName'] as String?,
-              count: data['count'] as int,
-              wins: data['wins'] as int,
-              draws: data['draws'] as int,
-              losses: data['losses'] as int,
-            );
-          }).toList();
+      final stats = map.values.map((data) {
+        return OpeningStatistic(
+          eco: data['eco'] as String,
+          openingName: data['openingName'] as String?,
+          count: data['count'] as int,
+          wins: data['wins'] as int,
+          draws: data['draws'] as int,
+          losses: data['losses'] as int,
+        );
+      }).toList();
 
       stats.sort(_byRealOpeningsFirstThenCount);
       return stats;
     }
 
     final openingStatsAll = buildOpeningStats(openingMapAll).take(20).toList();
-    final openingStatsWhite =
-        buildOpeningStats(openingMapWhite).take(20).toList();
-    final openingStatsBlack =
-        buildOpeningStats(openingMapBlack).take(20).toList();
+    final openingStatsWhite = buildOpeningStats(
+      openingMapWhite,
+    ).take(20).toList();
+    final openingStatsBlack = buildOpeningStats(
+      openingMapBlack,
+    ).take(20).toList();
 
     return PlayerAnalytics(
       openingStats: openingStatsAll,
@@ -1381,8 +1376,9 @@ class PlayerAnalytics {
         losses: totalLosses,
       ),
       recentForm: form,
-      avgOpponentRating:
-          ratingCount > 0 ? totalOpponentRating ~/ ratingCount : 0,
+      avgOpponentRating: ratingCount > 0
+          ? totalOpponentRating ~/ ratingCount
+          : 0,
     );
   }
 
@@ -1479,14 +1475,13 @@ PlayerEventData playerEventDataFromGamebaseEvent(GamebaseEventSearchItem item) {
   // event ("... | Group A", "... | Rapid") collapse into a single event,
   // matching the Games tab grouping. Only when the label is a per-pairing
   // round title ("Round 10: A - B") fall back to the Lichess `Site` slug.
-  final title =
-      isUsefulTwicEventTitle(rawEvent)
-          ? rawEvent
-          : preferredTwicEventTitle(
-            pgnEvent: rawEvent,
-            site: item.site,
-            fallback: rawEvent.isNotEmpty ? rawEvent : 'Gamebase',
-          );
+  final title = isUsefulTwicEventTitle(rawEvent)
+      ? rawEvent
+      : preferredTwicEventTitle(
+          pgnEvent: rawEvent,
+          site: item.site,
+          fallback: rawEvent.isNotEmpty ? rawEvent : 'Gamebase',
+        );
   return PlayerEventData(
     tourId: title,
     tourName: title,
@@ -1574,10 +1569,9 @@ List<PlayerEventData> mergePlayerEventsByCanonical(
       canonicalKey: existing.canonicalKey ?? e.canonicalKey,
       broadcastSlug: existing.broadcastSlug ?? e.broadcastSlug,
       gamesPlayed: existing.gamesPlayed + e.gamesPlayed,
-      score:
-          (existing.score == null && e.score == null)
-              ? null
-              : (existing.score ?? 0) + (e.score ?? 0),
+      score: (existing.score == null && e.score == null)
+          ? null
+          : (existing.score ?? 0) + (e.score ?? 0),
       startDate: _earlierDate(existing.startDate, e.startDate),
       endDate: _laterDate(existing.endDate, e.endDate),
       site: existing.site ?? e.site,
@@ -1682,12 +1676,11 @@ List<PlayerEventData> buildMemorialPlayerEventsFromRows(
             (normalizedCanonicalKey != null &&
                 normalizedCanonicalKey != normalizedTitle &&
                 normalizedCanonicalKey != normalizedRawEvent));
-    final identity =
-        hasStrongCanonicalKey
-            ? 'canonical:$canonicalKey'
-            : broadcastSlug != null
-            ? 'broadcast:$broadcastSlug'
-            : 'title:$normalizedTitle:$fallbackYear';
+    final identity = hasStrongCanonicalKey
+        ? 'canonical:$canonicalKey'
+        : broadcastSlug != null
+        ? 'broadcast:$broadcastSlug'
+        : 'title:$normalizedTitle:$fallbackYear';
 
     final accumulator = byIdentity.putIfAbsent(
       identity,
@@ -1771,13 +1764,12 @@ class _MemorialEventAccumulator {
   }
 
   PlayerEventData toEvent() {
-    final dominantTimeControl =
-        _timeControls.entries.isEmpty
-            ? null
-            : (_timeControls.entries.toList()
-                  ..sort((a, b) => b.value.compareTo(a.value)))
-                .first
-                .key;
+    final dominantTimeControl = _timeControls.entries.isEmpty
+        ? null
+        : (_timeControls.entries.toList()
+                ..sort((a, b) => b.value.compareTo(a.value)))
+              .first
+              .key;
     return PlayerEventData(
       tourId: title,
       tourName: title,
@@ -1851,12 +1843,12 @@ List<PlayerEventData> _buildTwicPlayerEventsFromGames(
       if (game.whitePlayer.rating > 0) ratings.add(game.whitePlayer.rating);
       if (game.blackPlayer.rating > 0) ratings.add(game.blackPlayer.rating);
     }
-    final avgElo =
-        ratings.isEmpty
-            ? null
-            : ratings.reduce((a, b) => a + b) ~/ ratings.length;
-    final maxElo =
-        ratings.isEmpty ? null : ratings.reduce((a, b) => a > b ? a : b);
+    final avgElo = ratings.isEmpty
+        ? null
+        : ratings.reduce((a, b) => a + b) ~/ ratings.length;
+    final maxElo = ratings.isEmpty
+        ? null
+        : ratings.reduce((a, b) => a > b ? a : b);
 
     events.add(
       PlayerEventData(
@@ -2063,8 +2055,9 @@ final playerProfileDataKeyProvider = FutureProvider.family
             name: player.name,
             title: ChessTitleUtils.normalize(player.title),
             federation: player.fed,
-            classicalRating:
-                player.ratingClassical > 0 ? player.ratingClassical : null,
+            classicalRating: player.ratingClassical > 0
+                ? player.ratingClassical
+                : null,
             rapidRating: player.ratingRapid > 0 ? player.ratingRapid : null,
             blitzRating: player.ratingBlitz > 0 ? player.ratingBlitz : null,
             birthday: player.birthDate,
@@ -2078,14 +2071,13 @@ final playerProfileDataKeyProvider = FutureProvider.family
           final player = await repo.getPlayerById(playerId);
           if (player != null) {
             final fideInt = int.tryParse(player.fideId);
-            final resolvedFideId =
-                (fideInt != null && fideInt > 0)
-                    ? fideInt
-                    : (playerKey.hasFideId ? playerKey.fideId : null);
+            final resolvedFideId = (fideInt != null && fideInt > 0)
+                ? fideInt
+                : (playerKey.hasFideId ? playerKey.fideId : null);
             final supabaseProfile =
                 (resolvedFideId != null && resolvedFideId > 0)
-                    ? await _fetchPlayerProfileData(resolvedFideId)
-                    : null;
+                ? await _fetchPlayerProfileData(resolvedFideId)
+                : null;
             final fallback = PlayerProfileMetadata(
               fideId: resolvedFideId ?? 0,
               name: player.name,
@@ -2098,10 +2090,9 @@ final playerProfileDataKeyProvider = FutureProvider.family
             return _profileDataFromMetadata(
               resolvePlayerProfileMetadata(
                 fallback: fallback,
-                authoritative:
-                    supabaseProfile == null
-                        ? null
-                        : _profileMetadataFromData(supabaseProfile),
+                authoritative: supabaseProfile == null
+                    ? null
+                    : _profileMetadataFromData(supabaseProfile),
               ),
             );
           }
@@ -2117,10 +2108,9 @@ final playerProfileDataKeyProvider = FutureProvider.family
                 fideId: playerKey.fideId!,
                 name: playerKey.playerName,
               ),
-              authoritative:
-                  supabaseProfile == null
-                      ? null
-                      : _profileMetadataFromData(supabaseProfile),
+              authoritative: supabaseProfile == null
+                  ? null
+                  : _profileMetadataFromData(supabaseProfile),
             ),
           );
         }
@@ -2203,8 +2193,9 @@ Future<List<PlayerEventData>> _getPlayerEventsFromGamesWithKey(
 
       if (playerKey.hasFideId && players != null && players.length >= 2) {
         final whitePlayer = players[0] as Map<String, dynamic>?;
-        final blackPlayer =
-            players.length > 1 ? players[1] as Map<String, dynamic>? : null;
+        final blackPlayer = players.length > 1
+            ? players[1] as Map<String, dynamic>?
+            : null;
         isWhite = whitePlayer?['fideId'] == playerKey.fideId;
         isBlack = blackPlayer?['fideId'] == playerKey.fideId;
       } else {
@@ -2389,8 +2380,9 @@ Future<List<PlayerEventData>> _getPlayerEventsFromGames(
       if (status != null && players != null && players.length >= 2) {
         // Determine if player is white or black
         final whitePlayer = players[0] as Map<String, dynamic>?;
-        final blackPlayer =
-            players.length > 1 ? players[1] as Map<String, dynamic>? : null;
+        final blackPlayer = players.length > 1
+            ? players[1] as Map<String, dynamic>?
+            : null;
         final isWhite = whitePlayer?['fideId'] == fideId;
         final isBlack = blackPlayer?['fideId'] == fideId;
 
@@ -2549,14 +2541,12 @@ class _SearchClauseTerm {
 
 GameFilter playerProfileEffectiveFilter(GameFilter filter) {
   return filter.copyWith(
-    minYear:
-        filter.minYear == GameFilter.defaultMinYear
-            ? GameFilter.absoluteMinYear
-            : filter.minYear,
-    minRating:
-        filter.minRating == GameFilter.defaultMinRating
-            ? GameFilter.absoluteMinRating
-            : filter.minRating,
+    minYear: filter.minYear == GameFilter.defaultMinYear
+        ? GameFilter.absoluteMinYear
+        : filter.minYear,
+    minRating: filter.minRating == GameFilter.defaultMinRating
+        ? GameFilter.absoluteMinRating
+        : filter.minRating,
   );
 }
 
@@ -2729,8 +2719,9 @@ class PlayerProfileGamesState {
   }
 
   bool _matchesSearchField(GamesTourModel game, String field, String value) {
-    final normalizedValue =
-        value.endsWith('*') ? value.substring(0, value.length - 1) : value;
+    final normalizedValue = value.endsWith('*')
+        ? value.substring(0, value.length - 1)
+        : value;
     if (normalizedValue.isEmpty) return true;
 
     switch (field) {
@@ -2946,6 +2937,11 @@ class PlayerProfileGamesState {
       (playerResultFilter != PlayerResultFilter.all ? 1 : 0) +
       (searchQuery.isNotEmpty ? 1 : 0);
 
+  /// What the filter sheet narrows (the result included), the search aside.
+  int get filterSheetCount =>
+      filter.activeFilterCount +
+      (playerResultFilter != PlayerResultFilter.all ? 1 : 0);
+
   PlayerProfileGamesState copyWith({
     PlayerProfileKey? playerKey,
     List<GamesTourModel>? allGames,
@@ -2968,8 +2964,9 @@ class PlayerProfileGamesState {
       isLoadingMore: isLoadingMore ?? this.isLoadingMore,
       hasMorePages: hasMorePages ?? this.hasMorePages,
       nextPageNumber: nextPageNumber ?? this.nextPageNumber,
-      totalCount:
-          identical(totalCount, _unset) ? this.totalCount : totalCount as int?,
+      totalCount: identical(totalCount, _unset)
+          ? this.totalCount
+          : totalCount as int?,
       error: error,
       searchQuery: searchQuery ?? this.searchQuery,
     );
@@ -3070,262 +3067,262 @@ class TwicPlayerStatsRequest {
 }
 
 /// Server-backed TWIC analytics. Uses exact `/api/player/{id}/stats`.
-final twicPlayerStatsProvider = FutureProvider.family.autoDispose<
-  PlayerAnalytics?,
-  TwicPlayerStatsRequest
->((ref, request) async {
-  final playerKey = request.playerKey;
-  if (playerKey.source != PlayerProfileDataSource.twic) return null;
+final twicPlayerStatsProvider = FutureProvider.family
+    .autoDispose<PlayerAnalytics?, TwicPlayerStatsRequest>((
+      ref,
+      request,
+    ) async {
+      final playerKey = request.playerKey;
+      if (playerKey.source != PlayerProfileDataSource.twic) return null;
 
-  Future<PlayerAnalytics?> fallbackFromLoadedGames() async {
-    final gamesState = ref.read(playerProfileGamesKeyProvider(playerKey));
-    var allGames = gamesState.allGames;
-    final memorialIdentity = playerKey.memorialSourceIdentity?.trim();
-    final needsCompleteMemorialSet =
-        memorialIdentity != null &&
-        memorialIdentity.isNotEmpty &&
-        (gamesState.hasMorePages ||
-            (gamesState.totalCount != null &&
-                allGames.length < gamesState.totalCount!));
-    if (needsCompleteMemorialSet) {
-      allGames = await ref.watch(playerGamesDataKeyProvider(playerKey).future);
-    }
-    if (allGames.isEmpty) return null;
-    if (gamesState.hasMorePages && !needsCompleteMemorialSet) return null;
-    final totalCount = gamesState.totalCount;
-    if (totalCount != null && allGames.length < totalCount) {
-      return null;
-    }
+      Future<PlayerAnalytics?> fallbackFromLoadedGames() async {
+        final gamesState = ref.read(playerProfileGamesKeyProvider(playerKey));
+        var allGames = gamesState.allGames;
+        final memorialIdentity = playerKey.memorialSourceIdentity?.trim();
+        final needsCompleteMemorialSet =
+            memorialIdentity != null &&
+            memorialIdentity.isNotEmpty &&
+            (gamesState.hasMorePages ||
+                (gamesState.totalCount != null &&
+                    allGames.length < gamesState.totalCount!));
+        if (needsCompleteMemorialSet) {
+          allGames = await ref.watch(
+            playerGamesDataKeyProvider(playerKey).future,
+          );
+        }
+        if (allGames.isEmpty) return null;
+        if (gamesState.hasMorePages && !needsCompleteMemorialSet) return null;
+        final totalCount = gamesState.totalCount;
+        if (totalCount != null && allGames.length < totalCount) {
+          return null;
+        }
 
-    var filter = gamesState.filter;
-    if (request.scope == TwicStatsScope.allGames) {
-      filter = GameFilter.defaultFilter();
-    } else if (request.scope == TwicStatsScope.filteredIgnoringEco) {
-      filter = filter.copyWith(eco: GameEcoFilter.all);
-    }
-    final effectiveFilter = playerProfileEffectiveFilter(filter);
+        var filter = gamesState.filter;
+        if (request.scope == TwicStatsScope.allGames) {
+          filter = GameFilter.defaultFilter();
+        } else if (request.scope == TwicStatsScope.filteredIgnoringEco) {
+          filter = filter.copyWith(eco: GameEcoFilter.all);
+        }
+        final effectiveFilter = playerProfileEffectiveFilter(filter);
 
-    final filteredGames =
-        playerProfileHasStructuredFilters(filter)
+        final filteredGames = playerProfileHasStructuredFilters(filter)
             ? GameFilterHelper.applyFilter(
-              allGames,
-              effectiveFilter,
-              targetFideId: playerKey.fideId,
-              playerNameQuery:
-                  playerKey.hasFideId ? null : playerKey.playerName,
-            )
+                allGames,
+                effectiveFilter,
+                targetFideId: playerKey.fideId,
+                playerNameQuery: playerKey.hasFideId
+                    ? null
+                    : playerKey.playerName,
+              )
             : allGames;
 
-    return ref.read(
-      playerAnalyticsProvider(
-        PlayerAnalyticsRequest(
-          fideId: playerKey.fideId,
-          playerName: playerKey.playerName,
-          games: filteredGames,
+        return ref.read(
+          playerAnalyticsProvider(
+            PlayerAnalyticsRequest(
+              fideId: playerKey.fideId,
+              playerName: playerKey.playerName,
+              games: filteredGames,
+            ),
+          ),
+        );
+      }
+
+      final memorialIdentity = playerKey.memorialSourceIdentity?.trim();
+      final isMemorial =
+          memorialIdentity != null && memorialIdentity.isNotEmpty;
+      String? playerId;
+      if (!isMemorial) {
+        playerId = await ref.watch(twicPlayerIdProvider(playerKey).future);
+        if (playerId == null || playerId.isEmpty) {
+          return fallbackFromLoadedGames();
+        }
+      }
+
+      final filterSnapshot = ref.watch(
+        playerProfileGamesKeyProvider(playerKey).select(
+          (state) =>
+              (state.filter, state.playerResultFilter, state.searchQuery),
         ),
-      ),
-    );
-  }
+      );
+      var filter = filterSnapshot.$1;
+      final searchQuery = filterSnapshot.$3.trim();
 
-  final memorialIdentity = playerKey.memorialSourceIdentity?.trim();
-  final isMemorial = memorialIdentity != null && memorialIdentity.isNotEmpty;
-  String? playerId;
-  if (!isMemorial) {
-    playerId = await ref.watch(twicPlayerIdProvider(playerKey).future);
-    if (playerId == null || playerId.isEmpty) {
-      return fallbackFromLoadedGames();
-    }
-  }
+      if (request.scope == TwicStatsScope.allGames) {
+        filter = GameFilter.defaultFilter();
+      } else if (request.scope == TwicStatsScope.filteredIgnoringEco) {
+        filter = filter.copyWith(eco: GameEcoFilter.all);
+      }
+      final effectiveFilter = playerProfileEffectiveFilter(filter);
 
-  final filterSnapshot = ref.watch(
-    playerProfileGamesKeyProvider(playerKey).select(
-      (state) => (state.filter, state.playerResultFilter, state.searchQuery),
-    ),
-  );
-  var filter = filterSnapshot.$1;
-  final searchQuery = filterSnapshot.$3.trim();
-
-  if (request.scope == TwicStatsScope.allGames) {
-    filter = GameFilter.defaultFilter();
-  } else if (request.scope == TwicStatsScope.filteredIgnoringEco) {
-    filter = filter.copyWith(eco: GameEcoFilter.all);
-  }
-  final effectiveFilter = playerProfileEffectiveFilter(filter);
-
-  final color = _colorToApi(effectiveFilter.color) ?? 'all';
-  final timeControl = _timeControlToApi(effectiveFilter.timeControl);
-  final eco = effectiveFilter.eco.isAll ? null : effectiveFilter.eco.code;
-  final outcome = _resolvePlayerOutcome(
-    playerResultFilter:
-        request.scope == TwicStatsScope.allGames
+      final color = _colorToApi(effectiveFilter.color) ?? 'all';
+      final timeControl = _timeControlToApi(effectiveFilter.timeControl);
+      final eco = effectiveFilter.eco.isAll ? null : effectiveFilter.eco.code;
+      final outcome = _resolvePlayerOutcome(
+        playerResultFilter: request.scope == TwicStatsScope.allGames
             ? PlayerResultFilter.all
             : filterSnapshot.$2,
-    resultFilter:
-        request.scope == TwicStatsScope.allGames
+        resultFilter: request.scope == TwicStatsScope.allGames
             ? GameResultFilter.all
             : effectiveFilter.result,
-    colorFilter: effectiveFilter.color,
-  );
-  final ratingFrom =
-      effectiveFilter.minRating != GameFilter.absoluteMinRating
+        colorFilter: effectiveFilter.color,
+      );
+      final ratingFrom =
+          effectiveFilter.minRating != GameFilter.absoluteMinRating
           ? effectiveFilter.minRating
           : null;
-  final ratingTo =
-      effectiveFilter.maxRating != GameFilter.absoluteMaxRating
+      final ratingTo = effectiveFilter.maxRating != GameFilter.absoluteMaxRating
           ? effectiveFilter.maxRating
           : null;
 
-  final repo = ref.read(gamebaseRepositoryProvider);
-  Map<String, dynamic> response;
-  try {
-    response =
-        isMemorial
+      final repo = ref.read(gamebaseRepositoryProvider);
+      Map<String, dynamic> response;
+      try {
+        response = isMemorial
             ? await repo.getMemorialPlayerStats(
-              sourceIdentity: memorialIdentity,
-              q: searchQuery.isNotEmpty ? searchQuery : null,
-              color: color,
-              timeControl: timeControl,
-              outcome: outcome,
-              eco:
-                  request.scope == TwicStatsScope.filteredIgnoringEco
-                      ? null
-                      : eco,
-              dateFrom: _yearMinToDateFrom(effectiveFilter),
-              dateTo: _yearMaxToExclusiveDateTo(effectiveFilter),
-              ratingFrom: ratingFrom,
-              ratingTo: ratingTo,
-              isOnline: _onlineToApi(effectiveFilter.online),
-            )
-            : await repo.getPlayerStats(
-              playerId: playerId!,
-              q: searchQuery.isNotEmpty ? searchQuery : null,
-              color: color,
-              timeControl: timeControl,
-              outcome: outcome,
-              eco:
-                  request.scope == TwicStatsScope.filteredIgnoringEco
-                      ? null
-                      : eco,
-              dateFrom: _yearMinToDateFrom(effectiveFilter),
-              dateTo: _yearMaxToExclusiveDateTo(effectiveFilter),
-              ratingFrom: ratingFrom,
-              ratingTo: ratingTo,
-              isOnline: _onlineToApi(effectiveFilter.online),
-            );
-  } on DioException catch (e) {
-    if (isMemorial) {
-      return fallbackFromLoadedGames();
-    }
-    if (e.response?.statusCode == 404) {
-      final refreshedId = await _resolveTwicPlayerId(
-        ref,
-        playerKey,
-        preferProvidedId: false,
-      );
-      if (refreshedId != null &&
-          refreshedId.isNotEmpty &&
-          refreshedId != playerId) {
-        ref.invalidate(twicPlayerIdProvider(playerKey));
-        try {
-          response = await repo.getPlayerStats(
-            playerId: refreshedId,
-            q: searchQuery.isNotEmpty ? searchQuery : null,
-            color: color,
-            timeControl: timeControl,
-            outcome: outcome,
-            eco:
-                request.scope == TwicStatsScope.filteredIgnoringEco
+                sourceIdentity: memorialIdentity,
+                q: searchQuery.isNotEmpty ? searchQuery : null,
+                color: color,
+                timeControl: timeControl,
+                outcome: outcome,
+                eco: request.scope == TwicStatsScope.filteredIgnoringEco
                     ? null
                     : eco,
-            dateFrom: _yearMinToDateFrom(effectiveFilter),
-            dateTo: _yearMaxToExclusiveDateTo(effectiveFilter),
-            ratingFrom: ratingFrom,
-            ratingTo: ratingTo,
-            isOnline: _onlineToApi(effectiveFilter.online),
+                dateFrom: _yearMinToDateFrom(effectiveFilter),
+                dateTo: _yearMaxToExclusiveDateTo(effectiveFilter),
+                ratingFrom: ratingFrom,
+                ratingTo: ratingTo,
+                isOnline: _onlineToApi(effectiveFilter.online),
+              )
+            : await repo.getPlayerStats(
+                playerId: playerId!,
+                q: searchQuery.isNotEmpty ? searchQuery : null,
+                color: color,
+                timeControl: timeControl,
+                outcome: outcome,
+                eco: request.scope == TwicStatsScope.filteredIgnoringEco
+                    ? null
+                    : eco,
+                dateFrom: _yearMinToDateFrom(effectiveFilter),
+                dateTo: _yearMaxToExclusiveDateTo(effectiveFilter),
+                ratingFrom: ratingFrom,
+                ratingTo: ratingTo,
+                isOnline: _onlineToApi(effectiveFilter.online),
+              );
+      } on DioException catch (e) {
+        if (isMemorial) {
+          return fallbackFromLoadedGames();
+        }
+        if (e.response?.statusCode == 404) {
+          final refreshedId = await _resolveTwicPlayerId(
+            ref,
+            playerKey,
+            preferProvidedId: false,
           );
-        } on DioException catch (retryError) {
-          if (retryError.response?.statusCode == 404) {
+          if (refreshedId != null &&
+              refreshedId.isNotEmpty &&
+              refreshedId != playerId) {
+            ref.invalidate(twicPlayerIdProvider(playerKey));
+            try {
+              response = await repo.getPlayerStats(
+                playerId: refreshedId,
+                q: searchQuery.isNotEmpty ? searchQuery : null,
+                color: color,
+                timeControl: timeControl,
+                outcome: outcome,
+                eco: request.scope == TwicStatsScope.filteredIgnoringEco
+                    ? null
+                    : eco,
+                dateFrom: _yearMinToDateFrom(effectiveFilter),
+                dateTo: _yearMaxToExclusiveDateTo(effectiveFilter),
+                ratingFrom: ratingFrom,
+                ratingTo: ratingTo,
+                isOnline: _onlineToApi(effectiveFilter.online),
+              );
+            } on DioException catch (retryError) {
+              if (retryError.response?.statusCode == 404) {
+                return fallbackFromLoadedGames();
+              }
+              rethrow;
+            }
+          } else {
             return fallbackFromLoadedGames();
           }
+        } else {
           rethrow;
         }
-      } else {
-        return fallbackFromLoadedGames();
       }
-    } else {
-      rethrow;
-    }
-  }
 
-  final payload = response['data'];
-  if (payload is! Map) return null;
-  final data = Map<String, dynamic>.from(payload);
+      final payload = response['data'];
+      if (payload is! Map) return null;
+      final data = Map<String, dynamic>.from(payload);
 
-  int asInt(dynamic v) => (v as num?)?.toInt() ?? 0;
+      int asInt(dynamic v) => (v as num?)?.toInt() ?? 0;
 
-  final totals = Map<String, dynamic>.from(data['totals'] as Map? ?? const {});
-  final colorData = Map<String, dynamic>.from(
-    data['color'] as Map? ?? const {},
-  );
-  final white = Map<String, dynamic>.from(
-    colorData['white'] as Map? ?? const {},
-  );
-  final black = Map<String, dynamic>.from(
-    colorData['black'] as Map? ?? const {},
-  );
-  final openings = Map<String, dynamic>.from(
-    data['openings'] as Map? ?? const {},
-  );
-
-  List<OpeningStatistic> parseOpeningList(dynamic rawList) {
-    if (rawList is! List) return const [];
-    final stats = <OpeningStatistic>[];
-    for (final item in rawList) {
-      if (item is! Map) continue;
-      final row = Map<String, dynamic>.from(item);
-      final ecoCode = (row['eco']?.toString().trim() ?? '');
-      if (ecoCode.isEmpty) continue;
-      stats.add(
-        OpeningStatistic(
-          eco: ecoCode,
-          openingName: row['openingName']?.toString(),
-          count: asInt(row['games']),
-          wins: asInt(row['wins']),
-          draws: asInt(row['draws']),
-          losses: asInt(row['losses']),
-        ),
+      final totals = Map<String, dynamic>.from(
+        data['totals'] as Map? ?? const {},
       );
-    }
-    // Server order is games-desc, which floats the missing-ECO buckets to the
-    // top of nearly every player. Re-sort so real openings lead.
-    stats.sort(_byRealOpeningsFirstThenCount);
-    return stats;
-  }
+      final colorData = Map<String, dynamic>.from(
+        data['color'] as Map? ?? const {},
+      );
+      final white = Map<String, dynamic>.from(
+        colorData['white'] as Map? ?? const {},
+      );
+      final black = Map<String, dynamic>.from(
+        colorData['black'] as Map? ?? const {},
+      );
+      final openings = Map<String, dynamic>.from(
+        data['openings'] as Map? ?? const {},
+      );
 
-  return PlayerAnalytics(
-    openingStats: parseOpeningList(openings['all']),
-    openingStatsWhite: parseOpeningList(openings['white']),
-    openingStatsBlack: parseOpeningList(openings['black']),
-    colorStats: ColorStatistics(
-      whiteGames: asInt(white['games']),
-      whiteWins: asInt(white['wins']),
-      whiteDraws: asInt(white['draws']),
-      whiteLosses: asInt(white['losses']),
-      blackGames: asInt(black['games']),
-      blackWins: asInt(black['wins']),
-      blackDraws: asInt(black['draws']),
-      blackLosses: asInt(black['losses']),
-    ),
-    resultStats: ResultStatistics(
-      totalGames: asInt(totals['games']),
-      wins: asInt(totals['wins']),
-      draws: asInt(totals['draws']),
-      losses: asInt(totals['losses']),
-    ),
-    recentForm: const [],
-    avgOpponentRating: asInt(data['avgOpponentRating']),
-  );
-});
+      List<OpeningStatistic> parseOpeningList(dynamic rawList) {
+        if (rawList is! List) return const [];
+        final stats = <OpeningStatistic>[];
+        for (final item in rawList) {
+          if (item is! Map) continue;
+          final row = Map<String, dynamic>.from(item);
+          final ecoCode = (row['eco']?.toString().trim() ?? '');
+          if (ecoCode.isEmpty) continue;
+          stats.add(
+            OpeningStatistic(
+              eco: ecoCode,
+              openingName: row['openingName']?.toString(),
+              count: asInt(row['games']),
+              wins: asInt(row['wins']),
+              draws: asInt(row['draws']),
+              losses: asInt(row['losses']),
+            ),
+          );
+        }
+        // Server order is games-desc, which floats the missing-ECO buckets to the
+        // top of nearly every player. Re-sort so real openings lead.
+        stats.sort(_byRealOpeningsFirstThenCount);
+        return stats;
+      }
+
+      return PlayerAnalytics(
+        openingStats: parseOpeningList(openings['all']),
+        openingStatsWhite: parseOpeningList(openings['white']),
+        openingStatsBlack: parseOpeningList(openings['black']),
+        colorStats: ColorStatistics(
+          whiteGames: asInt(white['games']),
+          whiteWins: asInt(white['wins']),
+          whiteDraws: asInt(white['draws']),
+          whiteLosses: asInt(white['losses']),
+          blackGames: asInt(black['games']),
+          blackWins: asInt(black['wins']),
+          blackDraws: asInt(black['draws']),
+          blackLosses: asInt(black['losses']),
+        ),
+        resultStats: ResultStatistics(
+          totalGames: asInt(totals['games']),
+          wins: asInt(totals['wins']),
+          draws: asInt(totals['draws']),
+          losses: asInt(totals['losses']),
+        ),
+        recentForm: const [],
+        avgOpponentRating: asInt(data['avgOpponentRating']),
+      );
+    });
 
 /// Notifier for player profile games state
 class _TwicGamesPageResult {
@@ -3354,19 +3351,66 @@ class _SupabaseGamesPageResult {
   final int nextPageNumber;
 }
 
+/// One page of a player's TWIC games, as a test hands it to
+/// [PlayerProfileGamesNotifier] in place of the gamebase API.
+typedef PlayerGamesTwicPage = ({
+  List<GamesTourModel> games,
+  bool hasMore,
+  int nextPageNumber,
+  int? totalCount,
+});
+
+/// Loads page [pageNumber] of the TWIC games for [state]'s filters and query.
+typedef PlayerGamesTwicPageLoader =
+    Future<PlayerGamesTwicPage> Function(
+      PlayerProfileGamesState state,
+      int pageNumber,
+    );
+
+/// What a list of a player's games was loaded for.
+typedef _GamesRequest = ({
+  GameFilter filter,
+  PlayerResultFilter result,
+  String query,
+});
+
 class PlayerProfileGamesNotifier
     extends StateNotifier<PlayerProfileGamesState> {
-  PlayerProfileGamesNotifier(this._ref, this._playerKey)
-    : super(PlayerProfileGamesState(playerKey: _playerKey)) {
+  PlayerProfileGamesNotifier(
+    this._ref,
+    this._playerKey, {
+
+    /// Pages for a test, in place of the gamebase API.
+    @visibleForTesting this._debugTwicPageLoader,
+  }) : super(PlayerProfileGamesState(playerKey: _playerKey)) {
     _loadGames();
   }
 
   final Ref _ref;
   final PlayerProfileKey _playerKey;
+  final PlayerGamesTwicPageLoader? _debugTwicPageLoader;
   int _loadToken = 0;
   static const int _supabasePageSize = 120;
   static const int _twicPageSize = 60;
   List<GamesTourModel>? _globalSearchFallbackCache;
+
+  /// The request the list now held was loaded for (TWIC). A reload of the
+  /// same request that fails keeps the list; one for a new request clears it,
+  /// so the error is not mistaken for its answer.
+  _GamesRequest? _loadedFor;
+
+  /// The list as it stood before the reader started searching (TWIC), pages
+  /// and all, with the global-search cache it was paged from. Clearing the
+  /// query brings it straight back, with no reload, so closing a search lands
+  /// on the list the reader left.
+  PlayerProfileGamesState? _unsearched;
+  List<GamesTourModel>? _unsearchedCache;
+
+  static _GamesRequest _requestOf(PlayerProfileGamesState state) => (
+    filter: state.filter,
+    result: state.playerResultFilter,
+    query: state.searchQuery,
+  );
 
   List<GamesTourModel> _mergeGames(
     List<GamesTourModel> base,
@@ -3385,16 +3429,22 @@ class PlayerProfileGamesNotifier
   Future<void> _loadGames() async {
     final token = ++_loadToken;
     _globalSearchFallbackCache = null;
-    state = state.copyWith(
-      isLoading: true,
-      isLoadingMore: false,
-      hasMorePages: false,
-      nextPageNumber: 0,
-      totalCount: null,
-      error: null,
-      allGames:
-          _playerKey.source == PlayerProfileDataSource.twic ? const [] : null,
-    );
+    final twic = _playerKey.source == PlayerProfileDataSource.twic;
+    // TWIC answers every filter and query on the server. The list on screen
+    // stays, paging included, until the new first page lands: a search or a
+    // filter never wipes it behind a skeleton, and [isLoading] drives the
+    // quiet progress line over it. More pages of the old list are not
+    // fetched meanwhile (loadMore waits for the load).
+    state = twic
+        ? state.copyWith(isLoading: true, isLoadingMore: false, error: null)
+        : state.copyWith(
+            isLoading: true,
+            isLoadingMore: false,
+            hasMorePages: false,
+            nextPageNumber: 0,
+            totalCount: null,
+            error: null,
+          );
 
     try {
       List<GamesTourModel> allGames;
@@ -3430,13 +3480,21 @@ class PlayerProfileGamesNotifier
         nextPageNumber: nextPageNumber,
         totalCount: totalCount,
       );
+      _loadedFor = _requestOf(state);
     } catch (e) {
       if (!mounted || token != _loadToken) return;
+      // A list kept on screen for another request is not this one's answer.
+      final stale = twic && _loadedFor != _requestOf(state);
       state = state.copyWith(
         error: e.toString(),
         isLoading: false,
         isLoadingMore: false,
+        allGames: stale ? const [] : null,
+        hasMorePages: stale ? false : null,
+        nextPageNumber: stale ? 0 : null,
+        totalCount: stale ? null : PlayerProfileGamesState._unset,
       );
+      if (stale) _loadedFor = null;
     }
   }
 
@@ -3449,18 +3507,17 @@ class PlayerProfileGamesNotifier
     required int pageNumber,
   }) async {
     final offset = pageNumber * _supabasePageSize;
-    final batch =
-        _playerKey.hasFideId
-            ? await gameRepo.getGamesByFideIdPaginated(
-              _playerKey.fideId.toString(),
-              limit: _supabasePageSize,
-              offset: offset,
-            )
-            : await gameRepo.getGamesByPlayerNamePaginated(
-              _playerKey.playerName,
-              limit: _supabasePageSize,
-              offset: offset,
-            );
+    final batch = _playerKey.hasFideId
+        ? await gameRepo.getGamesByFideIdPaginated(
+            _playerKey.fideId.toString(),
+            limit: _supabasePageSize,
+            offset: offset,
+          )
+        : await gameRepo.getGamesByPlayerNamePaginated(
+            _playerKey.playerName,
+            limit: _supabasePageSize,
+            offset: offset,
+          );
 
     final games = batch
         .map((game) => GamesTourModel.fromGame(game))
@@ -3478,6 +3535,17 @@ class PlayerProfileGamesNotifier
     required int pageNumber,
     required int pageSize,
   }) async {
+    final debugLoader = _debugTwicPageLoader;
+    if (debugLoader != null) {
+      final page = await debugLoader(state, pageNumber);
+      return _TwicGamesPageResult(
+        // Sorted in place by the caller.
+        games: [...page.games],
+        hasMore: page.hasMore,
+        nextPageNumber: page.nextPageNumber,
+        totalCount: page.totalCount,
+      );
+    }
     final repo = _ref.read(gamebaseRepositoryProvider);
     final memorialIdentity = _playerKey.memorialSourceIdentity?.trim();
     if (memorialIdentity != null && memorialIdentity.isNotEmpty) {
@@ -3545,14 +3613,12 @@ class PlayerProfileGamesNotifier
     final dateFrom = _yearMinToDateFrom(effectiveFilter);
     final dateTo = _yearMaxToExclusiveDateTo(effectiveFilter);
 
-    final ratingFrom =
-        effectiveFilter.minRating != GameFilter.absoluteMinRating
-            ? effectiveFilter.minRating
-            : null;
-    final ratingTo =
-        effectiveFilter.maxRating != GameFilter.absoluteMaxRating
-            ? effectiveFilter.maxRating
-            : null;
+    final ratingFrom = effectiveFilter.minRating != GameFilter.absoluteMinRating
+        ? effectiveFilter.minRating
+        : null;
+    final ratingTo = effectiveFilter.maxRating != GameFilter.absoluteMaxRating
+        ? effectiveFilter.maxRating
+        : null;
 
     final requestArguments = (
       q: state.searchQuery.trim().isNotEmpty ? state.searchQuery.trim() : null,
@@ -3570,42 +3636,41 @@ class PlayerProfileGamesNotifier
       pageNumber: pageNumber,
       pageSize: pageSize,
     );
-    final response =
-        playerId != null && playerId.isNotEmpty
-            ? await repo.getPlayerGames(
-              playerId: playerId,
-              q: requestArguments.q,
-              color: requestArguments.color,
-              timeControl: requestArguments.timeControl,
-              outcome: requestArguments.outcome,
-              eco: requestArguments.eco,
-              opening: requestArguments.opening,
-              variation: requestArguments.variation,
-              dateFrom: requestArguments.dateFrom,
-              dateTo: requestArguments.dateTo,
-              ratingFrom: requestArguments.ratingFrom,
-              ratingTo: requestArguments.ratingTo,
-              isOnline: requestArguments.isOnline,
-              pageNumber: requestArguments.pageNumber,
-              pageSize: requestArguments.pageSize,
-            )
-            : await repo.getMemorialPlayerGames(
-              sourceIdentity: memorialSourceIdentity!,
-              q: requestArguments.q,
-              color: requestArguments.color,
-              timeControl: requestArguments.timeControl,
-              outcome: requestArguments.outcome,
-              eco: requestArguments.eco,
-              opening: requestArguments.opening,
-              variation: requestArguments.variation,
-              dateFrom: requestArguments.dateFrom,
-              dateTo: requestArguments.dateTo,
-              ratingFrom: requestArguments.ratingFrom,
-              ratingTo: requestArguments.ratingTo,
-              isOnline: requestArguments.isOnline,
-              pageNumber: requestArguments.pageNumber,
-              pageSize: requestArguments.pageSize,
-            );
+    final response = playerId != null && playerId.isNotEmpty
+        ? await repo.getPlayerGames(
+            playerId: playerId,
+            q: requestArguments.q,
+            color: requestArguments.color,
+            timeControl: requestArguments.timeControl,
+            outcome: requestArguments.outcome,
+            eco: requestArguments.eco,
+            opening: requestArguments.opening,
+            variation: requestArguments.variation,
+            dateFrom: requestArguments.dateFrom,
+            dateTo: requestArguments.dateTo,
+            ratingFrom: requestArguments.ratingFrom,
+            ratingTo: requestArguments.ratingTo,
+            isOnline: requestArguments.isOnline,
+            pageNumber: requestArguments.pageNumber,
+            pageSize: requestArguments.pageSize,
+          )
+        : await repo.getMemorialPlayerGames(
+            sourceIdentity: memorialSourceIdentity!,
+            q: requestArguments.q,
+            color: requestArguments.color,
+            timeControl: requestArguments.timeControl,
+            outcome: requestArguments.outcome,
+            eco: requestArguments.eco,
+            opening: requestArguments.opening,
+            variation: requestArguments.variation,
+            dateFrom: requestArguments.dateFrom,
+            dateTo: requestArguments.dateTo,
+            ratingFrom: requestArguments.ratingFrom,
+            ratingTo: requestArguments.ratingTo,
+            isOnline: requestArguments.isOnline,
+            pageNumber: requestArguments.pageNumber,
+            pageSize: requestArguments.pageSize,
+          );
 
     final rows = <Map<String, dynamic>>[];
     final data = response['data'];
@@ -3617,8 +3682,9 @@ class PlayerProfileGamesNotifier
 
     final metadata = response['metadata'];
     final hasMore = metadata is Map ? (metadata['hasMore'] == true) : false;
-    final totalCount =
-        metadata is Map ? (metadata['totalCount'] as num?)?.toInt() : null;
+    final totalCount = metadata is Map
+        ? (metadata['totalCount'] as num?)?.toInt()
+        : null;
 
     final gamebasePlayersById = await _fetchGamebasePlayersByIds(rows, repo);
     var games = rows
@@ -3703,26 +3769,23 @@ class PlayerProfileGamesNotifier
     final result = _gameFilterResultToApi(effectiveFilter.result);
     final color = _colorToApi(effectiveFilter.color);
     final timeControl = _timeControlToApi(effectiveFilter.timeControl);
-    final yearFrom =
-        effectiveFilter.minYear != GameFilter.absoluteMinYear
-            ? effectiveFilter.minYear
-            : null;
-    final yearTo =
-        effectiveFilter.maxYear != DateTime.now().year
-            ? effectiveFilter.maxYear
-            : null;
-    final ratingFrom =
-        effectiveFilter.minRating != GameFilter.absoluteMinRating
-            ? effectiveFilter.minRating
-            : null;
-    final ratingTo =
-        effectiveFilter.maxRating != GameFilter.absoluteMaxRating
-            ? effectiveFilter.maxRating
-            : null;
+    final yearFrom = effectiveFilter.minYear != GameFilter.absoluteMinYear
+        ? effectiveFilter.minYear
+        : null;
+    final yearTo = effectiveFilter.maxYear != DateTime.now().year
+        ? effectiveFilter.maxYear
+        : null;
+    final ratingFrom = effectiveFilter.minRating != GameFilter.absoluteMinRating
+        ? effectiveFilter.minRating
+        : null;
+    final ratingTo = effectiveFilter.maxRating != GameFilter.absoluteMaxRating
+        ? effectiveFilter.maxRating
+        : null;
 
     final playerId = _playerKey.gamebasePlayerId?.trim();
-    final fideIdStr =
-        _playerKey.hasFideId ? _playerKey.fideId.toString() : null;
+    final fideIdStr = _playerKey.hasFideId
+        ? _playerKey.fideId.toString()
+        : null;
     final rows = <Map<String, dynamic>>[];
     var page = 1;
     while (true) {
@@ -3761,12 +3824,12 @@ class PlayerProfileGamesNotifier
             }
             final white =
                 (row['white']?.toString() ??
-                    row['whiteName']?.toString() ??
-                    '');
+                row['whiteName']?.toString() ??
+                '');
             final black =
                 (row['black']?.toString() ??
-                    row['blackName']?.toString() ??
-                    '');
+                row['blackName']?.toString() ??
+                '');
             return _gamebaseNameMatches(white, playerName) ||
                 _gamebaseNameMatches(black, playerName);
           })
@@ -3821,14 +3884,12 @@ class PlayerProfileGamesNotifier
 
     final whitePlayerId = row['whitePlayerId']?.toString().trim();
     final blackPlayerId = row['blackPlayerId']?.toString().trim();
-    final whitePlayer =
-        (whitePlayerId != null && whitePlayerId.isNotEmpty)
-            ? gamebasePlayersById[whitePlayerId]
-            : null;
-    final blackPlayer =
-        (blackPlayerId != null && blackPlayerId.isNotEmpty)
-            ? gamebasePlayersById[blackPlayerId]
-            : null;
+    final whitePlayer = (whitePlayerId != null && whitePlayerId.isNotEmpty)
+        ? gamebasePlayersById[whitePlayerId]
+        : null;
+    final blackPlayer = (blackPlayerId != null && blackPlayerId.isNotEmpty)
+        ? gamebasePlayersById[blackPlayerId]
+        : null;
     final rowFen =
         row['fen']?.toString() ??
         row['finalFen']?.toString() ??
@@ -3871,20 +3932,19 @@ class PlayerProfileGamesNotifier
         isWhite: true,
         fallback: whitePlayer?.title,
       ),
-      rating:
-          whiteEloRaw > 0 ? whiteEloRaw : _ratingFor(whitePlayer, timeControl),
-      countryCode:
-          (row['whiteFed']?.toString().trim().isNotEmpty ?? false)
-              ? row['whiteFed'].toString().trim()
-              : (whitePlayer?.fed ?? ''),
+      rating: whiteEloRaw > 0
+          ? whiteEloRaw
+          : _ratingFor(whitePlayer, timeControl),
+      countryCode: (row['whiteFed']?.toString().trim().isNotEmpty ?? false)
+          ? row['whiteFed'].toString().trim()
+          : (whitePlayer?.fed ?? ''),
       team: null,
       fideId:
           _parseFide(row['whiteFideId']) ??
           int.tryParse(whitePlayer?.fideId ?? ''),
-      gamebasePlayerId:
-          (whitePlayerId != null && whitePlayerId.isNotEmpty)
-              ? whitePlayerId
-              : whitePlayer?.id,
+      gamebasePlayerId: (whitePlayerId != null && whitePlayerId.isNotEmpty)
+          ? whitePlayerId
+          : whitePlayer?.id,
     );
 
     final blackCard = PlayerCard(
@@ -3895,20 +3955,19 @@ class PlayerProfileGamesNotifier
         isWhite: false,
         fallback: blackPlayer?.title,
       ),
-      rating:
-          blackEloRaw > 0 ? blackEloRaw : _ratingFor(blackPlayer, timeControl),
-      countryCode:
-          (row['blackFed']?.toString().trim().isNotEmpty ?? false)
-              ? row['blackFed'].toString().trim()
-              : (blackPlayer?.fed ?? ''),
+      rating: blackEloRaw > 0
+          ? blackEloRaw
+          : _ratingFor(blackPlayer, timeControl),
+      countryCode: (row['blackFed']?.toString().trim().isNotEmpty ?? false)
+          ? row['blackFed'].toString().trim()
+          : (blackPlayer?.fed ?? ''),
       team: null,
       fideId:
           _parseFide(row['blackFideId']) ??
           int.tryParse(blackPlayer?.fideId ?? ''),
-      gamebasePlayerId:
-          (blackPlayerId != null && blackPlayerId.isNotEmpty)
-              ? blackPlayerId
-              : blackPlayer?.id,
+      gamebasePlayerId: (blackPlayerId != null && blackPlayerId.isNotEmpty)
+          ? blackPlayerId
+          : blackPlayer?.id,
     );
 
     return GamesTourModel(
@@ -3924,10 +3983,9 @@ class PlayerProfileGamesNotifier
       roundId: playerProfileRoundLabel(row, fallback: 'twic_profile'),
       roundSlug: playerProfileRoundLabel(
         row,
-        fallback:
-            (eco != null && eco.trim().isNotEmpty)
-                ? eco.trim()
-                : (timeControl ?? ''),
+        fallback: (eco != null && eco.trim().isNotEmpty)
+            ? eco.trim()
+            : (timeControl ?? ''),
       ),
       tourId: canonicalTourId.isNotEmpty ? canonicalTourId : canonicalEvent,
       tourSlug: canonicalEvent,
@@ -3936,10 +3994,9 @@ class PlayerProfileGamesNotifier
       pgn: pgn,
       lastMoveTime: date,
       eco: (eco != null && eco.trim().isNotEmpty) ? eco.trim() : null,
-      openingName:
-          (opening != null && opening.trim().isNotEmpty)
-              ? opening.trim()
-              : null,
+      openingName: (opening != null && opening.trim().isNotEmpty)
+          ? opening.trim()
+          : null,
       timeControl: timeControl,
       isOnline: row['isOnline'] == true,
     );
@@ -4039,10 +4096,9 @@ class PlayerProfileGamesNotifier
         isLoadingMore: false,
         hasMorePages: pageHasMore,
         nextPageNumber: pageNextPageNumber,
-        totalCount:
-            _playerKey.source == PlayerProfileDataSource.twic
-                ? pageTotalCount ?? state.totalCount
-                : (pageHasMore ? state.totalCount : merged.length),
+        totalCount: _playerKey.source == PlayerProfileDataSource.twic
+            ? pageTotalCount ?? state.totalCount
+            : (pageHasMore ? state.totalCount : merged.length),
       );
     } catch (e) {
       if (!mounted || token != _loadToken) return;
@@ -4133,20 +4189,61 @@ class PlayerProfileGamesNotifier
     if (_playerKey.source == PlayerProfileDataSource.twic) _loadGames();
   }
 
-  void clearFilter() {
+  /// Clears the filters, and the search with them unless [keepSearchQuery]
+  /// (the list's own Clear while a search is open clears only what the
+  /// filter sheet set).
+  void clearFilter({bool keepSearchQuery = false}) {
+    final endsSearch = !keepSearchQuery && state.searchQuery.isNotEmpty;
     state = state.copyWith(
       filter: GameFilter.defaultFilter(),
       playerResultFilter: PlayerResultFilter.all,
-      searchQuery: '',
+      searchQuery: keepSearchQuery ? null : '',
     );
-    if (_playerKey.source == PlayerProfileDataSource.twic) _loadGames();
+    if (_playerKey.source != PlayerProfileDataSource.twic) return;
+    // "No matching games" > Clear inside a search started on the whole list
+    // lands on that list at once, as closing the search does.
+    if (endsSearch && _restoreUnsearched()) return;
+    _loadGames();
   }
 
   void setSearchQuery(String query) {
     if (state.searchQuery == query) return;
+    final twic = _playerKey.source == PlayerProfileDataSource.twic;
+    if (twic && state.searchQuery.isEmpty) {
+      // A search starts: keep the list it narrows, to come back to. Only a
+      // settled list is worth keeping; anything else reloads on the way back.
+      final settled =
+          !state.isLoading &&
+          state.error == null &&
+          state.allGames.isNotEmpty &&
+          _loadedFor == _requestOf(state);
+      _unsearched = settled ? state : null;
+      _unsearchedCache = settled ? _globalSearchFallbackCache : null;
+    }
     state = state.copyWith(searchQuery: query);
-    if (_playerKey.source != PlayerProfileDataSource.twic) return;
+    if (!twic) return;
+    if (query.isEmpty && _restoreUnsearched()) return;
     _loadGames();
+  }
+
+  /// The search just ended (its query is cleared). When it ends with the
+  /// filters it started with, the list kept as it started comes back exactly
+  /// as it was left, with no reload, and any search still loading is dropped.
+  /// Either way the kept list is let go. False when nothing came back.
+  bool _restoreUnsearched() {
+    final unsearched = _unsearched;
+    final cache = _unsearchedCache;
+    _unsearched = null;
+    _unsearchedCache = null;
+    if (unsearched == null || _requestOf(unsearched) != _requestOf(state)) {
+      return false;
+    }
+    _loadToken++;
+    _globalSearchFallbackCache = cache;
+    // A page that was loading when the search started went with it.
+    state = unsearched.copyWith(isLoadingMore: false);
+    _loadedFor = _requestOf(state);
+    return true;
   }
 
   void setPlayerResultFilter(PlayerResultFilter filter) {
@@ -4155,16 +4252,20 @@ class PlayerProfileGamesNotifier
   }
 
   Future<void> refresh() async {
+    // A refreshed search comes back to a refreshed list too.
+    _unsearched = null;
+    _unsearchedCache = null;
     await _loadGames();
   }
 }
 
 /// Provider family for player profile games state using PlayerProfileKey
-final playerProfileGamesKeyProvider = StateNotifierProvider.family.autoDispose<
-  PlayerProfileGamesNotifier,
-  PlayerProfileGamesState,
-  PlayerProfileKey
->((ref, playerKey) => PlayerProfileGamesNotifier(ref, playerKey));
+final playerProfileGamesKeyProvider = StateNotifierProvider.family
+    .autoDispose<
+      PlayerProfileGamesNotifier,
+      PlayerProfileGamesState,
+      PlayerProfileKey
+    >((ref, playerKey) => PlayerProfileGamesNotifier(ref, playerKey));
 
 /// Legacy provider for backwards compatibility - uses fideId only
 final playerProfileGamesProvider = StateNotifierProvider.family

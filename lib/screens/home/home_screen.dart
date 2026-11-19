@@ -63,8 +63,13 @@ void forgetForYouPageForLaunch() {
 /// The app's home: five sections under one bar (Home, Feed, Botvinnik,
 /// Search, Profile). There is no sidebar; what it held lives on Profile.
 ///
-/// The bar and the section's own top bar step out of the way as the reader
-/// scrolls down a list and come back as they scroll up ([ScrollChromeRegion]).
+/// Every section wears the same top bar ([HomeTopBarFrame]): one inset, one
+/// height, one gutter, one centre line, and the page under it starting at
+/// the same line ([HomeTopBarMetrics.headerExtent]). The bottom bar and the
+/// section's top bar step out of the way together, on one value, as the
+/// reader scrolls down a list and come back as they scroll up; Feed's follow
+/// the posts a page at a time and slide over them ([ScrollChromeRegion]).
+/// Botvinnik is a conversation with its composer under it: its bars stay.
 class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
 
@@ -219,10 +224,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
     // Start account-scoped Inbox sync early: the Profile tab wears its dot.
     ref.watch(inboxHasUnreadProvider);
 
-    // A new section opens with its bars in view; Botvinnik switched off in
-    // Settings while its tab was open hands the reader back to Home.
+    // A new section opens with its bars in view, from its first frame: the
+    // bottom bar follows the section's own chrome, and one left away there
+    // must not blink out under the finger that just tapped it and spring
+    // back. Botvinnik switched off in Settings while its tab was open hands
+    // the reader back to Home.
     ref.listen<BottomNavBarItem>(selectedBottomNavBarItemProvider, (_, next) {
-      _chromeFor(next).show();
+      _chromeFor(next).show(animate: false);
       FocusManager.instance.primaryFocus?.unfocus();
     });
     ref.listen<List<BottomNavBarItem>>(visibleBottomNavItemsProvider, (
@@ -235,7 +243,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
             BottomNavBarItem.forYou;
       }
     });
-    final chrome = _chromeFor(ref.watch(selectedBottomNavBarItemProvider));
+    final section = ref.watch(selectedBottomNavBarItemProvider);
+    final chrome = _chromeFor(section);
 
     final body = BillingIssueGate(
       child: KeyedSubtree(
@@ -252,9 +261,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
     // Tablet layout: NavigationRail on the side
     if (ResponsiveHelper.isTablet) {
       return Scaffold(
-        resizeToAvoidBottomInset:
-            ref.watch(selectedBottomNavBarItemProvider) ==
-            BottomNavBarItem.botvinnik,
+        resizeToAvoidBottomInset: section == BottomNavBarItem.botvinnik,
         floatingActionButton: fab,
         body: Row(
           children: [
@@ -271,15 +278,19 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
     // Phone layout: Bottom navigation bar. Botvinnik's composer rides the
     // keyboard: the shell lifts the page over it (the keyboard covers the
     // bar anyway), and the chat page does not lift itself again.
-    final typingToBotvinnik =
-        ref.watch(selectedBottomNavBarItemProvider) ==
-        BottomNavBarItem.botvinnik;
+    //
+    // Feed's posts never change size: the page runs under the bar, which
+    // slides over it and keeps its place in the layout, so the inset Feed
+    // keeps clear at its foot is the bar's whole height at every frame.
+    final overFeed = section.barsOverPage;
     return Scaffold(
-      resizeToAvoidBottomInset: typingToBotvinnik,
+      resizeToAvoidBottomInset: section == BottomNavBarItem.botvinnik,
+      extendBody: overFeed,
       floatingActionButton: fab,
       bottomNavigationBar: CollapsingChrome(
         controller: chrome,
         edge: VerticalDirection.down,
+        overlay: overFeed,
         child: const BottomNavBar(),
       ),
       body: body,
@@ -288,13 +299,19 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
 }
 
 extension on BottomNavBarItem {
-  /// Whether scrolling this section moves the bars.
-  bool get scrollsChrome => switch (this) {
-    BottomNavBarItem.forYou ||
-    BottomNavBarItem.search ||
-    BottomNavBarItem.profile => true,
-    BottomNavBarItem.feed || BottomNavBarItem.botvinnik => false,
-  };
+  /// Whether scrolling this section moves the bars. Botvinnik is a
+  /// conversation over its own composer: its bars stay where they are.
+  bool get scrollsChrome => this != BottomNavBarItem.botvinnik;
+
+  /// Feed pages through whole posts rather than scrolling a list
+  /// ([ScrollChromeRegion.paged]): its bars leave as the reader pages on and
+  /// come back as they page back, and each post moves to stay centred in the
+  /// room they leave, never changing size (see `FeedScreen`).
+  bool get pagesChrome => this == BottomNavBarItem.feed;
+
+  /// The section's page runs under the bars, which stand over it instead of
+  /// handing it their room: each post is composed between them.
+  bool get barsOverPage => this == BottomNavBarItem.feed;
 }
 
 /// The selected section, switched in place. No scale or fade on a switch:
@@ -319,9 +336,8 @@ class BottomNavBarView extends HookConsumerWidget {
     if (chrome == null) return screen;
     return ScrollChromeRegion(
       controller: chrome,
-      // Feed pages through whole posts and Botvinnik is a conversation:
-      // neither is a list to read down.
       enabled: item.scrollsChrome,
+      paged: item.pagesChrome,
       child: screen,
     );
   }
@@ -385,9 +401,10 @@ class BottomNavBarView extends HookConsumerWidget {
 }
 
 /// The floating buttons of the section in view: My Space keeps its add
-/// menu, Today its Live first (while something is live) and, while a filter
-/// narrows it, the way back to that filter. Botvinnik has a tab now; it no
-/// longer floats over Home.
+/// menu; Today keeps its event filter, always, with Live first over it while
+/// an event is in play or while it is on, so a flag left on can always be
+/// turned off ([ForYouTodayFabs]). Discovery has none. Botvinnik has a tab
+/// now; it no longer floats over Home.
 class _HomeFab extends ConsumerWidget {
   const _HomeFab();
 

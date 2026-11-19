@@ -2,11 +2,15 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:chessever2/screens/library/widgets/library_context_menu.dart';
 import 'package:chessever2/screens/my_prep/models/prep_models.dart';
+import 'package:chessever2/screens/my_prep/prep_actions.dart'
+    show prepProfileMenu;
 import 'package:chessever2/screens/my_prep/prep_space_shortcut.dart';
 import 'package:chessever2/screens/my_prep/providers/prep_providers.dart';
 import 'package:chessever2/screens/my_prep/widgets/prep_profile_card.dart';
 import 'package:chessever2/screens/my_prep/widgets/prep_watch_star.dart';
+import 'package:chessever2/screens/my_space/actions/space_prep_actions.dart';
 import 'package:chessever2/screens/my_space/models/space_shortcut.dart';
 import 'package:chessever2/screens/my_space/providers/space_auto_provider.dart';
 import 'package:chessever2/screens/my_space/providers/space_shortcuts_provider.dart';
@@ -19,8 +23,12 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 class _Store extends SpaceShortcutsNotifier {
+  _Store([this.seed = const []]);
+
+  final List<SpaceShortcut> seed;
+
   @override
-  Future<List<SpaceShortcut>> build() async => [];
+  Future<List<SpaceShortcut>> build() async => seed;
 
   @override
   Future<bool> add(SpaceShortcut draft) async {
@@ -66,6 +74,54 @@ PrepProfile _profile(PrepKind kind, PrepSource source) => PrepProfile(
   createdAtMs: 1,
   accounts: [PrepAccount(source: source, username: 'clubplayer')],
 );
+
+/// [profile] stored in a temporary `prep/profiles.json`, loaded into a
+/// container whose My Space holds [pins].
+Future<(ProviderContainer, _Store)> _loadedPrep(
+  WidgetTester tester,
+  PrepProfile profile, {
+  List<SpaceShortcut> pins = const [],
+}) async {
+  final directory = Directory.systemTemp.createTempSync('prep_space_');
+  addTearDown(() => directory.deleteSync(recursive: true));
+  final source = File('${directory.path}/prep/profiles.json');
+  source.parent.createSync(recursive: true);
+  source.writeAsStringSync(
+    jsonEncode({
+      'version': 1,
+      'profiles': [profile.toJson()],
+    }),
+  );
+  final messenger =
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+  messenger.setMockMethodCallHandler(
+    const MethodChannel('plugins.flutter.io/path_provider'),
+    (_) async => directory.path,
+  );
+  addTearDown(
+    () => messenger.setMockMethodCallHandler(
+      const MethodChannel('plugins.flutter.io/path_provider'),
+      null,
+    ),
+  );
+  final store = _Store(pins);
+  final container = ProviderContainer(
+    overrides: [
+      spaceShortcutsProvider.overrideWith(() => store),
+      spaceHiddenAutoKeysProvider.overrideWith(_Hidden.new),
+    ],
+  );
+  addTearDown(container.dispose);
+  await tester.runAsync(() async {
+    final ready = Completer<void>();
+    final sub = container.listen(prepProfilesProvider, (_, value) {
+      if (!value.isLoading && !ready.isCompleted) ready.complete();
+    }, fireImmediately: true);
+    await ready.future;
+    sub.close();
+  });
+  return (container, store);
+}
 
 void main() {
   test('all saved prep kinds and sources retain their profile identity', () {
@@ -232,12 +288,90 @@ void main() {
     });
   }
 
+  for (final kind in [PrepKind.opponent, PrepKind.favorite]) {
+    testWidgets('a ${kind.name} Prep card holds into the Prep page\'s own '
+        'rows, in its order, with Remove from My Space for its My Space row '
+        'and nothing that deletes', (tester) async {
+      final profile = PrepProfile(
+        id: 'prep-${kind.name}-menu',
+        kind: kind,
+        name: 'Club preparation',
+        createdAtMs: 1,
+        favoriteId: kind == PrepKind.favorite ? 'fav-1' : null,
+        accounts: const [
+          PrepAccount(source: PrepSource.lichess, username: 'clubplayer'),
+        ],
+      );
+      final pin = prepProfileSpaceDraft(profile);
+      final (container, _) = await _loadedPrep(tester, profile, pins: [pin]);
+      late List<LibraryMenuAction> prepRows;
+      late List<LibraryMenuAction> spaceRows;
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: MaterialApp(
+            theme: AppTheme.darkTheme,
+            home: Consumer(
+              builder: (context, ref, _) {
+                ResponsiveHelper.init(context);
+                ref.watch(prepProfilesProvider);
+                ref.watch(spaceShortcutsProvider);
+                prepRows = prepProfileMenu(context, ref, profile);
+                spaceRows = spacePrepProfileMenu(context, ref, pin, profile);
+                return Scaffold(
+                  body: Center(
+                    child: SizedBox(
+                      width: 358,
+                      child: SpaceSavedRow(shortcut: pin),
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+
+      final expected = [
+        for (final row in prepRows)
+          if (row.label == 'Add to My Space' ||
+              row.label == 'Remove from My Space')
+            'Remove from My Space'
+          else if (!row.destructive)
+            row.label,
+      ];
+      expect([for (final row in spaceRows) row.label], expected);
+      expect(spaceRows.where((row) => row.destructive), isEmpty);
+      expect(
+        [for (final row in spaceRows) row.prominent],
+        [
+          for (final row in prepRows)
+            if (!row.destructive) row.prominent,
+        ],
+      );
+
+      await tester.longPress(find.byType(SpaceSavedRow));
+      await tester.pump(const Duration(milliseconds: 600));
+      expect(find.text('Refresh games'), findsOneWidget);
+      expect(find.text('Remove from My Space'), findsOneWidget);
+      expect(find.text('Remove'), findsNothing);
+      expect(find.text('Clear downloaded games'), findsNothing);
+      expect(find.textContaining('Open'), findsNothing);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump(const Duration(seconds: 1));
+    });
+  }
+
   /// One saved Prep row, as My Space draws it.
   Future<void> pumpRow(
     WidgetTester tester,
     PrepProfile profile, {
     double width = 358,
     bool disclosure = true,
+    bool editing = false,
   }) async {
     await tester.pumpWidget(
       ProviderScope(
@@ -263,6 +397,7 @@ void main() {
                         shortcut: prepProfileSpaceDraft(profile),
                         stacked: width < 200,
                         disclosure: disclosure,
+                        editing: editing,
                       ),
                     ),
                   ),
@@ -313,6 +448,36 @@ void main() {
     await pumpRow(tester, _profile(PrepKind.mine, PrepSource.lichess));
     expect(star, findsOneWidget);
     expect(chevron, findsNothing);
+  });
+
+  testWidgets('in the home\'s Edit a Prep row keeps its star\'s place, faded '
+      'out and inert, so nothing on the card moves', (tester) async {
+    final profile = _profile(PrepKind.opponent, PrepSource.lichess);
+    await pumpRow(tester, profile);
+    final rest = tester.getSize(find.byType(SpaceSavedRow));
+    final restTitle = tester.getRect(find.text(profile.name));
+
+    final handle = tester.ensureSemantics();
+    await pumpRow(tester, profile, editing: true);
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(star, findsOneWidget);
+    final fade = tester.widget<Opacity>(
+      find.ancestor(of: star, matching: find.byType(Opacity)).first,
+    );
+    expect(fade.opacity, 0);
+    expect(
+      tester
+          .widget<IgnorePointer>(
+            find.ancestor(of: star, matching: find.byType(IgnorePointer)).first,
+          )
+          .ignoring,
+      isTrue,
+    );
+    expect(tester.getSize(find.byType(SpaceSavedRow)), rest);
+    expect(tester.getRect(find.text(profile.name)), restTitle);
+    final node = tester.getSemantics(find.byType(SpaceSavedRow));
+    expect(node.getSemanticsData().customSemanticsActionIds ?? [], isEmpty);
+    handle.dispose();
   });
 
   testWidgets('in Edit a Prep row has no star, a tap selects', (tester) async {

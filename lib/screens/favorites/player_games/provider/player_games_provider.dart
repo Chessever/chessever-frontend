@@ -66,8 +66,9 @@ class PlayerGamesNotifier
         '===== Converting ${games.length} games to GamesTourModel =====',
       );
       // Convert to GamesTourModel
-      final gamesTourModels =
-          games.map((game) => GamesTourModel.fromGame(game)).toList();
+      final gamesTourModels = games
+          .map((game) => GamesTourModel.fromGame(game))
+          .toList();
 
       debugPrint('===== Grouping games by tournament =====');
       // Group by tournament
@@ -133,8 +134,9 @@ class PlayerGamesNotifier
       }
 
       // Convert to GamesTourModel
-      final newGamesTourModels =
-          games.map((game) => GamesTourModel.fromGame(game)).toList();
+      final newGamesTourModels = games
+          .map((game) => GamesTourModel.fromGame(game))
+          .toList();
 
       // Merge new games with existing tournament groups
       final updatedGroups = await _mergeGamesIntoGroups(

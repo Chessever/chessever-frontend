@@ -119,12 +119,11 @@ class _FavoritePlayerSearchSuggestionState
         .watch(favoritePlayerSearchProvider(query))
         .when(
           loading: () => _busy(),
-          error:
-              (_, _) => _message(
-                icon: Icons.search_off_rounded,
-                title: 'Could not search players',
-                subtitle: 'Check your connection and try again.',
-              ),
+          error: (_, _) => _message(
+            icon: Icons.search_off_rounded,
+            title: 'Could not search players',
+            subtitle: 'Check your connection and try again.',
+          ),
           data: _buildResults,
         );
   }
@@ -146,17 +145,17 @@ class _FavoritePlayerSearchSuggestionState
     if (addable.isEmpty) {
       return widget.surface == FavoritePlayerSearchSurface.games
           ? _message(
-            icon: Icons.sports_esports_outlined,
-            title: 'No games yet',
-            subtitle: 'These players have no games here right now.',
-          )
+              icon: Icons.sports_esports_outlined,
+              title: 'No games yet',
+              subtitle: 'These players have no games here right now.',
+            )
           : _message(
-            icon: Icons.favorite_rounded,
-            title: 'Already in your favorites',
-            subtitle:
-                'Every player matching "${widget.query.trim()}" is '
-                'already followed.',
-          );
+              icon: Icons.favorite_rounded,
+              title: 'Already in your favorites',
+              subtitle:
+                  'Every player matching "${widget.query.trim()}" is '
+                  'already followed.',
+            );
     }
 
     final horizontalPadding = ResponsiveHelper.adaptive(
@@ -197,22 +196,21 @@ class _FavoritePlayerSearchSuggestionState
             LiftedRowMenu(
               key: ValueKey<int?>(player.fideId),
               onPreviewTap: () => widget.onOpenPlayer(player),
-              actions:
-                  (rowContext) => playerStandingMenuActions(
-                    rowContext,
-                    ref,
-                    player,
-                    onOpen: () => widget.onOpenPlayer(player),
-                    extra: [
-                      LibraryMenuAction(
-                        icon: Icons.favorite_border_rounded,
-                        label: 'Add to favorites',
-                        onSelected: () {
-                          if (mounted) return _add(player);
-                        },
-                      ),
-                    ],
+              actions: (rowContext) => playerStandingMenuActions(
+                rowContext,
+                ref,
+                player,
+                onOpen: () => widget.onOpenPlayer(player),
+                extra: [
+                  LibraryMenuAction(
+                    icon: Icons.favorite_border_rounded,
+                    label: 'Add to favorites',
+                    onSelected: () {
+                      if (mounted) return _add(player);
+                    },
                   ),
+                ],
+              ),
               child: FigmaPlayerCard(
                 player: player,
                 rank: null,
@@ -284,11 +282,7 @@ class _FavoritePlayerSearchSuggestionState
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(
-              icon,
-              size: 48.ic,
-              color: context.textInk(0.5),
-            ),
+            Icon(icon, size: 48.ic, color: context.textInk(0.5)),
             SizedBox(height: 16.h),
             Text(
               title,

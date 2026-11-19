@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:chessever2/screens/group_event/widget/tour_loading_widget.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_app_bar_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_app_bar_view_model.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_screen_mode_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_scroll_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/knockout_tournament_state_provider.dart';
@@ -12,13 +13,15 @@ import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_s
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/knockout_stage_round_resolver.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/group_event_games_tour_content_body.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/widgets/search_list_resume.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_screen_provider.dart';
+import 'package:chessever2/screens/tour_detail/widgets/event_games_no_matches.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/user_error_message.dart';
+import 'package:chessever2/widgets/page_spring.dart';
 import 'package:chessever2/widgets/scroll_to_top_bus.dart';
-import 'package:chessever2/widgets/search/gameSearch/game_search_overlay.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/svg.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -38,17 +41,56 @@ class _GamesTourScreenState extends ConsumerState<GamesTourScreen>
   @override
   bool get wantKeepAlive => true;
 
+  /// The reader's place in every game while a search's hits stand in for
+  /// them, handed back as the search ends.
+  final SearchListResume _resume = SearchListResume();
+
+  /// The query whose hits are on screen, to tell new hits from a rebuild.
+  String? _hitsQuery;
+
   @override
   void onScrollToTopRequested() {
     final scopeId = ref.read(gamesTourScrollScopeProvider);
     final controller = ref.read(gamesTourScrollProvider(scopeId));
-    if (controller.isAttached) {
-      controller.scrollTo(
-        index: 0,
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeOutCubic,
-      );
+    if (!controller.isAttached) return;
+    if (MediaQuery.disableAnimationsOf(context)) {
+      controller.jumpTo(index: 0);
+      return;
     }
+    // On the tabs' spring, as every other list's way back to its top.
+    final spring = SpringCurve.of(PageSpring.motion);
+    controller.scrollTo(index: 0, duration: spring.duration, curve: spring);
+  }
+
+  /// Where the list built now starts, and the hits of a new query read
+  /// from their top: a list kept across queries would hold the last one's
+  /// place, past the end of shorter hits.
+  ListResumePoint? _startFor(GamesScreenModel data) {
+    final scopeId = ref.read(gamesTourScrollScopeProvider);
+    final positions = ref
+        .read(gamesTourScrollProvider(scopeId).notifier)
+        .itemPositionsListener;
+    final start = _resume.resolve(
+      searching: data.isSearchMode,
+      positions: positions,
+    );
+    if (start != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _resume.consumed());
+    }
+    final query = data.isSearchMode ? data.searchQuery : null;
+    final newHits = query != null && _hitsQuery != null && query != _hitsQuery;
+    _hitsQuery = query;
+    if (newHits) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        final controller = ref.read(gamesTourScrollProvider(scopeId));
+        if (controller.isAttached &&
+            ListResumePoint.capture(positions) != null) {
+          controller.jumpTo(index: 0);
+        }
+      });
+    }
+    return start;
   }
 
   @override
@@ -63,6 +105,7 @@ class _GamesTourScreenState extends ConsumerState<GamesTourScreen>
 
         return gamesTourAsync.when(
           data: (data) {
+            final startAt = _startFor(data);
             final groupedData = ref.watch(gamesTourGroupedProvider);
             final hasGroupedGames = groupedData.gamesByRound.values.any(
               (games) => games.isNotEmpty,
@@ -72,10 +115,9 @@ class _GamesTourScreenState extends ConsumerState<GamesTourScreen>
             }
             if (data.gamesTourModels.isEmpty && !hasGroupedGames) {
               return SingleChildScrollView(
-                child:
-                    data.isSearchMode && data.searchQuery != null
-                        ? EmptySearchWidget(query: data.searchQuery!)
-                        : const NoGamesPlaceholder(),
+                child: data.isSearchMode
+                    ? EventGamesNoMatches(query: data.searchQuery)
+                    : const NoGamesPlaceholder(),
               );
             }
             // TABLET-ONLY: Check if rounds contain knockout-stage IDs.
@@ -103,17 +145,18 @@ class _GamesTourScreenState extends ConsumerState<GamesTourScreen>
               backgroundColor: context.colors.surfaceRecessed,
               displacement: 60.h,
               strokeWidth: 3.w,
-              child:
-                  useNormalMode
-                      ? GamesTourContentBody(
-                        gamesScreenModel: data,
-                        gamesListViewMode: gamesListViewMode,
-                      )
-                      : GroupEventGamesTourContentBody(
-                        gamesScreenModel: data,
-                        gamesListViewMode: gamesListViewMode,
-                        onReturnFromChessboard: (index) {},
-                      ),
+              child: useNormalMode
+                  ? GamesTourContentBody(
+                      gamesScreenModel: data,
+                      gamesListViewMode: gamesListViewMode,
+                      startAt: startAt,
+                    )
+                  : GroupEventGamesTourContentBody(
+                      gamesScreenModel: data,
+                      gamesListViewMode: gamesListViewMode,
+                      onReturnFromChessboard: (index) {},
+                      startAt: startAt,
+                    ),
             );
           },
           error: (e, _) {
@@ -195,13 +238,12 @@ class NoGamesPlaceholder extends StatelessWidget {
             height: 35.h,
             width: 35.w,
             // White stroke art: tint it for paper.
-            colorFilter:
-                context.isLightTheme
-                    ? ColorFilter.mode(
-                      context.colors.iconSecondary,
-                      BlendMode.srcIn,
-                    )
-                    : null,
+            colorFilter: context.isLightTheme
+                ? ColorFilter.mode(
+                    context.colors.iconSecondary,
+                    BlendMode.srcIn,
+                  )
+                : null,
           ),
           SizedBox(height: 10.h),
           Text(

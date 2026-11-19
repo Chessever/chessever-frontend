@@ -14,19 +14,20 @@ import 'package:chessever2/screens/feed/providers/feed_provider.dart';
 import 'package:chessever2/screens/feed/puzzles/feed_puzzle.dart';
 import 'package:chessever2/screens/feed/widgets/feed_action_row.dart';
 import 'package:chessever2/screens/feed/widgets/feed_ad_page.dart';
+import 'package:chessever2/screens/feed/widgets/feed_centred_between_bars.dart';
 import 'package:chessever2/screens/feed/widgets/feed_clip.dart';
 import 'package:chessever2/screens/feed/widgets/feed_glyphs.dart';
 import 'package:chessever2/screens/feed/widgets/feed_layout.dart';
 import 'package:chessever2/screens/feed/widgets/feed_pull_refresh.dart';
 import 'package:chessever2/screens/feed/widgets/feed_sfx_provider.dart';
 import 'package:chessever2/screens/feed/widgets/feed_states.dart';
+import 'package:chessever2/screens/home/widget/bottom_nav_bar.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/user_error_message.dart';
 import 'package:chessever2/widgets/app_snack.dart';
 import 'package:chessever2/widgets/home_top_bar.dart';
-import 'package:chessever2/widgets/destination_title.dart';
-import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/widgets/scroll_chrome.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
@@ -41,7 +42,20 @@ import 'package:motor/motor.dart';
 /// Swipe for the next page, pull down on the first one for a fresh draw;
 /// everything else happens on the board (see [FeedClip] for the gesture
 /// set). The title answers a tap: back to the first post from anywhere down
-/// the feed, and a fresh draw (the pull, run for you) when already there.
+/// the feed, and a fresh draw (the pull, run for you) when already there. As
+/// the Feed tab, re-tapping the tab takes the viewer back to the first post
+/// with the bars in view, as every root's re-tap takes its page back to the
+/// top, but never draws afresh.
+///
+/// As the Feed tab its bars step away as the reader pages on and come back
+/// the moment they page back ([ScrollChromeRegion.paged]). Each page is the
+/// whole screen with one framed post laid out clear of the bars as they
+/// stand when shown, so a post never changes size and is never under a bar
+/// at rest. As the bars leave, the post is moved, never laid out again, so
+/// it stays centred in the room the bars leave it, on the bars' own spring
+/// value ([FeedCentredBetweenBars]): with the bars away it is the one thing
+/// on the screen, framed in the middle of it, not a post sitting under two
+/// empty strips.
 ///
 /// A page pushed from For You › Discovery: it follows the app theme (light
 /// or dark surfaces, status bar icons to match) and wears the home bar's
@@ -193,6 +207,18 @@ class _FeedScreenState extends ConsumerState<FeedScreen>
     // Warms up when the board's Sound setting is (or turns) on; see
     // [_warmUpSoundsIfAudible].
     ref.listenManual<List<FeedEntry>>(feedPagesProvider, _onPagesChanged);
+    // The Feed tab re-tapped in the bottom bar does what every root's
+    // re-tap does: back to the top (the first post), bars in view. Never a
+    // fresh draw: one stray re-tap must not replace the post being watched
+    // (the bar's contract, see selectBottomNavBarItem).
+    ref.listenManual<BottomNavBarReTapRequest>(
+      bottomNavBarReTapRequestProvider,
+      (previous, next) {
+        if (!widget.embedded || next.item != BottomNavBarItem.feed) return;
+        if (previous != null && previous.sequence == next.sequence) return;
+        _onNavReTap();
+      },
+    );
     ref.listenManual<bool>(
       boardSettingsProviderNew.select(
         (settings) => settings.valueOrNull?.soundEnabled == true,
@@ -720,6 +746,21 @@ class _FeedScreenState extends ConsumerState<FeedScreen>
     unawaited(_rideHome(entries, from: page));
   }
 
+  /// The Feed tab re-tapped in the bottom bar: the bars come back and, from
+  /// further down, the first post with them. On the first post already
+  /// there is nothing more to do; the refresh stays the pull's and the
+  /// title's. The bar already gave the tap its haptic.
+  void _onNavReTap() {
+    if (!mounted) return;
+    ScrollChromeScope.maybeOf(context)?.show();
+    if (!_pages.hasClients || _homing) return;
+    final entries = _currentPages();
+    if (entries.isEmpty) return;
+    final page = _pages.page ?? _index.toDouble();
+    if (_index == 0 && page.abs() < 0.01) return;
+    unawaited(_rideHome(entries, from: page));
+  }
+
   /// Back to the first post on a spring. The first post is the current page
   /// from the first frame (the one being left stops at once, and nothing in
   /// between is visited); from further down than two pages the ride starts
@@ -966,6 +1007,51 @@ class _FeedScreenState extends ConsumerState<FeedScreen>
       });
     }
 
+    // In the home shell the bars stand over the pages instead of above them:
+    // every page is the whole screen, laid out clear of the bars as they
+    // stand when shown, so nothing of a post is ever under them at rest, and
+    // moved to the middle of what they leave as they go. Pages flow edge to
+    // edge as they turn. Elsewhere (Feed pushed over another page) the bar
+    // stands above the pages, as on any page.
+    final chrome = ScrollChromeScope.maybeOf(context);
+    final EdgeInsets clear = chrome == null
+        ? EdgeInsets.zero
+        : EdgeInsets.only(
+            top: HomeTopBarMetrics.headerExtent(context),
+            // The shell's bottom bar keeps its place in the layout and the
+            // page runs under it, so this is the bar's whole height.
+            bottom: MediaQuery.paddingOf(context).bottom,
+          );
+    // The system's own insets, read from the window: the shell spends the
+    // home indicator's on its bottom bar before the page sees it.
+    final system = chrome == null
+        ? EdgeInsets.zero
+        : MediaQueryData.fromView(View.of(context)).viewPadding;
+    final centring = FeedCentredBetweenBars.travelFor(
+      shown: clear,
+      away: EdgeInsets.only(
+        // The status bar's strip stays when the bars are away, and the home
+        // indicator still sits over the foot of the screen.
+        top: math.min(system.top, clear.top),
+        bottom: math.min(system.bottom, clear.bottom),
+      ),
+    );
+    Widget clearOfBars(Widget page) {
+      if (chrome == null) return page;
+      // Keyed as the page it holds: the pager finds a page by its key.
+      return KeyedSubtree(
+        key: page.key,
+        child: Padding(
+          padding: clear,
+          child: FeedCentredBetweenBars(
+            chrome: chrome,
+            travel: centring,
+            child: page,
+          ),
+        ),
+      );
+    }
+
     final Widget body;
     if (entries.isNotEmpty) {
       body = FeedPullRefresh(
@@ -975,6 +1061,8 @@ class _FeedScreenState extends ConsumerState<FeedScreen>
         // under the finger), nor on Watch's lead before Feed's own first
         // page is in: a fresh draw needs the draw it replaces.
         enabled: !_scrollLocked && (_lead == null || _feedReady(feed)),
+        // The pull opens a gap under the bar, not under the status bar.
+        indicatorInset: clear.top,
         child: NotificationListener<ScrollEndNotification>(
           onNotification: (end) => _onScrollEnd(end, entries),
           child: PageView.builder(
@@ -1001,33 +1089,52 @@ class _FeedScreenState extends ConsumerState<FeedScreen>
               );
               return index < 0 ? null : index;
             },
-            itemBuilder: (context, i) =>
-                _page(i, entries: entries, more: more, visible: visible),
+            itemBuilder: (context, i) => clearOfBars(
+              _page(i, entries: entries, more: more, visible: visible),
+            ),
           ),
         ),
       );
     } else if (feed.hasError && !feed.isLoading) {
-      body = FeedMessage(
-        title: "Feed didn't load",
-        body: userFacingError(
-          feed.error,
-          fallback: 'Something went wrong. Please try again.',
+      body = clearOfBars(
+        FeedMessage(
+          title: "Feed didn't load",
+          body: userFacingError(
+            feed.error,
+            fallback: 'Something went wrong. Please try again.',
+          ),
+          actionLabel: 'Try again',
+          onAction: () => ref.invalidate(feedProvider),
         ),
-        actionLabel: 'Try again',
-        onAction: () => ref.invalidate(feedProvider),
       );
     } else if (feed.isLoading || !feed.hasValue) {
-      body = const FeedSkeleton();
+      body = clearOfBars(const FeedSkeleton());
     } else {
-      body = FeedMessage(
-        title: 'Nothing to play yet',
-        body: 'New games land here as they finish.',
-        actionLabel: 'Refresh',
-        onAction: () => ref.invalidate(feedProvider),
+      body = clearOfBars(
+        FeedMessage(
+          title: 'Nothing to play yet',
+          body: 'New games land here as they finish.',
+          actionLabel: 'Refresh',
+          onAction: () => ref.invalidate(feedProvider),
+        ),
       );
     }
 
     final colors = context.colors;
+    // Outside the page's text cap: the home bar grows with the system text
+    // size exactly as it does on the other tabs, and caps its own chrome
+    // (the title included) at the same scale.
+    final header = _FeedHeader(
+      showBack: !widget.embedded,
+      soundOn: boardSoundOn && !sfx.muted,
+      soundHint: boardSoundOn ? null : _boardSoundOffHint,
+      onToggleSound: () => _toggleSound(boardSoundOn: boardSoundOn),
+      onTitleTap: _onTitleTap,
+    );
+    final pages = MediaQuery.withClampedTextScaling(
+      maxScaleFactor: HomeTopBarMetrics.maxTextScale,
+      child: FeedSeen(seen: _seen, child: body),
+    );
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: context.isLightTheme
           ? SystemUiOverlayStyle.dark
@@ -1036,33 +1143,42 @@ class _FeedScreenState extends ConsumerState<FeedScreen>
         key: e2eKey(E2eIds.feedRoot),
         backgroundColor: colors.background,
         resizeToAvoidBottomInset: false,
-        // The top inset belongs to the home bar's frame, the same one every
-        // main tab uses. With no bottom nav under it, the page clears the
-        // home indicator itself.
-        body: SafeArea(
-          top: false,
-          bottom: !widget.embedded,
-          child: Column(
-            children: [
-              // Outside the page's text cap: the home bar grows with the
-              // system text size exactly as it does on the other tabs, and
-              // caps its own chrome (the title included) at the same scale.
-              _FeedHeader(
-                showBack: !widget.embedded,
-                soundOn: boardSoundOn && !sfx.muted,
-                soundHint: boardSoundOn ? null : _boardSoundOffHint,
-                onToggleSound: () => _toggleSound(boardSoundOn: boardSoundOn),
-                onTitleTap: _onTitleTap,
-              ),
-              Expanded(
-                child: MediaQuery.withClampedTextScaling(
-                  maxScaleFactor: HomeTopBarMetrics.maxTextScale,
-                  child: FeedSeen(seen: _seen, child: body),
+        body: chrome == null
+            // The top inset belongs to the home bar's frame, the same one
+            // every main tab uses. With no bottom nav under it, the page
+            // clears the home indicator itself.
+            ? SafeArea(
+                top: false,
+                bottom: !widget.embedded,
+                child: Column(
+                  children: [
+                    header,
+                    Expanded(child: pages),
+                  ],
                 ),
+              )
+            : Stack(
+                fit: StackFit.expand,
+                children: [
+                  // The pages place themselves clear of the bars ([clear]);
+                  // the insets they were handed are spent.
+                  MediaQuery.removePadding(
+                    context: context,
+                    removeTop: true,
+                    removeBottom: true,
+                    child: pages,
+                  ),
+                  // The bar paints the page's own ground, so pages turning
+                  // under it pass behind it; its band steps away with the
+                  // shell's chrome and the status bar's strip stays.
+                  Positioned(
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    child: ColoredBox(color: colors.background, child: header),
+                  ),
+                ],
               ),
-            ],
-          ),
-        ),
       ),
     );
   }
@@ -1096,69 +1212,51 @@ class _FeedHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = context.colors;
 
-    // Keep the home bar's vertical geometry, with the title centered between
-    // equal side gutters independently of the back and sound controls.
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 4),
-      child: HomeTopBarFrame(
-        child: Stack(
-          alignment: Alignment.center,
-          children: [
-            HomeTopBarRow(
-              showAvatar: false,
-              leading: showBack
-                  ? const HomeTopBarBackButton(key: ValueKey('feed_back'))
-                  : null,
-              content: MediaQuery.withClampedTextScaling(
-                maxScaleFactor: HomeTopBarMetrics.maxTextScale,
-                child: const SizedBox.shrink(),
-              ),
-              trailing: [
-                Semantics(
-                  toggled: soundOn,
-                  hint: soundHint,
-                  child: FeedPressable(
-                    key: const ValueKey('feed_sound_toggle'),
-                    semanticsLabel: 'Move sounds',
-                    onTap: onToggleSound,
-                    // No taller than the avatar, so the shared row keeps its
-                    // height. On a phone that draws it shorter than 44pt the
-                    // bar's tap target still takes a full 44pt (see
-                    // HomeTopBarTapTarget).
-                    child: SizedBox(
-                      width: 44,
-                      height: HomeTopBarMetrics.controlExtent,
-                      child: Center(
-                        child: FeedGlyph(
-                          soundOn ? FeedGlyphs.soundOn : FeedGlyphs.soundOff,
-                          width: 22,
-                          height: 22,
-                          color: colors.textPrimary,
-                        ),
-                      ),
-                    ),
+    // Every root's bar: the title centred on the screen, the back chevron
+    // and the speaker on the gutters.
+    return HomeTopBarFrame(
+      child: HomeTopBarTitleRow(
+        leading: showBack
+            ? const HomeTopBarBackButton(key: ValueKey('feed_back'))
+            : null,
+        title: _FeedTitle(onTap: onTitleTap),
+        trailing: [
+          Semantics(
+            toggled: soundOn,
+            hint: soundHint,
+            child: FeedPressable(
+              key: const ValueKey('feed_sound_toggle'),
+              semanticsLabel: 'Move sounds',
+              onTap: onToggleSound,
+              // No taller than the avatar, so the shared row keeps its
+              // height. On a phone that draws it shorter than 44pt the
+              // bar's tap target still takes a full 44pt (see
+              // HomeTopBarTapTarget).
+              child: SizedBox(
+                width: 44,
+                height: HomeTopBarMetrics.controlExtent,
+                child: Center(
+                  child: FeedGlyph(
+                    soundOn ? FeedGlyphs.soundOn : FeedGlyphs.soundOff,
+                    width: 22,
+                    height: 22,
+                    color: colors.textPrimary,
                   ),
                 ),
-              ],
-            ),
-            Padding(
-              padding: EdgeInsets.symmetric(horizontal: 56.w),
-              child: MediaQuery.withClampedTextScaling(
-                maxScaleFactor: HomeTopBarMetrics.maxTextScale,
-                child: _FeedTitle(onTap: onTitleTap),
               ),
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
 }
 
-/// The page title, set as the tabs set theirs. A tap takes the viewer back
-/// to the first post, or refreshes when they are already on it, as a tap
-/// on an app's status bar does: so it is a button as wide as its word and
-/// the full height of the bar, which gives a little under the finger.
+/// The page title, set as every root sets its name ([HomeTopBarTitle]). A
+/// tap takes the viewer back to the first post, or refreshes when they are
+/// already on it, as a tap on an app's status bar does: so it is a button as
+/// wide as its word and the full height of the bar, which gives a little
+/// under the finger.
 class _FeedTitle extends StatelessWidget {
   const _FeedTitle({required this.onTap});
 
@@ -1166,29 +1264,19 @@ class _FeedTitle extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Align(
-      alignment: Alignment.center,
-      heightFactor: 1,
-      child: Semantics(
-        header: true,
-        // Drawn no taller than the avatar, so the shared row keeps its
-        // height; the bar's tap target still answers across a full 44pt.
-        child: HomeTopBarTapTarget(
-          child: FeedPressable(
-            key: const ValueKey('feed_title'),
-            semanticsLabel: 'Feed',
-            semanticsHint: 'Back to the first post, or refresh',
-            onTap: onTap,
-            child: SizedBox(
-              height: HomeTopBarMetrics.controlExtent,
-              child: Center(
-                widthFactor: 1,
-                child: const DestinationTitle(
-                  title: 'Feed',
-                  icon: Icon(Icons.smart_display_rounded),
-                ),
-              ),
-            ),
+    // Drawn no taller than the avatar, so the shared row keeps its height;
+    // the bar's tap target still answers across a full 44pt.
+    return Semantics(
+      header: true,
+      child: HomeTopBarTapTarget(
+        child: FeedPressable(
+          key: const ValueKey('feed_title'),
+          semanticsLabel: 'Feed',
+          semanticsHint: 'Back to the first post, or refresh',
+          onTap: onTap,
+          child: SizedBox(
+            height: HomeTopBarMetrics.controlExtent,
+            child: const Center(widthFactor: 1, child: HomeTopBarTitle('Feed')),
           ),
         ),
       ),

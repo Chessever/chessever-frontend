@@ -10,26 +10,25 @@ import 'package:chessever2/screens/for_you/discovery/providers/reports_provider.
 import 'package:chessever2/screens/for_you/discovery/widgets/discovery_common.dart';
 import 'package:chessever2/screens/for_you/discovery/widgets/discovery_game_cards.dart';
 import 'package:chessever2/screens/for_you/discovery/widgets/report_type_chips.dart';
-import 'package:chessever2/screens/group_event/widget/appbar_icons_widget.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_list_view_mode_provider.dart';
-import 'package:chessever2/screens/tour_detail/widgets/event_search_bar.dart'
-    show EventSearchBarFrame;
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/scroll_cache.dart';
-import 'package:chessever2/utils/svg_asset.dart';
-import 'package:chessever2/widgets/ink_fab.dart' show InkFabSize;
-import 'package:chessever2/widgets/simple_search_bar.dart';
+import 'package:chessever2/widgets/search_mode/search_mode.dart';
+import 'package:chessever2/widgets/search_no_matches.dart';
+import 'package:chessever2/widgets/quick_list_toggles.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:intl/intl.dart';
 
 /// Saved reports, progressively loaded on the existing game-card design.
 /// A single page: the report types stand where tabs would, the layout
-/// toggle sits in the header, and the search floats over the list.
+/// toggle sits in the header, and the search floats over the list. Opened,
+/// the search takes the title row's place and leaves the report types in
+/// reach under it.
 class ReportsScreen extends ConsumerStatefulWidget {
   const ReportsScreen({super.key});
   static Future<void> open(BuildContext context) async {
@@ -43,21 +42,21 @@ class ReportsScreen extends ConsumerStatefulWidget {
 }
 
 class _ReportsScreenState extends ConsumerState<ReportsScreen> {
-  final TextEditingController _searchController = TextEditingController();
-  final FocusNode _searchFocus = FocusNode();
+  final SearchModeController _search = SearchModeController();
+
+  /// The names searched, as typed (trimmed): the list filters on every
+  /// keystroke, from what it already holds.
   String _query = '';
 
   @override
   void dispose() {
-    _searchController.dispose();
-    _searchFocus.dispose();
+    _search.dispose();
     super.dispose();
   }
 
-  /// Empties the field and the list's filter.
-  void _clearSearch() {
-    _searchController.clear();
-    setState(() => _query = '');
+  void _searchFor(String value) {
+    final query = value.trim();
+    if (query != _query) setState(() => _query = query);
   }
 
   @override
@@ -70,20 +69,15 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
       // list's top is the list's own. Its slot is the back button's width,
       // so the title keeps the centre of the screen. A button node of its
       // own, or a screen reader folds it into the title.
+      // Every Games list's own board-view button; the switcher gives the
+      // tap feedback.
       SizedBox(
         width: kMinInteractiveDimension,
         child: Center(
           child: Semantics(
             container: true,
-            button: true,
-            label: 'Toggle chessboard view',
-            child: AppBarIcons(
-              image: SvgAsset.chase_grid,
-              boxed: false,
-              onTap: () {
-                HapticFeedbackService.cardTap();
-                ref.read(gamesListViewModeSwitcher).toggleViewMode();
-              },
+            child: BoardViewToggleButton(
+              onTap: () => ref.read(gamesListViewModeSwitcher).toggleViewMode(),
             ),
           ),
         ),
@@ -100,43 +94,36 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
         ref.read(reportsGameTypeProvider.notifier).state = type;
       },
     ),
-    // Names are searched in place: the floating button opens the field in
-    // the header's place, over this list filtered as the reader types,
-    // within the report type chosen before it opened.
+    // Names are searched in place: the floating button's glass becomes the
+    // field in the title row's place, over this list filtered as the reader
+    // types. The report types stay under the field, so the type searched
+    // in can change without leaving the search.
     search: EventViewSearch(
+      controller: _search,
       label: 'Search reports',
-      focusNode: _searchFocus,
-      onClose: _clearSearch,
-      field: EventSearchBarFrame(
-        compact: true,
-        child: SimpleSearchBar(
-          controller: _searchController,
-          focusNode: _searchFocus,
-          hintText: 'Search players',
-          textFieldKey: const ValueKey('reports_search'),
-          onChanged: (value) => setState(() => _query = value.trim()),
-          onCloseTap: () {
-            _clearSearch();
-            _searchFocus.unfocus();
-          },
-          onOpenFilter: null,
-        ),
-      ),
+      hintText: 'Search players',
+      textFieldKey: const ValueKey('reports_search'),
+      keepsTabStrip: true,
+      onChanged: _searchFor,
+      onClose: () => _searchFor(''),
     ),
     // Every card here is a saved report, so its eval bar shows what the
     // report recorded for the final position rather than waiting on caches
     // that rarely hold it.
     pageBuilder: (context, _) => ProviderScope(
       overrides: [gameCardRecordedEvalProvider.overrideWithValue(true)],
-      child: _ReportsGames(query: _query),
+      child: _ReportsGames(query: _query, onClearQuery: _search.text.clear),
     ),
   );
 }
 
 class _ReportsGames extends ConsumerStatefulWidget {
-  const _ReportsGames({required this.query});
+  const _ReportsGames({required this.query, required this.onClearQuery});
 
   final String query;
+
+  /// Empties the search's words, from the list's no-hits line.
+  final VoidCallback onClearQuery;
 
   @override
   ConsumerState<_ReportsGames> createState() => _ReportsGamesState();
@@ -168,7 +155,25 @@ class _ReportsGamesState extends ConsumerState<_ReportsGames> {
     }
   }
 
+  /// Days the reader folded.
   final Set<DateTime?> _collapsedDates = {};
+
+  /// Days folded while names are searched: every day opens as a search
+  /// starts, so its hits are in view, and the reader's own folds come back
+  /// once the search is emptied.
+  final Set<DateTime?> _searchCollapsed = {};
+  Set<DateTime?> get _folds =>
+      widget.query.isEmpty ? _collapsedDates : _searchCollapsed;
+
+  final EventViewSearchPlace _place = EventViewSearchPlace();
+
+  @override
+  void didUpdateWidget(_ReportsGames oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.query == widget.query) return;
+    if (widget.query.isEmpty) _searchCollapsed.clear();
+    _place.queryChanged(context, widget.query);
+  }
 
   List<GamesTourModel> _visibleItems(List<GamesTourModel> items) {
     final query = widget.query.toLowerCase();
@@ -199,7 +204,8 @@ class _ReportsGamesState extends ConsumerState<_ReportsGames> {
 
   void _toggleDay(DateTime? day) {
     setState(() {
-      if (!_collapsedDates.remove(day)) _collapsedDates.add(day);
+      final folds = _folds;
+      if (!folds.remove(day)) folds.add(day);
     });
     _checkAfterLayout();
   }
@@ -214,7 +220,7 @@ class _ReportsGamesState extends ConsumerState<_ReportsGames> {
         end++;
       }
       rows.add(_ReportDay(day, games[start].gameId));
-      if (!_collapsedDates.contains(day)) {
+      if (!_folds.contains(day)) {
         for (var index = start; index < end; index += columns) {
           rows.add(
             _ReportGamesRow(
@@ -239,7 +245,7 @@ class _ReportsGamesState extends ConsumerState<_ReportsGames> {
             type: ref.read(reportsGameTypeProvider),
             date: day?.toIso8601String().split('T').first,
             dateLabel: _dateLabel(day),
-            isExpanded: !_collapsedDates.contains(day),
+            isExpanded: !_folds.contains(day),
             onToggle: () => _toggleDay(day),
           ),
         ),
@@ -292,6 +298,10 @@ class _ReportsGamesState extends ConsumerState<_ReportsGames> {
   Widget build(BuildContext context) {
     ref.listen(reportsGameTypeProvider, (previous, next) {
       _collapsedDates.clear();
+      _searchCollapsed.clear();
+      // Another type is another list: a search closed later starts it at
+      // its top, not at a place kept in the last one.
+      _place.forget();
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
         final scroll = PrimaryScrollController.maybeOf(context);
@@ -339,8 +349,31 @@ class _ReportsGamesState extends ConsumerState<_ReportsGames> {
     );
     final notifier = ref.read(reportsPaginationProvider.notifier);
     _checkAfterLayout();
+    // The list filters from what it holds, at once: it now shows the
+    // query's results.
+    _place.settle(context);
+    final searching = widget.query.isNotEmpty;
+    // Searching through reports still to come: nothing loaded matches yet
+    // and older pages are on their way. The list says so quietly instead
+    // of putting skeleton cards up for hits that may not exist.
+    final lookingFurther =
+        searching &&
+        items.isEmpty &&
+        reports.items.isNotEmpty &&
+        reports.error == null &&
+        (reports.isLoading || reports.hasMore);
+    // Every report searched and none matched: the one no-hits line every
+    // searched list shows, on the list's gutter where its first row would
+    // be ([SearchNoMatches] keeps that place itself).
+    final noHits =
+        searching &&
+        items.isEmpty &&
+        !lookingFurther &&
+        reports.error == null &&
+        !reports.isLoading &&
+        !reports.hasMore;
 
-    return NotificationListener<ScrollMetricsNotification>(
+    final list = NotificationListener<ScrollMetricsNotification>(
       onNotification: (notification) {
         if (notification.depth == 0 &&
             notification.metrics.axis == Axis.vertical) {
@@ -373,7 +406,7 @@ class _ReportsGamesState extends ConsumerState<_ReportsGames> {
               parent: BouncingScrollPhysics(),
             ),
             slivers: [
-              SliverToBoxAdapter(child: SizedBox(height: 12.h)),
+              SliverToBoxAdapter(child: SizedBox(height: noHits ? 0 : 12.h)),
               if (items.isNotEmpty)
                 SliverPadding(
                   padding: EdgeInsets.symmetric(
@@ -387,6 +420,10 @@ class _ReportsGamesState extends ConsumerState<_ReportsGames> {
                       addAutomaticKeepAlives: false,
                     ),
                   ),
+                )
+              else if (lookingFurther)
+                const SliverToBoxAdapter(
+                  child: DiscoveryNotice(text: 'Looking through older reports'),
                 )
               else if (reports.error == null &&
                   (reports.isLoading || reports.hasMore))
@@ -406,18 +443,19 @@ class _ReportsGamesState extends ConsumerState<_ReportsGames> {
                     ),
                   ),
                 )
+              else if (noHits)
+                SearchNoMatches.sliver(
+                  key: const ValueKey('reports_no_matches'),
+                  query: widget.query,
+                  subject: 'reports',
+                  onClear: widget.onClearQuery,
+                )
               else if (reports.error == null)
                 SliverToBoxAdapter(
                   child: DiscoveryNotice(
-                    // The chips give way to the search field, so a miss
-                    // names the type it was searched in.
-                    text: widget.query.isEmpty
-                        ? gameType == null
-                              ? 'Analyzed games will appear here when a report is available.'
-                              : 'No ${gameType.label} reports yet.'
-                        : gameType == null
-                        ? 'No reports match "${widget.query}".'
-                        : 'No ${gameType.label} reports match "${widget.query}".',
+                    text: gameType == null
+                        ? 'Analyzed games will appear here when a report is available.'
+                        : 'No ${gameType.label} reports yet.',
                   ),
                 ),
               if (reports.error != null)
@@ -461,21 +499,21 @@ class _ReportsGamesState extends ConsumerState<_ReportsGames> {
                     ),
                   ),
                 ),
-              // The list ends clear of the floating search button.
+              // The list ends clear of the home indicator, and of the
+              // floating search button while it is there (giving way with
+              // it as the search opens).
               SliverToBoxAdapter(
                 child: SizedBox(
-                  height:
-                      24.h +
-                      InkFabSize.regular.side +
-                      kFloatingActionButtonMargin +
-                      MediaQuery.viewPaddingOf(context).bottom,
+                  height: 24.h + MediaQuery.viewPaddingOf(context).bottom,
                 ),
               ),
+              const SliverToBoxAdapter(child: EventViewSearchButtonGap()),
             ],
           ),
         ),
       ),
     );
+    return EventViewSearchList(busy: lookingFurther, child: list);
   }
 }
 

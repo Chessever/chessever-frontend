@@ -244,10 +244,7 @@ class _MySpaceViewState extends ConsumerState<MySpaceView> {
         wide: !small(kSpaceHomeMyPrep),
         onResize: () => resize(kSpaceHomeMyPrep),
         radius: 14.br,
-        builder: (_, _) => const SpaceComponentShare(
-          component: SpaceComponent.prep,
-          child: _MyPrepTile(),
-        ),
+        builder: (_, _) => const _MyPrepTile(),
       ),
       kSpaceHomeLibrary: SpaceEditItem(
         key: kSpaceHomeLibrary,
@@ -256,10 +253,7 @@ class _MySpaceViewState extends ConsumerState<MySpaceView> {
         wide: !small(kSpaceHomeLibrary),
         onResize: () => resize(kSpaceHomeLibrary),
         radius: 14.br,
-        builder: (_, _) => const SpaceComponentShare(
-          component: SpaceComponent.library,
-          child: _LibraryTile(),
-        ),
+        builder: (_, _) => const _LibraryTile(),
       ),
       kSpaceHomeLikes: SpaceEditItem(
         key: kSpaceHomeLikes,
@@ -267,12 +261,9 @@ class _MySpaceViewState extends ConsumerState<MySpaceView> {
         selectable: false,
         wide: !small(kSpaceHomeLikes),
         onResize: () => resize(kSpaceHomeLikes),
-        builder: (_, _) => SpaceComponentShare(
-          component: SpaceComponent.likes,
-          child: _MyLikesCard(
-            key: const ValueKey<String>('my_space_likes_card'),
-            small: small(kSpaceHomeLikes),
-          ),
+        builder: (_, _) => _MyLikesCard(
+          key: const ValueKey<String>('my_space_likes_card'),
+          small: small(kSpaceHomeLikes),
         ),
       ),
     };
@@ -281,18 +272,25 @@ class _MySpaceViewState extends ConsumerState<MySpaceView> {
 
 // ------------------------------------------------------------------ tiles
 
+// Each of the page's own cards holds into the focus menu every card uses
+// (Open, Share), and opens on a tap with the cards' one press and haptic.
+
 class _MyPrepTile extends StatelessWidget {
   const _MyPrepTile();
 
   @override
-  Widget build(BuildContext context) => HubTile(
-    key: const ValueKey('my_space_my_prep_tile'),
-    dotId: 'my_space.tile.my_prep',
-    title: 'Prep',
-    caption: 'Your games and opponents',
-    ramp: false,
-    artwork: const HubSceneBackdrop(scene: HubScene.myPrep),
-    onTap: () => openMyPrep(context),
+  Widget build(BuildContext context) => SpaceComponentShare(
+    component: SpaceComponent.prep,
+    onOpen: () => MyPrepScreen.open(context),
+    child: HubTile(
+      key: const ValueKey('my_space_my_prep_tile'),
+      dotId: 'my_space.tile.my_prep',
+      title: 'Prep',
+      caption: 'Your games and opponents',
+      ramp: false,
+      artwork: const HubSceneBackdrop(scene: HubScene.myPrep),
+      onTap: () => openMyPrep(context),
+    ),
   );
 }
 
@@ -307,14 +305,22 @@ class _MyLikesCard extends ConsumerWidget {
     final caption = hubLikesCaption(
       ref.watch(likedGamesProvider.select(likesSummary)),
     );
-    return DiscoveryDotAnchor(
-      id: 'my_space.tile.my_likes',
-      offset: const Offset(-12, 12),
-      // The card opens a page, so a bubble would point at nothing.
-      message: DiscoveryDotMessage.snack,
-      child: _card(context, caption),
+    return SpaceComponentShare(
+      component: SpaceComponent.likes,
+      onOpen: () => _open(context),
+      child: DiscoveryDotAnchor(
+        id: 'my_space.tile.my_likes',
+        offset: const Offset(-12, 12),
+        // The card opens a page, so a bubble would point at nothing.
+        message: DiscoveryDotMessage.snack,
+        child: _card(context, caption),
+      ),
     );
   }
+
+  static void _open(BuildContext context) => Navigator.of(
+    context,
+  ).push(MaterialPageRoute<void>(builder: (_) => const MyLikesScreen()));
 
   Widget _card(BuildContext context, String caption) {
     return CollectionPlateRow(
@@ -328,9 +334,7 @@ class _MyLikesCard extends ConsumerWidget {
       semanticsLabel: 'Likes, your saved games, $caption',
       onTap: () {
         HapticFeedbackService.cardTap();
-        Navigator.of(
-          context,
-        ).push(MaterialPageRoute<void>(builder: (_) => const MyLikesScreen()));
+        _open(context);
       },
     );
   }
@@ -340,23 +344,28 @@ class _MyLikesCard extends ConsumerWidget {
 class _LibraryTile extends StatelessWidget {
   const _LibraryTile();
 
+  static void _open(BuildContext context) => Navigator.of(context).push(
+    MaterialPageRoute<void>(
+      builder: (_) => const Scaffold(body: LibraryScreen(databasesOnly: true)),
+    ),
+  );
+
   @override
-  Widget build(BuildContext context) => HubTile(
-    key: const ValueKey('my_space_library_tile'),
-    dotId: 'my_space.tile.library',
-    title: 'Library',
-    caption: 'Your databases',
-    ramp: false,
-    artwork: const HubLibraryBackdrop(),
-    onTap: () {
-      HapticFeedbackService.cardTap();
-      Navigator.of(context).push(
-        MaterialPageRoute<void>(
-          builder: (_) =>
-              const Scaffold(body: LibraryScreen(databasesOnly: true)),
-        ),
-      );
-    },
+  Widget build(BuildContext context) => SpaceComponentShare(
+    component: SpaceComponent.library,
+    onOpen: () => _open(context),
+    child: HubTile(
+      key: const ValueKey('my_space_library_tile'),
+      dotId: 'my_space.tile.library',
+      title: 'Library',
+      caption: 'Your databases',
+      ramp: false,
+      artwork: const HubLibraryBackdrop(),
+      onTap: () {
+        HapticFeedbackService.cardTap();
+        _open(context);
+      },
+    ),
   );
 }
 

@@ -10,6 +10,7 @@ import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/widgets/app_snack.dart';
 import 'package:chessever2/widgets/hub_tile.dart' show hubGutter;
+import 'package:chessever2/widgets/home_top_bar.dart' show PageTitle;
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:intl/intl.dart';
@@ -173,10 +174,9 @@ class _NewsScreenState extends ConsumerState<NewsScreen> {
     return Scaffold(
       backgroundColor: colors.background,
       appBar: AppBar(
-        title: Text(
-          'News',
-          style: AppTypography.textLgBold.copyWith(color: colors.textPrimary),
-        ),
+        // Named in the one title voice every pushed page shares, centred.
+        title: const PageTitle('News'),
+        centerTitle: true,
         backgroundColor: colors.background,
         foregroundColor: colors.iconPrimary,
         surfaceTintColor: Colors.transparent,

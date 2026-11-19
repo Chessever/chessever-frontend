@@ -19,6 +19,7 @@ import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/user_error_message.dart';
 import 'package:chessever2/widgets/space_shortcut_drafts.dart';
 import 'package:chessever2/widgets/paywall/past_game_access.dart';
+import 'package:chessever2/widgets/search_no_matches.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -52,6 +53,7 @@ class CollectionOpeningsView extends ConsumerWidget {
         identity: (opening) => opening.eco,
         padding: _listPadding(context, extraBottom: bottomPadding),
         emptyMessage: 'No openings yet.',
+        subject: 'openings',
         itemBuilder: (opening) => Padding(
           padding: EdgeInsets.only(bottom: 12.sp),
           child: _card(context, ref, opening),
@@ -358,11 +360,22 @@ class _PublishedCollectionGamesViewState
           if (notice.metrics.extentAfter < 600 && _error == null) _load();
           return false;
         },
-        child: _games.isEmpty && !_hasMore
-            ? _ExploreNotice(
-                message: widget.search.isActive
-                    ? 'No matching games. Try another search or clear filters.'
-                    : 'No readable games yet. Browse Collections to discover published collections.',
+        child: _games.isEmpty && !_hasMore && widget.search.isActive
+            // The one no-hits line every searched list shows.
+            ? ListView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                padding: EdgeInsets.zero,
+                children: [
+                  SearchNoMatches(
+                    query: widget.search.text,
+                    filtered: widget.search.text.trim().isEmpty,
+                  ),
+                ],
+              )
+            : _games.isEmpty && !_hasMore
+            ? const _ExploreNotice(
+                message:
+                    'No readable games yet. Browse Collections to discover published collections.',
               )
             : ListView.builder(
                 key: ValueKey(widget.search),

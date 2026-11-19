@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:chessever2/repository/library/models/library_folder.dart';
 import 'package:chessever2/screens/library/widgets/folder_card.dart';
@@ -16,9 +17,6 @@ import 'package:chessever2/screens/my_prep/tabs/prep_games_tab.dart';
 import 'package:chessever2/screens/my_prep/widgets/prep_common.dart';
 import 'package:chessever2/screens/my_prep/widgets/prep_filters.dart';
 import 'package:chessever2/screens/my_prep/widgets/prep_open_profile_button.dart';
-import 'package:chessever2/screens/tour_detail/games_tour/providers/games_list_view_mode_provider.dart';
-import 'package:chessever2/screens/tour_detail/widgets/event_search_bar.dart'
-    show EventSearchBarFrame;
 import 'package:chessever2/services/game_tree/game_tree_service.dart';
 import 'package:chessever2/services/game_tree/game_tree_store.dart';
 import 'package:chessever2/theme/app_colors.dart';
@@ -30,8 +28,8 @@ import 'package:chessever2/widgets/game_tree/build_tree_button.dart';
 import 'package:chessever2/widgets/ink_fab.dart';
 import 'package:chessever2/widgets/screen_wrapper.dart';
 import 'package:chessever2/widgets/scroll_chrome.dart';
-import 'package:chessever2/widgets/search_page_header.dart';
-import 'package:chessever2/widgets/simple_search_bar.dart';
+import 'package:chessever2/widgets/search_mode/search_mode.dart';
+import 'package:chessever2/widgets/home_top_bar.dart' show PageTitle;
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -226,9 +224,14 @@ class PrepAccountTreeTarget extends GameTreeTarget {
 double _headerInset(BuildContext context) =>
     MediaQuery.viewPaddingOf(context).top + 4.h;
 
+/// The width a header's ⋮ takes ([CardMoreButton]'s square target): kept
+/// while the menu has nothing to act on, so the title holds still.
+const double _kMenuSlot = 44;
+
 /// The header every Library node screen wears: back, a centred title over
 /// a count line, and the node's actions at the right. It sits under
-/// [_headerInset].
+/// [_headerInset], its chevron where a search header's is
+/// ([SearchHeaderMetrics]), its last action's glyph on the gutter.
 class _NodeHeader extends StatelessWidget {
   const _NodeHeader({
     required this.title,
@@ -243,50 +246,66 @@ class _NodeHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = context.colors;
-    final horizontal = ResponsiveHelper.adaptive(phone: 8.w, tablet: 16.w);
     return Padding(
-      padding: EdgeInsets.fromLTRB(horizontal, 4.h, horizontal, 8.h),
+      padding: EdgeInsetsDirectional.fromSTEB(
+        SearchHeaderMetrics.leadingInset,
+        0,
+        math.max(
+          0.0,
+          SearchHeaderMetrics.gutter - SearchHeaderMetrics.trailingReach,
+        ),
+        SearchHeaderMetrics.bottomGap,
+      ),
+      // The chevron and the actions keep to the back row; a title that
+      // grows (two lines, large text) grows the header downwards around
+      // them instead of moving them.
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          IconButton(
-            tooltip: 'Back',
-            onPressed: () => Navigator.of(context).pop(),
-            constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
-            icon: Icon(
-              Icons.arrow_back_ios_new_rounded,
-              color: colors.textPrimary,
-              size: 20.ic,
-            ),
-          ),
+          const PageBackButton(),
           Expanded(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  title,
-                  textAlign: TextAlign.center,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: AppTypography.textMdBold.copyWith(
-                    color: colors.textPrimary,
-                    height: 1.25,
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(
+                minHeight: SearchHeaderMetrics.rowHeight,
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  // The one pushed-page title voice ([PageTitle]), read as
+                  // a heading; it may take a second line here, the header
+                  // growing around it.
+                  Semantics(
+                    header: true,
+                    child: Text(
+                      title,
+                      textAlign: TextAlign.center,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: PageTitle.style(context).copyWith(height: 1.25),
+                    ),
                   ),
-                ),
-                Text(
-                  subtitle,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: AppTypography.textXsRegular.copyWith(
-                    color: colors.textSecondary,
-                    fontFeatures: const [FontFeature.tabularFigures()],
+                  Text(
+                    subtitle,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: AppTypography.textXsRegular.copyWith(
+                      color: colors.textSecondary,
+                      fontFeatures: const [FontFeature.tabularFigures()],
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
-          ...actions,
+          for (final action in actions)
+            SizedBox(
+              height: SearchHeaderMetrics.rowHeight,
+              child: Center(child: action),
+            ),
           // Balance the back button when there is nothing on the right.
-          if (actions.isEmpty) const SizedBox(width: 44),
+          if (actions.isEmpty)
+            const SizedBox(width: SearchHeaderMetrics.backTarget),
         ],
       ),
     );
@@ -548,32 +567,41 @@ class _PrepLibraryDatabaseScreenState
     vsync: this,
   );
 
-  /// The full-page search: the field in the header's place, the games under
-  /// it narrowing as the reader types, nothing else around it.
-  bool _searching = false;
-  final _searchText = TextEditingController();
-  final _searchFocus = FocusNode();
+  /// The full-page search: the search button's glass becomes the field in
+  /// the header's place, over the same games, narrowing as the reader
+  /// types. Back from it clears what was typed; the filters stay, counted on
+  /// the list's own line (and on the search header's Filters while it is
+  /// open).
+  final SearchModeController _search = SearchModeController();
 
-  void _openSearch() {
-    if (_searching) return;
-    setState(() => _searching = true);
-    _chrome.show();
+  /// What the games are narrowed to, as typed: '' the moment the search
+  /// closes.
+  final ValueNotifier<String> _query = ValueNotifier('');
+
+  /// What the header's menu follows: the words, and how many games they
+  /// leave on the list.
+  late final Listenable _menuInputs = Listenable.merge([
+    _query,
+    _gamesController.shownCount,
+  ]);
+
+  void _onSearchMode() {
+    if (mounted) setState(() {});
   }
 
-  /// Back from the search clears it; the filters stay, counted on the
-  /// search button.
-  void _closeSearch() {
-    if (!_searching) return;
-    _searchFocus.unfocus();
-    _searchText.clear();
-    setState(() => _searching = false);
-    _chrome.show();
+  @override
+  void initState() {
+    super.initState();
+    _search.addListener(_onSearchMode);
   }
 
   @override
   void dispose() {
-    _searchFocus.dispose();
-    _searchText.dispose();
+    _search
+      ..removeListener(_onSearchMode)
+      ..dispose();
+    _query.dispose();
+    _gamesController.dispose();
     _chrome.dispose();
     super.dispose();
   }
@@ -630,71 +658,87 @@ class _PrepLibraryDatabaseScreenState
         analysis.hasValue &&
         !analysis.hasError &&
         (games.isNotEmpty || !unfiltered);
-    final searching = _searching && listed;
+    // The games gave way to a message (a read failed, the last game went):
+    // the search goes with them. A read still running keeps it.
+    final gamesGone =
+        analysis.hasError || (analysis.hasValue && games.isEmpty && unfiltered);
+    if (_search.isSearching && gamesGone) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _search.close();
+      });
+    }
 
-    final bars = searching
-        ? SearchPageHeader(
-            closeKey: const ValueKey('prep_library_search_close'),
-            onClose: _closeSearch,
-            field: EventSearchBarFrame(
-              compact: true,
-              child: SimpleSearchBar(
-                controller: _searchText,
-                focusNode: _searchFocus,
-                autofocus: true,
-                hintText: 'Search games',
-                textFieldKey: const ValueKey('prep_library_games_search'),
-                filterButtonKey: const ValueKey('prep_library_games_filters'),
-                compactFilter: true,
-                filterBadgeCount: _filter.activeCount,
-                onOpenFilter: _gamesController.showFilters,
-                onCloseTap: () {
-                  _searchText.clear();
-                  _searchFocus.unfocus();
-                },
-              ),
-            ),
-          )
-        : _NodeHeader(
-            title: account == null ? 'Combined' : _accountLabel(account),
-            subtitle: '${profile.name} · ${prepGamesLabel(count)}',
-            actions: [
-              if (count > 0)
-                BuildTreeButton(
-                  compact: false,
-                  target: _treeTarget(ref, profile, account),
-                ),
-              // The list's layout is in the menu now that its own row is
-              // gone, so it stays while filters leave nothing to save.
-              if (listed)
-                CardMoreButton(
-                  vertical: true,
-                  color: context.colors.textPrimary,
-                  size: 22.ic,
-                  actions: (_) => [
-                    _layoutAction(ref),
-                    ...prepGamesMenu(_gamesController),
-                  ],
-                ),
-            ],
-          );
+    final bars = _NodeHeader(
+      title: account == null ? 'Combined' : _accountLabel(account),
+      subtitle: '${profile.name} · ${prepGamesLabel(count)}',
+      actions: [
+        if (count > 0)
+          BuildTreeButton(
+            compact: false,
+            target: _treeTarget(ref, profile, account),
+          ),
+        // What saves or exports the games listed. Their count, filters and
+        // layout are on the list's own line. The menu acts on the games the
+        // list shows now, after its filters and its search: when they leave
+        // none it has nothing to offer, so it goes (never an empty menu) and
+        // its place stays, so the title does not move.
+        if (listed)
+          ListenableBuilder(
+            listenable: _menuInputs,
+            builder: (context, _) {
+              // Without words the filters alone decide, known here at once;
+              // a search's hits are the list's own count.
+              final searched = _query.value.trim().isNotEmpty;
+              final shown = games.isEmpty
+                  ? 0
+                  : searched
+                  ? _gamesController.shownCount.value ?? games.length
+                  : games.length;
+              return shown == 0
+                  ? const SizedBox(width: _kMenuSlot)
+                  : CardMoreButton(
+                      vertical: true,
+                      color: context.colors.textPrimary,
+                      size: 22.ic,
+                      actions: (_) => prepGamesMenu(_gamesController),
+                    );
+            },
+          ),
+      ],
+    );
+    // The list's board view and Filters, as every Games search header ends;
+    // its line under the header keeps the count.
+    final search = SearchModeHeader(
+      hintText: 'Search games',
+      textFieldKey: const ValueKey('prep_library_games_search'),
+      closeKey: const ValueKey('prep_library_search_close'),
+      trailing: [
+        PrepGamesSearchControls(
+          filterCount: _filter.activeCount,
+          games: _gamesController,
+        ),
+      ],
+    );
 
-    return PopScope(
-      // Back from the search closes it, back to the games it searched.
-      canPop: !searching,
-      onPopInvokedWithResult: (didPop, _) {
-        if (!didPop) _closeSearch();
-      },
+    return SearchModeHost(
+      controller: _search,
+      chrome: _chrome,
+      // The list narrows on the phone as each letter is typed.
+      debounce: Duration.zero,
+      onChanged: (query) => _query.value = query,
       child: Scaffold(
         backgroundColor: context.colors.background,
+        // Kept while searching: the search's glass flies back into it.
         floatingActionButton: SlidingFabs(
           controller: _chrome,
-          child: listed && !searching
-              ? SearchInkFab(
-                  key: const ValueKey('prep_library_search_fab'),
+          child: listed || _search.isSearching
+              // The list's line counts its filters, and it is in view
+              // whenever this button is (both come back as the list scrolls
+              // up); while searching the search header's Filters count them.
+              // So the button carries no count.
+              ? const SearchInkFab(
+                  key: ValueKey('prep_library_search_fab'),
                   label: 'Search games',
-                  badgeCount: _filter.activeCount,
-                  onTap: _openSearch,
                 )
               : const SizedBox.shrink(),
         ),
@@ -709,16 +753,11 @@ class _PrepLibraryDatabaseScreenState
               child: Column(
                 children: [
                   SizedBox(height: _headerInset(context)),
-                  Focus(
-                    canRequestFocus: false,
-                    skipTraversal: true,
-                    // The field with the keyboard up holds the header:
-                    // scrolling the games must not push away the line
-                    // being typed.
-                    onFocusChange: (focused) => _chrome.held = focused,
-                    child: CollapsingChrome(
-                      controller: _chrome,
-                      child: SizedBox(width: double.infinity, child: bars),
+                  CollapsingChrome(
+                    controller: _chrome,
+                    child: SearchModeHeaderSlot(
+                      header: SizedBox(width: double.infinity, child: bars),
+                      search: search,
                     ),
                   ),
                   Expanded(
@@ -765,7 +804,11 @@ class _PrepLibraryDatabaseScreenState
                                 filter: _filter,
                                 controller: _gamesController,
                                 // Typed in the search header.
-                                search: _searchText,
+                                search: _query,
+                                onClearSearch: _search.text.clear,
+                                filterButtonKey: const ValueKey(
+                                  'prep_library_games_filters',
+                                ),
                                 onFilterChanged: (f) =>
                                     setState(() => _filter = f),
                               ),
@@ -780,25 +823,6 @@ class _PrepLibraryDatabaseScreenState
       ),
     );
   }
-}
-
-/// The menu row that moves the games on to their next layout, named for the
-/// layout it brings. A row rather than a glyph: beside the tree and the
-/// menu, a third button would leave the title no room on a narrow phone.
-LibraryMenuAction _layoutAction(WidgetRef ref) {
-  final (icon, label) = switch (ref.read(gamesListViewModeProvider)) {
-    GamesListViewMode.gamesCard => (Icons.grid_view_rounded, 'Show as grid'),
-    GamesListViewMode.chessBoardGrid => (
-      Icons.view_agenda_outlined,
-      'Show as boards',
-    ),
-    GamesListViewMode.chessBoard => (Icons.view_list_rounded, 'Show as list'),
-  };
-  return LibraryMenuAction(
-    icon: icon,
-    label: label,
-    onSelected: () => ref.read(gamesListViewModeSwitcher).toggleViewMode(),
-  );
 }
 
 /// Opens the Library node a My Prep folder id names.

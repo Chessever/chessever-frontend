@@ -16,6 +16,8 @@ import 'package:chessever2/repository/liked_games/liked_games_provider.dart';
 import 'package:chessever2/repository/library/models/saved_analysis.dart';
 import 'package:chessever2/screens/chessboard/models/like_tag.dart';
 import 'package:chessever2/screens/library/utils/load_saved_analysis.dart';
+import 'package:chessever2/screens/favorites/widgets/games_list_refetch_line.dart';
+import 'package:chessever2/widgets/list_search_scroll_memory.dart';
 import 'package:chessever2/screens/my_likes/provider/my_likes_provider.dart';
 import 'package:chessever2/screens/my_likes/my_likes_hub_screen.dart';
 import 'package:chessever2/screens/my_likes/widgets/date_section_header.dart'
@@ -41,14 +43,14 @@ import 'package:chessever2/utils/user_error_message.dart';
 import 'package:chessever2/widgets/app_snack.dart';
 import 'package:chessever2/widgets/game_filter/game_filter.dart';
 import 'package:chessever2/widgets/game_filter/game_search_filter_bar.dart';
+import 'package:chessever2/widgets/home_top_bar.dart' show PageTitle;
 import 'package:chessever2/widgets/hub_tile.dart';
+import 'package:chessever2/widgets/page_back_row.dart';
 import 'package:chessever2/widgets/ink_fab.dart' show InkFabSize, SearchInkFab;
 import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
 import 'package:chessever2/widgets/scroll_chrome.dart';
-import 'package:chessever2/widgets/search_page_header.dart';
-import 'package:chessever2/widgets/simple_search_bar.dart';
-import 'package:chessever2/screens/tour_detail/widgets/event_search_bar.dart'
-    show EventSearchBarFrame;
+import 'package:chessever2/widgets/search_mode/search_mode.dart';
+import 'package:chessever2/widgets/search_no_matches.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -74,8 +76,10 @@ class MyLikesScreen extends StatelessWidget {
 /// the hub carries them ([searchInHeader]).
 ///
 /// [standalone], it is the whole archive Library, My Space and Discovery
-/// open: its own title row, and its search behind a floating button that
-/// opens the field in that row's place, never a search row over the list.
+/// open: its own title row, and its search behind a floating button whose
+/// glass becomes the field in that row's place ([SearchModeHost]), never a
+/// search row over the list. Its filters end the title row and the search
+/// row alike, on the gutter.
 class MyLikesGamesPage extends ConsumerStatefulWidget {
   const MyLikesGamesPage({
     super.key,
@@ -129,6 +133,8 @@ Future<void> showMyLikesFilters(BuildContext context, WidgetRef ref) async {
 class _MyLikesGamesPageState extends ConsumerState<MyLikesGamesPage>
     with WidgetsBindingObserver, SingleTickerProviderStateMixin {
   final ScrollController _scrollController = ScrollController();
+
+  /// The list's own search row (embedded, with no header to search in).
   final TextEditingController _searchController = TextEditingController();
   final FocusNode _searchFocusNode = FocusNode();
   Timer? _debounceTimer;
@@ -138,49 +144,48 @@ class _MyLikesGamesPageState extends ConsumerState<MyLikesGamesPage>
   /// owns the chrome.
   ScrollChromeController? _chrome;
 
-  /// The archive's full-page search is open: the field in the title row's
-  /// place, the same list under it narrowing as the reader types.
-  bool _searching = false;
+  /// The archive's full-page search (standalone only): the search button's
+  /// glass becomes the field in the title row's place, over the same list,
+  /// narrowing as the reader types. Back from it clears what was typed;
+  /// filters, sorts and tags stay, the first two counted on the Filters
+  /// (in the title row, and in the search row while it is open).
+  SearchModeController? _search;
 
   /// The search is typed in a header's place, never in a row over the list:
   /// the hub's header, or the archive's own title row.
   bool get _searchInHeader => widget.searchInHeader || widget.standalone;
 
-  /// A field with the keyboard up holds the title row: scrolling what it
-  /// searches must not push away the line being typed.
-  void _holdChromeWhileTyping() => _chrome?.held = _searchFocusNode.hasFocus;
-
-  void _openSearch() {
-    if (_searching) return;
-    setState(() => _searching = true);
-    _chrome?.show();
+  void _onSearchMode() {
+    if (mounted) setState(() {});
   }
 
-  /// Back from the search clears what was typed; filters, sorts and tags
-  /// stay, the first two counted on the search button.
-  void _closeSearch() {
-    if (!_searching) return;
-    _debounceTimer?.cancel();
-    _searchFocusNode.unfocus();
-    _searchController.clear();
-    ref.read(myLikesFilterProvider.notifier).clearSearch();
-    setState(() => _searching = false);
-    _chrome?.show();
-  }
-
-  /// The filter dialog from the search header. What was typed counts before
-  /// the dialog opens, not 400ms after it.
+  /// The filter dialog from the archive's search header. What was typed
+  /// counts before the dialog opens, not 400ms after it, and the keyboard
+  /// steps aside for it.
   Future<void> _showFilters() {
-    _searchFocusNode.unfocus();
-    _debounceTimer?.cancel();
-    ref
-        .read(myLikesFilterProvider.notifier)
-        .searchGames(_searchController.text);
+    final search = _search;
+    if (search != null) {
+      search.focusNode.unfocus();
+      ref.read(myLikesFilterProvider.notifier).searchGames(search.text.text);
+    }
     return showMyLikesFilters(context, ref);
   }
 
   /// Collapsed liked-at date sections, keyed by `yyyy-MM-dd`.
   final Set<String> _collapsedDates = {};
+
+  /// Dates folded while a search's hits are listed. Every date opens with
+  /// the hits, so none hides behind a fold made before searching; the folds
+  /// in [_collapsedDates] come back with every like.
+  final Set<String> _searchCollapsedDates = {};
+  bool _listedHits = false;
+  Set<String> get _folds =>
+      _listedHits ? _searchCollapsedDates : _collapsedDates;
+
+  /// The search the list on screen answers (the view is derived a moment
+  /// after the search changes), and where the reader was before it.
+  String _shownQuery = '';
+  final ListSearchScrollMemory _place = ListSearchScrollMemory();
 
   /// Last successfully-loaded view + tag counts. Kept so a reload (e.g. after
   /// swipe-to-remove invalidates the providers) keeps rendering the current
@@ -197,9 +202,11 @@ class _MyLikesGamesPageState extends ConsumerState<MyLikesGamesPage>
     // A search set from the hub's Players or Events page (a player picked
     // there) is already in the filter when this page mounts.
     _searchController.text = ref.read(myLikesFilterProvider).searchQuery;
+    _shownQuery = ref.read(myLikesFilterProvider).searchQuery.trim();
+    _place.follow(_scrollController, _shownQuery);
     if (widget.standalone) {
       _chrome = ScrollChromeController(vsync: this);
-      _searchFocusNode.addListener(_holdChromeWhileTyping);
+      _search = SearchModeController()..addListener(_onSearchMode);
     }
   }
 
@@ -220,8 +227,9 @@ class _MyLikesGamesPageState extends ConsumerState<MyLikesGamesPage>
     _debounceTimer?.cancel();
     _scrollController.dispose();
     _searchController.dispose();
-    _searchFocusNode
-      ..removeListener(_holdChromeWhileTyping)
+    _searchFocusNode.dispose();
+    _search
+      ?..removeListener(_onSearchMode)
       ..dispose();
     _chrome?.dispose();
     super.dispose();
@@ -245,7 +253,8 @@ class _MyLikesGamesPageState extends ConsumerState<MyLikesGamesPage>
   void _toggleDateSection(String dateKey) {
     HapticFeedback.lightImpact();
     setState(() {
-      if (!_collapsedDates.remove(dateKey)) _collapsedDates.add(dateKey);
+      final folds = _folds;
+      if (!folds.remove(dateKey)) folds.add(dateKey);
     });
   }
 
@@ -313,8 +322,9 @@ class _MyLikesGamesPageState extends ConsumerState<MyLikesGamesPage>
   Widget build(BuildContext context) {
     // The hub's other pages narrow this one by setting the search; the
     // field shows it unless the reader is typing in it. A hub that carries
-    // the field in its header keeps it in step itself.
-    if (!widget.searchInHeader) {
+    // the field in its header keeps it in step itself, and the archive's
+    // search starts empty and clears as it closes.
+    if (!_searchInHeader) {
       ref.listen<String>(myLikesFilterProvider.select((s) => s.searchQuery), (
         _,
         next,
@@ -335,9 +345,36 @@ class _MyLikesGamesPageState extends ConsumerState<MyLikesGamesPage>
       _lastData = viewAsync.valueOrNull;
     }
 
-    final Widget body;
+    // The list on screen answers the search it was derived for: while a new
+    // search is read it stays, under a quiet line, and every date opens
+    // with the hits; the reader's folds and place come back with every
+    // like.
+    final query = ref.watch(
+      myLikesFilterProvider.select((s) => s.searchQuery.trim()),
+    );
+    if (viewAsync.hasValue && !viewAsync.isLoading) _shownQuery = query;
+    final listedHits = _shownQuery.isNotEmpty;
+    if (listedHits != _listedHits) {
+      _listedHits = listedHits;
+      _searchCollapsedDates.clear();
+    }
+    _place.follow(_scrollController, _shownQuery);
+    final reading = data != null && _shownQuery != query;
+
+    Widget body;
     if (data != null) {
-      body = _buildBody(data);
+      // The Games lists' quiet line, in their gutters, over the list's top.
+      body = Stack(
+        children: [
+          _buildBody(data),
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            child: GamesListRefetchLine(active: reading),
+          ),
+        ],
+      );
     } else if (viewAsync.hasError) {
       body = _buildErrorState(userFacingError(viewAsync.error));
     } else {
@@ -346,114 +383,118 @@ class _MyLikesGamesPageState extends ConsumerState<MyLikesGamesPage>
 
     if (!widget.standalone) return body;
     final chrome = _chrome!;
+    final search = _search!;
     final hasLikes = (data?.totalLiked ?? 0) > 0;
     // Sorts count with the filters, as the hub's search button counts them:
     // a sort-only list still says it is arranged.
     final filter = ref.watch(myLikesFilterProvider.select((s) => s.filter));
     final applied = filter.activeFilterCount + filter.activeSortCount;
-    final bars = _searching
-        ? SearchPageHeader(
-            closeKey: const ValueKey('my_likes_search_close'),
-            onClose: _closeSearch,
-            field: EventSearchBarFrame(
-              compact: true,
-              child: SimpleSearchBar(
-                controller: _searchController,
-                focusNode: _searchFocusNode,
-                autofocus: true,
-                hintText: 'Search liked games',
-                textFieldKey: const ValueKey('my_likes_search'),
-                filterButtonKey: const ValueKey('my_likes_filters'),
-                compactFilter: true,
-                filterBadgeCount: applied,
-                onChanged: _onSearchChanged,
-                onOpenFilter: _showFilters,
-                onCloseTap: _clearSearch,
-              ),
-            ),
-          )
-        : Padding(
-            padding: EdgeInsets.fromLTRB(8.w, 4.h, 16.w, 4.h),
-            child: Row(
-              children: [
-                IconButton(
-                  tooltip: 'Back',
-                  onPressed: () => Navigator.of(context).maybePop(),
-                  icon: Icon(
-                    Icons.arrow_back_ios_new_rounded,
-                    color: context.colors.textPrimary,
-                    size: 20.sp,
-                  ),
-                ),
-                // The heart the Library's My Likes card wears, at the
-                // size the title's glyph always had.
-                LikesHeartGlyph(size: 20.sp),
-                SizedBox(width: 8.w),
-                Expanded(
-                  child: Text(
-                    'Likes',
-                    style: AppTypography.textLgBold.copyWith(
-                      color: context.colors.textPrimary,
-                    ),
-                  ),
-                ),
-                if (hasLikes)
-                  IconButton(
-                    tooltip: 'Export as PGN',
-                    onPressed: _handleExportPgn,
-                    icon: Icon(
-                      Icons.ios_share_rounded,
-                      color: context.colors.textPrimary,
-                      size: 20.sp,
-                    ),
-                  ),
-                if (hasLikes)
-                  BuildTreeButton(
-                    target: LikedGamesTreeTarget(
-                      repository: ref.read(libraryRepositoryProvider),
-                    ),
-                  ),
-              ],
-            ),
-          );
-    return PopScope(
-      // Back from the search closes it, back to every like.
-      canPop: !_searching,
-      onPopInvokedWithResult: (didPop, _) {
-        if (!didPop) _closeSearch();
-      },
-      child: Scaffold(
-        backgroundColor: context.colors.background,
-        // Search floats in the thumb's reach over a list that has likes;
-        // nothing floats while searching, or with nothing to search.
-        floatingActionButton: SlidingFabs(
-          controller: chrome,
-          child: _searching || !hasLikes
-              ? const SizedBox.shrink()
-              : SearchInkFab(
-                  key: const ValueKey('my_likes_search_fab'),
-                  label: 'Search liked games',
-                  badgeCount: applied,
-                  onTap: _openSearch,
-                ),
-        ),
-        body: SafeArea(
-          bottom: false,
-          child: Column(
-            children: [
-              // The breathing room under the status bar stays put: the row
-              // folds up to it in either state, never into the inset.
-              SizedBox(height: 4.h),
-              CollapsingChrome(
-                controller: chrome,
-                child: SizedBox(width: double.infinity, child: bars),
-              ),
-              Expanded(
-                child: ScrollChromeRegion(controller: chrome, child: body),
-              ),
-            ],
+    final searchHeader = SearchModeHeader(
+      hintText: 'Search liked games',
+      textFieldKey: const ValueKey('my_likes_search'),
+      closeKey: const ValueKey('my_likes_search_close'),
+      trailing: [
+        // The header's Filters at the same spot: one glyph, still.
+        SearchModeShared(
+          id: SearchModeFilterButton,
+          child: SearchModeFilterButton(
+            key: const ValueKey('my_likes_filters'),
+            label: 'Filter games',
+            count: applied,
+            onTap: _showFilters,
           ),
         ),
+      ],
+    );
+    return SearchModeHost(
+      controller: search,
+      chrome: chrome,
+      debounce: const Duration(milliseconds: 400),
+      onQuery: (query) =>
+          ref.read(myLikesFilterProvider.notifier).searchGames(query),
+      onClose: () => ref.read(myLikesFilterProvider.notifier).clearSearch(),
+      child: Scaffold(
+        backgroundColor: context.colors.background,
+        // Search floats in the thumb's reach over a list that has likes,
+        // and stays while searching: the search's glass flies back into it.
+        floatingActionButton: SlidingFabs(
+          controller: chrome,
+          // Its Filters stand in the header with their count, so the
+          // button carries none.
+          child: hasLikes
+              ? const SearchInkFab(
+                  key: ValueKey('my_likes_search_fab'),
+                  label: 'Search liked games',
+                )
+              : const SizedBox.shrink(),
+        ),
+        body: Column(
+          children: [
+            // The status bar's inset stays put: the row folds up to it in
+            // either state, never into it.
+            SizedBox(height: MediaQuery.viewPaddingOf(context).top + 4.h),
+            CollapsingChrome(
+              controller: chrome,
+              child: SearchModeHeaderSlot(
+                header: _archiveHeader(hasLikes: hasLikes, applied: applied),
+                search: searchHeader,
+              ),
+            ),
+            Expanded(
+              child: ScrollChromeRegion(controller: chrome, child: body),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// The archive's title row: the chevron where the search header's is,
+  /// the heart and "Likes" centred in the page-title voice, and its actions
+  /// ending with the Filters on the gutter, where the search header's
+  /// Filters sit (and hold still as the search opens).
+  Widget _archiveHeader({required bool hasLikes, required int applied}) {
+    final colors = context.colors;
+    return Padding(
+      padding: EdgeInsets.only(bottom: SearchHeaderMetrics.bottomGap),
+      child: PageBackRow(
+        // Named as every pushed page is, with the heart the Library's My
+        // Likes card wears as its bare mark.
+        title: PageTitle('Likes', mark: LikesHeartGlyph(size: 20.sp)),
+        // Export, Build Tree and Filters: the title keeps one place whether
+        // or not they show.
+        reservedEnd: hasLikes ? 3 * SearchModeFilterButton.target : 0,
+        actions: [
+          if (hasLikes) ...[
+            IconButton(
+              tooltip: 'Export as PGN',
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints.tightFor(
+                width: SearchModeFilterButton.target,
+                height: SearchModeFilterButton.target,
+              ),
+              onPressed: _handleExportPgn,
+              icon: Icon(
+                Icons.ios_share_rounded,
+                color: colors.textPrimary,
+                size: 20.ic,
+              ),
+            ),
+            BuildTreeButton(
+              target: LikedGamesTreeTarget(
+                repository: ref.read(libraryRepositoryProvider),
+              ),
+            ),
+            SearchModeShared(
+              id: SearchModeFilterButton,
+              child: SearchModeFilterButton(
+                label: 'Filter games',
+                count: applied,
+                onTap: () => showMyLikesFilters(context, ref),
+              ),
+            ),
+          ],
+        ],
       ),
     );
   }
@@ -634,29 +675,19 @@ class _MyLikesGamesPageState extends ConsumerState<MyLikesGamesPage>
                 ),
         ),
         if (data.hasNoMatches)
-          SliverFillRemaining(
-            hasScrollBody: false,
-            child: _buildNoMatchesState(
-              subtitle: selectedTags.isEmpty
-                  ? 'Try adjusting your search or filters'
-                  : 'Try another tag or clear the tag filter',
-            ),
-          )
+          _buildNoMatches(selectedTags)
         else
           _buildSectionsSliver(data),
         // The list ends clear of the floating search button, which the
-        // Scaffold lifts by its margin and the home indicator's inset.
-        SliverToBoxAdapter(
-          child: SizedBox(
-            key: const ValueKey('my_likes_list_end'),
-            height:
-                24.h +
-                (_searchInHeader
-                    ? InkFabSize.regular.side +
-                          kFloatingActionButtonMargin +
-                          MediaQuery.viewPaddingOf(context).bottom
-                    : 0),
-          ),
+        // Scaffold lifts by its margin over the home indicator. The button's
+        // room gives way on the search's own timeline while nothing floats
+        // there, as on every searched list: no jump at the tap.
+        SearchModeListEnd.sliver(
+          key: const ValueKey('my_likes_list_end'),
+          base: 24.h + MediaQuery.viewPaddingOf(context).bottom,
+          buttons: _searchInHeader
+              ? InkFabSize.regular.side + kFloatingActionButtonMargin
+              : 0,
         ),
       ],
     );
@@ -770,7 +801,7 @@ class _MyLikesGamesPageState extends ConsumerState<MyLikesGamesPage>
     for (final section in data.sections) {
       final dateKey = section.key;
       final list = section.value;
-      final isCollapsed = _collapsedDates.contains(dateKey);
+      final isCollapsed = _folds.contains(dateKey);
       // Sort override flattens everything into one synthetic bucket; skip
       // the date line in that case so the screen reads as a plain sorted
       // list instead of a one-day fake group.
@@ -837,7 +868,7 @@ class _MyLikesGamesPageState extends ConsumerState<MyLikesGamesPage>
     for (final section in data.sections) {
       final dateKey = section.key;
       final sorted = dateKey.startsWith('__');
-      final collapsed = _collapsedDates.contains(dateKey);
+      final collapsed = _folds.contains(dateKey);
       if (!sorted) {
         items.add(
           () => DateSectionHeader(
@@ -989,33 +1020,43 @@ class _MyLikesGamesPageState extends ConsumerState<MyLikesGamesPage>
     );
   }
 
-  Widget _buildNoMatchesState({String? subtitle}) {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(
-            Icons.filter_alt_off_outlined,
-            size: 56.sp,
-            color: context.textInk(0.4),
-          ),
-          SizedBox(height: 12.h),
-          Text(
-            'No matching games',
-            style: AppTypography.textMdMedium.copyWith(
-              color: context.colors.textPrimary.withValues(alpha: 0.85),
-            ),
-          ),
-          SizedBox(height: 6.h),
-          Text(
-            subtitle ?? 'Try adjusting your search or filters',
-            style: AppTypography.textSmRegular.copyWith(
-              color: context.textInk(0.55),
-            ),
-            textAlign: TextAlign.center,
-          ),
-        ],
-      ),
+  /// No like for the words, the filters or the tags: the lists' one
+  /// no-hits state, where the first row would have been. Its action clears
+  /// what it names (and plays the tap's haptic itself): the filters and the
+  /// tags, keeping the sorts and the words; or the words, which the field
+  /// (and a player picked on the hub's Players page) let go of with them.
+  Widget _buildNoMatches(Set<String> selectedTags) {
+    final narrowing = ref.read(myLikesFilterProvider);
+    final query = narrowing.searchQuery.trim();
+    final filtered =
+        narrowing.filter.activeFilterCount > 0 || selectedTags.isNotEmpty;
+    final VoidCallback? onClear;
+    if (filtered) {
+      onClear = () {
+        final sorts = ref.read(myLikesFilterProvider).filter.sorts;
+        ref.read(myLikesFilterProvider.notifier)
+          ..applyFilter(GameFilter.defaultFilter().copyWith(sorts: sorts))
+          ..clearTags();
+      };
+    } else if (query.isNotEmpty) {
+      onClear = () {
+        _debounceTimer?.cancel();
+        if (_searchInHeader) {
+          // The header's field (the archive's own, or the hub's).
+          (_search ?? SearchModeScope.maybeOf(context)?.controller)?.text
+              .clear();
+        } else {
+          _searchController.clear();
+        }
+        ref.read(myLikesFilterProvider.notifier).clearSearch();
+      };
+    } else {
+      onClear = null;
+    }
+    return SearchNoMatches.sliver(
+      query: query,
+      filtered: filtered,
+      onClear: onClear,
     );
   }
 

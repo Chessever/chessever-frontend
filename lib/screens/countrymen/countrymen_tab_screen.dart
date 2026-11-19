@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:chessever2/providers/country_dropdown_provider.dart';
 import 'package:chessever2/screens/countrymen/provider/countrymen_combined_games_provider.dart';
@@ -6,8 +7,6 @@ import 'package:chessever2/screens/countrymen/provider/countrymen_mode_provider.
 import 'package:chessever2/screens/countrymen/tabs/countrymen_events_tab.dart';
 import 'package:chessever2/screens/countrymen/tabs/countrymen_games_tab.dart';
 import 'package:chessever2/screens/countrymen/tabs/countrymen_players_tab.dart';
-import 'package:chessever2/screens/favorites/widgets/games_search_header.dart';
-import 'package:chessever2/screens/tour_detail/games_tour/providers/games_list_view_mode_provider.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
@@ -16,9 +15,11 @@ import 'package:chessever2/utils/favorite_player_identity.dart'
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/app_snack.dart';
 import 'package:chessever2/widgets/country_dropdown.dart';
-import 'package:chessever2/widgets/quick_list_toggles.dart';
+import 'package:chessever2/widgets/ink_fab.dart' show SearchInkFab;
+import 'package:chessever2/widgets/page_spring.dart';
 import 'package:chessever2/widgets/scroll_chrome.dart';
 import 'package:chessever2/widgets/scroll_to_top_bus.dart';
+import 'package:chessever2/widgets/search_mode/search_mode.dart';
 import 'package:chessever2/widgets/segmented_switcher.dart';
 import 'package:country_picker/country_picker.dart';
 import 'package:flutter/material.dart';
@@ -76,38 +77,19 @@ class _CountrymenTabScreenState extends ConsumerState<CountrymenTabScreen>
     vsync: this,
   );
 
-  /// The Games page's full-page search (Trello #1420): the field in the
-  /// header's place, the same Games list under it, filtered, with nothing
-  /// else around it.
-  bool _searching = false;
-  final FocusNode _searchFocus = FocusNode();
+  /// The page's full-page search (Trello #1420), one on every tab: the
+  /// floating button's glass becomes the field in the header's place, over
+  /// the same list, which the query narrows. The host ([SearchModeHost]) runs
+  /// the morph, back, focus and the query; the page sends the query to the
+  /// tab it was opened on ([_searchedMode]).
+  final SearchModeController _search = SearchModeController();
 
-  void _openSearch() {
-    if (_searching) return;
-    setState(() => _searching = true);
-    _chrome.show();
-  }
+  /// The tab the open search belongs to: set as it opens, and the pages hold
+  /// still while it is open ([SearchModeController.pagePhysics]).
+  CountrymenScreenMode? _searchedMode;
 
-  /// Leaves the search with the query cleared. Classical and Filters stay,
-  /// counted on the floating search.
-  void _closeSearch() {
-    if (!_searching) return;
-    _searchFocus.unfocus();
-    setState(() => _searching = false);
-    _chrome.show();
-    // Cleared after the frame that takes the field away: a keystroke still
-    // waiting on its debounce dies with the field, so it cannot run the
-    // search again behind the closed header.
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      unawaited(
-        ref.read(countrymenCombinedGamesProvider.notifier).clearSearch(),
-      );
-    });
-  }
-
-  /// A field with the keyboard keeps the header on screen.
-  void _holdChromeWhileTyping() => _chrome.held = _searchFocus.hasFocus;
+  CountrymenCombinedGamesNotifier get _games =>
+      ref.read(countrymenCombinedGamesProvider.notifier);
 
   /// The country [CountrymenTabScreen.initialCountryCode] selected, cleared
   /// again when the screen goes (the back button already does, a swipe back
@@ -122,7 +104,6 @@ class _CountrymenTabScreenState extends ConsumerState<CountrymenTabScreen>
       ref.read(selectedCountrymenModeProvider),
     );
     _pageController = PageController(initialPage: initialPage);
-    _searchFocus.addListener(_holdChromeWhileTyping);
 
     final country = CountrymenTabScreen.countryFor(widget.initialCountryCode);
     if (country != null) {
@@ -144,9 +125,7 @@ class _CountrymenTabScreenState extends ConsumerState<CountrymenTabScreen>
   void dispose() {
     _pageController.dispose();
     _scrollToTopBus.dispose();
-    _searchFocus
-      ..removeListener(_holdChromeWhileTyping)
-      ..dispose();
+    _search.dispose();
     _chrome.dispose();
     final code = _seededCode;
     final container = _container;
@@ -174,18 +153,12 @@ class _CountrymenTabScreenState extends ConsumerState<CountrymenTabScreen>
         _scrollToTopBus.request();
         return;
       }
-      // Events and Rankings carry fields of their own: their keyboard goes
-      // with the page.
-      FocusScope.of(context).unfocus();
       _chrome.show();
       ref
           .read(selectedCountrymenModeProvider.notifier)
           .update((_) => CountrymenScreenMode.values[index]);
-      _pageController.animateToPage(
-        index,
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeInOut,
-      );
+      // On the spring every part of the page's chrome moves on.
+      _pageController.springTo(index, context: context);
     } catch (e) {
       debugPrint('Error handling tab selection: $e');
     }
@@ -197,7 +170,6 @@ class _CountrymenTabScreenState extends ConsumerState<CountrymenTabScreen>
         ref.read(selectedCountrymenModeProvider),
       );
       if (currentModeIndex != index) {
-        FocusScope.of(context).unfocus();
         _chrome.show();
         ref
             .read(selectedCountrymenModeProvider.notifier)
@@ -232,27 +204,66 @@ class _CountrymenTabScreenState extends ConsumerState<CountrymenTabScreen>
     return tempCountry != null;
   }
 
+  /// The settled query, to the tab the search was opened on: every list
+  /// here asks the server.
+  void _onSearchQuery(String query) {
+    switch (_searchedMode) {
+      case CountrymenScreenMode.games:
+        if (query.isNotEmpty) {
+          unawaited(_games.searchGames(query));
+        } else if (_search.isSearching) {
+          // The field emptied while still searching: the plain list again.
+          unawaited(_games.clearSearch());
+        }
+      case CountrymenScreenMode.events:
+        unawaited(ref.read(countrymenEventsProvider.notifier).search(query));
+      case CountrymenScreenMode.players:
+        unawaited(ref.read(countrymenPlayersProvider.notifier).search(query));
+      case null:
+        break;
+    }
+  }
+
+  /// In the tap's tick, once: only the query goes with the search, and only
+  /// on the tab it searched (reading another tab's list would start its
+  /// fetch). Classical, Filters and the ranking filters stay applied.
+  void _onSearchClosed() {
+    final mode = _searchedMode;
+    _searchedMode = null;
+    switch (mode) {
+      case CountrymenScreenMode.games:
+        unawaited(_games.clearSearch());
+      case CountrymenScreenMode.events:
+        unawaited(ref.read(countrymenEventsProvider.notifier).clearSearch());
+      case CountrymenScreenMode.players:
+        unawaited(ref.read(countrymenPlayersProvider.notifier).clearSearch());
+      case null:
+        break;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final selectedMode = ref.watch(selectedCountrymenModeProvider);
     // Effective country: a temporary selection takes precedence.
     final effectiveCountryAsync = ref.watch(effectiveCountryProvider);
 
-    return PopScope(
-      // Back from the search closes it, back to the list it searched.
-      canPop: !_searching,
-      onPopInvokedWithResult: (didPop, _) {
-        if (!didPop) _closeSearch();
-      },
+    return SearchModeHost(
+      controller: _search,
+      chrome: _chrome,
+      debounce: const Duration(milliseconds: 400),
+      onOpen: () => _searchedMode = ref.read(selectedCountrymenModeProvider),
+      onQuery: _onSearchQuery,
+      onClose: _onSearchClosed,
       child: Scaffold(
         backgroundColor: context.colors.background,
-        // Games keeps its search, and Live first while a game is in play, in
-        // the thumb's reach (Trello #1420). Searching, nothing floats.
+        // Every tab floats its search in the thumb's reach, and Games Live
+        // first above it while a game is in play (Trello #1420). They stay
+        // mounted while searching: the host steps them back, and the glass
+        // flies back into the search as it closes.
         floatingActionButton: SlidingFabs(
           controller: _chrome,
-          child: selectedMode == CountrymenScreenMode.games && !_searching
-              ? CountrymenGamesFabs(onSearch: _openSearch)
-              : const SizedBox.shrink(),
+          child: _CountrymenFabs(mode: selectedMode),
         ),
         body: Center(
           child: ConstrainedBox(
@@ -266,60 +277,59 @@ class _CountrymenTabScreenState extends ConsumerState<CountrymenTabScreen>
                 // comes back as it scrolls up.
                 CollapsingChrome(
                   controller: _chrome,
-                  child: _searching
-                      ? GamesSearchHeader(
-                          onClose: _closeSearch,
-                          field: CountrymenGamesSearchField(
-                            focusNode: _searchFocus,
-                          ),
-                          trailing: const [CountrymenGamesSearchControls()],
-                        )
-                      : Column(
-                          children: [
-                            _buildAppBar(
-                              context,
-                              effectiveCountryAsync,
-                              selectedMode,
-                            ),
-                            SizedBox(height: 8.h),
-                            _buildSegmentedSwitcher(selectedMode),
-                            SizedBox(height: 4.h),
-                          ],
+                  child: SearchModeHeaderSlot(
+                    header: Column(
+                      children: [
+                        _buildAppBar(
+                          context,
+                          effectiveCountryAsync,
+                          selectedMode,
                         ),
+                        SizedBox(height: 8.h),
+                        _buildSegmentedSwitcher(selectedMode),
+                        SizedBox(height: 4.h),
+                      ],
+                    ),
+                    // The chevron (and on Games, Classical and Filters) stay
+                    // where the app bar has them; the country and the board
+                    // view give way to the field.
+                    search: _buildSearchHeader(selectedMode),
+                  ),
                 ),
                 Expanded(
                   child: ScrollChromeRegion(
                     controller: _chrome,
                     child: ScrollToTopScope(
                       bus: _scrollToTopBus,
-                      child: PageView.builder(
-                        controller: _pageController,
-                        // Searching holds the page: the search belongs to
-                        // Games.
-                        physics: _searching
-                            ? const NeverScrollableScrollPhysics()
-                            : null,
-                        itemCount: 3,
-                        onPageChanged: _handlePageChanged,
-                        itemBuilder: (context, index) {
-                          switch (index) {
-                            case 0:
-                              return const CountrymenEventsTab();
-                            case 1:
-                              return const CountrymenGamesTab();
-                            case 2:
-                              return const CountrymenPlayersTab();
-                            default:
-                              return Center(
-                                child: Text(
-                                  'Invalid page index: $index',
-                                  style: TextStyle(
-                                    color: context.colors.textPrimary,
+                      // Searching holds the page: the search belongs to the
+                      // tab it opened on.
+                      child: ListenableBuilder(
+                        listenable: _search,
+                        builder: (context, _) => PageView.builder(
+                          controller: _pageController,
+                          physics: _search.pagePhysics(),
+                          itemCount: 3,
+                          onPageChanged: _handlePageChanged,
+                          itemBuilder: (context, index) {
+                            switch (index) {
+                              case 0:
+                                return const CountrymenEventsTab();
+                              case 1:
+                                return const CountrymenGamesTab();
+                              case 2:
+                                return const CountrymenPlayersTab();
+                              default:
+                                return Center(
+                                  child: Text(
+                                    'Invalid page index: $index',
+                                    style: TextStyle(
+                                      color: context.colors.textPrimary,
+                                    ),
                                   ),
-                                ),
-                              );
-                          }
-                        },
+                                );
+                            }
+                          },
+                        ),
                       ),
                     ),
                   ),
@@ -332,14 +342,51 @@ class _CountrymenTabScreenState extends ConsumerState<CountrymenTabScreen>
     );
   }
 
-  /// Below this row width the Games page's board view takes the Pin out of
-  /// the row: it leads the country menu instead, so the country name keeps
-  /// the room. Back, the picker and the Pin keep the 300pt they had beside
-  /// the four controls the row carried before Trello #1420 (480 - 4 x 44 -
-  /// 4); beside the board view alone (44 + 4) that is a 348pt row, so the Pin
-  /// stays in the row on every phone from 375pt up.
-  static const double _inlinePinMinRowWidth = 348;
+  /// The search header for the tab it opens on: the field searches that
+  /// tab's list. Games keeps Classical and Filters beside it, held still
+  /// where the app bar has them.
+  Widget _buildSearchHeader(CountrymenScreenMode mode) {
+    return switch (mode) {
+      CountrymenScreenMode.games => const SearchModeHeader(
+        hintText: 'Search',
+        rotatingHints: CountrymenGamesToolbar.searchHints,
+        closeKey: ValueKey('games_search_close'),
+        trailing: [CountrymenGamesToolbar.inSearch],
+      ),
+      CountrymenScreenMode.events => const SearchModeHeader(
+        hintText: 'Search events',
+        textFieldKey: ValueKey('countrymen_events_search_field'),
+        closeKey: ValueKey('countrymen_search_close'),
+      ),
+      CountrymenScreenMode.players => const SearchModeHeader(
+        hintText: 'Search players',
+        textFieldKey: ValueKey('countrymen_players_search_field'),
+        closeKey: ValueKey('countrymen_search_close'),
+      ),
+    };
+  }
 
+  /// Room the picker and the Pin keep beside each other in the row: what
+  /// they had beside the four controls the row carried before Trello #1420
+  /// (a 480pt row less back, four 44pt controls and the gaps).
+  static const double _pickerAndPinRoom = 260;
+
+  /// Below this row width (inside the row's margins) the Games page's toolbar
+  /// takes the Pin out of the row: it leads the country menu instead, so the
+  /// country name keeps the room. With the toolbar's three controls that is
+  /// every phone; tablets and other pages keep the Pin in the row.
+  static double get _inlinePinMinRowWidth =>
+      SearchHeaderMetrics.backTarget +
+      4.w +
+      _pickerAndPinRoom +
+      4.w +
+      CountrymenGamesToolbar.width;
+
+  /// Back, the country picker (and Pin) beside it, and on the Games page the
+  /// list's toolbar at the far end (board view, Classical, Filters). Back,
+  /// Classical and Filters sit exactly where the search header puts its
+  /// chevron and its Classical and Filters, so opening the search only trades
+  /// the country (and the board view) for the field.
   Widget _buildAppBar(
     BuildContext context,
     AsyncValue<Country> countryAsync,
@@ -347,21 +394,30 @@ class _CountrymenTabScreenState extends ConsumerState<CountrymenTabScreen>
   ) {
     final isTemporary = _isTemporarySelection();
     final country = countryAsync.valueOrNull;
-    final showBoardView = selectedMode == CountrymenScreenMode.games;
+    final showToolbar = selectedMode == CountrymenScreenMode.games;
+    final gutter = SearchHeaderMetrics.gutter;
 
     return Padding(
-      padding: EdgeInsets.symmetric(horizontal: 12.w),
+      padding: EdgeInsetsDirectional.fromSTEB(
+        SearchHeaderMetrics.leadingInset,
+        0,
+        showToolbar
+            ? math.max(0.0, gutter - SearchHeaderMetrics.trailingReach)
+            : gutter,
+        0,
+      ),
       child: LayoutBuilder(
         builder: (context, constraints) {
           final pinInMenu =
-              showBoardView && constraints.maxWidth < _inlinePinMinRowWidth;
+              showToolbar && constraints.maxWidth < _inlinePinMinRowWidth;
           return ConstrainedBox(
-            // The board view is 44 tall; holding that height in every mode
-            // keeps the page from jumping when the mode changes.
-            constraints: const BoxConstraints(minHeight: 44),
+            // The back row of every header: the search header's too.
+            constraints: const BoxConstraints(
+              minHeight: SearchHeaderMetrics.rowHeight,
+            ),
             child: Row(
               children: [
-                _buildBackButton(context),
+                PageBackButton(onPressed: _handleBackPressed),
                 SizedBox(width: 4.w),
                 // The picker hugs its flag and name, with the Pin beside it
                 // when the row has room; short of room the name ellipsizes.
@@ -391,43 +447,14 @@ class _CountrymenTabScreenState extends ConsumerState<CountrymenTabScreen>
                     ],
                   ),
                 ),
-                // Only the board view stays up here (Trello #1420): Classical
-                // and Filters belong to the search, Live first floats.
-                if (showBoardView) ...[
-                  SizedBox(width: 4.w),
-                  BoardViewToggleButton(
-                    onTap: () =>
-                        ref.read(gamesListViewModeSwitcher).toggleViewMode(),
-                  ),
+                if (showToolbar) ...[
+                  const SizedBox(width: 4),
+                  const CountrymenGamesToolbar(),
                 ],
               ],
             ),
           );
         },
-      ),
-    );
-  }
-
-  Widget _buildBackButton(BuildContext context) {
-    return Semantics(
-      button: true,
-      label: 'Back',
-      onTap: _handleBackPressed,
-      excludeSemantics: true,
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: _handleBackPressed,
-        child: SizedBox(
-          width: 36.w,
-          height: 44,
-          child: Center(
-            child: Icon(
-              Icons.arrow_back_ios_new_outlined,
-              size: 18.ic,
-              color: context.colors.textPrimary,
-            ),
-          ),
-        ),
       ),
     );
   }
@@ -534,5 +561,29 @@ class _CountrymenTabScreenState extends ConsumerState<CountrymenTabScreen>
         notifyOnReselect: true,
       ),
     );
+  }
+}
+
+/// The floating buttons over the tab in view: Games floats its own (Live
+/// first above the search, [CountrymenGamesFabs]); Events and Rankings
+/// float the search alone, searching their own list.
+class _CountrymenFabs extends StatelessWidget {
+  const _CountrymenFabs({required this.mode});
+
+  final CountrymenScreenMode mode;
+
+  @override
+  Widget build(BuildContext context) {
+    return switch (mode) {
+      CountrymenScreenMode.games => const CountrymenGamesFabs(),
+      CountrymenScreenMode.events => const SearchInkFab(
+        key: ValueKey('countrymen_search_fab'),
+        label: 'Search events',
+      ),
+      CountrymenScreenMode.players => const SearchInkFab(
+        key: ValueKey('countrymen_search_fab'),
+        label: 'Search players',
+      ),
+    };
   }
 }

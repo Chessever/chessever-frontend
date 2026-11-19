@@ -1,162 +1,102 @@
-import 'dart:async';
-import 'dart:math' as math;
-
-import 'package:chessever2/providers/country_dropdown_provider.dart';
-import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_screen_provider.dart';
-import 'package:chessever2/screens/tour_detail/player_tour/player_tour_screen_provider.dart';
-import 'package:chessever2/screens/tour_detail/widgets/event_search_placeholder.dart';
-import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
-import 'package:chessever2/widgets/simple_search_bar.dart';
+import 'package:chessever2/widgets/home_top_bar.dart';
+import 'package:chessever2/widgets/search/search_motion.dart';
+import 'package:chessever2/widgets/search_mode/search_mode.dart';
 import 'package:flutter/material.dart';
-import 'package:hooks_riverpod/hooks_riverpod.dart';
 
-/// Search bar pinned above the event-view tab switcher (About/Games/
-/// Standings). Stays visible while the inner tab content scrolls. Horizontal
-/// inset comes from the enclosing column.
-class EventSearchBar extends ConsumerStatefulWidget {
-  const EventSearchBar({super.key, this.focusNode, this.autofocus = false});
-
-  /// The page's own node, so it can tell when the keyboard is up. Null: the
-  /// bar keeps one of its own.
-  final FocusNode? focusNode;
-
-  /// Puts the cursor in the field as it appears (the search page opening).
-  final bool autofocus;
-
-  @override
-  ConsumerState<EventSearchBar> createState() => _EventSearchBarState();
-}
-
-class _EventSearchBarState extends ConsumerState<EventSearchBar> {
-  late final TextEditingController _controller;
-  FocusNode? _ownFocusNode;
-  FocusNode get _focusNode =>
-      widget.focusNode ?? (_ownFocusNode ??= FocusNode());
-  late final int _placeholderIndex;
-  Timer? _debounce;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = TextEditingController(
-      text: ref.read(standingsSearchQueryProvider),
-    );
-    _placeholderIndex = math.Random().nextInt(eventSearchPlaceholderCount);
-  }
-
-  @override
-  void dispose() {
-    _debounce?.cancel();
-    _controller.dispose();
-    _ownFocusNode?.dispose();
-    super.dispose();
-  }
-
-  void _syncControllerText(String query) {
-    if (_controller.text == query) return;
-    _controller.value = TextEditingValue(
-      text: query,
-      selection: TextSelection.collapsed(offset: query.length),
-    );
-  }
-
-  void _handleChanged(String query) {
-    final trimmed = query.trim();
-    // Standings filter is a cheap in-widget operation over a cached list —
-    // update it instantly for a snappy feel.
-    ref.read(standingsSearchQueryProvider.notifier).state = query;
-
-    // Games search hits the DB — keep a short debounce so we don't fire a
-    // query per keystroke.
-    _debounce?.cancel();
-    _debounce = Timer(const Duration(milliseconds: 200), () {
-      // Closing the search clears the query before this bar is disposed
-      // (which cancels the timer); a keystroke still pending in between
-      // must not run the closed query again behind the closed field.
-      if (!mounted ||
-          ref.read(standingsSearchQueryProvider).trim() != trimmed) {
-        return;
-      }
-      final gamesNotifier = ref.read(gamesTourScreenProvider.notifier);
-      if (trimmed.isEmpty) {
-        gamesNotifier.clearSearch();
-      } else {
-        gamesNotifier.searchGamesEnhanced(trimmed);
-      }
-    });
-  }
-
-  void _handleCleared() {
-    _debounce?.cancel();
-    _controller.clear();
-    _focusNode.unfocus();
-    ref.read(standingsSearchQueryProvider.notifier).state = '';
-    ref.read(gamesTourScreenProvider.notifier).clearSearch();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final countryCode = ref
-        .watch(countryDropdownProvider)
-        .valueOrNull
-        ?.countryCode;
-    final hintText = eventSearchPlaceholderForIndex(
-      _placeholderIndex,
-      countryCode: countryCode,
-    );
-
-    ref.listen<String>(standingsSearchQueryProvider, (_, next) {
-      _syncControllerText(next);
-    });
-
-    // Sits between the app-bar row and the tab switcher, in a row the
-    // event screen spaces itself (with the Games tab's list controls beside
-    // it). Compact keeps the field slim so the tab chips stay near the top
-    // of the viewport.
-    return EventSearchBarFrame(
-      compact: true,
-      child: SimpleSearchBar(
-        controller: _controller,
-        focusNode: _focusNode,
-        autofocus: widget.autofocus,
-        hintText: hintText,
-        onChanged: _handleChanged,
-        onCloseTap: _handleCleared,
-        onOpenFilter: null,
-      ),
-    );
-  }
-}
-
-/// Shared tournament-detail search surface; collections use the same geometry.
+/// The search field's frame on every Games tab, the event page and
+/// collections: the app's one search field look ([HomeSearchFieldSurface],
+/// the Search tab's and Events' field). The page's surface, lifting a hair
+/// toward the ink with a self-coloured edge while [focusNode] has focus, on
+/// the spring the home field lifts on, as tall as the home field and in its
+/// type (`SimpleSearchBar`).
+///
+/// Inside a [SearchModeHeader] its fill is a [SearchFieldFill]: the frame
+/// the search morph's glass lands on and becomes, in the same colours.
 class EventSearchBarFrame extends StatelessWidget {
   const EventSearchBarFrame({
     super.key,
     required this.child,
     this.horizontalPadding = 0,
     this.compact = false,
+    this.focusNode,
   });
+
   final Widget child;
   final double horizontalPadding;
 
-  /// A slimmer field for the event screen's search row: no padding inside
-  /// the field above and below the bar, and no strip around it, so the row
-  /// it sits in sets the spacing. Off everywhere else.
+  /// No strip around the field (4.h above, 8.h below), so the row it sits in
+  /// sets the spacing: the search header's form. Off for a field placed on
+  /// its own above a list.
   final bool compact;
 
+  /// The field's focus: the frame lifts while it has it, and a tap anywhere
+  /// on the frame (not only on the line of text) puts the cursor in. Null,
+  /// the frame rests.
+  final FocusNode? focusNode;
+
   @override
-  Widget build(BuildContext context) => Padding(
-    padding: compact
-        ? EdgeInsets.symmetric(horizontal: horizontalPadding)
-        : EdgeInsets.fromLTRB(horizontalPadding, 4.h, horizontalPadding, 8.h),
-    child: Container(
-      padding: compact ? EdgeInsets.zero : EdgeInsets.symmetric(vertical: 4.h),
-      decoration: BoxDecoration(
-        color: context.colors.surfaceRecessed,
-        borderRadius: BorderRadius.circular(12.br),
-      ),
-      child: child,
-    ),
-  );
+  Widget build(BuildContext context) {
+    final handoff = SearchFieldHandoff.maybeOf(context);
+    final reduce = MediaQuery.disableAnimationsOf(context);
+    final focus = focusNode;
+
+    Widget surface(double lift, Widget child) {
+      if (handoff == null) {
+        return HomeSearchFieldSurface(lift: lift, child: child);
+      }
+      return SearchFieldFill(
+        key: handoff.frameKey,
+        color: HomeSearchFieldSurface.fillOf(context, lift),
+        edge: HomeSearchFieldSurface.edgeOf(context, lift),
+        radius: HomeSearchFieldSurface.radius,
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            minHeight: HomeSearchFieldSurface.heightOf(context),
+          ),
+          child: child,
+        ),
+      );
+    }
+
+    Widget field;
+    if (focus == null) {
+      field = surface(0, child);
+    } else {
+      field = ListenableBuilder(
+        listenable: focus,
+        child: child,
+        builder: (context, child) {
+          final target = focus.hasFocus ? 1.0 : 0.0;
+          return ParkedMotionBuilder(
+            value: target,
+            motion: SearchMotion.morph,
+            child: child,
+            // The same tree with reduced motion, only landed: the field never
+            // remounts (and drops its keyboard) when the setting changes.
+            builder: (context, lift, child) =>
+                surface(reduce ? target : lift, child!),
+          );
+        },
+      );
+      field = GestureDetector(
+        // The text is one line tall in a taller field: the rest of the frame
+        // still puts the cursor in. The text, the clear button and anything
+        // else in the field keep their own taps.
+        behavior: HitTestBehavior.opaque,
+        excludeFromSemantics: true,
+        onTap: () {
+          if (!focus.hasFocus) focus.requestFocus();
+        },
+        child: field,
+      );
+    }
+
+    return Padding(
+      padding: compact
+          ? EdgeInsets.symmetric(horizontal: horizontalPadding)
+          : EdgeInsets.fromLTRB(horizontalPadding, 4.h, horizontalPadding, 8.h),
+      child: field,
+    );
+  }
 }

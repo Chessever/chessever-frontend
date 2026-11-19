@@ -34,7 +34,7 @@ class SpaceOpeningCard extends ConsumerWidget {
       menuActions: (menuContext) => [
         LibraryMenuAction(
           icon: Icons.open_in_new_rounded,
-          label: 'Open',
+          label: spaceOpenLabel(shortcut.kind),
           onSelected: open,
         ),
         spaceMenuAction(context: menuContext, ref: ref, draft: shortcut),

@@ -41,6 +41,8 @@ import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/figma_player_card.dart';
 import 'package:chessever2/widgets/paywall/premium_game_access.dart';
 import 'package:dio/dio.dart';
+import 'package:chessever2/widgets/quick_list_toggles.dart'
+    show BoardViewToggleButton;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
@@ -392,7 +394,8 @@ Future<ProviderContainer> _pump(
       await tester.tap(
         find.byWidgetPredicate(
           (w) =>
-              w is Semantics && w.properties.label == 'Toggle chessboard view',
+              w is Semantics &&
+              w.properties.label == BoardViewToggleButton.label,
         ),
       );
       await _settle(tester);
@@ -895,14 +898,14 @@ void main() {
           repo: repo,
         );
         // The book's search opens from its floating button, in the
-        // header's place.
+        // header's place, and narrows the Games list in place.
         await tester.tap(find.byKey(const ValueKey('event_view_search_fab')));
         await _settle(tester);
         await tester.enterText(find.byType(EditableText), 'Ganguly');
         await tester.pump(const Duration(seconds: 1));
         await _settle(tester);
         expect(
-          find.byKey(const ValueKey('book_search_results')),
+          find.byKey(const PageStorageKey('collection_games')),
           findsOneWidget,
         );
         expect(find.byType(DiscoveryGameList), findsOneWidget);

@@ -22,7 +22,10 @@ import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrap
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/grid_game_card_wrapper_widget.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
-import 'package:chessever2/widgets/destination_title.dart';
+import 'package:chessever2/widgets/home_top_bar.dart' show PageTitle;
+import 'package:chessever2/widgets/search_no_matches.dart';
+import 'package:chessever2/widgets/quick_list_toggles.dart'
+    show BoardViewToggleButton;
 import 'package:chessever2/widgets/game_date_header.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -748,11 +751,11 @@ void main() {
       expect(fab, findsOneWidget);
       expect(allChip, findsOneWidget);
       final semantics = tester.ensureSemantics();
-      final toggle = find.bySemanticsLabel('Toggle chessboard view');
+      final toggle = find.bySemanticsLabel(BoardViewToggleButton.label);
       expect(toggle, findsOneWidget);
       expect(
         tester.getCenter(toggle).dy,
-        moreOrLessEquals(tester.getCenter(find.byType(DestinationTitle)).dy),
+        moreOrLessEquals(tester.getCenter(find.byType(PageTitle)).dy),
       );
       expect(
         tester.getRect(toggle).bottom,
@@ -762,20 +765,21 @@ void main() {
       // The toggle's slot balances the back button, so the title keeps the
       // centre of the screen.
       expect(
-        tester.getCenter(find.byType(DestinationTitle)).dx,
+        tester.getCenter(find.byType(PageTitle)).dx,
         moreOrLessEquals(_phone.width / 2, epsilon: 0.5),
       );
       expect(shown(), unorderedEquals(everyReport));
 
       await tester.tap(fab);
       await _settle(tester);
-      // The field in the header's place with the cursor in it, nothing
-      // floating, and the same list under it.
+      // The field in the title row's place with the cursor in it, nothing
+      // floating, the report types still in reach under it, and the same
+      // list under them.
       expect(field, findsOneWidget);
       expect(tester.widget<TextField>(field).focusNode!.hasFocus, isTrue);
       expect(close, findsOneWidget);
-      expect(fab, findsNothing);
-      expect(allChip, findsNothing);
+      expect(fab.hitTestable(), findsNothing);
+      expect(allChip.hitTestable(), findsOneWidget);
       expect(shown(), unorderedEquals(everyReport));
 
       await tester.enterText(field, 'carlsen');
@@ -784,10 +788,24 @@ void main() {
       await tester.enterText(field, 'nobody');
       await _settle(tester);
       expect(shown(), isEmpty);
-      expect(find.text('No reports match "nobody".'), findsOneWidget);
+      expect(
+        find.text(SearchNoMatches.titleFor(query: 'nobody')),
+        findsOneWidget,
+      );
+      // Its way back empties the words, the search still open over every
+      // report.
+      await tester.tap(find.byKey(const ValueKey('search_no_matches_clear')));
+      await _settle(tester);
+      expect(tester.widget<TextField>(field).controller!.text, isEmpty);
+      expect(close, findsOneWidget);
+      expect(shown(), unorderedEquals(everyReport));
+      await tester.enterText(field, 'nobody');
+      await _settle(tester);
+      expect(shown(), isEmpty);
 
       // The chevron leaves the search and clears what was searched.
       await tester.tap(close);
+      await _settle(tester);
       await _settle(tester);
       expect(field, findsNothing);
       expect(fab, findsOneWidget);
@@ -804,14 +822,17 @@ void main() {
       expect(shown(), ['gukesh']);
       await tester.binding.handlePopRoute();
       await _settle(tester);
+      await _settle(tester);
       expect(find.byType(ReportsScreen), findsOneWidget);
       expect(field, findsNothing);
       expect(fab, findsOneWidget);
       expect(shown(), unorderedEquals(everyReport));
 
-      // The chips are out of sight while searching, so a miss names the
-      // report type it was searched in.
-      await tester.tap(find.byKey(const ValueKey('report_type_missed_chance')));
+      // A miss in one report type keeps that type in view under the field.
+      final missedChance = find.byKey(
+        const ValueKey('report_type_missed_chance'),
+      );
+      await tester.tap(missedChance);
       await _settle(tester);
       await complete(tester, repository, 1, [
         _game('miss', white: 'Carlsen, Magnus'),
@@ -821,11 +842,10 @@ void main() {
       await tester.enterText(field, 'nobody');
       await _settle(tester);
       expect(
-        find.text(
-          'No ${ReportGameType.missedChance.label} reports match "nobody".',
-        ),
+        find.text(SearchNoMatches.titleFor(query: 'nobody')),
         findsOneWidget,
       );
+      expect(missedChance.hitTestable(), findsOneWidget);
       expect(repository.requests, hasLength(2));
       expect(tester.takeException(), isNull);
       await _teardown(tester, container);

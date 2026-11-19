@@ -210,8 +210,9 @@ void main() {
     expect(eventGamesSectionsCollapsed(container.read, sections), isTrue);
   });
 
-  test('team matchups keep folding through a search', () {
-    // The team list honours folding during a search, unlike the board list.
+  test('team matchups open every round through a search too', () {
+    // The team list shows every hit open under inert headers, as the board
+    // list does: a search leaves nothing to fold, and the folds outlast it.
     final container = _container(
       _singleCategory(
         shownRoundIds: ['round-1', 'round-2'],
@@ -219,15 +220,18 @@ void main() {
       ),
     );
     final screen = container.read(gamesTourScreenProvider.notifier) as _Screen;
-    screen.show(isSearchMode: true);
+    toggleEventGamesSections(container.read);
+    const folded = {'round-1': false, 'round-2': false};
+    expect(container.read(roundExpansionProvider), folded);
 
+    screen.show(isSearchMode: true);
+    expect(container.read(eventGamesSectionsProvider), EventGamesSections.none);
+    toggleEventGamesSections(container.read);
+    expect(container.read(roundExpansionProvider), folded);
+
+    screen.show(isSearchMode: false);
     final sections = container.read(eventGamesSectionsProvider);
     expect(sections.roundIds, ['round-1', 'round-2']);
-    toggleEventGamesSections(container.read);
-    expect(container.read(roundExpansionProvider), {
-      'round-1': false,
-      'round-2': false,
-    });
     expect(eventGamesSectionsCollapsed(container.read, sections), isTrue);
   });
 }

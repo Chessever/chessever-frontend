@@ -22,6 +22,8 @@ import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/card_context_menu.dart'
     show CardActionButton;
 import 'package:chessever2/widgets/generic_loading_widget.dart';
+import 'package:chessever2/widgets/home_top_bar.dart' show PageTitle;
+import 'package:chessever2/widgets/page_spring.dart';
 import 'package:chessever2/widgets/popover_add_fab.dart';
 import 'package:chessever2/widgets/scroll_chrome.dart';
 import 'package:chessever2/widgets/segmented_switcher.dart';
@@ -80,15 +82,7 @@ class _MyPrepHomeScreenState extends ConsumerState<MyPrepHomeScreen>
     setState(() => _tab = index);
     // Another tab opens with its header in place.
     _chrome.show();
-    if (MediaQuery.disableAnimationsOf(context)) {
-      _pages.jumpToPage(index);
-      return;
-    }
-    _pages.animateToPage(
-      index,
-      duration: const Duration(milliseconds: 280),
-      curve: Curves.easeOutCubic,
-    );
+    _pages.springTo(index, context: context);
   }
 
   String get _addLabel => _tab == 0 ? 'Attach your username' : 'Add opponent';
@@ -239,16 +233,8 @@ class _AppBar extends StatelessWidget {
               color: context.colors.textPrimary,
             ),
           ),
-          Expanded(
-            child: Center(
-              child: Text(
-                'Prep',
-                style: AppTypography.textLgBold.copyWith(
-                  color: context.colors.textPrimary,
-                ),
-              ),
-            ),
-          ),
+          // Named as every pushed page is.
+          const Expanded(child: Center(child: PageTitle('Prep'))),
           // Balances the back button so the title stays centred.
           const SizedBox(width: kMinInteractiveDimension),
         ],

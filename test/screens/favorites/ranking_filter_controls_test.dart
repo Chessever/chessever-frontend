@@ -2,7 +2,6 @@ import 'package:chessever2/screens/favorites/rankings/ranking_filter_controls.da
 import 'package:chessever2/screens/favorites/rankings/ranking_filters.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
-import 'package:chessever2/widgets/search/gameSearch/enhanced_game_search_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:motor/motor.dart';
@@ -94,33 +93,34 @@ void main() {
     expect(changed?.category, RankingCategory.overall);
   });
 
-  testWidgets('selected time control reveals its label; others stay icon-only', (
-    tester,
-  ) async {
-    await _pumpControls(
-      tester,
-      filters: RankingFilters.defaults.copyWith(
-        timeControl: RankingTimeControl.blitz,
-      ),
-      showActivity: false,
-    );
+  testWidgets(
+    'selected time control reveals its label; others stay icon-only',
+    (tester) async {
+      await _pumpControls(
+        tester,
+        filters: RankingFilters.defaults.copyWith(
+          timeControl: RankingTimeControl.blitz,
+        ),
+        showActivity: false,
+      );
 
-    expect(
-      find.descendant(
-        of: _timeControlChip('Blitz'),
-        matching: find.text('Blitz'),
-      ),
-      findsOneWidget,
-    );
-    expect(
-      find.descendant(
-        of: _timeControlChip('Classical'),
-        matching: find.text('Classical'),
-      ),
-      findsNothing,
-    );
-    expect(find.byType(SingleMotionBuilder), findsWidgets);
-  });
+      expect(
+        find.descendant(
+          of: _timeControlChip('Blitz'),
+          matching: find.text('Blitz'),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: _timeControlChip('Classical'),
+          matching: find.text('Classical'),
+        ),
+        findsNothing,
+      );
+      expect(find.byType(SingleMotionBuilder), findsWidgets);
+    },
+  );
 
   testWidgets('selected chips use the app-wide filter chip treatment', (
     tester,
@@ -183,8 +183,9 @@ void main() {
     (tester) async {
       await _pumpControls(tester, showActivity: false);
 
-      final strips =
-          tester.stateList<ScrollableState>(find.byType(Scrollable)).toList();
+      final strips = tester
+          .stateList<ScrollableState>(find.byType(Scrollable))
+          .toList();
       expect(strips, hasLength(1));
       expect(find.byType(ShaderMask), findsOneWidget);
       expect(find.byType(SingleMotionBuilder), findsWidgets);
@@ -245,17 +246,11 @@ void main() {
     expect(find.byType(Scrollable), findsOneWidget);
   });
 
-  testWidgets('Active/All shares a centre line with the search field', (
+  testWidgets('Active/All can lead the one rail, on its centre line', (
     tester,
   ) async {
+    RankingFilters? changed;
     _usePhoneSurface(tester);
-    final controller = TextEditingController();
-    final focusNode = FocusNode();
-    addTearDown(() {
-      controller.dispose();
-      focusNode.dispose();
-    });
-
     await tester.pumpWidget(
       MaterialApp(
         theme: AppTheme.darkTheme,
@@ -263,29 +258,10 @@ void main() {
           builder: (context) {
             ResponsiveHelper.init(context);
             return Scaffold(
-              body: Padding(
-                padding: EdgeInsets.fromLTRB(16.w, 10.h, 16.w, 0),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    Expanded(
-                      child: SearchBarWidget(
-                        hintText: 'Search',
-                        margin: 0.sp,
-                        autoFocus: false,
-                        controller: controller,
-                        focusNode: focusNode,
-                        onChanged: (_) {},
-                        onClose: () {},
-                      ),
-                    ),
-                    SizedBox(width: 8.w),
-                    RankingActivityControl(
-                      value: RankingActivity.active,
-                      onChanged: (_) {},
-                    ),
-                  ],
-                ),
+              body: RankingFilterControls(
+                filters: RankingFilters.defaults,
+                activityInRail: true,
+                onChanged: (value) => changed = value,
               ),
             );
           },
@@ -294,17 +270,26 @@ void main() {
     );
     await tester.pump();
 
-    final search = tester.getRect(find.byType(SearchBarWidget));
-    final chip = tester.getRect(
-      find
-          .ancestor(
-            of: find.text('Active'),
-            matching: find.byType(AnimatedContainer),
-          )
-          .first,
-    );
+    // One line: a single sideways rail, Active / All first in it.
+    expect(find.byType(Scrollable), findsOneWidget);
+    final rail = find.byType(SingleChildScrollView);
+    for (final label in ['Active', 'All']) {
+      expect(
+        find.descendant(of: rail, matching: find.text(label)),
+        findsOneWidget,
+      );
+    }
+    final active = tester.getCenter(find.text('Active'));
+    final classical = tester.getCenter(_timeControlChip('Classical'));
+    final overall = tester.getCenter(_categoryChip('Overall'));
+    expect(active.dx, lessThan(classical.dx));
+    expect(classical.dx, lessThan(overall.dx));
+    expect((active.dy - classical.dy).abs(), lessThan(0.5));
+    expect((active.dy - overall.dy).abs(), lessThan(0.5));
 
-    expect(chip.height, lessThan(search.height));
-    expect((search.center.dy - chip.center.dy).abs(), lessThan(0.5));
+    await tester.tap(find.text('All'));
+    await tester.pump();
+    expect(changed?.activity, RankingActivity.all);
+    expect(changed?.timeControl, RankingFilters.defaults.timeControl);
   });
 }

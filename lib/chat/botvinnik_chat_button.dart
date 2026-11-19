@@ -7,6 +7,7 @@ import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/glass_surface.dart';
+import 'package:chessever2/widgets/search_mode/search_count_badge.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:motor/motor.dart';
@@ -214,35 +215,20 @@ class _BotvinnikLauncherState extends State<_BotvinnikLauncher> {
                   clipBehavior: Clip.none,
                   children: [
                     Positioned.fill(child: visual),
+                    // The one count style ([SearchCountBadge]), the one the
+                    // floating search beside it wears, stepping back with
+                    // the glass ([GlassFade]) as the search opens instead
+                    // of staying solid and popping off.
                     if (widget.unreadCount > 0)
                       Positioned(
-                        top: -4,
-                        right: -4,
+                        top: -2,
+                        right: -2,
                         child: ExcludeSemantics(
-                          child: Container(
-                            key: const ValueKey('botvinnik-unread-badge'),
-                            constraints: const BoxConstraints(
-                              minWidth: 22,
-                              minHeight: 22,
-                            ),
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 5,
-                              vertical: 2,
-                            ),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFFD32F2F),
-                              borderRadius: BorderRadius.circular(16),
-                            ),
-                            alignment: Alignment.center,
-                            child: Text(
-                              widget.unreadCount > 99
-                                  ? '99+'
-                                  : '${widget.unreadCount}',
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 12,
-                                fontWeight: FontWeight.w700,
-                              ),
+                          child: GlassFade.content(
+                            context,
+                            SearchCountBadge(
+                              key: const ValueKey('botvinnik-unread-badge'),
+                              count: widget.unreadCount,
                             ),
                           ),
                         ),

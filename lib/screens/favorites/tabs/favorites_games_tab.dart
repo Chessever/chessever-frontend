@@ -9,6 +9,8 @@ import 'package:chessever2/screens/favorites/favorite_players_provider.dart';
 import 'package:chessever2/screens/favorites/provider/favorites_mode_provider.dart';
 import 'package:chessever2/screens/favorites/widgets/collection_inks.dart';
 import 'package:chessever2/screens/favorites/widgets/favorite_player_search_suggestion.dart';
+import 'package:chessever2/screens/favorites/widgets/games_list_refetch_line.dart';
+import 'package:chessever2/screens/favorites/widgets/settling_scroll_controller.dart';
 import 'package:chessever2/screens/player_profile/player_profile_screen.dart';
 import 'package:chessever2/screens/standings/player_standing_model.dart';
 import 'package:chessever2/screens/favorites/player_games/provider/favorites_combined_games_provider.dart';
@@ -22,8 +24,6 @@ import 'package:chessever2/screens/tour_detail/games_tour/providers/games_list_v
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/board_game_card_wrapper_widget.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/game_card_wrapper_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/grid_game_card_wrapper_widget.dart';
-import 'package:chessever2/screens/tour_detail/widgets/event_search_bar.dart'
-    show EventSearchBarFrame;
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/scroll_cache.dart';
@@ -41,8 +41,11 @@ import 'package:chessever2/widgets/auth/auth_upgrade_sheet.dart';
 import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
 import 'package:chessever2/widgets/paywall/premium_game_access.dart';
 import 'package:chessever2/widgets/ink_fab.dart';
+import 'package:chessever2/widgets/live_first_capsule.dart';
 import 'package:chessever2/widgets/quick_list_toggles.dart';
-import 'package:chessever2/widgets/simple_search_bar.dart';
+import 'package:chessever2/widgets/search_mode/search_mode.dart';
+import 'package:chessever2/widgets/search_no_matches.dart';
+import 'package:flutter/foundation.dart' show setEquals;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
@@ -83,25 +86,50 @@ Map<String, List<GamesTourModel>> groupFavoriteGamesByDay(
   };
 }
 
-/// Whether a game in the Favorites Games list is in play. Live first floats
-/// over the list only while this holds (Trello #1420):
-/// with nothing live it has nothing to do.
-final favoritesGamesAnyLiveProvider = Provider.autoDispose<bool>(
+/// How many games in the Favorites Games list are in play, counted from the
+/// list already loaded (Live first reads it aloud and on its capsule).
+final favoritesGamesLiveCountProvider = Provider.autoDispose<int>(
   (ref) => ref.watch(
     favoritesCombinedGamesProvider.select(
-      (state) => state.filteredGames.any(GameFilterHelper.isLiveNow),
+      (state) => state.filteredGames.where(GameFilterHelper.isLiveNow).length,
     ),
   ),
 );
 
-/// The Games list's filters, bare glyphs after the field in its full-page
-/// search header (Trello #1420): Classical only and Filters. Live first
-/// floats over the list instead, and the board view stays in the title row.
+/// Whether a game in the Favorites Games list is in play. Live first floats
+/// over the list only while this holds (Trello #1420):
+/// with nothing live it has nothing to do.
+final favoritesGamesAnyLiveProvider = Provider.autoDispose<bool>(
+  (ref) => ref.watch(favoritesGamesLiveCountProvider) > 0,
+);
+
+/// The Games list's toolbar: board view, Classical only and Filters, bare
+/// glyphs, ending the title row. The full-page search header ends with the same
+/// row less the board view ([withBoardView] false): Classical and Filters
+/// stay at the same spot in both, and the board view gives way to the field
+/// along with the title, leaving the field room to type in on any phone.
 ///
-/// It watches the same auto-dispose games provider as [FavoritesGamesTab], so
-/// the filter dialog's route cannot drop the notifier it applies to.
-class FavoritesGamesSearchControls extends ConsumerWidget {
-  const FavoritesGamesSearchControls({super.key});
+/// It watches the same auto-dispose games provider as the Games tab, so the
+/// filter dialog's route cannot drop the notifier it applies to.
+class FavoritesGamesToolbar extends ConsumerWidget {
+  const FavoritesGamesToolbar({super.key, this.withBoardView = true});
+
+  /// Leads with the board view (the page's header); the search header's
+  /// row leaves it out.
+  final bool withBoardView;
+
+  /// What the search matches, cycled once after "Search" in its field.
+  static const List<String> searchHints = ['player', 'opening', 'ECO code'];
+
+  /// The full row's width: three 44pt targets.
+  static const double width = 3 * SearchModeFilterButton.target;
+
+  /// The search header's row: Classical and Filters, held still through the
+  /// morph where the page's header has them ([SearchModeShared]).
+  static const Widget inSearch = SearchModeShared(
+    id: FavoritesGamesToolbar,
+    child: FavoritesGamesToolbar(withBoardView: false),
+  );
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -109,8 +137,12 @@ class FavoritesGamesSearchControls extends ConsumerWidget {
       favoritesCombinedGamesProvider.select((state) => state.filter),
     );
     final classicalOnly = filter.timeControl == GameTimeControlFilter.classical;
+    // The page's header stays mounted (paused) under an open search: only
+    // the row in reach carries the Filters' test id, so it is found once.
+    final searching = SearchModeScope.maybeOf(context)?.isSearching ?? false;
+    final inReach = withBoardView != searching;
 
-    return Row(
+    final shared = Row(
       mainAxisSize: MainAxisSize.min,
       children: [
         ClassicalToggleButton(
@@ -132,14 +164,21 @@ class FavoritesGamesSearchControls extends ConsumerWidget {
             );
           },
         ),
-        QuickToggleIconButton(
-          key: e2eKey(E2eIds.favoritesGamesFilterButton),
-          label: 'Filters',
-          selected: filter.hasActiveFilters,
-          badgeCount: filter.activeFilterCount,
+        SearchModeFilterButton(
+          key: inReach ? e2eKey(E2eIds.favoritesGamesFilterButton) : null,
+          count: filter.activeFilterCount,
           onTap: () => _showFilterDialog(context, ref),
-          child: const Icon(Icons.tune_rounded),
         ),
+      ],
+    );
+    if (!withBoardView) return shared;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        BoardViewToggleButton(
+          onTap: () => ref.read(gamesListViewModeSwitcher).toggleViewMode(),
+        ),
+        SearchModeShared(id: FavoritesGamesToolbar, child: shared),
       ],
     );
   }
@@ -160,12 +199,14 @@ class FavoritesGamesSearchControls extends ConsumerWidget {
 }
 
 /// The Games page's floating buttons (Trello #1420): the search and, above
-/// it only while a game is in play, Live first. Pressed with
-/// nothing in play, Live first stays off and says so.
+/// it while a game is in play (or while it is on), Live first, saying how
+/// many are live. Pressed with nothing in play, Live first stays off and
+/// says so; turned on, the list goes up to the games in play.
+///
+/// Under the screen's [SearchModeHost] the search hands its tap to the host,
+/// which flies the search button's glass into the field and back.
 class FavoritesGamesFabs extends ConsumerWidget {
-  const FavoritesGamesFabs({super.key, required this.onSearch});
-
-  final VoidCallback onSearch;
+  const FavoritesGamesFabs({super.key});
 
   static const _surface = GameListLiveFirstSurface.favorites;
 
@@ -187,23 +228,22 @@ class FavoritesGamesFabs extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final liveFirst = ref.watch(gameListLiveFirstProvider(_surface));
     final anyLive = ref.watch(favoritesGamesAnyLiveProvider);
-    // Classical and Filters live in the search but stay applied after it
-    // closes: their count on the search is the list's only sign of them.
-    final applied = ref.watch(
-      favoritesCombinedGamesProvider.select(
-        (state) => state.filter.activeFilterCount,
-      ),
+    final liveCount = ref.watch(favoritesGamesLiveCountProvider);
+    // Just after a search closes the list may still hold its hits: what is
+    // live among them says nothing of the whole list.
+    final holdsHits = ref.watch(
+      favoritesCombinedGamesProvider.select((state) => state.isSearching),
     );
     return InkFabStack(
       children: [
-        // Only while a game is in play (Trello #1420): with nothing live
-        // the button has nothing to do, so it is not on screen. Left on, the
-        // flag only orders the list, which with nothing live is the same
-        // order.
-        if (anyLive)
-          LiveFirstInkFab(
+        // Only while a game is in play (Trello #1420), or while it is on, so
+        // a Live first left on can always be seen and turned off. With
+        // nothing live and nothing to undo it is not on screen.
+        if ((anyLive || liveFirst) && !holdsHits)
+          LiveFirstCapsule(
             key: const ValueKey('favorites_live_first_fab'),
             on: liveFirst,
+            liveCount: liveCount,
             onTap: () => pressGameListLiveFirst(
               context: context,
               ref: ref,
@@ -212,89 +252,10 @@ class FavoritesGamesFabs extends ConsumerWidget {
             ),
           ),
         SearchInkFab(
-          key: const ValueKey('favorites_search_fab'),
+          key: e2eKey(E2eIds.favoritesSearchFab),
           label: 'Search games',
-          badgeCount: applied,
-          onTap: onSearch,
         ),
       ],
-    );
-  }
-}
-
-/// The Games list's search field, in its full-page search header. A short
-/// pause after typing runs the search on the server, and the Games list under
-/// the header shows the hits.
-class FavoritesGamesSearchField extends ConsumerStatefulWidget {
-  const FavoritesGamesSearchField({
-    super.key,
-    required this.focusNode,
-    this.autofocus = true,
-  });
-
-  /// The screen's node, so it can hold the chrome while the keyboard is up.
-  final FocusNode focusNode;
-
-  /// Puts the cursor in the field as the search opens.
-  final bool autofocus;
-
-  @override
-  ConsumerState<FavoritesGamesSearchField> createState() =>
-      _FavoritesGamesSearchFieldState();
-}
-
-class _FavoritesGamesSearchFieldState
-    extends ConsumerState<FavoritesGamesSearchField> {
-  late final TextEditingController _controller;
-  Timer? _debounce;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = TextEditingController(
-      text: ref.read(favoritesCombinedGamesProvider).searchQuery,
-    );
-  }
-
-  @override
-  void dispose() {
-    _debounce?.cancel();
-    _controller.dispose();
-    super.dispose();
-  }
-
-  void _onChanged(String value) {
-    _debounce?.cancel();
-    _debounce = Timer(const Duration(milliseconds: 400), () {
-      if (!mounted) return;
-      unawaited(
-        ref.read(favoritesCombinedGamesProvider.notifier).searchGames(value),
-      );
-    });
-  }
-
-  void _onCleared() {
-    HapticFeedback.lightImpact();
-    _debounce?.cancel();
-    _controller.clear();
-    widget.focusNode.unfocus();
-    unawaited(ref.read(favoritesCombinedGamesProvider.notifier).clearSearch());
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return EventSearchBarFrame(
-      compact: true,
-      child: SimpleSearchBar(
-        controller: _controller,
-        focusNode: widget.focusNode,
-        autofocus: widget.autofocus,
-        textFieldKey: e2eKey(E2eIds.favoritesGamesSearchField),
-        hintText: 'Search games',
-        onChanged: _onChanged,
-        onCloseTap: _onCleared,
-        onOpenFilter: null,
-      ),
     );
   }
 }
@@ -312,7 +273,8 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
         RouteAware,
         AutomaticKeepAliveClientMixin,
         ScrollToTopListenerMixin {
-  final ScrollController _scrollController = ScrollController();
+  /// Lands a search's place changes in the frame the games change in.
+  final SettlingScrollController _scrollController = SettlingScrollController();
 
   @override
   void onScrollToTopRequested() {
@@ -333,8 +295,29 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
   // watches stay alive long enough for modal results to update this tab.
   bool get _isActiveOnScreen => _routeIsCurrent;
 
-  /// Track expanded state for date sections
+  /// Days folded on the plain list.
   final Set<String> _collapsedDates = {};
+
+  /// Days folded among a search's hits. Every day opens as hits land, so
+  /// none hides behind a fold; the plain list's folds come back with it.
+  final Set<String> _searchCollapsedDates = {};
+
+  /// The page's search is open over this list.
+  bool _searchOpen = false;
+
+  /// The list on screen is a search's hits.
+  bool _showingHits = false;
+
+  /// Where the plain list was when the search opened (or where the reader
+  /// took it since, when the hits land): it comes back there as the search
+  /// closes, whatever the hits or the header did to the scroll meanwhile.
+  double? _offsetBeforeSearch;
+
+  /// Ends [SettlingScrollController.holdAt] once the header has sprung.
+  Timer? _holdTimer;
+
+  /// A filter or player change is on its way: its list starts at the top.
+  bool _toTopOnLanding = false;
 
   @override
   bool get wantKeepAlive => true;
@@ -352,6 +335,7 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
+    _followSearch(SearchModeScope.maybeOf(context)?.isSearching ?? false);
     if (_routeSubscribed) return;
     final route = ModalRoute.of(context);
     if (route == null) return;
@@ -369,6 +353,7 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
     ForegroundTaskScheduler.cancel('favorites_games_resume_$hashCode');
     _scrollController.removeListener(_onScroll);
     _scrollIdleTimer?.cancel();
+    _holdTimer?.cancel();
     _setLiveCardsPausedForScroll(false);
     _scrollController.dispose();
     super.dispose();
@@ -523,17 +508,113 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
 
   void _toggleDateSection(String dateKey) {
     HapticFeedback.lightImpact();
+    final folds = ref.read(favoritesCombinedGamesProvider).isSearching
+        ? _searchCollapsedDates
+        : _collapsedDates;
     setState(() {
-      if (_collapsedDates.contains(dateKey)) {
-        _collapsedDates.remove(dateKey);
-      } else {
-        _collapsedDates.add(dateKey);
-      }
+      if (!folds.remove(dateKey)) folds.add(dateKey);
     });
     // After collapsing sections, check if we need to load more content
     // This handles the case where collapsing reduces content height
     // and the user is suddenly at/near the end of the list
     _checkScrollAfterLayoutChange();
+  }
+
+  /// Keeps the reader's place as the list is replaced under them: a
+  /// search's hits start at the top, the plain list comes back where it was
+  /// left, a new filter's list starts at the top. Nothing moves while a
+  /// fetch is still on its way; the list it replaces stays put.
+  void _onGamesChanged(
+    FavoritesCombinedGamesState? previous,
+    FavoritesCombinedGamesState next,
+  ) {
+    if (previous == null) return;
+    if (previous.searchQuery != next.searchQuery) {
+      _toTopOnLanding = false;
+      _showingHits = next.isSearching;
+      if (next.isSearching) {
+        if (!previous.isSearching) {
+          // Kept as the search opened, unless the reader has moved the
+          // plain list since: then where they left it.
+          _offsetBeforeSearch ??= _scrollController.hasClients
+              ? _scrollController.offset
+              : null;
+        }
+        _searchCollapsedDates.clear();
+        _settleListAt(0);
+      } else {
+        // The plain list as it was left comes back to its place; one
+        // fetched again starts at its top.
+        final back = previous.isReplacing ? null : _offsetBeforeSearch;
+        // While the search stays open (its field emptied), its close puts
+        // the list there again: the header's height changes under it.
+        if (!_searchOpen) _offsetBeforeSearch = null;
+        _settleListAt(back ?? 0);
+      }
+      return;
+    }
+    if (previous.filter != next.filter ||
+        !setEquals(previous.selectedFideIds, next.selectedFideIds)) {
+      _toTopOnLanding = true;
+      // Another list: the place kept for the old one means nothing to it.
+      if (!_showingHits) _offsetBeforeSearch = null;
+    }
+    if (_toTopOnLanding && previous.isLoading && !next.isLoading) {
+      _toTopOnLanding = false;
+      _settleListAt(0);
+    }
+  }
+
+  /// Moves the list to [offset] in the layout that puts its new rows on
+  /// screen, before that frame paints: no frame shows them at the old place.
+  void _settleListAt(double offset) => _scrollController.settleAt(offset);
+
+  /// The page's search opened or closed over this list. The list stays
+  /// mounted either way; only its place is kept. Opening keeps where the
+  /// reader is; closing on the plain list puts it back there, held while
+  /// the header springs back so its end does not bounce. Hits still on
+  /// screen as it closes give way to the plain list fetched again, which
+  /// starts at its top.
+  void _followSearch(bool open) {
+    if (open == _searchOpen) return;
+    _searchOpen = open;
+    if (open) {
+      final offset = _scrollController.hasClients
+          ? _scrollController.offset
+          : null;
+      _offsetBeforeSearch = offset;
+      if (offset != null) _holdThroughMorph(offset);
+      return;
+    }
+    final back = _offsetBeforeSearch;
+    _offsetBeforeSearch = null;
+    if (back == null || _showingHits) return;
+    _holdThroughMorph(back);
+  }
+
+  /// The header's spring, with room to settle: the list holds its place
+  /// this long after the search opens or closes.
+  static const Duration _morphHold = Duration(milliseconds: 600);
+
+  void _holdThroughMorph(double offset) {
+    _scrollController.holdAt(offset);
+    _holdTimer?.cancel();
+    _holdTimer = Timer(_morphHold, () {
+      _holdTimer = null;
+      _scrollController.release();
+    });
+  }
+
+  /// The reader moved the plain list while the search is open (before any
+  /// hits): the list stays where they leave it.
+  bool _onScrollStart(ScrollStartNotification notification) {
+    if (notification.depth == 0 &&
+        notification.dragDetails != null &&
+        _searchOpen &&
+        !_showingHits) {
+      _offsetBeforeSearch = null;
+    }
+    return false;
   }
 
   /// Check if we need to load more content after a layout change
@@ -629,6 +710,17 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
     // route.
     final state = ref.watch(favoritesCombinedGamesProvider);
     final favoritesState = ref.watch(favoritePlayersNotifierProvider);
+    ref.listen(favoritesCombinedGamesProvider, _onGamesChanged);
+    // Live first brings the games in play to the top of each day; the list
+    // goes up to them.
+    ref.listen<bool>(
+      gameListLiveFirstProvider(GameListLiveFirstSurface.favorites),
+      (previous, next) {
+        if (next && previous != true) {
+          animateScrollControllerToTop(_scrollController);
+        }
+      },
+    );
     if (!_isActiveOnScreen) {
       return const SizedBox.shrink();
     }
@@ -678,35 +770,38 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
       },
       color: context.colors.textPrimary,
       backgroundColor: context.colors.surface,
-      child: CustomScrollView(
-        key: PageStorageKey<String>('favorites_games_list_${viewMode.index}'),
-        controller: _scrollController,
-        scrollCacheExtent: kListScrollCacheExtent,
-        physics: const AlwaysScrollableScrollPhysics(
-          parent: BouncingScrollPhysics(),
-        ),
-        slivers: [
-          // Favorite-player chips. The search field lives in the screen's
-          // full-page search header (Trello #1420), above this same list.
-          // Player selection and text search are independent AND filters, so
-          // keep the player chips available while a search is active.
-          if (favorites.length > 1)
-            SliverToBoxAdapter(child: _buildFilterChips(state, favorites)),
-
-          // Content
-          SliverLayoutBuilder(
-            builder: (context, constraints) => _buildContentSliver(
-              state,
-              favorites,
-              viewMode,
-              constraints.crossAxisExtent,
-              liveFirst: liveFirst,
-            ),
+      child: NotificationListener<ScrollStartNotification>(
+        onNotification: _onScrollStart,
+        child: CustomScrollView(
+          key: PageStorageKey<String>('favorites_games_list_${viewMode.index}'),
+          controller: _scrollController,
+          scrollCacheExtent: kListScrollCacheExtent,
+          physics: const AlwaysScrollableScrollPhysics(
+            parent: BouncingScrollPhysics(),
           ),
+          slivers: [
+            // Favorite-player chips. The search field lives in the screen's
+            // full-page search header (Trello #1420), above this same list.
+            // Player selection and text search are independent AND filters,
+            // so keep the player chips available while a search is active.
+            if (favorites.length > 1)
+              SliverToBoxAdapter(child: _buildFilterChips(state, favorites)),
 
-          // Bottom padding
-          SliverToBoxAdapter(child: SizedBox(height: 24.h)),
-        ],
+            // Content
+            SliverLayoutBuilder(
+              builder: (context, constraints) => _buildContentSliver(
+                state,
+                favorites,
+                viewMode,
+                constraints.crossAxisExtent,
+                liveFirst: liveFirst,
+              ),
+            ),
+
+            // Bottom padding
+            SliverToBoxAdapter(child: SizedBox(height: 24.h)),
+          ],
+        ),
       ),
     );
 
@@ -720,10 +815,32 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
     return Center(
       child: ConstrainedBox(
         constraints: BoxConstraints(maxWidth: ResponsiveHelper.contentMaxWidth),
-        child: SizedBox.expand(child: content),
+        child: SizedBox.expand(
+          child: Stack(
+            children: [
+              Positioned.fill(child: content),
+              // A search, its close or a filter on its way: the list it
+              // replaces stays, with this quiet line over its top.
+              Positioned(
+                top: 0,
+                left: 0,
+                right: 0,
+                child: GamesListRefetchLine(
+                  active: state.isReplacing && !_showsFirstLoad(state),
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
+
+  /// Nothing listed yet and nothing to keep on screen: the first load's
+  /// spinner. An answer already on screen (no games, or no hits) stays
+  /// while a search or a filter replaces it, under the quiet line.
+  static bool _showsFirstLoad(FavoritesCombinedGamesState state) =>
+      state.isLoading && state.games.isEmpty && !state.isReplacing;
 
   Widget _buildFilterChips(
     FavoritesCombinedGamesState state,
@@ -867,7 +984,7 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
     double availableWidth, {
     required bool liveFirst,
   }) {
-    if (state.isLoading && state.games.isEmpty) {
+    if (_showsFirstLoad(state)) {
       return SliverFillRemaining(
         hasScrollBody: false,
         child: _buildLoadingState(),
@@ -883,10 +1000,7 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
 
     if (state.games.isEmpty) {
       if (state.filter.hasActiveFilters) {
-        return SliverFillRemaining(
-          hasScrollBody: false,
-          child: _buildNoFilterResultsState(),
-        );
+        return _buildNoFilterResultsSliver(state);
       }
       if (state.isSearching) {
         // The Games search matched no game from a followed player. Offer the
@@ -912,10 +1026,7 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
 
     // Show empty state if filter excludes all games
     if (listedGames.isEmpty && state.filter.hasActiveFilters) {
-      return SliverFillRemaining(
-        hasScrollBody: false,
-        child: _buildNoFilterResultsState(),
-      );
+      return _buildNoFilterResultsSliver(state);
     }
 
     final gamesByDate = groupFavoriteGamesByDay(
@@ -947,10 +1058,11 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
       gameIdToIndex[games[i].gameId] = i;
     }
 
+    final folds = state.isSearching ? _searchCollapsedDates : _collapsedDates;
     for (final entry in gamesByDate.entries) {
       final dateKey = entry.key;
       final dateGames = entry.value;
-      final isCollapsed = _collapsedDates.contains(dateKey);
+      final isCollapsed = folds.contains(dateKey);
 
       // Date header
       listEntries.add(
@@ -1030,8 +1142,9 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
       }
     }
 
-    // Loading indicator for auto-scroll loading
-    if (state.isLoading && state.games.isNotEmpty) {
+    // Loading indicator for auto-scroll loading (a list being replaced has
+    // its quiet line at the top instead).
+    if (state.isLoading && !state.isReplacing && state.games.isNotEmpty) {
       listEntries.add(const _FavoritesFooterEntry.loading());
     } else if (state.hasMore && state.games.isNotEmpty) {
       // Spacer to ensure scroll triggers auto-load
@@ -1040,27 +1153,32 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
       listEntries.add(const _FavoritesFooterEntry.end());
     }
 
-    return SliverPadding(
-      // The last game ends clear of the floating buttons over the list.
-      padding: EdgeInsets.fromLTRB(
-        16.w,
-        8.h,
-        16.w,
-        8.h + FavoritesGamesFabs.reach(context),
-      ),
-      sliver: SliverList(
-        delegate: SliverChildBuilderDelegate(
-          (context, index) => _buildListEntry(
-            listEntries[index],
-            games: games,
-            gamesData: gamesData,
-            gameIdToIndex: gameIdToIndex,
-            viewMode: viewMode,
+    return SliverMainAxisGroup(
+      slivers: [
+        SliverPadding(
+          padding: EdgeInsets.fromLTRB(16.w, 8.h, 16.w, 0),
+          sliver: SliverList(
+            delegate: SliverChildBuilderDelegate(
+              (context, index) => _buildListEntry(
+                listEntries[index],
+                games: games,
+                gamesData: gamesData,
+                gameIdToIndex: gameIdToIndex,
+                viewMode: viewMode,
+              ),
+              childCount: listEntries.length,
+              addAutomaticKeepAlives: false,
+            ),
           ),
-          childCount: listEntries.length,
-          addAutomaticKeepAlives: false,
         ),
-      ),
+        // The last game ends clear of the floating buttons over the list.
+        // They step away while the search is open: the room gives way on
+        // the search's own timeline, as on every Games list.
+        SearchModeListEnd.sliver(
+          base: 8.h,
+          buttons: FavoritesGamesFabs.reach(context),
+        ),
+      ],
     );
   }
 
@@ -1283,7 +1401,7 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
           ),
         ],
       ),
-    ).animate().fadeIn(duration: 300.ms);
+    );
   }
 
   Widget _buildEmptyState() {
@@ -1316,7 +1434,7 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
           ),
         ],
       ),
-    ).animate().fadeIn(duration: 300.ms).scale(begin: const Offset(0.95, 0.95));
+    );
   }
 
   /// The followed players, in the shape the shared suggestion widget compares
@@ -1389,54 +1507,16 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
     );
   }
 
-  Widget _buildNoFilterResultsState() {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(
-            Icons.filter_alt_off_outlined,
-            size: 56.sp,
-            color: context.textInk(0.4),
-          ),
-          SizedBox(height: 12.h),
-          Text(
-            'No matching games',
-            style: AppTypography.textMdMedium.copyWith(
-              color: context.colors.textPrimary.withValues(alpha: 0.85),
-            ),
-          ),
-          SizedBox(height: 6.h),
-          Text(
-            'Try adjusting your filters',
-            style: AppTypography.textSmRegular.copyWith(
-              color: context.textInk(0.55),
-            ),
-            textAlign: TextAlign.center,
-          ),
-          SizedBox(height: 20.h),
-          GestureDetector(
-            onTap: () {
-              HapticFeedback.mediumImpact();
-              ref.read(favoritesCombinedGamesProvider.notifier).clearFilter();
-            },
-            child: Container(
-              padding: EdgeInsets.symmetric(horizontal: 20.w, vertical: 10.h),
-              decoration: BoxDecoration(
-                color: context.colors.textPrimary.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(8.br),
-              ),
-              child: Text(
-                'Clear Filters',
-                style: AppTypography.textSmMedium.copyWith(
-                  color: context.colors.textPrimary,
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    ).animate().fadeIn(duration: 300.ms);
+  /// The filters (with the search's words, if any) leave no game: the one
+  /// no-matches line every Games list shows, where the first game would be,
+  /// with the way back to every game. Its action plays the button haptic.
+  Widget _buildNoFilterResultsSliver(FavoritesCombinedGamesState state) {
+    return SearchNoMatches.sliver(
+      query: state.isSearching ? state.searchQuery : null,
+      filtered: true,
+      onClear: () =>
+          ref.read(favoritesCombinedGamesProvider.notifier).clearFilter(),
+    );
   }
 
   void _showAddToFolderSheet(BuildContext context, GamesTourModel game) {
@@ -1688,12 +1768,10 @@ class _FavoritesLiveBoardGameCardState
     // Use global set to track animations - survives tab switches and rebuilds
     if (!_favoritesAnimatedGameIds.contains(gameId)) {
       _favoritesAnimatedGameIds.add(gameId);
+      // It slides into place, drawn from its first frame: a card is never
+      // hidden behind its entrance.
       return card
-          .animate()
-          .fadeIn(
-            duration: 200.ms,
-            delay: Duration(milliseconds: (widget.listIndex % 10) * 30),
-          )
+          .animate(delay: Duration(milliseconds: (widget.listIndex % 10) * 30))
           .slideY(begin: 0.05, end: 0, duration: 200.ms, curve: Curves.easeOut);
     }
 

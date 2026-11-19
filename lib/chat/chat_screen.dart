@@ -18,6 +18,9 @@ import 'package:chessever2/screens/player_profile/player_profile_screen.dart';
 import 'package:chessever2/widgets/game_filter/game_filter_model.dart';
 import 'package:chessever2/widgets/auth/auth_upgrade_sheet.dart';
 import 'package:chessever2/widgets/dismiss_keyboard.dart';
+import 'package:chessever2/widgets/home_top_bar.dart';
+import 'package:chessever2/widgets/press_spring.dart';
+import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/widgets/app_snack.dart';
 import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
 import 'package:flutter/material.dart';
@@ -695,9 +698,19 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     // Out of sight (the home tab kept alive behind another), nothing on the
     // timeline is being read.
     final inView = TickerMode.valuesOf(context).enabled;
+    // As the home bar's tab, Botvinnik wears the bar every root wears: the
+    // same inset, height, gutter and centre line, its name set as every
+    // root's is, the chats on the start gutter and a new chat on the end
+    // one. The bar and the status bar's strip stand on the ground every
+    // root's bar stands on, so switching tabs never changes their colour;
+    // the conversation's own surface takes over under it without a line
+    // ([_ConversationGround]).
+    final surface = Theme.of(context).colorScheme.surface;
+    final ground = widget.embedded ? context.colors.background : surface;
     return Scaffold(
       key: _scaffoldKey,
       resizeToAvoidBottomInset: !widget.embedded,
+      backgroundColor: widget.embedded ? ground : null,
       onDrawerChanged: (open) => setState(() => _drawerOpen = open),
       drawer: _ConversationDrawer(
         conversations: _conversations,
@@ -706,80 +719,81 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         onSelect: _select,
         onDelete: _delete,
       ),
-      appBar: AppBar(
-        toolbarHeight: 72,
-        surfaceTintColor: Colors.transparent,
-        bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(1),
-          child: Divider(
-            height: 1,
-            color: Theme.of(context).colorScheme.outlineVariant,
-          ),
-        ),
-        leading: IconButton(
-          tooltip: 'Chats',
-          icon: const Icon(Icons.menu_rounded),
-          onPressed: () => _scaffoldKey.currentState?.openDrawer(),
-        ),
-        titleSpacing: 4,
-        // The name alone carries the title; "Beta" rides in the subtitle so
-        // the title never truncates at 360dp with a 1.3x text scale.
-        title: const Row(
-          children: [
-            BotvinnikIcon(size: 40),
-            SizedBox(width: 10),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
+      appBar: widget.embedded
+          ? null
+          : AppBar(
+              toolbarHeight: 72,
+              surfaceTintColor: Colors.transparent,
+              bottom: PreferredSize(
+                preferredSize: const Size.fromHeight(1),
+                child: Divider(
+                  height: 1,
+                  color: Theme.of(context).colorScheme.outlineVariant,
+                ),
+              ),
+              leading: IconButton(
+                tooltip: 'Chats',
+                icon: const Icon(Icons.menu_rounded),
+                onPressed: () => _scaffoldKey.currentState?.openDrawer(),
+              ),
+              titleSpacing: 4,
+              // The name alone carries the title; "Beta" rides in the
+              // subtitle so the title never truncates at 360dp with a 1.3x
+              // text scale.
+              title: const Row(
                 children: [
-                  Text(
-                    'Botvinnik',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  SizedBox(height: 1),
-                  Row(
-                    children: [
-                      _OnlineDot(),
-                      SizedBox(width: 5),
-                      Flexible(
-                        child: Text(
-                          'Beta · Chess assistant',
+                  BotvinnikIcon(size: 40),
+                  SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          'Botvinnik',
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w400,
-                          ),
                         ),
-                      ),
-                    ],
+                        SizedBox(height: 1),
+                        Row(
+                          children: [
+                            _OnlineDot(),
+                            SizedBox(width: 5),
+                            Flexible(
+                              child: Text(
+                                'Beta · Chess assistant',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w400,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
                   ),
                 ],
               ),
+              actions: [
+                IconButton(
+                  tooltip: 'Close',
+                  onPressed: () => Navigator.of(context).maybePop(),
+                  icon: const Icon(Icons.close_rounded),
+                ),
+              ],
             ),
-          ],
-        ),
-        actions: [
-          if (widget.embedded)
-            IconButton(
-              tooltip: 'New chat',
-              onPressed: _sending ? null : _newConversation,
-              icon: const Icon(Icons.edit_note_rounded),
-            )
-          else
-            IconButton(
-              tooltip: 'Close',
-              onPressed: () => Navigator.of(context).maybePop(),
-              icon: const Icon(Icons.close_rounded),
-            ),
-        ],
-      ),
       body: ColoredBox(
-        color: Theme.of(context).colorScheme.surface,
+        color: ground,
         child: Column(
           children: [
+            if (widget.embedded)
+              _BotvinnikBar(
+                onChats: () => _scaffoldKey.currentState?.openDrawer(),
+                onNewChat: _sending ? null : _newConversation,
+              ),
             if (_error != null)
               MaterialBanner(
                 content: Text(_error!),
@@ -791,34 +805,39 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                 ],
               ),
             Expanded(
-              child: BotvinnikInboxTimeline(
-                exposed: inView && !_drawerOpen,
-                scrollController: _scrollController,
-                emptyState: _loading
-                    ? Center(
-                        child: CircularProgressIndicator(
-                          color: context.colors.accentText,
+              child: _ConversationGround(
+                handOff: widget.embedded,
+                child: BotvinnikInboxTimeline(
+                  exposed: inView && !_drawerOpen,
+                  scrollController: _scrollController,
+                  emptyState: _loading
+                      ? Center(
+                          child: CircularProgressIndicator(
+                            color: context.colors.accentText,
+                          ),
+                        )
+                      : _EmptyChat(
+                          embedded: widget.embedded,
+                          suggestions: chatSuggestionsForScreen(
+                            widget.screenContext?.screen,
+                          ),
+                          isTournamentContext:
+                              widget.screenContext?.screen == 'tournament' ||
+                              widget.screenContext?.screen == 'event',
+                          onSuggestionPressed: _sendSuggestion,
                         ),
-                      )
-                    : _EmptyChat(
-                        suggestions: chatSuggestionsForScreen(
-                          widget.screenContext?.screen,
+                  conversationItemCount: _loading ? 0 : _messages.length,
+                  conversationItemBuilder: (context, index) =>
+                      ChatMessageBubble(
+                        key: ValueKey(_messages[index].id),
+                        message: _messages[index],
+                        isStreaming: _sending && index == _messages.length - 1,
+                        feedbackPending: _feedbackPending.contains(
+                          _messages[index].id,
                         ),
-                        isTournamentContext:
-                            widget.screenContext?.screen == 'tournament' ||
-                            widget.screenContext?.screen == 'event',
-                        onSuggestionPressed: _sendSuggestion,
+                        onReferencePressed: _openReference,
+                        onFeedbackPressed: _setFeedback,
                       ),
-                conversationItemCount: _loading ? 0 : _messages.length,
-                conversationItemBuilder: (context, index) => ChatMessageBubble(
-                  key: ValueKey(_messages[index].id),
-                  message: _messages[index],
-                  isStreaming: _sending && index == _messages.length - 1,
-                  feedbackPending: _feedbackPending.contains(
-                    _messages[index].id,
-                  ),
-                  onReferencePressed: _openReference,
-                  onFeedbackPressed: _setFeedback,
                 ),
               ),
             ),
@@ -837,6 +856,150 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
               ),
             },
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Botvinnik's bar as a home tab: the chats on the start gutter, the name
+/// centred as every root's is, a new chat on the end gutter.
+class _BotvinnikBar extends StatelessWidget {
+  const _BotvinnikBar({required this.onChats, required this.onNewChat});
+
+  final VoidCallback onChats;
+
+  /// Null while an answer is still coming in.
+  final VoidCallback? onNewChat;
+
+  @override
+  Widget build(BuildContext context) {
+    return HomeTopBarFrame(
+      child: HomeTopBarTitleRow(
+        leading: _BarGlyphButton(
+          tooltip: 'Chats',
+          icon: Icons.menu_rounded,
+          onTap: onChats,
+        ),
+        title: const HomeTopBarTitle('Botvinnik'),
+        trailing: [
+          _BarGlyphButton(
+            key: const ValueKey('botvinnik_new_chat'),
+            tooltip: 'New chat',
+            icon: Icons.edit_note_rounded,
+            onTap: onNewChat,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// The conversation's ground: the chat's surface, under the timeline.
+///
+/// With [handOff] (Botvinnik as a home tab) its top takes over from the
+/// root's ground the bar stands on, over [extent] and eased at both ends,
+/// so the bar and the conversation meet without a line and with no edge
+/// where the hand-off ends. It lies under the timeline: rows scroll over
+/// it, never under it.
+class _ConversationGround extends StatelessWidget {
+  const _ConversationGround({required this.handOff, required this.child});
+
+  final bool handOff;
+  final Widget child;
+
+  /// How far below the bar the root's ground has become the surface.
+  static const double extent = 48;
+
+  /// Stops along the hand-off: enough that the easing reads as one curve.
+  static const int _steps = 12;
+
+  @override
+  Widget build(BuildContext context) {
+    if (!handOff) return child;
+    final from = context.colors.background;
+    final to = Theme.of(context).colorScheme.surface;
+    // Smoothstep: no slope at either end, so neither end shows as a line.
+    double ease(double t) => t * t * (3 - 2 * t);
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        ColoredBox(color: to),
+        Align(
+          alignment: Alignment.topCenter,
+          child: SizedBox(
+            height: extent,
+            width: double.infinity,
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    for (var i = 0; i <= _steps; i++)
+                      Color.lerp(from, to, ease(i / _steps))!,
+                  ],
+                  stops: [for (var i = 0; i <= _steps; i++) i / _steps],
+                ),
+              ),
+            ),
+          ),
+        ),
+        child,
+      ],
+    );
+  }
+}
+
+/// A bare glyph on the bar, in a target as tall as the bar's controls: no
+/// tile behind it, the app's press under the finger.
+class _BarGlyphButton extends StatelessWidget {
+  const _BarGlyphButton({
+    super.key,
+    required this.tooltip,
+    required this.icon,
+    required this.onTap,
+  });
+
+  final String tooltip;
+  final IconData icon;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.colors;
+    final tap = onTap;
+    return Tooltip(
+      message: tooltip,
+      excludeFromSemantics: true,
+      child: Semantics(
+        button: true,
+        enabled: tap != null,
+        label: tooltip,
+        onTap: tap,
+        excludeSemantics: true,
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: tap == null
+              ? null
+              : () {
+                  HapticFeedbackService.buttonPress();
+                  tap();
+                },
+          child: PressSpring(
+            pressedScale: 0.9,
+            child: SizedBox(
+              width: 44,
+              height: HomeTopBarMetrics.controlExtent,
+              child: Center(
+                child: Icon(
+                  icon,
+                  size: 24,
+                  color: tap == null ? colors.textTertiary : colors.textPrimary,
+                ),
+              ),
+            ),
+          ),
         ),
       ),
     );
@@ -1474,11 +1637,16 @@ class _ChatComposerState extends State<ChatComposer> {
 
 class _EmptyChat extends StatelessWidget {
   const _EmptyChat({
+    required this.embedded,
     required this.suggestions,
     required this.isTournamentContext,
     required this.onSuggestionPressed,
   });
 
+  /// Botvinnik as a home tab: the page opens on every root's lead-in and
+  /// gutter, so its first line lands where Home's and Profile's first card
+  /// does and switching tabs never moves it.
+  final bool embedded;
   final List<ChatSuggestion> suggestions;
   final bool isTournamentContext;
   final ValueChanged<String> onSuggestionPressed;
@@ -1486,8 +1654,11 @@ class _EmptyChat extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+    final side = HomeTopBarMetrics.horizontalPadding;
     return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(24, 48, 24, 24),
+      padding: embedded
+          ? EdgeInsets.fromLTRB(side, HomeTopBarMetrics.contentGap, side, 24)
+          : const EdgeInsets.fromLTRB(24, 48, 24, 24),
       child: Center(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 400),

@@ -95,9 +95,9 @@ void main() {
       expect(find.text('Events'), findsNothing);
       expect(find.text('Collections'), findsNothing);
       expect(find.text('Calendar'), findsNothing);
-      // Every slot shows its name under its mark, and announces it once.
+      // Marks only: no names drawn, but every slot announces its own.
       for (final title in titles) {
-        expect(find.text(title), findsOneWidget);
+        expect(find.text(title), findsNothing);
       }
       expect(find.byIcon(Icons.home_rounded), findsOneWidget);
       // Signed out, Profile's avatar falls back to the person mark.
@@ -113,12 +113,12 @@ void main() {
         expect(widget.width, closeTo(393 / titles.length, 0.001));
       }
 
-      // The bar is at least 60dp plus the gesture area; the names (clamped
-      // to 1.3x text) grow it a little, never past a thumb's reach.
+      // A fixed bar, whatever the text scale: its height plus the gesture
+      // area.
       final bar = tester.getSize(find.byType(BottomNavBar)).height - 34;
-      expect(bar, inInclusiveRange(60, 68));
+      expect(bar, closeTo(BottomNavBarWidget.barHeight, 1.01));
       // Every slot answers down through the gesture area: no dead strip
-      // under the names.
+      // under the marks.
       for (final slot in tester.widgetList<BottomNavBarWidget>(
         find.byType(BottomNavBarWidget),
       )) {
@@ -221,7 +221,7 @@ void main() {
           findsNothing,
         );
         // Same square as a reader's avatar, so the slot does not move.
-        expect(tester.getSize(find.byKey(avatar)), const Size(30, 30));
+        expect(tester.getSize(find.byKey(avatar)), const Size(28, 28));
       });
     }
 

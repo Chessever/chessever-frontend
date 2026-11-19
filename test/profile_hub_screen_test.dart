@@ -15,6 +15,7 @@ import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/adaptive_window.dart';
 import 'package:chessever2/widgets/discovery_dot.dart';
+import 'package:chessever2/widgets/home_top_bar.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -176,15 +177,24 @@ void main() {
     await _close(tester);
   });
 
-  testWidgets('rows never scroll under the status bar', (tester) async {
+  testWidgets('rows start under the root bar and never scroll under the '
+      'status bar', (tester) async {
     const inset = 47.0;
     await _pump(tester, statusBar: inset);
     final list = find.byType(Scrollable);
-    expect(tester.getTopLeft(list).dy, inset);
+    final context = tester.element(list);
+    // The page starts where every root's page starts: under the bar every
+    // root wears, its name set as every root's is.
+    expect(
+      tester.getTopLeft(list).dy,
+      closeTo(HomeTopBarMetrics.headerExtent(context), 0.5),
+    );
+    expect(find.byType(HomeTopBarFrame), findsOneWidget);
+    expect(find.widgetWithText(HomeTopBarTitle, 'Profile'), findsOneWidget);
     await tester.drag(list, const Offset(0, -240));
     await tester.pumpAndSettle();
     // The viewport (and so its clip) still starts under the inset.
-    expect(tester.getTopLeft(list).dy, inset);
+    expect(tester.getTopLeft(list).dy, greaterThanOrEqualTo(inset));
     await _close(tester);
   });
 

@@ -4,7 +4,10 @@ import 'package:chessever2/chat/botvinnik_icon.dart';
 import 'package:chessever2/chat/botvinnik_provider.dart';
 import 'package:chessever2/chat/chat_api.dart';
 import 'package:chessever2/theme/app_theme.dart';
+import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/widgets/glass_surface.dart';
+import 'package:chessever2/widgets/search_mode/search_count_badge.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -40,7 +43,15 @@ void main() {
     bool enabled = true,
     int unreadCount = 0,
     bool reduceMotion = false,
+    Animation<double>? fade,
   }) {
+    Widget button = BotvinnikChatButton(
+      heroTag: 'botvinnik-test',
+      screenContext: const ChatScreenContext(screen: 'test'),
+      iconOnly: true,
+      onPressed: onPressed,
+    );
+    if (fade != null) button = GlassFade(opacity: fade, child: button);
     return ProviderScope(
       overrides: [
         inboxUnreadCountProvider.overrideWithValue(unreadCount),
@@ -57,12 +68,7 @@ void main() {
               ).copyWith(disableAnimations: reduceMotion),
               child: Scaffold(
                 body: const SizedBox.expand(),
-                floatingActionButton: BotvinnikChatButton(
-                  heroTag: 'botvinnik-test',
-                  screenContext: const ChatScreenContext(screen: 'test'),
-                  iconOnly: true,
-                  onPressed: onPressed,
-                ),
+                floatingActionButton: button,
               ),
             );
           },
@@ -72,7 +78,7 @@ void main() {
   }
 
   testWidgets(
-    'red unread count badge tracks counts and announces exact total',
+    'unread count wears the one count badge and announces exact total',
     (tester) async {
       final semantics = tester.ensureSemantics();
       for (final count in [1, 12, 105, 0]) {
@@ -83,21 +89,68 @@ void main() {
         final badge = find.byKey(const ValueKey('botvinnik-unread-badge'));
         expect(badge, count == 0 ? findsNothing : findsOneWidget);
         if (count > 0) {
-          expect(find.text(count > 99 ? '99+' : '$count'), findsOneWidget);
+          // The one count style: a single digit, else "9+" (the exact
+          // total is read aloud).
+          expect(find.text(count > 9 ? '9+' : '$count'), findsOneWidget);
           expect(
             find.bySemanticsLabel(
               'Ask Botvinnik, $count unread Inbox messages',
             ),
             findsOneWidget,
           );
-          final decoration =
-              tester.widget<Container>(badge).decoration as BoxDecoration;
-          expect(decoration.color, const Color(0xFFD32F2F));
+          expect(
+            find.descendant(
+              of: find.byType(BotvinnikChatButton),
+              matching: find.byType(SearchCountBadge),
+            ),
+            findsOneWidget,
+          );
         }
       }
       semantics.dispose();
     },
   );
+
+  testWidgets('the unread count steps back with the glass, never alone', (
+    tester,
+  ) async {
+    // As a sibling of the search button in a floating stack: the stack
+    // fades its buttons as glass while the search opens.
+    final fade = ValueNotifier<double>(1);
+    addTearDown(fade.dispose);
+    final opacity = _Notified(fade);
+    await tester.pumpWidget(
+      host(theme: AppTheme.darkTheme, unreadCount: 3, fade: opacity),
+    );
+    await tester.pumpAndSettle();
+    final badge = find.byKey(const ValueKey('botvinnik-unread-badge'));
+    double badgeOpacity() => tester
+        .widget<FadeTransition>(
+          find.ancestor(of: badge, matching: find.byType(FadeTransition)).first,
+        )
+        .opacity
+        .value;
+    expect(badgeOpacity(), 1);
+
+    fade.value = 0.4;
+    await tester.pump();
+    // The badge and the glass at the same strength.
+    expect(badgeOpacity(), 0.4);
+    expect(
+      GlassFade.maybeOf(tester.element(find.byType(GlassSurface)))!.value,
+      0.4,
+    );
+
+    // The app's one count: the brand's tonal accent, not a red of its own.
+    final coin =
+        tester
+                .widget<Container>(
+                  find.descendant(of: badge, matching: find.byType(Container)),
+                )
+                .decoration!
+            as BoxDecoration;
+    expect(coin.color, tester.element(badge).colors.accentText);
+  });
 
   for (final (name, theme) in [
     ('dark', AppTheme.darkTheme),
@@ -244,4 +297,26 @@ void main() {
     await gesture.up();
     await tester.pump();
   });
+}
+
+/// A [ValueNotifier] read as an animation.
+class _Notified extends Animation<double>
+    with AnimationLocalListenersMixin, AnimationLocalStatusListenersMixin {
+  _Notified(this._source) {
+    _source.addListener(notifyListeners);
+  }
+
+  final ValueNotifier<double> _source;
+
+  @override
+  double get value => _source.value;
+
+  @override
+  AnimationStatus get status => AnimationStatus.forward;
+
+  @override
+  void didRegisterListener() {}
+
+  @override
+  void didUnregisterListener() {}
 }

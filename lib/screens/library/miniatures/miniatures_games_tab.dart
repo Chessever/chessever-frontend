@@ -1,5 +1,4 @@
-import 'dart:async';
-
+import 'package:chessever2/screens/favorites/widgets/games_list_refetch_line.dart';
 import 'package:chessever2/screens/library/miniatures/miniatures_share.dart';
 
 import 'package:chessever2/repository/gamebase/miniatures/miniatures_models.dart';
@@ -21,12 +20,12 @@ import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/scroll_cache.dart';
-import 'package:chessever2/screens/tour_detail/widgets/event_search_bar.dart'
-    show EventSearchBarFrame;
 import 'package:chessever2/widgets/ink_fab.dart' show InkFabSize;
+import 'package:chessever2/widgets/list_search_scroll_memory.dart';
 import 'package:chessever2/widgets/scroll_to_top_bus.dart';
-import 'package:chessever2/widgets/simple_search_bar.dart';
+import 'package:chessever2/widgets/search_mode/search_mode.dart';
 import 'package:chessever2/widgets/skeleton_widget.dart';
+import 'package:chessever2/widgets/search_no_matches.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:intl/intl.dart';
@@ -35,9 +34,14 @@ import 'package:intl/intl.dart';
 /// Countrymen games tabs. Cards honour the app-wide games list view mode, so
 /// switching to grid or board here switches it everywhere.
 ///
-/// The list is all the tab draws: its search and filters open from the
-/// screen's floating search button ([MiniaturesGamesSearchField]), and the
-/// layout toggle sits in the screen's header.
+/// The list is all the tab draws: its search opens from the screen's
+/// floating search button ([applyMiniaturesGamesSearch]), its filters and
+/// layout from the screen's header ([openMiniaturesGamesFilters]).
+///
+/// A search is this same list, narrowed: while a new search's first page is
+/// read the rows on screen stay, under a quiet line, and every day opens so
+/// the hits show; the reader's own folds and place come back with the full
+/// list.
 ///
 /// Everyone browses the same list: every day, every filter. Only opening a
 /// game, including Today, goes through the Premium guard (see
@@ -60,6 +64,18 @@ class _MiniaturesGamesTabState extends ConsumerState<MiniaturesGamesTab>
 
   /// Collapsed (not expanded) day keys. Empty means every section is open.
   final Set<String> _collapsedDates = {};
+
+  /// Days folded while a search's hits are listed. Every day opens with the
+  /// hits, so none hides behind a fold made before searching; the folds in
+  /// [_collapsedDates] come back with the full list.
+  final Set<String> _searchCollapsedDates = {};
+  bool _listedHits = false;
+
+  /// The list as it last settled, shown while a new filter or search reads
+  /// its first page: the provider starts each one empty.
+  _ShownMiniatures? _settled;
+
+  final ListSearchScrollMemory _place = ListSearchScrollMemory();
 
   @override
   bool get wantKeepAlive => true;
@@ -93,10 +109,14 @@ class _MiniaturesGamesTabState extends ConsumerState<MiniaturesGamesTab>
     }
   }
 
+  Set<String> get _folds =>
+      _listedHits ? _searchCollapsedDates : _collapsedDates;
+
   void _toggleDateSection(String dateKey) {
     HapticFeedbackService.light();
     setState(() {
-      if (!_collapsedDates.remove(dateKey)) _collapsedDates.add(dateKey);
+      final folds = _folds;
+      if (!folds.remove(dateKey)) folds.add(dateKey);
     });
     // Same as Countrymen / Favorites Games: collapsing can leave content
     // shorter than the viewport with hasMore still true — keep paging.
@@ -227,6 +247,28 @@ class _MiniaturesGamesTabState extends ConsumerState<MiniaturesGamesTab>
     final filter = ref.watch(miniaturesFilterProvider);
     final viewMode = ref.watch(gamesListViewModeProvider);
 
+    // Each filter and each search is a new list, read from its first page.
+    // Until that page lands the list on screen stays: only a first read,
+    // with nothing on screen yet, draws the skeleton.
+    final reading = state.isLoading && state.items.isEmpty;
+    final current = _ShownMiniatures(
+      state: state,
+      games: games,
+      filter: filter,
+    );
+    if (!reading) _settled = current;
+    final shown = reading ? _settled : current;
+    final held = reading && shown != null;
+
+    // Every day opens while hits are listed, and the reader's folds come
+    // back with the full list.
+    final listedHits = (shown?.filter.search ?? '').isNotEmpty;
+    if (listedHits != _listedHits) {
+      _listedHits = listedHits;
+      _searchCollapsedDates.clear();
+    }
+    _place.follow(_scrollController, shown?.filter.search);
+
     Widget content = RefreshIndicator(
       onRefresh: () async {
         HapticFeedbackService.medium();
@@ -244,20 +286,38 @@ class _MiniaturesGamesTabState extends ConsumerState<MiniaturesGamesTab>
         slivers: [
           SliverToBoxAdapter(child: SizedBox(height: 4.h)),
           SliverLayoutBuilder(
-            builder: (context, constraints) => _buildContentSliver(
-              state,
-              games,
-              filter,
-              viewMode,
-              constraints.crossAxisExtent,
-            ),
+            builder: (context, constraints) => shown == null
+                ? SliverToBoxAdapter(child: _buildSkeletonList())
+                : _buildContentSliver(
+                    shown,
+                    viewMode,
+                    constraints.crossAxisExtent,
+                    held: held,
+                  ),
           ),
-          // Clear of the floating search button at the list's end.
-          SliverToBoxAdapter(
-            child: SizedBox(height: 24.h + InkFabSize.regular.side),
+          // Clear of the floating search button at the list's end (its
+          // square, and the margin that lifts it over the home indicator);
+          // the button's room gives way on the search's own timeline while
+          // nothing floats there.
+          SearchModeListEnd.sliver(
+            base: 24.h + MediaQuery.viewPaddingOf(context).bottom,
+            buttons: InkFabSize.regular.side + kFloatingActionButtonMargin,
           ),
         ],
       ),
+    );
+
+    // The Games lists' quiet line, in their gutters, over the list's top.
+    content = Stack(
+      children: [
+        content,
+        Positioned(
+          top: 0,
+          left: 0,
+          right: 0,
+          child: GamesListRefetchLine(active: held),
+        ),
+      ],
     );
 
     if (ResponsiveHelper.isTablet) {
@@ -274,13 +334,17 @@ class _MiniaturesGamesTabState extends ConsumerState<MiniaturesGamesTab>
     return content;
   }
 
+  /// The rows for [shown]. [held] while it is the list a new read replaces
+  /// once its first page lands: it pages no further meanwhile.
   Widget _buildContentSliver(
-    MiniaturesPaginationState state,
-    List<GamesTourModel> games,
-    MiniatureGamesFilter filter,
+    _ShownMiniatures shown,
     GamesListViewMode viewMode,
-    double availableWidth,
-  ) {
+    double availableWidth, {
+    required bool held,
+  }) {
+    final state = shown.state;
+    final games = shown.games;
+    final filter = shown.filter;
     if (state.isLoading && games.isEmpty) {
       return SliverToBoxAdapter(child: _buildSkeletonList());
     }
@@ -300,22 +364,37 @@ class _MiniaturesGamesTabState extends ConsumerState<MiniaturesGamesTab>
       );
     }
 
+    final words = filter.search?.trim() ?? '';
+    if (games.isEmpty && (filter.hasActiveFilters || words.isNotEmpty)) {
+      // Narrowed to nothing: the one no-hits state every Games list shows,
+      // where the first row would have been. Its action clears what it
+      // names (and plays the tap's haptic itself): the filters, keeping an
+      // open search's words, or the words, which the open field follows.
+      final filtered = filter.dialogActiveCount > 0;
+      return SearchNoMatches.sliver(
+        query: words,
+        filtered: filtered,
+        onClear: () {
+          final notifier = ref.read(miniaturesFilterProvider.notifier);
+          final now = notifier.state;
+          notifier.state = filtered
+              ? MiniatureGamesFilter.defaultFilter.copyWith(
+                  window: now.window,
+                  sort: now.sort,
+                  order: now.order,
+                  search: now.search,
+                )
+              : now.copyWith(clearSearch: true);
+        },
+      );
+    }
+
     if (games.isEmpty) {
-      return SliverFillRemaining(
+      return const SliverFillRemaining(
         hasScrollBody: false,
         child: _MiniaturesMessage(
           icon: Icons.bolt_outlined,
           title: 'No miniatures found',
-          subtitle: filter.hasActiveFilters
-              ? 'Try widening your filters or clearing the search.'
-              : null,
-          actionLabel: filter.hasActiveFilters ? 'Clear filters' : null,
-          onAction: filter.hasActiveFilters
-              // The search field, when open, follows (see
-              // MiniaturesGamesSearchField).
-              ? () => ref.read(miniaturesFilterProvider.notifier).state =
-                    MiniatureGamesFilter.defaultFilter
-              : null,
         ),
       );
     }
@@ -336,10 +415,11 @@ class _MiniaturesGamesTabState extends ConsumerState<MiniaturesGamesTab>
 
     // Cheap row descriptors only. Cards are built lazily for visible rows.
     final listEntries = <_MiniatureListEntry>[];
+    final folds = _folds;
     for (final entry in _groupGamesByDate(games).entries) {
       final dateKey = entry.key;
       final dateGames = entry.value;
-      final isCollapsed = _collapsedDates.contains(dateKey);
+      final isCollapsed = folds.contains(dateKey);
 
       listEntries.add(
         _MiniatureDateHeaderEntry(dateKey: dateKey, isExpanded: !isCollapsed),
@@ -382,7 +462,10 @@ class _MiniaturesGamesTabState extends ConsumerState<MiniaturesGamesTab>
       }
     }
 
-    if (state.isLoading) {
+    if (held) {
+      // The read in flight shows as the line over the list's top.
+      listEntries.add(const _MiniatureFooterEntry(_MiniatureFooterType.spacer));
+    } else if (state.isLoading) {
       listEntries.add(
         const _MiniatureFooterEntry(_MiniatureFooterType.loading),
       );
@@ -626,105 +709,47 @@ class _MiniaturesGamesTabState extends ConsumerState<MiniaturesGamesTab>
   }
 }
 
-/// The Games list's search, typed in the Miniatures screen's search header:
-/// players, events and openings, with the filters behind its glyph. The
-/// filter it writes is the list's own ([miniaturesFilterProvider]), so the
-/// list narrows under it as the reader types.
-class MiniaturesGamesSearchField extends ConsumerStatefulWidget {
-  const MiniaturesGamesSearchField({super.key, required this.focusNode});
-
-  final FocusNode focusNode;
-
-  @override
-  ConsumerState<MiniaturesGamesSearchField> createState() =>
-      _MiniaturesGamesSearchFieldState();
+/// Narrows the Games list to [query], trimmed; empty clears the search. The
+/// filter is the list's own ([miniaturesFilterProvider]), so the list
+/// narrows under the screen's search header as the reader types. An equal
+/// filter (a trailing space) leaves the list, and its read, alone.
+void applyMiniaturesGamesSearch(WidgetRef ref, String query) {
+  final trimmed = query.trim();
+  final current = ref.read(miniaturesFilterProvider);
+  final next = current.copyWith(
+    search: trimmed.isEmpty ? null : trimmed,
+    clearSearch: trimmed.isEmpty,
+  );
+  if (next == current) return;
+  ref.read(miniaturesFilterProvider.notifier).state = next;
 }
 
-class _MiniaturesGamesSearchFieldState
-    extends ConsumerState<MiniaturesGamesSearchField> {
-  // Opens on what the list is narrowed to, so reopening the search shows it.
-  late final TextEditingController _controller = TextEditingController(
-    text: ref.read(miniaturesFilterProvider).search ?? '',
+/// The Games list's filters, from the screen's header or its search.
+Future<void> openMiniaturesGamesFilters(
+  BuildContext context,
+  WidgetRef ref,
+) async {
+  HapticFeedbackService.buttonPress();
+  final next = await showMiniaturesFilterDialog(
+    context: context,
+    currentFilter: ref.read(miniaturesFilterProvider),
   );
-  Timer? _debounce;
-  static const Duration _debounceDuration = Duration(milliseconds: 350);
+  if (next == null || !context.mounted) return;
+  ref.read(miniaturesFilterProvider.notifier).state = next;
+}
 
-  @override
-  void dispose() {
-    _debounce?.cancel();
-    _controller.dispose();
-    super.dispose();
-  }
+/// What the Games list draws: one read's rows, its state and the filter
+/// it answers.
+class _ShownMiniatures {
+  const _ShownMiniatures({
+    required this.state,
+    required this.games,
+    required this.filter,
+  });
 
-  void _apply(String query) {
-    final trimmed = query.trim();
-    final current = ref.read(miniaturesFilterProvider);
-    final next = current.copyWith(
-      search: trimmed.isEmpty ? null : trimmed,
-      clearSearch: trimmed.isEmpty,
-    );
-    // An equal filter (e.g. a trailing space) must not rebuild the list.
-    if (next == current) return;
-    ref.read(miniaturesFilterProvider.notifier).state = next;
-  }
-
-  void _changed(String query) {
-    _debounce?.cancel();
-    _debounce = Timer(_debounceDuration, () {
-      if (mounted) _apply(query);
-    });
-  }
-
-  void _clear() {
-    _debounce?.cancel();
-    _controller.clear();
-    widget.focusNode.unfocus();
-    _apply('');
-  }
-
-  Future<void> _openFilters() async {
-    HapticFeedbackService.buttonPress();
-    widget.focusNode.unfocus();
-    final next = await showMiniaturesFilterDialog(
-      context: context,
-      currentFilter: ref.read(miniaturesFilterProvider),
-    );
-    if (next == null || !mounted) return;
-    ref.read(miniaturesFilterProvider.notifier).state = next;
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    // The list's own "Clear filters" empties the search too.
-    ref.listen<String?>(miniaturesFilterProvider.select((f) => f.search), (
-      _,
-      next,
-    ) {
-      if ((next ?? '') != _controller.text.trim()) {
-        _controller.text = next ?? '';
-      }
-    });
-    final applied = ref.watch(
-      miniaturesFilterProvider.select((f) => f.dialogActiveCount),
-    );
-    return EventSearchBarFrame(
-      compact: true,
-      child: SimpleSearchBar(
-        controller: _controller,
-        focusNode: widget.focusNode,
-        // Built only as the search opens: the cursor goes straight in.
-        autofocus: true,
-        hintText: 'Search player, event or opening',
-        textFieldKey: const ValueKey('miniatures_games_search'),
-        filterButtonKey: const ValueKey('miniatures_games_filters'),
-        compactFilter: true,
-        filterBadgeCount: applied,
-        onChanged: _changed,
-        onOpenFilter: _openFilters,
-        onCloseTap: _clear,
-      ),
-    );
-  }
+  final MiniaturesPaginationState state;
+  final List<GamesTourModel> games;
+  final MiniatureGamesFilter filter;
 }
 
 // ---- Row descriptors ----

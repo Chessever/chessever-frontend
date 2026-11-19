@@ -31,7 +31,7 @@ import 'package:chessever2/screens/tour_detail/games_tour/providers/event_no_spo
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/widgets/ads/ad_disclosure.dart';
-import 'package:chessever2/widgets/destination_title.dart';
+import 'package:chessever2/widgets/home_top_bar.dart';
 import 'package:chessground/chessground.dart';
 import 'package:dartchess/dartchess.dart';
 import 'package:flutter/material.dart';
@@ -274,19 +274,18 @@ void main() {
       expect(find.textContaining('Nakamura', findRichText: true), findsWidgets);
       expect(find.text('Start'), findsOneWidget);
 
-      final heading = tester.getRect(find.byType(DestinationTitle));
+      // The name, set as every root sets its name: centred on the screen,
+      // on Home's selected-tab type, no mark beside it (the bottom bar
+      // carries the marks).
+      final heading = tester.getRect(find.byType(HomeTopBarTitle));
       final screenWidth =
           tester.view.physicalSize.width / tester.view.devicePixelRatio;
       expect(heading.center.dx, closeTo(screenWidth / 2, 0.5));
       expect(heading.height, lessThan(48));
       final titleText = tester.widget<Text>(find.text('Feed'));
       expect(titleText.style!.fontSize, AppTypography.textMdMedium.fontSize);
-      expect(titleText.style!.fontWeight, FontWeight.w600);
-      expect(
-        tester.getSize(find.byIcon(Icons.smart_display_rounded)),
-        Size.square(22.sp),
-      );
-      expect(tester.getRect(find.text('Feed')).left, greaterThan(heading.left));
+      expect(titleText.style!.fontWeight, FontWeight.w700);
+      expect(find.byIcon(Icons.smart_display_rounded), findsNothing);
       // Autoplay: the first move lands after the opening beat, with the
       // board's ordinary sound (it is unclassified).
       await tester.pump(const Duration(milliseconds: 500));

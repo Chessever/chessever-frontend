@@ -37,6 +37,7 @@ class FeedPullRefresh extends StatefulWidget {
     required this.onRefresh,
     required this.child,
     this.enabled = true,
+    this.indicatorInset = 0,
     super.key,
   });
 
@@ -45,6 +46,11 @@ class FeedPullRefresh extends StatefulWidget {
   /// False while something on the page owns the finger (a piece being
   /// dragged, the scrub bar); the pull then never starts.
   final bool enabled;
+
+  /// How far down the pages the pull's gap opens: the height of a bar that
+  /// stands over the top of the pages (Feed in the home shell), so the rank
+  /// lights up under the bar rather than behind it.
+  final double indicatorInset;
   final Widget child;
 
   @override
@@ -310,7 +316,7 @@ class FeedPullRefreshState extends State<FeedPullRefresh>
               },
             ),
             Positioned(
-              top: 0,
+              top: widget.indicatorInset,
               left: 0,
               right: 0,
               child: IgnorePointer(

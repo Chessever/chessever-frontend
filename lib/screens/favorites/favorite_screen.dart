@@ -119,13 +119,10 @@ class _FavoriteScreenState extends ConsumerState<FavoriteScreen> {
 
                           return _buildPlayersList(filteredPlayers);
                         },
-                        loading:
-                            () => const Center(
-                              child: CircularProgressIndicator(),
-                            ),
-                        error:
-                            (error, stack) =>
-                                _buildErrorState(userFacingError(error)),
+                        loading: () =>
+                            const Center(child: CircularProgressIndicator()),
+                        error: (error, stack) =>
+                            _buildErrorState(userFacingError(error)),
                       ),
                 ),
               ],
@@ -243,13 +240,15 @@ class _FavoriteScreenState extends ConsumerState<FavoriteScreen> {
                           null;
                       // No event context from favorites screen
                       ref
-                          .read(scoreCardHasEventContextProvider.notifier)
-                          .state = false;
+                              .read(scoreCardHasEventContextProvider.notifier)
+                              .state =
+                          false;
                       ref
                           .read(
                             scoreCardPlayerProfileDataSourceProvider.notifier,
                           )
-                          .state = PlayerProfileDataSource.supabase;
+                          .state = PlayerProfileDataSource
+                          .supabase;
                       ref.read(chessboardViewFromProviderNew.notifier).state =
                           ChessboardView.favScorecard;
                       Navigator.pushNamed(context, '/scorecard_screen');
@@ -399,19 +398,19 @@ class _FavoriteScreenState extends ConsumerState<FavoriteScreen> {
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8.br)),
       items: [
         if (playerInSpace)
-        _spaceMenuItem(
-          value: 'space_player',
-          inSpace: playerInSpace,
-          label: playerInSpace ? 'Remove from My Space' : 'Add to My Space',
-        ),
-        if (gamesInSpace) _spaceMenuItem(
-          value: 'space_games',
-          inSpace: gamesInSpace,
-          label:
-              gamesInSpace
-                  ? 'Remove Games tab from My Space'
-                  : 'Add Games tab to My Space',
-        ),
+          _spaceMenuItem(
+            value: 'space_player',
+            inSpace: playerInSpace,
+            label: playerInSpace ? 'Remove from My Space' : 'Add to My Space',
+          ),
+        if (gamesInSpace)
+          _spaceMenuItem(
+            value: 'space_games',
+            inSpace: gamesInSpace,
+            label: gamesInSpace
+                ? 'Remove Games tab from My Space'
+                : 'Add Games tab to My Space',
+          ),
         PopupMenuItem(
           value: 'delete',
           child: Row(
@@ -420,7 +419,9 @@ class _FavoriteScreenState extends ConsumerState<FavoriteScreen> {
               SizedBox(width: 12.w),
               Text(
                 'Remove from favorites',
-                style: AppTypography.textSmRegular.copyWith(color: context.colors.danger),
+                style: AppTypography.textSmRegular.copyWith(
+                  color: context.colors.danger,
+                ),
               ),
             ],
           ),

@@ -194,7 +194,7 @@ void main() {
         await tester.pumpAndSettle();
         expect(requests.last.$1, code);
         expect(requests.last.$2.timeControl, RankingTimeControl.rapid);
-        await tester.tap(find.byType(BackButton));
+        await tester.tap(find.byTooltip('Back'));
         await tester.pumpAndSettle();
         expect(find.byType(PlayerProfileInfoRow), findsOneWidget);
         expect(container.read(temporaryCountryProvider), same(temporary));

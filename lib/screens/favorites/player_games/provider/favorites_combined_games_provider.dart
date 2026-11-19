@@ -16,10 +16,19 @@ class FavoritesCombinedGamesState {
   final bool hasMore;
   final String? error;
   final Set<String> seenGameIds;
+
+  /// The query the listed [games] answer: '' for the plain list. It changes
+  /// when a search's games land, not at the keystroke, so the list on screen
+  /// and everything drawn from it (sections, the empty state) always agree.
   final String searchQuery;
   final Set<String> selectedFideIds;
   final GameFilter filter;
   final int dateOffset; // For date-based pagination
+
+  /// A fetch that replaces the whole list (a search, its close, a filter, a
+  /// refresh) is on its way while the list it replaces stays on screen: no
+  /// spinner wipe, a quiet progress line instead. Ends with [isLoading].
+  final bool isReplacing;
 
   FavoritesCombinedGamesState({
     this.games = const [],
@@ -31,6 +40,7 @@ class FavoritesCombinedGamesState {
     this.selectedFideIds = const {},
     GameFilter? filter,
     this.dateOffset = 0,
+    this.isReplacing = false,
   }) : filter = filter ?? GameFilter();
 
   bool get isSearching => searchQuery.isNotEmpty;
@@ -51,6 +61,7 @@ class FavoritesCombinedGamesState {
     Set<String>? selectedFideIds,
     GameFilter? filter,
     int? dateOffset,
+    bool? isReplacing,
   }) {
     return FavoritesCombinedGamesState(
       games: games ?? this.games,
@@ -62,16 +73,30 @@ class FavoritesCombinedGamesState {
       selectedFideIds: selectedFideIds ?? this.selectedFideIds,
       filter: filter ?? this.filter,
       dateOffset: dateOffset ?? this.dateOffset,
+      // A load that ends ends the replacement with it.
+      isReplacing:
+          isReplacing ?? (isLoading == false ? false : this.isReplacing),
     );
   }
 }
 
+/// The plain list as it stood when a search began, put back as the search
+/// closes so the list returns exactly as it was left, with no fetch.
+class _ListBeforeSearch {
+  _ListBeforeSearch(this.state, this.availableDates, this.hasMoreDates);
+
+  final FavoritesCombinedGamesState state;
+  final List<DateTime> availableDates;
+  final bool hasMoreDates;
+}
+
 // --- Provider ---
 
-final favoritesCombinedGamesProvider = StateNotifierProvider.autoDispose<
-  FavoritesCombinedGamesNotifier,
-  FavoritesCombinedGamesState
->((ref) => FavoritesCombinedGamesNotifier(ref));
+final favoritesCombinedGamesProvider =
+    StateNotifierProvider.autoDispose<
+      FavoritesCombinedGamesNotifier,
+      FavoritesCombinedGamesState
+    >((ref) => FavoritesCombinedGamesNotifier(ref));
 
 class FavoritesCombinedGamesNotifier
     extends StateNotifier<FavoritesCombinedGamesState> {
@@ -82,6 +107,17 @@ class FavoritesCombinedGamesNotifier
   List<DateTime> _availableDates = [];
   bool _hasMoreDates = true;
   int _requestGeneration = 0;
+
+  /// The query being fetched or listed. [FavoritesCombinedGamesState
+  /// .searchQuery] follows it once its games land.
+  String _currentSearchQuery = '';
+
+  /// The plain list the running search replaced, for [clearSearch].
+  _ListBeforeSearch? _beforeSearch;
+
+  /// A failed replacement keeps the list it was replacing (a background
+  /// refresh) instead of showing the error.
+  bool _keepListOnError = false;
 
   int _beginRequest() => ++_requestGeneration;
 
@@ -123,44 +159,70 @@ class FavoritesCombinedGamesNotifier
     );
   }
 
-  Future<void> refreshGames() async {
+  /// Starts a fetch that replaces the whole list ([next] is the state it
+  /// starts from). The list on screen stays until the new one lands, and is
+  /// marked as being replaced when it is an answer (games, or none). A
+  /// first load still on its way, an error, or a list [next] clears has
+  /// nothing to keep: the fetch is a first load, with its spinner.
+  int _beginReplacement(
+    FavoritesCombinedGamesState next, {
+    bool keepListOnError = false,
+  }) {
     final requestGeneration = _beginRequest();
     _availableDates = [];
     _hasMoreDates = true;
-    _currentSearchQuery = state.searchQuery.trim();
+    _keepListOnError = keepListOnError;
+    final answerOnScreen =
+        next.games.isNotEmpty ||
+        (state.games.isEmpty &&
+            state.error == null &&
+            (!state.isLoading || state.isReplacing));
+    state = next.copyWith(
+      isLoading: true,
+      isReplacing: answerOnScreen,
+      error: null,
+    );
+    return requestGeneration;
+  }
 
+  /// Fetches the first page for [_currentSearchQuery]: the search's games,
+  /// or the plain list when nothing is searched.
+  Future<void> _fetchReplacement(int requestGeneration) {
+    return _currentSearchQuery.isNotEmpty
+        ? _fetchSearchResults(
+            isInitial: true,
+            requestGeneration: requestGeneration,
+          )
+        : _fetchNextDates(
+            isInitial: true,
+            requestGeneration: requestGeneration,
+          );
+  }
+
+  /// Refetches the list as it is (search, filters and players kept). The
+  /// list stays on screen until the fresh one lands, and stays if the fetch
+  /// fails.
+  Future<void> refreshGames() async {
+    // A refresh is newer than the list a running search would put back.
+    _beforeSearch = null;
     final favorites =
         _ref.read(favoritePlayersNotifierProvider).valueOrNull?.players ?? [];
-    final availableFideIds =
-        favorites
-            .where((favorite) => favorite.fideId != null)
-            .map((favorite) => favorite.fideId!.toString())
-            .toSet();
-    final selectedFideIds =
-        state.selectedFideIds.where(availableFideIds.contains).toSet();
-    state = FavoritesCombinedGamesState(
-      isLoading: true,
-      searchQuery: _currentSearchQuery,
-      selectedFideIds: selectedFideIds,
-      filter: state.filter,
+    final availableFideIds = favorites
+        .where((favorite) => favorite.fideId != null)
+        .map((favorite) => favorite.fideId!.toString())
+        .toSet();
+    final selectedFideIds = state.selectedFideIds
+        .where(availableFideIds.contains)
+        .toSet();
+    final requestGeneration = _beginReplacement(
+      state.copyWith(selectedFideIds: selectedFideIds),
+      keepListOnError: true,
     );
-
-    if (_currentSearchQuery.isNotEmpty) {
-      await _fetchSearchResults(
-        isInitial: true,
-        requestGeneration: requestGeneration,
-      );
-    } else {
-      await _fetchNextDates(
-        isInitial: true,
-        requestGeneration: requestGeneration,
-      );
-    }
+    await _fetchReplacement(requestGeneration);
   }
 
   /// Toggle a player filter by FIDE ID
   Future<void> togglePlayerFilter(String fideId) async {
-    final requestGeneration = _beginRequest();
     final currentFilters = Set<String>.from(state.selectedFideIds);
 
     if (currentFilters.contains(fideId)) {
@@ -169,64 +231,21 @@ class FavoritesCombinedGamesNotifier
       currentFilters.add(fideId);
     }
 
-    _availableDates = [];
-    _hasMoreDates = true;
-
-    state = state.copyWith(
-      isLoading: true,
-      games: [],
-      seenGameIds: {},
-      dateOffset: 0,
-      hasMore: true,
-      selectedFideIds: currentFilters,
-      error: null,
+    final requestGeneration = _beginReplacement(
+      state.copyWith(selectedFideIds: currentFilters),
     );
-
-    if (_currentSearchQuery.isNotEmpty) {
-      await _fetchSearchResults(
-        isInitial: true,
-        requestGeneration: requestGeneration,
-      );
-    } else {
-      await _fetchNextDates(
-        isInitial: true,
-        requestGeneration: requestGeneration,
-      );
-    }
+    await _fetchReplacement(requestGeneration);
   }
 
   /// Clear all player filters
   Future<void> clearPlayerFilters() async {
     if (state.selectedFideIds.isEmpty) return;
 
-    final requestGeneration = _beginRequest();
-    _availableDates = [];
-    _hasMoreDates = true;
-
-    state = state.copyWith(
-      isLoading: true,
-      games: [],
-      seenGameIds: {},
-      dateOffset: 0,
-      hasMore: true,
-      selectedFideIds: {},
-      error: null,
+    final requestGeneration = _beginReplacement(
+      state.copyWith(selectedFideIds: {}),
     );
-
-    if (_currentSearchQuery.isNotEmpty) {
-      await _fetchSearchResults(
-        isInitial: true,
-        requestGeneration: requestGeneration,
-      );
-    } else {
-      await _fetchNextDates(
-        isInitial: true,
-        requestGeneration: requestGeneration,
-      );
-    }
+    await _fetchReplacement(requestGeneration);
   }
-
-  String _currentSearchQuery = '';
 
   Future<void> applyFilter(GameFilter newFilter) async {
     final filterChanged = newFilter != state.filter;
@@ -236,88 +255,130 @@ class FavoritesCombinedGamesNotifier
     // trigger a fresh refetch — local lists are incomplete. Re-run whichever
     // path is currently active (search vs date pagination) so the filter is
     // respected even when the user has an open search query.
-    final requestGeneration = _beginRequest();
-    _availableDates = [];
-    _hasMoreDates = true;
-    state = state.copyWith(
-      filter: newFilter,
-      games: [],
-      seenGameIds: {},
-      dateOffset: 0,
-      hasMore: true,
-      isLoading: true,
-      error: null,
+    final requestGeneration = _beginReplacement(
+      state.copyWith(filter: newFilter),
     );
-    if (_currentSearchQuery.isNotEmpty) {
-      await _fetchSearchResults(
-        isInitial: true,
-        requestGeneration: requestGeneration,
-      );
-    } else {
-      await _fetchNextDates(
-        isInitial: true,
-        requestGeneration: requestGeneration,
-      );
-    }
+    await _fetchReplacement(requestGeneration);
   }
 
   Future<void> clearFilter() => applyFilter(GameFilter.defaultFilter());
 
-  /// Search games by player name
+  /// Searches the followed players' games (players, openings, ECO codes).
+  ///
+  /// The list on screen stays until the hits land. The first search after
+  /// the plain list keeps that list aside for [clearSearch].
   Future<void> searchGames(String query) async {
     final trimmedQuery = query.trim();
+    if (trimmedQuery.isEmpty) return clearSearch();
     if (trimmedQuery == _currentSearchQuery && state.games.isNotEmpty) return;
 
-    final requestGeneration = _beginRequest();
+    if (_currentSearchQuery.isEmpty) _beforeSearch = _listBeforeSearch();
     _currentSearchQuery = trimmedQuery;
-    _availableDates = [];
-    _hasMoreDates = true;
-
-    state = state.copyWith(
-      isLoading: true,
-      games: [],
-      seenGameIds: {},
-      dateOffset: 0,
-      hasMore: true,
-      searchQuery: trimmedQuery,
-      error: null,
+    final requestGeneration = _beginReplacement(state);
+    await _fetchSearchResults(
+      isInitial: true,
+      requestGeneration: requestGeneration,
     );
-
-    if (trimmedQuery.isEmpty) {
-      await _fetchNextDates(
-        isInitial: true,
-        requestGeneration: requestGeneration,
-      );
-    } else {
-      await _fetchSearchResults(
-        isInitial: true,
-        requestGeneration: requestGeneration,
-      );
-    }
   }
 
-  /// Clear search
+  /// Ends the search. The plain list it replaced comes back at once, as it
+  /// was left, when the filters and players are still the ones it was
+  /// fetched with; otherwise it is fetched again, the hits staying on screen
+  /// until it lands.
   Future<void> clearSearch() async {
-    if (_currentSearchQuery.isEmpty && !state.isSearching) return;
+    // Nothing searched, or the plain list is already on its way back.
+    if (_currentSearchQuery.isEmpty &&
+        (!state.isSearching || state.isReplacing)) {
+      return;
+    }
 
-    final requestGeneration = _beginRequest();
+    final before = _beforeSearch;
+    _beforeSearch = null;
     _currentSearchQuery = '';
-    _availableDates = [];
-    _hasMoreDates = true;
+    if (before != null &&
+        before.state.filter == state.filter &&
+        setEquals(before.state.selectedFideIds, state.selectedFideIds)) {
+      // Any search still on its way is dropped.
+      _beginRequest();
+      _availableDates = List.of(before.availableDates);
+      _hasMoreDates = before.hasMoreDates;
+      state = before.state;
+      return;
+    }
 
-    state = state.copyWith(
-      isLoading: true,
-      games: [],
-      seenGameIds: {},
-      dateOffset: 0,
-      hasMore: true,
-      searchQuery: '',
-      error: null,
-    );
-
+    final requestGeneration = _beginReplacement(state);
     await _fetchNextDates(
       isInitial: true,
       requestGeneration: requestGeneration,
+    );
+  }
+
+  /// The plain list as it stands, if it is whole enough to come back as it
+  /// is: not a first load still on its way, not an error, not itself being
+  /// replaced. A page still loading is let go (the search drops it) and is
+  /// fetched again from the bottom of the list.
+  _ListBeforeSearch? _listBeforeSearch() {
+    final current = state;
+    if (current.isSearching || current.isReplacing || current.error != null) {
+      return null;
+    }
+    if (current.isLoading && current.games.isEmpty) return null;
+    return _ListBeforeSearch(
+      current.copyWith(isLoading: false),
+      List.of(_availableDates),
+      _hasMoreDates,
+    );
+  }
+
+  /// Nothing (more) to list for [query]. A first page replaces whatever the
+  /// list still shows with nothing; a later page just ends the list.
+  void _landNothing(
+    int requestGeneration, {
+    required bool isInitial,
+    required String query,
+  }) {
+    if (!_isCurrentRequest(requestGeneration)) return;
+    state = isInitial
+        ? state.copyWith(
+            games: const [],
+            seenGameIds: const {},
+            dateOffset: 0,
+            searchQuery: query,
+            isLoading: false,
+            hasMore: false,
+          )
+        : state.copyWith(isLoading: false, hasMore: false);
+  }
+
+  /// A fetch failed. A first page that replaced a search or a filter shows
+  /// the error (Retry runs it again); a refresh keeps the list it had, and a
+  /// later page keeps what is listed.
+  void _fail(
+    Object error,
+    int requestGeneration, {
+    required bool isInitial,
+    required String query,
+  }) {
+    if (!_isCurrentRequest(requestGeneration)) return;
+    final message = userFacingError(
+      error,
+      fallback: 'Could not load games. Please try again.',
+    );
+    if (isInitial && !_keepListOnError) {
+      state = state.copyWith(
+        games: const [],
+        seenGameIds: const {},
+        dateOffset: 0,
+        searchQuery: query,
+        isLoading: false,
+        hasMore: false,
+        error: message,
+      );
+      return;
+    }
+    state = state.copyWith(
+      isLoading: false,
+      error: state.games.isEmpty ? message : null,
     );
   }
 
@@ -336,27 +397,22 @@ class FavoritesCombinedGamesNotifier
     final query = _currentSearchQuery;
 
     if (favorites.isEmpty || query.isEmpty) {
-      if (_isCurrentRequest(requestGeneration)) {
-        state = state.copyWith(isLoading: false, hasMore: false);
-      }
+      _landNothing(requestGeneration, isInitial: isInitial, query: query);
       return;
     }
 
     try {
       final gameRepo = _ref.read(gameRepositoryProvider);
-      var fideIds =
-          favorites
-              .where((f) => f.fideId != null)
-              .map((f) => f.fideId!.toString())
-              .toList();
+      var fideIds = favorites
+          .where((f) => f.fideId != null)
+          .map((f) => f.fideId!.toString())
+          .toList();
       if (state.selectedFideIds.isNotEmpty) {
         fideIds = fideIds.where(state.selectedFideIds.contains).toList();
       }
 
       if (fideIds.isEmpty) {
-        if (_isCurrentRequest(requestGeneration)) {
-          state = state.copyWith(isLoading: false, hasMore: false);
-        }
+        _landNothing(requestGeneration, isInitial: isInitial, query: query);
         return;
       }
 
@@ -393,18 +449,12 @@ class FavoritesCombinedGamesNotifier
         isLoading: false,
         hasMore: games.length >= _searchBatchSize,
         seenGameIds: seenKeys,
+        searchQuery: query,
+        dateOffset: isInitial ? 0 : null,
       );
     } catch (e) {
       debugPrint('[FavoritesSearch] Error: $e');
-      if (!_isCurrentRequest(requestGeneration)) return;
-      final error = userFacingError(
-        e,
-        fallback: 'Could not load games. Please try again.',
-      );
-      state = state.copyWith(
-        isLoading: false,
-        error: state.games.isEmpty ? error : null,
-      );
+      _fail(e, requestGeneration, isInitial: isInitial, query: query);
     }
   }
 
@@ -433,18 +483,15 @@ class FavoritesCombinedGamesNotifier
       final favorites = favoritesAsync.valueOrNull?.players ?? [];
 
       if (favorites.isEmpty) {
-        if (_isCurrentRequest(requestGeneration)) {
-          state = state.copyWith(isLoading: false, hasMore: false, error: null);
-        }
+        _landNothing(requestGeneration, isInitial: isInitial, query: '');
         return;
       }
 
       // Get FIDE IDs (convert int? to String)
-      var fideIds =
-          favorites
-              .where((f) => f.fideId != null)
-              .map((f) => f.fideId!.toString())
-              .toList();
+      var fideIds = favorites
+          .where((f) => f.fideId != null)
+          .map((f) => f.fideId!.toString())
+          .toList();
 
       // Apply filter if selected
       final selectedFilters = state.selectedFideIds;
@@ -453,9 +500,7 @@ class FavoritesCombinedGamesNotifier
       }
 
       if (fideIds.isEmpty) {
-        if (_isCurrentRequest(requestGeneration)) {
-          state = state.copyWith(isLoading: false, hasMore: false);
-        }
+        _landNothing(requestGeneration, isInitial: isInitial, query: '');
         return;
       }
 
@@ -479,8 +524,10 @@ class FavoritesCombinedGamesNotifier
 
       // Determine which dates to load
       final dateOffset = isInitial ? 0 : state.dateOffset;
-      final datesToLoad =
-          _availableDates.skip(dateOffset).take(_datesPerBatch).toList();
+      final datesToLoad = _availableDates
+          .skip(dateOffset)
+          .take(_datesPerBatch)
+          .toList();
 
       if (datesToLoad.isEmpty) {
         // Try to get more dates
@@ -497,8 +544,10 @@ class FavoritesCombinedGamesNotifier
           _availableDates.addAll(moreDates);
           _hasMoreDates = moreDates.length >= 30;
 
-          final retryDates =
-              _availableDates.skip(dateOffset).take(_datesPerBatch).toList();
+          final retryDates = _availableDates
+              .skip(dateOffset)
+              .take(_datesPerBatch)
+              .toList();
 
           if (retryDates.isNotEmpty) {
             await _loadGamesForDates(
@@ -512,9 +561,7 @@ class FavoritesCombinedGamesNotifier
           }
         }
 
-        if (_isCurrentRequest(requestGeneration)) {
-          state = state.copyWith(isLoading: false, hasMore: false);
-        }
+        _landNothing(requestGeneration, isInitial: isInitial, query: '');
         return;
       }
 
@@ -527,15 +574,7 @@ class FavoritesCombinedGamesNotifier
       );
     } catch (e) {
       debugPrint('[FavoritesGames] Fetch error: $e');
-      if (!_isCurrentRequest(requestGeneration)) return;
-      final error = userFacingError(
-        e,
-        fallback: 'Could not load games. Please try again.',
-      );
-      state = state.copyWith(
-        isLoading: false,
-        error: state.games.isEmpty ? error : null,
-      );
+      _fail(e, requestGeneration, isInitial: isInitial, query: '');
     }
   }
 
@@ -598,6 +637,8 @@ class FavoritesCombinedGamesNotifier
       hasMore: hasMore,
       seenGameIds: seenKeys,
       dateOffset: newDateOffset,
+      // The plain list's days: no search behind them.
+      searchQuery: '',
     );
   }
 

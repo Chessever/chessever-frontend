@@ -2,11 +2,12 @@ import 'package:chessever2/widgets/window_metrics_dismissal.dart';
 import 'package:chessever2/widgets/paywall/premium_game_access.dart';
 import 'dart:async';
 import 'dart:math' as math;
-import 'package:chessever2/screens/tour_detail/widgets/event_search_bar.dart'
-    show EventSearchBarFrame;
 import 'package:chessever2/widgets/ink_fab.dart';
+import 'package:chessever2/widgets/quick_list_toggles.dart'
+    show BoardViewToggleButton;
 import 'package:chessever2/widgets/scroll_chrome.dart';
-import 'package:chessever2/widgets/simple_search_bar.dart';
+import 'package:chessever2/widgets/search_mode/search_mode.dart';
+import 'package:chessever2/screens/favorites/widgets/games_list_refetch_line.dart';
 import 'package:chessever2/screens/group_event/smart_event/saved_smart_event_editor.dart';
 import 'package:chessever2/screens/group_event/smart_event/smart_event_shortcut.dart';
 import 'package:chessever2/screens/group_event/smart_event/starred_smart_events_screen.dart';
@@ -58,10 +59,12 @@ import 'package:chessever2/widgets/generic_error_widget.dart';
 import 'package:chessever2/widgets/scroll_to_top_bus.dart';
 import 'package:chessever2/widgets/segmented_switcher.dart';
 import 'package:chessever2/widgets/skeleton_widget.dart';
+import 'package:chessever2/widgets/home_top_bar.dart' show PageTitle;
+import 'package:chessever2/widgets/page_spring.dart';
+import 'package:chessever2/widgets/search_no_matches.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_svg/flutter_svg.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:intl/intl.dart';
 
@@ -107,57 +110,27 @@ class _SmartEventScreenState extends ConsumerState<SmartEventScreen>
     vsync: this,
   );
 
-  // Search lives on the screen (not the Games tab) so its field can take the
-  // header's place, and so the one query drives both the Games and Events
-  // tabs.
-  final TextEditingController _searchController = TextEditingController();
-  final FocusNode _searchFocusNode = FocusNode();
+  /// The Games or Events tab's full-page search (Trello #1420), run by the
+  /// app's one search mode ([SearchModeHost]): the field takes the header's
+  /// place over the same tab, filtered, and one query drives both tabs. It
+  /// lives on the screen, not a tab, for that reason. Closing it clears the
+  /// query; the filters stay, as they are the smart event's criteria,
+  /// applied or discarded on the way out.
+  final SearchModeController _search = SearchModeController();
+
+  /// The settled query ('' with no search): the Games tab keys its server
+  /// query on it, the Events tab narrows its event cards by it.
   String _query = '';
-  Timer? _searchDebounce;
 
-  /// The Games or Events tab's full-page search (Trello #1420): the field in
-  /// the header's place, the same tab under it, filtered, with nothing else
-  /// around it. Opened from the floating search.
-  bool _searching = false;
-
-  void _openSearch() {
-    if (_searching) return;
-    setState(() => _searching = true);
-    _chrome.show();
+  /// The page reads [SearchModeController.isSearching] for the tab lock,
+  /// the back handling and the lists' end (nothing floats while searching).
+  void _onSearchMode() {
+    if (mounted) setState(() {});
   }
 
-  /// Leaves the search with the query cleared. The filters stay: they are
-  /// the smart event's criteria, applied or discarded on the way out.
-  void _closeSearch() {
-    if (!_searching) return;
-    _searchFocusNode.unfocus();
-    _searchDebounce?.cancel();
-    _searchController.clear();
-    setState(() {
-      _searching = false;
-      _query = '';
-    });
-    _chrome.show();
-  }
-
-  void _holdChromeWhileTyping() => _chrome.held = _searchFocusNode.hasFocus;
-
-  void _onSearchChanged(String value) {
-    // Debounce: every committed query is a server-side search across ALL
-    // games of the included events, so don't fire one per keystroke.
-    _searchDebounce?.cancel();
-    _searchDebounce = Timer(const Duration(milliseconds: 350), () {
-      if (mounted) setState(() => _query = value.trim());
-    });
-  }
-
-  void _clearSearchText() {
-    _searchDebounce?.cancel();
-    _searchFocusNode.unfocus();
-    setState(() {
-      _query = '';
-      _searchController.clear();
-    });
+  void _onQuery(String query) {
+    if (query == _query || !mounted) return;
+    setState(() => _query = query);
   }
 
   // Local tier filter: starts from the saved request's tier (first word so
@@ -191,15 +164,13 @@ class _SmartEventScreenState extends ConsumerState<SmartEventScreen>
   @override
   void initState() {
     super.initState();
-    _searchFocusNode.addListener(_holdChromeWhileTyping);
+    _search.addListener(_onSearchMode);
   }
 
   @override
   void dispose() {
-    _searchDebounce?.cancel();
-    _searchController.dispose();
-    _searchFocusNode
-      ..removeListener(_holdChromeWhileTyping)
+    _search
+      ..removeListener(_onSearchMode)
       ..dispose();
     _page.dispose();
     _scrollToTopBus.dispose();
@@ -212,17 +183,19 @@ class _SmartEventScreenState extends ConsumerState<SmartEventScreen>
       _scrollToTopBus.request();
       return;
     }
-    // Drop the keyboard when switching tabs so the field and the keyboard
-    // collapse together instead of the keyboard hovering over About.
-    _searchFocusNode.unfocus();
+    // The tabs only answer with the search closed (it holds its tab), so
+    // there is no keyboard to drop here.
     _chrome.show();
     setState(() => _index = i);
-    _page.animateToPage(
-      i,
-      duration: const Duration(milliseconds: 300),
-      curve: Curves.easeInOut,
-    );
+    // On a real spring, as the header's other motion: a tab tapped while
+    // the pages still move turns them toward it, carrying their speed.
+    unawaited(_page.springTo(i, context: context));
   }
+
+  /// The no-hits line's way back: empties the field, which the list hears
+  /// at once as an empty query. The filters stay: they are the smart
+  /// event's own criteria, changed only from Filters.
+  void _clearSearchWords() => _search.text.clear();
 
   /// The request as the user currently sees it: the saved one re-keyed by
   /// the dialog's criteria overrides ([SmartEventRequest
@@ -321,7 +294,7 @@ class _SmartEventScreenState extends ConsumerState<SmartEventScreen>
 
   /// How many criteria narrow the list, the tier threshold picked in the
   /// title dropdown included, so the count mirrors the smart event's full
-  /// active config. Worn by the floating search and the search's filters.
+  /// active config. Worn by Filters, in the header and in the search alike.
   int get _criteriaCount {
     final criteria = _mergeTierIntoFilter(_filter, _tier) ?? _filter;
     return criteria.activeFilterCount + criteria.activeSortCount;
@@ -356,9 +329,22 @@ class _SmartEventScreenState extends ConsumerState<SmartEventScreen>
 
   @override
   Widget build(BuildContext context) {
-    final horizontalPadding = ResponsiveHelper.isTablet
-        ? 24.sp.toDouble()
-        : 16.sp.toDouble();
+    final searching = _search.isSearching;
+    final searchHint = _index == 2 ? 'Search events' : 'Search games';
+
+    // While a search's words narrow the tabs, the list they narrowed stays
+    // loaded: clearing the field or closing the search puts it back at
+    // once, where the reader left it, instead of fetching it again.
+    if (_query.isNotEmpty) {
+      ref.watch(
+        smartAggregateEventRepositoryProvider(
+          SmartEventGamesQuery(
+            request: widget.request.withNeutralEloRange(),
+            filter: _mergeTierIntoFilter(_filter, _tier),
+          ),
+        ).select((_) => true),
+      );
+    }
 
     return _SmartEventRequestScope(
       request: widget.request,
@@ -369,113 +355,132 @@ class _SmartEventScreenState extends ConsumerState<SmartEventScreen>
         onFilterChanged: _setFilter,
         tabIndex: _index,
         searchQuery: _query,
+        searching: searching,
+        onClearSearch: _clearSearchWords,
         child: PopScope(
-          // Back from the search closes it, back to the tab it searched. A
-          // dirty config intercepts the pop (back button, system back,
-          // swipe-back) so the changes can be confirmed-applied or discarded.
-          canPop: !_searching && !_isConfigDirty && !_saving,
+          // A dirty config intercepts the pop (back button, system back,
+          // swipe-back) so the changes can be confirmed-applied or
+          // discarded. While searching, back belongs to the search: the
+          // host's own PopScope, registered after this one (it sits inside
+          // it), closes it, so this one lets it through.
+          canPop: searching || (!_isConfigDirty && !_saving),
           onPopInvokedWithResult: (didPop, _) {
-            if (didPop) return;
-            if (_searching) {
-              _closeSearch();
-            } else {
-              _confirmLeaveWithChanges();
-            }
+            if (didPop || _search.isSearching || !_isConfigDirty) return;
+            _confirmLeaveWithChanges();
           },
-          child: Scaffold(
-            backgroundColor: context.colors.background,
-            // In the thumb's reach where the pinned search row used to sit
-            // (Trello #1420). Searching, nothing floats.
-            floatingActionButton: SlidingFabs(
-              controller: _chrome,
-              child: _SmartEventFabs(
-                tabIndex: _index,
-                searching: _searching,
-                criteriaCount: _criteriaCount,
-                onSearch: _openSearch,
+          child: SearchModeHost(
+            controller: _search,
+            chrome: _chrome,
+            // Every settled query is a server-side search across ALL games
+            // of the included events: not one per keystroke.
+            debounce: const Duration(milliseconds: 350),
+            onQuery: _onQuery,
+            child: Scaffold(
+              backgroundColor: context.colors.background,
+              // In the thumb's reach where the pinned search row used to
+              // sit (Trello #1420). The host hides it while searching and
+              // flies the glass back into it on close.
+              floatingActionButton: SlidingFabs(
+                controller: _chrome,
+                child: _SmartEventFabs(tabIndex: _index),
               ),
-            ),
-            body: SafeArea(
-              bottom: false,
-              child: AbsorbPointer(
-                absorbing: _saving,
-                child: Column(
-                  children: [
-                    // Folds up under the status bar as the list scrolls
-                    // down, comes back as it scrolls up.
-                    CollapsingChrome(
-                      controller: _chrome,
-                      child: _searching
-                          ? _SmartEventSearchHeader(
-                              gutter: horizontalPadding,
-                              controller: _searchController,
-                              focusNode: _searchFocusNode,
-                              hintText: _index == 2
-                                  ? 'Search events'
-                                  : 'Search games',
-                              criteriaCount: _criteriaCount,
-                              onChanged: _onSearchChanged,
-                              onClear: _clearSearchText,
-                              onFilters: _openFilterDialog,
-                              onClose: _closeSearch,
-                            )
-                          : Column(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                _AppBar(
-                                  request: _effectiveRequest,
-                                  savedRequest: _baselineRequest,
-                                  isDirty: _isConfigDirty,
-                                  onApplyChanges: _applyConfigChanges,
-                                ),
-                                SizedBox(height: 8.h),
-                                Padding(
-                                  padding: EdgeInsets.symmetric(
-                                    horizontal: horizontalPadding,
-                                  ),
-                                  child: SegmentedSwitcher(
-                                    dotScope: 'smart_event.tab',
-                                    height: context.textExtent(40.h),
-                                    options: _tabs,
-                                    initialSelection: _index,
-                                    currentSelection: _index,
-                                    onSelectionChanged: _select,
-                                    notifyOnReselect: true,
-                                  ),
-                                ),
-                                SizedBox(height: 8.h),
-                              ],
-                            ),
-                    ),
-                    Expanded(
-                      child: ScrollChromeRegion(
+              body: SafeArea(
+                // The top inset is the shared header's own (below).
+                top: false,
+                bottom: false,
+                child: AbsorbPointer(
+                  absorbing: _saving,
+                  child: Column(
+                    children: [
+                      // Every page's back row starts here, so the chevron
+                      // sits at one height across pages and in the search.
+                      SizedBox(
+                        height: MediaQuery.viewPaddingOf(context).top + 4.h,
+                      ),
+                      // Folds up under the status bar as the list scrolls
+                      // down, comes back as it scrolls up.
+                      CollapsingChrome(
                         controller: _chrome,
-                        child: ScrollToTopScope(
-                          bus: _scrollToTopBus,
-                          child: PageView(
-                            controller: _page,
-                            // Searching holds the tab: the search belongs to
-                            // it.
-                            physics: _searching
-                                ? const NeverScrollableScrollPhysics()
-                                : null,
-                            onPageChanged: (i) {
-                              if (_index != i) {
-                                _searchFocusNode.unfocus();
-                                _chrome.show();
-                              }
-                              setState(() => _index = i);
-                            },
-                            children: const [
-                              _AboutTab(),
-                              _GamesTab(),
-                              _EventsTab(),
+                        child: SearchModeHeaderSlot(
+                          header: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              _AppBar(
+                                request: _effectiveRequest,
+                                savedRequest: _baselineRequest,
+                                isDirty: _isConfigDirty,
+                                onApplyChanges: _applyConfigChanges,
+                                criteriaCount: _criteriaCount,
+                                onFilters: _openFilterDialog,
+                              ),
+                              SizedBox(height: 8.h),
+                              Padding(
+                                padding: EdgeInsets.symmetric(
+                                  horizontal: SearchHeaderMetrics.gutter,
+                                ),
+                                child: SegmentedSwitcher(
+                                  dotScope: 'smart_event.tab',
+                                  height: context.textExtent(40.h),
+                                  options: _tabs,
+                                  initialSelection: _index,
+                                  currentSelection: _index,
+                                  onSelectionChanged: _select,
+                                  notifyOnReselect: true,
+                                ),
+                              ),
+                              SizedBox(height: SearchHeaderMetrics.bottomGap),
+                            ],
+                          ),
+                          search: SearchModeHeader(
+                            hintText: searchHint,
+                            closeKey: const ValueKey(
+                              'smart_event_search_close',
+                            ),
+                            // The list's own controls, as the header draws
+                            // them: the layout toggle, then Filters on the
+                            // gutter, shared with the header's (it holds
+                            // still through the morph).
+                            trailing: [
+                              const _LayoutToggle(),
+                              SearchModeShared(
+                                id: SearchModeFilterButton,
+                                child: SearchModeFilterButton(
+                                  key: const ValueKey(
+                                    'smart_event_search_filters',
+                                  ),
+                                  count: _criteriaCount,
+                                  onTap: _openFilterDialog,
+                                ),
+                              ),
                             ],
                           ),
                         ),
                       ),
-                    ),
-                  ],
+                      Expanded(
+                        child: ScrollChromeRegion(
+                          controller: _chrome,
+                          child: ScrollToTopScope(
+                            bus: _scrollToTopBus,
+                            child: PageView(
+                              controller: _page,
+                              // Searching holds the tab: the search belongs
+                              // to it.
+                              physics: _search.pagePhysics(),
+                              onPageChanged: (i) {
+                                if (_index != i) _chrome.show();
+                                setState(() => _index = i);
+                              },
+                              children: const [
+                                _AboutTab(),
+                                _GamesTab(),
+                                _EventsTab(),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -500,6 +505,8 @@ class _SmartTierFilterScope extends InheritedWidget {
     required this.onFilterChanged,
     required this.tabIndex,
     required this.searchQuery,
+    required this.searching,
+    required this.onClearSearch,
     required super.child,
   });
 
@@ -514,6 +521,13 @@ class _SmartTierFilterScope extends InheritedWidget {
   /// narrow its event cards.
   final String searchQuery;
 
+  /// The full-page search is open: nothing floats over the lists, so they
+  /// end clear of the home indicator only.
+  final bool searching;
+
+  /// Empties the search's words, from a list's no-hits line.
+  final VoidCallback onClearSearch;
+
   static _SmartTierFilterScope of(BuildContext context) {
     final scope = context
         .dependOnInheritedWidgetOfExactType<_SmartTierFilterScope>();
@@ -526,240 +540,224 @@ class _SmartTierFilterScope extends InheritedWidget {
     return tier != oldWidget.tier ||
         filter != oldWidget.filter ||
         tabIndex != oldWidget.tabIndex ||
-        searchQuery != oldWidget.searchQuery;
+        searchQuery != oldWidget.searchQuery ||
+        searching != oldWidget.searching;
   }
 }
 
 /// The smart event's floating search (Trello #1420): on Games and Events,
-/// the two tabs the one query narrows; About has nothing to search. It wears
-/// the criteria count the pinned row's filter button used to, so a narrowed
-/// list says so from anywhere on the page. Searching, nothing floats.
+/// the two tabs the one query narrows; About has nothing to search. Under
+/// the page's [SearchModeHost] it hands off: the tap opens the search and
+/// its glass flies into the field, back again on close. The criteria count
+/// is worn by Filters in the header, so the button does not repeat it.
 class _SmartEventFabs extends StatelessWidget {
-  const _SmartEventFabs({
-    required this.tabIndex,
-    required this.searching,
-    required this.criteriaCount,
-    required this.onSearch,
-  });
+  const _SmartEventFabs({required this.tabIndex});
 
   final int tabIndex;
-  final bool searching;
-  final int criteriaCount;
-  final VoidCallback onSearch;
+
+  /// How far up from the bottom the button reaches: its target, lifted by
+  /// the Scaffold's margin and the home indicator's inset. The lists end
+  /// this far clear, so it never covers their last game. Read it from the
+  /// list's context: inside the button slot the Scaffold has already taken
+  /// the inset away.
+  static double reach(BuildContext context) =>
+      InkFabSize.regular.side +
+      kFloatingActionButtonMargin +
+      MediaQuery.viewPaddingOf(context).bottom;
 
   @override
   Widget build(BuildContext context) {
-    if (searching || tabIndex == 0) return const SizedBox.shrink();
+    if (tabIndex == 0) return const SizedBox.shrink();
     return SearchInkFab(
       key: const ValueKey('smart_event_search_fab'),
       label: tabIndex == 2 ? 'Search events' : 'Search games',
-      badgeCount: criteriaCount,
-      onTap: onSearch,
     );
   }
 }
 
-/// The header while Games or Events is being searched: a way back, the
-/// field, and the list's own controls (filters, layout) that used to sit
-/// beside the field in the pinned row, as bare glyphs. The tab fills the
-/// page under it, filtered as the reader types.
-class _SmartEventSearchHeader extends ConsumerWidget {
-  const _SmartEventSearchHeader({
-    required this.gutter,
-    required this.controller,
-    required this.focusNode,
-    required this.hintText,
-    required this.criteriaCount,
-    required this.onChanged,
-    required this.onClear,
-    required this.onFilters,
-    required this.onClose,
-  });
+/// Where a Games or Events list ends, as its last row: clear of the home
+/// indicator, and of the floating search while it floats. That room gives
+/// way on the search's own timeline as the search opens, as on every Games
+/// list, so a reader at the very end never sees it jump.
+class _ListEnd extends StatelessWidget {
+  const _ListEnd();
 
-  /// The screen's side margin: the chevron and the last glyph land on it.
-  final double gutter;
-  final TextEditingController controller;
-  final FocusNode focusNode;
-  final String hintText;
-  final int criteriaCount;
-  final ValueChanged<String> onChanged;
-  final VoidCallback onClear;
-  final VoidCallback onFilters;
-  final VoidCallback onClose;
+  @override
+  Widget build(BuildContext context) {
+    final indicator = MediaQuery.viewPaddingOf(context).bottom;
+    return SearchModeListEnd(
+      base: 8.h + indicator,
+      buttons: _SmartEventFabs.reach(context) - indicator,
+    );
+  }
+}
+
+/// The games layout toggle: the list toolbar's own board-view button (a bare
+/// 20pt glyph on a 44pt target, the Filters glyph's size beside it), in the
+/// page header and in the search header alike, as every Games list draws it.
+class _LayoutToggle extends ConsumerWidget {
+  const _LayoutToggle();
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    return Padding(
-      // The chevron's and the last glyph's 44pt targets reach into the
-      // gutter, so the glyphs themselves land on it.
-      // Never negative: a folded Duo pane is narrower than the gutter.
-      padding: EdgeInsetsDirectional.fromSTEB(
-        math.max(0.0, gutter - 12),
-        4.h,
-        math.max(0.0, gutter - 12),
-        10.h,
-      ),
-      child: Row(
-        children: [
-          SizedBox.square(
-            dimension: 44,
-            child: IconButton(
-              key: const ValueKey('smart_event_search_close'),
-              tooltip: 'Close search',
-              padding: EdgeInsets.zero,
-              onPressed: () {
-                HapticFeedbackService.navigation();
-                onClose();
-              },
-              icon: Icon(
-                Icons.arrow_back_ios_new_outlined,
-                size: 22,
-                color: context.colors.textPrimary,
-              ),
-            ),
-          ),
-          const SizedBox(width: 4),
-          Expanded(
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(minHeight: 44),
-              child: Center(
-                child: EventSearchBarFrame(
-                  compact: true,
-                  child: SimpleSearchBar(
-                    controller: controller,
-                    focusNode: focusNode,
-                    autofocus: true,
-                    hintText: hintText,
-                    onChanged: onChanged,
-                    onCloseTap: onClear,
-                    onOpenFilter: null,
-                  ),
-                ),
-              ),
-            ),
-          ),
-          const SizedBox(width: 4),
-          _SearchHeaderGlyph(
-            key: const ValueKey('smart_event_search_filters'),
-            label: criteriaCount > 0
-                ? 'Filters, $criteriaCount applied'
-                : 'Filters',
-            onTap: onFilters,
-            child: _FilterGlyph(count: criteriaCount),
-          ),
-          _SearchHeaderGlyph(
-            label: 'Change games layout',
-            onTap: () => ref.read(gamesListViewModeSwitcher).toggleViewMode(),
-            child: SvgPicture.asset(
-              SvgAsset.chase_grid,
-              width: 20,
-              height: 20,
-              colorFilter: ColorFilter.mode(
-                context.colors.textSecondary,
-                BlendMode.srcIn,
-              ),
-            ),
-          ),
-        ],
+    // The switcher gives the tap feedback. A button node of its own, so a
+    // screen reader never folds it into a neighbour.
+    return Semantics(
+      container: true,
+      child: BoardViewToggleButton(
+        onTap: () => ref.read(gamesListViewModeSwitcher).toggleViewMode(),
       ),
     );
   }
 }
 
-/// A bare control in the search header: the glyph alone on a 44pt target,
-/// with no tile and no splash drawn around it.
-class _SearchHeaderGlyph extends StatelessWidget {
-  const _SearchHeaderGlyph({
-    super.key,
-    required this.label,
-    required this.onTap,
-    required this.child,
+/// A quiet line along the top of a tab while its list waits for a new
+/// query's games, the list it had kept on screen under it: the one sign of
+/// the wait, with no spinner or skeleton over the games. The Games lists'
+/// own line ([GamesListRefetchLine]), so every surface reads a pending
+/// search the same way. Put it in a [Stack] over the list; it takes no
+/// room, so nothing moves when it comes or goes.
+class _QueryProgress extends StatelessWidget {
+  const _QueryProgress({required this.loading});
+
+  final bool loading;
+
+  @override
+  Widget build(BuildContext context) => Positioned(
+    top: 0,
+    left: 0,
+    right: 0,
+    child: GamesListRefetchLine(active: loading),
+  );
+}
+
+/// Where a tab's list stands as the search changes what it shows. A
+/// search's words start their games from the top; clearing them (the field
+/// emptied, or the search closed) puts the list back where the reader left
+/// it. Each move lands in the layout of the frame whose games changed, so no
+/// frame paints the new games at the old place, and the list is never
+/// rebuilt: only its offset moves.
+class _QueryScroll {
+  final _SettlingScrollController controller = _SettlingScrollController();
+
+  /// The query the list's games are for.
+  String _shown = '';
+  String get shown => _shown;
+
+  /// Where the list stood when a search's words first changed it.
+  double? _before;
+
+  /// The list now shows [query]'s games. Call from the build that puts them
+  /// on screen.
+  void show(String query) {
+    if (query == _shown) return;
+    final was = _shown;
+    _shown = query;
+    if (!controller.hasClients) return;
+    if (was.isEmpty) {
+      _before = controller.offset;
+      controller.settleAt(0);
+    } else if (query.isEmpty) {
+      final before = _before;
+      _before = null;
+      if (before != null) controller.settleAt(before);
+    } else {
+      controller.settleAt(0);
+    }
+  }
+
+  void dispose() => controller.dispose();
+}
+
+/// A list controller that can put its list at an offset during the list's
+/// next layout ([settleAt]), before that frame paints. A jump after the
+/// frame would paint one frame of the new games at the old offset first.
+class _SettlingScrollController extends ScrollController {
+  double? _target;
+
+  /// The list has been laid out once at [_target] this frame.
+  bool _tried = false;
+
+  /// Puts the list at [offset] (within its content) in this frame's layout.
+  /// Dropped if the reader is scrolling it then: their hand wins.
+  void settleAt(double offset) {
+    if (!hasClients) return;
+    final position = this.position;
+    if (position is! _SettlingScrollPosition) return;
+    _target = offset;
+    _tried = false;
+    position._relayout();
+    // Never carried into a later layout.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _target = null;
+      _tried = false;
+    });
+  }
+
+  @override
+  ScrollPosition createScrollPosition(
+    ScrollPhysics physics,
+    ScrollContext context,
+    ScrollPosition? oldPosition,
+  ) {
+    return _SettlingScrollPosition(
+      owner: this,
+      physics: physics,
+      context: context,
+      initialPixels: initialScrollOffset,
+      keepScrollOffset: keepScrollOffset,
+      oldPosition: oldPosition,
+      debugLabel: debugLabel,
+    );
+  }
+}
+
+class _SettlingScrollPosition extends ScrollPositionWithSingleContext {
+  _SettlingScrollPosition({
+    required this.owner,
+    required super.physics,
+    required super.context,
+    super.initialPixels,
+    super.keepScrollOffset,
+    super.oldPosition,
+    super.debugLabel,
   });
 
-  final String label;
-  final VoidCallback onTap;
-  final Widget child;
+  final _SettlingScrollController owner;
 
-  void _activate() {
-    HapticFeedbackService.buttonPress();
-    onTap();
-  }
+  /// Lays the list out again this frame (its viewport listens), so a
+  /// target set during the build lands in this frame's layout even when
+  /// the games themselves did not change size.
+  void _relayout() => notifyListeners();
 
   @override
-  Widget build(BuildContext context) {
-    return Tooltip(
-      message: label,
-      excludeFromSemantics: true,
-      child: Semantics(
-        container: true,
-        button: true,
-        label: label,
-        onTap: _activate,
-        excludeSemantics: true,
-        child: GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTap: _activate,
-          child: SizedBox.square(dimension: 44, child: Center(child: child)),
-        ),
-      ),
-    );
-  }
-}
-
-/// The filters glyph, lit with the count of what narrows the list. The
-/// count is the floating search's own badge (teal disc, ink figure), so the
-/// number the reader tapped through reads the same up here.
-class _FilterGlyph extends StatelessWidget {
-  const _FilterGlyph({required this.count});
-
-  final int count;
-
-  @override
-  Widget build(BuildContext context) {
-    final active = count > 0;
-    return Stack(
-      clipBehavior: Clip.none,
-      children: [
-        Icon(
-          Icons.tune_rounded,
-          size: 22,
-          color: active
-              ? context.colors.textPrimary
-              : context.colors.textSecondary,
-        ),
-        if (active)
-          Positioned(
-            top: -6,
-            right: -8,
-            child: Container(
-              constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
-              padding: const EdgeInsets.symmetric(horizontal: 4),
-              alignment: Alignment.center,
-              // The filter count, as the floating buttons wear it: the
-              // brand's tonal blue (clears contrast on paper too) with the
-              // page's colour for its number.
-              decoration: BoxDecoration(
-                color: context.colors.accentText,
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(
-                  color: context.colors.background,
-                  width: 1.5,
-                ),
-              ),
-              child: Text(
-                count > 9 ? '9+' : '$count',
-                textScaler: TextScaler.noScaling,
-                style: TextStyle(
-                  color: context.colors.background,
-                  fontSize: 10,
-                  height: 1,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ),
-          ),
-      ],
-    );
+  bool applyContentDimensions(double minScrollExtent, double maxScrollExtent) {
+    final target = owner._target;
+    if (target != null) {
+      if (activity is! IdleScrollActivity) {
+        owner._target = null;
+      } else if (!owner._tried && (target - pixels).abs() > 0.5) {
+        // The layout-time correction: the viewport lays out again at the
+        // target in this same frame. Not clamped to this pass's extent: a
+        // lazy list only knows how far it reaches around where it was laid
+        // out, which is still the old games' place. Tried once, so the
+        // layout always settles.
+        owner._tried = true;
+        correctPixels(math.max(minScrollExtent, target));
+        return false;
+      } else {
+        owner._target = null;
+        // Laid out at the target: within the games it now knows of.
+        final double settled = pixels
+            .clamp(minScrollExtent, math.max(minScrollExtent, maxScrollExtent))
+            .toDouble();
+        if (settled != pixels) {
+          correctPixels(settled);
+          return false;
+        }
+      }
+    }
+    return super.applyContentDimensions(minScrollExtent, maxScrollExtent);
   }
 }
 
@@ -827,12 +825,24 @@ bool _gameMatchesTier(GamesTourModel game, String tier) {
 bool smartGameMatchesTierForTest(GamesTourModel game, String tier) =>
     _gameMatchesTier(game, tier);
 
+/// The Games and Events lists' scroll keeper ([_QueryScroll]), so a test can
+/// drive it under a list of its own: call `show` from the build that puts a
+/// query's games on screen.
+@visibleForTesting
+({ScrollController controller, void Function(String query) show})
+smartEventQueryScrollForTest() {
+  final keeper = _QueryScroll();
+  return (controller: keeper.controller, show: keeper.show);
+}
+
 class _AppBar extends ConsumerWidget {
   const _AppBar({
     required this.request,
     required this.savedRequest,
     required this.isDirty,
     required this.onApplyChanges,
+    required this.criteriaCount,
+    required this.onFilters,
   });
 
   /// The request with the user's current tier + filter overrides folded in.
@@ -843,6 +853,11 @@ class _AppBar extends ConsumerWidget {
   final SmartEventRequest savedRequest;
   final bool isDirty;
   final Future<bool> Function() onApplyChanges;
+
+  /// What narrows the list ([_SmartEventScreenState._criteriaCount]), worn
+  /// by Filters here as in the search.
+  final int criteriaCount;
+  final VoidCallback onFilters;
 
   Future<bool> _confirmApplyChanges(BuildContext context) async {
     final confirmed = await showSmoothConfirmDialog(
@@ -868,126 +883,117 @@ class _AppBar extends ConsumerWidget {
     final spaceDraft = smartEventSpaceDraft(savedRequest);
     final inSpace = ref.watch(spaceShortcutExistsProvider(spaceDraft.key));
 
-    // Bare glyphs (Trello #1420): no tile behind the view toggle or the ⋮.
-    // Their 44pt targets reach past the old tiles by this much on each side;
-    // the gaps give it back, so every glyph sits exactly where it was.
-    final reach = AppBarIconSurface.bareReach;
-    const backTarget = AppBarIconSurface.minTapTarget;
-    return Padding(
-      padding: EdgeInsets.fromLTRB(8.w, 8.h, math.max(0, 16.w - reach), 0),
-      child: Row(
-        children: [
-          // The chevron stays on its inset; its 44pt target reaches right,
-          // into the space that keeps the title centred.
-          Semantics(
-            button: true,
-            label: 'Back',
-            child: GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              // maybePop so the screen's PopScope can intercept a dirty
-              // config and offer to apply + save it.
-              onTap: () => Navigator.of(context).maybePop(),
-              child: SizedBox.square(
-                dimension: backTarget,
-                child: Align(
-                  alignment: AlignmentDirectional.centerStart,
-                  child: Icon(
-                    Icons.arrow_back_ios_new_outlined,
-                    size: 24.ic,
-                    color: context.colors.textPrimary,
+    final menu = Builder(
+      builder: (menuContext) => Semantics(
+        label: 'More options',
+        child: AppBarIcons(
+          image: SvgAsset.threeDots,
+          boxed: false,
+          onTap: () {
+            HapticFeedbackService.cardTap();
+            unawaited(
+              showLibraryContextMenu(
+                context: menuContext,
+                actions: [
+                  if (!isDirty)
+                    LibraryMenuAction(
+                      icon: inSpace
+                          ? Icons.dashboard_customize
+                          : Icons.dashboard_customize_outlined,
+                      label: inSpace
+                          ? 'Remove from My Space'
+                          : 'Add to My Space',
+                      enabled: !busy,
+                      onSelected: () => toggleSpaceShortcut(
+                        context: context,
+                        ref: ref,
+                        draft: spaceDraft,
+                      ),
+                    ),
+                  if (isDirty)
+                    LibraryMenuAction(
+                      icon: Icons.check_circle_outline_rounded,
+                      label: 'Apply changes to ${request.displayName}',
+                      enabled: !busy,
+                      onSelected: () async {
+                        if (await _confirmApplyChanges(context) &&
+                            context.mounted) {
+                          await onApplyChanges();
+                        }
+                      },
+                    ),
+                  LibraryMenuAction(
+                    icon: savedFavorite == null
+                        ? Icons.star_outline_rounded
+                        : Icons.star_rounded,
+                    label: savedFavorite == null
+                        ? 'Star saved event'
+                        : 'Unstar saved event / stop notifications',
+                    enabled: !busy,
+                    onSelected: () => toggleSmartEventFavorite(
+                      context: context,
+                      request: savedRequest,
+                    ),
                   ),
+                  LibraryMenuAction(
+                    icon: Icons.notifications_outlined,
+                    label: 'Starred Smart Events',
+                    onSelected: () => openStarredSmartEvents(context),
+                  ),
+                ],
+              ),
+            );
+          },
+        ),
+      ),
+    );
+
+    // The back row every page shares (SearchHeaderMetrics): the chevron at
+    // the leading inset, exactly where the search header's sits, and
+    // Filters last, on the gutter, as on every page's header. Bare glyphs
+    // (Trello #1420): no tile behind the toggle, the ⋮ or Filters.
+    return SizedBox(
+      height: _TitleSelector.rowHeight(context),
+      child: NavigationToolbar(
+        // The title centres on the screen while it fits between the two
+        // sides, and slides off centre rather than truncating when it is
+        // long (the saved name on About).
+        middleSpacing: 8,
+        leading: Padding(
+          padding: EdgeInsetsDirectional.only(
+            start: SearchHeaderMetrics.leadingInset,
+          ),
+          // Pops through maybePop, so the screen's PopScope can intercept
+          // a dirty config and offer to apply + save it.
+          child: const Center(widthFactor: 1, child: PageBackButton()),
+        ),
+        middle: _AppBarTitle(request: request),
+        trailing: Padding(
+          padding: EdgeInsetsDirectional.only(
+            end: math.max(
+              0.0,
+              SearchHeaderMetrics.gutter - SearchHeaderMetrics.trailingReach,
+            ),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const _LayoutToggle(),
+              menu,
+              // Reachable without opening the search, and last, on the
+              // gutter, as the search header carries it: one glyph that
+              // holds still as the search opens and closes.
+              SearchModeShared(
+                id: SearchModeFilterButton,
+                child: SearchModeFilterButton(
+                  key: const ValueKey('smart_event_filters'),
+                  count: criteriaCount,
+                  onTap: onFilters,
                 ),
               ),
-            ),
+            ],
           ),
-          // Mirrors the toggle + menu on the right so the title stays
-          // centred on the screen, not just between the buttons. The back
-          // target already covers part of that; the toggle's reaches [reach]
-          // into the title's slot, matched here so the title keeps its
-          // centre.
-          SizedBox(
-            width: math.max(0, 24.ic + 16.w + reach - (backTarget - 24.ic)),
-          ),
-          Expanded(
-            child: Center(child: _AppBarTitle(request: request)),
-          ),
-          Semantics(
-            label: 'Toggle chessboard view',
-            child: AppBarIcons(
-              image: SvgAsset.chase_grid,
-              boxed: false,
-              onTap: () {
-                HapticFeedbackService.cardTap();
-                ref.read(gamesListViewModeSwitcher).toggleViewMode();
-              },
-            ),
-          ),
-          SizedBox(width: math.max(0, 16.w - 2 * reach)),
-          Builder(
-            builder: (menuContext) => Semantics(
-              label: 'More options',
-              child: AppBarIcons(
-                image: SvgAsset.threeDots,
-                boxed: false,
-                onTap: () {
-                  HapticFeedbackService.cardTap();
-                  unawaited(
-                    showLibraryContextMenu(
-                      context: menuContext,
-                      actions: [
-                        if (!isDirty)
-                          LibraryMenuAction(
-                            icon: inSpace
-                                ? Icons.dashboard_customize
-                                : Icons.dashboard_customize_outlined,
-                            label: inSpace
-                                ? 'Remove from My Space'
-                                : 'Add to My Space',
-                            enabled: !busy,
-                            onSelected: () => toggleSpaceShortcut(
-                              context: context,
-                              ref: ref,
-                              draft: spaceDraft,
-                            ),
-                          ),
-                        if (isDirty)
-                          LibraryMenuAction(
-                            icon: Icons.check_circle_outline_rounded,
-                            label: 'Apply changes to ${request.displayName}',
-                            enabled: !busy,
-                            onSelected: () async {
-                              if (await _confirmApplyChanges(context) &&
-                                  context.mounted) {
-                                await onApplyChanges();
-                              }
-                            },
-                          ),
-                        LibraryMenuAction(
-                          icon: savedFavorite == null
-                              ? Icons.star_outline_rounded
-                              : Icons.star_rounded,
-                          label: savedFavorite == null
-                              ? 'Star saved event'
-                              : 'Unstar saved event / stop notifications',
-                          enabled: !busy,
-                          onSelected: () => toggleSmartEventFavorite(
-                            context: context,
-                            request: savedRequest,
-                          ),
-                        ),
-                        LibraryMenuAction(
-                          icon: Icons.notifications_outlined,
-                          label: 'Starred Smart Events',
-                          onSelected: () => openStarredSmartEvents(context),
-                        ),
-                      ],
-                    ),
-                  );
-                },
-              ),
-            ),
-          ),
-        ],
+        ),
       ),
     );
   }
@@ -1018,15 +1024,10 @@ class _AppBarTitle extends StatelessWidget {
         switchOutCurve: Curves.easeInCubic,
         transitionBuilder: (child, animation) =>
             FadeTransition(opacity: animation, child: child),
-        child: Text(
+        // Named in the one title voice every pushed page shares.
+        child: PageTitle(
           request.displayName,
           key: const ValueKey('smart_title_static'),
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: AppTypography.textMdMedium.copyWith(
-            color: context.colors.textPrimary,
-            fontWeight: FontWeight.w700,
-          ),
         ),
       );
     }
@@ -1059,6 +1060,31 @@ class _TitleSelector extends StatefulWidget {
 
   final String selectedTier;
   final ValueChanged<String> onSelected;
+
+  /// The chip's padding around its one line.
+  static EdgeInsets get chipPadding =>
+      EdgeInsets.symmetric(horizontal: 14.sp, vertical: 8.sp);
+
+  /// The chip's edge, which a [Container] adds to its padding.
+  static const double chipBorder = 1;
+
+  /// The header's back row: the back button's target, or the title as the
+  /// reader's text size draws it (this chip, or the saved name on About),
+  /// whichever is taller. The row needs a height of its own because it
+  /// centres the title on the screen ([NavigationToolbar]).
+  static double rowHeight(BuildContext context) {
+    final scaler = MediaQuery.textScalerOf(context);
+    double line(TextStyle style) =>
+        scaler.scale(style.fontSize ?? 14) * (style.height ?? 1.2);
+    final chip =
+        chipPadding.vertical +
+        2 * chipBorder +
+        line(AppTypography.textSmMedium);
+    final name = line(AppTypography.textMdMedium);
+    return math
+        .max(SearchHeaderMetrics.rowHeight, math.max(chip, name))
+        .ceilToDouble();
+  }
 
   @override
   State<_TitleSelector> createState() => _TitleSelectorState();
@@ -1181,7 +1207,7 @@ class _TitleSelectorState extends State<_TitleSelector>
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 220),
             curve: Curves.easeOutCubic,
-            padding: EdgeInsets.symmetric(horizontal: 14.sp, vertical: 8.sp),
+            padding: _TitleSelector.chipPadding,
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(14.br),
               color: _isOpen
@@ -1191,7 +1217,7 @@ class _TitleSelectorState extends State<_TitleSelector>
                 color: _isOpen
                     ? context.colors.accentText.withValues(alpha: 0.4)
                     : context.colors.textPrimary.withValues(alpha: 0.12),
-                width: 1,
+                width: _TitleSelector.chipBorder,
               ),
             ),
             child: Row(
@@ -1481,15 +1507,22 @@ class _EmptyState extends StatelessWidget {
   }
 }
 
-/// Full-tab shimmer for the Games tab's first load — same padding as the
-/// loaded list so swapping in the real cards doesn't shift layout.
+/// The side margin of the smart event's game lists, as the event page's
+/// Games list has it.
+double _listInset() => ResponsiveHelper.adaptive(phone: 16.sp, tablet: 24.sp);
+
+/// Full-tab shimmer for a tab's first load only (nothing loaded yet to keep
+/// on screen) — same padding as the loaded list so swapping in the real
+/// cards doesn't shift layout. A later query keeps its list on screen under
+/// [_QueryProgress] instead.
 class _GamesShimmerList extends StatelessWidget {
   const _GamesShimmerList({super.key});
 
   @override
   Widget build(BuildContext context) {
+    final inset = _listInset();
     return ListView(
-      padding: EdgeInsets.fromLTRB(16.sp, 8.sp, 16.sp, 24.sp),
+      padding: EdgeInsets.fromLTRB(inset, 8.sp, inset, 24.sp),
       physics: const NeverScrollableScrollPhysics(),
       children: const [_GameCardShimmerColumn(cardCount: 8)],
     );
@@ -1497,11 +1530,9 @@ class _GamesShimmerList extends StatelessWidget {
 }
 
 /// Shimmer game-card placeholders — the mock-card technique from
-/// TourLoadingWidget. Rendered inside the Games tab list while a re-keyed
-/// query (tier switch, filter edit, committed search) is fetching and the
-/// stale aggregate filters down to nothing.
+/// TourLoadingWidget, for [_GamesShimmerList].
 class _GameCardShimmerColumn extends StatelessWidget {
-  const _GameCardShimmerColumn({this.cardCount = 6, super.key});
+  const _GameCardShimmerColumn({this.cardCount = 6});
 
   final int cardCount;
 
@@ -1569,7 +1600,10 @@ class _GamesTabState extends ConsumerState<_GamesTab>
   @override
   bool get wantKeepAlive => true;
 
-  final ScrollController _scrollController = ScrollController();
+  /// The list's controller, moved as a search changes the games
+  /// ([_QueryScroll]).
+  final _QueryScroll _queryScroll = _QueryScroll();
+  ScrollController get _scrollController => _queryScroll.controller;
 
   @override
   void onScrollToTopRequested() {
@@ -1592,18 +1626,26 @@ class _GamesTabState extends ConsumerState<_GamesTab>
   /// tab reads and writes it through the scope.
   GameFilter get _filter => _SmartTierFilterScope.of(context).filter;
 
-  /// Search is owned by the screen too (the field sits pinned above the tab
-  /// switcher); this tab keys its server query on the committed text.
+  /// Search is owned by the screen too (its field takes the header's
+  /// place); this tab keys its server query on the settled text.
   String get _query => _SmartTierFilterScope.of(context).searchQuery;
 
-  /// Last successfully loaded aggregate. Tier switches, search keystrokes and
+  /// Last successfully loaded aggregate. Tier switches, settled queries and
   /// filter edits re-key the query provider; rendering this while the new
   /// fetch is in flight keeps the list on screen instead of flashing a
   /// spinner or a false empty state.
   SmartAggregateEvent? _lastLoadedEvent;
 
+  /// The games the list last showed for its own query and controls, and
+  /// whether controls narrowed them. While a new fetch is in flight and
+  /// narrowing the last loaded games leaves nothing, these stay on screen
+  /// (under [_QueryProgress]) until the answer lands: never a skeleton.
+  List<GamesTourModel>? _settledGames;
+  bool _settledNarrowed = false;
+
   /// Track collapsed state for chronological date sections — mirrors the
-  /// Countrymen / Favorites games tabs.
+  /// Countrymen / Favorites games tabs. A search's hits show every section
+  /// open without touching it, so the sections come back as they were.
   final Set<String> _collapsedDates = {};
 
   @override
@@ -1634,7 +1676,7 @@ class _GamesTabState extends ConsumerState<_GamesTab>
     _scrollIdleTimer?.cancel();
     _setLiveCardsPausedForScroll(false);
     WidgetsBinding.instance.removeObserver(this);
-    _scrollController.dispose();
+    _queryScroll.dispose();
     super.dispose();
   }
 
@@ -1782,9 +1824,15 @@ class _GamesTabState extends ConsumerState<_GamesTab>
     );
     final async = ref.watch(smartAggregateEventRepositoryProvider(smartQuery));
     final viewMode = ref.watch(gamesListViewModeProvider);
+    final inset = _listInset();
 
-    Widget buildLoaded(SmartAggregateEvent event) {
-      final games = _applySmartGameControls(event.games, event.gameEventNames);
+    Widget buildLoaded(
+      SmartAggregateEvent event,
+      List<GamesTourModel> games, {
+      required bool narrowed,
+      required String shownQuery,
+    }) {
+      final hitsOpen = shownQuery.isNotEmpty;
       final gamesData = GamesScreenModel(
         gamesTourModels: games,
         pinnedGamedIs: event.pinnedGameIds,
@@ -1801,13 +1849,20 @@ class _GamesTabState extends ConsumerState<_GamesTab>
         MediaQuery.sizeOf(
               context,
             ).width.clamp(0, ResponsiveHelper.contentMaxWidth) -
-            2 * ResponsiveHelper.adaptive(phone: 16.sp, tablet: 24.sp),
+            2 * inset,
         minItemWidth: 220,
         spacing: 16.sp,
         minColumns: 2,
         maxColumns: 4,
       );
-      final rows = _buildDayRows(games, gridColumns: isGrid ? gridColumns : 1);
+      final rows = _buildDayRows(
+        games,
+        gridColumns: isGrid ? gridColumns : 1,
+        expandAll: hitsOpen,
+      );
+      final rowCount = games.isEmpty
+          ? 1
+          : rows.length + (event.hasMore || event.isLoadingMore ? 1 : 0);
       return NotificationListener<ScrollNotification>(
         onNotification: _handleScrollNotification,
         child: RefreshIndicator(
@@ -1823,38 +1878,32 @@ class _GamesTabState extends ConsumerState<_GamesTab>
             key: PageStorageKey<String>('smart_event_games_${request.scopeId}'),
             controller: _scrollController,
             scrollCacheExtent: kListScrollCacheExtent,
-            padding: EdgeInsets.fromLTRB(16.sp, 8.sp, 16.sp, 24.sp),
+            // Narrowed to nothing, the no-hits line keeps the list's gutter
+            // itself ([SearchNoMatches]).
+            padding: games.isEmpty
+                ? EdgeInsets.zero
+                : EdgeInsets.fromLTRB(inset, 8.sp, inset, 0),
             physics: const AlwaysScrollableScrollPhysics(
               parent: BouncingScrollPhysics(),
             ),
-            itemCount: games.isEmpty
-                ? 1
-                : rows.length + (event.hasMore || event.isLoadingMore ? 1 : 0),
+            // Its last row is the list's end ([_ListEnd]).
+            itemCount: rowCount + 1,
             itemBuilder: (context, i) {
+              if (i == rowCount) return const _ListEnd();
               if (games.isEmpty) {
-                final hasNarrowingControls =
-                    _query.isNotEmpty ||
-                    _filter.hasActiveFilters ||
-                    _SmartTierFilterScope.of(context).tier != 'All';
-                // A tier switch / filter edit / committed search re-keys the
-                // query; while the new fetch is in flight the stale aggregate
-                // may filter down to nothing. That's "loading", not "no
-                // results" — shimmer instead of a false empty state.
-                return AnimatedSwitcher(
-                  duration: const Duration(milliseconds: 250),
-                  switchInCurve: Curves.easeOut,
-                  switchOutCurve: Curves.easeIn,
-                  child: async.isLoading
-                      ? const _GameCardShimmerColumn(
-                          key: ValueKey('smart_games_filter_shimmer'),
-                        )
-                      : _EmptyState(
-                          key: const ValueKey('smart_games_filter_empty'),
-                          message: hasNarrowingControls
-                              ? 'No games match your filters'
-                              : 'No games right now',
-                        ),
-                );
+                // Narrowed to nothing: the one no-hits line every searched
+                // list shows, with the words echoed and a way to clear them.
+                return narrowed
+                    ? SearchNoMatches(
+                        key: const ValueKey('smart_games_filter_empty'),
+                        query: shownQuery,
+                        onClear: shownQuery.isEmpty
+                            ? null
+                            : tabScope.onClearSearch,
+                      )
+                    : const _EmptyState(
+                        key: ValueKey('smart_games_filter_empty'),
+                      );
               }
               if (i >= rows.length) {
                 if (event.isLoadingMore) {
@@ -1879,8 +1928,14 @@ class _GamesTabState extends ConsumerState<_GamesTab>
                   child: _DateHeader(
                     dateLabel: _formatDateHeader(header.dateKey),
                     gameCount: header.gameCount,
-                    isExpanded: !_collapsedDates.contains(header.dateKey),
-                    onToggle: () => _toggleDateSection(header.dateKey),
+                    isExpanded:
+                        hitsOpen || !_collapsedDates.contains(header.dateKey),
+                    // A search's hits keep every day open (and its own
+                    // collapsed state untouched), as the event page's
+                    // rounds do.
+                    onToggle: hitsOpen
+                        ? null
+                        : () => _toggleDateSection(header.dateKey),
                   ),
                 );
               }
@@ -1937,20 +1992,55 @@ class _GamesTabState extends ConsumerState<_GamesTab>
       );
     }
 
-    if (async.hasValue) {
-      _lastLoadedEvent = async.requireValue;
-    }
-    final event =
-        async.valueOrNull ?? (async.isLoading ? _lastLoadedEvent : null);
+    final current = async.valueOrNull;
+    if (current != null) _lastLoadedEvent = current;
+    // A re-keyed query (settled search, tier switch, filter edit) in flight:
+    // the last loaded games stay on screen meanwhile.
+    final stale = current == null && async.isLoading ? _lastLoadedEvent : null;
+    final event = current ?? stale;
 
     // Fade between the three tab-level states (shimmer / error / content)
     // instead of hard-swapping; rebuilds within the data state keep the same
-    // key, so the list itself never re-animates.
+    // key, so the list itself never re-animates or remounts.
     Widget content;
     if (event != null) {
+      var games = _applySmartGameControls(event.games, event.gameEventNames);
+      var narrowed =
+          _query.isNotEmpty || _filter.hasActiveFilters || tier != 'All';
+      var shownQuery = _query;
+      if (current != null) {
+        _settledGames = games;
+        _settledNarrowed = narrowed;
+      } else {
+        // Narrowing only ever drops games, so what narrowing the last
+        // loaded games leaves belongs to the new answer too and shows at
+        // once. With nothing left, or a query cleared (the last loaded games
+        // are the old hits, not the list), the list as it was stays until
+        // the answer lands.
+        final cleared = _query.isEmpty && _queryScroll.shown.isNotEmpty;
+        if ((games.isEmpty || cleared) && _settledGames != null) {
+          games = _settledGames!;
+          narrowed = _settledNarrowed;
+          shownQuery = _queryScroll.shown;
+        }
+      }
+      // Hits start from the top; the list comes back where it was when the
+      // words are cleared or the search closes.
+      _queryScroll.show(shownQuery);
       content = KeyedSubtree(
         key: const ValueKey('smart_games_data'),
-        child: buildLoaded(event),
+        child: Stack(
+          fit: StackFit.passthrough,
+          children: [
+            buildLoaded(
+              event,
+              games,
+              narrowed: narrowed,
+              shownQuery: shownQuery,
+            ),
+            _QueryProgress(loading: stale != null),
+          ],
+        ),
       );
     } else if (async.hasError) {
       content = GenericErrorWidget(
@@ -2089,11 +2179,13 @@ class _GamesTabState extends ConsumerState<_GamesTab>
   }
 
   /// Group games by day and flatten into header + game rows, honoring the
-  /// collapsed state. Games arrive pre-sorted (day desc, pinned, avg Elo).
-  /// With [gridColumns] > 1 each section's games are chunked into grid rows.
+  /// collapsed state unless [expandAll] (a search's hits). Games arrive
+  /// pre-sorted (day desc, pinned, avg Elo). With [gridColumns] > 1 each
+  /// section's games are chunked into grid rows.
   List<_GameListRow> _buildDayRows(
     List<GamesTourModel> games, {
     int gridColumns = 1,
+    bool expandAll = false,
   }) {
     final gamesByDate = <String, List<GamesTourModel>>{};
     for (final game in games) {
@@ -2111,7 +2203,7 @@ class _GamesTabState extends ConsumerState<_GamesTab>
           _DateHeaderData(dateKey: dateKey, gameCount: dateGames.length),
         ),
       );
-      if (_collapsedDates.contains(dateKey)) continue;
+      if (!expandAll && _collapsedDates.contains(dateKey)) continue;
       if (gridColumns > 1) {
         for (var i = 0; i < dateGames.length; i += gridColumns) {
           final end = i + gridColumns < dateGames.length
@@ -2291,7 +2383,9 @@ List<_EventGameListRow> _buildEventGameRows(
   return rows;
 }
 
-/// Date section header — identical to the Countrymen / Favorites games tabs.
+/// A day's section header: the day and its count on a recessed tonal
+/// surface, with the fold chevron at its end. No accent bar beside the
+/// words and no shadow under it: the surface's own tone sets it apart.
 class _DateHeader extends StatelessWidget {
   const _DateHeader({
     required this.dateLabel,
@@ -2318,35 +2412,17 @@ class _DateHeader extends StatelessWidget {
           border: Border.all(
             color: context.colors.textPrimary.withValues(alpha: 0.1),
           ),
-          boxShadow: [
-            BoxShadow(
-              color: context.isLightTheme
-                  ? context.colors.shadow
-                  : Colors.black.withValues(alpha: 0.1),
-              blurRadius: 4,
-              offset: const Offset(0, 2),
-            ),
-          ],
         ),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            Container(
-              width: 4.w,
-              height: 20.h,
-              decoration: BoxDecoration(
-                color: context.colors.accentText,
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-            SizedBox(width: 12.w),
             Expanded(
               child: Text(
                 '$dateLabel • $gameCount ${gameCount == 1 ? 'game' : 'games'}',
-                style: TextStyle(
+                style: AppTypography.textMdMedium.copyWith(
                   color: context.colors.textPrimary,
-                  fontSize: 16.sp,
                   fontWeight: FontWeight.w600,
+                  height: 1.2,
                 ),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
@@ -2711,8 +2787,15 @@ class _EventsTabState extends ConsumerState<_EventsTab>
   @override
   bool get wantKeepAlive => true;
 
-  final ScrollController _scrollController = ScrollController();
+  /// The list's controller, moved as a search changes the events
+  /// ([_QueryScroll]).
+  final _QueryScroll _queryScroll = _QueryScroll();
+  ScrollController get _scrollController => _queryScroll.controller;
   SmartAggregateEvent? _lastLoadedEvent;
+
+  /// Whether controls narrowed the last answer, for its empty state while
+  /// it stays on screen through the next fetch.
+  bool _settledNarrowed = false;
 
   @override
   void onScrollToTopRequested() {
@@ -2721,7 +2804,7 @@ class _EventsTabState extends ConsumerState<_EventsTab>
 
   @override
   void dispose() {
-    _scrollController.dispose();
+    _queryScroll.dispose();
     super.dispose();
   }
 
@@ -2798,9 +2881,23 @@ class _EventsTabState extends ConsumerState<_EventsTab>
     final streamEnabled =
         scope.tabIndex == 2 && (ModalRoute.of(context)?.isCurrent ?? true);
 
-    if (async.hasValue) _lastLoadedEvent = async.requireValue;
-    final event =
-        async.valueOrNull ?? (async.isLoading ? _lastLoadedEvent : null);
+    final current = async.valueOrNull;
+    if (current != null) {
+      _lastLoadedEvent = current;
+      _settledNarrowed =
+          scope.searchQuery.isNotEmpty ||
+          scope.filter.hasActiveFilters ||
+          scope.tier != 'All';
+      // Hits start from the top; the list comes back where it was when the
+      // words are cleared or the search closes. A previous answer kept on
+      // screen meanwhile does not move.
+      _queryScroll.show(scope.searchQuery);
+    }
+    // A re-keyed query in flight: the last answer stays on screen, under
+    // [_QueryProgress], until the new one lands.
+    final stale = current == null && async.isLoading ? _lastLoadedEvent : null;
+    final event = current ?? stale;
+    final inset = _listInset();
 
     Widget content;
     if (event == null) {
@@ -2811,17 +2908,10 @@ class _EventsTabState extends ConsumerState<_EventsTab>
                   ref.invalidate(smartAggregateEventRepositoryProvider(query)),
             )
           : const _GamesShimmerList(key: ValueKey('smart_events_loading'));
-    } else if (event.games.isEmpty) {
-      content = _EmptyState(
-        key: const ValueKey('smart_events_empty'),
-        message:
-            scope.searchQuery.isNotEmpty ||
-                scope.filter.hasActiveFilters ||
-                scope.tier != 'All'
-            ? 'No events match your filters'
-            : 'No events right now',
-      );
     } else {
+      // An answer with no games is still this list, as on Games: a search
+      // with no hits never swaps the list out, so clearing it puts the list
+      // back where the reader left it.
       final games = event.games;
       final gamesData = GamesScreenModel(
         gamesTourModels: games,
@@ -2837,7 +2927,7 @@ class _EventsTabState extends ConsumerState<_EventsTab>
         MediaQuery.sizeOf(
               context,
             ).width.clamp(0, ResponsiveHelper.contentMaxWidth) -
-            2 * ResponsiveHelper.adaptive(phone: 16.sp, tablet: 24.sp),
+            2 * inset,
         minItemWidth: 220,
         spacing: 16.sp,
         minColumns: 2,
@@ -2847,10 +2937,10 @@ class _EventsTabState extends ConsumerState<_EventsTab>
         event,
         gridColumns: isGrid ? gridColumns : 1,
       );
-      final horizontalPadding = ResponsiveHelper.adaptive(
-        phone: 16.sp,
-        tablet: 24.sp,
-      );
+      final horizontalPadding = inset;
+      final rowCount = games.isEmpty
+          ? 1
+          : rows.length + (event.hasMore || event.isLoadingMore ? 1 : 0);
 
       content = NotificationListener<ScrollNotification>(
         key: const ValueKey('smart_events_data'),
@@ -2873,19 +2963,38 @@ class _EventsTabState extends ConsumerState<_EventsTab>
                 ),
                 controller: _scrollController,
                 scrollCacheExtent: kListScrollCacheExtent,
-                padding: EdgeInsets.fromLTRB(
-                  horizontalPadding,
-                  8.sp,
-                  horizontalPadding,
-                  24.sp,
-                ),
+                // Narrowed to nothing, the no-hits line keeps the list's
+                // gutter itself ([SearchNoMatches]).
+                padding: games.isEmpty
+                    ? EdgeInsets.zero
+                    : EdgeInsets.fromLTRB(
+                        horizontalPadding,
+                        8.sp,
+                        horizontalPadding,
+                        0,
+                      ),
                 physics: const AlwaysScrollableScrollPhysics(
                   parent: BouncingScrollPhysics(),
                 ),
-                itemCount:
-                    rows.length +
-                    (event.hasMore || event.isLoadingMore ? 1 : 0),
+                // Its last row is the list's end ([_ListEnd]).
+                itemCount: rowCount + 1,
                 itemBuilder: (context, index) {
+                  if (index == rowCount) return const _ListEnd();
+                  if (games.isEmpty) {
+                    if (!_settledNarrowed) {
+                      return const _EmptyState(
+                        key: ValueKey('smart_events_empty'),
+                        message: 'No events right now',
+                      );
+                    }
+                    final words = _queryScroll.shown;
+                    return SearchNoMatches(
+                      key: const ValueKey('smart_events_empty'),
+                      query: words,
+                      subject: 'events',
+                      onClear: words.isEmpty ? null : scope.onClearSearch,
+                    );
+                  }
                   if (index >= rows.length) {
                     if (!event.isLoadingMore) {
                       return const SizedBox(height: 24);
@@ -2976,6 +3085,17 @@ class _EventsTabState extends ConsumerState<_EventsTab>
             ),
           ),
         ),
+      );
+    }
+    if (event != null) {
+      // Over the answer on screen while the next one loads.
+      content = Stack(
+        key: content.key,
+        fit: StackFit.passthrough,
+        children: [
+          content,
+          _QueryProgress(loading: stale != null),
+        ],
       );
     }
 

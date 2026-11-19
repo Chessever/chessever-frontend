@@ -22,6 +22,7 @@ class PressSpring extends StatefulWidget {
     this.pressedScale = 0.94,
     this.delay = Duration.zero,
     this.builder,
+    this.behavior = HitTestBehavior.translucent,
   });
 
   final Widget child;
@@ -39,6 +40,11 @@ class PressSpring extends StatefulWidget {
   /// [pressedScale].
   final Widget Function(BuildContext context, double press, Widget child)?
   builder;
+
+  /// Translucent by default: a touch anywhere in this box is a press, not
+  /// only one landing on painted pixels, and the control under it still
+  /// gets its tap.
+  final HitTestBehavior behavior;
 
   /// The shortest press a tap shows.
   static const minHold = Duration(milliseconds: 90);
@@ -61,6 +67,11 @@ class PressSpring extends StatefulWidget {
 
 class _PressSpringState extends State<PressSpring> {
   bool _pressed = false;
+
+  /// The device's touch slop: the distance the tap and scroll recognizers
+  /// themselves use (about 8 on Android, 18 on iOS), so a drag stops being
+  /// a press exactly when it stops being a tap.
+  double _slop = kTouchSlop;
   int? _pointer;
   Offset _origin = Offset.zero;
   DateTime? _pressedAt;
@@ -93,7 +104,7 @@ class _PressSpringState extends State<PressSpring> {
 
   void _move(PointerMoveEvent event) {
     if (event.pointer != _pointer) return;
-    if ((event.position - _origin).distance <= kTouchSlop) return;
+    if ((event.position - _origin).distance <= _slop) return;
     // A drag: a scroll or a swipe, not a press.
     _end();
     _set(false);
@@ -129,6 +140,7 @@ class _PressSpringState extends State<PressSpring> {
   @override
   Widget build(BuildContext context) {
     final reduce = MediaQuery.disableAnimationsOf(context);
+    _slop = MediaQuery.maybeGestureSettingsOf(context)?.touchSlop ?? kTouchSlop;
     final pressedScale = widget.pressedScale;
     final builder =
         widget.builder ??
@@ -140,6 +152,7 @@ class _PressSpringState extends State<PressSpring> {
           );
         };
     return Listener(
+      behavior: widget.behavior,
       onPointerDown: _down,
       onPointerMove: _move,
       onPointerUp: _up,

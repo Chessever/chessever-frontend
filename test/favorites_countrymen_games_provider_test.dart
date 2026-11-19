@@ -56,12 +56,12 @@ void main() {
               home: Builder(
                 builder: (context) {
                   ResponsiveHelper.init(context);
-                  // The Filters control lives in the Games search header
-                  // (Trello #1420).
+                  // The Filters control ends the Games toolbar (title row and
+                  // search header alike).
                   return const Scaffold(
                     body: Column(
                       children: [
-                        FavoritesGamesSearchControls(),
+                        FavoritesGamesToolbar(),
                         Expanded(child: FavoritesGamesTab()),
                       ],
                     ),
@@ -191,6 +191,183 @@ void main() {
       expect(repository.favoriteSearchCalls.last.filter, filter);
     });
 
+    test('a search keeps the list on screen until its hits land, and its '
+        'close puts the list back as it was, with no fetch', () async {
+      final repository = _RecordingGameRepository();
+      final pending = Completer<List<Games>>();
+      repository.controlledFavoriteSearches['Najdorf'] = pending;
+      final harness = await _favoritesHarness(repository);
+      addTearDown(harness.dispose);
+      final notifier = harness.container.read(
+        favoritesCombinedGamesProvider.notifier,
+      );
+      FavoritesCombinedGamesState read() =>
+          harness.container.read(favoritesCombinedGamesProvider);
+      final plain = read();
+      expect(plain.games.map((game) => game.gameId), ['favorite-day']);
+
+      final search = notifier.searchGames('Najdorf');
+      await _waitUntil(() => repository.favoriteSearchCalls.isNotEmpty);
+      // On its way: the plain list stays, marked as being replaced.
+      expect(read().games.map((game) => game.gameId), ['favorite-day']);
+      expect(read().isLoading, isTrue);
+      expect(read().isReplacing, isTrue);
+      expect(read().searchQuery, isEmpty);
+
+      pending.complete([_game('najdorf-game')]);
+      await search;
+      expect(read().games.map((game) => game.gameId), ['najdorf-game']);
+      expect(read().searchQuery, 'Najdorf');
+      expect(read().isReplacing, isFalse);
+
+      final dateFetches = repository.favoriteDateFilters.length;
+      final clear = notifier.clearSearch();
+      // Back in the same tick, exactly as it was left.
+      expect(read().games.map((game) => game.gameId), ['favorite-day']);
+      expect(read().searchQuery, isEmpty);
+      expect(read().isLoading, isFalse);
+      await clear;
+      expect(repository.favoriteDateFilters, hasLength(dateFetches));
+      expect(read().hasMore, plain.hasMore);
+      expect(read().dateOffset, plain.dateOffset);
+    });
+
+    test('a search or a filter from an empty list keeps that answer on '
+        'screen as a replacement, never a first load', () async {
+      final repository = _RecordingGameRepository(favoriteDates: const []);
+      final pending = Completer<List<Games>>();
+      repository.controlledFavoriteSearches['Najdorf'] = pending;
+      final harness = await _favoritesHarness(repository);
+      addTearDown(harness.dispose);
+      final notifier = harness.container.read(
+        favoritesCombinedGamesProvider.notifier,
+      );
+      FavoritesCombinedGamesState read() =>
+          harness.container.read(favoritesCombinedGamesProvider);
+      expect(read().games, isEmpty);
+      expect(read().isLoading, isFalse);
+
+      final search = notifier.searchGames('Najdorf');
+      expect(read().isLoading, isTrue);
+      expect(read().isReplacing, isTrue);
+      expect(read().searchQuery, isEmpty);
+      pending.complete(const []);
+      await search;
+      expect(read().searchQuery, 'Najdorf');
+      expect(read().isReplacing, isFalse);
+
+      // From the search's empty answer, a filter replaces it the same way.
+      final filtered = notifier.applyFilter(
+        GameFilter().copyWith(timeControl: GameTimeControlFilter.classical),
+      );
+      expect(read().isLoading, isTrue);
+      expect(read().isReplacing, isTrue);
+      await filtered;
+      expect(read().isReplacing, isFalse);
+    });
+
+    test('a fetch while the first load is still on its way stays a first '
+        'load', () async {
+      final repository = _RecordingGameRepository();
+      final pendingDates = Completer<List<DateTime>>();
+      repository.nextFavoriteDates = pendingDates;
+      final container = ProviderContainer(
+        overrides: [
+          gameRepositoryProvider.overrideWithValue(repository),
+          favoritePlayersNotifierProvider.overrideWith(
+            _TestFavoritePlayersNotifier.new,
+          ),
+        ],
+      );
+      addTearDown(container.dispose);
+      await container.read(favoritePlayersNotifierProvider.future);
+      final subscription = container.listen(
+        favoritesCombinedGamesProvider,
+        (_, __) {},
+        fireImmediately: true,
+      );
+      addTearDown(subscription.close);
+      FavoritesCombinedGamesState read() =>
+          container.read(favoritesCombinedGamesProvider);
+      expect(read().isLoading, isTrue);
+      expect(read().games, isEmpty);
+
+      final refresh = container
+          .read(favoritesCombinedGamesProvider.notifier)
+          .refreshGames();
+      expect(read().isLoading, isTrue);
+      expect(read().isReplacing, isFalse);
+      pendingDates.complete(const []);
+      await refresh;
+    });
+
+    test('a search that fails shows the error instead of the list it '
+        'replaced', () async {
+      final repository = _RecordingGameRepository();
+      final failing = Completer<List<Games>>();
+      repository.controlledFavoriteSearches['Najdorf'] = failing;
+      final harness = await _favoritesHarness(repository);
+      addTearDown(harness.dispose);
+      final notifier = harness.container.read(
+        favoritesCombinedGamesProvider.notifier,
+      );
+
+      final search = notifier.searchGames('Najdorf');
+      await _waitUntil(() => repository.favoriteSearchCalls.isNotEmpty);
+      failing.completeError(StateError('offline'));
+      await search;
+
+      final state = harness.container.read(favoritesCombinedGamesProvider);
+      expect(state.games, isEmpty);
+      expect(state.error, isNotNull);
+      expect(state.isLoading, isFalse);
+      expect(state.isReplacing, isFalse);
+    });
+
+    test('a filter changed during the search is kept: its close fetches the '
+        'list again, the hits staying until it lands', () async {
+      final repository = _RecordingGameRepository();
+      final harness = await _favoritesHarness(repository);
+      addTearDown(harness.dispose);
+      final notifier = harness.container.read(
+        favoritesCombinedGamesProvider.notifier,
+      );
+      FavoritesCombinedGamesState read() =>
+          harness.container.read(favoritesCombinedGamesProvider);
+      final filter = GameFilter(result: GameResultFilter.draw);
+
+      await notifier.searchGames('Carlsen');
+      await notifier.applyFilter(filter);
+      expect(read().games.map((game) => game.gameId), [
+        'favorite-search-Carlsen',
+      ]);
+
+      final pendingDates = Completer<List<DateTime>>();
+      repository.nextFavoriteDates = pendingDates;
+      final asked = repository.favoriteDateFilters.length;
+      final clear = notifier.clearSearch();
+      expect(read().games.map((game) => game.gameId), [
+        'favorite-search-Carlsen',
+      ]);
+      expect(read().isReplacing, isTrue);
+      await _waitUntil(
+        () => repository.favoriteDateFilters.length == asked + 1,
+      );
+      // A second word to close while the list is on its way back: no second
+      // fetch, and the first one still lands.
+      await notifier.clearSearch();
+      await Future<void>.delayed(Duration.zero);
+      expect(repository.favoriteDateFilters, hasLength(asked + 1));
+      expect(read().isReplacing, isTrue);
+      pendingDates.complete([DateTime.utc(2026, 8, 26)]);
+      await clear;
+
+      expect(read().games.map((game) => game.gameId), ['favorite-day']);
+      expect(read().searchQuery, isEmpty);
+      expect(read().filter, filter);
+      expect(repository.favoriteDateFilters.last, filter);
+    });
+
     test('a slower old search cannot overwrite the latest query', () async {
       final repository = _RecordingGameRepository();
       final first = Completer<List<Games>>();
@@ -275,6 +452,66 @@ void main() {
       expect(state.filter, filter);
       expect(repository.countrySearchCalls.last.query, 'Carlsen');
       expect(repository.countrySearchCalls.last.filter, filter);
+    });
+
+    test('a search keeps the list on screen until its hits land, and its '
+        'close puts the list back as it was, with no fetch', () async {
+      final repository = _RecordingGameRepository();
+      final pending = Completer<List<Games>>();
+      repository.controlledCountrySearches['Najdorf'] = pending;
+      final harness = await _countryHarness(repository);
+      addTearDown(harness.dispose);
+      final notifier = harness.container.read(
+        countrymenCombinedGamesProvider.notifier,
+      );
+      CountrymenCombinedGamesState read() =>
+          harness.container.read(countrymenCombinedGamesProvider);
+      expect(read().games.map((game) => game.gameId), ['country-day']);
+
+      final search = notifier.searchGames('Najdorf');
+      await _waitUntil(() => repository.countrySearchCalls.isNotEmpty);
+      expect(read().games.map((game) => game.gameId), ['country-day']);
+      expect(read().isReplacing, isTrue);
+      expect(read().searchQuery, isEmpty);
+
+      pending.complete([_game('najdorf-game')]);
+      await search;
+      expect(read().games.map((game) => game.gameId), ['najdorf-game']);
+      expect(read().searchQuery, 'Najdorf');
+
+      final dayFetches = repository.countryDayFetches;
+      final clear = notifier.clearSearch();
+      expect(read().games.map((game) => game.gameId), ['country-day']);
+      expect(read().searchQuery, isEmpty);
+      expect(read().isLoading, isFalse);
+      await clear;
+      expect(repository.countryDayFetches, dayFetches);
+    });
+
+    test('another country never shows the last one\'s games while it '
+        'loads', () async {
+      final repository = _RecordingGameRepository();
+      final harness = await _countryHarness(repository);
+      addTearDown(harness.dispose);
+      final notifier = harness.container.read(
+        countrymenCombinedGamesProvider.notifier,
+      );
+
+      final refresh = notifier.refreshGames(keepList: false);
+      final state = harness.container.read(countrymenCombinedGamesProvider);
+      expect(state.games, isEmpty);
+      expect(state.isLoading, isTrue);
+      // Nothing of the last country is kept, so it is a first load (its
+      // spinner), not a list being replaced.
+      expect(state.isReplacing, isFalse);
+      await refresh;
+      expect(
+        harness.container
+            .read(countrymenCombinedGamesProvider)
+            .games
+            .map((game) => game.gameId),
+        ['country-day'],
+      );
     });
 
     test('a slower old search cannot overwrite the latest query', () async {
@@ -481,13 +718,19 @@ class _RecordingGameRepository implements GameRepository {
     int offset = 0,
   }) async => [DateTime.utc(2026, 8, 26)];
 
+  /// How many days of the plain list were fetched.
+  int countryDayFetches = 0;
+
   @override
   Future<List<Games>> getGamesByCountryAndDate({
     required String countryCode,
     required DateTime date,
     int minElo = 0,
     GameFilter? filter,
-  }) async => countryDayGames;
+  }) async {
+    countryDayFetches++;
+    return countryDayGames;
+  }
 
   @override
   Future<List<Games>> searchCountrymenGames({

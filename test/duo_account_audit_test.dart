@@ -613,7 +613,10 @@ void main() {
               final label = find.text(tab).last;
               await _expectHittable(tester, label, reason: tab);
               await tester.tap(label);
-              await _frames(tester);
+              // A tab change rides PageSpring, which parks on the page
+              // about half a second after the tap (longest across two pages
+              // on the unfolded width).
+              await _frames(tester, 10);
               expect(_hubPages(tester).page, closeTo(index, .001), reason: tab);
               expect(tester.takeException(), isNull, reason: tab);
             }

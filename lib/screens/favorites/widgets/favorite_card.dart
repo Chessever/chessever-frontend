@@ -44,7 +44,9 @@ class _FavoriteCardState extends State<FavoriteCard> {
             width: 24.w,
             child: Text(
               '${widget.rank}.',
-              style: AppTypography.textXsMedium.copyWith(color: context.colors.textPrimary),
+              style: AppTypography.textXsMedium.copyWith(
+                color: context.colors.textPrimary,
+              ),
             ),
           ),
 
@@ -78,7 +80,9 @@ class _FavoriteCardState extends State<FavoriteCard> {
             child: Text(
               widget.elo.toString(),
               textAlign: TextAlign.center,
-              style: AppTypography.textXsMedium.copyWith(color: context.colors.textPrimary),
+              style: AppTypography.textXsMedium.copyWith(
+                color: context.colors.textPrimary,
+              ),
             ),
           ),
 
@@ -88,7 +92,9 @@ class _FavoriteCardState extends State<FavoriteCard> {
             child: Text(
               widget.age.toString(),
               textAlign: TextAlign.center,
-              style: AppTypography.textXsMedium.copyWith(color: context.colors.textPrimary),
+              style: AppTypography.textXsMedium.copyWith(
+                color: context.colors.textPrimary,
+              ),
             ),
           ),
 
@@ -121,9 +127,8 @@ class _FavoriteCardState extends State<FavoriteCard> {
           height: 14.h,
           cacheWidth: 20,
           cacheHeight: 14,
-          errorBuilder:
-              (context, error, stackTrace) =>
-                  Text('🇳🇴', style: TextStyle(fontSize: 16.sp)),
+          errorBuilder: (context, error, stackTrace) =>
+              Text('🇳🇴', style: TextStyle(fontSize: 16.sp)),
         );
       case 'US':
         return Image.network(
@@ -132,9 +137,8 @@ class _FavoriteCardState extends State<FavoriteCard> {
           height: 14.h,
           cacheWidth: 20,
           cacheHeight: 14,
-          errorBuilder:
-              (context, error, stackTrace) =>
-                  Text('🇺🇸', style: TextStyle(fontSize: 16.sp)),
+          errorBuilder: (context, error, stackTrace) =>
+              Text('🇺🇸', style: TextStyle(fontSize: 16.sp)),
         );
       case 'IN':
         return Image.network(
@@ -143,9 +147,8 @@ class _FavoriteCardState extends State<FavoriteCard> {
           height: 14.h,
           cacheWidth: 20,
           cacheHeight: 14,
-          errorBuilder:
-              (context, error, stackTrace) =>
-                  Text('🇮🇳', style: TextStyle(fontSize: 16.sp)),
+          errorBuilder: (context, error, stackTrace) =>
+              Text('🇮🇳', style: TextStyle(fontSize: 16.sp)),
         );
       case 'UZ':
         return Image.network(
@@ -154,14 +157,15 @@ class _FavoriteCardState extends State<FavoriteCard> {
           height: 14.h,
           cacheWidth: 20,
           cacheHeight: 14,
-          errorBuilder:
-              (context, error, stackTrace) =>
-                  Text('🇺🇿', style: TextStyle(fontSize: 16.sp)),
+          errorBuilder: (context, error, stackTrace) =>
+              Text('🇺🇿', style: TextStyle(fontSize: 16.sp)),
         );
       default:
         return Text(
           countryCode,
-          style: AppTypography.textXsMedium.copyWith(color: context.colors.textPrimary),
+          style: AppTypography.textXsMedium.copyWith(
+            color: context.colors.textPrimary,
+          ),
         );
     }
   }

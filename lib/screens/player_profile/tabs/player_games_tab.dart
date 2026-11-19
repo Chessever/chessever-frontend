@@ -22,8 +22,6 @@ import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_p
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/game_card_wrapper_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/board_game_card_wrapper_widget.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/grid_game_card_wrapper_widget.dart';
-import 'package:chessever2/screens/tour_detail/widgets/event_search_bar.dart'
-    show EventSearchBarFrame;
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/widgets/app_snack.dart';
 import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
@@ -37,16 +35,90 @@ import 'package:chessever2/utils/number_format_utils.dart';
 import 'package:chessever2/utils/user_error_message.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/game_filter/game_filter.dart';
-import 'package:chessever2/utils/svg_asset.dart';
-import 'package:flutter_svg/flutter_svg.dart';
 import 'package:chessever2/widgets/scroll_to_top_bus.dart';
-import 'package:chessever2/widgets/simple_search_bar.dart';
+import 'package:chessever2/widgets/quick_list_toggles.dart';
+import 'package:chessever2/widgets/ink_fab.dart' show InkFabSize;
+import 'package:chessever2/widgets/search_mode/search_mode.dart'
+    show SearchModeFilterButton, SearchModeListEnd, SearchModeScope;
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
+/// The full-page skeleton the Games list shows only while its first answer
+/// loads.
+@visibleForTesting
+const Key playerGamesSkeletonKey = ValueKey<String>('player_games_skeleton');
+
 /// Games tab showing all games of a player with comprehensive filters
+/// Opens the Games list's filter sheet for [playerKey]: the list toolbar's
+/// Filters and the search header's open the same one.
+Future<void> openPlayerGamesFilters(
+  BuildContext context,
+  WidgetRef ref,
+  PlayerProfileKey playerKey,
+) async {
+  HapticFeedbackService.buttonPress();
+  final current = ref.read(playerProfileGamesKeyProvider(playerKey));
+  final result = await showGameFilterDialog(
+    context: context,
+    currentFilter: playerProfileEffectiveFilter(current.filter),
+    showFormatFilter: playerKey.source == PlayerProfileDataSource.twic,
+    showLiveFilter: false,
+  );
+  if (result == null || !context.mounted) return;
+  ref
+      .read(playerProfileGamesKeyProvider(playerKey).notifier)
+      .applyFilter(_storedFilter(result));
+}
+
+/// The dialog speaks in absolute bounds; the list keeps its defaults, so an
+/// untouched bound never reads as a filter.
+GameFilter _storedFilter(GameFilter filter) {
+  return filter.copyWith(
+    minYear: filter.minYear == GameFilter.absoluteMinYear
+        ? GameFilter.defaultMinYear
+        : filter.minYear,
+    minRating: filter.minRating == GameFilter.absoluteMinRating
+        ? GameFilter.defaultMinRating
+        : filter.minRating,
+  );
+}
+
+/// The Games list's controls in its search header, as every Games search
+/// header ends: the board view, then Filters (counted) on the gutter. While
+/// the search is open they stand here, and the list's toolbar keeps only
+/// its count line.
+class PlayerGamesSearchControls extends ConsumerWidget {
+  const PlayerGamesSearchControls({super.key, required this.playerKey});
+
+  final PlayerProfileKey playerKey;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final count = ref.watch(
+      playerProfileGamesKeyProvider(
+        playerKey,
+      ).select((state) => state.filterSheetCount),
+    );
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // The switcher gives the tap feedback.
+        BoardViewToggleButton(
+          onTap: () => ref.read(gamesListViewModeSwitcher).toggleViewMode(),
+        ),
+        SearchModeFilterButton(
+          key: const ValueKey('player_games_search_filters'),
+          count: count,
+          onTap: () => openPlayerGamesFilters(context, ref, playerKey),
+        ),
+      ],
+    );
+  }
+}
+
 class PlayerGamesTab extends ConsumerStatefulWidget {
   const PlayerGamesTab({
     super.key,
@@ -88,16 +160,40 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
   late final StateController<Set<String>> _liveGameCardsPauseReasons;
   final Set<String> _selectedGameIds = <String>{};
   final Set<String> _collapsedEventKeys = <String>{};
+
+  /// The sections folded while the list shows a search's hits. Every
+  /// section is open as the hits land, so none hides in one the reader
+  /// folded before; the reader's own folds come back with the whole list.
+  final Set<String> _searchCollapsedEventKeys = <String>{};
   static const Duration _scrollIdleDelay = Duration(milliseconds: 180);
+
+  /// The profile's search is open over this tab.
+  bool _searching = false;
+
+  /// Where the list was when the search opened: the unsearched list comes
+  /// back there, not wherever the shorter results left the scroll.
+  double? _preSearchOffset;
+
+  /// The query the list on screen answers ('' for the whole list).
+  String _shownQuery = '';
+
+  /// An answer has landed for this list (games, none, or an error). Only
+  /// the first one waits behind the skeleton; after it a quiet line says
+  /// the list is loading.
+  bool _answered = false;
 
   String get _liveCardsPauseReason => 'player_games_scroll_$hashCode';
 
+  /// Opening the search alone changes nothing on the list: only hits do.
+  Set<String> get _activeCollapsedKeys => _searching && _shownQuery.isNotEmpty
+      ? _searchCollapsedEventKeys
+      : _collapsedEventKeys;
+
   void _toggleEventCollapsed(String eventKey) {
     HapticFeedback.lightImpact();
+    final collapsed = _activeCollapsedKeys;
     setState(() {
-      if (!_collapsedEventKeys.add(eventKey)) {
-        _collapsedEventKeys.remove(eventKey);
-      }
+      if (!collapsed.add(eventKey)) collapsed.remove(eventKey);
     });
   }
 
@@ -117,6 +213,9 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
     );
     WidgetsBinding.instance.addObserver(this);
     _scrollController.addListener(_onScroll);
+    final initial = ref.read(playerProfileGamesKeyProvider(_playerKey));
+    _shownQuery = initial.searchQuery;
+    _answered = !initial.isLoading;
   }
 
   /// Get the player profile key for provider lookups
@@ -131,11 +230,63 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
+    _followSearch(SearchModeScope.maybeOf(context)?.isSearching ?? false);
     if (_routeSubscribed) return;
     final route = ModalRoute.of(context);
     if (route == null) return;
     routeObserver.subscribe(this, route);
     _routeSubscribed = true;
+  }
+
+  /// The profile's search opened or closed over this tab. The list itself
+  /// stays mounted and in place either way.
+  void _followSearch(bool searching) {
+    if (searching == _searching) return;
+    _searching = searching;
+    _searchCollapsedEventKeys.clear();
+    if (searching) {
+      _preSearchOffset = _scrollController.hasClients
+          ? _scrollController.offset
+          : null;
+    }
+  }
+
+  /// The list now on screen answers [query] (its first page landed, or the
+  /// unsearched list came back). Hits are read from their top; the whole
+  /// list comes back where the reader left it.
+  void _onListAnswers(String query) {
+    if (query.isNotEmpty) {
+      _jumpTo(0);
+      return;
+    }
+    final offset = _preSearchOffset;
+    if (offset != null) _jumpTo(offset, afterLayout: true);
+  }
+
+  void _jumpTo(double offset, {bool afterLayout = false}) {
+    void jump() {
+      if (!mounted || !_scrollController.hasClients) return;
+      final position = _scrollController.position;
+      final target = offset
+          .clamp(
+            position.minScrollExtent,
+            math.max(position.minScrollExtent, position.maxScrollExtent),
+          )
+          .toDouble();
+      if ((position.pixels - target).abs() < 0.5) return;
+      _scrollController.jumpTo(target);
+    }
+
+    // Mid-frame (or for an extent the new list has yet to lay out), after
+    // the frame.
+    final phase = SchedulerBinding.instance.schedulerPhase;
+    if (afterLayout ||
+        phase == SchedulerPhase.persistentCallbacks ||
+        phase == SchedulerPhase.midFrameMicrotasks) {
+      SchedulerBinding.instance.addPostFrameCallback((_) => jump());
+    } else {
+      jump();
+    }
   }
 
   @override
@@ -439,6 +590,15 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
       }
     });
 
+    // The list now answers another query: its first page landed, or the
+    // unsearched list came back as the search cleared.
+    ref.listen(playerProfileGamesKeyProvider(_playerKey), (_, next) {
+      if (!next.isLoading) _answered = true;
+      if (next.isLoading || next.searchQuery == _shownQuery) return;
+      _shownQuery = next.searchQuery;
+      _onListAnswers(next.searchQuery);
+    });
+
     ref.listen(playerProfileGamesKeyProvider(_playerKey), (previous, next) {
       if (!isSelectionMode || !mounted || _selectedGameIds.isEmpty) return;
       final visibleIds = next.filteredGames.map((game) => game.gameId).toSet();
@@ -458,15 +618,14 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
       tablet: 24.w,
     );
     // The search row left the list for the profile's own search page
-    // (Trello #1420). What stays floats over the list only while it has
-    // something to say: the picking panel, and what narrows the list.
-    final hasStickyHeader = isSelectionMode || state.hasActiveFilters;
+    // (Trello #1420). Over the list floats its toolbar (count, what narrows
+    // it, layout, filters), one height whatever it says, and the picking
+    // panel while games are being picked.
     final headerHeight =
-        8.h +
-        (state.hasActiveFilters
-            ? PlayerGamesActiveFiltersChip.heightOf(context)
-            : 0) +
-        (isSelectionMode ? PlayerGamesSelectionToolbar.heightOf(context) : 0);
+        PlayerGamesListToolbar.heightOf(context) +
+        (isSelectionMode
+            ? PlayerGamesSelectionToolbar.heightOf(context) + 4.h
+            : 0);
 
     final eventsAsync = ref.watch(playerEventsKeyProvider(_playerKey));
 
@@ -487,27 +646,26 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
           parent: BouncingScrollPhysics(),
         ),
         slivers: [
-          if (hasStickyHeader)
-            SliverAppBar(
-              primary: false,
-              floating: true,
-              snap: true,
-              pinned: false,
-              elevation: 0,
-              backgroundColor: Colors.transparent,
-              automaticallyImplyLeading: false,
-              toolbarHeight: headerHeight,
-              flexibleSpace: FlexibleSpaceBar(
-                background: Align(
-                  alignment: Alignment.bottomCenter,
-                  child: _buildStickyHeader(
-                    state,
-                    horizontalPadding,
-                    isSelectionMode,
-                  ),
+          SliverAppBar(
+            primary: false,
+            floating: true,
+            snap: true,
+            pinned: false,
+            elevation: 0,
+            backgroundColor: Colors.transparent,
+            automaticallyImplyLeading: false,
+            toolbarHeight: headerHeight,
+            flexibleSpace: FlexibleSpaceBar(
+              background: Align(
+                alignment: Alignment.bottomCenter,
+                child: _buildStickyHeader(
+                  state,
+                  horizontalPadding,
+                  isSelectionMode,
                 ),
               ),
             ),
+          ),
 
           // Content
           SliverLayoutBuilder(
@@ -520,8 +678,14 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
             ),
           ),
 
-          // Bottom padding
-          SliverToBoxAdapter(child: SizedBox(height: 24.h)),
+          // Clear of the profile's floating search at the list's end (its
+          // square, and the margin that lifts it over the home indicator);
+          // the button's room gives way on the search's own timeline while
+          // nothing floats.
+          SearchModeListEnd.sliver(
+            base: 24.h + MediaQuery.viewPaddingOf(context).bottom,
+            buttons: InkFabSize.regular.side + kFloatingActionButtonMargin,
+          ),
         ],
       ),
     );
@@ -553,6 +717,7 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
       color: context.colors.background,
       child: Column(
         mainAxisAlignment: MainAxisAlignment.end,
+        mainAxisSize: MainAxisSize.min,
         children: [
           if (isSelectionMode)
             Padding(
@@ -560,15 +725,11 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
                 horizontalPadding,
                 0,
                 horizontalPadding,
-                state.hasActiveFilters ? 4.h : 6.h,
+                4.h,
               ),
               child: _buildSelectionToolbar(state, selectedVisibleCount),
             ),
-          if (state.hasActiveFilters)
-            Padding(
-              padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
-              child: _buildActiveFiltersChip(state),
-            ),
+          _buildListToolbar(state, horizontalPadding),
         ],
       ),
     );
@@ -606,21 +767,54 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
     );
   }
 
-  Widget _buildActiveFiltersChip(PlayerProfileGamesState state) {
-    return PlayerGamesActiveFiltersChip(
-      activeFilterCount: state.activeFilterCount,
-      gameCount: state.filteredGames.length,
-      resultLabel: state.playerResultFilter != PlayerResultFilter.all
-          ? state.playerResultFilter.label
-          : null,
-      onClear: () {
+  Widget _buildListToolbar(PlayerProfileGamesState state, double inset) {
+    final total = state.totalCount;
+    // TWIC counts on the server, except for the in-play filter, which the
+    // app applies to what is loaded.
+    final serverCounted =
+        widget.dataSource != PlayerProfileDataSource.twic ||
+        state.filter.live == GameLiveFilter.all;
+    final int? count;
+    var morePending = false;
+    final empty = state.allGames.isEmpty;
+    if (empty && state.error != null) {
+      // The error state under it says what happened.
+      count = null;
+    } else if (empty && state.isLoading) {
+      // Before the first answer there is nothing to count. After a search
+      // that found nothing, its count (TWIC keeps it through the next load)
+      // stays until the next answer lands, so the line never goes blank.
+      count = serverCounted ? total : null;
+    } else if (total != null && serverCounted) {
+      count = total;
+    } else {
+      count = state.filteredGames.length;
+      morePending = state.hasMorePages;
+    }
+    return PlayerGamesListToolbar(
+      inset: inset,
+      // The search header carries the board view and Filters while open.
+      controlsInSearchHeader: true,
+      gameCount: count,
+      morePending: morePending,
+      filterCount: state.filterSheetCount,
+      filterButtonKey: e2eKey(E2eIds.playerGamesFilterButton),
+      onClearFilters: () {
         HapticFeedback.lightImpact();
+        // Only what the filter sheet set: an open search keeps its words.
         ref
             .read(playerProfileGamesKeyProvider(_playerKey).notifier)
-            .clearFilter();
+            .clearFilter(keepSearchQuery: true);
       },
+      onOpenFilters: _openFilters,
+      // The switcher gives the tap feedback.
+      onToggleLayout: () =>
+          ref.read(gamesListViewModeSwitcher).toggleViewMode(),
     );
   }
+
+  Future<void> _openFilters() =>
+      openPlayerGamesFilters(context, ref, _playerKey);
 
   Widget _buildContentSliver(
     PlayerProfileGamesState state,
@@ -629,27 +823,47 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
     bool isSelectionMode,
     double availableWidth,
   ) {
-    final isTwicBlockingLoading =
-        widget.dataSource == PlayerProfileDataSource.twic && state.isLoading;
-    if (isTwicBlockingLoading || (state.isLoading && state.allGames.isEmpty)) {
-      return SliverFillRemaining(
-        hasScrollBody: false,
-        child: _buildLoadingState(),
-      );
-    }
-
-    if (state.error != null && state.allGames.isEmpty) {
-      return SliverFillRemaining(
-        hasScrollBody: false,
-        child: _buildErrorState(userFacingError(state.error)),
-      );
-    }
+    // TWIC narrows on the server, so its list can come back empty for a
+    // query or a filter while the player has games. Locally narrowed lists
+    // keep every game in [allGames].
+    final narrowedOnServer =
+        widget.dataSource == PlayerProfileDataSource.twic &&
+        state.hasActiveFilters;
 
     if (state.allGames.isEmpty) {
-      return SliverFillRemaining(
-        hasScrollBody: false,
-        child: _buildEmptyState(),
-      );
+      if (state.isLoading) {
+        // Only the whole list's first answer waits behind the skeleton. A
+        // new search or filter keeps the list it replaces on screen (the
+        // header's progress line says it is working) until its own first
+        // page lands; when what it replaces held nothing (a search that
+        // found nothing), a quiet line says it is working instead.
+        if (!_answered && !narrowedOnServer) {
+          return SliverFillRemaining(
+            hasScrollBody: false,
+            child: _buildLoadingState(),
+          );
+        }
+        return SliverFillRemaining(
+          hasScrollBody: false,
+          child: _buildSearchingMoreState(
+            label: narrowedOnServer ? 'Searching games...' : 'Loading games...',
+          ),
+        );
+      }
+      if (state.error != null) {
+        return SliverFillRemaining(
+          hasScrollBody: false,
+          child: _buildErrorState(userFacingError(state.error)),
+        );
+      }
+      if (!narrowedOnServer) {
+        return SliverFillRemaining(
+          hasScrollBody: false,
+          child: _buildEmptyState(),
+        );
+      }
+      // A query or a filter that matched nothing: "No matching games"
+      // below, with the Clear that also empties an open search field.
     }
 
     final games = state.filteredGames;
@@ -676,10 +890,17 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
           child: _buildSearchingMoreState(),
         );
       }
-      return SliverFillRemaining(
-        hasScrollBody: false,
-        child: _buildNoFilterResultsState(),
-      );
+      // What is loaded shows nothing (the in-play filter is applied here)
+      // and a new answer is on its way: say it is searching, not that
+      // nothing matches, until it lands.
+      if (state.isLoading) {
+        return SliverFillRemaining(
+          hasScrollBody: false,
+          child: _buildSearchingMoreState(label: 'Searching games...'),
+        );
+      }
+      // Where the first row would have been, as every Games list says it.
+      return SliverToBoxAdapter(child: _buildNoFilterResultsState(state));
     }
 
     final isGridMode = viewMode == GamesListViewMode.chessBoardGrid;
@@ -687,6 +908,7 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
 
     // Group games by event (tourId)
     final gamesByEvent = _groupGamesByEvent(games);
+    final collapsedKeys = _activeCollapsedKeys;
     final eventDataList = eventsAsync.valueOrNull ?? [];
     final eventDataMap = {for (final e in eventDataList) e.tourId: e};
 
@@ -714,12 +936,12 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
           playerScore: playerScore,
           site: eventData?.site ?? siteFromPgn(eventGames.first.pgn),
           isFirstEvent: isFirstEvent,
-          isCollapsed: _collapsedEventKeys.contains(tourId),
+          isCollapsed: collapsedKeys.contains(tourId),
         ),
       );
       isFirstEvent = false;
 
-      if (_collapsedEventKeys.contains(tourId)) {
+      if (collapsedKeys.contains(tourId)) {
         continue;
       }
 
@@ -1100,6 +1322,7 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
     // (was throwing `!semantics.parentDataDirty` on tablet under
     // SliverFillRemaining + Center/ConstrainedBox wrap).
     return ExcludeSemantics(
+      key: playerGamesSkeletonKey,
       child: RepaintBoundary(
         child:
             Padding(
@@ -1196,7 +1419,7 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
           ),
         ],
       ),
-    ).animate().fadeIn(duration: 300.ms);
+    );
   }
 
   Widget _buildEmptyState() {
@@ -1244,22 +1467,25 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
           ),
         ],
       ),
-    ).animate().fadeIn(duration: 300.ms).scale(begin: const Offset(0.95, 0.95));
-  }
-
-  Widget _buildNoFilterResultsState() {
-    return PlayerGamesNoMatches(
-      onClear: () {
-        HapticFeedback.mediumImpact();
-        // Clears the search too; an open search field follows.
-        ref
-            .read(playerProfileGamesKeyProvider(_playerKey).notifier)
-            .clearFilter();
-      },
     );
   }
 
-  Widget _buildSearchingMoreState() {
+  /// No game for the filters or the words. Its action clears what it
+  /// names (and plays the tap's haptic itself): the filters, keeping an
+  /// open search's words, or the words, which an open field follows.
+  Widget _buildNoFilterResultsState(PlayerProfileGamesState state) {
+    final filtered = state.filterSheetCount > 0;
+    final games = ref.read(playerProfileGamesKeyProvider(_playerKey).notifier);
+    return PlayerGamesNoMatches(
+      query: state.searchQuery,
+      filtered: filtered,
+      onClear: filtered
+          ? () => games.clearFilter(keepSearchQuery: true)
+          : () => games.setSearchQuery(''),
+    );
+  }
+
+  Widget _buildSearchingMoreState({String label = 'Searching more games...'}) {
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -1274,14 +1500,14 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
           ),
           SizedBox(height: 12.h),
           Text(
-            'Searching more games...',
+            label,
             style: AppTypography.textSmRegular.copyWith(
               color: context.colors.textPrimaryMuted,
             ),
           ),
         ],
       ),
-    ).animate().fadeIn(duration: 220.ms);
+    );
   }
 }
 
@@ -1353,305 +1579,4 @@ class _PlayerCardGameEntry extends _PlayerGamesListEntry {
 
 class _PlayerPaginationFooterEntry extends _PlayerGamesListEntry {
   const _PlayerPaginationFooterEntry();
-}
-
-/// The profile's header while its Games tab is searched (Trello #1420): a
-/// way back, the field, and the list's own controls, filters and layout,
-/// as bare glyphs (they used to sit beside the field above the list). The
-/// tab fills the page under it, filtered as the reader types.
-class PlayerGamesSearchHeader extends ConsumerStatefulWidget {
-  const PlayerGamesSearchHeader({
-    super.key,
-    required this.playerKey,
-    required this.focusNode,
-    required this.onClose,
-  });
-
-  /// The list it searches: the Games tab's own key.
-  final PlayerProfileKey playerKey;
-
-  /// The page's node, so the page can hold its chrome while the keyboard
-  /// is up.
-  final FocusNode focusNode;
-  final VoidCallback onClose;
-
-  @override
-  ConsumerState<PlayerGamesSearchHeader> createState() =>
-      _PlayerGamesSearchHeaderState();
-}
-
-class _PlayerGamesSearchHeaderState
-    extends ConsumerState<PlayerGamesSearchHeader> {
-  static const List<String> _hintWords = ['event', 'opponent', 'opening'];
-
-  late final TextEditingController _controller;
-  Timer? _debounce;
-
-  /// The query this field last handed the list. A different one arriving
-  /// from the list (Clear Filters, the filters strip) is written into the
-  /// field; this one is not, as the field may hold more typed since.
-  late String _applied;
-
-  PlayerProfileGamesNotifier get _games =>
-      ref.read(playerProfileGamesKeyProvider(widget.playerKey).notifier);
-
-  @override
-  void initState() {
-    super.initState();
-    // A query set before the search opened (an About stat) is in the field.
-    _applied = ref
-        .read(playerProfileGamesKeyProvider(widget.playerKey))
-        .searchQuery;
-    _controller = TextEditingController(text: _applied);
-  }
-
-  @override
-  void dispose() {
-    _debounce?.cancel();
-    _controller.dispose();
-    super.dispose();
-  }
-
-  void _onChanged(String value) {
-    // TWIC searches on the server: one query per pause, not per keystroke.
-    _debounce?.cancel();
-    _debounce = Timer(const Duration(milliseconds: 400), () {
-      if (!mounted) return;
-      _applied = value;
-      _games.setSearchQuery(value);
-    });
-  }
-
-  void _clear() {
-    HapticFeedback.lightImpact();
-    _debounce?.cancel();
-    _controller.clear();
-    widget.focusNode.unfocus();
-    _applied = '';
-    _games.setSearchQuery('');
-  }
-
-  Future<void> _openFilters() async {
-    final current = ref.read(playerProfileGamesKeyProvider(widget.playerKey));
-    final result = await showGameFilterDialog(
-      context: context,
-      currentFilter: playerProfileEffectiveFilter(current.filter),
-      showFormatFilter: widget.playerKey.source == PlayerProfileDataSource.twic,
-      showLiveFilter: false,
-    );
-    if (result == null || !mounted) return;
-    _games.applyFilter(_storedFilter(result));
-  }
-
-  /// The dialog speaks in absolute bounds; the list keeps its defaults, so
-  /// an untouched bound never reads as a filter.
-  static GameFilter _storedFilter(GameFilter filter) {
-    return filter.copyWith(
-      minYear: filter.minYear == GameFilter.absoluteMinYear
-          ? GameFilter.defaultMinYear
-          : filter.minYear,
-      minRating: filter.minRating == GameFilter.absoluteMinRating
-          ? GameFilter.defaultMinRating
-          : filter.minRating,
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final games = playerProfileGamesKeyProvider(widget.playerKey);
-    ref.listen<String>(games.select((s) => s.searchQuery), (_, next) {
-      if (next == _applied) return;
-      _debounce?.cancel();
-      _applied = next;
-      if (_controller.text == next) return;
-      _controller.value = TextEditingValue(
-        text: next,
-        selection: TextSelection.collapsed(offset: next.length),
-      );
-    });
-    // The field shows the query; the glyph counts what else narrows the list.
-    final filters = ref.watch(
-      games.select(
-        (s) =>
-            s.filter.activeFilterCount +
-            (s.playerResultFilter != PlayerResultFilter.all ? 1 : 0),
-      ),
-    );
-    final side = ResponsiveHelper.adaptive(phone: 20.sp, tablet: 32.sp);
-    return Padding(
-      // The chevron's and the last glyph's 44pt targets reach into the
-      // gutter, so the glyphs themselves land on it.
-      // Never negative: a folded Duo pane is narrower than the gutter.
-      padding: EdgeInsetsDirectional.fromSTEB(
-        math.max(0.0, side - 12),
-        4.h,
-        math.max(0.0, side - 12),
-        10.h,
-      ),
-      child: Row(
-        children: [
-          SizedBox.square(
-            dimension: 44,
-            child: IconButton(
-              key: const ValueKey('player_games_search_close'),
-              tooltip: 'Close search',
-              padding: EdgeInsets.zero,
-              onPressed: () {
-                HapticFeedbackService.navigation();
-                widget.onClose();
-              },
-              icon: Icon(
-                Icons.arrow_back_ios_new_outlined,
-                size: 22,
-                color: context.colors.textPrimary,
-              ),
-            ),
-          ),
-          const SizedBox(width: 4),
-          Expanded(
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(minHeight: 44),
-              child: Center(
-                child: EventSearchBarFrame(
-                  compact: true,
-                  child: SimpleSearchBar(
-                    textFieldKey: e2eKey(E2eIds.playerGamesSearchField),
-                    controller: _controller,
-                    focusNode: widget.focusNode,
-                    autofocus: true,
-                    hintText: 'Search',
-                    rotatingHints: _hintWords,
-                    onChanged: _onChanged,
-                    onCloseTap: _clear,
-                    onOpenFilter: null,
-                  ),
-                ),
-              ),
-            ),
-          ),
-          const SizedBox(width: 4),
-          _SearchHeaderGlyph(
-            buttonKey: e2eKey(E2eIds.playerGamesFilterButton),
-            label: filters > 0
-                ? 'Filter and sort games, $filters applied'
-                : 'Filter and sort games',
-            onTap: _openFilters,
-            child: _FilterGlyph(count: filters),
-          ),
-          _SearchHeaderGlyph(
-            label: 'Change games layout',
-            onTap: () => ref.read(gamesListViewModeSwitcher).toggleViewMode(),
-            child: SvgPicture.asset(
-              SvgAsset.chase_grid,
-              width: 20,
-              height: 20,
-              colorFilter: ColorFilter.mode(
-                context.colors.textSecondary,
-                BlendMode.srcIn,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-/// A bare control in the search header: the glyph alone on a 44pt target,
-/// with no tile and no splash drawn around it.
-class _SearchHeaderGlyph extends StatelessWidget {
-  const _SearchHeaderGlyph({
-    required this.label,
-    required this.onTap,
-    required this.child,
-    this.buttonKey,
-  });
-
-  final String label;
-  final VoidCallback onTap;
-  final Widget child;
-  final Key? buttonKey;
-
-  void _activate() {
-    HapticFeedbackService.buttonPress();
-    onTap();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Tooltip(
-      message: label,
-      excludeFromSemantics: true,
-      child: Semantics(
-        container: true,
-        button: true,
-        label: label,
-        onTap: _activate,
-        excludeSemantics: true,
-        child: GestureDetector(
-          key: buttonKey,
-          behavior: HitTestBehavior.opaque,
-          onTap: _activate,
-          child: SizedBox.square(dimension: 44, child: Center(child: child)),
-        ),
-      ),
-    );
-  }
-}
-
-/// The filters glyph, lit with the count of what narrows the list. The
-/// count is the floating search's own badge (teal disc, ink figure), so the
-/// number the reader tapped through reads the same up here.
-class _FilterGlyph extends StatelessWidget {
-  const _FilterGlyph({required this.count});
-
-  final int count;
-
-  @override
-  Widget build(BuildContext context) {
-    final active = count > 0;
-    return Stack(
-      clipBehavior: Clip.none,
-      children: [
-        Icon(
-          Icons.tune_rounded,
-          size: 22,
-          color: active
-              ? context.colors.textPrimary
-              : context.colors.textSecondary,
-        ),
-        if (active)
-          Positioned(
-            top: -6,
-            right: -8,
-            child: Container(
-              constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
-              padding: const EdgeInsets.symmetric(horizontal: 4),
-              alignment: Alignment.center,
-              // The filter count, as the floating buttons wear it: the
-              // brand's tonal blue (clears contrast on paper too) with the
-              // page's colour for its number.
-              decoration: BoxDecoration(
-                color: context.colors.accentText,
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(
-                  color: context.colors.background,
-                  width: 1.5,
-                ),
-              ),
-              child: Text(
-                count > 9 ? '9+' : '$count',
-                textScaler: TextScaler.noScaling,
-                style: TextStyle(
-                  color: context.colors.background,
-                  fontSize: 10,
-                  height: 1,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ),
-          ),
-      ],
-    );
-  }
 }

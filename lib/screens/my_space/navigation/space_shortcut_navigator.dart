@@ -14,7 +14,16 @@ import 'package:chessever2/screens/gamebase/event_view/gamebase_virtual_event.da
 import 'package:chessever2/screens/gamebase/gamebase_explorer_screen.dart';
 import 'package:chessever2/screens/gamebase/models/models.dart';
 import 'package:chessever2/screens/gamebase/providers/gamebase_explorer_state.dart';
+import 'package:chessever2/repository/supabase/group_broadcast/group_broadcast.dart';
+import 'package:chessever2/screens/for_you/open_for_you_event.dart'
+    show ForYouEventSource;
+import 'package:chessever2/screens/group_event/group_event_screen.dart'
+    show GroupEventCategory;
 import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart';
+import 'package:chessever2/screens/group_event/providers/group_event_screen_provider.dart'
+    show tournamentNavigationProvider, TournamentNavigationController;
+import 'package:chessever2/screens/group_event/providers/live_group_broadcast_id_provider.dart'
+    show liveGroupBroadcastIdsProvider;
 import 'package:chessever2/screens/group_event/smart_event/smart_aggregate_event_provider.dart';
 import 'package:chessever2/screens/group_event/smart_event/smart_event_screen.dart';
 import 'package:chessever2/screens/library/folder_contents_screen.dart';
@@ -71,21 +80,28 @@ const _kMySpaceReturnTo = 'for_you/my_space';
 /// Opens [s] in the exact state it was saved in: the profile on the
 /// saved tab, the explorer on the saved line, the event on the saved round.
 ///
+/// [knownBroadcasts] are the saved events' broadcasts the cards already hold.
+/// An event among them opens as the Events lists open one, from that
+/// broadcast and behind their past-event gate ([_openBroadcastEvent]); any
+/// other event, and one saved on a category, through the shared-link
+/// resolver ([_openEvent]).
+///
 /// Every kind fails soft. A target that is gone, or params too thin to
 /// rebuild the destination, raise one danger snack instead of a dead tap or a
 /// half-built screen. A user who backs out of a paywall is not a failure.
 Future<void> openSpaceShortcut(
   BuildContext context,
   WidgetRef ref,
-  SpaceShortcut s,
-) async {
+  SpaceShortcut s, {
+  Iterable<GroupBroadcast> knownBroadcasts = const <GroupBroadcast>[],
+}) async {
   // Captured up front: most branches await the network before pushing.
   final messenger = ScaffoldMessenger.maybeOf(context);
   final shortcuts = ref.read(spaceShortcutsProvider.notifier);
 
   var opened = false;
   try {
-    opened = await _open(context, ref, s);
+    opened = await _open(context, ref, s, knownBroadcasts);
   } catch (e) {
     debugPrint('[MySpace] open ${s.kind.name}:${s.targetId} failed: $e');
   }
@@ -131,7 +147,12 @@ Future<void> _afterTransition() async {
 }
 
 /// Returns false only when the destination cannot be reached.
-Future<bool> _open(BuildContext context, WidgetRef ref, SpaceShortcut s) {
+Future<bool> _open(
+  BuildContext context,
+  WidgetRef ref,
+  SpaceShortcut s,
+  Iterable<GroupBroadcast> knownBroadcasts,
+) {
   final p = s.params;
   return switch (s.kind) {
     SpaceShortcutKind.player => _openProfile(
@@ -146,7 +167,7 @@ Future<bool> _open(BuildContext context, WidgetRef ref, SpaceShortcut s) {
       PlayerProfileTab.games,
     ),
     SpaceShortcutKind.playerOpenings => _openPlayerOpenings(context, ref, s),
-    SpaceShortcutKind.event => _openEvent(context, ref, s),
+    SpaceShortcutKind.event => _openEvent(context, ref, s, knownBroadcasts),
     SpaceShortcutKind.round => DeepLinkService.instance.openEventForShortcut(
       eventId: _str(p['groupBroadcastId']) ?? _str(p['eventId']),
       tourId: _str(p['tourId']),
@@ -217,10 +238,22 @@ Future<bool> _openCollection(
 
 // ------------------------------------------------------------------- events
 
-/// targetId is a tour or a group broadcast id; the resolver probes both.
-/// Calendar (community / FIDE major) events and database-only events are not
-/// broadcasts and open on their own screens.
-Future<bool> _openEvent(BuildContext context, WidgetRef ref, SpaceShortcut s) {
+/// targetId is a tour or a group broadcast id. Calendar (community / FIDE
+/// major) events and database-only events are not broadcasts and open on
+/// their own screens.
+///
+/// A broadcast the card already holds opens as the Events lists open it
+/// ([_openBroadcastEvent], from memory). Anything else goes through the
+/// shared-link resolver, which probes the id as a tour id first: an event
+/// saved on one of its categories (a `tourId` param, or a pin keyed by a tour
+/// id, as a player profile's fallback event card saves) reopens on that
+/// category, and a broadcast not read yet still opens.
+Future<bool> _openEvent(
+  BuildContext context,
+  WidgetRef ref,
+  SpaceShortcut s,
+  Iterable<GroupBroadcast> knownBroadcasts,
+) {
   final p = s.params;
   if (isSpaceCalendarEvent(s)) return _openCalendarEvent(context, s);
   final eventId =
@@ -231,10 +264,89 @@ Future<bool> _openEvent(BuildContext context, WidgetRef ref, SpaceShortcut s) {
       ? s.targetId
       : null;
   if (virtualId != null) return _openVirtualEvent(context, ref, virtualId);
-  return DeepLinkService.instance.openEventForShortcut(
-    eventId: eventId,
-    tourId: _str(p['tourId']),
-  );
+  final known = spaceEventInHand(s, knownBroadcasts);
+  if (known == null) {
+    return DeepLinkService.instance.openEventForShortcut(
+      eventId: eventId,
+      tourId: _str(p['tourId']),
+    );
+  }
+  return _openBroadcastEvent(context, ref, known);
+}
+
+/// The broadcast a saved event's card holds, when a tap can open the event
+/// from it as an Events list card does: the pin names that broadcast (its
+/// group broadcast id, never a tour id) and no category of it. Null sends
+/// the tap through the shared-link resolver ([_openEvent]).
+@visibleForTesting
+GroupBroadcast? spaceEventInHand(
+  SpaceShortcut s,
+  Iterable<GroupBroadcast> knownBroadcasts,
+) {
+  final p = s.params;
+  if (_str(p['tourId']) != null) return null;
+  final eventId =
+      _str(p['groupBroadcastId']) ?? _str(p['eventId']) ?? s.targetId;
+  for (final broadcast in knownBroadcasts) {
+    if (broadcast.id == eventId) return broadcast;
+  }
+  return null;
+}
+
+/// The Events list a saved event's card stands in, for the past-event gate
+/// [TournamentNavigationController.openTournament] applies to it.
+///
+/// The Events lists are cut by the server (`group_broadcasts_past` decides
+/// Past), and a card here only knows its own dates. So only what the card
+/// itself can prove skips a question: a live event opens as a Current card
+/// does, and an event whose dates are over asks as a Past card does. Every
+/// other one (running or upcoming by its dates) asks as a search hit does:
+/// the server's Past list first, then its dates. That is the check the
+/// shared-link opener always ran, so a free reader never opens an event the
+/// server calls past because its stored dates are stale.
+@visibleForTesting
+GroupEventCategory spaceEventOpenCategory(
+  GroupBroadcast broadcast,
+  List<String> liveIds,
+) {
+  final card = GroupEventCardModel.fromGroupBroadcast(broadcast, liveIds);
+  return switch (card.tourEventCategory) {
+    TourEventCategory.live => GroupEventCategory.current,
+    TourEventCategory.completed => GroupEventCategory.past,
+    TourEventCategory.ongoing ||
+    TourEventCategory.upcoming => GroupEventCategory.search,
+  };
+}
+
+/// A saved broadcast the card holds, opened exactly as an Events list card
+/// opens one ([TournamentNavigationController.openTournament]): from
+/// [broadcast], behind the past-event gate of the list it would stand in
+/// ([spaceEventOpenCategory]; a free reader's gate may ask the server, but
+/// the event is never read again), logged as 'Tournament Opened' from My
+/// Space. False only when the open failed; backing out of the paywall is
+/// not a failure.
+Future<bool> _openBroadcastEvent(
+  BuildContext context,
+  WidgetRef ref,
+  GroupBroadcast broadcast,
+) async {
+  final liveIds =
+      ref.read(liveGroupBroadcastIdsProvider).valueOrNull ?? const <String>[];
+  try {
+    await ref
+        .read(tournamentNavigationProvider)
+        .openTournament(
+          context: context,
+          id: broadcast.id,
+          category: spaceEventOpenCategory(broadcast, liveIds),
+          knownBroadcasts: [broadcast],
+          analyticsSource: ForYouEventSource.mySpace.analyticsLabel,
+        );
+    return true;
+  } catch (e) {
+    debugPrint('[MySpace] open event ${broadcast.id} failed: $e');
+    return false;
+  }
 }
 
 /// A gamebase-only event, through the same tournament screen a database

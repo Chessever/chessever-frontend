@@ -682,7 +682,8 @@ void main() {
     final games = [
       for (final (i, row) in rows.indexed) PrepGame.fromIndex(row, i),
     ];
-    final search = TextEditingController();
+    // The query a screen types in its own search header.
+    final search = ValueNotifier<String>('');
     addTearDown(search.dispose);
     final controller = PrepGamesController();
 

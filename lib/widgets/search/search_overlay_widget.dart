@@ -13,14 +13,15 @@ import 'package:chessever2/screens/my_space/navigation/space_shortcut_navigator.
     show resolveSpaceLine;
 import 'package:chessever2/screens/player_profile/utils/player_menu_actions.dart';
 import 'package:chessever2/screens/player_profile/widgets/lifted_row_menu.dart';
-import 'package:chessever2/screens/search/search_landing.dart';
+import 'package:chessever2/screens/search/search_page_results.dart';
+import 'package:chessever2/screens/search/search_page_landing.dart';
+import 'package:chessever2/screens/search/search_page_sections.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/user_error_message.dart';
 import 'package:chessever2/widgets/event_card/event_context_menu.dart'
     show eventSpaceDraft;
-import 'package:chessever2/widgets/live_first_mark.dart';
 import 'package:chessever2/widgets/search/enhanced_group_broadcast_local_storage.dart';
 import 'package:chessever2/widgets/search/opening_search_suggestion.dart';
 import 'package:chessever2/widgets/search/recent_searches_provider.dart';
@@ -39,21 +40,15 @@ class SearchOverlay extends ConsumerWidget {
     this.onOpeningTap,
     this.debugOnResultsBuild,
     this.fullPage = false,
-    this.pageInset = 0,
   });
 
   /// The Search tab's page rather than a field's drop-down: no panel around
-  /// it and no height cap, one column that scrolls with the page (openings,
-  /// then players, then events). While nothing is typed it is the landing:
-  /// the recent searches, then the events in play, the top players and the
-  /// main openings, each only when it has something to list
-  /// ([_buildPageLanding]). The drop-down (Events page) is unchanged.
+  /// it and no height cap, one page that scrolls under the field. While
+  /// nothing is typed it is the landing ([SearchPageLanding]); a search
+  /// shows its results ([SearchPageResultsLoader]), each kind in the card
+  /// the app draws it in everywhere else. The drop-down (Events page) is
+  /// unchanged.
   final bool fullPage;
-
-  /// The page's side gutter, [fullPage] only. Headings and rows sit inside
-  /// it; the opening cards scroll the full width of the screen under it,
-  /// starting on it, so the row of cards is never cut short of the edge.
-  final double pageInset;
 
   /// Kept for compatibility with the established search-bar API. Search work
   /// and result labels use the debounced provider value so raw typing never
@@ -82,17 +77,8 @@ class SearchOverlay extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    if (fullPage) return _buildPage();
     final debouncedQuery = ref.watch(debouncedSearchQueryProvider).trim();
-    if (fullPage) {
-      return debouncedQuery.isEmpty
-          ? _buildBeforeFirstSearch(context, ref, double.infinity)
-          : _buildDebouncedResults(
-              context,
-              ref,
-              debouncedQuery,
-              double.infinity,
-            );
-    }
     final maxHeight = _computeMaxHeight(context);
 
     return Container(
@@ -115,6 +101,33 @@ class SearchOverlay extends ConsumerWidget {
     );
   }
 
+  /// The Search tab's page. Raw keystrokes reach it only when the query
+  /// becomes (or stops being) a search: one letter keeps the landing, and
+  /// while a search is typed the last results stay up until the next one is
+  /// in, never a spinner per keystroke.
+  Widget _buildPage() {
+    final picks = SearchPicks(
+      event: onTournamentTap,
+      player: onPlayerTap,
+      opening: onOpeningTap,
+    );
+    return Consumer(
+      builder: (context, ref, _) {
+        final searching = ref.watch(
+          searchQueryProvider.select((raw) => isSearchableQuery(raw.trim())),
+        );
+        if (!searching) return SearchPageLanding(picks: picks);
+        final debounced = ref.watch(debouncedSearchQueryProvider).trim();
+        if (!isSearchableQuery(debounced)) return const SearchPageSpinner();
+        return SearchPageResultsLoader(
+          query: debounced,
+          picks: picks,
+          onResultsBuild: debugOnResultsBuild,
+        );
+      },
+    );
+  }
+
   Widget _buildBeforeFirstSearch(
     BuildContext context,
     WidgetRef ref,
@@ -129,7 +142,6 @@ class SearchOverlay extends ConsumerWidget {
         if (isSearchableQuery(rawQuery)) {
           return _buildLoadingState(context, maxHeight);
         }
-        if (fullPage) return _buildPageLanding(context);
         return _buildRecentSearches(context, ref, maxHeight);
       },
     );
@@ -146,11 +158,9 @@ class SearchOverlay extends ConsumerWidget {
     return Consumer(
       builder: (context, ref, _) {
         final rawQuery = ref.watch(searchQueryProvider).trim();
-        // One letter matches nothing: keep the recent searches (on the
-        // Search tab, the whole landing) up instead of flashing a spinner
-        // into "No results found".
+        // One letter matches nothing: keep the recent searches up instead
+        // of flashing a spinner into "No results found".
         if (!isSearchableQuery(rawQuery)) {
-          if (fullPage) return _buildPageLanding(context);
           return _buildRecentSearches(context, ref, maxHeight);
         }
         if (rawQuery != debouncedQuery) {
@@ -206,15 +216,6 @@ class SearchOverlay extends ConsumerWidget {
     debugOnResultsBuild?.call();
     final hasTournaments = searchResult.tournamentResults.isNotEmpty;
     final hasPlayers = searchResult.playerResults.isNotEmpty;
-    if (fullPage) {
-      return _buildPageResults(
-        context,
-        searchResult: searchResult,
-        openings: openings,
-        remoteLoading: remoteLoading,
-        remoteMessage: remoteMessage,
-      );
-    }
 
     return Column(
       mainAxisSize: MainAxisSize.min,
@@ -296,13 +297,10 @@ class SearchOverlay extends ConsumerWidget {
   }
 
   /// The opening cards, side by side, each opening what its search result
-  /// opens, with its long-press menu. [cardHeight] and [subtitleLines] are
-  /// the cards' own defaults unless the landing asks for its compact card.
+  /// opens, with its long-press menu.
   Widget _openingCardList(
     List<OpeningSearchSuggestion> openings, {
     required EdgeInsetsGeometry padding,
-    double cardHeight = _OpeningResultTile.defaultHeight,
-    int subtitleLines = _OpeningResultTile.defaultSubtitleLines,
   }) {
     return ListView.separated(
       scrollDirection: Axis.horizontal,
@@ -317,16 +315,12 @@ class SearchOverlay extends ConsumerWidget {
           builder: (context, ref, _) => _OpeningResultTile(
             suggestion: opening,
             showsAll: showsAll,
-            height: cardHeight,
-            subtitleLines: subtitleLines,
             onTap: () => onOpeningTap?.call(opening.selection),
             onLongPress: (tileContext) => showLibraryContextMenu(
               context: tileContext,
               previewBuilder: (_) => _OpeningResultTile(
                 suggestion: opening,
                 showsAll: showsAll,
-                height: cardHeight,
-                subtitleLines: subtitleLines,
                 onTap: () {},
               ),
               onPreviewTap: () => onOpeningTap?.call(opening.selection),
@@ -355,354 +349,9 @@ class SearchOverlay extends ConsumerWidget {
     );
   }
 
-  /// The results as the Search tab's page: one column the whole page
-  /// scrolls, each kind under its own heading, full width.
-  Widget _buildPageResults(
-    BuildContext context, {
-    required EnhancedSearchResult searchResult,
-    required List<OpeningSearchSuggestion> openings,
-    required bool remoteLoading,
-    String? remoteMessage,
-  }) {
-    final players = searchResult.playerResults
-        .where((result) => result.player != null)
-        .toList();
-    final events = searchResult.tournamentResults;
-    return ListView(
-      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-      padding: EdgeInsets.only(bottom: 24.h),
-      children: [
-        if (openings.isNotEmpty)
-          _pageOpenings(context, openings, count: openings.length),
-        if (players.isNotEmpty) ...[
-          _inset(
-            _pageHeading(
-              context,
-              'Players',
-              _headingIcon(context, Icons.person),
-              count: players.length,
-            ),
-          ),
-          for (final result in players)
-            _inset(
-              _resultRow(result, isPlayerSection: true, isFullWidth: true),
-            ),
-        ],
-        if (events.isNotEmpty) ...[
-          _inset(
-            _pageHeading(
-              context,
-              'Events',
-              _headingIcon(context, Icons.emoji_events),
-              count: events.length,
-            ),
-          ),
-          for (final result in events)
-            _inset(
-              _resultRow(result, isPlayerSection: false, isFullWidth: true),
-            ),
-        ],
-        if (players.isEmpty && events.isEmpty && remoteLoading)
-          Padding(
-            padding: EdgeInsets.symmetric(vertical: 16.h),
-            child: Center(
-              child: SizedBox.square(
-                dimension: 18.ic,
-                child: const CircularProgressIndicator(strokeWidth: 2),
-              ),
-            ),
-          ),
-        if (players.isEmpty && events.isEmpty && remoteMessage != null)
-          _inset(
-            Padding(
-              padding: EdgeInsets.fromLTRB(
-                searchPageRowInset,
-                8.h,
-                searchPageRowInset,
-                8.h,
-              ),
-              child: Text(
-                remoteMessage,
-                style: TextStyle(
-                  color: context.colors.textSecondary,
-                  fontSize: 12.sp,
-                ),
-              ),
-            ),
-          ),
-      ],
-    );
-  }
-
-  /// [child] inside the page's side gutter ([pageInset]).
-  Widget _inset(Widget child) => pageInset == 0
-      ? child
-      : Padding(
-          padding: EdgeInsets.symmetric(horizontal: pageInset),
-          child: child,
-        );
-
-  /// The openings on the Search tab's page: a heading in the gutter, and the
-  /// cards in a row that scrolls the full width of the screen, the first one
-  /// starting on the heading's edge. [compact] is the landing's card: each
-  /// holds one line of scope under its name ("80 ECO codes"), so it stands
-  /// that tall instead of leaving the results' room for three lines of moves.
-  Widget _pageOpenings(
-    BuildContext context,
-    List<OpeningSearchSuggestion> openings, {
-    int? count,
-    bool compact = false,
-  }) {
-    final subtitleLines = compact ? 1 : _OpeningResultTile.defaultSubtitleLines;
-    final cardHeight = compact
-        ? _OpeningResultTile.heightFor(context, subtitleLines: subtitleLines)
-        : _OpeningResultTile.defaultHeight;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        _inset(
-          _pageHeading(
-            context,
-            'Openings',
-            _headingIcon(context, Icons.menu_book_outlined),
-            count: count,
-          ),
-        ),
-        SizedBox(
-          height: cardHeight,
-          child: _openingCardList(
-            openings,
-            padding: EdgeInsets.symmetric(
-              horizontal: pageInset + searchPageRowInset,
-            ),
-            cardHeight: cardHeight,
-            subtitleLines: subtitleLines,
-          ),
-        ),
-      ],
-    );
-  }
-
-  /// A heading's glyph: [icon] in the search accent.
-  Widget _headingIcon(BuildContext context, IconData icon) =>
-      Icon(icon, size: 16.ic, color: searchAccentInk(context));
-
-  /// A section's heading on the Search tab's page, [glyph] then [title].
-  /// [count] follows the title for search results; [trailing] is the
-  /// recent searches' Clear.
-  ///
-  /// Every heading is one 48pt line, the height of Clear's target, with its
-  /// words centred on it, so a heading with Clear and one without sit the
-  /// same distance above their first rows.
-  Widget _pageHeading(
-    BuildContext context,
-    String title,
-    Widget glyph, {
-    int? count,
-    Widget? trailing,
-  }) {
-    return Padding(
-      padding: EdgeInsets.fromLTRB(
-        searchPageRowInset,
-        8.sp,
-        trailing == null ? searchPageRowInset : 4.w,
-        0,
-      ),
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(minHeight: 48),
-        child: Row(
-          children: [
-            // The rows' glyph column and gap, so a heading's words start
-            // where its rows' names do.
-            SizedBox.square(
-              dimension: 17.ic,
-              child: Center(child: glyph),
-            ),
-            SizedBox(width: 10.w),
-            Expanded(
-              // A header node of its own, apart from the rows under it.
-              child: Semantics(
-                container: true,
-                header: true,
-                child: Text(
-                  count == null ? title : '$title ($count)',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: context.colors.textPrimary,
-                    fontSize: 13.sp,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
-            ),
-            if (trailing != null) trailing,
-          ],
-        ),
-      ),
-    );
-  }
-
-  /// The colour behind a row, for its long-press lift: the page itself on
-  /// the Search tab, the drop-down's panel elsewhere.
-  Color _rowSurface(BuildContext context) =>
-      fullPage ? context.colors.background : context.colors.surfaceRecessed;
-
-  /// The Search tab's page before a search: the recent searches, then what
-  /// is worth opening right now (the events in play, the top of the world
-  /// ranking, the main openings), as one list. A section with nothing to
-  /// list is simply not there; nothing here explains itself in prose.
-  ///
-  /// Each section listens to its own source, so a live event starting does
-  /// not rebuild the recent searches. The sources are kept warm by the tab
-  /// (`SearchTabScreen`), so clearing a search brings this back at once.
-  Widget _buildPageLanding(BuildContext context) {
-    return ListView(
-      key: const ValueKey('search_landing'),
-      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-      padding: EdgeInsets.only(bottom: 24.h),
-      children: [
-        Consumer(builder: (context, ref, _) => _landingRecents(context, ref)),
-        Consumer(builder: (context, ref, _) => _landingLive(context, ref)),
-        Consumer(builder: (context, ref, _) => _landingPlayers(context, ref)),
-        Consumer(builder: (context, ref, _) => _landingOpenings(context, ref)),
-      ],
-    );
-  }
-
-  Widget _landingRecents(BuildContext context, WidgetRef ref) {
-    final entries =
-        ref.watch(recentSearchesProvider).valueOrNull ??
-        const <RecentSearchEntry>[];
-    if (entries.isEmpty) return const SizedBox.shrink();
-    return _inset(
-      Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          _pageHeading(
-            context,
-            'Recent searches',
-            _headingIcon(context, Icons.history),
-            trailing: SizedBox(
-              height: 48,
-              child: TextButton(
-                onPressed: () => unawaited(
-                  ref.read(recentSearchesProvider.notifier).clear(),
-                ),
-                child: const Text('Clear'),
-              ),
-            ),
-          ),
-          for (final entry in entries) _recentRow(context, ref, entry),
-        ],
-      ),
-    );
-  }
-
-  /// Live now. Events still being looked up arrive into room already held
-  /// for them under the listed ones ([SearchLiveNow.pending]), so Top
-  /// players and Openings never move down under a finger when they land.
-  Widget _landingLive(BuildContext context, WidgetRef ref) {
-    final live = ref.watch(searchLiveNowProvider);
-    if (live.isEmpty) return const SizedBox.shrink();
-    final ink = searchAccentInk(context);
-    return _inset(
-      Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          // The rows' own mark, so the heading names what they share.
-          _pageHeading(
-            context,
-            'Live now',
-            LiveFirstMark(size: 16.ic, color: ink),
-          ),
-          for (final event in live.events)
-            // One node per row to assistive technology: its button, label
-            // and tap with the lift's long-press, never merged into the
-            // heading above it (a section of one row otherwise was).
-            Semantics(
-              key: ValueKey('search-live-${event.id}'),
-              container: true,
-              child: LiftedRowMenu(
-                surfaceColor: _rowSurface(context),
-                onPreviewTap: () => onTournamentTap(event),
-                actions: (tileContext) =>
-                    _tournamentActions(tileContext, ref, event),
-                child: SearchLandingRow(
-                  leading: LiveFirstMark(size: 17.ic, color: ink),
-                  title: event.title,
-                  subtitle: searchLiveEventSubtitle(event),
-                  semanticsLabel: searchLiveEventSemantics(event),
-                  onTap: () => onTournamentTap(event),
-                ),
-              ),
-            ),
-          if (live.pending > 0)
-            SearchLandingPendingRows(
-              key: const ValueKey('search-live-pending'),
-              count: live.pending,
-            ),
-        ],
-      ),
-    );
-  }
-
-  /// Top players, each marked with their place in the ranking. A failed
-  /// read leaves no trace; a slow one holds the rows' room with one quiet
-  /// spinner, so Openings below does not jump when they arrive.
-  Widget _landingPlayers(BuildContext context, WidgetRef ref) {
-    final state = ref.watch(searchTopPlayersProvider);
-    final players = state.valueOrNull;
-    if (players == null ? state.hasError : players.isEmpty) {
-      return const SizedBox.shrink();
-    }
-    return _inset(
-      Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          _pageHeading(
-            context,
-            'Top players',
-            _headingIcon(context, Icons.person),
-          ),
-          if (players == null)
-            const SearchLandingPendingRows(
-              key: ValueKey('search-top-players-pending'),
-              count: searchLandingPlayerCount,
-            )
-          else
-            for (final (index, player) in players.indexed)
-              Semantics(
-                key: ValueKey(
-                  'search-top-player-${player.fideId ?? player.id}',
-                ),
-                container: true,
-                child: LiftedRowMenu(
-                  surfaceColor: _rowSurface(context),
-                  onPreviewTap: () => onPlayerTap?.call(player),
-                  actions: (tileContext) =>
-                      _playerActions(tileContext, ref, player),
-                  child: SearchLandingRow(
-                    leading: SearchLandingRank(index + 1),
-                    title: player.name,
-                    subtitle: searchPlayerSubtitle(player),
-                    semanticsLabel: searchTopPlayerSemantics(player, index + 1),
-                    onTap: () => onPlayerTap?.call(player),
-                  ),
-                ),
-              ),
-        ],
-      ),
-    );
-  }
-
-  Widget _landingOpenings(BuildContext context, WidgetRef ref) {
-    final openings =
-        ref.watch(searchLandingOpeningsProvider).valueOrNull ??
-        const <OpeningSearchSuggestion>[];
-    if (openings.isEmpty) return const SizedBox.shrink();
-    return _pageOpenings(context, openings, compact: true);
-  }
+  /// The colour behind a row, for its long-press lift: the drop-down's
+  /// panel.
+  Color _rowSurface(BuildContext context) => context.colors.surfaceRecessed;
 
   /// One result row, with its long-press focus menu.
   Widget _resultRow(
@@ -1095,19 +744,6 @@ class SearchOverlay extends ConsumerWidget {
     double maxHeight, {
     String label = 'Searching...',
   }) {
-    if (fullPage) {
-      // Just the spinner, where the first result will land.
-      return Align(
-        alignment: Alignment.topCenter,
-        child: Padding(
-          padding: EdgeInsets.only(top: 32.h),
-          child: SizedBox.square(
-            dimension: 20.ic,
-            child: const CircularProgressIndicator(strokeWidth: 2),
-          ),
-        ),
-      );
-    }
     return SizedBox(
       height: math.min(maxHeight, 200.h),
       child: Center(
@@ -1192,26 +828,6 @@ class SearchOverlay extends ConsumerWidget {
     String query,
     double maxHeight,
   ) {
-    if (fullPage) {
-      return Align(
-        alignment: Alignment.topLeft,
-        child: Padding(
-          padding: EdgeInsets.fromLTRB(
-            pageInset + searchPageRowInset,
-            20.h,
-            pageInset + searchPageRowInset,
-            0,
-          ),
-          child: Text(
-            'No matches for "$query"',
-            style: TextStyle(
-              color: context.colors.textSecondary,
-              fontSize: 15.sp,
-            ),
-          ),
-        ),
-      );
-    }
     return SizedBox(
       height: math.min(maxHeight, 200.h),
       child: Center(
@@ -1300,40 +916,17 @@ class _OpeningResultTile extends StatelessWidget {
     required this.showsAll,
     required this.onTap,
     this.onLongPress,
-    this.height = defaultHeight,
-    this.subtitleLines = defaultSubtitleLines,
   });
 
-  /// The card everywhere but the Search tab's landing: room under the name
-  /// for a named line's moves.
-  static const double defaultHeight = 100;
-  static const int defaultSubtitleLines = 3;
-
-  // The card's build, which [heightFor] adds up.
-  static double get _verticalPadding => 8.h;
-  static double get _titleHeight => math.max(30.h, 34);
-  static double get _titleGap => 4.h;
+  /// Room under the name for a named line's moves.
+  static const double _height = 100;
+  static const int _subtitleLines = 3;
   static const double _fontSize = 12;
   static const double _lineHeight = 1.2;
-
-  /// A card tall enough for its name and [subtitleLines] lines under it at
-  /// the ambient text size, and no taller.
-  static double heightFor(BuildContext context, {required int subtitleLines}) {
-    final line =
-        MediaQuery.textScalerOf(context).scale(_fontSize) * _lineHeight;
-    return (_verticalPadding * 2 +
-                _titleHeight +
-                _titleGap +
-                line * subtitleLines)
-            .ceilToDouble() +
-        2;
-  }
 
   final OpeningSearchSuggestion suggestion;
   final bool showsAll;
   final VoidCallback onTap;
-  final double height;
-  final int subtitleLines;
 
   /// Receives the tile's own context so a context menu can anchor to it.
   final void Function(BuildContext tileContext)? onLongPress;
@@ -1353,11 +946,8 @@ class _OpeningResultTile extends StatelessWidget {
         borderRadius: BorderRadius.circular(8.br),
         child: Container(
           width: 230,
-          height: height,
-          padding: EdgeInsets.symmetric(
-            horizontal: 12.w,
-            vertical: _verticalPadding,
-          ),
+          height: _height,
+          padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 8.h),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(8.br),
             border: Border.all(
@@ -1369,7 +959,7 @@ class _OpeningResultTile extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               SizedBox(
-                height: _titleHeight,
+                height: math.max(30.h, 34),
                 child: Text.rich(
                   TextSpan(
                     children: [
@@ -1408,13 +998,13 @@ class _OpeningResultTile extends StatelessWidget {
                   ),
                 ),
               ),
-              SizedBox(height: _titleGap),
+              SizedBox(height: 4.h),
               Expanded(
                 child: Align(
                   alignment: Alignment.topLeft,
                   child: Text(
                     suggestion.subtitle,
-                    maxLines: subtitleLines,
+                    maxLines: _subtitleLines,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
                       color: context.colors.textSecondary,

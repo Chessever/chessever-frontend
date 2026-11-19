@@ -1,7 +1,7 @@
 import 'package:chessever2/screens/collections/event_view_shell.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
-import 'package:chessever2/widgets/destination_title.dart';
+import 'package:chessever2/widgets/home_top_bar.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -35,11 +35,11 @@ void main() {
               ),
             ),
           );
-          final title = tester.getRect(find.byType(DestinationTitle));
+          final title = tester.getRect(find.byType(PageTitle));
           final icon = tester.getRect(find.byIcon(Icons.assessment_rounded));
           final text = tester.getRect(
             find.descendant(
-              of: find.byType(DestinationTitle),
+              of: find.byType(PageTitle),
               matching: find.text('Reports'),
             ),
           );

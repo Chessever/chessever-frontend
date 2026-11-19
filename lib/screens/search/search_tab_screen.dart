@@ -12,7 +12,6 @@ import 'package:chessever2/screens/home/widget/bottom_nav_bar.dart';
 import 'package:chessever2/screens/player_profile/player_profile_screen.dart';
 import 'package:chessever2/screens/search/search_landing.dart';
 import 'package:chessever2/theme/app_colors.dart';
-import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/home_top_bar.dart';
 import 'package:chessever2/widgets/scroll_chrome.dart';
@@ -20,6 +19,7 @@ import 'package:chessever2/widgets/search/enhanced_rounded_search_bar.dart';
 import 'package:chessever2/widgets/search/opening_search_suggestion.dart';
 import 'package:chessever2/widgets/search/recent_searches_provider.dart';
 import 'package:chessever2/widgets/search/search_overlay_widget.dart';
+import 'package:chessever2/widgets/page_spring.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -27,15 +27,16 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 /// The Search tab: the app-wide search (players, events, openings, FIDE
 /// countries) as one page.
 ///
-/// The field sits at the top; everything under it is the page. With nothing
-/// typed the page is the landing: the recent searches, then the events in
-/// play, the top players and the main openings, all real destinations, each
-/// section only when it has something to list ([searchLiveNowProvider],
-/// [searchTopPlayersProvider], [searchLandingOpeningsProvider]). Typing
-/// turns it into the live results, openings then players then events, in
-/// one column. The page is the same with the keyboard up or down: there is
-/// no drop-down over it and no second results screen behind it. The field
-/// scrolls away with the results and back (X-style).
+/// The field sits in the home bar's frame ([HomeTopBarFrame]), where every
+/// root tab starts; everything under it is the page. With nothing typed the
+/// page is the landing: the recent searches, the events in play, the top
+/// players, the main openings and the built-in smart events, the events
+/// coming up. Typing turns it into the results: players, openings, events.
+/// Every one is drawn in the card the app already draws it in (event cards,
+/// player cards, Rankings rows, smart event cards) with that card's own tap
+/// and long-press, so a pick here behaves as it does everywhere else. The
+/// page is the same with the keyboard up or down; the field scrolls away
+/// with it and back (X-style), and holds still while it has the keyboard.
 ///
 /// Opening the tab puts the cursor in the field, so it is one tap from
 /// typing.
@@ -73,14 +74,42 @@ class SearchTabScreen extends HookConsumerWidget {
     ref.listen(searchLiveNowProvider, (_, __) {});
     ref.listen(searchTopPlayersProvider, (_, __) {});
     ref.listen(searchLandingOpeningsProvider, (_, __) {});
+    ref.listen(searchUpcomingProvider, (_, __) {});
+
+    // Coming up is one read, read again while the tab lives: when one of
+    // its events starts (it has moved to Live now; the read's spare events
+    // fill in at once, the new read restocks them) and on arriving after
+    // the read has grown old. The last read stays on screen meanwhile.
+    final upcomingReadAt = useRef(DateTime.now());
+    void readUpcomingAgain() {
+      upcomingReadAt.value = DateTime.now();
+      ref.invalidate(searchUpcomingProvider);
+    }
+
+    ref.listen<String>(searchLiveIdsKeyProvider, (previous, next) {
+      final read = ref.read(searchUpcomingProvider).valueOrNull;
+      if (read == null || next.isEmpty || previous == next) return;
+      final before = previous == null || previous.isEmpty
+          ? const <String>{}
+          : previous.split('\n').toSet();
+      final started = next.split('\n').where((id) => !before.contains(id));
+      if (read.any((event) => searchEventIsLive(event, started))) {
+        readUpcomingAgain();
+      }
+    });
 
     // Arriving on the tab (it stays alive once visited) or re-tapping it:
-    // the field comes back into view with the cursor in it, and a ranking
-    // read or live lookup that failed earlier gets another go.
+    // the field comes back into view with the cursor in it, and a read or
+    // live lookup that failed earlier gets another go.
     ref.listen<BottomNavBarItem>(selectedBottomNavBarItemProvider, (_, next) {
       if (next != BottomNavBarItem.search) return;
       if (ref.read(searchTopPlayersProvider).hasError) {
         ref.invalidate(searchTopPlayersProvider);
+      }
+      if (ref.read(searchUpcomingProvider).hasError ||
+          DateTime.now().difference(upcomingReadAt.value) >
+              searchUpcomingMaxAge) {
+        readUpcomingAgain();
       }
       if (ref.read(searchLiveNowProvider.notifier).lookupFailed) {
         ref.invalidate(searchLiveNowProvider);
@@ -91,6 +120,7 @@ class SearchTabScreen extends HookConsumerWidget {
         focusIfEmpty();
       });
     });
+    final scroll = useScrollController();
     ref.listen<BottomNavBarReTapRequest>(bottomNavBarReTapRequestProvider, (
       previous,
       next,
@@ -98,6 +128,10 @@ class SearchTabScreen extends HookConsumerWidget {
       if (next.item != BottomNavBarItem.search) return;
       if (previous != null && previous.sequence == next.sequence) return;
       ScrollChromeScope.maybeOf(context)?.show();
+      // As every root does on a re-tap: the page goes back to its top (the
+      // landing or the results, whichever is on screen), on the tabs'
+      // spring, and the field takes the cursor.
+      scroll.springToOffset(0, context: context);
       focusNode.requestFocus();
     });
     useEffect(() {
@@ -109,11 +143,25 @@ class SearchTabScreen extends HookConsumerWidget {
       return null;
     }, const []);
 
-    // A pick from the page: remembered as a recent search, then opened.
+    // While the field has the keyboard the bar holds still; reading results,
+    // it steps away with them. Set from the focus change itself, never from
+    // a build.
+    final chrome = ScrollChromeScope.maybeOf(context);
+    useEffect(() {
+      if (chrome == null) return null;
+      void hold() => chrome.held = focusNode.hasFocus;
+      focusNode.addListener(hold);
+      return () {
+        focusNode.removeListener(hold);
+        chrome.held = false;
+      };
+    }, [chrome, focusNode]);
+
+    // A pick from the page: remembered as a recent search, then opened. The
+    // card that was tapped gave its own haptic; this adds none.
     void remember(RecentSearchEntry entry) {
       unawaited(ref.read(recentSearchesProvider.notifier).record(entry));
       FocusScope.of(context).unfocus();
-      HapticFeedbackService.buttonPress();
     }
 
     void openEvent(GroupEventCardModel tournament) {
@@ -157,28 +205,27 @@ class SearchTabScreen extends HookConsumerWidget {
       );
     }
 
-    final chrome = ScrollChromeScope.maybeOf(context);
-    final field = HomeTopBarFrame(
-      statusBar: false,
-      child: SizedBox(
-        width: double.infinity,
-        child: EnhancedRoundedSearchBar(
-          controller: controller,
-          focusNode: focusNode,
-          showProfile: false,
-          // The page under the field is the results; no drop-down over it,
-          // and no filter: the event filter narrows Today, not a search.
-          dropdown: false,
-          showFilter: false,
-          textFieldKey: const ValueKey('search_tab_field'),
-          hintText: 'Search',
-          rotatingHints: const [
-            'player',
-            'tournament',
-            'openings',
-            'FIDE country',
-          ],
-        ),
+    // The one root bar ([HomeTopBarFrame]): the status bar's inset, then the
+    // band with the field as its row and the standard gap under it, so the
+    // field and the page under it land exactly where every root's do. In the
+    // home shell the band steps away with the page and back (X-style).
+    final header = HomeTopBarFrame(
+      child: EnhancedRoundedSearchBar(
+        controller: controller,
+        focusNode: focusNode,
+        showProfile: false,
+        // The page under the field is the results; no drop-down over it, and
+        // no filter: the event filter narrows Today, not a search.
+        dropdown: false,
+        showFilter: false,
+        textFieldKey: const ValueKey('search_tab_field'),
+        hintText: 'Search',
+        rotatingHints: const [
+          'player',
+          'tournament',
+          'openings',
+          'FIDE country',
+        ],
       ),
     );
 
@@ -192,36 +239,20 @@ class SearchTabScreen extends HookConsumerWidget {
           ),
           child: Column(
             children: [
-              SizedBox(height: MediaQuery.viewPaddingOf(context).top),
-              // While the keyboard is up the field holds still; reading
-              // results, it steps away with them.
-              ListenableBuilder(
-                listenable: focusNode,
-                child: Padding(
-                  padding: EdgeInsets.only(bottom: 8.h),
-                  child: field,
-                ),
-                builder: (context, child) {
-                  if (chrome == null) return child!;
-                  chrome.held = focusNode.hasFocus;
-                  return CollapsingChrome(controller: chrome, child: child!);
-                },
-              ),
+              header,
               Expanded(
-                child: SearchOverlay(
-                  key: const ValueKey('search_tab_page'),
-                  fullPage: true,
-                  // The rows carry their own inset ([searchPageRowInset]);
-                  // together with this they land on the field's gutter, in
-                  // the one unit they use. The page itself runs edge to
-                  // edge, so a row of opening cards scrolls out to the
-                  // screen's edge instead of stopping short of it.
-                  pageInset:
-                      HomeTopBarMetrics.horizontalPadding - searchPageRowInset,
-                  query: controller.text,
-                  onTournamentTap: openEvent,
-                  onPlayerTap: openPlayer,
-                  onOpeningTap: openOpening,
+                // The landing and the results scroll on it, so a re-tap of
+                // the tab can take either back to its top.
+                child: PrimaryScrollController(
+                  controller: scroll,
+                  child: SearchOverlay(
+                    key: const ValueKey('search_tab_page'),
+                    fullPage: true,
+                    query: controller.text,
+                    onTournamentTap: openEvent,
+                    onPlayerTap: openPlayer,
+                    onOpeningTap: openOpening,
+                  ),
                 ),
               ),
             ],

@@ -448,6 +448,15 @@ const Duration _kWarmAfter = Duration(milliseconds: 280);
 class _EventCardMenuTriggerState extends ConsumerState<_EventCardMenuTrigger> {
   Timer? _warmTimer;
 
+  /// The menu's copy of the card is lifted: the card itself steps out of
+  /// sight under it (its room kept), as every card with a focus menu does.
+  bool _lifted = false;
+
+  void _setLifted(bool value) {
+    if (!mounted || _lifted == value) return;
+    setState(() => _lifted = value);
+  }
+
   /// The lookup for [widget.model], in flight or landed. Cleared when it
   /// lands empty (possibly a failure), so the next press asks again.
   Future<List<String>>? _tourIds;
@@ -533,6 +542,7 @@ class _EventCardMenuTriggerState extends ConsumerState<_EventCardMenuTrigger> {
         ),
         preview: widget.previewBuilder(box.size),
         onPreviewTap: widget.onOpen,
+        onPreviewLiftChanged: _setLifted,
         // A press on the card's right half opens the menu against that edge.
         // A screen reader's long-press action reports no position.
         origin: details.globalPosition == Offset.zero
@@ -549,7 +559,8 @@ class _EventCardMenuTriggerState extends ConsumerState<_EventCardMenuTrigger> {
       onLongPressDown: _onPressDown,
       onLongPressCancel: _onPressCancel,
       onLongPressStart: _openMenu,
-      child: widget.child,
+      // Installed for good, so hiding never remounts the card.
+      child: Visibility.maintain(visible: !_lifted, child: widget.child),
     );
   }
 }

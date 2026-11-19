@@ -354,10 +354,9 @@ class _CountrymenCombinedGamesScreenState
                   Icon(
                     Icons.tune_rounded,
                     size: 22.ic,
-                    color:
-                        hasActiveFilters
-                            ? context.colors.textPrimary
-                            : context.colors.textSecondary,
+                    color: hasActiveFilters
+                        ? context.colors.textPrimary
+                        : context.colors.textSecondary,
                   ),
                   // Badge showing active filter count
                   if (hasActiveFilters)
@@ -537,36 +536,35 @@ class _CountrymenCombinedGamesScreenState
             return Padding(
               padding: EdgeInsets.symmetric(vertical: 24.h),
               child: Center(
-                child:
-                    state.isLoading
-                        ? Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            SizedBox(
-                              width: 24.w,
-                              height: 24.h,
-                              child: CircularProgressIndicator(
-                                color: context.colors.textPrimary,
-                                strokeWidth: 2,
-                              ),
+                child: state.isLoading
+                    ? Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          SizedBox(
+                            width: 24.w,
+                            height: 24.h,
+                            child: CircularProgressIndicator(
+                              color: context.colors.textPrimary,
+                              strokeWidth: 2,
                             ),
-                            SizedBox(height: 8.h),
-                            Text(
-                              'Loading more games...',
-                              style: AppTypography.textXsRegular.copyWith(
-                                color: context.colors.textTertiary,
-                              ),
-                            ),
-                          ],
-                        )
-                        : state.hasMore
-                        ? const SizedBox.shrink()
-                        : Text(
-                          'No more games',
-                          style: AppTypography.textXsRegular.copyWith(
-                            color: const Color(0xFF52525B),
                           ),
+                          SizedBox(height: 8.h),
+                          Text(
+                            'Loading more games...',
+                            style: AppTypography.textXsRegular.copyWith(
+                              color: context.colors.textTertiary,
+                            ),
+                          ),
+                        ],
+                      )
+                    : state.hasMore
+                    ? const SizedBox.shrink()
+                    : Text(
+                        'No more games',
+                        style: AppTypography.textXsRegular.copyWith(
+                          color: const Color(0xFF52525B),
                         ),
+                      ),
               ),
             );
           }
@@ -661,11 +659,9 @@ class _CountrymenCombinedGamesScreenState
           ),
           SizedBox(height: 24.h),
           TextButton(
-            onPressed:
-                () =>
-                    ref
-                        .read(countrymenCombinedGamesProvider.notifier)
-                        .refreshGames(),
+            onPressed: () => ref
+                .read(countrymenCombinedGamesProvider.notifier)
+                .refreshGames(),
             style: TextButton.styleFrom(
               backgroundColor: context.colors.textPrimary.withValues(
                 alpha: 0.1,
@@ -732,11 +728,9 @@ class _CountrymenCombinedGamesScreenState
           ),
           SizedBox(height: 24.h),
           TextButton(
-            onPressed:
-                () =>
-                    ref
-                        .read(countrymenCombinedGamesProvider.notifier)
-                        .refreshGames(),
+            onPressed: () => ref
+                .read(countrymenCombinedGamesProvider.notifier)
+                .refreshGames(),
             style: TextButton.styleFrom(
               backgroundColor: context.colors.textPrimary.withValues(
                 alpha: 0.1,

@@ -299,8 +299,10 @@ Future<void> _mount(
   await _settle(tester);
 }
 
+/// Long enough for a tab change: the pages ride PageSpring, which parks on
+/// the page about half a second after the tap.
 Future<void> _settle(WidgetTester tester) async {
-  for (var i = 0; i < 8; i++) {
+  for (var i = 0; i < 10; i++) {
     await tester.pump(const Duration(milliseconds: 60));
   }
 }
@@ -657,9 +659,11 @@ void main() {
         find.byKey(const ValueKey('my_likes_filters')).hitTestable(),
         findsOneWidget,
       );
-      expect(find.byTooltip('Export as PGN'), findsNothing);
+      // The title row waits, out of reach, under the search; the button
+      // stays for the search's glass to fly back into.
+      expect(find.byTooltip('Export as PGN').hitTestable(), findsNothing);
       expect(find.byType(MyLikesGameCard), findsOneWidget);
-      expect(fab, findsNothing);
+      expect(fab.hitTestable(), findsNothing);
       await tester.enterText(field, 'Carlsen');
       await tester.pump(const Duration(milliseconds: 450));
       expect(container.read(myLikesFilterProvider).searchQuery, 'Carlsen');

@@ -19,6 +19,7 @@ import 'package:chessever2/widgets/player_initials_avatar.dart';
 import 'package:chessever2/widgets/game_filter/eco_filter_dropdown.dart'
     show EcoBrowseNode, buildEcoBrowseTree;
 import 'package:chessever2/widgets/search/opening_search_suggestion.dart';
+import 'package:chessever2/widgets/search_no_matches.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -28,9 +29,13 @@ class CollectionBooksCatalog extends ConsumerWidget {
     super.key,
     required this.query,
     this.bottomPadding = 0,
+    this.onClear,
   });
   final CollectionSearchQuery query;
   final double bottomPadding;
+
+  /// Clears what leaves the catalog empty ([CollectionCatalogList.onClear]).
+  final VoidCallback? onClear;
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final repository = ref.watch(collectionsRepositoryProvider);
@@ -59,6 +64,7 @@ class CollectionBooksCatalog extends ConsumerWidget {
         24.sp + MediaQuery.viewPaddingOf(context).bottom + bottomPadding,
       ),
       emptyMessage: 'No collections yet.',
+      onClear: onClear,
       itemBuilder: (book) => Padding(
         padding: EdgeInsets.only(bottom: 12.sp),
         child: CollectionCard(collection: book),
@@ -72,9 +78,13 @@ class CollectionAuthorsCatalog extends ConsumerWidget {
     super.key,
     required this.query,
     this.bottomPadding = 0,
+    this.onClear,
   });
   final CollectionSearchQuery query;
   final double bottomPadding;
+
+  /// Clears what leaves the catalog empty ([CollectionCatalogList.onClear]).
+  final VoidCallback? onClear;
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final repository = ref.watch(collectionsRepositoryProvider);
@@ -94,6 +104,8 @@ class CollectionAuthorsCatalog extends ConsumerWidget {
       ),
       emptyMessage:
           'Authors will appear here when their collections are published.',
+      subject: 'authors',
+      onClear: onClear,
       indexedItemBuilder: (author, index) => Padding(
         padding: EdgeInsets.only(bottom: 8.sp),
         child: FigmaPlayerCard(
@@ -267,23 +279,30 @@ class _CollectionOpeningCatalogState
         ),
         data: (items) => ListView(
           physics: const AlwaysScrollableScrollPhysics(),
-          padding: EdgeInsets.fromLTRB(
-            16.sp,
-            12.sp,
-            16.sp,
-            24.sp +
-                MediaQuery.viewPaddingOf(context).bottom +
-                widget.bottomPadding,
-          ),
-          children: items.isEmpty
+          // The no-hits line keeps the list's gutter itself.
+          padding: items.isEmpty && widget.query.isActive
+              ? EdgeInsets.zero
+              : EdgeInsets.fromLTRB(
+                  16.sp,
+                  12.sp,
+                  16.sp,
+                  24.sp +
+                      MediaQuery.viewPaddingOf(context).bottom +
+                      widget.bottomPadding,
+                ),
+          children: items.isEmpty && widget.query.isActive
               ? [
-                  Padding(
-                    padding: const EdgeInsets.all(24),
-                    child: Text(
-                      widget.query.isActive
-                          ? 'No openings match this search.'
-                          : 'No openings yet.',
-                    ),
+                  SearchNoMatches(
+                    query: widget.query.text,
+                    subject: 'openings',
+                    filtered: widget.query.text.trim().isEmpty,
+                  ),
+                ]
+              : items.isEmpty
+              ? [
+                  const Padding(
+                    padding: EdgeInsets.all(24),
+                    child: Text('No openings yet.'),
                   ),
                 ]
               : _openingRows(items),

@@ -1,6 +1,7 @@
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_list_view_mode_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_scroll_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/games_list_view.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/widgets/search_list_resume.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/group_event/widget/tour_loading_widget.dart';
 import 'package:flutter/material.dart';
@@ -12,10 +13,15 @@ class GamesTourContentBody extends ConsumerWidget {
   final GamesScreenModel gamesScreenModel;
   final GamesListViewMode gamesListViewMode;
 
+  /// Where the list starts when it is built afresh (a search's hits giving
+  /// way to every game): the reader's place before the search.
+  final ListResumePoint? startAt;
+
   const GamesTourContentBody({
     super.key,
     required this.gamesScreenModel,
     required this.gamesListViewMode,
+    this.startAt,
   });
 
   @override
@@ -36,15 +42,19 @@ class GamesTourContentBody extends ConsumerWidget {
     );
 
     final itemScrollController = ref.watch(gamesTourScrollProvider(scopeId));
-    final itemPositionsListener =
-        ref
-            .read(gamesTourScrollProvider(scopeId).notifier)
-            .itemPositionsListener;
+    final itemPositionsListener = ref
+        .read(gamesTourScrollProvider(scopeId).notifier)
+        .itemPositionsListener;
 
     return GamesListView(
+      // A search's hits and every game are two lists: the hits start at
+      // their top, and every game comes back where the reader left it
+      // ([startAt]). Opening or closing a search with nothing searched keeps
+      // this very list.
       key: ValueKey(
         'games_list_${gamesListViewMode.name}_search_$isSearchMode',
       ),
+      startAt: startAt,
       gamesByRound: gamesByRound,
       gamesData: orderedGamesData,
       gamesListViewMode: gamesListViewMode,

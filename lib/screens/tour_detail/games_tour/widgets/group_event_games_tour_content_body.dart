@@ -5,6 +5,8 @@ import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_mode
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/games_tour_content_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/group_event_match_card.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/round_header_widget.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/widgets/search_list_resume.dart';
+import 'package:chessever2/screens/tour_detail/widgets/event_games_list_end.dart';
 import 'package:chessever2/widgets/positioned_list_scrollbar.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -22,11 +24,16 @@ class GroupEventGamesTourContentBody extends ConsumerStatefulWidget {
   final GamesListViewMode gamesListViewMode;
   final void Function(int)? onReturnFromChessboard;
 
+  /// Where the list starts when it is built afresh (a search's hits giving
+  /// way to every matchup): the reader's place before the search.
+  final ListResumePoint? startAt;
+
   const GroupEventGamesTourContentBody({
     super.key,
     required this.gamesScreenModel,
     required this.gamesListViewMode,
     this.onReturnFromChessboard,
+    this.startAt,
   });
 
   @override
@@ -84,10 +91,9 @@ class _GroupEventGamesTourContentBodyState
     final streamEnabled = shouldStream;
     final allowStockfishFallback = streamEnabled;
     final scrollController = ref.watch(gamesTourScrollProvider(scopeId));
-    final itemPositionsListener =
-        ref
-            .watch(gamesTourScrollProvider(scopeId).notifier)
-            .itemPositionsListener;
+    final itemPositionsListener = ref
+        .watch(gamesTourScrollProvider(scopeId).notifier)
+        .itemPositionsListener;
     final roundExpansionState = ref.watch(roundExpansionProvider);
 
     return _buildAllRoundsView(
@@ -122,12 +128,16 @@ class _GroupEventGamesTourContentBodyState
   ) {
     // Build a flat list of all items with round tracking
     final allItems = <_GroupEventItem>[];
+    // A search opens every round with a hit, as the board list does, so no
+    // hit hides in a folded round; the folds come back as it ends.
+    final isSearchMode = widget.gamesScreenModel.isSearchMode;
 
     for (final round in visibleRounds) {
       final roundGames = gamesByRound[round.id] ?? const <GamesTourModel>[];
       final grouped = groupedByRound[round.id]!;
 
-      final isRoundExpanded = roundExpansionState[round.id] ?? true;
+      final isRoundExpanded =
+          isSearchMode || (roundExpansionState[round.id] ?? true);
 
       // Add round header item
       allItems.add(
@@ -137,9 +147,13 @@ class _GroupEventGamesTourContentBodyState
             round: round,
             roundGames: roundGames,
             isExpanded: isRoundExpanded,
-            onToggle: () {
-              ref.read(roundExpansionProvider.notifier).toggleRound(round.id);
-            },
+            onToggle: isSearchMode
+                ? null
+                : () {
+                    ref
+                        .read(roundExpansionProvider.notifier)
+                        .toggleRound(round.id);
+                  },
           ),
           isHeader: true,
         ),
@@ -172,6 +186,9 @@ class _GroupEventGamesTourContentBodyState
     }
 
     final listItemCount = allItems.length;
+    final start = listItemCount == 0
+        ? null
+        : widget.startAt?.clampedTo(listItemCount);
     return GamesTourScrollActivityDetector(
       scopeId: scopeId,
       child: PositionedListScrollbar(
@@ -184,16 +201,21 @@ class _GroupEventGamesTourContentBodyState
           bottom: MediaQuery.of(context).viewPadding.bottom + 8.sp,
         ),
         child: ScrollablePositionedList.builder(
+          // The hits and every matchup are two lists: the hits start at
+          // their top, every matchup comes back where the reader left it.
+          key: ValueKey('team_matchups_search_$isSearchMode'),
           itemScrollController: scrollController,
           itemPositionsListener: itemPositionsListener,
-          padding: EdgeInsets.only(
-            left: 16.sp,
-            right: 16.sp,
-            top: 8.sp,
-            bottom: MediaQuery.of(context).viewPadding.bottom + 8.sp,
-          ),
-          itemCount: listItemCount,
+          initialScrollIndex: start?.index ?? 0,
+          initialAlignment: start?.alignment ?? 0,
+          // The bottom is the last row's: [EventGamesListEnd].
+          padding: EdgeInsets.only(left: 16.sp, right: 16.sp, top: 8.sp),
+          // The matchups, then where the list ends.
+          itemCount: listItemCount + 1,
           itemBuilder: (context, index) {
+            // Clear of the floating buttons, giving way with them as the
+            // search opens, as every Games list ends.
+            if (index == listItemCount) return const EventGamesListEnd();
             final item = allItems[index];
             final isLastItem = index == listItemCount - 1;
             final nextIsHeader = !isLastItem && allItems[index + 1].isHeader;

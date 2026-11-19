@@ -8,6 +8,7 @@ import 'package:chessever2/screens/favorites/rankings/ranking_filters.dart';
 import 'package:chessever2/utils/favorite_constants.dart';
 import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
 import 'package:chessever2/screens/favorites/widgets/collection_inks.dart';
+import 'package:chessever2/screens/favorites/widgets/tab_search_fab.dart';
 import 'package:chessever2/screens/standings/player_standing_model.dart';
 import 'package:chessever2/screens/player_profile/player_profile_screen.dart';
 import 'package:chessever2/services/fide_photo_service.dart';
@@ -24,7 +25,8 @@ import 'package:chessever2/screens/player_profile/utils/player_menu_actions.dart
 import 'package:chessever2/screens/player_profile/widgets/lifted_row_menu.dart';
 import 'package:chessever2/widgets/figma_player_card.dart';
 import 'package:chessever2/widgets/scroll_to_top_bus.dart';
-import 'package:chessever2/widgets/search/gameSearch/enhanced_game_search_widget.dart';
+import 'package:chessever2/widgets/search_mode/search_mode.dart';
+import 'package:chessever2/widgets/search_no_matches.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
@@ -473,10 +475,6 @@ class _FavoritesPlayersTabState extends ConsumerState<FavoritesPlayersTab>
     animateScrollControllerToTop(_scrollController);
   }
 
-  final TextEditingController _searchController = TextEditingController();
-  final FocusNode _searchFocusNode = FocusNode();
-  Timer? _debounceTimer;
-
   @override
   bool get wantKeepAlive => true;
 
@@ -488,11 +486,8 @@ class _FavoritesPlayersTabState extends ConsumerState<FavoritesPlayersTab>
 
   @override
   void dispose() {
-    _debounceTimer?.cancel();
     _scrollController.removeListener(_onScroll);
     _scrollController.dispose();
-    _searchController.dispose();
-    _searchFocusNode.dispose();
     super.dispose();
   }
 
@@ -503,24 +498,11 @@ class _FavoritesPlayersTabState extends ConsumerState<FavoritesPlayersTab>
     }
   }
 
-  void _onSearchChanged(String value) {
-    _debounceTimer?.cancel();
-    _debounceTimer = Timer(const Duration(milliseconds: 400), () {
-      ref.read(worldPlayersSearchProvider.notifier).search(value);
-    });
-  }
-
-  void _clearSearch() {
-    HapticFeedback.lightImpact();
-    _debounceTimer?.cancel();
-    _searchController.clear();
-    _searchFocusNode.unfocus();
-    ref.read(worldPlayersSearchProvider.notifier).clearSearch();
-  }
-
   Future<void> _onFiltersChanged(RankingFilters filters) async {
     HapticFeedback.selectionClick();
-    _searchFocusNode.unfocus();
+    // The page's search keeps its words; its keyboard steps aside for the
+    // list the filter brings.
+    SearchModeScope.maybeOf(context)?.controller.focusNode.unfocus();
     await ref.read(worldPlayersSearchProvider.notifier).updateFilters(filters);
     if (!mounted || !_scrollController.hasClients) return;
     await _scrollController.animateTo(
@@ -553,58 +535,30 @@ class _FavoritesPlayersTabState extends ConsumerState<FavoritesPlayersTab>
           parent: BouncingScrollPhysics(),
         ),
         slivers: [
+          // Every ranking filter on one rail (Active / All first); the
+          // search is the page's, from its floating button (Trello #1420).
+          // The rail scrolls sideways and carries its own inset, so it spans
+          // the full width: its edge fade falls at the screen's edge.
           SliverToBoxAdapter(
-            child: Column(
-              children: [
-                // Only the search row is inset here. The filter strips scroll
-                // horizontally and carry their own internal padding, so they
-                // must span the full width or their edge fade would sit inside
-                // a gutter instead of at the screen edge.
-                Padding(
-                  padding: EdgeInsets.fromLTRB(16.w, 10.h, 16.w, 0),
-                  // Centred so the search field and the Active/All chips share
-                  // a mid-line. The chips carry invisible touch padding, so
-                  // they are taller than they look and would sit off-axis if
-                  // this stretched them instead.
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.center,
-                    children: [
-                      Expanded(
-                        child: SearchBarWidget(
-                          hintText: 'Search',
-                          margin: 0.sp,
-                          autoFocus: false,
-                          controller: _searchController,
-                          focusNode: _searchFocusNode,
-                          onChanged: _onSearchChanged,
-                          onClose: _clearSearch,
-                        ),
-                      ),
-                      SizedBox(width: 8.w),
-                      RankingActivityControl(
-                        value: state.filters.activity,
-                        onChanged: (value) => _onFiltersChanged(
-                          state.filters.copyWith(activity: value),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                RankingFilterControls(
-                  filters: state.filters,
-                  showActivity: false,
-                  onChanged: _onFiltersChanged,
-                ),
-                SizedBox(height: 4.h),
-              ],
+            child: Padding(
+              padding: EdgeInsets.only(top: 2.h, bottom: 4.h),
+              child: RankingFilterControls(
+                filters: state.filters,
+                activityInRail: true,
+                onChanged: _onFiltersChanged,
+              ),
             ),
           ),
 
           // Content
           _buildContentSliver(state, favorites),
 
-          // Bottom padding
-          SliverToBoxAdapter(child: SizedBox(height: 24.h)),
+          // The last row ends clear of the floating search button; the
+          // room gives way on the search's own timeline while it is open.
+          SearchModeListEnd.sliver(
+            base: 24.h,
+            buttons: TabSearchFab.reach(context),
+          ),
         ],
       ),
     );
@@ -643,12 +597,7 @@ class _FavoritesPlayersTabState extends ConsumerState<FavoritesPlayersTab>
     }
 
     if (state.players.isEmpty) {
-      if (state.isSearching) {
-        return SliverFillRemaining(
-          hasScrollBody: false,
-          child: _buildNoSearchResultsState(),
-        );
-      }
+      if (state.isSearching) return _buildNoSearchResultsSliver(state);
       return SliverFillRemaining(
         hasScrollBody: false,
         child: _buildEmptyState(),
@@ -951,33 +900,14 @@ class _FavoritesPlayersTabState extends ConsumerState<FavoritesPlayersTab>
     ).animate().fadeIn(duration: 300.ms).scale(begin: const Offset(0.95, 0.95));
   }
 
-  Widget _buildNoSearchResultsState() {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(
-            Icons.search_off_outlined,
-            size: 56.sp,
-            color: context.textInk(0.4),
-          ),
-          SizedBox(height: 12.h),
-          Text(
-            'No results',
-            style: AppTypography.textMdMedium.copyWith(
-              color: context.colors.textPrimary.withValues(alpha: 0.85),
-            ),
-          ),
-          SizedBox(height: 6.h),
-          Text(
-            'Try a different search term',
-            style: AppTypography.textSmRegular.copyWith(
-              color: context.textInk(0.55),
-            ),
-            textAlign: TextAlign.center,
-          ),
-        ],
-      ),
-    ).animate().fadeIn(duration: 300.ms);
+  /// The search's words matched no ranked player: said once, where the
+  /// first row would be, with the way back to the whole ranking.
+  Widget _buildNoSearchResultsSliver(WorldPlayersSearchState state) {
+    final search = SearchModeScope.maybeOf(context)?.controller;
+    return SearchNoMatches.sliver(
+      query: state.searchQuery,
+      subject: 'players',
+      onClear: search?.text.clear,
+    );
   }
 }
