@@ -1874,19 +1874,17 @@ void main() {
     testWidgets('a row snaps to its cards\' new width once it changes (a '
         'rotation, split view)', (tester) async {
       final app = await pumpAll(tester, size: const Size(393, 3600));
-      double slot() =>
-          (_rowPosition(tester, 'live').physics as SearchCarouselPhysics).slot;
-      final before = slot();
+      final physics =
+          _rowPosition(tester, 'live').physics as SearchCarouselPhysics;
+      final before = physics.slot;
       tester.view.physicalSize = const Size(430, 3600) * 2;
       await tester.pump();
       await tester.pump();
-      expect(slot(), greaterThan(before));
       expect(
-        const SearchCarouselPhysics(
-          slot: 300,
-        ).shouldUpdate(const SearchCarouselPhysics(slot: 300)),
-        isFalse,
+        (_rowPosition(tester, 'live').physics as SearchCarouselPhysics).slot,
+        greaterThan(before),
       );
+      expect(physics.slot, greaterThan(before));
       await app.dispose();
     });
 

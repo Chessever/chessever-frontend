@@ -265,7 +265,7 @@ class _SearchCarouselState extends State<SearchCarousel> {
           scrollDirection: Axis.horizontal,
           // A card's own shadow and lift stay whole above and below the row.
           clipBehavior: Clip.none,
-          physics: SearchCarouselPhysics(slot: _slot),
+          physics: SearchCarouselPhysics(() => _slot),
           keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
           padding: EdgeInsetsDirectional.only(start: gutter, end: end),
           itemExtent: _slot,
@@ -317,26 +317,24 @@ class _SearchCarouselState extends State<SearchCarousel> {
 /// card on the way it went. Past either end the platform's own physics
 /// bring it back.
 class SearchCarouselPhysics extends ScrollPhysics {
-  const SearchCarouselPhysics({required this.slot, super.parent});
+  const SearchCarouselPhysics(this._readSlot, {super.parent});
 
-  /// One card and the gap after it.
-  final double slot;
+  // Scrollable can keep its existing physics when the card width changes.
+  final double Function() _readSlot;
+
+  /// The current width of one card and the gap after it.
+  double get slot => _readSlot();
 
   @override
   SearchCarouselPhysics applyTo(ScrollPhysics? ancestor) =>
-      SearchCarouselPhysics(slot: slot, parent: buildParent(ancestor));
-
-  /// A new card width (a rotation, split view, a fold opened) makes new
-  /// physics: the row snaps to the cards it has now, not the old ones.
-  @override
-  bool shouldUpdate(covariant SearchCarouselPhysics old) =>
-      slot != old.slot || super.shouldUpdate(old);
+      SearchCarouselPhysics(_readSlot, parent: buildParent(ancestor));
 
   @override
   Simulation? createBallisticSimulation(
     ScrollMetrics position,
     double velocity,
   ) {
+    final slot = this.slot;
     if (slot <= 0 || position.outOfRange) {
       return super.createBallisticSimulation(position, velocity);
     }
